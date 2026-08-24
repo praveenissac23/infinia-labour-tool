@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Infinia Labour Tool</title>
+<style>
+  :root {
+    --red: #C0392B; --red-hover: #A5301F; --black: #2E3238; --darkgray: #3E434A;
+    --silver: #C7CBD1; --lightgray: #F4F5F7;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
+
+  /* ---- Login screen ---- */
+  #login-screen { display: flex; align-items: center; justify-content: center; height: 100vh; }
+  #login-box { background: white; border-radius: 12px; padding: 36px 40px; width: 320px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+  #login-box h1 { font-size: 18px; margin: 0 0 4px; }
+  #login-box p { font-size: 12px; color: #888; margin: 0 0 20px; }
+  #login-box input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+  #login-box button { width: 100%; padding: 10px; background: var(--red); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+  #login-box button:hover { background: var(--red-hover); }
+  #login-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 14px; }
+
+  /* ---- App shell ---- */
+  #app-screen { display: none; min-height: 100vh; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--black); flex-shrink: 0; padding: 20px 0; }
+  .sidebar .brand { color: white; font-weight: bold; font-size: 15px; padding: 0 20px 18px; border-bottom: 1px solid var(--darkgray); margin-bottom: 10px; }
+  .sidebar .nav-item { color: var(--silver); padding: 11px 20px; font-size: 13.5px; font-weight: bold; cursor: pointer; }
+  .sidebar .nav-item:hover { background: var(--darkgray); color: white; }
+  .sidebar .nav-item.active { background: var(--red); color: white; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .topbar { background: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; }
+  .topbar h1 { font-size: 17px; margin: 0; }
+  .topbar .who { font-size: 12px; color: #888; }
+  .topbar button { background: transparent; border: 1px solid #ccc; color: #555; padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+  .topbar button:hover { background: #f0f0f0; }
+
+  .content { flex: 1; padding: 20px 24px; overflow: auto; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  .toolbar { background: white; padding: 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
+  .toolbar label { font-size: 12px; font-weight: bold; color: #555; }
+  .toolbar input[type=date], .toolbar select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .toolbar input[type=text] { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 220px; }
+  .viewing-label { font-size: 13px; font-weight: bold; color: var(--red); margin-left: auto; }
+
+  .bulk-bar { background: white; padding: 14px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
+  .bulk-bar .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .bulk-bar select, .bulk-bar input[type=text] { padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px; }
+  button.btn { padding: 7px 14px; border: none; border-radius: 5px; font-size: 12px; font-weight: bold; cursor: pointer; }
+  .btn-primary { background: var(--red); color: white; }
+  .btn-primary:hover { background: var(--red-hover); }
+  .btn-dark { background: var(--black); color: white; }
+  .btn-dark:hover { background: var(--darkgray); }
+  .btn-gray { background: #999; color: white; }
+  .btn-gray:hover { background: #777; }
+
+  .status-msg { margin-bottom: 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
+  .status-msg.ok { background: #C6EFCE; color: #2E7D32; display: block; }
+  .status-msg.err { background: #FFC7CE; color: #C0392B; display: block; white-space: pre-line; }
+  .status-msg.warn { background: #FFF3CD; color: #8a6d1a; display: block; white-space: pre-line; }
+
+  .card { background: white; border-radius: 8px; border: 1px solid #eee; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 12px; }
+
+  .grid-wrap { background: white; border-radius: 8px; border: 1px solid #eee; overflow: auto; max-height: 60vh; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { background: var(--red); color: white; padding: 9px 8px; text-align: center; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+  td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #f0f0f0; }
+  tr:hover td { background: #FFF7F5; }
+  td input[type=checkbox] { transform: scale(1.1); }
+  select, .cell-input { padding: 4px 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; width: 100%; }
+  .cell-input.narrow { width: 44px; text-align: center; }
+  .cell-input.comments { width: 160px; }
+  td.empno { font-weight: bold; }
+  #loading { text-align: center; padding: 40px; color: #888; font-size: 13px; }
+
+  .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .form-row input[type=text], .form-row input[type=number] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .empty-note { color: #888; font-size: 13px; padding: 10px; }
+  .clickable-row { cursor: pointer; }
+  .selected-row td { background: #FFE9A8 !important; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div id="login-box">
+    <h1>Infinia Labour Tool</h1>
+    <p>Sign in to continue</p>
+    <input type="text" id="login-username" placeholder="Username" value="admin">
+    <input type="password" id="login-password" placeholder="Password">
+    <button onclick="doLogin()">Sign In</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<div id="app-screen">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="brand">INFINIA LABOUR TOOL</div>
+      <div class="nav-item active" data-screen="attendance" onclick="switchScreen('attendance')">Daily Attendance</div>
+      <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
+      <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
+      <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <h1 id="screen-title">Daily Attendance Entry</h1>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <span class="who" id="who-label"></span>
+          <button onclick="doLogout()">Sign out</button>
+        </div>
+      </div>
+      <div class="content">
+
+        <!-- ============ ATTENDANCE SCREEN ============ -->
+        <div class="screen active" id="screen-attendance">
+          <div class="toolbar">
+            <label>Date:</label>
+            <input type="date" id="date-picker" onchange="onDateChange()">
+            <label>Search:</label>
+            <input type="text" id="search-box" placeholder="Employee No or Name" oninput="renderRows()">
+            <span class="viewing-label" id="viewing-label"></span>
+          </div>
+          <div class="bulk-bar">
+            <div class="row">
+              <strong style="font-size:12px;">Bulk-apply to ticked rows:</strong>
+              <select id="bulk-am"><option value="">A.M -</option></select>
+              <select id="bulk-pm"><option value="">P.M -</option></select>
+              <select id="bulk-site"><option value="">Site -</option></select>
+              <select id="bulk-engineer"><option value="">Engineer -</option></select>
+              <input type="text" id="bulk-ot" placeholder="OT" style="width:50px;">
+              <input type="text" id="bulk-bh" placeholder="BH" style="width:50px;">
+              <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
+              <button class="btn btn-dark" onclick="selectAll()">Select All</button>
+              <button class="btn btn-dark" onclick="selectNone()">Select None</button>
+            </div>
+          </div>
+          <div class="status-msg" id="att-status"></div>
+          <div class="grid-wrap">
+            <div id="loading">Loading...</div>
+            <table id="grid-table" style="display:none;">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="header-check" onclick="toggleAll(this.checked)"></th>
+                  <th>Emp No</th><th>Name</th><th>A.M</th><th>P.M</th><th>Site</th>
+                  <th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th>
+                </tr>
+              </thead>
+              <tbody id="grid-body"></tbody>
+            </table>
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" style="padding:12px 28px; font-size:14px;" onclick="saveAttendance()">Save Attendance</button>
+          </div>
+        </div>
+
+        <!-- ============ MASTER DATA SCREEN ============ -->
+        <div class="screen" id="screen-masterdata">
+          <div class="status-msg" id="md-status"></div>
+          <div class="card">
+            <h2>Add / Update Employee</h2>
+            <div class="form-row">
+              <input type="text" id="md-emp-no" placeholder="Employee No">
+              <input type="text" id="md-emp-name" placeholder="Name">
+              <input type="text" id="md-emp-trade" placeholder="Trade">
+              <input type="number" id="md-emp-total" placeholder="Total Salary">
+              <input type="number" id="md-emp-basic" placeholder="Basic Salary">
+              <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Employees</h2>
+            <div class="grid-wrap" style="max-height: 40vh;">
+              <table>
+                <thead><tr><th>Emp No</th><th>Name</th><th>Trade</th><th>Total Salary</th><th>Basic Salary</th><th></th></tr></thead>
+                <tbody id="md-emp-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div style="display:flex; gap:14px;">
+            <div class="card" style="flex:1;">
+              <h2>Add Site</h2>
+              <div class="form-row">
+                <input type="text" id="md-site-code" placeholder="Site code (e.g. 704)">
+                <button class="btn btn-primary" onclick="addSite()">Add</button>
+              </div>
+              <div id="md-site-list"></div>
+            </div>
+            <div class="card" style="flex:1;">
+              <h2>Add Engineer</h2>
+              <div class="form-row">
+                <input type="text" id="md-eng-name" placeholder="Engineer name">
+                <button class="btn btn-primary" onclick="addEngineer()">Add</button>
+              </div>
+              <div id="md-eng-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ REPORTS SCREEN ============ -->
+        <div class="screen" id="screen-reports">
+          <div class="toolbar">
+            <label>Cycle (Month Year):</label>
+            <input type="text" id="report-cycle" placeholder="e.g. August 2026">
+            <button class="btn btn-primary" onclick="loadReports()">Run</button>
+          </div>
+          <div class="card">
+            <div class="grid-wrap" style="max-height: 65vh;">
+              <table>
+                <thead><tr>
+                  <th>Emp No</th><th>Name</th><th>Present</th><th>Absent</th><th>Sick</th><th>Holiday</th>
+                  <th>OT Hrs</th><th>BH Hrs</th><th>Final Salary</th><th>Adjustments</th>
+                </tr></thead>
+                <tbody id="report-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ SALARY ADJUSTMENTS SCREEN ============ -->
+        <div class="screen" id="screen-adjustments">
+          <div class="toolbar">
+            <label>Cycle:</label>
+            <input type="text" id="adj-cycle" placeholder="e.g. August 2026">
+            <button class="btn btn-primary" onclick="loadAdjustmentsList()">Load</button>
+          </div>
+          <div class="status-msg" id="adj-status"></div>
+          <div class="card" id="adj-detail-card" style="display:none;">
+            <h2 id="adj-selected-label"></h2>
+            <div id="adj-list"></div>
+            <div class="form-row" style="margin-top:10px;">
+              <input type="text" id="adj-desc" placeholder="Description">
+              <input type="number" id="adj-amount" placeholder="Amount (AED)">
+              <select id="adj-type"><option value="true">Deduction</option><option value="false">Addition</option></select>
+              <button class="btn btn-primary" onclick="addAdjustmentRow()">Add</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>All Workers (click a row to select)</h2>
+            <div class="grid-wrap" style="max-height: 45vh;">
+              <table>
+                <thead><tr><th>Emp No</th><th>Name</th><th>Final Salary</th><th>Adjusted Final Salary</th></tr></thead>
+                <tbody id="adj-worker-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "https://infinia-labour-tool-api.onrender.com";
+const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Friday", "Holiday", "Leave"];
+let TOKEN = null;
+let employees = [];
+let sites = [];
+let engineers = [];
+let rowData = {};
+let ticked = new Set();
+let currentDate = null;
+let currentSummaries = [];
+let selectedSummaryId = null;
+
+async function apiCall(path, options = {}) {
+  const headers = options.headers || {};
+  if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+  const res = await fetch(API + path, { ...options, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw { status: res.status, body };
+  }
+  return res.json();
+}
+
+async function doLogin() {
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  errEl.textContent = "";
+  try {
+    const res = await fetch(API + "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+    });
+    if (!res.ok) throw new Error("Incorrect username or password.");
+    const data = await res.json();
+    TOKEN = data.access_token;
+    sessionStorage.setItem("infinia_token", TOKEN);
+    document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app-screen").style.display = "block";
+    await initApp();
+  } catch (e) {
+    errEl.textContent = e.message || "Login failed.";
+  }
+}
+
+function doLogout() {
+  sessionStorage.removeItem("infinia_token");
+  location.reload();
+}
+
+const SCREEN_TITLES = {
+  attendance: "Daily Attendance Entry",
+  masterdata: "Master Data",
+  reports: "Reports / Summaries",
+  adjustments: "Salary Adjustments",
+};
+
+function switchScreen(name) {
+  document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
+  document.getElementById("screen-" + name).classList.add("active");
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.screen === name));
+  document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
+}
+
+async function initApp() {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById("date-picker").value = today;
+
+  [employees, sites, engineers] = await Promise.all([
+    apiCall("/employees?active_only=true"),
+    apiCall("/sites"),
+    apiCall("/engineers"),
+  ]);
+  employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+
+  populateSelect("bulk-am", STATUS_OPTIONS, "A.M");
+  populateSelect("bulk-pm", STATUS_OPTIONS, "P.M");
+  populateSelect("bulk-site", sites.map(s => s.code), "Site");
+  populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
+
+  await loadDate(today);
+  renderMasterDataLists();
+
+  const currentCycle = monthYearFor(new Date());
+  document.getElementById("report-cycle").value = currentCycle;
+  document.getElementById("adj-cycle").value = currentCycle;
+}
+
+function monthYearFor(d) {
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function populateSelect(id, values, label) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<option value="">${label} -</option>` + values.map(v => `<option value="${v}">${v}</option>`).join("");
+}
+
+// ============ ATTENDANCE ============
+async function onDateChange() {
+  const d = document.getElementById("date-picker").value;
+  if (d) await loadDate(d);
+}
+
+async function loadDate(dateStr, preserveStatus) {
+  currentDate = dateStr;
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("grid-table").style.display = "none";
+  if (!preserveStatus) showStatus("att-status", null);
+
+  const existing = await apiCall(`/attendance/${dateStr}`);
+  const byEmp = {};
+  existing.forEach(r => byEmp[r.emp_no] = r);
+
+  rowData = {};
+  employees.forEach(emp => {
+    const r = byEmp[emp.emp_no];
+    rowData[emp.emp_no] = {
+      am: r ? (r.am || "") : "", pm: r ? (r.pm || "") : "",
+      site: r ? (r.site || "") : "", engineer: r ? (r.engineer || "") : "",
+      ot: r && r.ot ? String(r.ot) : "", bh: r && r.bh ? String(r.bh) : "",
+      comments: r ? (r.comments || "") : "",
+    };
+  });
+  ticked.clear();
+
+  const dateObj = new Date(dateStr + "T00:00:00");
+  document.getElementById("viewing-label").textContent =
+    "Viewing: " + dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("grid-table").style.display = "table";
+  renderRows();
+}
+
+function renderRows() {
+  const search = document.getElementById("search-box").value.trim().toLowerCase();
+  const terms = search.split(",").map(t => t.trim()).filter(Boolean);
+  const tbody = document.getElementById("grid-body");
+  tbody.innerHTML = "";
+
+  employees.forEach(emp => {
+    if (terms.length) {
+      const match = terms.some(t => emp.emp_no.toLowerCase().includes(t) || emp.name.toLowerCase().includes(t));
+      if (!match) return;
+    }
+    const d = rowData[emp.emp_no];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="checkbox" ${ticked.has(emp.emp_no) ? "checked" : ""} onchange="onTick('${emp.emp_no}', this.checked)"></td>
+      <td class="empno">${emp.emp_no}</td>
+      <td>${emp.name}</td>
+      <td>${selectHtml(emp.emp_no, "am", STATUS_OPTIONS, d.am)}</td>
+      <td>${selectHtml(emp.emp_no, "pm", STATUS_OPTIONS, d.pm)}</td>
+      <td>${selectHtml(emp.emp_no, "site", sites.map(s => s.code), d.site)}</td>
+      <td>${selectHtml(emp.emp_no, "engineer", engineers.map(e => e.name), d.engineer)}</td>
+      <td><input class="cell-input narrow" value="${d.ot}" onchange="onField('${emp.emp_no}','ot',this.value)"></td>
+      <td><input class="cell-input narrow" value="${d.bh}" onchange="onField('${emp.emp_no}','bh',this.value)"></td>
+      <td><input class="cell-input comments" value="${escapeAttr(d.comments)}" onchange="onField('${emp.emp_no}','comments',this.value)"></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function selectHtml(empNo, field, values, current) {
+  const opts = ['<option value="">-</option>'].concat(
+    values.map(v => `<option value="${v}" ${v === current ? "selected" : ""}>${v}</option>`)
+  );
+  return `<select onchange="onField('${empNo}','${field}',this.value)">${opts.join("")}</select>`;
+}
+
+function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
+function onField(empNo, field, value) { rowData[empNo][field] = value; }
+function onTick(empNo, checked) { checked ? ticked.add(empNo) : ticked.delete(empNo); }
+function toggleAll(checked) {
+  employees.forEach(e => checked ? ticked.add(e.emp_no) : ticked.delete(e.emp_no));
+  renderRows();
+}
+function selectAll() { employees.forEach(e => ticked.add(e.emp_no)); renderRows(); }
+function selectNone() { ticked.clear(); renderRows(); }
+
+function applyBulk() {
+  const am = document.getElementById("bulk-am").value;
+  const pm = document.getElementById("bulk-pm").value;
+  const site = document.getElementById("bulk-site").value;
+  const engineer = document.getElementById("bulk-engineer").value;
+  const ot = document.getElementById("bulk-ot").value;
+  const bh = document.getElementById("bulk-bh").value;
+  if (ticked.size === 0) {
+    showStatus("att-status", "warn", "Tick the checkbox next to the workers you want to apply this to.");
+    return;
+  }
+  ticked.forEach(empNo => {
+    const d = rowData[empNo];
+    if (am) d.am = am;
+    if (pm) d.pm = pm;
+    if (site) d.site = site;
+    if (engineer) d.engineer = engineer;
+    if (ot) d.ot = ot;
+    if (bh) d.bh = bh;
+  });
+  renderRows();
+}
+
+function showStatus(elId, kind, text) {
+  const el = document.getElementById(elId);
+  if (!kind) { el.className = "status-msg"; el.textContent = ""; return; }
+  el.className = "status-msg " + kind;
+  el.textContent = text;
+}
+
+async function saveAttendance() {
+  const rows = [];
+  employees.forEach(emp => {
+    const d = rowData[emp.emp_no];
+    if (!d.am && !d.pm) return;
+    rows.push({
+      emp_no: emp.emp_no, full_date: currentDate,
+      am: d.am, pm: d.pm, site: d.site, engineer: d.engineer,
+      ot: d.ot ? parseFloat(d.ot) : 0, bh: d.bh ? parseFloat(d.bh) : 0,
+      comments: d.comments,
+    });
+  });
+  employees.forEach(emp => {
+    const d = rowData[emp.emp_no];
+    if (!d.am && !d.pm) {
+      rows.push({ emp_no: emp.emp_no, full_date: currentDate, am: "", pm: "", site: "", engineer: "", ot: 0, bh: 0, comments: "" });
+    }
+  });
+
+  try {
+    const result = await apiCall("/attendance/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    });
+    let msg = `Saved ${result.saved} worker(s) for ${currentDate}.`;
+    if (result.blocked && result.blocked.length) {
+      msg += "\n\nBlocked (Holiday needs previous day filled in first):\n" + result.blocked.join("\n");
+      showStatus("att-status", "warn", msg);
+    } else {
+      showStatus("att-status", "ok", msg);
+    }
+    await loadDate(currentDate, true);
+  } catch (e) {
+    if (e.body && e.body.detail && e.body.detail.errors) {
+      showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
+    } else {
+      showStatus("att-status", "err", "Save failed: " + (e.body?.detail || "Unknown error"));
+    }
+  }
+}
+
+// ============ MASTER DATA ============
+function renderMasterDataLists() {
+  const empBody = document.getElementById("md-emp-body");
+  empBody.innerHTML = employees.map(e => `
+    <tr>
+      <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade}</td>
+      <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
+      <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button></td>
+    </tr>
+  `).join("");
+
+  document.getElementById("md-site-list").innerHTML = sites.map(s => `<div style="padding:4px 0;font-size:13px;">${s.code}</div>`).join("") || '<div class="empty-note">No sites yet.</div>';
+  document.getElementById("md-eng-list").innerHTML = engineers.map(e => `<div style="padding:4px 0;font-size:13px;">${e.name}</div>`).join("") || '<div class="empty-note">No engineers yet.</div>';
+}
+
+function editEmployee(empNo) {
+  const emp = employees.find(e => e.emp_no === empNo);
+  if (!emp) return;
+  document.getElementById("md-emp-no").value = emp.emp_no;
+  document.getElementById("md-emp-name").value = emp.name;
+  document.getElementById("md-emp-trade").value = emp.trade;
+  document.getElementById("md-emp-total").value = emp.total_salary;
+  document.getElementById("md-emp-basic").value = emp.basic_salary;
+}
+
+async function saveEmployee() {
+  const emp_no = document.getElementById("md-emp-no").value.trim();
+  const name = document.getElementById("md-emp-name").value.trim();
+  if (!emp_no || !name) {
+    showStatus("md-status", "warn", "Employee No and Name are required.");
+    return;
+  }
+  try {
+    await apiCall("/employees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        emp_no, name,
+        trade: document.getElementById("md-emp-trade").value.trim(),
+        total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
+        basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
+        active: true,
+      }),
+    });
+    showStatus("md-status", "ok", `Saved ${emp_no}.`);
+    ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
+    employees = await apiCall("/employees?active_only=true");
+    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    renderMasterDataLists();
+  } catch (e) {
+    showStatus("md-status", "err", "Failed to save: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function addSite() {
+  const code = document.getElementById("md-site-code").value.trim();
+  if (!code) return;
+  await apiCall("/sites", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, active: true }),
+  });
+  document.getElementById("md-site-code").value = "";
+  sites = await apiCall("/sites");
+  renderMasterDataLists();
+  populateSelect("bulk-site", sites.map(s => s.code), "Site");
+}
+
+async function addEngineer() {
+  const name = document.getElementById("md-eng-name").value.trim();
+  if (!name) return;
+  await apiCall("/engineers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, active: true }),
+  });
+  document.getElementById("md-eng-name").value = "";
+  engineers = await apiCall("/engineers");
+  renderMasterDataLists();
+  populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
+}
+
+// ============ REPORTS ============
+async function loadReports() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  if (!cycle) return;
+  const summaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
+  const body = document.getElementById("report-body");
+  if (!summaries.length) {
+    body.innerHTML = `<tr><td colspan="10" class="empty-note">No data for this cycle yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = summaries.map(s => `
+    <tr>
+      <td>${s.emp_no}</td><td>${s.emp_name}</td>
+      <td>${s.present_days}</td><td>${s.absent_days}</td><td>${s.sick_days}</td><td>${s.holiday_days}</td>
+      <td>${s.ot_hours}</td><td>${s.bh_hours}</td>
+      <td>AED ${s.final_salary.toFixed(2)}</td>
+      <td>${s.adjustments.length ? s.adjustments.map(a => `${a.description}: ${a.is_deduction ? "-" : "+"}${a.amount}`).join(", ") : "-"}</td>
+    </tr>
+  `).join("");
+}
+
+// ============ SALARY ADJUSTMENTS ============
+async function loadAdjustmentsList() {
+  const cycle = document.getElementById("adj-cycle").value.trim();
+  if (!cycle) return;
+  currentSummaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
+  selectedSummaryId = null;
+  document.getElementById("adj-detail-card").style.display = "none";
+  renderAdjustmentsWorkerList();
+}
+
+function renderAdjustmentsWorkerList() {
+  const body = document.getElementById("adj-worker-body");
+  if (!currentSummaries.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">No data for this cycle yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = currentSummaries.map(s => {
+    const adjustedTotal = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
+    return `
+    <tr class="clickable-row ${s.id === selectedSummaryId ? 'selected-row' : ''}" onclick="selectSummary(${s.id})">
+      <td>${s.emp_no}</td><td>${s.emp_name}</td>
+      <td>AED ${s.final_salary.toFixed(2)}</td><td>AED ${adjustedTotal.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function selectSummary(id) {
+  selectedSummaryId = id;
+  const s = currentSummaries.find(x => x.id === id);
+  document.getElementById("adj-detail-card").style.display = "block";
+  document.getElementById("adj-selected-label").textContent = `${s.emp_no} - ${s.emp_name}`;
+  renderAdjustmentRows(s);
+  renderAdjustmentsWorkerList();
+}
+
+function renderAdjustmentRows(s) {
+  const el = document.getElementById("adj-list");
+  if (!s.adjustments.length) {
+    el.innerHTML = '<div class="empty-note">No adjustments yet.</div>';
+    return;
+  }
+  el.innerHTML = s.adjustments.map(a => `
+    <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:13px;">
+      <span>${a.description}</span>
+      <span style="display:flex; gap:10px; align-items:center;">
+        <strong style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"}AED ${a.amount.toFixed(2)}</strong>
+        <button class="btn btn-gray" onclick="removeAdjustmentRow(${a.id})">Remove</button>
+      </span>
+    </div>
+  `).join("");
+}
+
+async function addAdjustmentRow() {
+  if (!selectedSummaryId) return;
+  const desc = document.getElementById("adj-desc").value.trim();
+  const amount = parseFloat(document.getElementById("adj-amount").value);
+  const isDeduction = document.getElementById("adj-type").value === "true";
+  if (!desc || !amount) {
+    showStatus("adj-status", "warn", "Enter both a description and an amount.");
+    return;
+  }
+  try {
+    await apiCall(`/summaries/${selectedSummaryId}/adjustments`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: desc, amount, is_deduction: isDeduction }),
+    });
+    document.getElementById("adj-desc").value = "";
+    document.getElementById("adj-amount").value = "";
+    showStatus("adj-status", "ok", "Adjustment added.");
+    await refreshCurrentCycleSummaries();
+  } catch (e) {
+    showStatus("adj-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function removeAdjustmentRow(adjId) {
+  try {
+    await apiCall(`/adjustments/${adjId}`, { method: "DELETE" });
+    showStatus("adj-status", "ok", "Adjustment removed.");
+    await refreshCurrentCycleSummaries();
+  } catch (e) {
+    showStatus("adj-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function refreshCurrentCycleSummaries() {
+  const cycle = document.getElementById("adj-cycle").value.trim();
+  currentSummaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
+  renderAdjustmentsWorkerList();
+  if (selectedSummaryId) {
+    const s = currentSummaries.find(x => x.id === selectedSummaryId);
+    if (s) renderAdjustmentRows(s);
+  }
+}
+
+// Auto-resume session if a token is already stored
+(function tryResume() {
+  const saved = sessionStorage.getItem("infinia_token");
+  if (saved) {
+    TOKEN = saved;
+    apiCall("/auth/me").then(me => {
+      document.getElementById("who-label").textContent = `${me.full_name} (${me.role})`;
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("app-screen").style.display = "block";
+      initApp();
+    }).catch(() => sessionStorage.removeItem("infinia_token"));
+  }
+})();
+</script>
+</body>
+</html>
