@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Infinia Labour Tool</title>
 <style>
   :root {
@@ -83,6 +84,41 @@
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
+
+  /* ---- Mobile layout ---- */
+  @media (max-width: 768px) {
+    #login-box { width: 88vw; max-width: 320px; padding: 28px 24px; }
+
+    .shell { flex-direction: column; min-height: 100vh; }
+    .sidebar {
+      width: 100%; padding: 8px 0; display: flex; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; white-space: nowrap;
+    }
+    .sidebar .brand { display: none; }
+    .sidebar .nav-item {
+      flex-shrink: 0; padding: 10px 14px; font-size: 12.5px;
+      border-radius: 6px; margin: 0 4px;
+    }
+    .main { min-width: 0; }
+
+    .topbar { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+    .topbar h1 { font-size: 15px; }
+    .content { padding: 12px; }
+
+    .toolbar, .bulk-bar { padding: 10px; gap: 8px; }
+    .toolbar input[type=text] { width: 100%; }
+    .bulk-bar .row { gap: 6px; }
+    .bulk-bar select, .bulk-bar input[type=text] { flex: 1 1 45%; min-width: 100px; }
+
+    .card { padding: 12px; }
+    .form-row input[type=text], .form-row input[type=number] { flex: 1 1 100%; }
+
+    table { font-size: 11px; }
+    th, td { padding: 5px 4px; }
+    .cell-input.comments { width: 100px; }
+
+    .viewing-label { margin-left: 0; width: 100%; }
+  }
 </style>
 </head>
 <body>
