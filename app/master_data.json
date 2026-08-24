@@ -1,0 +1,620 @@
+{
+  "employees": {
+    "D-01": {
+      "active": true,
+      "basic_salary": 1280.0,
+      "name": "MOHAMED SALIM",
+      "salary_history": [],
+      "total_salary": 3200.0,
+      "trade": "DRIVER"
+    },
+    "D-02": {
+      "active": true,
+      "basic_salary": 1120.0,
+      "name": "MUHAMMAD USMAN",
+      "salary_history": [],
+      "total_salary": 3500.0,
+      "trade": "DRIVER"
+    },
+    "D-03": {
+      "active": true,
+      "basic_salary": 1120.0,
+      "name": "AHMAD ALI",
+      "salary_history": [],
+      "total_salary": 2500.0,
+      "trade": "DRIVER"
+    },
+    "F-002": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "RAM BRIKSH",
+      "salary_history": [],
+      "total_salary": 4000.0,
+      "trade": "FOREMAN"
+    },
+    "F-004": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "BARSATI",
+      "salary_history": [],
+      "total_salary": 4000.0,
+      "trade": "FOREMAN"
+    },
+    "F-005": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "RAJENDRA  SINGH",
+      "salary_history": [],
+      "total_salary": 4500.0,
+      "trade": "FOREMAN"
+    },
+    "F-006": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "SAMRAJ CHALLAPAN",
+      "salary_history": [],
+      "total_salary": 4000.0,
+      "trade": "FOREMAN"
+    },
+    "F-707": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "SAMARJEET SINGH",
+      "salary_history": [],
+      "total_salary": 1750.0,
+      "trade": "CARPENTER"
+    },
+    "F-712": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "LAKHWINDER SINGH",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "MASON"
+    },
+    "F-715": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "SHIV CHARAN GANGA RAM",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "MASON"
+    },
+    "F-716": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "AVINAS PASWAN",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "STEEL FIXER"
+    },
+    "F-717": {
+      "active": true,
+      "basic_salary": 1500.0,
+      "name": "ABID",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "MASON"
+    },
+    "F-719": {
+      "active": true,
+      "basic_salary": 700.0,
+      "name": "LAKHWINDER HANS RAJ",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "LABOURER"
+    },
+    "F-722": {
+      "active": true,
+      "basic_salary": 700.0,
+      "name": "SATYA DEV BHADAI PRASAD",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "LABOURER"
+    },
+    "F-723": {
+      "active": true,
+      "basic_salary": 700.0,
+      "name": "DILSHAD KHAN",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "LABOURER"
+    },
+    "F-724": {
+      "active": true,
+      "basic_salary": 700.0,
+      "name": "AJAY KUMAR",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "LABOURER"
+    },
+    "F-726": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "SOMARY PRASAD",
+      "salary_history": [],
+      "total_salary": 1650.0,
+      "trade": "CARPENTER"
+    },
+    "F-727": {
+      "active": true,
+      "basic_salary": 700.0,
+      "name": "BENCHEP OLIVER KARNGONG",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "LABOURER"
+    },
+    "F-728": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "DIWAKAR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CARPENTER"
+    },
+    "F-729": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "PRADEEP YADAV",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CARPENTER CUM HELPER"
+    },
+    "F-730": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "PARDUM SAHANI",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F-732": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "CHHANU MAHATO",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "MASON"
+    },
+    "F-734": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "VIJAY KUMAR",
+      "salary_history": [],
+      "total_salary": 1600.0,
+      "trade": "STEEL FIXER"
+    },
+    "F-735": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "BHIM BAHADUR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "STEEL FIXER"
+    },
+    "F-736": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "DILIP KUMAR",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "ASSISTANT MASON"
+    },
+    "F-737": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "BHAVIN KUMAR",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "ASSISTANT MASON"
+    },
+    "F-740": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "MONIR",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "MASON"
+    },
+    "F-741": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "MUNNA KUMAR YADAV",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F-742": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "DEEPAK PUN MAGAR",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F-743": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "LATIF ANSARI",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CARPENTER"
+    },
+    "F-746": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "RAMPRAVESH",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CARPENTER"
+    },
+    "F-749": {
+      "active": true,
+      "basic_salary": 1353.3333333333333,
+      "name": "JITENDRA KUMAR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "STEEL FIXER"
+    },
+    "F-751": {
+      "active": true,
+      "basic_salary": 1160.0,
+      "name": "RAVI ROY",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "ORDINARY LABOUR"
+    },
+    "F-752": {
+      "active": true,
+      "basic_salary": 1120.0,
+      "name": "CHANDAN KUMAR",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "STEEL FIXER"
+    },
+    "F-753": {
+      "active": true,
+      "basic_salary": 1256.6666666666667,
+      "name": "SANDEEP KUMAR",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-754": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "HARI SHANKAR CHAUHAN",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-755": {
+      "active": true,
+      "basic_salary": 1500.0,
+      "name": "DIP KUMAR",
+      "salary_history": [],
+      "total_salary": 1500.0,
+      "trade": "MASON"
+    },
+    "F-756": {
+      "active": true,
+      "basic_salary": 1256.6666666666667,
+      "name": "HARERAM YADAV",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F-757": {
+      "active": true,
+      "basic_salary": 900.0,
+      "name": "SANJAY KUMAR",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-758": {
+      "active": true,
+      "basic_salary": 1200.0,
+      "name": "NANDLAL",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "CARPENTER"
+    },
+    "F-759": {
+      "active": true,
+      "basic_salary": 1306.6666666666665,
+      "name": "DHARAM PAL",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "MASON"
+    },
+    "F-760": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "SANTHOSH NISHAD",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "BUILDING LABOUR"
+    },
+    "F-762": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "SOM BAHADUR TAMANG",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "MASON"
+    },
+    "F-763": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "GANESH KUMAR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "MASON"
+    },
+    "F-764": {
+      "active": true,
+      "basic_salary": 1350.0,
+      "name": "MOHAMMED ZUBAIR",
+      "salary_history": [],
+      "total_salary": 1350.0,
+      "trade": "MASON"
+    },
+    "F-766": {
+      "active": true,
+      "basic_salary": 1350.0,
+      "name": "MOHAMED RAJID",
+      "salary_history": [],
+      "total_salary": 1350.0,
+      "trade": "MASON"
+    },
+    "F-767": {
+      "active": true,
+      "basic_salary": 1000.0,
+      "name": "MD IMRAN ALAM",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-770": {
+      "active": true,
+      "basic_salary": 1200.0,
+      "name": "MACHHAFA MONDAL",
+      "salary_history": [],
+      "total_salary": 1200.0,
+      "trade": "MASON"
+    },
+    "F-771": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "SAFIKUL MONDAL",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "MASON"
+    },
+    "F-773": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "RAMESH KUMAR",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F-774": {
+      "active": true,
+      "basic_salary": 1126.6666666666667,
+      "name": "RAJ NISHAD",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "PAINTER & HELPER"
+    },
+    "F-775": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "RAM NATH",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-776": {
+      "active": true,
+      "basic_salary": 996.6666666666667,
+      "name": "IMTAYAJ ALI",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "PAINTER&HELPER"
+    },
+    "F-777": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "DANIEL GACHUKI",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-778": {
+      "active": true,
+      "basic_salary": 1063.3333333333333,
+      "name": "SANDEEP YADAV",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-779": {
+      "active": true,
+      "basic_salary": 916.6666666666666,
+      "name": "MUNTAZIR",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-780": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "SAJANPREET SINGH",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-781": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "AKASH MAHTO",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-782": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "CHRIS CHAZIMA",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-784": {
+      "active": true,
+      "basic_salary": 1026.6666666666665,
+      "name": "PETER MUNENE",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-785": {
+      "active": true,
+      "basic_salary": 1026.6666666666665,
+      "name": "PHILIP  MAINA",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-786": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "MD CHUNNA ALAM",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-787": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "ABDUL MATIN",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-788": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "MD MINTO",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-789": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "MD AZAD ALAM",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "MASON"
+    },
+    "F-790": {
+      "active": true,
+      "basic_salary": 916.6666666666666,
+      "name": "SHAMSHEER SINGH",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-791": {
+      "active": true,
+      "basic_salary": 1100.0,
+      "name": "RAJMAN KUMAR",
+      "salary_history": [],
+      "total_salary": 1100.0,
+      "trade": "HELPER"
+    },
+    "F-792": {
+      "active": true,
+      "basic_salary": 1083.3333333333335,
+      "name": "SHAILENDRA",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CARPENTER"
+    },
+    "F793": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "FAVLDAR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CARPENTER"
+    },
+    "F794": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "AMANDEEP SINGH",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "MASON"
+    },
+    "F795": {
+      "active": true,
+      "basic_salary": 1300.0,
+      "name": "ABHISHEK",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "ASST CEILING FIXER"
+    },
+    "F796": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "SURESH CHAMAR",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CEILING FIXER"
+    },
+    "F797": {
+      "active": true,
+      "basic_salary": 1400.0,
+      "name": "MOHAN KUMAR RAI",
+      "salary_history": [],
+      "total_salary": 1400.0,
+      "trade": "CEILING FIXER"
+    },
+    "F798": {
+      "active": true,
+      "basic_salary": 1000.0,
+      "name": "ARUN YADAV",
+      "salary_history": [],
+      "total_salary": 1300.0,
+      "trade": "CEILING FIXER"
+    }
+  },
+  "engineers": {
+    "Gopan": {
+      "active": true
+    },
+    "Harsha": {
+      "active": true
+    },
+    "John Joseph": {
+      "active": true
+    }
+  },
+  "sites": {
+    "306": {
+      "active": true
+    },
+    "704": {
+      "active": true
+    }
+  },
+  "trades": {
+    "MASON": {
+      "active": true
+    }
+  }
+}

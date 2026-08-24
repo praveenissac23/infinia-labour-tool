@@ -1,0 +1,280 @@
+"""
+Infinia Labour Tool - Web Backend
+====================================
+FastAPI application. Reuses the desktop app's own calculation and
+validation logic (data_engine.py, daily_attendance.py, payroll_cycle.py)
+directly - the only thing that changed is the storage layer, from
+pickled sessions/JSON files to a real multi-user database.
+"""
+from datetime import date
+from typing import Optional
+
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_
+
+from database import get_db, engine, Base
+import models
+import schemas
+import services
+import auth
+import payroll_cycle as pcyc
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Infinia Labour Tool API")
+
+
+@app.on_event("startup")
+def seed_on_startup():
+    """
+    Runs the same seeding logic as seed_data.py automatically on every
+    startup - idempotent (upserts, never duplicates), so this is safe
+    to run every single time the app boots. Needed specifically because
+    Render's free tier has no shell access to run a one-off script
+    manually; master_data.json (if bundled alongside this file) gets
+    picked up automatically the first time the app starts.
+    """
+    import os
+    import seed_data
+    json_path = os.path.join(os.path.dirname(__file__), "master_data.json")
+    seed_data.run(json_path if os.path.exists(json_path) else None)
+
+# Locked down to specific origins in production - wide open here only
+# for local dev/testing against a frontend running on a different port.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ---------------------------------------------------------------------
+# AUTH
+# ---------------------------------------------------------------------
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    if not user or not user.active or not auth.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+    token = auth.create_access_token({"sub": user.username})
+    return schemas.TokenResponse(access_token=token, role=user.role, full_name=user.full_name)
+
+
+@app.get("/auth/me")
+def read_me(user: models.User = Depends(auth.get_current_user)):
+    return {"username": user.username, "full_name": user.full_name, "role": user.role}
+
+
+# ---------------------------------------------------------------------
+# MASTER DATA - Employees
+# ---------------------------------------------------------------------
+@app.get("/employees", response_model=list[schemas.EmployeeOut])
+def list_employees(active_only: bool = False, db: Session = Depends(get_db),
+                    user: models.User = Depends(auth.get_current_user)):
+    q = db.query(models.Employee)
+    if active_only:
+        q = q.filter(models.Employee.active == True)  # noqa: E712
+    return q.order_by(models.Employee.emp_no).all()
+
+
+@app.post("/employees", response_model=schemas.EmployeeOut)
+def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
+    if existing:
+        for field, value in emp.dict().items():
+            setattr(existing, field, value)
+    else:
+        existing = models.Employee(**emp.dict())
+        db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+
+@app.delete("/employees/{emp_no}")
+def deactivate_employee(emp_no: str, db: Session = Depends(get_db),
+                         user: models.User = Depends(auth.require_admin)):
+    emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    emp.active = False
+    db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------
+# MASTER DATA - Sites / Engineers
+# ---------------------------------------------------------------------
+@app.get("/sites", response_model=list[schemas.SiteOut])
+def list_sites(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    return db.query(models.Site).filter(models.Site.active == True).order_by(models.Site.code).all()  # noqa: E712
+
+
+@app.post("/sites", response_model=schemas.SiteOut)
+def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Site).filter(models.Site.code == site.code).first()
+    if existing:
+        existing.active = True
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_site = models.Site(**site.dict())
+    db.add(new_site)
+    db.commit()
+    db.refresh(new_site)
+    return new_site
+
+
+@app.get("/engineers", response_model=list[schemas.EngineerOut])
+def list_engineers(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    return db.query(models.Engineer).filter(models.Engineer.active == True).order_by(models.Engineer.name).all()  # noqa: E712
+
+
+@app.post("/engineers", response_model=schemas.EngineerOut)
+def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
+                  user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Engineer).filter(models.Engineer.name == eng.name).first()
+    if existing:
+        existing.active = True
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_eng = models.Engineer(**eng.dict())
+    db.add(new_eng)
+    db.commit()
+    db.refresh(new_eng)
+    return new_eng
+
+
+# ---------------------------------------------------------------------
+# DAILY ATTENDANCE
+# ---------------------------------------------------------------------
+@app.get("/attendance/{target_date}", response_model=list[schemas.DailyRowOut])
+def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
+                             user: models.User = Depends(auth.get_current_user)):
+    return db.query(models.DailyRow).filter(models.DailyRow.full_date == target_date).all()
+
+
+@app.post("/attendance/save")
+def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.get_current_user)):
+    """
+    Same validation and Holiday-previous-day rules as the desktop app's
+    save_all(): every row is validated BEFORE anything is written, a
+    row cleared back to blank deletes any existing saved entry instead
+    of being silently skipped, and Holiday specifically requires
+    Site/Engineer to come from that worker's own saved entry the day
+    before - blocked with the exact missing date if that isn't there.
+    """
+    errors = []
+    blocked = []
+    to_process = []
+
+    for row_in in payload.rows:
+        employee = db.query(models.Employee).filter(models.Employee.emp_no == row_in.emp_no).first()
+        if not employee:
+            errors.append(f"{row_in.emp_no}: employee not found.")
+            continue
+
+        am, pm = (row_in.am or "").strip(), (row_in.pm or "").strip()
+        if not am and not pm:
+            # Cleared row - delete any existing saved entry for this day.
+            services.delete_daily_row_if_blank(db, row_in.emp_no, row_in.full_date)
+            to_process.append((employee, None))
+            continue
+
+        site, engineer = row_in.site, row_in.engineer
+        if am == "Holiday" or pm == "Holiday":
+            prev = services.get_previous_day_site_engineer(db, row_in.emp_no, row_in.full_date)
+            if prev is None:
+                from datetime import timedelta
+                prev_date = row_in.full_date - timedelta(days=1)
+                blocked.append(f"{row_in.emp_no} ({employee.name}) - needs {prev_date} filled in first")
+                continue
+            site, engineer = prev
+            row_in.site, row_in.engineer = site, engineer
+
+        problems = services.validate_row(am, pm, site, engineer, row_in.bh, row_in.comments)
+        if problems:
+            errors.append(f"{row_in.emp_no}: " + "; ".join(problems))
+            continue
+
+        to_process.append((employee, row_in))
+
+    if errors:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+
+    touched_cycles = set()
+    for employee, row_in in to_process:
+        if row_in is not None:
+            services.upsert_daily_row(db, employee, row_in)
+            _, _, month_year = pcyc.cycle_bounds_for(row_in.full_date)
+        else:
+            # a delete - recalc using whatever cycle the deleted date was in
+            if payload.rows:
+                _, _, month_year = pcyc.cycle_bounds_for(payload.rows[0].full_date)
+            else:
+                continue
+        touched_cycles.add((employee.emp_no, month_year))
+
+    for emp_no, month_year in touched_cycles:
+        employee = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        services.recalculate_summary(db, employee, month_year)
+
+    return {"saved": len([r for e, r in to_process if r is not None]),
+            "blocked": blocked}
+
+
+# ---------------------------------------------------------------------
+# EMPLOYEE SUMMARIES / SALARY ADJUSTMENTS
+# ---------------------------------------------------------------------
+@app.get("/summaries/{month_year}", response_model=list[schemas.EmployeeSummaryOut])
+def list_summaries(month_year: str, db: Session = Depends(get_db),
+                    user: models.User = Depends(auth.get_current_user)):
+    summaries = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(models.EmployeeSummary.month_year == month_year)
+        .order_by(models.EmployeeSummary.emp_no)
+        .all()
+    )
+    out = []
+    for s in summaries:
+        item = schemas.EmployeeSummaryOut.from_orm(s)
+        out.append(item)
+    return out
+
+
+@app.post("/summaries/{summary_id}/adjustments", response_model=schemas.SalaryAdjustmentOut)
+def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session = Depends(get_db),
+                    user: models.User = Depends(auth.get_current_user)):
+    summary = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="Summary not found")
+    new_adj = models.SalaryAdjustment(summary_id=summary_id, created_by=user.id, **adj.dict())
+    db.add(new_adj)
+    db.commit()
+    db.refresh(new_adj)
+    return new_adj
+
+
+@app.delete("/adjustments/{adjustment_id}")
+def remove_adjustment(adjustment_id: int, db: Session = Depends(get_db),
+                       user: models.User = Depends(auth.get_current_user)):
+    adj = db.query(models.SalaryAdjustment).filter(models.SalaryAdjustment.id == adjustment_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="Adjustment not found")
+    db.delete(adj)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

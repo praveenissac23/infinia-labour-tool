@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: infinia-labour-tool-api
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "cd app && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: infinia-labour-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+databases:
+  - name: infinia-labour-db
+    plan: free
+    databaseName: infinia_labour
+    user: infinia
