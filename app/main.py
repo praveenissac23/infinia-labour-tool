@@ -216,6 +216,41 @@ def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
     return db.query(models.DailyRow).filter(models.DailyRow.full_date == target_date).all()
 
 
+@app.get("/attendance/completion/{month_year}")
+def get_completion_status(month_year: str, db: Session = Depends(get_db),
+                           user: models.User = Depends(auth.get_current_user)):
+    """
+    Per-day completion status for the whole cycle, for the dashboard
+    calendar: a day is 'complete' when every currently-active employee
+    has a saved attendance row for it. Mirrors the desktop app's own
+    dashboard calendar (green = complete, red = incomplete).
+    """
+    from datetime import datetime as dt, timedelta as td
+    try:
+        parsed = dt.strptime(f"25 {month_year}", "%d %B %Y").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="month_year must look like 'August 2026'.")
+    cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
+
+    total_active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
+    rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
+        and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end)
+    ).all()
+    counts_by_date = {}
+    for full_date, emp_no in rows:
+        counts_by_date.setdefault(full_date, set()).add(emp_no)
+
+    days = []
+    d = cycle_start
+    while d <= cycle_end:
+        entered = len(counts_by_date.get(d, set()))
+        days.append({"date": d.isoformat(), "entered": entered, "total": total_active,
+                      "complete": total_active > 0 and entered >= total_active})
+        d += td(days=1)
+    return {"cycle_start": cycle_start.isoformat(), "cycle_end": cycle_end.isoformat(),
+            "total_active": total_active, "days": days}
+
+
 @app.post("/attendance/save")
 def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_db),
                      user: models.User = Depends(auth.get_current_user)):
