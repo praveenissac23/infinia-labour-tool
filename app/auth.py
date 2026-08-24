@@ -62,6 +62,31 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+def get_user_from_token_string(token: str, db: Session) -> models.User:
+    """Same validation as get_current_user, but takes a raw token string
+    directly rather than pulling it from the Authorization header - used
+    for the export endpoints specifically, which need to work via a
+    plain browser navigation (window.open(url)), not a fetch() call.
+    A direct navigation can't set custom headers, so the token travels
+    as a query parameter there instead; this lets that same JWT still
+    go through the exact same validation either way."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None or not user.active:
+        raise credentials_exception
+    return user
+
+
 def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
