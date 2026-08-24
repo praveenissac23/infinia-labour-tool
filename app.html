@@ -940,33 +940,24 @@ async function loadErrorCheck() {
 }
 
 // ============ EXPORTS ============
-async function exportCards(fmt) {
+function exportCards(fmt) {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) {
     showStatus("report-status", "warn", "Enter a cycle first.");
     return;
   }
-  try {
-    const res = await fetch(`${API}/export/${encodeURIComponent(cycle)}/${fmt}`, {
-      headers: { "Authorization": "Bearer " + TOKEN },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || "Export failed.");
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Infinia_Cards_${cycle.replace(/\s+/g, "_")}.${fmt === "excel" ? "xlsx" : "pdf"}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showStatus("report-status", "ok", `Downloaded ${fmt.toUpperCase()} for ${cycle}.`);
-  } catch (e) {
-    showStatus("report-status", "err", "Export failed: " + e.message);
-  }
+  // A plain, synchronous browser navigation to the file URL (token
+  // passed as a query param, since a direct navigation can't set an
+  // Authorization header) - the browser itself handles the actual
+  // download natively via the server's Content-Disposition header.
+  // This is what actually fixes exports doing nothing on mobile: the
+  // previous fetch()+blob()+<a download> approach lost the "real user
+  // tap" context by the time the async blob was ready, so mobile
+  // browsers silently blocked it. A direct call with no await in
+  // between has no such problem.
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(TOKEN)}`;
+  window.open(url, "_blank");
+  showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} for ${cycle} - check your downloads or the new tab.`);
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============
