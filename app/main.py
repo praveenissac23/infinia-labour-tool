@@ -274,7 +274,10 @@ def remove_adjustment(adjustment_id: int, db: Session = Depends(get_db),
     db.commit()
     return {"ok": True}
 
-
+@app.get("/")
+def root():
+    return {"service": "Infinia Labour Tool API", "status": "running",
+            "docs": "See /health for a simple status check."}
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
