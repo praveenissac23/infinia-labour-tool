@@ -119,6 +119,24 @@
 
     .viewing-label { margin-left: 0; width: 100%; }
   }
+
+  /* ---- Dashboard ---- */
+  .dash-clock-card { background: white; border-radius: 10px; border: 1px solid #eee; padding: 26px; text-align: center; margin-bottom: 16px; }
+  .dash-clock { font-size: 42px; font-weight: bold; color: var(--black); }
+  .dash-clock-ampm { font-size: 14px; color: #888; margin-top: 2px; }
+  .dash-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .dash-tile { background: white; border: 2px solid var(--red); border-radius: 10px; padding: 18px 14px; cursor: pointer; text-align: center; transition: background 0.15s; }
+  .dash-tile:hover { background: #FFF5F3; }
+  .dash-tile-title { font-weight: bold; font-size: 14px; color: var(--black); }
+  .dash-tile-sub { font-size: 11px; color: #888; margin-top: 4px; }
+  .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .dash-cal-head { font-size: 11px; font-weight: bold; color: #888; text-align: center; padding: 4px 0; }
+  .dash-cal-day { border-radius: 6px; padding: 10px 4px; text-align: center; font-size: 13px; font-weight: bold; cursor: pointer; color: white; }
+  .dash-cal-day.complete { background: #2E7D32; }
+  .dash-cal-day.incomplete { background: var(--red); }
+  .dash-cal-day.today { outline: 3px solid #F9A825; outline-offset: -3px; }
+  .dash-cal-day:hover { opacity: 0.85; }
+  .dash-cal-empty { visibility: hidden; }
 </style>
 </head>
 <body>
@@ -138,7 +156,8 @@
   <div class="shell">
     <div class="sidebar">
       <div class="brand">INFINIA LABOUR TOOL</div>
-      <div class="nav-item active" data-screen="attendance" onclick="switchScreen('attendance')">Daily Attendance</div>
+      <div class="nav-item active" data-screen="dashboard" onclick="switchScreen('dashboard')">Dashboard</div>
+      <div class="nav-item" data-screen="attendance" onclick="switchScreen('attendance')">Daily Attendance</div>
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
@@ -147,7 +166,7 @@
     </div>
     <div class="main">
       <div class="topbar">
-        <h1 id="screen-title">Daily Attendance Entry</h1>
+        <h1 id="screen-title">Dashboard</h1>
         <div style="display:flex; align-items:center; gap:14px;">
           <span class="who" id="who-label"></span>
           <button onclick="doLogout()">Sign out</button>
@@ -156,7 +175,48 @@
       <div class="content">
 
         <!-- ============ ATTENDANCE SCREEN ============ -->
-        <div class="screen active" id="screen-attendance">
+        <!-- ============ DASHBOARD SCREEN ============ -->
+        <div class="screen active" id="screen-dashboard">
+          <div class="dash-clock-card">
+            <div id="dash-clock" class="dash-clock">--:--</div>
+            <div id="dash-clock-ampm" class="dash-clock-ampm"></div>
+          </div>
+
+          <div class="dash-tiles">
+            <div class="dash-tile" onclick="switchScreen('attendance')">
+              <div class="dash-tile-title">Daily Attendance</div>
+              <div class="dash-tile-sub">Enter today's attendance</div>
+            </div>
+            <div class="dash-tile" onclick="switchScreen('masterdata')">
+              <div class="dash-tile-title">Master Data</div>
+              <div class="dash-tile-sub">Employees, sites, engineers</div>
+            </div>
+            <div class="dash-tile" onclick="switchScreen('reports')">
+              <div class="dash-tile-title">Reports</div>
+              <div class="dash-tile-sub">Summaries &amp; exports</div>
+            </div>
+            <div class="dash-tile" onclick="switchScreen('adjustments')">
+              <div class="dash-tile-title">Salary Adjustments</div>
+              <div class="dash-tile-sub">Bonuses &amp; deductions</div>
+            </div>
+            <div class="dash-tile" onclick="switchScreen('errorcheck')">
+              <div class="dash-tile-title">Error Check</div>
+              <div class="dash-tile-sub">Find missing data</div>
+            </div>
+            <div class="dash-tile" onclick="switchScreen('settings')">
+              <div class="dash-tile-title">Settings</div>
+              <div class="dash-tile-sub">Password &amp; staff logins</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>This Cycle's Attendance <span id="dash-cycle-label" style="font-weight:normal; color:#888; font-size:12px;"></span></h2>
+            <p style="font-size:12px; color:#888; margin:0 0 12px;">Green = fully filled &nbsp; Red = missing something &nbsp; Click a date to view or edit it</p>
+            <div id="dash-calendar" class="dash-calendar"></div>
+          </div>
+        </div>
+
+        <div class="screen" id="screen-attendance">
           <div class="toolbar">
             <label>Date:</label>
             <input type="date" id="date-picker" onchange="onDateChange()">
@@ -400,6 +460,7 @@ function doLogout() {
 }
 
 const SCREEN_TITLES = {
+  dashboard: "Dashboard",
   attendance: "Daily Attendance Entry",
   masterdata: "Master Data",
   reports: "Reports / Summaries",
@@ -443,6 +504,9 @@ async function initApp() {
     document.getElementById("user-mgmt-card").style.display = "block";
     await loadUsers();
   }
+
+  startDashboardClock();
+  await loadDashboardCalendar(currentCycle);
 }
 
 function monthYearFor(d) {
@@ -803,6 +867,60 @@ async function refreshCurrentCycleSummaries() {
     const s = currentSummaries.find(x => x.id === selectedSummaryId);
     if (s) renderAdjustmentRows(s);
   }
+}
+
+// ============ DASHBOARD ============
+function startDashboardClock() {
+  function tick() {
+    const now = new Date();
+    let hours = now.getHours();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    const mins = String(now.getMinutes()).padStart(2, "0");
+    const clockEl = document.getElementById("dash-clock");
+    const ampmEl = document.getElementById("dash-clock-ampm");
+    if (clockEl) clockEl.textContent = `${hours}:${mins}`;
+    if (ampmEl) ampmEl.textContent = ampm + " - " + now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
+  tick();
+  setInterval(tick, 1000 * 30);
+}
+
+async function loadDashboardCalendar(cycle) {
+  const cal = document.getElementById("dash-calendar");
+  const label = document.getElementById("dash-cycle-label");
+  if (!cal) return;
+  label.textContent = `(${cycle})`;
+  cal.innerHTML = '<div class="empty-note">Loading...</div>';
+
+  let result;
+  try {
+    result = await apiCall(`/attendance/completion/${encodeURIComponent(cycle)}`);
+  } catch (e) {
+    cal.innerHTML = '<div class="empty-note">Could not load calendar.</div>';
+    return;
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const firstDay = new Date(result.cycle_start + "T00:00:00");
+  const leadingBlanks = (firstDay.getDay() + 6) % 7; // Monday-first week
+
+  let html = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    .map(d => `<div class="dash-cal-head">${d}</div>`).join("");
+  for (let i = 0; i < leadingBlanks; i++) html += `<div class="dash-cal-empty"></div>`;
+  result.days.forEach(day => {
+    const dateObj = new Date(day.date + "T00:00:00");
+    const isToday = day.date === todayStr;
+    const cls = ["dash-cal-day", day.complete ? "complete" : "incomplete", isToday ? "today" : ""].join(" ").trim();
+    html += `<div class="${cls}" onclick="goToAttendanceDate('${day.date}')" title="${day.entered}/${day.total} entered">${dateObj.getDate()}</div>`;
+  });
+  cal.innerHTML = html;
+}
+
+function goToAttendanceDate(dateStr) {
+  switchScreen("attendance");
+  document.getElementById("date-picker").value = dateStr;
+  loadDate(dateStr);
 }
 
 // ============ ERROR CHECK ============
