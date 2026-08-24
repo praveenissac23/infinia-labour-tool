@@ -106,6 +106,8 @@
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
+      <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
+      <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
     </div>
     <div class="main">
       <div class="topbar">
@@ -208,7 +210,10 @@
             <label>Cycle (Month Year):</label>
             <input type="text" id="report-cycle" placeholder="e.g. August 2026">
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
+            <button class="btn btn-dark" onclick="exportCards('excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="exportCards('pdf')">Export PDF</button>
           </div>
+          <div class="status-msg" id="report-status"></div>
           <div class="card">
             <div class="grid-wrap" style="max-height: 65vh;">
               <table>
@@ -251,6 +256,53 @@
           </div>
         </div>
 
+        <!-- ============ ERROR CHECK SCREEN ============ -->
+        <div class="screen" id="screen-errorcheck">
+          <div class="toolbar">
+            <label>Cycle (Month Year):</label>
+            <input type="text" id="errcheck-cycle" placeholder="e.g. August 2026">
+            <button class="btn btn-primary" onclick="loadErrorCheck()">Run Check</button>
+          </div>
+          <div class="card">
+            <p style="font-size:12px; color:#888; margin-top:0;" id="errcheck-note"></p>
+            <div class="grid-wrap" style="max-height: 60vh;">
+              <table>
+                <thead><tr><th>Emp No</th><th>Name</th><th>Date</th><th>Site</th><th>Issue</th></tr></thead>
+                <tbody id="errcheck-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ SETTINGS SCREEN ============ -->
+        <div class="screen" id="screen-settings">
+          <div class="status-msg" id="settings-status"></div>
+          <div class="card">
+            <h2>Change Your Password</h2>
+            <div class="form-row">
+              <input type="password" id="pw-current" placeholder="Current password">
+              <input type="password" id="pw-new" placeholder="New password (min 6 characters)">
+              <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
+            </div>
+          </div>
+          <div class="card" id="user-mgmt-card" style="display:none;">
+            <h2>Staff Logins (admin only)</h2>
+            <div class="form-row">
+              <input type="text" id="new-user-username" placeholder="Username">
+              <input type="text" id="new-user-fullname" placeholder="Full name">
+              <input type="password" id="new-user-password" placeholder="Password">
+              <select id="new-user-role"><option value="staff">Staff</option><option value="admin">Admin</option></select>
+              <button class="btn btn-primary" onclick="createUser()">Add Login</button>
+            </div>
+            <div class="grid-wrap" style="max-height: 40vh;">
+              <table>
+                <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th></th></tr></thead>
+                <tbody id="user-list-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -260,6 +312,7 @@
 const API = "https://infinia-labour-tool-api.onrender.com";
 const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Friday", "Holiday", "Leave"];
 let TOKEN = null;
+let CURRENT_ROLE = null;
 let employees = [];
 let sites = [];
 let engineers = [];
@@ -294,6 +347,7 @@ async function doLogin() {
     if (!res.ok) throw new Error("Incorrect username or password.");
     const data = await res.json();
     TOKEN = data.access_token;
+    CURRENT_ROLE = data.role;
     sessionStorage.setItem("infinia_token", TOKEN);
     document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
     document.getElementById("login-screen").style.display = "none";
@@ -314,6 +368,8 @@ const SCREEN_TITLES = {
   masterdata: "Master Data",
   reports: "Reports / Summaries",
   adjustments: "Salary Adjustments",
+  errorcheck: "Error Check",
+  settings: "Settings",
 };
 
 function switchScreen(name) {
@@ -345,6 +401,12 @@ async function initApp() {
   const currentCycle = monthYearFor(new Date());
   document.getElementById("report-cycle").value = currentCycle;
   document.getElementById("adj-cycle").value = currentCycle;
+  document.getElementById("errcheck-cycle").value = currentCycle;
+
+  if (CURRENT_ROLE === "admin") {
+    document.getElementById("user-mgmt-card").style.display = "block";
+    await loadUsers();
+  }
 }
 
 function monthYearFor(d) {
@@ -707,12 +769,122 @@ async function refreshCurrentCycleSummaries() {
   }
 }
 
+// ============ ERROR CHECK ============
+async function loadErrorCheck() {
+  const cycle = document.getElementById("errcheck-cycle").value.trim();
+  if (!cycle) return;
+  const result = await apiCall(`/error-check/${encodeURIComponent(cycle)}`);
+  document.getElementById("errcheck-note").textContent = result.note;
+  const body = document.getElementById("errcheck-body");
+  if (!result.rows.length) {
+    body.innerHTML = `<tr><td colspan="5" class="empty-note">No issues found for this cycle.</td></tr>`;
+    return;
+  }
+  body.innerHTML = result.rows.map(r => `
+    <tr><td>${r.emp_no}</td><td>${r.name}</td><td>${r.date}</td><td>${r.site || "-"}</td><td>${r.issue}</td></tr>
+  `).join("");
+}
+
+// ============ EXPORTS ============
+async function exportCards(fmt) {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  if (!cycle) {
+    showStatus("report-status", "warn", "Enter a cycle first.");
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/export/${encodeURIComponent(cycle)}/${fmt}`, {
+      headers: { "Authorization": "Bearer " + TOKEN },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Export failed.");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Infinia_Cards_${cycle.replace(/\s+/g, "_")}.${fmt === "excel" ? "xlsx" : "pdf"}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showStatus("report-status", "ok", `Downloaded ${fmt.toUpperCase()} for ${cycle}.`);
+  } catch (e) {
+    showStatus("report-status", "err", "Export failed: " + e.message);
+  }
+}
+
+// ============ SETTINGS - PASSWORD & USERS ============
+async function changePassword() {
+  const current = document.getElementById("pw-current").value;
+  const next = document.getElementById("pw-new").value;
+  if (!current || !next) {
+    showStatus("settings-status", "warn", "Fill in both fields.");
+    return;
+  }
+  try {
+    await apiCall("/auth/change-password", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: current, new_password: next }),
+    });
+    showStatus("settings-status", "ok", "Password changed successfully.");
+    document.getElementById("pw-current").value = "";
+    document.getElementById("pw-new").value = "";
+  } catch (e) {
+    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function loadUsers() {
+  const users = await apiCall("/users");
+  document.getElementById("user-list-body").innerHTML = users.map(u => `
+    <tr>
+      <td>${u.username}</td><td>${u.full_name}</td><td>${u.role}</td>
+      <td>${u.active ? `<button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>` : "Inactive"}</td>
+    </tr>
+  `).join("");
+}
+
+async function createUser() {
+  const username = document.getElementById("new-user-username").value.trim();
+  const full_name = document.getElementById("new-user-fullname").value.trim();
+  const password = document.getElementById("new-user-password").value;
+  const role = document.getElementById("new-user-role").value;
+  if (!username || !full_name || !password) {
+    showStatus("settings-status", "warn", "Fill in username, full name, and password.");
+    return;
+  }
+  try {
+    await apiCall("/users", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, full_name, password, role }),
+    });
+    showStatus("settings-status", "ok", `Created login for ${username}.`);
+    ["new-user-username", "new-user-fullname", "new-user-password"].forEach(id => document.getElementById(id).value = "");
+    await loadUsers();
+  } catch (e) {
+    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function removeUser(userId) {
+  try {
+    await apiCall(`/users/${userId}`, { method: "DELETE" });
+    showStatus("settings-status", "ok", "Login deactivated.");
+    await loadUsers();
+  } catch (e) {
+    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
 // Auto-resume session if a token is already stored
 (function tryResume() {
   const saved = sessionStorage.getItem("infinia_token");
   if (saved) {
     TOKEN = saved;
     apiCall("/auth/me").then(me => {
+      CURRENT_ROLE = me.role;
       document.getElementById("who-label").textContent = `${me.full_name} (${me.role})`;
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "block";
