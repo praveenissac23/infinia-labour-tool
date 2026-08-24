@@ -386,8 +386,16 @@ def error_check(month_year: str, db: Session = Depends(get_db),
 
 
 @app.get("/export/{month_year}/excel")
-def export_excel(month_year: str, db: Session = Depends(get_db),
-                  user: models.User = Depends(auth.get_current_user)):
+def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
+    # Auth comes ONLY via the ?token= query param here, not the standard
+    # Authorization header - this endpoint is meant to be hit by a plain
+    # browser navigation (window.open(url)), which can't set custom
+    # headers at all. That's also the actual fix for exports doing
+    # nothing on mobile: the old fetch()+blob()+<a download> approach
+    # loses the "real user tap" context by the time the async blob is
+    # ready, so mobile browsers silently block the download. A direct,
+    # synchronous navigation has no such problem.
+    user = auth.get_user_from_token_string(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
@@ -412,8 +420,8 @@ def export_excel(month_year: str, db: Session = Depends(get_db),
 
 
 @app.get("/export/{month_year}/pdf")
-def export_pdf(month_year: str, db: Session = Depends(get_db),
-                user: models.User = Depends(auth.get_current_user)):
+def export_pdf(month_year: str, token: str, db: Session = Depends(get_db)):
+    user = auth.get_user_from_token_string(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
