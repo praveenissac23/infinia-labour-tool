@@ -23,6 +23,29 @@ class TokenResponse(BaseModel):
     full_name: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UserIn(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "staff"
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    role: str
+    active: bool
+
+    class Config:
+        from_attributes = True
+
+
 # ---- Employees ----
 class EmployeeIn(BaseModel):
     emp_no: str

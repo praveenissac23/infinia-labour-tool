@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
 
@@ -21,6 +22,8 @@ import schemas
 import services
 import auth
 import payroll_cycle as pcyc
+import reports as rp
+import export_web
 
 Base.metadata.create_all(bind=engine)
 
@@ -68,6 +71,58 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @app.get("/auth/me")
 def read_me(user: models.User = Depends(auth.get_current_user)):
     return {"username": user.username, "full_name": user.full_name, "role": user.role}
+
+
+@app.post("/auth/change-password")
+def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.get_current_user)):
+    if not auth.verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+    user.hashed_password = auth.hash_password(payload.new_password)
+    db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------
+# USER MANAGEMENT (admin only - lets staff have their own logins
+# instead of everyone sharing the one admin account)
+# ---------------------------------------------------------------------
+@app.get("/users", response_model=list[schemas.UserOut])
+def list_users(db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+    return db.query(models.User).order_by(models.User.username).all()
+
+
+@app.post("/users", response_model=schemas.UserOut)
+def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.User).filter(models.User.username == payload.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="That username is already taken.")
+    new_user = models.User(
+        username=payload.username,
+        hashed_password=auth.hash_password(payload.password),
+        full_name=payload.full_name,
+        role=payload.role,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+
+@app.delete("/users/{user_id}")
+def deactivate_user(user_id: int, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.require_admin)):
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == user.id:
+        raise HTTPException(status_code=400, detail="You can't deactivate your own account.")
+    target.active = False
+    db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------
@@ -274,10 +329,79 @@ def remove_adjustment(adjustment_id: int, db: Session = Depends(get_db),
     db.commit()
     return {"ok": True}
 
+
 @app.get("/")
 def root():
     return {"service": "Infinia Labour Tool API", "status": "running",
             "docs": "See /health for a simple status check."}
+
+
+@app.get("/error-check/{month_year}")
+def error_check(month_year: str, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.get_current_user)):
+    """
+    Same data-quality checks as the desktop app's Error Check report:
+    missing A.M/P.M status, Present days with no Site/Engineer, and BH
+    over 2 hours with no comment explaining it - reused directly from
+    reports.py rather than reimplemented.
+    """
+    rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    result = rp.check_for_errors(rows, [], {})
+    return {"title": result.title, "note": result.note, "rows": result.rows}
+
+
+@app.get("/export/{month_year}/excel")
+def export_excel(month_year: str, db: Session = Depends(get_db),
+                  user: models.User = Depends(auth.get_current_user)):
+    summaries = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(models.EmployeeSummary.month_year == month_year)
+        .order_by(models.EmployeeSummary.emp_no)
+        .all()
+    )
+    if not summaries:
+        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+    pairs = []
+    for s in summaries:
+        rows = db.query(models.DailyRow).filter(
+            and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
+        ).all()
+        pairs.append((s, rows))
+    buf = export_web.build_combined_excel(pairs)
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_{safe_name}.xlsx"},
+    )
+
+
+@app.get("/export/{month_year}/pdf")
+def export_pdf(month_year: str, db: Session = Depends(get_db),
+                user: models.User = Depends(auth.get_current_user)):
+    summaries = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(models.EmployeeSummary.month_year == month_year)
+        .order_by(models.EmployeeSummary.emp_no)
+        .all()
+    )
+    if not summaries:
+        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+    pairs = []
+    for s in summaries:
+        rows = db.query(models.DailyRow).filter(
+            and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
+        ).all()
+        pairs.append((s, rows))
+    buf = export_web.build_combined_pdf(pairs)
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    return StreamingResponse(
+        buf, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_{safe_name}.pdf"},
+    )
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
