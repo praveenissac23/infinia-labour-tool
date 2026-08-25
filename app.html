@@ -542,7 +542,16 @@
 </div>
 
 <script>
-const API = "https://infinia-labour-tool-api.onrender.com";
+// On Render, frontend and backend live on different domains, so the
+// API address has to be hardcoded. On a self-hosted server like the
+// VPS, Nginx serves both from the same domain - so instead of a
+// server-specific manual edit (which fights every future `git pull`
+// forever, since the local edit and the repo's default disagree),
+// this detects that case and just uses whatever domain it's already
+// being served from.
+const API = window.location.hostname.endsWith("onrender.com")
+  ? "https://infinia-labour-tool-api.onrender.com"
+  : window.location.origin;
 const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Friday", "Holiday", "Leave"];
 let TOKEN = null;
 let CURRENT_ROLE = null;
