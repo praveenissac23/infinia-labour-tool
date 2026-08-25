@@ -583,6 +583,13 @@ def summaries_by_site(month_year: str, date_from: str = None, date_to: str = Non
             "rows": result.rows, "totals": result.totals}
 
 
+BUILDER_MEASURE_HINTS = {
+    "worker_count": "How many distinct workers were at this group at least once - each worker only counts once, no matter how many days.",
+    "record_count": "How many attendance entries total - a worker present 5 days counts as 5 here, but only 1 in Different Workers.",
+    "final_salary_cost": "Each worker's own daily rate, apportioned across every paid day in this group's window.",
+}
+
+
 @app.get("/reports/builder-catalog")
 def builder_catalog(user: models.User = Depends(auth.get_current_user)):
     """
@@ -592,14 +599,17 @@ def builder_catalog(user: models.User = Depends(auth.get_current_user)):
     dimension among several, same as the desktop app - not a separate
     mode.
     """
+    def with_hints(d):
+        return [{"key": k, "label": v, "hint": BUILDER_MEASURE_HINTS.get(k)} for k, v in d.items()]
+
     return {
         "summary": {
             "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_DIMENSIONS.items()],
-            "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_MEASURES.items()],
+            "measures": with_hints(rp.BUILDER_SUMMARY_MEASURES),
         },
         "daily": {
             "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_DAILY_DIMENSIONS.items()],
-            "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_DAILY_MEASURES.items()],
+            "measures": with_hints(rp.BUILDER_DAILY_MEASURES),
         },
     }
 
