@@ -621,6 +621,7 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
+  if (name === "dashboard") loadDashboardCalendar(monthYearFor(new Date()));
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
