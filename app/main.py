@@ -341,6 +341,39 @@ def list_summaries(month_year: str, db: Session = Depends(get_db),
     return out
 
 
+@app.get("/live-card/{emp_no}/{month_year}")
+def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
+                   user: models.User = Depends(auth.get_current_user)):
+    """
+    Everything needed to render one worker's card on screen: their
+    summary totals for the cycle plus every daily row, keyed by day -
+    mirrors the desktop app's Live Card view.
+    """
+    summary = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(and_(models.EmployeeSummary.emp_no == emp_no, models.EmployeeSummary.month_year == month_year))
+        .first()
+    )
+    rows = (
+        db.query(models.DailyRow)
+        .filter(and_(models.DailyRow.emp_no == emp_no, models.DailyRow.month_year == month_year))
+        .all()
+    )
+    rows_by_day = {r.day: schemas.DailyRowOut.from_orm(r) for r in rows}
+    if summary:
+        summary_out = schemas.EmployeeSummaryOut.from_orm(summary)
+    else:
+        emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found.")
+        summary_out = None
+    return {
+        "emp_no": emp_no, "month_year": month_year,
+        "summary": summary_out, "days": rows_by_day,
+    }
+
+
 @app.post("/summaries/{summary_id}/adjustments", response_model=schemas.SalaryAdjustmentOut)
 def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session = Depends(get_db),
                     user: models.User = Depends(auth.get_current_user)):
