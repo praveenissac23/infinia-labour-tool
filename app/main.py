@@ -237,6 +237,34 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/employees/export")
+def export_employees(token: str, db: Session = Depends(get_db)):
+    """
+    Every active employee's master data, in the exact same column
+    format /employees/import expects - export this, edit it, and
+    re-import it straight back in without reshaping anything.
+    """
+    auth.get_download_user_from_token(token, db)
+    employees = db.query(models.Employee).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all()  # noqa: E712
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Employees"
+    for i, h in enumerate(EMPLOYEE_TEMPLATE_HEADERS, start=1):
+        c = ws.cell(row=1, column=i, value=h)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="C0392B")
+        ws.column_dimensions[get_column_letter(i)].width = 18
+    for emp in employees:
+        ws.append([emp.emp_no, emp.name, emp.trade, emp.total_salary, emp.basic_salary])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Employee_Export.xlsx"},
+    )
+
+
 @app.post("/employees/import")
 async def import_employees(file: UploadFile = File(...), mode: str = Form("add_only"),
                             duplicate_handling: str = Form("skip"),
