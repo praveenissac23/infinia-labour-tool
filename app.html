@@ -267,6 +267,11 @@
           </div>
         </div>
 
+        <button id="floating-save-btn" class="btn btn-primary" onclick="saveAttendance()"
+                style="display:none; position:fixed; bottom:24px; right:24px; padding:14px 26px; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,0.3); z-index:50; border-radius:24px;">
+          Save Attendance
+        </button>
+
         <!-- ============ MASTER DATA SCREEN ============ -->
         <div class="screen" id="screen-masterdata">
           <div class="status-msg" id="md-status"></div>
@@ -589,6 +594,7 @@ function switchScreen(name) {
   if (name === "reports" || name === "settings" || name === "combine") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "settings") loadBackupList();
+  document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
 // A download token is fetched ahead of time (screen open + every 45s
