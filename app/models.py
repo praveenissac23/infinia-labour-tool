@@ -171,3 +171,18 @@ class AuditLog(Base):
     action = Column(String, nullable=False)  # e.g. "save_attendance", "add_adjustment"
     details = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Backup(Base):
+    """
+    Stores full-database snapshots (as JSON text) so previous backups
+    stay available to download or restore from later, not just at the
+    moment they were taken. trigger is 'manual' (someone clicked the
+    button) or 'auto' (created automatically once per calendar month).
+    """
+    __tablename__ = "backups"
+    id = Column(Integer, primary_key=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    trigger = Column(String, nullable=False, default="manual")
+    data = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
