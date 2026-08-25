@@ -246,9 +246,11 @@
             <input type="text" id="search-box" placeholder="Employee No or Name" oninput="renderRows()">
             <span class="viewing-label" id="viewing-label"></span>
           </div>
+          <div class="card" style="padding:10px 14px;">
+            <div id="attendance-calendar" class="dash-calendar" style="max-width:280px;"></div>
+          </div>
           <div class="bulk-bar">
             <div class="row">
-              <strong style="font-size:12px;">Bulk-apply to ticked rows:</strong>
               <select id="bulk-am"><option value="">A.M -</option></select>
               <select id="bulk-pm"><option value="">P.M -</option></select>
               <select id="bulk-site"><option value="">Site -</option></select>
@@ -636,6 +638,7 @@ function switchScreen(name) {
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
   if (name === "dashboard") loadDashboardCalendar(monthYearFor(new Date()));
+  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -889,6 +892,7 @@ async function saveAttendance() {
     }
     clearDraft(currentDate);
     await loadDate(currentDate, true);
+    loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
       showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
@@ -1400,8 +1404,8 @@ function startDashboardClock() {
   setInterval(tick, 1000 * 30);
 }
 
-async function loadDashboardCalendar(cycle) {
-  const cal = document.getElementById("dash-calendar");
+async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
+  const cal = document.getElementById(containerId);
   if (!cal) return;
   cal.innerHTML = '<div class="empty-note">Loading...</div>';
 
