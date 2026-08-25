@@ -323,6 +323,8 @@
             <label>Cycle (Month Year):</label>
             <input type="text" id="report-cycle" placeholder="e.g. August 2026">
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
+            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
           </div>
           <div class="status-msg" id="report-status"></div>
 
@@ -337,6 +339,7 @@
               <table>
                 <thead><tr id="report-head-row"></tr></thead>
                 <tbody id="report-body"></tbody>
+                <tfoot><tr id="report-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
               </table>
             </div>
           </div>
@@ -397,6 +400,7 @@
                   <th class="sortable" onclick="sortAdjList('adjusted')">Adjusted Final Salary <span id="adj-sort-adjusted"></span></th>
                 </tr></thead>
                 <tbody id="adj-worker-body"></tbody>
+                <tfoot><tr id="adj-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
               </table>
             </div>
           </div>
@@ -1091,6 +1095,7 @@ function renderReportPreview() {
   const cols = getSelectedReportColumns();
   const headRow = document.getElementById("report-head-row");
   const body = document.getElementById("report-body");
+  const totalRow = document.getElementById("report-total-row");
   headRow.innerHTML = cols.map(c => {
     const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
     return `<th class="sortable" onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
@@ -1098,10 +1103,12 @@ function renderReportPreview() {
 
   if (!currentReportSummaries.length) {
     body.innerHTML = `<tr><td colspan="${Math.max(cols.length, 1)}" class="empty-note">No data for this cycle yet.</td></tr>`;
+    totalRow.innerHTML = "";
     return;
   }
   if (!cols.length) {
     body.innerHTML = `<tr><td class="empty-note">Tick at least one column above.</td></tr>`;
+    totalRow.innerHTML = "";
     return;
   }
   let rows = [...currentReportSummaries];
@@ -1116,6 +1123,36 @@ function renderReportPreview() {
   body.innerHTML = rows.map(s => `
     <tr>${cols.map(c => `<td>${reportCellValue(s, c)}</td>`).join("")}</tr>
   `).join("");
+
+  // Total row - sums every numeric/money column across all rows, blank for text columns.
+  totalRow.innerHTML = cols.map((c, i) => {
+    if (i === 0) return `<td>TOTAL</td>`;
+    if (c.kind !== "money" && c.kind !== "num") return `<td></td>`;
+    const sum = rows.reduce((acc, s) => acc + (reportRawValue(s, c) || 0), 0);
+    return `<td>${c.kind === "money" ? `AED ${sum.toFixed(2)}` : sum}</td>`;
+  }).join("");
+}
+
+function exportReportTable(fmt) {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  const cols = getSelectedReportColumns();
+  if (!cycle) {
+    showStatus("report-status", "warn", "Enter a cycle first.");
+    return;
+  }
+  if (!cols.length) {
+    showStatus("report-status", "warn", "Tick at least one column above.");
+    return;
+  }
+  if (!cachedDownloadToken) {
+    showStatus("report-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const colKeys = cols.map(c => c.key).join(",");
+  const url = `${API}/export/${encodeURIComponent(cycle)}/report-table?token=${encodeURIComponent(cachedDownloadToken)}&columns=${encodeURIComponent(colKeys)}&format=${fmt}`;
+  window.open(url, "_blank");
+  showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
 }
 
 async function loadReports() {
@@ -1149,8 +1186,10 @@ function adjValueFor(s, key) {
 
 function renderAdjustmentsWorkerList() {
   const body = document.getElementById("adj-worker-body");
+  const totalRow = document.getElementById("adj-total-row");
   if (!currentSummaries.length) {
     body.innerHTML = `<tr><td colspan="4" class="empty-note">No data for this cycle yet.</td></tr>`;
+    if (totalRow) totalRow.innerHTML = "";
     return;
   }
   const search = (document.getElementById("adj-search-box").value || "").trim().toLowerCase();
@@ -1168,6 +1207,7 @@ function renderAdjustmentsWorkerList() {
   });
   if (!sorted.length) {
     body.innerHTML = `<tr><td colspan="4" class="empty-note">No workers match "${search}".</td></tr>`;
+    if (totalRow) totalRow.innerHTML = "";
     return;
   }
   body.innerHTML = sorted.map(s => {
@@ -1178,6 +1218,12 @@ function renderAdjustmentsWorkerList() {
       <td>AED ${s.final_salary.toFixed(2)}</td><td>AED ${adjustedTotal.toFixed(2)}</td>
     </tr>`;
   }).join("");
+
+  if (totalRow) {
+    const finalSum = sorted.reduce((sum, s) => sum + s.final_salary, 0);
+    const adjustedSum = sorted.reduce((sum, s) => sum + s.final_salary + s.adjustments.reduce((a, adj) => a + (adj.is_deduction ? -adj.amount : adj.amount), 0), 0);
+    totalRow.innerHTML = `<td>TOTAL</td><td></td><td>AED ${finalSum.toFixed(2)}</td><td>AED ${adjustedSum.toFixed(2)}</td>`;
+  }
 }
 
 function selectSummary(id) {
