@@ -344,3 +344,141 @@ def zip_files(files):
             zf.writestr(filename, filebuf.getvalue())
     buf.seek(0)
     return buf
+
+
+REPORT_COLUMNS_META = {
+    "emp_no": ("Emp No", "text"), "emp_name": ("Name", "text"), "trade": ("Trade", "text"),
+    "sites": ("Site", "text"), "total_salary": ("Total Salary", "money"),
+    "present_days": ("Present", "num"), "absent_days": ("Absent", "num"), "sick_days": ("Sick", "num"),
+    "medical_days": ("Medical", "num"), "friday_days": ("Friday", "num"), "holiday_days": ("Holiday", "num"),
+    "leave_days": ("Leave", "num"), "ot_hours": ("OT Hours", "num"), "bh_hours": ("BH Hours", "num"),
+    "basic_pay_input": ("Basic Pay", "money"), "deduction": ("Absence/Leave Deduction", "money"),
+    "ot_amount": ("OT Amount", "money"), "bh_amount": ("BH Amount", "money"),
+    "final_salary": ("Final Salary", "money"), "adjustments": ("Adjustments", "text"),
+    "adjusted_final_salary": ("Adjusted Final Salary", "money"),
+}
+
+
+def _report_row_value(item, key):
+    if key == "adjusted_final_salary":
+        return item.final_salary + sum(-a.amount if a.is_deduction else a.amount for a in item.adjustments)
+    if key == "adjustments":
+        return "; ".join(f"{a.description}: {'-' if a.is_deduction else '+'}{a.amount}" for a in item.adjustments) or "-"
+    return getattr(item, key, "")
+
+
+def build_report_table_excel(items, column_keys, cycle_label):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    cols = [(k, *REPORT_COLUMNS_META.get(k, (k, "text"))) for k in column_keys if k in REPORT_COLUMNS_META]
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for i, (key, label, kind) in enumerate(cols, start=1):
+        c = ws.cell(row=1, column=i, value=label)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=BRAND_RED)
+        c.alignment = Alignment(horizontal="center")
+        c.border = border
+        ws.column_dimensions[get_column_letter(i)].width = 22 if kind == "text" else 16
+
+    r = 2
+    totals = {key: 0.0 for key, _, kind in cols if kind in ("money", "num")}
+    for item in items:
+        for i, (key, label, kind) in enumerate(cols, start=1):
+            val = _report_row_value(item, key)
+            if kind == "money":
+                val_num = val or 0
+                totals[key] += val_num
+                display = f"AED {val_num:,.2f}"
+            elif kind == "num":
+                val_num = val or 0
+                totals[key] += val_num
+                display = val_num
+            else:
+                display = val
+            c = ws.cell(row=r, column=i, value=display)
+            c.alignment = Alignment(horizontal="center")
+            c.border = border
+        r += 1
+
+    # Totals row
+    for i, (key, label, kind) in enumerate(cols, start=1):
+        if i == 1:
+            c = ws.cell(row=r, column=i, value="TOTAL")
+            c.font = Font(bold=True)
+        elif kind == "money":
+            c = ws.cell(row=r, column=i, value=f"AED {totals[key]:,.2f}")
+            c.font = Font(bold=True)
+        elif kind == "num":
+            c = ws.cell(row=r, column=i, value=round(totals[key], 2))
+            c.font = Font(bold=True)
+        else:
+            c = ws.cell(row=r, column=i, value="")
+        c.fill = PatternFill("solid", fgColor=GREEN_FILL)
+        c.alignment = Alignment(horizontal="center")
+        c.border = border
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_report_table_pdf(items, column_keys, cycle_label):
+    cols = [(k, *REPORT_COLUMNS_META.get(k, (k, "text"))) for k in column_keys if k in REPORT_COLUMNS_META]
+    styles = getSampleStyleSheet()
+    cell_style = ParagraphStyle("TblCell", parent=styles["Normal"], fontSize=7, leading=9)
+    head_style = ParagraphStyle("TblHead", parent=styles["Normal"], fontSize=7.5, leading=9,
+                                 textColor=colors.white, fontName="Helvetica-Bold")
+    bold_style = ParagraphStyle("TblBold", parent=styles["Normal"], fontSize=7.5, leading=9, fontName="Helvetica-Bold")
+
+    data = [[Paragraph(label, head_style) for _, label, _ in cols]]
+    totals = {key: 0.0 for key, _, kind in cols if kind in ("money", "num")}
+    for item in items:
+        row = []
+        for key, label, kind in cols:
+            val = _report_row_value(item, key)
+            if kind == "money":
+                val_num = val or 0
+                totals[key] += val_num
+                row.append(Paragraph(f"AED {val_num:,.2f}", cell_style))
+            elif kind == "num":
+                val_num = val or 0
+                totals[key] += val_num
+                row.append(Paragraph(str(val_num), cell_style))
+            else:
+                row.append(Paragraph(str(val) if val else "-", cell_style))
+        data.append(row)
+
+    total_row = []
+    for i, (key, label, kind) in enumerate(cols):
+        if i == 0:
+            total_row.append(Paragraph("TOTAL", bold_style))
+        elif kind == "money":
+            total_row.append(Paragraph(f"AED {totals[key]:,.2f}", bold_style))
+        elif kind == "num":
+            total_row.append(Paragraph(str(round(totals[key], 2)), bold_style))
+        else:
+            total_row.append(Paragraph("", bold_style))
+    data.append(total_row)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=10 * mm,
+                             leftMargin=8 * mm, rightMargin=8 * mm)
+    col_width = doc.width / max(len(cols), 1)
+    tbl = Table(data, colWidths=[col_width] * len(cols), repeatRows=1)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D0D0D0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(f"#{GREEN_FILL}")),
+    ]
+    tbl.setStyle(TableStyle(style_cmds))
+
+    title = Paragraph(f"Report - {cycle_label}", ParagraphStyle(
+        "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold", spaceAfter=8))
+    doc.build([title, tbl])
+    buf.seek(0)
+    return buf
