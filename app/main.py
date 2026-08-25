@@ -544,44 +544,29 @@ def list_summaries(month_year: str, db: Session = Depends(get_db),
 
 
 @app.get("/summaries/{month_year}/by-site")
-def summaries_by_site(month_year: str, db: Session = Depends(get_db),
-                       user: models.User = Depends(auth.get_current_user)):
+def summaries_by_site(month_year: str, date_from: str = None, date_to: str = None,
+                       db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
-    One row per site: how many workers were there during the cycle and
-    the sum of their Final Salary / Adjusted Final Salary. A worker who
-    was at more than one site during the cycle counts in full toward
-    each site they worked at (not split proportionally) - this answers
-    'how much did we spend at site X this month', not an exact per-site
-    salary breakdown.
+    Site project cost for the cycle, based on actual attendance - reuses
+    reports.site_cost_center() directly, the same logic the desktop app
+    uses. Each worker's cost per day at a site is their own daily rate
+    (total_salary / 30) plus OT/BH at their own hourly rate, summed by
+    site - so a worker who was at two sites contributes only their
+    actual days at each, never their full salary twice. With no date
+    range, uses every date on file for the cycle; with one, costs only
+    that exact window.
     """
-    summaries = (
-        db.query(models.EmployeeSummary)
-        .options(joinedload(models.EmployeeSummary.adjustments))
-        .filter(models.EmployeeSummary.month_year == month_year)
-        .all()
-    )
-    site_rows = (
-        db.query(models.DailyRow.emp_no, models.DailyRow.site)
-        .filter(models.DailyRow.month_year == month_year, models.DailyRow.site != "")
-        .distinct().all()
-    )
-    sites_by_emp = {}
-    for emp_no, site in site_rows:
-        if site:
-            sites_by_emp.setdefault(emp_no, set()).add(site)
-
-    by_site = {}
-    for s in summaries:
-        adjusted = s.final_salary + sum(-a.amount if a.is_deduction else a.amount for a in s.adjustments)
-        for site in sites_by_emp.get(s.emp_no, set()):
-            entry = by_site.setdefault(site, {"site": site, "worker_count": 0, "workers": [],
-                                               "total_final_salary": 0.0, "total_adjusted_final_salary": 0.0})
-            entry["worker_count"] += 1
-            entry["workers"].append(s.emp_no)
-            entry["total_final_salary"] += s.final_salary
-            entry["total_adjusted_final_salary"] += adjusted
-
-    return sorted(by_site.values(), key=lambda x: x["site"])
+    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    summaries = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
+    filters = {}
+    if date_from:
+        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
+    if date_to:
+        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    result = rp.site_cost_center(daily_rows, summaries, filters)
+    return {"title": result.title, "note": result.note,
+            "columns": [{"key": k, "label": label} for k, label in result.columns],
+            "rows": result.rows, "totals": result.totals}
 
 
 @app.get("/live-card/{emp_no}/{month_year}")
