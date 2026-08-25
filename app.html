@@ -344,6 +344,7 @@
                 Import Data
                 <input type="file" id="md-import-file" accept=".xlsx" style="display:none;" onchange="importEmployeeFile(this)">
               </label>
+              <button class="btn btn-dark" onclick="exportEmployeeData()">Export Master Data</button>
               <span style="font-size:12px; color:#888;">Download the template, fill it in, then re-upload it here to add or update many employees at once.</span>
             </div>
           </div>
@@ -1035,6 +1036,17 @@ function downloadEmployeeTemplate() {
   const url = `${API}/employees/template?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
   showStatus("md-status", "ok", "Opening the employee template - check your downloads or the new tab.");
+}
+
+function exportEmployeeData() {
+  if (!cachedDownloadToken) {
+    showStatus("md-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/employees/export?token=${encodeURIComponent(cachedDownloadToken)}`;
+  window.open(url, "_blank");
+  showStatus("md-status", "ok", "Exporting current master data - check your downloads or the new tab.");
 }
 
 let pendingImportFile = null;
