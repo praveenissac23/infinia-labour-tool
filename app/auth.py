@@ -43,6 +43,44 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def create_download_token(username: str) -> str:
+    """
+    A separate, short-lived token (60 seconds) scoped only to file
+    downloads - used instead of the main 12-hour login token for URLs
+    that get passed via a query string (export/backup links, which
+    can't carry an Authorization header since they're opened by a
+    plain browser navigation, not a fetch() call). Query-string tokens
+    can end up in browser history, screen shares, or server access
+    logs; if the real 12-hour session token were used there, anyone
+    who saw that URL could reuse it - not just for downloads, but for
+    any API call, for hours. Scoping it and expiring it in a minute
+    closes that off.
+    """
+    expire = datetime.utcnow() + timedelta(seconds=60)
+    return jwt.encode({"sub": username, "scope": "download", "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def get_download_user_from_token(token: str, db: Session) -> models.User:
+    """Validates a create_download_token() token specifically - rejects
+    a normal login token even if it's otherwise valid, so a leaked
+    download URL can only ever be used for the one thing it was
+    issued for, for the one minute it's valid."""
+    credentials_exception = HTTPException(status_code=401, detail="Invalid or expired download link.")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("scope") != "download":
+            raise credentials_exception
+        username = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None or not user.active:
+        raise credentials_exception
+    return user
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -52,7 +90,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
-        if username is None:
+        if username is None or payload.get("scope") == "download":
             raise credentials_exception
     except JWTError:
         raise credentials_exception
