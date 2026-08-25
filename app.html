@@ -1117,7 +1117,12 @@ const REPORT_MONEY_KEYS = new Set([
 async function initReportColumnPicker() {
   const idEl = document.getElementById("report-column-picker-id");
   if (idEl.dataset.built) return;
-  reportCatalog = await apiCall("/reports/builder-catalog");
+  try {
+    reportCatalog = await apiCall("/reports/builder-catalog");
+  } catch (e) {
+    showStatus("report-status", "err", "Could not load the report options - the server may still be updating. Try again in a minute, or refresh the page.");
+    throw e;
+  }
   const defaultDims = new Set(["emp_no", "name"]);
   const defaultMeasures = new Set(["present_days", "absent_days", "ot_hours", "bh_hours", "final_salary", "adjusted_final_salary"]);
 
@@ -1218,7 +1223,12 @@ function exportReportTable(fmt) {
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
-  await initReportColumnPicker();
+  document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
+  try {
+    await initReportColumnPicker();
+  } catch (e) {
+    return; // initReportColumnPicker already showed the error
+  }
   const dims = getSelectedDimensions();
   const measures = getSelectedMeasures();
   const dateFrom = document.getElementById("report-date-from").value;
@@ -1228,7 +1238,13 @@ async function loadReports() {
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
 
-  currentCustomReport = await apiCall(url);
+  try {
+    currentCustomReport = await apiCall(url);
+  } catch (e) {
+    showStatus("report-status", "err", "Could not load the report: " + (e.body?.detail || "Unknown error"));
+    document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Could not load. Try again.</td></tr>`;
+    return;
+  }
   document.getElementById("report-note").textContent = currentCustomReport.note || "";
   renderReportPreview();
 }
