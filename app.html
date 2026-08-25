@@ -1112,19 +1112,21 @@ let reportSortDir = 1;
 const REPORT_MONEY_KEYS = new Set([
   "basic_pay_input", "total_salary_component", "deduction",
   "ot_amount", "bh_amount", "final_salary", "adjusted_final_salary",
+  "final_salary_cost",
 ]);
 
 async function initReportColumnPicker() {
   const idEl = document.getElementById("report-column-picker-id");
   if (idEl.dataset.built) return;
   try {
-    reportCatalog = await apiCall("/reports/builder-catalog");
+    const catalog = await apiCall("/reports/builder-catalog");
+    reportCatalog = catalog.daily;
   } catch (e) {
     showStatus("report-status", "err", "Could not load the report options - the server may still be updating. Try again in a minute, or refresh the page.");
     throw e;
   }
   const defaultDims = new Set(["emp_no", "name"]);
-  const defaultMeasures = new Set(["present_days", "absent_days", "ot_hours", "bh_hours", "final_salary", "adjusted_final_salary"]);
+  const defaultMeasures = new Set(["days_present", "days_absent", "ot_hours", "bh_hours", "final_salary_cost"]);
 
   idEl.innerHTML = reportCatalog.dimensions.map(d => `
     <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""}> ${d.label}</label>
@@ -1215,7 +1217,7 @@ function exportReportTable(fmt) {
     refreshDownloadToken();
     return;
   }
-  const url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
   window.open(url, "_blank");
   showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
 }
@@ -1234,7 +1236,7 @@ async function loadReports() {
   const dateFrom = document.getElementById("report-date-from").value;
   const dateTo = document.getElementById("report-date-to").value;
 
-  let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
+  let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
 
