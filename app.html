@@ -357,6 +357,21 @@
             </div>
           </div>
 
+          <div class="card">
+            <h2>By Site</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Every site worked during this cycle, with the total Final Salary of everyone who worked there. A worker at more than one site counts in full toward each - this is total cost per site, not a proportional split.</p>
+            <button class="btn btn-primary" onclick="loadBySite()">Run By-Site Totals</button>
+            <div class="grid-wrap" style="max-height: 45vh; margin-top:10px;">
+              <table>
+                <thead><tr>
+                  <th>Site</th><th># Workers</th><th>Total Final Salary</th><th>Total Adjusted Final Salary</th>
+                </tr></thead>
+                <tbody id="by-site-body"></tbody>
+                <tfoot><tr id="by-site-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
+              </table>
+            </div>
+          </div>
+
         </div>
 
         <!-- ============ COMBINE SCREEN ============ -->
@@ -1202,6 +1217,30 @@ function exportReportTable(fmt) {
   const url = `${API}/export/${encodeURIComponent(cycle)}/report-table?token=${encodeURIComponent(cachedDownloadToken)}&columns=${encodeURIComponent(colKeys)}&format=${fmt}`;
   window.open(url, "_blank");
   showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
+}
+
+async function loadBySite() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  const body = document.getElementById("by-site-body");
+  const totalRow = document.getElementById("by-site-total-row");
+  if (!cycle) {
+    showStatus("report-status", "warn", "Enter a cycle first.");
+    return;
+  }
+  body.innerHTML = `<tr><td colspan="4" class="empty-note">Loading...</td></tr>`;
+  totalRow.innerHTML = "";
+  const rows = await apiCall(`/summaries/${encodeURIComponent(cycle)}/by-site`);
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">No site data for this cycle yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => `
+    <tr><td>${r.site}</td><td>${r.worker_count}</td>
+      <td>AED ${r.total_final_salary.toFixed(2)}</td><td>AED ${r.total_adjusted_final_salary.toFixed(2)}</td>
+    </tr>`).join("");
+  const finalSum = rows.reduce((sum, r) => sum + r.total_final_salary, 0);
+  const adjustedSum = rows.reduce((sum, r) => sum + r.total_adjusted_final_salary, 0);
+  totalRow.innerHTML = `<td>TOTAL</td><td></td><td>AED ${finalSum.toFixed(2)}</td><td>AED ${adjustedSum.toFixed(2)}</td>`;
 }
 
 async function loadReports() {
