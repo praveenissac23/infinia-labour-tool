@@ -117,7 +117,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     ws.row_dimensions[header_row].height = 13
     for i, h in enumerate(DAILY_HEADERS, start=1):
         c = ws.cell(row=header_row, column=i, value=h)
-        c.font = Font(bold=True, color="FFFFFF", size=9)
+        c.font = Font(bold=True, color="FFFFFF", size=10)
         c.fill = PatternFill("solid", fgColor=BRAND_RED)
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = border
@@ -132,13 +132,13 @@ def _write_worker_card(ws, summary, rows, border, start_row):
                 row.engineer if row else "", (row.ot if row and row.ot else ""),
                 (row.bh if row and row.bh else ""), (row.comments if row else "")]
         stripe = "F7F7F7" if idx % 2 == 0 else "FFFFFF"
-        ws.row_dimensions[r].height = 11
+        ws.row_dimensions[r].height = 13
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
             c.fill = PatternFill("solid", fgColor=stripe)
-            c.font = Font(size=8.5)
+            c.font = Font(size=9.5)
             if i == 4:  # Site column - values like "704" look numeric but
                 c.number_format = "@"  # aren't; "@" stops Excel's green
                 # triangle "number stored as text" warning on them.
@@ -248,7 +248,7 @@ def build_combined_excel(summaries_with_rows):
     ws.column_dimensions["F"].width = 7
     ws.column_dimensions["G"].width = 7
     ws.column_dimensions["H"].width = 26
-    ws.page_setup.orientation = "landscape"
+    ws.page_setup.orientation = "portrait"
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
@@ -299,7 +299,7 @@ def build_separate_excel_files(summaries_with_rows):
         ws.column_dimensions["F"].width = 8
         ws.column_dimensions["G"].width = 8
         ws.column_dimensions["H"].width = 30
-        ws.page_setup.orientation = "landscape"
+        ws.page_setup.orientation = "portrait"
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.sheet_properties.pageSetUpPr.fitToPage = True
