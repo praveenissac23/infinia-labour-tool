@@ -661,6 +661,58 @@ def _get_summary_pairs(month_year: str, db: Session):
     return pairs
 
 
+@app.get("/export/{month_year}/report-table")
+def export_report_table(month_year: str, token: str, columns: str, format: str, db: Session = Depends(get_db)):
+    """
+    Exports the Report Builder's own preview - whatever columns are
+    currently ticked, in one row per worker plus a totals row - as
+    opposed to Combine, which always exports the full individual salary
+    cards regardless of column selection.
+    """
+    user = auth.get_download_user_from_token(token, db)
+    column_keys = [c for c in columns.split(",") if c]
+    if not column_keys:
+        raise HTTPException(status_code=400, detail="No columns selected.")
+    summaries = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(models.EmployeeSummary.month_year == month_year)
+        .order_by(models.EmployeeSummary.emp_no)
+        .all()
+    )
+    site_rows = (
+        db.query(models.DailyRow.emp_no, models.DailyRow.site)
+        .filter(models.DailyRow.month_year == month_year, models.DailyRow.site != "")
+        .distinct().all()
+    )
+    sites_by_emp = {}
+    for emp_no, site in site_rows:
+        if site:
+            sites_by_emp.setdefault(emp_no, []).append(site)
+    items = []
+    for s in summaries:
+        item = schemas.EmployeeSummaryOut.from_orm(s)
+        item.sites = ", ".join(sorted(set(sites_by_emp.get(s.emp_no, []))))
+        items.append(item)
+    if not items:
+        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    if format == "excel":
+        buf = export_web.build_report_table_excel(items, column_keys, month_year)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
+        )
+    elif format == "pdf":
+        buf = export_web.build_report_table_pdf(items, column_keys, month_year)
+        return StreamingResponse(
+            buf, media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.pdf"},
+        )
+    raise HTTPException(status_code=400, detail="format must be 'excel' or 'pdf'.")
+
+
 @app.get("/export/{month_year}/excel-separate")
 def export_excel_separate(month_year: str, token: str, db: Session = Depends(get_db)):
     """One .xlsx per worker, zipped together - the 'Separate Files' option next to Combine."""
