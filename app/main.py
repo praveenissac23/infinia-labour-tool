@@ -471,6 +471,24 @@ def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
     return db.query(models.DailyRow).filter(models.DailyRow.full_date == target_date).all()
 
 
+@app.delete("/attendance/{target_date}")
+def clear_attendance_for_date(target_date: date, db: Session = Depends(get_db),
+                               user: models.User = Depends(auth.require_admin)):
+    """
+    Deletes every worker's attendance row for one specific date - the
+    'Clear Day' button's confirmed action. Admin-only, since this wipes
+    every worker's entry for the day at once, not just one row.
+    """
+    count = (
+        db.query(models.DailyRow)
+        .filter(models.DailyRow.full_date == target_date)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    log_action(db, user.id, "clear_day", f"{target_date}: {count} row(s) deleted")
+    return {"deleted": count}
+
+
 @app.get("/attendance/completion/{month_year}")
 def get_completion_status(month_year: str, db: Session = Depends(get_db),
                            user: models.User = Depends(auth.get_current_user)):
