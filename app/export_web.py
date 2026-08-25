@@ -586,3 +586,90 @@ def build_report_table_pdf(items, column_keys, cycle_label):
     doc.build([title, tbl])
     buf.seek(0)
     return buf
+
+
+def build_generic_result_excel(result_dict, cycle_label):
+    """
+    Exports an already-computed report result (columns/rows/totals, the
+    shape build_custom_report or site_cost_center return) directly - no
+    re-aggregation needed, just formatting what's already there.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    cols = result_dict["columns"]
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for i, c in enumerate(cols, start=1):
+        cell = ws.cell(row=1, column=i, value=c["label"])
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=BRAND_RED)
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = border
+        ws.column_dimensions[get_column_letter(i)].width = 22
+
+    r = 2
+    for row in result_dict["rows"]:
+        for i, c in enumerate(cols, start=1):
+            v = row.get(c["key"], "")
+            cell = ws.cell(row=r, column=i, value=v)
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = border
+        r += 1
+
+    totals = result_dict.get("totals") or {}
+    if totals:
+        for i, c in enumerate(cols, start=1):
+            v = totals.get(c["key"])
+            cell = ws.cell(row=r, column=i, value="TOTAL" if i == 1 else (v if v is not None else ""))
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = border
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_generic_result_pdf(result_dict, cycle_label):
+    cols = result_dict["columns"]
+    styles = getSampleStyleSheet()
+    cell_style = ParagraphStyle("TblCell", parent=styles["Normal"], fontSize=7, leading=9)
+    head_style = ParagraphStyle("TblHead", parent=styles["Normal"], fontSize=7.5, leading=9,
+                                 textColor=colors.white, fontName="Helvetica-Bold")
+    bold_style = ParagraphStyle("TblBold", parent=styles["Normal"], fontSize=7.5, leading=9, fontName="Helvetica-Bold")
+
+    data = [[Paragraph(c["label"], head_style) for c in cols]]
+    for row in result_dict["rows"]:
+        data.append([Paragraph(str(row.get(c["key"], "")), cell_style) for c in cols])
+
+    totals = result_dict.get("totals") or {}
+    if totals:
+        trow = []
+        for i, c in enumerate(cols):
+            v = totals.get(c["key"])
+            trow.append(Paragraph("TOTAL" if i == 0 else (str(v) if v is not None else ""), bold_style))
+        data.append(trow)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=10 * mm,
+                             leftMargin=8 * mm, rightMargin=8 * mm)
+    col_width = doc.width / max(len(cols), 1)
+    tbl = Table(data, colWidths=[col_width] * len(cols), repeatRows=1)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D0D0D0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    if totals:
+        style_cmds.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(f"#{GREEN_FILL}")))
+    tbl.setStyle(TableStyle(style_cmds))
+
+    title = Paragraph(f"Report - {cycle_label}", ParagraphStyle(
+        "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold", spaceAfter=8))
+    doc.build([title, tbl])
+    buf.seek(0)
+    return buf
