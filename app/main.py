@@ -574,8 +574,11 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
                    user: models.User = Depends(auth.get_current_user)):
     """
     Everything needed to render one worker's card on screen: their
-    summary totals for the cycle plus every daily row, keyed by day -
-    mirrors the desktop app's Live Card view.
+    summary totals for the cycle plus every daily row, keyed by actual
+    date (not calendar day-of-month) - the cycle runs 26th to 25th
+    spanning two calendar months, so day-of-month alone would put late
+    dates from the first month out of chronological order against the
+    early dates of the second month.
     """
     summary = (
         db.query(models.EmployeeSummary)
@@ -588,7 +591,7 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
         .filter(and_(models.DailyRow.emp_no == emp_no, models.DailyRow.month_year == month_year))
         .all()
     )
-    rows_by_day = {r.day: schemas.DailyRowOut.from_orm(r) for r in rows}
+    rows_by_date = {r.full_date.isoformat(): schemas.DailyRowOut.from_orm(r) for r in rows if r.full_date}
     if summary:
         summary_out = schemas.EmployeeSummaryOut.from_orm(summary)
     else:
@@ -596,9 +599,18 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found.")
         summary_out = None
+
+    try:
+        parsed = datetime.strptime(f"25 {month_year}", "%d %B %Y").date()
+        cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
+    except ValueError:
+        cycle_start, cycle_end = None, None
+
     return {
         "emp_no": emp_no, "month_year": month_year,
-        "summary": summary_out, "days": rows_by_day,
+        "summary": summary_out, "days": rows_by_date,
+        "cycle_start": cycle_start.isoformat() if cycle_start else None,
+        "cycle_end": cycle_end.isoformat() if cycle_end else None,
     }
 
 
