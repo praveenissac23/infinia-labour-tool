@@ -358,7 +358,6 @@
 
           <div class="card">
             <h2>Columns to include</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 8px;">Tick Site and Final Salary together for site project cost (based on actual attendance) instead of a per-worker list.</p>
             <div id="report-column-picker" class="report-col-picker"></div>
           </div>
 
@@ -369,6 +368,19 @@
                 <thead><tr id="report-head-row"></tr></thead>
                 <tbody id="report-body"></tbody>
                 <tfoot><tr id="report-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Site Cost Breakdown</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Total labour cost per site for this cycle, based on actual attendance - a worker who split time between sites contributes only their real days at each, never double-counted. Separate from the table above since it's a different shape (one row per site, not per worker).</p>
+            <button class="btn btn-primary" onclick="loadSiteCost()">Run Site Cost</button>
+            <div class="grid-wrap" style="max-height: 40vh; margin-top:10px;">
+              <table>
+                <thead><tr id="sitecost-head-row"></tr></thead>
+                <tbody id="sitecost-body"></tbody>
+                <tfoot><tr id="sitecost-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
               </table>
             </div>
           </div>
@@ -1131,7 +1143,7 @@ function initReportColumnPicker() {
   const el = document.getElementById("report-column-picker");
   if (el.dataset.built) return;
   el.innerHTML = REPORT_COLUMNS.map(c => `
-    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="loadReports()"> ${c.label}</label>
+    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
   `).join("");
   el.dataset.built = "1";
 }
@@ -1235,46 +1247,42 @@ function exportReportTable(fmt) {
   showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
 }
 
-let reportIsSiteCostMode = false;
-
-function reportShouldUseSiteCost() {
-  const siteChecked = document.querySelector('#report-column-picker input[data-col="sites"]')?.checked;
-  const salaryChecked = document.querySelector('#report-column-picker input[data-col="final_salary"]')?.checked
-    || document.querySelector('#report-column-picker input[data-col="adjusted_final_salary"]')?.checked;
-  return !!(siteChecked && salaryChecked);
-}
-
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
   initReportColumnPicker();
-  const dateFrom = document.getElementById("report-date-from").value;
-  const dateTo = document.getElementById("report-date-to").value;
-
-  if (reportShouldUseSiteCost()) {
-    reportIsSiteCostMode = true;
-    let url = `/summaries/${encodeURIComponent(cycle)}/by-site`;
-    const params = [];
-    if (dateFrom) params.push(`date_from=${dateFrom}`);
-    if (dateTo) params.push(`date_to=${dateTo}`);
-    if (params.length) url += "?" + params.join("&");
-    const result = await apiCall(url);
-    renderSiteCostPreview(result);
-  } else {
-    reportIsSiteCostMode = false;
-    currentReportSummaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
-    renderReportPreview();
-  }
+  const asOf = document.getElementById("report-date-to").value;
+  const url = asOf
+    ? `/summaries/${encodeURIComponent(cycle)}?as_of=${asOf}`
+    : `/summaries/${encodeURIComponent(cycle)}`;
+  currentReportSummaries = await apiCall(url);
+  renderReportPreview();
 }
 
-function renderSiteCostPreview(result) {
-  const headRow = document.getElementById("report-head-row");
-  const body = document.getElementById("report-body");
-  const totalRow = document.getElementById("report-total-row");
+async function loadSiteCost() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  if (!cycle) {
+    showStatus("report-status", "warn", "Enter a cycle first.");
+    return;
+  }
+  const dateFrom = document.getElementById("report-date-from").value;
+  const dateTo = document.getElementById("report-date-to").value;
+  let url = `/summaries/${encodeURIComponent(cycle)}/by-site`;
+  const params = [];
+  if (dateFrom) params.push(`date_from=${dateFrom}`);
+  if (dateTo) params.push(`date_to=${dateTo}`);
+  if (params.length) url += "?" + params.join("&");
+
+  const headRow = document.getElementById("sitecost-head-row");
+  const body = document.getElementById("sitecost-body");
+  const totalRow = document.getElementById("sitecost-total-row");
+  body.innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
+  totalRow.innerHTML = "";
+
+  const result = await apiCall(url);
   headRow.innerHTML = result.columns.map(c => `<th>${c.label}</th>`).join("");
   if (!result.rows.length) {
     body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No attendance data for this cycle/range yet.</td></tr>`;
-    totalRow.innerHTML = "";
     return;
   }
   body.innerHTML = result.rows.map(r => `
@@ -1289,9 +1297,6 @@ function renderSiteCostPreview(result) {
     if (v === undefined) return `<td></td>`;
     return `<td>${c.key.includes("cost") ? `AED ${Number(v).toFixed(2)}` : v}</td>`;
   }).join("");
-  showStatus("report-status", null);
-  const note = document.getElementById("report-note");
-  if (note) note.textContent = result.note || "";
 }
 
 // ============ SALARY ADJUSTMENTS ============
