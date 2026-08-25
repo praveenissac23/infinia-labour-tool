@@ -70,6 +70,8 @@
   .grid-wrap { background: white; border-radius: 8px; border: 1px solid #eee; overflow: auto; max-height: 60vh; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   th { background: var(--red); color: white; padding: 9px 8px; text-align: center; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { background: var(--red-hover); }
   td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #f0f0f0; }
   tr:hover td { background: #FFF7F5; }
   td input[type=checkbox] { transform: scale(1.1); }
@@ -279,7 +281,14 @@
             <h2>Employees</h2>
             <div class="grid-wrap" style="max-height: 40vh;">
               <table>
-                <thead><tr><th>Emp No</th><th>Name</th><th>Trade</th><th>Total Salary</th><th>Basic Salary</th><th></th></tr></thead>
+                <thead><tr>
+                  <th class="sortable" onclick="sortMasterData('emp_no')">Emp No <span id="md-sort-emp_no"></span></th>
+                  <th class="sortable" onclick="sortMasterData('name')">Name <span id="md-sort-name"></span></th>
+                  <th class="sortable" onclick="sortMasterData('trade')">Trade <span id="md-sort-trade"></span></th>
+                  <th class="sortable" onclick="sortMasterData('total_salary')">Total Salary <span id="md-sort-total_salary"></span></th>
+                  <th class="sortable" onclick="sortMasterData('basic_salary')">Basic Salary <span id="md-sort-basic_salary"></span></th>
+                  <th></th>
+                </tr></thead>
                 <tbody id="md-emp-body"></tbody>
               </table>
             </div>
@@ -333,6 +342,8 @@
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Combine every worker's full salary card (not just the columns above) into one file for this cycle - same as the desktop app's Combine feature.</p>
             <button class="btn btn-dark" onclick="exportCards('excel')">Combine to Excel</button>
             <button class="btn btn-dark" onclick="exportCards('pdf')">Combine to PDF</button>
+            <button class="btn btn-gray" onclick="exportCards('excel-separate')">Separate Excel Files</button>
+            <button class="btn btn-gray" onclick="exportCards('pdf-separate')">Separate PDF Files</button>
           </div>
         </div>
 
@@ -380,7 +391,10 @@
               <h2>Workers</h2>
               <div class="grid-wrap" style="max-height: 60vh;">
                 <table>
-                  <thead><tr><th>Emp No</th><th>Name</th></tr></thead>
+                  <thead><tr>
+                    <th class="sortable" onclick="sortLiveCardList('emp_no')">Emp No <span id="lc-sort-emp_no"></span></th>
+                    <th class="sortable" onclick="sortLiveCardList('name')">Name <span id="lc-sort-name"></span></th>
+                  </tr></thead>
                   <tbody id="livecard-worker-body"></tbody>
                 </table>
               </div>
@@ -435,6 +449,11 @@
                 <tbody id="user-list-body"></tbody>
               </table>
             </div>
+          </div>
+          <div class="card" id="backup-card" style="display:none;">
+            <h2>Backup (admin only)</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Downloads every employee, site, engineer, attendance record, summary, and adjustment as one JSON file - a full snapshot of the database at this moment.</p>
+            <button class="btn btn-dark" onclick="downloadBackup()">Download Backup</button>
           </div>
         </div>
 
@@ -560,6 +579,7 @@ async function initApp() {
 
   if (CURRENT_ROLE === "admin") {
     document.getElementById("user-mgmt-card").style.display = "block";
+    document.getElementById("backup-card").style.display = "block";
     document.getElementById("nav-activity").style.display = "block";
     await loadUsers();
   }
@@ -775,9 +795,26 @@ async function saveAttendance() {
 }
 
 // ============ MASTER DATA ============
+let mdSortKey = "emp_no";
+let mdSortDir = 1;
+
+function sortMasterData(key) {
+  if (mdSortKey === key) { mdSortDir *= -1; } else { mdSortKey = key; mdSortDir = 1; }
+  renderMasterDataLists();
+}
+
 function renderMasterDataLists() {
   const empBody = document.getElementById("md-emp-body");
-  empBody.innerHTML = employees.map(e => `
+  const sorted = [...employees].sort((a, b) => {
+    const av = a[mdSortKey], bv = b[mdSortKey];
+    if (typeof av === "number") return (av - bv) * mdSortDir;
+    return String(av).localeCompare(String(bv)) * mdSortDir;
+  });
+  ["emp_no", "name", "trade", "total_salary", "basic_salary"].forEach(k => {
+    const el = document.getElementById("md-sort-" + k);
+    if (el) el.textContent = k === mdSortKey ? (mdSortDir === 1 ? "\u25B2" : "\u25BC") : "";
+  });
+  empBody.innerHTML = sorted.map(e => `
     <tr>
       <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
@@ -907,11 +944,30 @@ function reportCellValue(s, col) {
   return v;
 }
 
+let reportSortKey = null;
+let reportSortDir = 1;
+
+function sortReportBy(key) {
+  if (reportSortKey === key) { reportSortDir *= -1; } else { reportSortKey = key; reportSortDir = 1; }
+  renderReportPreview();
+}
+
+function reportRawValue(s, col) {
+  if (col.key === "adjusted_final_salary") {
+    return s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
+  }
+  if (col.kind === "adjustments") return s.adjustments.length;
+  return s[col.key];
+}
+
 function renderReportPreview() {
   const cols = getSelectedReportColumns();
   const headRow = document.getElementById("report-head-row");
   const body = document.getElementById("report-body");
-  headRow.innerHTML = cols.map(c => `<th>${c.label}</th>`).join("") || `<th>Pick at least one column</th>`;
+  headRow.innerHTML = cols.map(c => {
+    const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
+    return `<th class="sortable" onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
+  }).join("") || `<th>Pick at least one column</th>`;
 
   if (!currentReportSummaries.length) {
     body.innerHTML = `<tr><td colspan="${Math.max(cols.length, 1)}" class="empty-note">No data for this cycle yet.</td></tr>`;
@@ -921,7 +977,16 @@ function renderReportPreview() {
     body.innerHTML = `<tr><td class="empty-note">Tick at least one column above.</td></tr>`;
     return;
   }
-  body.innerHTML = currentReportSummaries.map(s => `
+  let rows = [...currentReportSummaries];
+  if (reportSortKey) {
+    const sortCol = cols.find(c => c.key === reportSortKey) || REPORT_COLUMNS.find(c => c.key === reportSortKey);
+    rows.sort((a, b) => {
+      const av = reportRawValue(a, sortCol), bv = reportRawValue(b, sortCol);
+      if (typeof av === "number") return (av - bv) * reportSortDir;
+      return String(av).localeCompare(String(bv)) * reportSortDir;
+    });
+  }
+  body.innerHTML = rows.map(s => `
     <tr>${cols.map(c => `<td>${reportCellValue(s, c)}</td>`).join("")}</tr>
   `).join("");
 }
@@ -1094,17 +1159,30 @@ function goToAttendanceDate(dateStr) {
 // ============ LIVE CARD ============
 let selectedLiveCardEmpNo = null;
 
+let lcSortKey = "emp_no";
+let lcSortDir = 1;
+
+function sortLiveCardList(key) {
+  if (lcSortKey === key) { lcSortDir *= -1; } else { lcSortKey = key; lcSortDir = 1; }
+  renderLiveCardWorkerList();
+}
+
 function renderLiveCardWorkerList() {
   const body = document.getElementById("livecard-worker-body");
   const search = (document.getElementById("livecard-search").value || "").trim().toLowerCase();
   const filtered = search
     ? employees.filter(e => e.emp_no.toLowerCase().includes(search) || e.name.toLowerCase().includes(search))
     : employees;
-  if (!filtered.length) {
+  const sorted = [...filtered].sort((a, b) => String(a[lcSortKey]).localeCompare(String(b[lcSortKey])) * lcSortDir);
+  ["emp_no", "name"].forEach(k => {
+    const el = document.getElementById("lc-sort-" + k);
+    if (el) el.textContent = k === lcSortKey ? (lcSortDir === 1 ? "\u25B2" : "\u25BC") : "";
+  });
+  if (!sorted.length) {
     body.innerHTML = `<tr><td colspan="2" class="empty-note">No workers match "${search}".</td></tr>`;
     return;
   }
-  body.innerHTML = filtered.map(e => `
+  body.innerHTML = sorted.map(e => `
     <tr class="clickable-row ${e.emp_no === selectedLiveCardEmpNo ? 'selected-row' : ''}" onclick="selectLiveCardWorker('${e.emp_no}')">
       <td>${e.emp_no}</td><td>${e.name}</td>
     </tr>`).join("");
@@ -1224,7 +1302,9 @@ function exportCards(fmt) {
   // between has no such problem.
   const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(TOKEN)}`;
   window.open(url, "_blank");
-  showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} for ${cycle} - check your downloads or the new tab.`);
+  const label = { "excel": "combined Excel", "pdf": "combined PDF",
+                   "excel-separate": "separate Excel files (zip)", "pdf-separate": "separate PDF files (zip)" }[fmt] || fmt;
+  showStatus("report-status", "ok", `Opening ${label} for ${cycle} - check your downloads or the new tab.`);
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============
@@ -1288,6 +1368,12 @@ async function removeUser(userId) {
   } catch (e) {
     showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
   }
+}
+
+function downloadBackup() {
+  const url = `${API}/backup?token=${encodeURIComponent(TOKEN)}`;
+  window.open(url, "_blank");
+  showStatus("settings-status", "ok", "Opening backup file - check your downloads or the new tab.");
 }
 
 // Auto-resume session if a token is already stored
