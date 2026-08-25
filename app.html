@@ -74,6 +74,11 @@
   th.sortable:hover { background: var(--red-hover); }
   td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #f0f0f0; }
   tr:hover td { background: #FFF7F5; }
+  .lc-compact { font-size: 10.5px; line-height: 1.1; }
+  .lc-compact th { padding: 4px 3px; font-size: 10px; }
+  .lc-compact td { padding: 1px 4px; }
+  .lc-compact-side { font-size: 11px; }
+  .lc-compact-side .side-row { padding: 1px 0 !important; }
   td input[type=checkbox] { transform: scale(1.1); }
   select, .cell-input { padding: 4px 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; width: 100%; }
   .cell-input.narrow { width: 44px; text-align: center; }
@@ -1363,30 +1368,30 @@ async function selectLiveCardWorker(empNo) {
     ["Present", s.present_days], ["Absent", s.absent_days], ["Sick", s.sick_days],
     ["Medical", s.medical_days], ["Friday", s.friday_days], ["Holiday", s.holiday_days],
     ["Leave", s.leave_days], ["OT", s.ot_hours], ["BH", s.bh_hours],
-  ].map(([label, val]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${label}</strong><span>${val}</span></div>`).join("");
+  ].map(([label, val]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${val}</span></div>`).join("");
 
   const summaryRows = [
     ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
     ["Absence/Leave", s.deduction, "-"], ["OT Amount", s.ot_amount, "+"], ["BH Amount", s.bh_amount, "+"],
-  ].map(([label, val, sign]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${label}</strong><span>${sign} AED ${(val || 0).toFixed(2)}</span></div>`).join("");
+  ].map(([label, val, sign]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${sign} AED ${(val || 0).toFixed(2)}</span></div>`).join("");
 
-  const adjRows = s.adjustments.map(a => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${a.amount.toFixed(2)}</span></div>`).join("");
+  const adjRows = s.adjustments.map(a => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${a.amount.toFixed(2)}</span></div>`).join("");
 
   detail.innerHTML = `
-    <h2>${s.emp_no} - ${s.emp_name}</h2>
-    <p style="font-size:12px; color:#888; margin-top:-8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${s.total_salary.toLocaleString()}</p>
-    <div class="grid-wrap" style="margin-bottom:14px; max-height:none;">
+    <h2 style="margin-bottom:2px;">${s.emp_no} - ${s.emp_name}</h2>
+    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${s.total_salary.toLocaleString()}</p>
+    <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
         <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>
         <tbody>${gridRows}</tbody>
       </table>
     </div>
-    <div style="display:flex; gap:24px; flex-wrap:wrap;">
-      <div style="min-width:160px;"><h2 style="font-size:13px;">Total Days</h2>${totalDaysRows}</div>
-      <div style="min-width:200px;"><h2 style="font-size:13px;">Salary Summary</h2>${summaryRows}${adjRows}</div>
-      <div style="min-width:180px;">
-        <div style="background:${BRAND_BLACK_HEX}; color:white; text-align:center; padding:8px; border-radius:6px 6px 0 0; font-size:12px; font-weight:bold;">FINAL SALARY TO PROCESS</div>
-        <div style="background:#C6EFCE; text-align:center; padding:12px; border-radius:0 0 6px 6px; font-size:16px; font-weight:bold;">AED ${adjustedTotal.toFixed(2)}</div>
+    <div class="lc-compact-side" style="display:flex; gap:20px; flex-wrap:wrap;">
+      <div style="min-width:140px;"><h2 style="font-size:12px; margin-bottom:2px;">Total Days</h2>${totalDaysRows}</div>
+      <div style="min-width:180px;"><h2 style="font-size:12px; margin-bottom:2px;">Salary Summary</h2>${summaryRows}${adjRows}</div>
+      <div style="min-width:160px;">
+        <div style="background:${BRAND_BLACK_HEX}; color:white; text-align:center; padding:6px; border-radius:6px 6px 0 0; font-size:11px; font-weight:bold;">FINAL SALARY TO PROCESS</div>
+        <div style="background:#C6EFCE; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${adjustedTotal.toFixed(2)}</div>
       </div>
     </div>
   `;
