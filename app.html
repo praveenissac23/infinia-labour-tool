@@ -166,6 +166,7 @@
       <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
       <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
+      <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
     </div>
     <div class="main">
       <div class="topbar">
@@ -437,6 +438,21 @@
           </div>
         </div>
 
+        <!-- ============ ACTIVITY MONITOR SCREEN (admin only) ============ -->
+        <div class="screen" id="screen-activity">
+          <div class="toolbar">
+            <button class="btn btn-primary" onclick="loadActivityLog()">Refresh</button>
+          </div>
+          <div class="card">
+            <div class="grid-wrap" style="max-height: 70vh;">
+              <table>
+                <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+                <tbody id="activity-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -506,6 +522,7 @@ const SCREEN_TITLES = {
   livecard: "Live Card",
   errorcheck: "Error Check",
   settings: "Settings",
+  activity: "Activity Monitor",
 };
 
 function switchScreen(name) {
@@ -513,6 +530,8 @@ function switchScreen(name) {
   document.getElementById("screen-" + name).classList.add("active");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.screen === name));
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
+  localStorage.setItem("infinia_last_screen", name);
+  if (name === "activity") loadActivityLog();
 }
 
 async function initApp() {
@@ -541,6 +560,7 @@ async function initApp() {
 
   if (CURRENT_ROLE === "admin") {
     document.getElementById("user-mgmt-card").style.display = "block";
+    document.getElementById("nav-activity").style.display = "block";
     await loadUsers();
   }
 
@@ -548,6 +568,14 @@ async function initApp() {
   initReportColumnPicker();
   renderLiveCardWorkerList();
   await loadDashboardCalendar(currentCycle);
+
+  // Resume the screen the user was last on, same as reopening the
+  // desktop app to where you left it - Dashboard stays the default
+  // for a brand-new session.
+  const lastScreen = localStorage.getItem("infinia_last_screen");
+  if (lastScreen && SCREEN_TITLES[lastScreen] && (lastScreen !== "activity" || CURRENT_ROLE === "admin")) {
+    switchScreen(lastScreen);
+  }
 }
 
 function monthYearFor(d) {
@@ -587,6 +615,17 @@ async function loadDate(dateStr, preserveStatus) {
   });
   ticked.clear();
 
+  // Restore any unsaved draft for this date - same idea as the desktop
+  // app resuming a session, so a refresh or an accidental navigation
+  // away doesn't silently lose typed-but-unsaved entries.
+  const draft = loadDraft(dateStr);
+  if (draft) {
+    Object.keys(draft).forEach(empNo => {
+      if (rowData[empNo]) rowData[empNo] = draft[empNo];
+    });
+    if (!preserveStatus) showStatus("att-status", "warn", "Restored unsaved changes from your last session on this date.");
+  }
+
   const dateObj = new Date(dateStr + "T00:00:00");
   document.getElementById("viewing-label").textContent =
     "Viewing: " + dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -594,6 +633,25 @@ async function loadDate(dateStr, preserveStatus) {
   document.getElementById("loading").style.display = "none";
   document.getElementById("grid-table").style.display = "table";
   renderRows();
+}
+
+// ---- Attendance autosave draft (localStorage, per date) ----
+function draftKey(dateStr) { return "infinia_draft_" + dateStr; }
+function loadDraft(dateStr) {
+  try {
+    const raw = localStorage.getItem(draftKey(dateStr));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+let draftSaveTimer = null;
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(draftKey(currentDate), JSON.stringify(rowData)); } catch (e) {}
+  }, 500);
+}
+function clearDraft(dateStr) {
+  try { localStorage.removeItem(draftKey(dateStr)); } catch (e) {}
 }
 
 function renderRows() {
@@ -633,7 +691,7 @@ function selectHtml(empNo, field, values, current) {
 }
 
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
-function onField(empNo, field, value) { rowData[empNo][field] = value; }
+function onField(empNo, field, value) { rowData[empNo][field] = value; scheduleDraftSave(); }
 function onTick(empNo, checked) { checked ? ticked.add(empNo) : ticked.delete(empNo); }
 function toggleAll(checked) {
   employees.forEach(e => checked ? ticked.add(e.emp_no) : ticked.delete(e.emp_no));
@@ -662,6 +720,7 @@ function applyBulk() {
     if (ot) d.ot = ot;
     if (bh) d.bh = bh;
   });
+  scheduleDraftSave();
   renderRows();
 }
 
@@ -704,6 +763,7 @@ async function saveAttendance() {
     } else {
       showStatus("att-status", "ok", msg);
     }
+    clearDraft(currentDate);
     await loadDate(currentDate, true);
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
@@ -1112,6 +1172,23 @@ async function selectLiveCardWorker(empNo) {
   `;
 }
 const BRAND_BLACK_HEX = "#2E3238";
+
+// ============ ACTIVITY MONITOR (admin only) ============
+async function loadActivityLog() {
+  const body = document.getElementById("activity-body");
+  body.innerHTML = `<tr><td colspan="4" class="empty-note">Loading...</td></tr>`;
+  const rows = await apiCall("/audit-log");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">No activity recorded yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const when = new Date(r.created_at).toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    return `<tr><td>${when}</td><td>${r.full_name} (${r.username})</td><td>${r.action}</td><td>${r.details || "-"}</td></tr>`;
+  }).join("");
+}
 
 // ============ ERROR CHECK ============
 async function loadErrorCheck() {
