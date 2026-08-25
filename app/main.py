@@ -59,12 +59,18 @@ app.add_middleware(
 # ---------------------------------------------------------------------
 # AUTH
 # ---------------------------------------------------------------------
+def log_action(db: Session, user_id, action: str, details: str = ""):
+    db.add(models.AuditLog(user_id=user_id, action=action, details=details))
+    db.commit()
+
+
 @app.post("/auth/login", response_model=schemas.TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not user.active or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     token = auth.create_access_token({"sub": user.username})
+    log_action(db, user.id, "login")
     return schemas.TokenResponse(access_token=token, role=user.role, full_name=user.full_name)
 
 
@@ -82,6 +88,7 @@ def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depend
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
     user.hashed_password = auth.hash_password(payload.new_password)
     db.commit()
+    log_action(db, user.id, "change_password")
     return {"ok": True}
 
 
@@ -109,6 +116,7 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    log_action(db, user.id, "create_user", f"{payload.username} ({payload.role})")
     return new_user
 
 
@@ -122,7 +130,28 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="You can't deactivate your own account.")
     target.active = False
     db.commit()
+    log_action(db, user.id, "deactivate_user", target.username)
     return {"ok": True}
+
+
+@app.get("/audit-log")
+def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
+                    user: models.User = Depends(auth.require_admin)):
+    rows = (
+        db.query(models.AuditLog, models.User.username, models.User.full_name)
+        .outerjoin(models.User, models.AuditLog.user_id == models.User.id)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": log.id, "action": log.action, "details": log.details,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "username": username or "unknown", "full_name": full_name or "Unknown",
+        }
+        for log, username, full_name in rows
+    ]
 
 
 # ---------------------------------------------------------------------
@@ -149,6 +178,7 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
         db.add(existing)
     db.commit()
     db.refresh(existing)
+    log_action(db, user.id, "save_employee", f"{emp.emp_no} - {emp.name}")
     return existing
 
 
@@ -160,6 +190,7 @@ def deactivate_employee(emp_no: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Employee not found")
     emp.active = False
     db.commit()
+    log_action(db, user.id, "deactivate_employee", emp_no)
     return {"ok": True}
 
 
@@ -317,8 +348,12 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
         employee = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         services.recalculate_summary(db, employee, month_year)
 
-    return {"saved": len([r for e, r in to_process if r is not None]),
-            "blocked": blocked}
+    saved_count = len([r for e, r in to_process if r is not None])
+    if saved_count or blocked:
+        the_date = payload.rows[0].full_date if payload.rows else ""
+        log_action(db, user.id, "save_attendance", f"{the_date}: {saved_count} worker(s)")
+
+    return {"saved": saved_count, "blocked": blocked}
 
 
 # ---------------------------------------------------------------------
@@ -384,6 +419,8 @@ def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session
     db.add(new_adj)
     db.commit()
     db.refresh(new_adj)
+    log_action(db, user.id, "add_adjustment",
+               f"{summary.emp_no} - {adj.description}: {'-' if adj.is_deduction else '+'}{adj.amount}")
     return new_adj
 
 
@@ -393,8 +430,11 @@ def remove_adjustment(adjustment_id: int, db: Session = Depends(get_db),
     adj = db.query(models.SalaryAdjustment).filter(models.SalaryAdjustment.id == adjustment_id).first()
     if not adj:
         raise HTTPException(status_code=404, detail="Adjustment not found")
+    summary = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.id == adj.summary_id).first()
+    detail = f"{summary.emp_no} - {adj.description}" if summary else adj.description
     db.delete(adj)
     db.commit()
+    log_action(db, user.id, "remove_adjustment", detail)
     return {"ok": True}
 
 
