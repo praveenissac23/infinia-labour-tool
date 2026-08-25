@@ -11,12 +11,15 @@ from typing import Optional
 import io
 import json
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from database import get_db, engine, Base
 import models
@@ -206,6 +209,93 @@ def deactivate_employee(emp_no: str, db: Session = Depends(get_db),
     db.commit()
     log_action(db, user.id, "deactivate_employee", emp_no)
     return {"ok": True}
+
+
+EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Total Salary", "Basic Salary"]
+
+
+@app.get("/employees/template")
+def download_employee_template(token: str, db: Session = Depends(get_db)):
+    """Blank spreadsheet with the exact columns /employees/import expects,
+    so staff can fill it in offline and bring it back."""
+    auth.get_download_user_from_token(token, db)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Employees"
+    for i, h in enumerate(EMPLOYEE_TEMPLATE_HEADERS, start=1):
+        c = ws.cell(row=1, column=i, value=h)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="C0392B")
+        ws.column_dimensions[get_column_letter(i)].width = 18
+    ws.append(["D-99", "SAMPLE WORKER", "DRIVER", 2000, 900])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Employee_Template.xlsx"},
+    )
+
+
+@app.post("/employees/import")
+async def import_employees(file: UploadFile = File(...), db: Session = Depends(get_db),
+                            user: models.User = Depends(auth.require_admin)):
+    """
+    Bulk create/update from the filled-in template - matches existing
+    workers by Emp No (updates them) and creates anyone new, same rules
+    as the one-at-a-time Add/Update Employee form.
+    """
+    contents = await file.read()
+    try:
+        wb = load_workbook(io.BytesIO(contents), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read that file - please upload the .xlsx template.")
+    ws = wb.active
+
+    header_row = [str(c.value).strip() if c.value else "" for c in ws[1]]
+    expected = {h.lower(): i for i, h in enumerate(header_row)}
+    required = ["emp no", "name"]
+    if not all(r in expected for r in required):
+        raise HTTPException(status_code=400, detail="Missing required columns 'Emp No' and 'Name' - please use the template.")
+
+    created, updated, errors = 0, 0, []
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if not row or all(v is None or str(v).strip() == "" for v in row):
+            continue
+
+        def get(col_name, default=""):
+            idx = expected.get(col_name)
+            if idx is None or idx >= len(row):
+                return default
+            val = row[idx]
+            return val if val is not None else default
+
+        emp_no = str(get("emp no")).strip()
+        name = str(get("name")).strip()
+        if not emp_no or not name:
+            errors.append(f"Row {row_idx}: missing Emp No or Name, skipped.")
+            continue
+        try:
+            total_salary = float(get("total salary", 0) or 0)
+            basic_salary = float(get("basic salary", 0) or 0)
+        except (TypeError, ValueError):
+            errors.append(f"Row {row_idx} ({emp_no}): Total/Basic Salary must be numbers, skipped.")
+            continue
+        trade = str(get("trade", "")).strip()
+
+        existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        if existing:
+            existing.name, existing.trade = name, trade
+            existing.total_salary, existing.basic_salary = total_salary, basic_salary
+            existing.active = True
+            updated += 1
+        else:
+            db.add(models.Employee(emp_no=emp_no, name=name, trade=trade,
+                                    total_salary=total_salary, basic_salary=basic_salary, active=True))
+            created += 1
+    db.commit()
+    log_action(db, user.id, "import_employees", f"{created} created, {updated} updated, {len(errors)} errors")
+    return {"created": created, "updated": updated, "errors": errors}
 
 
 # ---------------------------------------------------------------------
