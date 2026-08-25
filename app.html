@@ -137,6 +137,8 @@
   .dash-cal-day.today { outline: 3px solid #F9A825; outline-offset: -3px; }
   .dash-cal-day:hover { opacity: 0.85; }
   .dash-cal-empty { visibility: hidden; }
+  .report-col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
+  .report-col-picker label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -161,6 +163,7 @@
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
+      <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
       <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
     </div>
@@ -306,20 +309,29 @@
             <label>Cycle (Month Year):</label>
             <input type="text" id="report-cycle" placeholder="e.g. August 2026">
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
-            <button class="btn btn-dark" onclick="exportCards('excel')">Export Excel</button>
-            <button class="btn btn-dark" onclick="exportCards('pdf')">Export PDF</button>
           </div>
           <div class="status-msg" id="report-status"></div>
+
           <div class="card">
-            <div class="grid-wrap" style="max-height: 65vh;">
+            <h2>Columns to include</h2>
+            <div id="report-column-picker" class="report-col-picker"></div>
+          </div>
+
+          <div class="card">
+            <h2>Preview</h2>
+            <div class="grid-wrap" style="max-height: 55vh;">
               <table>
-                <thead><tr>
-                  <th>Emp No</th><th>Name</th><th>Present</th><th>Absent</th><th>Sick</th><th>Holiday</th>
-                  <th>OT Hrs</th><th>BH Hrs</th><th>Final Salary</th><th>Adjustments</th>
-                </tr></thead>
+                <thead><tr id="report-head-row"></tr></thead>
                 <tbody id="report-body"></tbody>
               </table>
             </div>
+          </div>
+
+          <div class="card">
+            <h2>Combine</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Combine every worker's full salary card (not just the columns above) into one file for this cycle - same as the desktop app's Combine feature.</p>
+            <button class="btn btn-dark" onclick="exportCards('excel')">Combine to Excel</button>
+            <button class="btn btn-dark" onclick="exportCards('pdf')">Combine to PDF</button>
           </div>
         </div>
 
@@ -329,6 +341,8 @@
             <label>Cycle:</label>
             <input type="text" id="adj-cycle" placeholder="e.g. August 2026">
             <button class="btn btn-primary" onclick="loadAdjustmentsList()">Load</button>
+            <label>Search:</label>
+            <input type="text" id="adj-search-box" placeholder="Employee No or Name" oninput="renderAdjustmentsWorkerList()">
           </div>
           <div class="status-msg" id="adj-status"></div>
           <div class="card" id="adj-detail-card" style="display:none;">
@@ -348,6 +362,30 @@
                 <thead><tr><th>Emp No</th><th>Name</th><th>Final Salary</th><th>Adjusted Final Salary</th></tr></thead>
                 <tbody id="adj-worker-body"></tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ LIVE CARD SCREEN ============ -->
+        <div class="screen" id="screen-livecard">
+          <div class="toolbar">
+            <label>Cycle:</label>
+            <input type="text" id="livecard-cycle" placeholder="e.g. August 2026">
+            <label>Search:</label>
+            <input type="text" id="livecard-search" placeholder="Employee No or Name" oninput="renderLiveCardWorkerList()">
+          </div>
+          <div style="display:flex; gap:14px; flex-wrap:wrap;">
+            <div class="card" style="flex:1; min-width:220px; max-width:320px;">
+              <h2>Workers</h2>
+              <div class="grid-wrap" style="max-height: 60vh;">
+                <table>
+                  <thead><tr><th>Emp No</th><th>Name</th></tr></thead>
+                  <tbody id="livecard-worker-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card" style="flex:2; min-width:280px;" id="livecard-detail">
+              <p class="empty-note">Pick a worker on the left to view their card.</p>
             </div>
           </div>
         </div>
@@ -465,6 +503,7 @@ const SCREEN_TITLES = {
   masterdata: "Master Data",
   reports: "Reports / Summaries",
   adjustments: "Salary Adjustments",
+  livecard: "Live Card",
   errorcheck: "Error Check",
   settings: "Settings",
 };
@@ -506,6 +545,8 @@ async function initApp() {
   }
 
   startDashboardClock();
+  initReportColumnPicker();
+  renderLiveCardWorkerList();
   await loadDashboardCalendar(currentCycle);
 }
 
@@ -753,25 +794,84 @@ async function addEngineer() {
   populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
 }
 
-// ============ REPORTS ============
+// ============ REPORTS (column picker + live preview) ============
+const REPORT_COLUMNS = [
+  { key: "emp_no", label: "Emp No", default: true, kind: "text" },
+  { key: "emp_name", label: "Name", default: true, kind: "text" },
+  { key: "trade", label: "Trade", default: false, kind: "text" },
+  { key: "total_salary", label: "Total Salary", default: false, kind: "money" },
+  { key: "present_days", label: "Present", default: true, kind: "num" },
+  { key: "absent_days", label: "Absent", default: true, kind: "num" },
+  { key: "sick_days", label: "Sick", default: true, kind: "num" },
+  { key: "medical_days", label: "Medical", default: false, kind: "num" },
+  { key: "friday_days", label: "Friday", default: false, kind: "num" },
+  { key: "holiday_days", label: "Holiday", default: true, kind: "num" },
+  { key: "leave_days", label: "Leave", default: false, kind: "num" },
+  { key: "ot_hours", label: "OT Hours", default: true, kind: "num" },
+  { key: "bh_hours", label: "BH Hours", default: true, kind: "num" },
+  { key: "basic_pay_input", label: "Basic Pay", default: false, kind: "money" },
+  { key: "deduction", label: "Absence/Leave Deduction", default: false, kind: "money" },
+  { key: "ot_amount", label: "OT Amount", default: false, kind: "money" },
+  { key: "bh_amount", label: "BH Amount", default: false, kind: "money" },
+  { key: "final_salary", label: "Final Salary", default: true, kind: "money" },
+  { key: "adjustments", label: "Adjustments", default: true, kind: "adjustments" },
+  { key: "adjusted_final_salary", label: "Adjusted Final Salary", default: true, kind: "money" },
+];
+let currentReportSummaries = [];
+
+function initReportColumnPicker() {
+  const el = document.getElementById("report-column-picker");
+  if (el.dataset.built) return;
+  el.innerHTML = REPORT_COLUMNS.map(c => `
+    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
+  `).join("");
+  el.dataset.built = "1";
+}
+
+function getSelectedReportColumns() {
+  return REPORT_COLUMNS.filter(c =>
+    document.querySelector(`#report-column-picker input[data-col="${c.key}"]`)?.checked
+  );
+}
+
+function reportCellValue(s, col) {
+  if (col.key === "adjusted_final_salary") {
+    const total = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
+    return `AED ${total.toFixed(2)}`;
+  }
+  if (col.kind === "adjustments") {
+    return s.adjustments.length ? s.adjustments.map(a => `${a.description}: ${a.is_deduction ? "-" : "+"}${a.amount}`).join(", ") : "-";
+  }
+  const v = s[col.key];
+  if (col.kind === "money") return `AED ${(v || 0).toFixed(2)}`;
+  return v;
+}
+
+function renderReportPreview() {
+  const cols = getSelectedReportColumns();
+  const headRow = document.getElementById("report-head-row");
+  const body = document.getElementById("report-body");
+  headRow.innerHTML = cols.map(c => `<th>${c.label}</th>`).join("") || `<th>Pick at least one column</th>`;
+
+  if (!currentReportSummaries.length) {
+    body.innerHTML = `<tr><td colspan="${Math.max(cols.length, 1)}" class="empty-note">No data for this cycle yet.</td></tr>`;
+    return;
+  }
+  if (!cols.length) {
+    body.innerHTML = `<tr><td class="empty-note">Tick at least one column above.</td></tr>`;
+    return;
+  }
+  body.innerHTML = currentReportSummaries.map(s => `
+    <tr>${cols.map(c => `<td>${reportCellValue(s, c)}</td>`).join("")}</tr>
+  `).join("");
+}
+
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
-  const summaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
-  const body = document.getElementById("report-body");
-  if (!summaries.length) {
-    body.innerHTML = `<tr><td colspan="10" class="empty-note">No data for this cycle yet.</td></tr>`;
-    return;
-  }
-  body.innerHTML = summaries.map(s => `
-    <tr>
-      <td>${s.emp_no}</td><td>${s.emp_name}</td>
-      <td>${s.present_days}</td><td>${s.absent_days}</td><td>${s.sick_days}</td><td>${s.holiday_days}</td>
-      <td>${s.ot_hours}</td><td>${s.bh_hours}</td>
-      <td>AED ${s.final_salary.toFixed(2)}</td>
-      <td>${s.adjustments.length ? s.adjustments.map(a => `${a.description}: ${a.is_deduction ? "-" : "+"}${a.amount}`).join(", ") : "-"}</td>
-    </tr>
-  `).join("");
+  initReportColumnPicker();
+  currentReportSummaries = await apiCall(`/summaries/${encodeURIComponent(cycle)}`);
+  renderReportPreview();
 }
 
 // ============ SALARY ADJUSTMENTS ============
@@ -790,7 +890,15 @@ function renderAdjustmentsWorkerList() {
     body.innerHTML = `<tr><td colspan="4" class="empty-note">No data for this cycle yet.</td></tr>`;
     return;
   }
-  body.innerHTML = currentSummaries.map(s => {
+  const search = (document.getElementById("adj-search-box").value || "").trim().toLowerCase();
+  const filtered = search
+    ? currentSummaries.filter(s => s.emp_no.toLowerCase().includes(search) || s.emp_name.toLowerCase().includes(search))
+    : currentSummaries;
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">No workers match "${search}".</td></tr>`;
+    return;
+  }
+  body.innerHTML = filtered.map(s => {
     const adjustedTotal = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
     return `
     <tr class="clickable-row ${s.id === selectedSummaryId ? 'selected-row' : ''}" onclick="selectSummary(${s.id})">
@@ -922,6 +1030,88 @@ function goToAttendanceDate(dateStr) {
   document.getElementById("date-picker").value = dateStr;
   loadDate(dateStr);
 }
+
+// ============ LIVE CARD ============
+let selectedLiveCardEmpNo = null;
+
+function renderLiveCardWorkerList() {
+  const body = document.getElementById("livecard-worker-body");
+  const search = (document.getElementById("livecard-search").value || "").trim().toLowerCase();
+  const filtered = search
+    ? employees.filter(e => e.emp_no.toLowerCase().includes(search) || e.name.toLowerCase().includes(search))
+    : employees;
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="2" class="empty-note">No workers match "${search}".</td></tr>`;
+    return;
+  }
+  body.innerHTML = filtered.map(e => `
+    <tr class="clickable-row ${e.emp_no === selectedLiveCardEmpNo ? 'selected-row' : ''}" onclick="selectLiveCardWorker('${e.emp_no}')">
+      <td>${e.emp_no}</td><td>${e.name}</td>
+    </tr>`).join("");
+}
+
+async function selectLiveCardWorker(empNo) {
+  selectedLiveCardEmpNo = empNo;
+  renderLiveCardWorkerList();
+  const cycle = document.getElementById("livecard-cycle").value.trim() || monthYearFor(new Date());
+  document.getElementById("livecard-cycle").value = cycle;
+  const detail = document.getElementById("livecard-detail");
+  detail.innerHTML = `<p class="empty-note">Loading...</p>`;
+
+  const data = await apiCall(`/live-card/${encodeURIComponent(empNo)}/${encodeURIComponent(cycle)}`);
+  const s = data.summary;
+  const days = data.days;
+
+  if (!s) {
+    detail.innerHTML = `<p class="empty-note">No attendance recorded yet for ${empNo} in ${cycle}.</p>`;
+    return;
+  }
+
+  const adjustedTotal = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
+
+  let gridRows = "";
+  for (let day = 1; day <= 31; day++) {
+    const r = days[String(day)];
+    gridRows += `<tr>
+      <td>${day}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
+      <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
+      <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
+    </tr>`;
+  }
+
+  const totalDaysRows = [
+    ["Present", s.present_days], ["Absent", s.absent_days], ["Sick", s.sick_days],
+    ["Medical", s.medical_days], ["Friday", s.friday_days], ["Holiday", s.holiday_days],
+    ["Leave", s.leave_days], ["OT", s.ot_hours], ["BH", s.bh_hours],
+  ].map(([label, val]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${label}</strong><span>${val}</span></div>`).join("");
+
+  const summaryRows = [
+    ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
+    ["Absence/Leave", s.deduction, "-"], ["OT Amount", s.ot_amount, "+"], ["BH Amount", s.bh_amount, "+"],
+  ].map(([label, val, sign]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${label}</strong><span>${sign} AED ${(val || 0).toFixed(2)}</span></div>`).join("");
+
+  const adjRows = s.adjustments.map(a => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${a.amount.toFixed(2)}</span></div>`).join("");
+
+  detail.innerHTML = `
+    <h2>${s.emp_no} - ${s.emp_name}</h2>
+    <p style="font-size:12px; color:#888; margin-top:-8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${s.total_salary.toLocaleString()}</p>
+    <div class="grid-wrap" style="max-height: 300px; margin-bottom:14px;">
+      <table>
+        <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>
+        <tbody>${gridRows}</tbody>
+      </table>
+    </div>
+    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+      <div style="min-width:160px;"><h2 style="font-size:13px;">Total Days</h2>${totalDaysRows}</div>
+      <div style="min-width:200px;"><h2 style="font-size:13px;">Salary Summary</h2>${summaryRows}${adjRows}</div>
+      <div style="min-width:180px;">
+        <div style="background:${BRAND_BLACK_HEX}; color:white; text-align:center; padding:8px; border-radius:6px 6px 0 0; font-size:12px; font-weight:bold;">FINAL SALARY TO PROCESS</div>
+        <div style="background:#C6EFCE; text-align:center; padding:12px; border-radius:0 0 6px 6px; font-size:16px; font-weight:bold;">AED ${adjustedTotal.toFixed(2)}</div>
+      </div>
+    </div>
+  `;
+}
+const BRAND_BLACK_HEX = "#2E3238";
 
 // ============ ERROR CHECK ============
 async function loadErrorCheck() {
