@@ -1212,7 +1212,7 @@ async function initReportColumnPicker() {
     throw e;
   }
   const defaultDims = new Set(["emp_no", "name"]);
-  const defaultMeasures = new Set(["days_present", "days_absent", "ot_hours", "bh_hours", "final_salary_cost"]);
+  const defaultMeasures = new Set(["days_present", "days_absent", "ot_hours", "bh_hours", "ot_amount", "bh_amount", "final_salary_cost"]);
 
   idEl.innerHTML = reportCatalog.dimensions.map(d => `
     <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""} onchange="loadReports()"> ${d.label}</label>
