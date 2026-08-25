@@ -10,6 +10,7 @@ Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
 import io
+from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -20,6 +21,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+import payroll_cycle as pcyc
 
 BRAND_RED = "C0392B"
 BRAND_BLACK = "2E3238"
@@ -50,8 +52,28 @@ def _adjusted_final_salary(summary):
     return round(total, 2)
 
 
-def _rows_by_day(daily_rows):
-    return {r.day: r for r in daily_rows if r.day}
+def _rows_by_date(daily_rows):
+    return {r.full_date: r for r in daily_rows if r.full_date}
+
+
+def _cycle_dates(month_year):
+    """
+    Every actual calendar date in this cycle, in order - 26th of the
+    prior month through the 25th of this one, matching how the cycle
+    genuinely runs. Falls back to a plain 1-31 range only if month_year
+    can't be parsed (shouldn't normally happen).
+    """
+    try:
+        parsed = datetime.strptime(f"25 {month_year}", "%d %B %Y").date()
+        start, end, _ = pcyc.cycle_bounds_for(parsed)
+        dates = []
+        cur = start
+        while cur <= end:
+            dates.append(cur)
+            cur = cur.fromordinal(cur.toordinal() + 1)
+        return dates
+    except ValueError:
+        return list(range(1, 32))
 
 
 def _write_worker_card(ws, summary, rows, border, start_row):
@@ -101,18 +123,16 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         c.border = border
     r += 1
 
-    by_day = _rows_by_day(rows)
-    day_idx = 0
-    for day in range(1, 32):
-        row = by_day.get(day)
-        if row is None:
-            continue  # skip days with no attendance recorded - this is what
-            # was creating 20-30 blank-looking rows per card
-        vals = [day, row.am, row.pm, row.site, row.engineer,
-                row.ot if row.ot else "", row.bh if row.bh else "", row.comments]
-        stripe = "F7F7F7" if day_idx % 2 == 0 else "FFFFFF"
-        day_idx += 1
-        ws.row_dimensions[r].height = 12
+    by_date = _rows_by_date(rows)
+    cycle_dates = _cycle_dates(summary.month_year)
+    for idx, d in enumerate(cycle_dates):
+        row = by_date.get(d)
+        label = d.strftime("%d %b") if hasattr(d, "strftime") else d
+        vals = [label, row.am if row else "", row.pm if row else "", row.site if row else "",
+                row.engineer if row else "", (row.ot if row and row.ot else ""),
+                (row.bh if row and row.bh else ""), (row.comments if row else "")]
+        stripe = "F7F7F7" if idx % 2 == 0 else "FFFFFF"
+        ws.row_dimensions[r].height = 9
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
@@ -122,14 +142,6 @@ def _write_worker_card(ws, summary, rows, border, start_row):
             if i == 4:  # Site column - values like "704" look numeric but
                 c.number_format = "@"  # aren't; "@" stops Excel's green
                 # triangle "number stored as text" warning on them.
-        r += 1
-    if day_idx == 0:
-        ws.row_dimensions[r].height = 12
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
-        empty_cell = ws.cell(row=r, column=1, value="No attendance recorded this cycle")
-        empty_cell.font = Font(italic=True, size=7.5, color="999999")
-        empty_cell.alignment = Alignment(horizontal="center", vertical="center")
-        empty_cell.border = border
         r += 1
     r += 1
 
@@ -217,12 +229,14 @@ def _write_worker_card(ws, summary, rows, border, start_row):
 def build_combined_excel(summaries_with_rows):
     """
     summaries_with_rows: list of (EmployeeSummary, [DailyRow]) tuples.
-    All workers stacked in ONE worksheet, exactly one blank row between
-    each card - no forced page break per worker, since cards are now a
-    variable, often-short height (only days with actual attendance are
-    shown), so cards flow naturally and pack the printed page instead
-    of each one wasting the rest of a page to itself.
+    All workers stacked in ONE worksheet, one blank row between each
+    card. Each card gets an explicit page break right after it so
+    printing gives exactly one worker per physical page - the full
+    31-day cycle (26th to 25th) is always shown, so every card is a
+    consistent height that fits one page cleanly.
     """
+    from openpyxl.worksheet.pagebreak import Break
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Combined Cards"
@@ -247,10 +261,12 @@ def build_combined_excel(summaries_with_rows):
 
     row = 1
     last_row = 1
-    for summary, rows in summaries_with_rows:
+    for idx, (summary, rows) in enumerate(summaries_with_rows):
         next_row = _write_worker_card(ws, summary, rows, border, row)
         last_row = next_row
-        row = next_row + 1  # exactly one blank row between cards
+        if idx < len(summaries_with_rows) - 1:
+            ws.row_breaks.append(Break(id=next_row))
+        row = next_row + 1  # one blank row between cards
 
     ws.print_area = f"A1:H{last_row}"
 
@@ -319,17 +335,17 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=6.5, leading=8,
                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
     headers = ["Date", "A.M", "P.M", "OT", "BH", "Site", "Engineer", "Comments"]
-    by_day = _rows_by_day(rows)
+    by_date = _rows_by_date(rows)
+    cycle_dates = _cycle_dates(summary.month_year)
     data = [[Paragraph(h, head_style) for h in headers]]
-    for day in range(1, 32):
-        row = by_day.get(day)
-        if row is None:
-            continue  # skip days with no attendance recorded
-        vals = [str(day), row.am, row.pm, str(row.ot or ""), str(row.bh or ""), row.site, row.engineer, row.comments]
+    for d in cycle_dates:
+        row = by_date.get(d)
+        label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
+        if row is not None:
+            vals = [label, row.am, row.pm, str(row.ot or ""), str(row.bh or ""), row.site, row.engineer, row.comments]
+        else:
+            vals = [label, "", "", "", "", "", "", ""]
         data.append([Paragraph(v or "", cell_style) for v in vals])
-    if len(data) == 1:
-        no_data_style = ParagraphStyle("NoData", parent=cell_style, textColor=colors.HexColor("#999999"), fontName="Helvetica-Oblique")
-        data.append([Paragraph("No attendance recorded this cycle", no_data_style)] + [Paragraph("", cell_style)] * 7)
 
     col_widths = [doc_width * w for w in (0.06, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.38)]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
@@ -417,12 +433,11 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
 
 def build_combined_pdf(summaries_with_rows):
     """
-    Cards flow naturally onto the same page where they fit, separated
-    by a clear gap - no forced page break per worker, since cards are
-    now a variable, often-short height (only days with actual
-    attendance are shown), so a fixed one-per-page rule would waste
-    most of most pages.
+    Each worker's full 31-day cycle card gets its own page - one card
+    per page keeps a consistent, predictable layout for a card sized
+    to always show the full 26th-25th cycle.
     """
+    from reportlab.platypus import PageBreak
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=8 * mm, bottomMargin=8 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
@@ -431,7 +446,7 @@ def build_combined_pdf(summaries_with_rows):
     for idx, (summary, rows) in enumerate(summaries_with_rows):
         elements.extend(_build_pdf_card_elements(summary, rows, doc.width, styles))
         if idx < len(summaries_with_rows) - 1:
-            elements.append(Spacer(1, 14))
+            elements.append(PageBreak())
     doc.build(elements)
     buf.seek(0)
     return buf
