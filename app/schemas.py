@@ -166,6 +166,7 @@ class EmployeeSummaryOut(BaseModel):
     other_deduction: float
     final_salary: float
     adjustments: list[SalaryAdjustmentOut] = []
+    sites: str = ""
 
     class Config:
         from_attributes = True
