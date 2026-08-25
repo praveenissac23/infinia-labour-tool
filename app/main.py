@@ -557,6 +557,32 @@ def list_summaries(month_year: str, as_of: str = None, db: Session = Depends(get
     return out
 
 
+@app.get("/summaries/{month_year}/by-site")
+def summaries_by_site(month_year: str, date_from: str = None, date_to: str = None,
+                       db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """
+    Site project cost for the cycle, based on actual attendance - reuses
+    reports.site_cost_center() directly, the same logic the desktop app
+    uses. Each worker's cost per day at a site is their own daily rate
+    (total_salary / 30) plus OT/BH at their own hourly rate, summed by
+    site - so a worker who was at two sites contributes only their
+    actual days at each, never their full salary twice. With no date
+    range, uses every date on file for the cycle; with one, costs only
+    that exact window.
+    """
+    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
+    filters = {}
+    if date_from:
+        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
+    if date_to:
+        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    result = rp.site_cost_center(daily_rows, summaries2, filters)
+    return {"title": result.title, "note": result.note,
+            "columns": [{"key": k, "label": label} for k, label in result.columns],
+            "rows": result.rows, "totals": result.totals}
+
+
 @app.get("/live-card/{emp_no}/{month_year}")
 def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
                    user: models.User = Depends(auth.get_current_user)):
