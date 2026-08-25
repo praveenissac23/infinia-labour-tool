@@ -46,6 +46,7 @@
   .toolbar { background: white; padding: 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
   .toolbar label { font-size: 12px; font-weight: bold; color: #555; }
   .toolbar input[type=date], .toolbar select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .toolbar select { width: 160px; flex: 0 0 auto; }
   .toolbar input[type=text] { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 220px; }
   .viewing-label { font-size: 13px; font-weight: bold; color: var(--red); margin-left: auto; }
 
@@ -346,6 +347,11 @@
           <div class="toolbar">
             <label>Cycle (Month Year):</label>
             <input type="text" id="report-cycle" placeholder="e.g. August 2026">
+            <label>Group by:</label>
+            <select id="report-groupby" onchange="loadReports()">
+              <option value="worker">Worker</option>
+              <option value="site">Site</option>
+            </select>
             <label>Date range (optional):</label>
             <input type="date" id="report-date-from">
             <span style="font-size:12px; color:#888;">to</span>
@@ -356,31 +362,22 @@
           </div>
           <div class="status-msg" id="report-status"></div>
 
-          <div class="card">
+          <div class="card" id="report-columns-card">
             <h2>Columns to include</h2>
-            <div id="report-column-picker" class="report-col-picker"></div>
+            <div style="font-size:11px; color:#888; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">Identifying (shown as-is, not totaled)</div>
+            <div id="report-column-picker-id" class="report-col-picker"></div>
+            <div style="font-size:11px; color:#888; font-weight:bold; text-transform:uppercase; margin:12px 0 4px;">Measures (summed in the total row)</div>
+            <div id="report-column-picker-measure" class="report-col-picker"></div>
           </div>
 
           <div class="card">
             <h2>Preview</h2>
+            <p id="report-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
             <div class="grid-wrap" style="max-height: 55vh;">
               <table>
                 <thead><tr id="report-head-row"></tr></thead>
                 <tbody id="report-body"></tbody>
                 <tfoot><tr id="report-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
-              </table>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Site Cost Breakdown</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Total labour cost per site for this cycle, based on actual attendance - a worker who split time between sites contributes only their real days at each, never double-counted. Separate from the table above since it's a different shape (one row per site, not per worker).</p>
-            <button class="btn btn-primary" onclick="loadSiteCost()">Run Site Cost</button>
-            <div class="grid-wrap" style="max-height: 40vh; margin-top:10px;">
-              <table>
-                <thead><tr id="sitecost-head-row"></tr></thead>
-                <tbody id="sitecost-body"></tbody>
-                <tfoot><tr id="sitecost-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
               </table>
             </div>
           </div>
@@ -1140,17 +1137,22 @@ const REPORT_COLUMNS = [
 let currentReportSummaries = [];
 
 function initReportColumnPicker() {
-  const el = document.getElementById("report-column-picker");
-  if (el.dataset.built) return;
-  el.innerHTML = REPORT_COLUMNS.map(c => `
+  const idEl = document.getElementById("report-column-picker-id");
+  const measureEl = document.getElementById("report-column-picker-measure");
+  if (idEl.dataset.built) return;
+  const isIdentifying = c => c.kind === "text" || c.kind === "adjustments";
+  idEl.innerHTML = REPORT_COLUMNS.filter(isIdentifying).map(c => `
     <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
   `).join("");
-  el.dataset.built = "1";
+  measureEl.innerHTML = REPORT_COLUMNS.filter(c => !isIdentifying(c)).map(c => `
+    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
+  `).join("");
+  idEl.dataset.built = "1";
 }
 
 function getSelectedReportColumns() {
   return REPORT_COLUMNS.filter(c =>
-    document.querySelector(`#report-column-picker input[data-col="${c.key}"]`)?.checked
+    document.querySelector(`.report-col-picker input[data-col="${c.key}"]`)?.checked
   );
 }
 
@@ -1251,38 +1253,42 @@ async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
   initReportColumnPicker();
-  const asOf = document.getElementById("report-date-to").value;
-  const url = asOf
-    ? `/summaries/${encodeURIComponent(cycle)}?as_of=${asOf}`
-    : `/summaries/${encodeURIComponent(cycle)}`;
-  currentReportSummaries = await apiCall(url);
-  renderReportPreview();
+  const groupBy = document.getElementById("report-groupby").value;
+  const columnsCard = document.getElementById("report-columns-card");
+  const noteEl = document.getElementById("report-note");
+
+  if (groupBy === "site") {
+    columnsCard.style.display = "none";
+    noteEl.textContent = "Total labour cost per site for this cycle, based on actual attendance - a worker who split time between sites contributes only their real days at each, never double-counted.";
+    const dateFrom = document.getElementById("report-date-from").value;
+    const dateTo = document.getElementById("report-date-to").value;
+    let url = `/summaries/${encodeURIComponent(cycle)}/by-site`;
+    const params = [];
+    if (dateFrom) params.push(`date_from=${dateFrom}`);
+    if (dateTo) params.push(`date_to=${dateTo}`);
+    if (params.length) url += "?" + params.join("&");
+    const result = await apiCall(url);
+    renderSiteGroupedPreview(result);
+  } else {
+    columnsCard.style.display = "block";
+    noteEl.textContent = "";
+    const asOf = document.getElementById("report-date-to").value;
+    const url = asOf
+      ? `/summaries/${encodeURIComponent(cycle)}?as_of=${asOf}`
+      : `/summaries/${encodeURIComponent(cycle)}`;
+    currentReportSummaries = await apiCall(url);
+    renderReportPreview();
+  }
 }
 
-async function loadSiteCost() {
-  const cycle = document.getElementById("report-cycle").value.trim();
-  if (!cycle) {
-    showStatus("report-status", "warn", "Enter a cycle first.");
-    return;
-  }
-  const dateFrom = document.getElementById("report-date-from").value;
-  const dateTo = document.getElementById("report-date-to").value;
-  let url = `/summaries/${encodeURIComponent(cycle)}/by-site`;
-  const params = [];
-  if (dateFrom) params.push(`date_from=${dateFrom}`);
-  if (dateTo) params.push(`date_to=${dateTo}`);
-  if (params.length) url += "?" + params.join("&");
-
-  const headRow = document.getElementById("sitecost-head-row");
-  const body = document.getElementById("sitecost-body");
-  const totalRow = document.getElementById("sitecost-total-row");
-  body.innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
-  totalRow.innerHTML = "";
-
-  const result = await apiCall(url);
+function renderSiteGroupedPreview(result) {
+  const headRow = document.getElementById("report-head-row");
+  const body = document.getElementById("report-body");
+  const totalRow = document.getElementById("report-total-row");
   headRow.innerHTML = result.columns.map(c => `<th>${c.label}</th>`).join("");
   if (!result.rows.length) {
     body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No attendance data for this cycle/range yet.</td></tr>`;
+    totalRow.innerHTML = "";
     return;
   }
   body.innerHTML = result.rows.map(r => `
