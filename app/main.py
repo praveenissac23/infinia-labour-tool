@@ -583,6 +583,83 @@ def summaries_by_site(month_year: str, date_from: str = None, date_to: str = Non
             "rows": result.rows, "totals": result.totals}
 
 
+@app.get("/reports/builder-catalog")
+def builder_catalog(user: models.User = Depends(auth.get_current_user)):
+    """
+    What's available to pick from in the Report Builder - dimensions
+    (things to group by / show as labels, never summed) and measures
+    (things summed per group). Site is just one dimension among several,
+    same as the desktop app - not a separate mode.
+    """
+    return {
+        "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_DIMENSIONS.items()],
+        "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_MEASURES.items()],
+    }
+
+
+@app.get("/reports/custom")
+def custom_report(month_year: str, dimensions: str = "", measures: str = "",
+                   date_from: str = None, date_to: str = None,
+                   db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """
+    The Report Builder's own aggregation engine (reports.build_custom_report,
+    the same one the desktop app used) - groups by whichever dimensions
+    were picked and sums whichever measures were picked. No dimensions
+    picked means one overall row; picking 'site' groups by site;
+    picking 'emp_no'+'name' groups per worker - grouping is just a
+    consequence of what's checked, not a separate toggle.
+    """
+    dims = [d for d in dimensions.split(",") if d]
+    meas = [m for m in measures.split(",") if m]
+    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
+    filters = {}
+    if date_from:
+        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
+    if date_to:
+        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    result = rp.build_custom_report("summary", dims, meas, filters, daily_rows, summaries2)
+    return {"title": result.title, "note": result.note,
+            "columns": [{"key": k, "label": label} for k, label in result.columns],
+            "rows": result.rows, "totals": result.totals}
+
+
+@app.get("/export/{month_year}/custom-report")
+def export_custom_report(month_year: str, token: str, dimensions: str = "", measures: str = "",
+                          date_from: str = None, date_to: str = None, format: str = "excel",
+                          db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    dims = [d for d in dimensions.split(",") if d]
+    meas = [m for m in measures.split(",") if m]
+    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
+    filters = {}
+    if date_from:
+        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
+    if date_to:
+        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    result = rp.build_custom_report("summary", dims, meas, filters, daily_rows, summaries2)
+    result_dict = {"columns": [{"key": k, "label": label} for k, label in result.columns],
+                    "rows": result.rows, "totals": result.totals}
+    if not result.columns:
+        raise HTTPException(status_code=400, detail="No columns selected.")
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    if format == "excel":
+        buf = export_web.build_generic_result_excel(result_dict, month_year)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
+        )
+    elif format == "pdf":
+        buf = export_web.build_generic_result_pdf(result_dict, month_year)
+        return StreamingResponse(
+            buf, media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.pdf"},
+        )
+    raise HTTPException(status_code=400, detail="format must be 'excel' or 'pdf'.")
+
+
 @app.get("/live-card/{emp_no}/{month_year}")
 def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
                    user: models.User = Depends(auth.get_current_user)):
