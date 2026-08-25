@@ -54,6 +54,105 @@ def _rows_by_day(daily_rows):
     return {r.day: r for r in daily_rows if r.day}
 
 
+def _write_worker_sheet(ws, summary, rows, border):
+    ws.column_dimensions["A"].width = 16
+    for col in "BCDEFGH":
+        ws.column_dimensions[col].width = 14
+    ws.column_dimensions["H"].width = 30
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # Employee info block
+    info = [
+        ("Employee Name:", summary.emp_name), ("Employee No:", summary.emp_no),
+        ("Trade:", summary.trade), ("Month & Year:", summary.month_year),
+        ("Salary:", summary.total_salary),
+    ]
+    r = 1
+    for label, value in info:
+        ws.cell(row=r, column=1, value=label).font = Font(bold=True)
+        cell = ws.cell(row=r, column=2, value=value)
+        cell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        r += 1
+    r += 1
+
+    # Daily grid header
+    header_row = r
+    for i, h in enumerate(DAILY_HEADERS, start=1):
+        c = ws.cell(row=header_row, column=i, value=h)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=BRAND_RED)
+        c.alignment = Alignment(horizontal="center")
+        c.border = border
+    r += 1
+
+    by_day = _rows_by_day(rows)
+    for day in range(1, 32):
+        row = by_day.get(day)
+        vals = [day, row.am if row else "", row.pm if row else "", row.site if row else "",
+                row.engineer if row else "", row.ot if row and row.ot else "",
+                row.bh if row and row.bh else "", row.comments if row else ""]
+        for i, v in enumerate(vals, start=1):
+            c = ws.cell(row=r, column=i, value=v)
+            c.alignment = Alignment(horizontal="center")
+            c.border = border
+        r += 1
+    r += 1
+
+    # OFFICE USE ONLY bar
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
+    office_cell = ws.cell(row=r, column=1, value="OFFICE USE ONLY")
+    office_cell.font = Font(bold=True)
+    office_cell.fill = PatternFill("solid", fgColor="BFBFBF")
+    office_cell.alignment = Alignment(horizontal="center")
+    r += 2
+
+    block_start = r
+    # Total Days (columns A-B)
+    for label, attr in TOTAL_DAYS_FIELDS:
+        val = getattr(summary, attr, 0) or 0
+        ws.cell(row=r, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=r, column=1).fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell = ws.cell(row=r, column=2, value=round(val, 2) if val else 0)
+        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.alignment = Alignment(horizontal="center")
+        r += 1
+
+    # Salary Summary (columns D-E), same starting row
+    r = block_start
+    for label, attr, sign in SUMMARY_FIELDS:
+        val = getattr(summary, attr, 0) or 0
+        prefix = f"{sign} " if sign else ""
+        ws.cell(row=r, column=4, value=label).font = Font(bold=True)
+        ws.cell(row=r, column=4).fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell = ws.cell(row=r, column=5, value=f"{prefix}AED {val:,.2f}")
+        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.alignment = Alignment(horizontal="center")
+        r += 1
+    for adj in summary.adjustments:
+        sign = "-" if adj.is_deduction else "+"
+        ws.cell(row=r, column=4, value=adj.description).font = Font(bold=True)
+        ws.cell(row=r, column=4).fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell = ws.cell(row=r, column=5, value=f"{sign} AED {adj.amount:,.2f}")
+        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.alignment = Alignment(horizontal="center")
+        r += 1
+
+    # Final Salary to Process - its own box (columns G-H)
+    ws.cell(row=block_start, column=7, value="FINAL SALARY TO PROCESS").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=block_start, column=7).fill = PatternFill("solid", fgColor=BRAND_BLACK)
+    ws.merge_cells(start_row=block_start, start_column=7, end_row=block_start, end_column=8)
+    ws.cell(row=block_start, column=7).alignment = Alignment(horizontal="center")
+
+    final_cell = ws.cell(row=block_start + 1, column=7, value=f"AED {_adjusted_final_salary(summary):,.2f}")
+    final_cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
+    final_cell.font = Font(bold=True)
+    final_cell.alignment = Alignment(horizontal="center")
+    ws.merge_cells(start_row=block_start + 1, start_column=7, end_row=block_start + 1, end_column=8)
+
+
 def build_combined_excel(summaries_with_rows):
     """
     summaries_with_rows: list of (EmployeeSummary, [DailyRow]) tuples.
@@ -68,108 +167,33 @@ def build_combined_excel(summaries_with_rows):
     for summary, rows in summaries_with_rows:
         safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in str(summary.emp_no))[:28] or "card"
         ws = wb.create_sheet(title=safe_name)
-        ws.column_dimensions["A"].width = 16
-        for col in "BCDEFGH":
-            ws.column_dimensions[col].width = 14
-        ws.column_dimensions["H"].width = 30
-        ws.page_setup.orientation = "landscape"
-        ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 0
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
-
-        # Employee info block
-        info = [
-            ("Employee Name:", summary.emp_name), ("Employee No:", summary.emp_no),
-            ("Trade:", summary.trade), ("Month & Year:", summary.month_year),
-            ("Salary:", summary.total_salary),
-        ]
-        r = 1
-        for label, value in info:
-            ws.cell(row=r, column=1, value=label).font = Font(bold=True)
-            cell = ws.cell(row=r, column=2, value=value)
-            cell.fill = PatternFill("solid", fgColor=GREY_FILL)
-            r += 1
-        r += 1
-
-        # Daily grid header
-        header_row = r
-        for i, h in enumerate(DAILY_HEADERS, start=1):
-            c = ws.cell(row=header_row, column=i, value=h)
-            c.font = Font(bold=True, color="FFFFFF")
-            c.fill = PatternFill("solid", fgColor=BRAND_RED)
-            c.alignment = Alignment(horizontal="center")
-            c.border = border
-        r += 1
-
-        by_day = _rows_by_day(rows)
-        for day in range(1, 32):
-            row = by_day.get(day)
-            vals = [day, row.am if row else "", row.pm if row else "", row.site if row else "",
-                    row.engineer if row else "", row.ot if row and row.ot else "",
-                    row.bh if row and row.bh else "", row.comments if row else ""]
-            for i, v in enumerate(vals, start=1):
-                c = ws.cell(row=r, column=i, value=v)
-                c.alignment = Alignment(horizontal="center")
-                c.border = border
-            r += 1
-        r += 1
-
-        # OFFICE USE ONLY bar
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
-        office_cell = ws.cell(row=r, column=1, value="OFFICE USE ONLY")
-        office_cell.font = Font(bold=True)
-        office_cell.fill = PatternFill("solid", fgColor="BFBFBF")
-        office_cell.alignment = Alignment(horizontal="center")
-        r += 2
-
-        block_start = r
-        # Total Days (columns A-B)
-        for label, attr in TOTAL_DAYS_FIELDS:
-            val = getattr(summary, attr, 0) or 0
-            ws.cell(row=r, column=1, value=label).font = Font(bold=True)
-            ws.cell(row=r, column=1).fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell = ws.cell(row=r, column=2, value=round(val, 2) if val else 0)
-            vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell.alignment = Alignment(horizontal="center")
-            r += 1
-        total_days_end = r
-
-        # Salary Summary (columns D-E), same starting row
-        r = block_start
-        for label, attr, sign in SUMMARY_FIELDS:
-            val = getattr(summary, attr, 0) or 0
-            prefix = f"{sign} " if sign else ""
-            ws.cell(row=r, column=4, value=label).font = Font(bold=True)
-            ws.cell(row=r, column=4).fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell = ws.cell(row=r, column=5, value=f"{prefix}AED {val:,.2f}")
-            vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell.alignment = Alignment(horizontal="center")
-            r += 1
-        for adj in summary.adjustments:
-            sign = "-" if adj.is_deduction else "+"
-            ws.cell(row=r, column=4, value=adj.description).font = Font(bold=True)
-            ws.cell(row=r, column=4).fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell = ws.cell(row=r, column=5, value=f"{sign} AED {adj.amount:,.2f}")
-            vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
-            vcell.alignment = Alignment(horizontal="center")
-            r += 1
-
-        # Final Salary to Process - its own box (columns G-H)
-        ws.cell(row=block_start, column=7, value="FINAL SALARY TO PROCESS").font = Font(bold=True, color="FFFFFF")
-        ws.cell(row=block_start, column=7).fill = PatternFill("solid", fgColor=BRAND_BLACK)
-        ws.merge_cells(start_row=block_start, start_column=7, end_row=block_start, end_column=8)
-        ws.cell(row=block_start, column=7).alignment = Alignment(horizontal="center")
-
-        final_cell = ws.cell(row=block_start + 1, column=7, value=f"AED {_adjusted_final_salary(summary):,.2f}")
-        final_cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
-        final_cell.font = Font(bold=True)
-        final_cell.alignment = Alignment(horizontal="center")
-        ws.merge_cells(start_row=block_start + 1, start_column=7, end_row=block_start + 1, end_column=8)
+        _write_worker_sheet(ws, summary, rows, border)
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def build_separate_excel_files(summaries_with_rows):
+    """
+    One standalone .xlsx per worker instead of one workbook with many
+    sheets - returns [(filename, BytesIO), ...] for the caller to zip.
+    """
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    files = []
+    for summary, rows in summaries_with_rows:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Card"
+        _write_worker_sheet(ws, summary, rows, border)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in str(summary.emp_no))
+        files.append((f"{safe_name}.xlsx", buf))
+    return files
 
 
 def _build_pdf_card_elements(summary, rows, doc_width, styles):
@@ -291,5 +315,32 @@ def build_combined_pdf(summaries_with_rows):
         if idx < len(summaries_with_rows) - 1:
             elements.append(PageBreak())
     doc.build(elements)
+    buf.seek(0)
+    return buf
+
+
+def build_separate_pdf_files(summaries_with_rows):
+    """One standalone .pdf per worker instead of one combined document."""
+    styles = getSampleStyleSheet()
+    files = []
+    for summary, rows in summaries_with_rows:
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=8 * mm, bottomMargin=8 * mm,
+                                 leftMargin=8 * mm, rightMargin=8 * mm)
+        elements = _build_pdf_card_elements(summary, rows, doc.width, styles)
+        doc.build(elements)
+        buf.seek(0)
+        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in str(summary.emp_no))
+        files.append((f"{safe_name}.pdf", buf))
+    return files
+
+
+def zip_files(files):
+    """files: [(filename, BytesIO), ...] -> a single zip file as BytesIO."""
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, filebuf in files:
+            zf.writestr(filename, filebuf.getvalue())
     buf.seek(0)
     return buf
