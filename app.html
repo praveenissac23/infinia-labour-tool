@@ -522,6 +522,8 @@
         <div class="screen" id="screen-activity">
           <div class="toolbar">
             <button class="btn btn-primary" onclick="loadActivityLog()">Refresh</button>
+            <label>Search:</label>
+            <input type="text" id="activity-search" placeholder="User, action, or details" oninput="renderActivityLog()">
           </div>
           <div class="card">
             <div class="grid-wrap" style="max-height: 70vh;">
@@ -1587,15 +1589,34 @@ async function selectLiveCardWorker(empNo) {
 const BRAND_BLACK_HEX = "#2E3238";
 
 // ============ ACTIVITY MONITOR (admin only) ============
+let currentActivityLog = [];
+
 async function loadActivityLog() {
   const body = document.getElementById("activity-body");
   body.innerHTML = `<tr><td colspan="4" class="empty-note">Loading...</td></tr>`;
-  const rows = await apiCall("/audit-log");
-  if (!rows.length) {
+  currentActivityLog = await apiCall("/audit-log");
+  renderActivityLog();
+}
+
+function renderActivityLog() {
+  const body = document.getElementById("activity-body");
+  const search = (document.getElementById("activity-search").value || "").trim().toLowerCase();
+  const filtered = search
+    ? currentActivityLog.filter(r =>
+        r.username.toLowerCase().includes(search) ||
+        r.full_name.toLowerCase().includes(search) ||
+        r.action.toLowerCase().includes(search) ||
+        (r.details || "").toLowerCase().includes(search))
+    : currentActivityLog;
+  if (!currentActivityLog.length) {
     body.innerHTML = `<tr><td colspan="4" class="empty-note">No activity recorded yet.</td></tr>`;
     return;
   }
-  body.innerHTML = rows.map(r => {
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">No activity matches "${search}".</td></tr>`;
+    return;
+  }
+  body.innerHTML = filtered.map(r => {
     const when = new Date(r.created_at).toLocaleString(undefined, {
       year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
