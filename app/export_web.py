@@ -87,31 +87,31 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     box_border = Border(left=thin_grey, right=thin_grey, top=thin_grey, bottom=thin_grey)
     r = start_row
 
-    # Employee info block - label in column A, value merged across B:H so
-    # it spans the same full width as the daily grid below it, instead of
-    # a narrow A:D block that looked off-center against the wider table.
+    # Employee info block - a modest-width panel (columns C-G) centered
+    # within the 8-column grid below it, with blank margin columns on
+    # both sides - not stretched edge-to-edge, which just left a big
+    # bare grey band with no content in most of it.
     info = [
         ("Employee Name:", summary.emp_name), ("Employee No:", summary.emp_no),
         ("Trade:", summary.trade), ("Month & Year:", summary.month_year),
         ("Salary (AED):", summary.total_salary),
     ]
     for label, value in info:
-        ws.row_dimensions[r].height = 14
-        lbl = ws.cell(row=r, column=1, value=label)
-        lbl.font = Font(bold=True, size=9.5)
+        ws.row_dimensions[r].height = 15
+        lbl = ws.cell(row=r, column=3, value=label)
+        lbl.font = Font(bold=True, size=10.5)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="right", vertical="center")
-        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
-        val = ws.cell(row=r, column=2, value=value)
+        ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=7)
+        val = ws.cell(row=r, column=4, value=value)
         val.fill = PatternFill("solid", fgColor=GREY_FILL)
-        val.font = Font(size=9.5)
-        val.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        val.font = Font(size=10.5)
+        val.alignment = Alignment(horizontal="center", vertical="center")
         val.border = box_border
-        for col in (3, 4, 5, 6, 7, 8):
+        for col in (5, 6, 7):
             ws.cell(row=r, column=col).border = box_border
             ws.cell(row=r, column=col).fill = PatternFill("solid", fgColor=GREY_FILL)
         r += 1
-    r += 1
 
     # Daily grid header
     header_row = r
@@ -133,18 +133,17 @@ def _write_worker_card(ws, summary, rows, border, start_row):
                 row.engineer if row else "", (row.ot if row and row.ot else ""),
                 (row.bh if row and row.bh else ""), (row.comments if row else "")]
         stripe = "F7F7F7" if idx % 2 == 0 else "FFFFFF"
-        ws.row_dimensions[r].height = 14.5
+        ws.row_dimensions[r].height = 15.5
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
             c.fill = PatternFill("solid", fgColor=stripe)
-            c.font = Font(size=10.5)
+            c.font = Font(size=11.5)
             if i == 4:  # Site column - values like "704" look numeric but
                 c.number_format = "@"  # aren't; "@" stops Excel's green
                 # triangle "number stored as text" warning on them.
         r += 1
-    r += 1
 
     # OFFICE USE ONLY bar
     ws.row_dimensions[r].height = 14
@@ -154,7 +153,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     office_cell.fill = PatternFill("solid", fgColor="BFBFBF")
     office_cell.alignment = Alignment(horizontal="center", vertical="center")
     office_cell.border = box_border
-    r += 2
+    r += 1
 
     block_start = r
     # Total Days (columns A-B), Salary Summary (columns D-E), Final
@@ -165,7 +164,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         ws.row_dimensions[r].height = 13
         val = getattr(summary, attr, 0) or 0
         lbl = ws.cell(row=r, column=1, value=label)
-        lbl.font = Font(bold=True, size=10)
+        lbl.font = Font(bold=True, size=11)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -173,7 +172,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="center", vertical="center")
-        vcell.font = Font(size=10)
+        vcell.font = Font(size=11)
         r += 1
     total_days_end = r
 
@@ -182,7 +181,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         val = getattr(summary, attr, 0) or 0
         prefix = f"{sign} " if sign else ""
         lbl = ws.cell(row=r, column=4, value=label)
-        lbl.font = Font(bold=True, size=10)
+        lbl.font = Font(bold=True, size=11)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -190,12 +189,12 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
-        vcell.font = Font(size=10)
+        vcell.font = Font(size=11)
         r += 1
     for adj in summary.adjustments:
         sign = "-" if adj.is_deduction else "+"
         lbl = ws.cell(row=r, column=4, value=adj.description)
-        lbl.font = Font(bold=True, size=10)
+        lbl.font = Font(bold=True, size=11)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -318,8 +317,8 @@ def build_separate_excel_files(summaries_with_rows):
 
 
 def _build_pdf_card_elements(summary, rows, doc_width, styles):
-    label_style = ParagraphStyle("InfoLabel", parent=styles["Normal"], fontSize=9, fontName="Helvetica-Bold", alignment=TA_LEFT)
-    value_style = ParagraphStyle("InfoValue", parent=styles["Normal"], fontSize=9, alignment=TA_LEFT)
+    label_style = ParagraphStyle("InfoLabel", parent=styles["Normal"], fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_LEFT)
+    value_style = ParagraphStyle("InfoValue", parent=styles["Normal"], fontSize=9.5, alignment=TA_LEFT)
     grey = colors.HexColor(f"#{GREY_FILL}")
     grid_color = colors.HexColor("#B0B0B0")
     elements = []
@@ -331,7 +330,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         [Paragraph("Month & Year:", label_style), Paragraph(summary.month_year or "", value_style)],
         [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.0f}", value_style)],
     ]
-    info_tbl = Table(info_rows, colWidths=[doc_width * 0.22, doc_width * 0.78])
+    info_tbl = Table(info_rows, colWidths=[doc_width * 0.18, doc_width * 0.36])
     info_tbl.hAlign = "CENTER"
     info_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
@@ -343,8 +342,8 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(info_tbl)
     elements.append(Spacer(1, 6))
 
-    cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=6.5, leading=8, alignment=TA_CENTER)
-    head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=6.5, leading=8,
+    cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=6.8, leading=8, alignment=TA_CENTER)
+    head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=6.8, leading=8,
                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
     headers = ["Date", "A.M", "P.M", "OT", "BH", "Site", "Engineer", "Comments"]
     by_date = _rows_by_date(rows)
@@ -359,16 +358,16 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
             vals = [label, "", "", "", "", "", "", ""]
         data.append([Paragraph(v or "", cell_style) for v in vals])
 
-    col_widths = [doc_width * w for w in (0.06, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.38)]
+    col_widths = [doc_width * w for w in (0.10, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.34)]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     row_bg_cmds = [("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F7F7F7")) for i in range(2, len(data), 2)]
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("GRID", (0, 0), (-1, -1), 0.4, grid_color),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ] + row_bg_cmds))
     elements.append(tbl)
