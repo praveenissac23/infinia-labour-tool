@@ -177,3 +177,48 @@ def get_previous_day_site_engineer(db: Session, emp_no: str, target_date):
     if prev_row is not None and (prev_row.site or "").strip():
         return prev_row.site, prev_row.engineer or ""
     return None
+
+
+def auto_fill_sunday_from_saturday(db: Session, employee: models.Employee, saturday_row: models.DailyRow):
+    """
+    When a Saturday is saved with a real Site, the following Sunday gets
+    that same Site/Engineer pre-filled automatically - A.M/P.M are left
+    blank so staff still has to mark it (usually Holiday) themselves;
+    the day only turns green on the calendar once they do. Never
+    overwrites a Sunday that already has real A.M/P.M data, in case
+    staff already handled that day separately.
+    """
+    from datetime import timedelta
+    if saturday_row.full_date.weekday() != 5:  # 5 = Saturday
+        return
+    site = (saturday_row.site or "").strip()
+    if not site:
+        return
+    sunday_date = saturday_row.full_date + timedelta(days=1)
+
+    existing = (
+        db.query(models.DailyRow)
+        .filter(and_(models.DailyRow.emp_no == employee.emp_no, models.DailyRow.full_date == sunday_date))
+        .first()
+    )
+    if existing is not None and ((existing.am or "").strip() or (existing.pm or "").strip()):
+        return  # staff already marked Sunday themselves - leave it alone
+
+    cycle_start, cycle_end, month_year = pcyc.cycle_bounds_for(sunday_date)
+    if existing is None:
+        existing = models.DailyRow(employee_id=employee.id, emp_no=employee.emp_no)
+        db.add(existing)
+
+    existing.emp_name = employee.name
+    existing.trade = employee.trade
+    existing.month_year = month_year
+    existing.full_date = sunday_date
+    existing.day = sunday_date.day
+    existing.am = ""
+    existing.pm = ""
+    existing.ot = 0
+    existing.bh = 0
+    existing.site = saturday_row.site
+    existing.engineer = saturday_row.engineer
+    existing.comments = existing.comments or ""
+    db.commit()
