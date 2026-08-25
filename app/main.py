@@ -11,7 +11,7 @@ from typing import Optional
 import io
 import json
 
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
@@ -238,12 +238,23 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/employees/import")
-async def import_employees(file: UploadFile = File(...), db: Session = Depends(get_db),
-                            user: models.User = Depends(auth.require_admin)):
+async def import_employees(file: UploadFile = File(...), mode: str = Form("add_only"),
+                            duplicate_handling: str = Form("skip"),
+                            db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
     """
-    Bulk create/update from the filled-in template - matches existing
-    workers by Emp No (updates them) and creates anyone new, same rules
-    as the one-at-a-time Add/Update Employee form.
+    Bulk create from the filled-in template, with explicit control over
+    two independent choices instead of always silently updating:
+
+    mode: 'add_only' leaves every existing employee alone; 'replace'
+    deactivates any active employee whose Emp No isn't in this file
+    (soft-delete via the same 'active' flag the rest of the app uses -
+    never a hard delete, since that would break their historical
+    DailyRow/EmployeeSummary records).
+
+    duplicate_handling: what to do when a row's Emp No already exists -
+    'skip' leaves the existing record untouched, 'update' overwrites it
+    with the file's data, 'add_new' creates a second, separate record
+    under a modified Emp No (e.g. "D-01 (1)") so both exist side by side.
     """
     contents = await file.read()
     try:
@@ -258,7 +269,16 @@ async def import_employees(file: UploadFile = File(...), db: Session = Depends(g
     if not all(r in expected for r in required):
         raise HTTPException(status_code=400, detail="Missing required columns 'Emp No' and 'Name' - please use the template.")
 
-    created, updated, errors = 0, 0, []
+    def unique_suffixed_emp_no(base_emp_no):
+        n = 1
+        while True:
+            candidate = f"{base_emp_no} ({n})"
+            if not db.query(models.Employee).filter(models.Employee.emp_no == candidate).first():
+                return candidate
+            n += 1
+
+    created, updated, skipped, added_as_new, errors = 0, 0, 0, 0, []
+    file_emp_nos = set()
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
@@ -282,20 +302,44 @@ async def import_employees(file: UploadFile = File(...), db: Session = Depends(g
             errors.append(f"Row {row_idx} ({emp_no}): Total/Basic Salary must be numbers, skipped.")
             continue
         trade = str(get("trade", "")).strip()
+        file_emp_nos.add(emp_no)
 
         existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         if existing:
-            existing.name, existing.trade = name, trade
-            existing.total_salary, existing.basic_salary = total_salary, basic_salary
-            existing.active = True
-            updated += 1
+            if duplicate_handling == "skip":
+                skipped += 1
+            elif duplicate_handling == "add_new":
+                new_emp_no = unique_suffixed_emp_no(emp_no)
+                db.add(models.Employee(emp_no=new_emp_no, name=name, trade=trade,
+                                        total_salary=total_salary, basic_salary=basic_salary, active=True))
+                added_as_new += 1
+            else:  # update
+                existing.name, existing.trade = name, trade
+                existing.total_salary, existing.basic_salary = total_salary, basic_salary
+                existing.active = True
+                updated += 1
         else:
             db.add(models.Employee(emp_no=emp_no, name=name, trade=trade,
                                     total_salary=total_salary, basic_salary=basic_salary, active=True))
             created += 1
+
+    deactivated = 0
+    if mode == "replace":
+        active_not_in_file = (
+            db.query(models.Employee)
+            .filter(models.Employee.active == True, ~models.Employee.emp_no.in_(file_emp_nos))  # noqa: E712
+            .all()
+        )
+        for emp in active_not_in_file:
+            emp.active = False
+            deactivated += 1
+
     db.commit()
-    log_action(db, user.id, "import_employees", f"{created} created, {updated} updated, {len(errors)} errors")
-    return {"created": created, "updated": updated, "errors": errors}
+    log_action(db, user.id, "import_employees",
+               f"{created} created, {updated} updated, {skipped} skipped, "
+               f"{added_as_new} added as new, {deactivated} deactivated, {len(errors)} errors")
+    return {"created": created, "updated": updated, "skipped": skipped,
+            "added_as_new": added_as_new, "deactivated": deactivated, "errors": errors}
 
 
 # ---------------------------------------------------------------------
