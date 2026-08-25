@@ -6,7 +6,7 @@ validation logic (data_engine.py, daily_attendance.py, payroll_cycle.py)
 directly - the only thing that changed is the storage layer, from
 pickled sessions/JSON files to a real multi-user database.
 """
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 import io
 import json
@@ -73,6 +73,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     token = auth.create_access_token({"sub": user.username})
     log_action(db, user.id, "login")
+    maybe_create_auto_backup(db)
     return schemas.TokenResponse(access_token=token, role=user.role, full_name=user.full_name)
 
 
@@ -382,9 +383,24 @@ def list_summaries(month_year: str, db: Session = Depends(get_db),
         .order_by(models.EmployeeSummary.emp_no)
         .all()
     )
+    # Site isn't a stored summary field - a worker can be at a different
+    # site each day - so it's aggregated here as the distinct sites
+    # worked during the cycle, not pulled from a column.
+    site_rows = (
+        db.query(models.DailyRow.emp_no, models.DailyRow.site)
+        .filter(models.DailyRow.month_year == month_year, models.DailyRow.site != "")
+        .distinct()
+        .all()
+    )
+    sites_by_emp = {}
+    for emp_no, site in site_rows:
+        if site:
+            sites_by_emp.setdefault(emp_no, []).append(site)
+
     out = []
     for s in summaries:
         item = schemas.EmployeeSummaryOut.from_orm(s)
+        item.sites = ", ".join(sorted(set(sites_by_emp.get(s.emp_no, []))))
         out.append(item)
     return out
 
@@ -625,41 +641,135 @@ def export_pdf_separate(month_year: str, token: str, db: Session = Depends(get_d
     )
 
 
-@app.get("/backup")
-def full_backup(token: str, db: Session = Depends(get_db)):
-    """
-    Full data backup (admin only): every employee, site, engineer,
-    daily attendance row, summary, and adjustment, as one JSON file -
-    the web equivalent of the desktop app's local file being the
-    backup. Downloadable any time from Settings.
-    """
-    user = auth.get_download_user_from_token(token, db)
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="This action requires admin access.")
+def _row_to_dict(obj):
+    d = {}
+    for col in obj.__table__.columns:
+        val = getattr(obj, col.name)
+        d[col.name] = val.isoformat() if hasattr(val, "isoformat") else val
+    return d
 
-    def row_to_dict(obj, exclude=("adjustments",)):
-        d = {}
-        for col in obj.__table__.columns:
-            val = getattr(obj, col.name)
-            d[col.name] = val.isoformat() if hasattr(val, "isoformat") else val
-        return d
 
-    data = {
-        "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
-        "employees": [row_to_dict(e) for e in db.query(models.Employee).all()],
-        "sites": [row_to_dict(s) for s in db.query(models.Site).all()],
-        "engineers": [row_to_dict(e) for e in db.query(models.Engineer).all()],
-        "daily_rows": [row_to_dict(r) for r in db.query(models.DailyRow).all()],
-        "summaries": [row_to_dict(s) for s in db.query(models.EmployeeSummary).all()],
-        "adjustments": [row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
+def build_backup_data(db: Session) -> dict:
+    return {
+        "generated_at": datetime.utcnow().isoformat(),
+        "employees": [_row_to_dict(e) for e in db.query(models.Employee).all()],
+        "sites": [_row_to_dict(s) for s in db.query(models.Site).all()],
+        "engineers": [_row_to_dict(e) for e in db.query(models.Engineer).all()],
+        "daily_rows": [_row_to_dict(r) for r in db.query(models.DailyRow).all()],
+        "summaries": [_row_to_dict(s) for s in db.query(models.EmployeeSummary).all()],
+        "adjustments": [_row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
     }
-    log_action(db, user.id, "download_backup")
-    buf = io.BytesIO(json.dumps(data, indent=2, default=str).encode("utf-8"))
-    safe_ts = __import__("datetime").date.today().isoformat()
+
+
+def maybe_create_auto_backup(db: Session):
+    """Called on login: creates one 'auto' backup per calendar month if
+    one doesn't already exist yet, so a snapshot always exists even if
+    nobody remembers to take one manually."""
+    month_start = date.today().replace(day=1)
+    existing = (
+        db.query(models.Backup)
+        .filter(models.Backup.trigger == "auto", models.Backup.created_at >= month_start)
+        .first()
+    )
+    if existing:
+        return
+    data = build_backup_data(db)
+    db.add(models.Backup(created_by=None, trigger="auto", data=json.dumps(data, default=str)))
+    db.commit()
+
+
+@app.post("/backup/create")
+def create_backup(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """Any signed-in user can take a backup - it's a data-safety net,
+    not something that should be gated behind admin access."""
+    data = build_backup_data(db)
+    b = models.Backup(created_by=user.id, trigger="manual", data=json.dumps(data, default=str))
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    log_action(db, user.id, "create_backup")
+    return {"id": b.id, "created_at": b.created_at.isoformat(), "trigger": b.trigger}
+
+
+@app.get("/backup/list")
+def list_backups(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    rows = (
+        db.query(models.Backup, models.User.username)
+        .outerjoin(models.User, models.Backup.created_by == models.User.id)
+        .order_by(models.Backup.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [
+        {"id": b.id, "created_at": b.created_at.isoformat(), "trigger": b.trigger,
+         "created_by": username or ("automatic" if b.trigger == "auto" else "unknown")}
+        for b, username in rows
+    ]
+
+
+@app.get("/backup/{backup_id}/download")
+def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Backup not found.")
+    log_action(db, user.id, "download_backup", f"backup #{backup_id}")
+    buf = io.BytesIO(b.data.encode("utf-8"))
+    ts = b.created_at.date().isoformat()
     return StreamingResponse(
         buf, media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename=Infinia_Backup_{safe_ts}.json"},
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Backup_{ts}_{backup_id}.json"},
     )
+
+
+@app.post("/backup/{backup_id}/restore")
+def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+    """
+    Admin only, unlike taking a backup - this overwrites current data,
+    so it stays behind the higher bar. Replaces employees, sites,
+    engineers, daily rows, summaries, and adjustments with exactly
+    what's in the chosen snapshot.
+    """
+    b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Backup not found.")
+    data = json.loads(b.data)
+
+    db.query(models.SalaryAdjustment).delete()
+    db.query(models.DailyRow).delete()
+    db.query(models.EmployeeSummary).delete()
+    db.query(models.Employee).delete()
+    db.query(models.Site).delete()
+    db.query(models.Engineer).delete()
+    db.flush()
+
+    def restore_rows(model, rows, date_fields=(), datetime_fields=()):
+        for r in rows:
+            r = dict(r)
+            for f in date_fields:
+                if r.get(f):
+                    r[f] = date.fromisoformat(r[f])
+            for f in datetime_fields:
+                if r.get(f):
+                    r[f] = datetime.fromisoformat(r[f])
+            db.add(model(**r))
+
+    restore_rows(models.Employee, data.get("employees", []), datetime_fields=("created_at", "updated_at"))
+    restore_rows(models.Site, data.get("sites", []), datetime_fields=("created_at",))
+    restore_rows(models.Engineer, data.get("engineers", []), datetime_fields=("created_at",))
+    restore_rows(models.DailyRow, data.get("daily_rows", []), date_fields=("full_date",), datetime_fields=("created_at", "updated_at"))
+    restore_rows(models.EmployeeSummary, data.get("summaries", []), datetime_fields=("created_at", "updated_at"))
+    db.commit()
+
+    for a in data.get("adjustments", []):
+        a = dict(a)
+        if a.get("created_at"):
+            a["created_at"] = datetime.fromisoformat(a["created_at"])
+        db.add(models.SalaryAdjustment(**a))
+    db.commit()
+
+    log_action(db, user.id, "restore_backup", f"restored from backup #{backup_id}")
+    return {"ok": True, "restored_from": backup_id}
 
 
 @app.get("/health")
