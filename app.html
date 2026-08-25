@@ -285,6 +285,14 @@
               <input type="number" id="md-emp-basic" placeholder="Basic Salary">
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
             </div>
+            <div class="form-row" style="margin-top:8px; padding-top:8px; border-top:1px solid #eee;">
+              <button class="btn btn-dark" onclick="downloadEmployeeTemplate()">Generate Template</button>
+              <label class="btn btn-gray" style="cursor:pointer; margin:0;">
+                Import Data
+                <input type="file" id="md-import-file" accept=".xlsx" style="display:none;" onchange="importEmployeeFile(this)">
+              </label>
+              <span style="font-size:12px; color:#888;">Download the template, fill it in, then re-upload it here to add or update many employees at once.</span>
+            </div>
           </div>
           <div class="card">
             <h2>Employees</h2>
@@ -591,7 +599,7 @@ function switchScreen(name) {
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
-  if (name === "reports" || name === "settings" || name === "combine") refreshDownloadToken();
+  if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "settings") loadBackupList();
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
@@ -939,6 +947,41 @@ async function saveEmployee() {
   } catch (e) {
     showStatus("md-status", "err", "Failed to save: " + (e.body?.detail || "Unknown error"));
   }
+}
+
+function downloadEmployeeTemplate() {
+  if (!cachedDownloadToken) {
+    showStatus("md-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/employees/template?token=${encodeURIComponent(cachedDownloadToken)}`;
+  window.open(url, "_blank");
+  showStatus("md-status", "ok", "Opening the employee template - check your downloads or the new tab.");
+}
+
+async function importEmployeeFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append("file", file);
+  showStatus("md-status", null);
+  try {
+    const result = await apiCall("/employees/import", { method: "POST", body: formData });
+    let msg = `Import done: ${result.created} created, ${result.updated} updated.`;
+    if (result.errors && result.errors.length) {
+      msg += "\n" + result.errors.join("\n");
+      showStatus("md-status", "warn", msg);
+    } else {
+      showStatus("md-status", "ok", msg);
+    }
+    employees = await apiCall("/employees?active_only=true");
+    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    renderMasterDataLists();
+  } catch (e) {
+    showStatus("md-status", "err", "Import failed: " + (e.body?.detail || "Unknown error"));
+  }
+  input.value = "";
 }
 
 async function addSite() {
