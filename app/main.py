@@ -8,6 +8,8 @@ pickled sessions/JSON files to a real multi-user database.
 """
 from datetime import date
 from typing import Optional
+import io
+import json
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -448,14 +450,61 @@ def root():
 def error_check(month_year: str, db: Session = Depends(get_db),
                  user: models.User = Depends(auth.get_current_user)):
     """
-    Same data-quality checks as the desktop app's Error Check report:
-    missing A.M/P.M status, Present days with no Site/Engineer, and BH
-    over 2 hours with no comment explaining it - reused directly from
-    reports.py rather than reimplemented.
+    The desktop app's original three checks (missing AM/P.M, Present
+    without Site/Engineer, BH without a comment) can never actually
+    happen here - /attendance/save already enforces those exact same
+    rules before a row is ever written, so this would always come back
+    empty. What genuinely CAN go wrong in the web app instead: a day
+    inside the cycle with no entry at all for an active worker, or an
+    OT/BH value large enough to be worth a second look.
     """
+    try:
+        parsed = __import__("datetime").datetime.strptime(f"25 {month_year}", "%d %B %Y").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="month_year must look like 'August 2026'.")
+    cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
+
+    active_employees = db.query(models.Employee).filter(models.Employee.active == True).all()  # noqa: E712
     rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
-    result = rp.check_for_errors(rows, [], {})
-    return {"title": result.title, "note": result.note, "rows": result.rows}
+
+    dates_by_emp = {}
+    for r in rows:
+        dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
+
+    from datetime import timedelta
+    all_dates = []
+    d = cycle_start
+    while d <= cycle_end:
+        all_dates.append(d)
+        d += timedelta(days=1)
+
+    out = []
+    for emp in active_employees:
+        entered = dates_by_emp.get(emp.emp_no, set())
+        missing = [d for d in all_dates if d not in entered]
+        if not entered:
+            out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
+                        "issue": f"No attendance entered at all for {month_year}."})
+        elif missing:
+            preview = ", ".join(d.strftime("%d %b") for d in missing[:5])
+            more = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+            out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
+                        "issue": f"{len(missing)} day(s) missing: {preview}{more}"})
+
+    for r in rows:
+        if r.ot and r.ot > 12:
+            out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
+                        "issue": f"OT of {r.ot} hours in one day looks unusually high."})
+        if r.bh and r.bh > 8:
+            out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
+                        "issue": f"BH of {r.bh} hours in one day looks unusually high."})
+
+    out.sort(key=lambda x: (x["emp_no"], str(x["date"])))
+    return {
+        "title": "Check for Errors",
+        "note": "Missing days in this cycle for active workers, plus unusually high single-day OT/BH values.",
+        "rows": out,
+    }
 
 
 @app.get("/export/{month_year}/excel")
@@ -515,6 +564,90 @@ def export_pdf(month_year: str, token: str, db: Session = Depends(get_db)):
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_{safe_name}.pdf"},
+    )
+
+
+def _get_summary_pairs(month_year: str, db: Session):
+    summaries = (
+        db.query(models.EmployeeSummary)
+        .options(joinedload(models.EmployeeSummary.adjustments))
+        .filter(models.EmployeeSummary.month_year == month_year)
+        .order_by(models.EmployeeSummary.emp_no)
+        .all()
+    )
+    if not summaries:
+        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+    pairs = []
+    for s in summaries:
+        rows = db.query(models.DailyRow).filter(
+            and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
+        ).all()
+        pairs.append((s, rows))
+    return pairs
+
+
+@app.get("/export/{month_year}/excel-separate")
+def export_excel_separate(month_year: str, token: str, db: Session = Depends(get_db)):
+    """One .xlsx per worker, zipped together - the 'Separate Files' option next to Combine."""
+    user = auth.get_user_from_token_string(token, db)
+    pairs = _get_summary_pairs(month_year, db)
+    files = export_web.build_separate_excel_files(pairs)
+    buf = export_web.zip_files(files)
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_Separate_{safe_name}.zip"},
+    )
+
+
+@app.get("/export/{month_year}/pdf-separate")
+def export_pdf_separate(month_year: str, token: str, db: Session = Depends(get_db)):
+    """One .pdf per worker, zipped together - the 'Separate Files' option next to Combine."""
+    user = auth.get_user_from_token_string(token, db)
+    pairs = _get_summary_pairs(month_year, db)
+    files = export_web.build_separate_pdf_files(pairs)
+    buf = export_web.zip_files(files)
+    safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_Separate_{safe_name}.zip"},
+    )
+
+
+@app.get("/backup")
+def full_backup(token: str, db: Session = Depends(get_db)):
+    """
+    Full data backup (admin only): every employee, site, engineer,
+    daily attendance row, summary, and adjustment, as one JSON file -
+    the web equivalent of the desktop app's local file being the
+    backup. Downloadable any time from Settings.
+    """
+    user = auth.get_user_from_token_string(token, db)
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="This action requires admin access.")
+
+    def row_to_dict(obj, exclude=("adjustments",)):
+        d = {}
+        for col in obj.__table__.columns:
+            val = getattr(obj, col.name)
+            d[col.name] = val.isoformat() if hasattr(val, "isoformat") else val
+        return d
+
+    data = {
+        "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "employees": [row_to_dict(e) for e in db.query(models.Employee).all()],
+        "sites": [row_to_dict(s) for s in db.query(models.Site).all()],
+        "engineers": [row_to_dict(e) for e in db.query(models.Engineer).all()],
+        "daily_rows": [row_to_dict(r) for r in db.query(models.DailyRow).all()],
+        "summaries": [row_to_dict(s) for s in db.query(models.EmployeeSummary).all()],
+        "adjustments": [row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
+    }
+    log_action(db, user.id, "download_backup")
+    buf = io.BytesIO(json.dumps(data, indent=2, default=str).encode("utf-8"))
+    safe_ts = __import__("datetime").date.today().isoformat()
+    return StreamingResponse(
+        buf, media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_Backup_{safe_ts}.json"},
     )
 
 
