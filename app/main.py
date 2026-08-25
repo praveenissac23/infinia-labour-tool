@@ -231,6 +231,30 @@ def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.U
     return new_site
 
 
+@app.put("/sites/{site_id}", response_model=schemas.SiteOut)
+def rename_site(site_id: int, site: schemas.SiteIn, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Site).filter(models.Site.id == site_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Site not found")
+    existing.code = site.code
+    db.commit()
+    db.refresh(existing)
+    log_action(db, user.id, "rename_site", f"#{site_id} -> {site.code}")
+    return existing
+
+
+@app.delete("/sites/{site_id}")
+def remove_site(site_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Site).filter(models.Site.id == site_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Site not found")
+    existing.active = False
+    db.commit()
+    log_action(db, user.id, "remove_site", existing.code)
+    return {"ok": True}
+
+
 @app.get("/engineers", response_model=list[schemas.EngineerOut])
 def list_engineers(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     return db.query(models.Engineer).filter(models.Engineer.active == True).order_by(models.Engineer.name).all()  # noqa: E712
@@ -250,6 +274,30 @@ def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
     db.commit()
     db.refresh(new_eng)
     return new_eng
+
+
+@app.put("/engineers/{engineer_id}", response_model=schemas.EngineerOut)
+def rename_engineer(engineer_id: int, eng: schemas.EngineerIn, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Engineer not found")
+    existing.name = eng.name
+    db.commit()
+    db.refresh(existing)
+    log_action(db, user.id, "rename_engineer", f"#{engineer_id} -> {eng.name}")
+    return existing
+
+
+@app.delete("/engineers/{engineer_id}")
+def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+    existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Engineer not found")
+    existing.active = False
+    db.commit()
+    log_action(db, user.id, "remove_engineer", existing.name)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------
