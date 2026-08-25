@@ -700,7 +700,7 @@ BUILDER_DAILY_MEASURES = {
     "days_present": "Days Present", "days_absent": "Days Absent", "days_sick": "Days Sick",
     "days_medical": "Days Medical", "days_holiday": "Days Holiday", "days_leave": "Days Leave",
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
-    "worker_count": "Worker Count", "record_count": "Record Count",
+    "worker_count": "Different Workers", "record_count": "Total Days Worked",
     # Final Salary Cost needs each row's OWN worker's monthly summary to
     # compute (apportioning that worker's whole-cycle figure by their
     # share of present days shown in this grouping) - the same
@@ -726,7 +726,7 @@ BUILDER_SUMMARY_MEASURES = {
     "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Total Salary (AED)",
     "deduction": "Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
     "final_salary": "Final Salary (AED)", "adjusted_final_salary": "Adjusted Final Salary (AED)",
-    "worker_count": "Worker Count",
+    "worker_count": "Different Workers",
 }
 
 
