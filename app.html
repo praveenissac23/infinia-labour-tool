@@ -347,11 +347,6 @@
           <div class="toolbar">
             <label>Cycle (Month Year):</label>
             <input type="text" id="report-cycle" placeholder="e.g. August 2026">
-            <label>Group by:</label>
-            <select id="report-groupby" onchange="loadReports()">
-              <option value="worker">Worker</option>
-              <option value="site">Site</option>
-            </select>
             <label>Date range (optional):</label>
             <input type="date" id="report-date-from">
             <span style="font-size:12px; color:#888;">to</span>
@@ -1110,130 +1105,103 @@ async function removeEngineer(id, name) {
 }
 
 // ============ REPORTS (column picker + live preview) ============
-const REPORT_COLUMNS = [
-  { key: "emp_no", label: "Emp No", default: true, kind: "text" },
-  { key: "emp_name", label: "Name", default: true, kind: "text" },
-  { key: "trade", label: "Trade", default: false, kind: "text" },
-  { key: "sites", label: "Site", default: true, kind: "text" },
-  { key: "total_salary", label: "Total Salary", default: false, kind: "money" },
-  { key: "present_days", label: "Present", default: true, kind: "num" },
-  { key: "absent_days", label: "Absent", default: true, kind: "num" },
-  { key: "sick_days", label: "Sick", default: true, kind: "num" },
-  { key: "medical_days", label: "Medical", default: false, kind: "num" },
-  { key: "friday_days", label: "Friday", default: false, kind: "num" },
-  { key: "holiday_days", label: "Holiday", default: true, kind: "num" },
-  { key: "leave_days", label: "Leave", default: false, kind: "num" },
-  { key: "ot_hours", label: "OT Hours", default: true, kind: "num" },
-  { key: "bh_hours", label: "BH Hours", default: true, kind: "num" },
-  { key: "basic_pay_input", label: "Basic Pay", default: false, kind: "money" },
-  { key: "deduction", label: "Absence/Leave Deduction", default: false, kind: "money" },
-  { key: "ot_amount", label: "OT Amount", default: false, kind: "money" },
-  { key: "bh_amount", label: "BH Amount", default: false, kind: "money" },
-  { key: "final_salary", label: "Final Salary", default: true, kind: "money" },
-  { key: "adjustments", label: "Adjustments", default: true, kind: "adjustments" },
-  { key: "adjusted_final_salary", label: "Adjusted Final Salary", default: true, kind: "money" },
-];
-let currentReportSummaries = [];
+let reportCatalog = null;
+let currentCustomReport = null;
+let reportSortKey = null;
+let reportSortDir = 1;
+const REPORT_MONEY_KEYS = new Set([
+  "basic_pay_input", "total_salary_component", "deduction",
+  "ot_amount", "bh_amount", "final_salary", "adjusted_final_salary",
+]);
 
-function initReportColumnPicker() {
+async function initReportColumnPicker() {
   const idEl = document.getElementById("report-column-picker-id");
-  const measureEl = document.getElementById("report-column-picker-measure");
   if (idEl.dataset.built) return;
-  const isIdentifying = c => c.kind === "text" || c.kind === "adjustments";
-  idEl.innerHTML = REPORT_COLUMNS.filter(isIdentifying).map(c => `
-    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
+  reportCatalog = await apiCall("/reports/builder-catalog");
+  const defaultDims = new Set(["emp_no", "name"]);
+  const defaultMeasures = new Set(["present_days", "absent_days", "ot_hours", "bh_hours", "final_salary", "adjusted_final_salary"]);
+
+  idEl.innerHTML = reportCatalog.dimensions.map(d => `
+    <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""}> ${d.label}</label>
   `).join("");
-  measureEl.innerHTML = REPORT_COLUMNS.filter(c => !isIdentifying(c)).map(c => `
-    <label><input type="checkbox" data-col="${c.key}" ${c.default ? "checked" : ""} onchange="renderReportPreview()"> ${c.label}</label>
+  const measureEl = document.getElementById("report-column-picker-measure");
+  measureEl.innerHTML = reportCatalog.measures.map(m => `
+    <label><input type="checkbox" data-measure="${m.key}" ${defaultMeasures.has(m.key) ? "checked" : ""}> ${m.label}</label>
   `).join("");
   idEl.dataset.built = "1";
 }
 
-function getSelectedReportColumns() {
-  return REPORT_COLUMNS.filter(c =>
-    document.querySelector(`.report-col-picker input[data-col="${c.key}"]`)?.checked
-  );
+function getSelectedDimensions() {
+  return [...document.querySelectorAll('#report-column-picker-id input[data-dim]:checked')].map(el => el.dataset.dim);
+}
+function getSelectedMeasures() {
+  return [...document.querySelectorAll('#report-column-picker-measure input[data-measure]:checked')].map(el => el.dataset.measure);
 }
 
-function reportCellValue(s, col) {
-  if (col.key === "adjusted_final_salary") {
-    const total = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
-    return `AED ${total.toFixed(2)}`;
-  }
-  if (col.kind === "adjustments") {
-    return s.adjustments.length ? s.adjustments.map(a => `${a.description}: ${a.is_deduction ? "-" : "+"}${a.amount}`).join(", ") : "-";
-  }
-  const v = s[col.key];
-  if (col.kind === "money") return `AED ${(v || 0).toFixed(2)}`;
+function reportFormatValue(key, v) {
+  if (v === null || v === undefined) return "";
+  if (REPORT_MONEY_KEYS.has(key)) return `AED ${Number(v).toFixed(2)}`;
   return v;
 }
-
-let reportSortKey = null;
-let reportSortDir = 1;
 
 function sortReportBy(key) {
   if (reportSortKey === key) { reportSortDir *= -1; } else { reportSortKey = key; reportSortDir = 1; }
   renderReportPreview();
 }
 
-function reportRawValue(s, col) {
-  if (col.key === "adjusted_final_salary") {
-    return s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
-  }
-  if (col.kind === "adjustments") return s.adjustments.length;
-  return s[col.key];
-}
-
 function renderReportPreview() {
-  const cols = getSelectedReportColumns();
   const headRow = document.getElementById("report-head-row");
   const body = document.getElementById("report-body");
   const totalRow = document.getElementById("report-total-row");
-  headRow.innerHTML = cols.map(c => {
+  const result = currentCustomReport;
+
+  if (!result || !result.columns.length) {
+    headRow.innerHTML = `<th>Pick at least one column</th>`;
+    body.innerHTML = `<tr><td class="empty-note">Tick at least one dimension or measure above, then Run.</td></tr>`;
+    totalRow.innerHTML = "";
+    return;
+  }
+  headRow.innerHTML = result.columns.map(c => {
     const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
     return `<th class="sortable" onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
-  }).join("") || `<th>Pick at least one column</th>`;
+  }).join("");
 
-  if (!currentReportSummaries.length) {
-    body.innerHTML = `<tr><td colspan="${Math.max(cols.length, 1)}" class="empty-note">No data for this cycle yet.</td></tr>`;
+  if (!result.rows.length) {
+    body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No data for this cycle/range yet.</td></tr>`;
     totalRow.innerHTML = "";
     return;
   }
-  if (!cols.length) {
-    body.innerHTML = `<tr><td class="empty-note">Tick at least one column above.</td></tr>`;
-    totalRow.innerHTML = "";
-    return;
-  }
-  let rows = [...currentReportSummaries];
+
+  let rows = [...result.rows];
   if (reportSortKey) {
-    const sortCol = cols.find(c => c.key === reportSortKey) || REPORT_COLUMNS.find(c => c.key === reportSortKey);
     rows.sort((a, b) => {
-      const av = reportRawValue(a, sortCol), bv = reportRawValue(b, sortCol);
+      const av = a[reportSortKey], bv = b[reportSortKey];
       if (typeof av === "number") return (av - bv) * reportSortDir;
-      return String(av).localeCompare(String(bv)) * reportSortDir;
+      return String(av ?? "").localeCompare(String(bv ?? "")) * reportSortDir;
     });
   }
-  body.innerHTML = rows.map(s => `
-    <tr>${cols.map(c => `<td>${reportCellValue(s, c)}</td>`).join("")}</tr>
+
+  body.innerHTML = rows.map(r => `
+    <tr>${result.columns.map(c => `<td>${reportFormatValue(c.key, r[c.key])}</td>`).join("")}</tr>
   `).join("");
 
-  // Total row - sums every numeric/money column across all rows, blank for text columns.
-  totalRow.innerHTML = cols.map((c, i) => {
+  totalRow.innerHTML = result.columns.map((c, i) => {
     if (i === 0) return `<td>TOTAL</td>`;
-    if (c.kind !== "money" && c.kind !== "num") return `<td></td>`;
-    const sum = rows.reduce((acc, s) => acc + (reportRawValue(s, c) || 0), 0);
-    return `<td>${c.kind === "money" ? `AED ${sum.toFixed(2)}` : sum}</td>`;
+    const v = result.totals[c.key];
+    if (v === undefined) return `<td></td>`;
+    return `<td>${reportFormatValue(c.key, v)}</td>`;
   }).join("");
 }
 
 function exportReportTable(fmt) {
   const cycle = document.getElementById("report-cycle").value.trim();
-  const cols = getSelectedReportColumns();
+  const dims = getSelectedDimensions();
+  const measures = getSelectedMeasures();
   if (!cycle) {
     showStatus("report-status", "warn", "Enter a cycle first.");
     return;
   }
-  if (!cols.length) {
+  if (!dims.length && !measures.length) {
     showStatus("report-status", "warn", "Tick at least one column above.");
     return;
   }
@@ -1242,8 +1210,7 @@ function exportReportTable(fmt) {
     refreshDownloadToken();
     return;
   }
-  const colKeys = cols.map(c => c.key).join(",");
-  const url = `${API}/export/${encodeURIComponent(cycle)}/report-table?token=${encodeURIComponent(cachedDownloadToken)}&columns=${encodeURIComponent(colKeys)}&format=${fmt}`;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
   window.open(url, "_blank");
   showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
 }
@@ -1251,57 +1218,19 @@ function exportReportTable(fmt) {
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
-  initReportColumnPicker();
-  const groupBy = document.getElementById("report-groupby").value;
-  const columnsCard = document.getElementById("report-columns-card");
-  const noteEl = document.getElementById("report-note");
+  await initReportColumnPicker();
+  const dims = getSelectedDimensions();
+  const measures = getSelectedMeasures();
+  const dateFrom = document.getElementById("report-date-from").value;
+  const dateTo = document.getElementById("report-date-to").value;
 
-  if (groupBy === "site") {
-    columnsCard.style.display = "none";
-    noteEl.textContent = "Total labour cost per site for this cycle, based on actual attendance - a worker who split time between sites contributes only their real days at each, never double-counted.";
-    const dateFrom = document.getElementById("report-date-from").value;
-    const dateTo = document.getElementById("report-date-to").value;
-    let url = `/summaries/${encodeURIComponent(cycle)}/by-site`;
-    const params = [];
-    if (dateFrom) params.push(`date_from=${dateFrom}`);
-    if (dateTo) params.push(`date_to=${dateTo}`);
-    if (params.length) url += "?" + params.join("&");
-    const result = await apiCall(url);
-    renderSiteGroupedPreview(result);
-  } else {
-    columnsCard.style.display = "block";
-    noteEl.textContent = "";
-    const asOf = document.getElementById("report-date-to").value;
-    const url = asOf
-      ? `/summaries/${encodeURIComponent(cycle)}?as_of=${asOf}`
-      : `/summaries/${encodeURIComponent(cycle)}`;
-    currentReportSummaries = await apiCall(url);
-    renderReportPreview();
-  }
-}
+  let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
+  if (dateFrom) url += `&date_from=${dateFrom}`;
+  if (dateTo) url += `&date_to=${dateTo}`;
 
-function renderSiteGroupedPreview(result) {
-  const headRow = document.getElementById("report-head-row");
-  const body = document.getElementById("report-body");
-  const totalRow = document.getElementById("report-total-row");
-  headRow.innerHTML = result.columns.map(c => `<th>${c.label}</th>`).join("");
-  if (!result.rows.length) {
-    body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No attendance data for this cycle/range yet.</td></tr>`;
-    totalRow.innerHTML = "";
-    return;
-  }
-  body.innerHTML = result.rows.map(r => `
-    <tr>${result.columns.map(c => {
-      const v = r[c.key];
-      return `<td>${c.key.includes("cost") ? `AED ${Number(v).toFixed(2)}` : v}</td>`;
-    }).join("")}</tr>
-  `).join("");
-  totalRow.innerHTML = result.columns.map((c, i) => {
-    if (i === 0) return `<td>TOTAL</td>`;
-    const v = result.totals[c.key];
-    if (v === undefined) return `<td></td>`;
-    return `<td>${c.key.includes("cost") ? `AED ${Number(v).toFixed(2)}` : v}</td>`;
-  }).join("");
+  currentCustomReport = await apiCall(url);
+  document.getElementById("report-note").textContent = currentCustomReport.note || "";
+  renderReportPreview();
 }
 
 // ============ SALARY ADJUSTMENTS ============
