@@ -56,6 +56,20 @@ def _rows_by_date(daily_rows):
     return {r.full_date: r for r in daily_rows if r.full_date}
 
 
+def _num(v):
+    """2.0 -> '2', 2.5 -> '2.5', whole numbers show clean with no trailing
+    .0. Zero/blank/None all show as blank, matching the original 'row.ot
+    or ""' convention - a day with attendance but no overtime shouldn't
+    show a distracting '0' in every single row."""
+    if not v:
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return v
+    return str(int(f)) if f == int(f) else str(f)
+
+
 def _cycle_dates(month_year):
     """
     Every actual calendar date in this cycle, in order - 26th of the
@@ -130,8 +144,8 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         row = by_date.get(d)
         label = d.strftime("%d %b") if hasattr(d, "strftime") else d
         vals = [label, row.am if row else "", row.pm if row else "", row.site if row else "",
-                row.engineer if row else "", (row.ot if row and row.ot else ""),
-                (row.bh if row and row.bh else ""), (row.comments if row else "")]
+                row.engineer if row else "", (_num(row.ot) if row else ""),
+                (_num(row.bh) if row else ""), (row.comments if row else "")]
         stripe = "F7F7F7" if idx % 2 == 0 else "FFFFFF"
         ws.row_dimensions[r].height = 15.5
         for i, v in enumerate(vals, start=1):
@@ -317,8 +331,8 @@ def build_separate_excel_files(summaries_with_rows):
 
 
 def _build_pdf_card_elements(summary, rows, doc_width, styles):
-    label_style = ParagraphStyle("InfoLabel", parent=styles["Normal"], fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_LEFT)
-    value_style = ParagraphStyle("InfoValue", parent=styles["Normal"], fontSize=9.5, alignment=TA_LEFT)
+    label_style = ParagraphStyle("InfoLabel", parent=styles["Normal"], fontSize=11.5, fontName="Helvetica-Bold", alignment=TA_LEFT)
+    value_style = ParagraphStyle("InfoValue", parent=styles["Normal"], fontSize=11.5, alignment=TA_LEFT)
     grey = colors.HexColor(f"#{GREY_FILL}")
     grid_color = colors.HexColor("#B0B0B0")
     elements = []
@@ -330,7 +344,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         [Paragraph("Month & Year:", label_style), Paragraph(summary.month_year or "", value_style)],
         [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.0f}", value_style)],
     ]
-    info_tbl = Table(info_rows, colWidths=[doc_width * 0.18, doc_width * 0.36])
+    info_tbl = Table(info_rows, colWidths=[doc_width * 0.24, doc_width * 0.40])
     info_tbl.hAlign = "CENTER"
     info_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
@@ -342,8 +356,8 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(info_tbl)
     elements.append(Spacer(1, 6))
 
-    cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=6.8, leading=8, alignment=TA_CENTER)
-    head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=6.8, leading=8,
+    cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=9, leading=10.3, alignment=TA_CENTER)
+    head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=9, leading=10.3,
                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
     headers = ["Date", "A.M", "P.M", "OT", "BH", "Site", "Engineer", "Comments"]
     by_date = _rows_by_date(rows)
@@ -353,7 +367,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         row = by_date.get(d)
         label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
         if row is not None:
-            vals = [label, row.am, row.pm, str(row.ot or ""), str(row.bh or ""), row.site, row.engineer, row.comments]
+            vals = [label, row.am, row.pm, _num(row.ot), _num(row.bh), row.site, row.engineer, row.comments]
         else:
             vals = [label, "", "", "", "", "", "", ""]
         data.append([Paragraph(v or "", cell_style) for v in vals])
@@ -365,7 +379,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("GRID", (0, 0), (-1, -1), 0.4, grid_color),
         ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -374,7 +388,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(Spacer(1, 4))
 
     office_tbl = Table([[Paragraph("OFFICE USE ONLY", ParagraphStyle(
-        "OfficeUse", parent=styles["Normal"], fontSize=9, fontName="Helvetica-Bold", alignment=TA_CENTER))]],
+        "OfficeUse", parent=styles["Normal"], fontSize=10.5, fontName="Helvetica-Bold", alignment=TA_CENTER))]],
         colWidths=[doc_width])
     office_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#BFBFBF")),
@@ -384,7 +398,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(office_tbl)
     elements.append(Spacer(1, 6))
 
-    value_right_style = ParagraphStyle("ValueRight", parent=styles["Normal"], fontSize=9, alignment=TA_RIGHT)
+    value_right_style = ParagraphStyle("ValueRight", parent=styles["Normal"], fontSize=10.5, alignment=TA_RIGHT)
     days_data = [[Paragraph(label, label_style), Paragraph(f"{(getattr(summary, attr, 0) or 0):g}", value_right_style)]
                  for label, attr in TOTAL_DAYS_FIELDS]
     days_tbl = Table(days_data, colWidths=[doc_width * 0.16, doc_width * 0.09])
@@ -422,7 +436,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         "FinalHeader", parent=styles["Normal"], fontSize=8, fontName="Helvetica-Bold",
         textColor=colors.white, alignment=TA_CENTER))
     final_value = Paragraph(f"AED {_adjusted_final_salary(summary):,.2f}", ParagraphStyle(
-        "FinalValue", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold", alignment=TA_CENTER))
+        "FinalValue", parent=styles["Normal"], fontSize=13.5, fontName="Helvetica-Bold", alignment=TA_CENTER))
     final_tbl = Table([[final_header], [final_value]], colWidths=[doc_width * 0.20])
     final_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(f"#{BRAND_BLACK}")),
