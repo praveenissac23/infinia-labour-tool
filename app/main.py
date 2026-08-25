@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -489,7 +489,11 @@ def get_completion_status(month_year: str, db: Session = Depends(get_db),
 
     total_active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
     rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
-        and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end)
+        and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end,
+             or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
+        # excludes rows that exist only because auto_fill_sunday_from_saturday
+        # pre-filled Site/Engineer with A.M/P.M still blank - those aren't
+        # "marked" yet, so they must not count toward the day being complete
     ).all()
     counts_by_date = {}
     for full_date, emp_no in rows:
@@ -558,7 +562,8 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     touched_cycles = set()
     for employee, row_in in to_process:
         if row_in is not None:
-            services.upsert_daily_row(db, employee, row_in)
+            saved_row = services.upsert_daily_row(db, employee, row_in)
+            services.auto_fill_sunday_from_saturday(db, employee, saved_row)
             _, _, month_year = pcyc.cycle_bounds_for(row_in.full_date)
         else:
             # a delete - recalc using whatever cycle the deleted date was in
