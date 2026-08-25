@@ -685,6 +685,8 @@ BUILDER_MEASURE_HINTS = {
     "worker_count": "How many distinct workers were at this group at least once - each worker only counts once, no matter how many days.",
     "record_count": "Total worker-days combined - 5 workers present 3 days each = 15 man-days.",
     "final_salary_cost": "Each worker's own daily rate, apportioned across every paid day in this group's window.",
+    "ot_amount": "Each row's OT hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
+    "bh_amount": "Each row's BH hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
 }
 
 
