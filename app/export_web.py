@@ -102,19 +102,34 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     r += 1
 
     by_day = _rows_by_day(rows)
+    day_idx = 0
     for day in range(1, 32):
         row = by_day.get(day)
-        vals = [day, row.am if row else "", row.pm if row else "", row.site if row else "",
-                row.engineer if row else "", row.ot if row and row.ot else "",
-                row.bh if row and row.bh else "", row.comments if row else ""]
-        stripe = "F7F7F7" if day % 2 == 0 else "FFFFFF"
-        ws.row_dimensions[r].height = 9
+        if row is None:
+            continue  # skip days with no attendance recorded - this is what
+            # was creating 20-30 blank-looking rows per card
+        vals = [day, row.am, row.pm, row.site, row.engineer,
+                row.ot if row.ot else "", row.bh if row.bh else "", row.comments]
+        stripe = "F7F7F7" if day_idx % 2 == 0 else "FFFFFF"
+        day_idx += 1
+        ws.row_dimensions[r].height = 12
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
             c.fill = PatternFill("solid", fgColor=stripe)
             c.font = Font(size=7)
+            if i == 4:  # Site column - values like "704" look numeric but
+                c.number_format = "@"  # aren't; "@" stops Excel's green
+                # triangle "number stored as text" warning on them.
+        r += 1
+    if day_idx == 0:
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
+        empty_cell = ws.cell(row=r, column=1, value="No attendance recorded this cycle")
+        empty_cell.font = Font(italic=True, size=7.5, color="999999")
+        empty_cell.alignment = Alignment(horizontal="center", vertical="center")
+        empty_cell.border = border
         r += 1
     r += 1
 
@@ -202,15 +217,12 @@ def _write_worker_card(ws, summary, rows, border, start_row):
 def build_combined_excel(summaries_with_rows):
     """
     summaries_with_rows: list of (EmployeeSummary, [DailyRow]) tuples.
-    All workers stacked in ONE worksheet, one blank row between each
-    card. Each card gets an explicit page break right after it so
-    printing gives exactly one worker per physical page, and row
-    heights are set compactly enough that a full 31-day card fits
-    within one page's height without needing to shrink-to-fit (which
-    would otherwise squeeze ALL cards onto one page, not one each).
+    All workers stacked in ONE worksheet, exactly one blank row between
+    each card - no forced page break per worker, since cards are now a
+    variable, often-short height (only days with actual attendance are
+    shown), so cards flow naturally and pack the printed page instead
+    of each one wasting the rest of a page to itself.
     """
-    from openpyxl.worksheet.pagebreak import Break
-
     wb = Workbook()
     ws = wb.active
     ws.title = "Combined Cards"
@@ -235,16 +247,10 @@ def build_combined_excel(summaries_with_rows):
 
     row = 1
     last_row = 1
-    for idx, (summary, rows) in enumerate(summaries_with_rows):
+    for summary, rows in summaries_with_rows:
         next_row = _write_worker_card(ws, summary, rows, border, row)
         last_row = next_row
-        if idx < len(summaries_with_rows) - 1:
-            # Forces the NEXT card to start on a fresh printed page,
-            # regardless of exact row height - this is what actually
-            # guarantees one worker per page, not just narrow row
-            # heights hoping to fit under the natural page-break point.
-            ws.row_breaks.append(Break(id=next_row))
-        row = next_row + 1  # one blank row between cards
+        row = next_row + 1  # exactly one blank row between cards
 
     ws.print_area = f"A1:H{last_row}"
 
@@ -317,11 +323,13 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     data = [[Paragraph(h, head_style) for h in headers]]
     for day in range(1, 32):
         row = by_day.get(day)
-        if row is not None:
-            vals = [str(day), row.am, row.pm, str(row.ot or ""), str(row.bh or ""), row.site, row.engineer, row.comments]
-        else:
-            vals = [str(day), "", "", "", "", "", "", ""]
+        if row is None:
+            continue  # skip days with no attendance recorded
+        vals = [str(day), row.am, row.pm, str(row.ot or ""), str(row.bh or ""), row.site, row.engineer, row.comments]
         data.append([Paragraph(v or "", cell_style) for v in vals])
+    if len(data) == 1:
+        no_data_style = ParagraphStyle("NoData", parent=cell_style, textColor=colors.HexColor("#999999"), fontName="Helvetica-Oblique")
+        data.append([Paragraph("No attendance recorded this cycle", no_data_style)] + [Paragraph("", cell_style)] * 7)
 
     col_widths = [doc_width * w for w in (0.06, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.38)]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
@@ -408,7 +416,13 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
 
 
 def build_combined_pdf(summaries_with_rows):
-    from reportlab.platypus import PageBreak
+    """
+    Cards flow naturally onto the same page where they fit, separated
+    by a clear gap - no forced page break per worker, since cards are
+    now a variable, often-short height (only days with actual
+    attendance are shown), so a fixed one-per-page rule would waste
+    most of most pages.
+    """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=8 * mm, bottomMargin=8 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
@@ -417,7 +431,7 @@ def build_combined_pdf(summaries_with_rows):
     for idx, (summary, rows) in enumerate(summaries_with_rows):
         elements.extend(_build_pdf_card_elements(summary, rows, doc.width, styles))
         if idx < len(summaries_with_rows) - 1:
-            elements.append(PageBreak())
+            elements.append(Spacer(1, 14))
     doc.build(elements)
     buf.seek(0)
     return buf
