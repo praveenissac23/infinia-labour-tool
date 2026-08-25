@@ -424,7 +424,7 @@ def site_cost_center(daily_rows, summaries, filters):
             "total_cost": round(v[3], 2),
             "avg_cost_per_worker": round(v[3] / len(workers_by_site[site]), 2) if workers_by_site[site] else 0,
             "avg_cost_per_day": round(v[3] / v[0], 2) if v[0] else 0}
-           for site, v in agg.items() if v[3] > 0]
+           for site, v in agg.items() if workers_by_site[site]]
     out.sort(key=lambda r: r["total_cost"], reverse=True)
 
     cols = [("site", "Site"), ("worker_count", "Workers"), ("days_present", "Days Present"),
