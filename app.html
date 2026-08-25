@@ -551,6 +551,25 @@ function switchScreen(name) {
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
+  if (name === "reports" || name === "settings") refreshDownloadToken();
+}
+
+// A download token is fetched ahead of time (screen open + every 45s
+// while there) rather than at click time, so Export/Backup buttons
+// can stay a fully synchronous window.open() in their click handler -
+// the one thing mobile browsers reliably allow without treating it as
+// a blocked popup. Awaiting the token fetch inside the click handler
+// itself proved unreliable for redirecting an already-open tab, even
+// with a real https:// URL (not just blob: URLs).
+let cachedDownloadToken = null;
+let downloadTokenTimer = null;
+async function refreshDownloadToken() {
+  try {
+    const { token } = await apiCall("/auth/download-token", { method: "POST" });
+    cachedDownloadToken = token;
+  } catch (e) { /* left null; buttons will show an error if used */ }
+  clearTimeout(downloadTokenTimer);
+  downloadTokenTimer = setTimeout(refreshDownloadToken, 45000);
 }
 
 async function initApp() {
@@ -1291,16 +1310,12 @@ function exportCards(fmt) {
     showStatus("report-status", "warn", "Enter a cycle first.");
     return;
   }
-  // A plain, synchronous browser navigation to the file URL (token
-  // passed as a query param, since a direct navigation can't set an
-  // Authorization header) - the browser itself handles the actual
-  // download natively via the server's Content-Disposition header.
-  // This is what actually fixes exports doing nothing on mobile: the
-  // previous fetch()+blob()+<a download> approach lost the "real user
-  // tap" context by the time the async blob was ready, so mobile
-  // browsers silently blocked it. A direct call with no await in
-  // between has no such problem.
-  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(TOKEN)}`;
+  if (!cachedDownloadToken) {
+    showStatus("report-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
   const label = { "excel": "combined Excel", "pdf": "combined PDF",
                    "excel-separate": "separate Excel files (zip)", "pdf-separate": "separate PDF files (zip)" }[fmt] || fmt;
@@ -1371,7 +1386,12 @@ async function removeUser(userId) {
 }
 
 function downloadBackup() {
-  const url = `${API}/backup?token=${encodeURIComponent(TOKEN)}`;
+  if (!cachedDownloadToken) {
+    showStatus("settings-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/backup?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
   showStatus("settings-status", "ok", "Opening backup file - check your downloads or the new tab.");
 }
