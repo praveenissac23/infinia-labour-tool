@@ -131,12 +131,12 @@
   .dash-tile:hover { background: #FFF5F3; }
   .dash-tile-title { font-weight: bold; font-size: 14px; color: var(--black); }
   .dash-tile-sub { font-size: 11px; color: #888; margin-top: 4px; }
-  .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-  .dash-cal-head { font-size: 11px; font-weight: bold; color: #888; text-align: center; padding: 4px 0; }
-  .dash-cal-day { border-radius: 6px; padding: 10px 4px; text-align: center; font-size: 13px; font-weight: bold; cursor: pointer; color: white; }
+  .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; max-width: 320px; }
+  .dash-cal-head { font-size: 8px; font-weight: bold; color: #888; text-align: center; padding: 2px 0; }
+  .dash-cal-day { border-radius: 4px; padding: 4px 2px; text-align: center; font-size: 9px; font-weight: bold; cursor: pointer; color: white; }
   .dash-cal-day.complete { background: #2E7D32; }
   .dash-cal-day.incomplete { background: var(--red); }
-  .dash-cal-day.today { outline: 3px solid #F9A825; outline-offset: -3px; }
+  .dash-cal-day.today { outline: 2px solid #F9A825; outline-offset: -2px; }
   .dash-cal-day:hover { opacity: 0.85; }
   .dash-cal-empty { visibility: hidden; }
   .report-col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
@@ -164,6 +164,7 @@
       <div class="nav-item" data-screen="attendance" onclick="switchScreen('attendance')">Daily Attendance</div>
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
+      <div class="nav-item" data-screen="combine" onclick="switchScreen('combine')">Combine</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
       <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
       <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
@@ -216,8 +217,6 @@
           </div>
 
           <div class="card">
-            <h2>This Cycle's Attendance <span id="dash-cycle-label" style="font-weight:normal; color:#888; font-size:12px;"></span></h2>
-            <p style="font-size:12px; color:#888; margin:0 0 12px;">Green = fully filled &nbsp; Red = missing something &nbsp; Click a date to view or edit it</p>
             <div id="dash-calendar" class="dash-calendar"></div>
           </div>
         </div>
@@ -337,13 +336,28 @@
             </div>
           </div>
 
-          <div class="card">
-            <h2>Combine</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Combine every worker's full salary card (not just the columns above) into one file for this cycle - same as the desktop app's Combine feature.</p>
-            <button class="btn btn-dark" onclick="exportCards('excel')">Combine to Excel</button>
-            <button class="btn btn-dark" onclick="exportCards('pdf')">Combine to PDF</button>
-            <button class="btn btn-gray" onclick="exportCards('excel-separate')">Separate Excel Files</button>
-            <button class="btn btn-gray" onclick="exportCards('pdf-separate')">Separate PDF Files</button>
+        </div>
+
+        <!-- ============ COMBINE SCREEN ============ -->
+        <div class="screen" id="screen-combine">
+          <div class="toolbar">
+            <label>Cycle (Month Year):</label>
+            <input type="text" id="combine-cycle" placeholder="e.g. August 2026">
+          </div>
+          <div class="status-msg" id="combine-status"></div>
+          <div style="display:flex; gap:14px; flex-wrap:wrap;">
+            <div class="card" style="flex:1; min-width:260px;">
+              <h2>Combine to One File</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">Every worker's full salary card in a single file for this cycle.</p>
+              <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel')">Combine to Excel</button>
+              <button class="btn btn-dark" style="width:100%;" onclick="exportCombineCards('pdf')">Combine to PDF</button>
+            </div>
+            <div class="card" style="flex:1; min-width:260px;">
+              <h2>Separate Files</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">One file per worker, zipped together.</p>
+              <button class="btn btn-gray" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel-separate')">Separate Excel Files</button>
+              <button class="btn btn-gray" style="width:100%;" onclick="exportCombineCards('pdf-separate')">Separate PDF Files</button>
+            </div>
           </div>
         </div>
 
@@ -450,10 +464,16 @@
               </table>
             </div>
           </div>
-          <div class="card" id="backup-card" style="display:none;">
-            <h2>Backup (admin only)</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Downloads every employee, site, engineer, attendance record, summary, and adjustment as one JSON file - a full snapshot of the database at this moment.</p>
-            <button class="btn btn-dark" onclick="downloadBackup()">Download Backup</button>
+          <div class="card">
+            <h2>Backup</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Every employee, site, engineer, attendance record, summary, and adjustment as one JSON file. A backup is also taken automatically once a month. Anyone can take or download a backup; only an admin can restore one.</p>
+            <button class="btn btn-dark" onclick="takeBackupNow()">Take Backup Now</button>
+            <div class="grid-wrap" style="max-height: 35vh; margin-top:12px;">
+              <table>
+                <thead><tr><th>Date</th><th>Type</th><th>By</th><th></th></tr></thead>
+                <tbody id="backup-list-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -537,6 +557,7 @@ const SCREEN_TITLES = {
   attendance: "Daily Attendance Entry",
   masterdata: "Master Data",
   reports: "Reports / Summaries",
+  combine: "Combine",
   adjustments: "Salary Adjustments",
   livecard: "Live Card",
   errorcheck: "Error Check",
@@ -551,7 +572,9 @@ function switchScreen(name) {
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
-  if (name === "reports" || name === "settings") refreshDownloadToken();
+  if (name === "reports" || name === "settings" || name === "combine") refreshDownloadToken();
+  if (name === "adjustments") loadAdjustmentsList();
+  if (name === "settings") loadBackupList();
 }
 
 // A download token is fetched ahead of time (screen open + every 45s
@@ -595,10 +618,10 @@ async function initApp() {
   document.getElementById("report-cycle").value = currentCycle;
   document.getElementById("adj-cycle").value = currentCycle;
   document.getElementById("errcheck-cycle").value = currentCycle;
+  document.getElementById("combine-cycle").value = currentCycle;
 
   if (CURRENT_ROLE === "admin") {
     document.getElementById("user-mgmt-card").style.display = "block";
-    document.getElementById("backup-card").style.display = "block";
     document.getElementById("nav-activity").style.display = "block";
     await loadUsers();
   }
@@ -915,6 +938,7 @@ const REPORT_COLUMNS = [
   { key: "emp_no", label: "Emp No", default: true, kind: "text" },
   { key: "emp_name", label: "Name", default: true, kind: "text" },
   { key: "trade", label: "Trade", default: false, kind: "text" },
+  { key: "sites", label: "Site", default: false, kind: "text" },
   { key: "total_salary", label: "Total Salary", default: false, kind: "money" },
   { key: "present_days", label: "Present", default: true, kind: "num" },
   { key: "absent_days", label: "Absent", default: true, kind: "num" },
@@ -1140,9 +1164,7 @@ function startDashboardClock() {
 
 async function loadDashboardCalendar(cycle) {
   const cal = document.getElementById("dash-calendar");
-  const label = document.getElementById("dash-cycle-label");
   if (!cal) return;
-  label.textContent = `(${cycle})`;
   cal.innerHTML = '<div class="empty-note">Loading...</div>';
 
   let result;
@@ -1304,14 +1326,14 @@ async function loadErrorCheck() {
 }
 
 // ============ EXPORTS ============
-function exportCards(fmt) {
-  const cycle = document.getElementById("report-cycle").value.trim();
+function exportCombineCards(fmt) {
+  const cycle = document.getElementById("combine-cycle").value.trim();
   if (!cycle) {
-    showStatus("report-status", "warn", "Enter a cycle first.");
+    showStatus("combine-status", "warn", "Enter a cycle first.");
     return;
   }
   if (!cachedDownloadToken) {
-    showStatus("report-status", "err", "Still preparing - try again in a moment.");
+    showStatus("combine-status", "err", "Still preparing - try again in a moment.");
     refreshDownloadToken();
     return;
   }
@@ -1319,7 +1341,7 @@ function exportCards(fmt) {
   window.open(url, "_blank");
   const label = { "excel": "combined Excel", "pdf": "combined PDF",
                    "excel-separate": "separate Excel files (zip)", "pdf-separate": "separate PDF files (zip)" }[fmt] || fmt;
-  showStatus("report-status", "ok", `Opening ${label} for ${cycle} - check your downloads or the new tab.`);
+  showStatus("combine-status", "ok", `Opening ${label} for ${cycle} - check your downloads or the new tab.`);
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============
@@ -1385,15 +1407,64 @@ async function removeUser(userId) {
   }
 }
 
-function downloadBackup() {
+async function takeBackupNow() {
+  try {
+    await apiCall("/backup/create", { method: "POST" });
+    showStatus("settings-status", "ok", "Backup taken.");
+    await loadBackupList();
+  } catch (e) {
+    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
+async function loadBackupList() {
+  const body = document.getElementById("backup-list-body");
+  if (!body) return;
+  try {
+    const rows = await apiCall("/backup/list");
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="4" class="empty-note">No backups yet.</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows.map(b => {
+      const when = new Date(b.created_at).toLocaleString(undefined, {
+        year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+      const restoreBtn = CURRENT_ROLE === "admin"
+        ? `<button class="btn btn-gray" onclick="restoreBackupById(${b.id})">Restore</button>` : "";
+      return `<tr>
+        <td>${when}</td><td>${b.trigger}</td><td>${b.created_by}</td>
+        <td><button class="btn btn-dark" onclick="downloadBackupById(${b.id})">Download</button> ${restoreBtn}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4" class="empty-note">Could not load backups.</td></tr>`;
+  }
+}
+
+function downloadBackupById(id) {
   if (!cachedDownloadToken) {
     showStatus("settings-status", "err", "Still preparing - try again in a moment.");
     refreshDownloadToken();
     return;
   }
-  const url = `${API}/backup?token=${encodeURIComponent(cachedDownloadToken)}`;
+  const url = `${API}/backup/${id}/download?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
   showStatus("settings-status", "ok", "Opening backup file - check your downloads or the new tab.");
+}
+
+async function restoreBackupById(id) {
+  if (!confirm(`Restore from backup #${id}? This replaces all current employees, attendance, summaries, and adjustments with what's in that backup. This cannot be undone.`)) return;
+  try {
+    await apiCall(`/backup/${id}/restore`, { method: "POST" });
+    showStatus("settings-status", "ok", `Restored from backup #${id}. Reloading data...`);
+    employees = await apiCall("/employees?active_only=true");
+    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    renderMasterDataLists();
+    renderLiveCardWorkerList();
+  } catch (e) {
+    showStatus("settings-status", "err", "Restore failed: " + (e.body?.detail || "Unknown error"));
+  }
 }
 
 // Auto-resume session if a token is already stored
