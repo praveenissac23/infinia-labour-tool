@@ -75,8 +75,17 @@
   td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #f0f0f0; }
   tr:hover td { background: #FFF7F5; }
   .lc-compact { font-size: 10.5px; line-height: 1.1; }
-  .lc-compact th { padding: 4px 3px; font-size: 10px; }
-  .lc-compact td { padding: 1px 4px; }
+  .lc-compact table { table-layout: fixed; }
+  .lc-compact th { padding: 4px 3px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+  .lc-compact td { padding: 1px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lc-compact th:nth-child(1), .lc-compact td:nth-child(1) { width: 9%; }
+  .lc-compact th:nth-child(2), .lc-compact td:nth-child(2) { width: 11%; }
+  .lc-compact th:nth-child(3), .lc-compact td:nth-child(3) { width: 11%; }
+  .lc-compact th:nth-child(4), .lc-compact td:nth-child(4) { width: 10%; }
+  .lc-compact th:nth-child(5), .lc-compact td:nth-child(5) { width: 14%; }
+  .lc-compact th:nth-child(6), .lc-compact td:nth-child(6) { width: 7%; }
+  .lc-compact th:nth-child(7), .lc-compact td:nth-child(7) { width: 7%; }
+  .lc-compact th:nth-child(8), .lc-compact td:nth-child(8) { width: 31%; }
   .lc-compact-side { font-size: 11px; }
   .lc-compact-side .side-row { padding: 1px 0 !important; }
   td input[type=checkbox] { transform: scale(1.1); }
@@ -608,6 +617,8 @@ function switchScreen(name) {
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "settings") loadBackupList();
   if (name === "reports") loadReports();
+  if (name === "livecard") preloadLiveCardDefault();
+  if (name === "errorcheck") loadErrorCheck();
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -1487,6 +1498,11 @@ function renderLiveCardWorkerList() {
     </tr>`).join("");
 }
 
+function preloadLiveCardDefault() {
+  if (selectedLiveCardEmpNo) return; // already have a selection, don't override it
+  if (employees.length) selectLiveCardWorker(employees[0].emp_no);
+}
+
 async function selectLiveCardWorker(empNo) {
   selectedLiveCardEmpNo = empNo;
   renderLiveCardWorkerList();
@@ -1506,14 +1522,34 @@ async function selectLiveCardWorker(empNo) {
 
   const adjustedTotal = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
 
+  // Iterate the ACTUAL cycle dates in chronological order (26th of one
+  // month through the 25th of the next) rather than a bare 1-31 loop -
+  // day-of-month alone would put the tail end of the first month (26-31)
+  // after the early days of the second month instead of before them.
   let gridRows = "";
-  for (let day = 1; day <= 31; day++) {
-    const r = days[String(day)];
-    gridRows += `<tr>
-      <td>${day}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
-      <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
-      <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
-    </tr>`;
+  if (data.cycle_start && data.cycle_end) {
+    let cur = new Date(data.cycle_start + "T00:00:00");
+    const end = new Date(data.cycle_end + "T00:00:00");
+    while (cur <= end) {
+      const iso = cur.toISOString().slice(0, 10);
+      const r = days[iso];
+      const label = cur.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+      gridRows += `<tr>
+        <td>${label}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
+        <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
+        <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
+      </tr>`;
+      cur.setDate(cur.getDate() + 1);
+    }
+  } else {
+    for (let day = 1; day <= 31; day++) {
+      const r = days[String(day)];
+      gridRows += `<tr>
+        <td>${day}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
+        <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
+        <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
+      </tr>`;
+    }
   }
 
   const totalDaysRows = [
