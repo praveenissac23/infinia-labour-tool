@@ -262,6 +262,7 @@
                 <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
                 <button class="btn btn-dark" onclick="selectAll()">Select All</button>
                 <button class="btn btn-dark" onclick="selectNone()">Select None</button>
+                <button class="btn btn-dark" style="background:#8B2E22;" onclick="openClearDayModal()">Clear Day</button>
               </div>
             </div>
             <div class="card" style="padding:10px 14px; margin-bottom:0; flex-shrink:0;">
@@ -321,6 +322,18 @@
             <div style="display:flex; justify-content:flex-end; gap:8px;">
               <button class="btn btn-dark" onclick="closeImportModal()">Cancel</button>
               <button class="btn btn-primary" onclick="confirmImportEmployeeFile()">Confirm Import</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ CLEAR DAY CONFIRMATION MODAL ============ -->
+        <div id="clearday-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:26px 30px; width:420px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 12px;">Clear Day</h2>
+            <p style="font-size:14px; margin:0 0 20px;">Are you sure you want to delete <strong id="clearday-modal-date"></strong>'s attendance?</p>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" onclick="closeClearDayModal()">Cancel</button>
+              <button class="btn btn-primary" style="background:#8B2E22;" onclick="confirmClearDay()">Yes</button>
             </div>
           </div>
         </div>
@@ -1068,6 +1081,30 @@ async function importEmployeeFile(input) {
 function closeImportModal() {
   pendingImportFile = null;
   document.getElementById("import-modal-overlay").style.display = "none";
+}
+
+function openClearDayModal() {
+  const dateObj = new Date(currentDate + "T00:00:00");
+  document.getElementById("clearday-modal-date").textContent =
+    dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  document.getElementById("clearday-modal-overlay").style.display = "flex";
+}
+
+function closeClearDayModal() {
+  document.getElementById("clearday-modal-overlay").style.display = "none";
+}
+
+async function confirmClearDay() {
+  closeClearDayModal();
+  try {
+    const result = await apiCall(`/attendance/${currentDate}`, { method: "DELETE" });
+    showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${currentDate}.`);
+    clearDraft(currentDate);
+    await loadDate(currentDate, true);
+    loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
+  } catch (e) {
+    showStatus("att-status", "err", "Could not clear the day: " + (e.body?.detail || "Unknown error"));
+  }
 }
 
 async function confirmImportEmployeeFile() {
