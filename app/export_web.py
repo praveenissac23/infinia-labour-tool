@@ -87,8 +87,9 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     box_border = Border(left=thin_grey, right=thin_grey, top=thin_grey, bottom=thin_grey)
     r = start_row
 
-    # Employee info block - label in column A, value merged across B:D
-    # so it reads as a clean form row instead of a lonely narrow cell.
+    # Employee info block - label in column A, value merged across B:H so
+    # it spans the same full width as the daily grid below it, instead of
+    # a narrow A:D block that looked off-center against the wider table.
     info = [
         ("Employee Name:", summary.emp_name), ("Employee No:", summary.emp_no),
         ("Trade:", summary.trade), ("Month & Year:", summary.month_year),
@@ -100,13 +101,13 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         lbl.font = Font(bold=True, size=9.5)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="right", vertical="center")
-        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=4)
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
         val = ws.cell(row=r, column=2, value=value)
         val.fill = PatternFill("solid", fgColor=GREY_FILL)
         val.font = Font(size=9.5)
         val.alignment = Alignment(horizontal="left", vertical="center", indent=1)
         val.border = box_border
-        for col in (3, 4):
+        for col in (3, 4, 5, 6, 7, 8):
             ws.cell(row=r, column=col).border = box_border
             ws.cell(row=r, column=col).fill = PatternFill("solid", fgColor=GREY_FILL)
         r += 1
@@ -330,7 +331,8 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         [Paragraph("Month & Year:", label_style), Paragraph(summary.month_year or "", value_style)],
         [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.0f}", value_style)],
     ]
-    info_tbl = Table(info_rows, colWidths=[doc_width * 0.22, doc_width * 0.40])
+    info_tbl = Table(info_rows, colWidths=[doc_width * 0.22, doc_width * 0.78])
+    info_tbl.hAlign = "CENTER"
     info_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
         ("GRID", (0, 0), (-1, -1), 0.5, grid_color),
