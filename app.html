@@ -48,6 +48,7 @@
   .toolbar input[type=date], .toolbar select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
   .toolbar select { width: 160px; flex: 0 0 auto; }
   .toolbar input[type=text] { padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 220px; }
+  #search-box { width: 80ch; }
   .viewing-label { font-size: 13px; font-weight: bold; color: var(--red); margin-left: auto; }
 
   .bulk-bar { background: white; padding: 14px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
@@ -246,20 +247,24 @@
             <input type="text" id="search-box" placeholder="Employee No or Name" oninput="renderRows()">
             <span class="viewing-label" id="viewing-label"></span>
           </div>
-          <div class="card" style="padding:10px 14px;">
-            <div id="attendance-calendar" class="dash-calendar" style="max-width:280px;"></div>
-          </div>
-          <div class="bulk-bar">
-            <div class="row">
-              <select id="bulk-am"><option value="">A.M -</option></select>
-              <select id="bulk-pm"><option value="">P.M -</option></select>
-              <select id="bulk-site"><option value="">Site -</option></select>
-              <select id="bulk-engineer"><option value="">Engineer -</option></select>
-              <input type="text" id="bulk-ot" placeholder="OT" style="width:50px;">
-              <input type="text" id="bulk-bh" placeholder="BH" style="width:50px;">
-              <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
-              <button class="btn btn-dark" onclick="selectAll()">Select All</button>
-              <button class="btn btn-dark" onclick="selectNone()">Select None</button>
+          <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:14px;">
+            <div class="bulk-bar" style="flex:1; margin-bottom:0;">
+              <div class="row">
+                <select id="bulk-am"><option value="">A.M -</option></select>
+                <select id="bulk-pm"><option value="">P.M -</option></select>
+                <select id="bulk-site"><option value="">Site -</option></select>
+                <select id="bulk-engineer"><option value="">Engineer -</option></select>
+                <input type="text" id="bulk-ot" placeholder="OT" style="width:50px;">
+                <input type="text" id="bulk-bh" placeholder="BH" style="width:50px;">
+              </div>
+              <div class="row" style="margin-top:8px;">
+                <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
+                <button class="btn btn-dark" onclick="selectAll()">Select All</button>
+                <button class="btn btn-dark" onclick="selectNone()">Select None</button>
+              </div>
+            </div>
+            <div class="card" style="padding:10px 14px; margin-bottom:0; flex-shrink:0;">
+              <div id="attendance-calendar" class="dash-calendar" style="max-width:280px;"></div>
             </div>
           </div>
           <div class="status-msg" id="att-status"></div>
