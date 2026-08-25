@@ -712,6 +712,12 @@ BUILDER_DAILY_MEASURES = {
     # were removed on request - Final Salary Cost alone covers what's
     # actually used.
     "final_salary_cost": "Final Salary Cost (AED)",
+    # OT/BH Amount - each row's own OT/BH hours valued at that SAME
+    # worker's own hourly rate (daily_rate/8, daily_rate = their whole
+    # monthly total_salary/30) - identical formula recalculate_from_
+    # daily_rows() uses for the real payroll figure, just applied per
+    # row here so it can be summed by whichever dimension is grouped on.
+    "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
 }
 
 BUILDER_SUMMARY_DIMENSIONS = {
@@ -768,6 +774,12 @@ def _builder_daily_measure_contribution(r, measure_key, matched_summary=None):
         return r.ot or 0
     if measure_key == "bh_hours":
         return r.bh or 0
+    if measure_key in ("ot_amount", "bh_amount"):
+        if not matched_summary or not matched_summary.total_salary:
+            return 0
+        hourly_rate = (matched_summary.total_salary / 30.0) / 8.0
+        hours = (r.ot or 0) if measure_key == "ot_amount" else (r.bh or 0)
+        return hours * hourly_rate
     if measure_key == "final_salary_cost":
         # Apportioned across every PAID day (Present, Sick, Medical,
         # Friday, Holiday - the exact same set that pays identically in
