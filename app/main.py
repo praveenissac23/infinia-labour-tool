@@ -586,19 +586,26 @@ def summaries_by_site(month_year: str, date_from: str = None, date_to: str = Non
 @app.get("/reports/builder-catalog")
 def builder_catalog(user: models.User = Depends(auth.get_current_user)):
     """
-    What's available to pick from in the Report Builder - dimensions
-    (things to group by / show as labels, never summed) and measures
-    (things summed per group). Site is just one dimension among several,
-    same as the desktop app - not a separate mode.
+    What's available to pick from in the Report Builder, for both data
+    sources - dimensions (things to group by / show as labels, never
+    summed) and measures (things summed per group). Site is just one
+    dimension among several, same as the desktop app - not a separate
+    mode.
     """
     return {
-        "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_DIMENSIONS.items()],
-        "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_MEASURES.items()],
+        "summary": {
+            "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_DIMENSIONS.items()],
+            "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_SUMMARY_MEASURES.items()],
+        },
+        "daily": {
+            "dimensions": [{"key": k, "label": v} for k, v in rp.BUILDER_DAILY_DIMENSIONS.items()],
+            "measures": [{"key": k, "label": v} for k, v in rp.BUILDER_DAILY_MEASURES.items()],
+        },
     }
 
 
 @app.get("/reports/custom")
-def custom_report(month_year: str, dimensions: str = "", measures: str = "",
+def custom_report(month_year: str, data_source: str = "daily", dimensions: str = "", measures: str = "",
                    date_from: str = None, date_to: str = None,
                    db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
@@ -608,6 +615,14 @@ def custom_report(month_year: str, dimensions: str = "", measures: str = "",
     picked means one overall row; picking 'site' groups by site;
     picking 'emp_no'+'name' groups per worker - grouping is just a
     consequence of what's checked, not a separate toggle.
+
+    data_source matters for accuracy: 'daily' uses each attendance row's
+    OWN actual site/date/engineer (correct for a worker who was at
+    different sites on different days). 'summary' is one row per worker
+    per cycle, so a dimension like 'site' can only show that worker's
+    single MOST FREQUENT site for the whole cycle - fine for a worker
+    who stayed at one site, misleading for one who moved around, which
+    is why 'daily' is the default here.
     """
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
@@ -618,14 +633,16 @@ def custom_report(month_year: str, dimensions: str = "", measures: str = "",
         filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
     if date_to:
         filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
-    result = rp.build_custom_report("summary", dims, meas, filters, daily_rows, summaries2)
+    source = data_source if data_source in ("daily", "summary") else "daily"
+    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
     return {"title": result.title, "note": result.note,
             "columns": [{"key": k, "label": label} for k, label in result.columns],
             "rows": result.rows, "totals": result.totals}
 
 
 @app.get("/export/{month_year}/custom-report")
-def export_custom_report(month_year: str, token: str, dimensions: str = "", measures: str = "",
+def export_custom_report(month_year: str, token: str, data_source: str = "daily",
+                          dimensions: str = "", measures: str = "",
                           date_from: str = None, date_to: str = None, format: str = "excel",
                           db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
@@ -638,7 +655,8 @@ def export_custom_report(month_year: str, token: str, dimensions: str = "", meas
         filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
     if date_to:
         filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
-    result = rp.build_custom_report("summary", dims, meas, filters, daily_rows, summaries2)
+    source = data_source if data_source in ("daily", "summary") else "daily"
+    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
     result_dict = {"columns": [{"key": k, "label": label} for k, label in result.columns],
                     "rows": result.rows, "totals": result.totals}
     if not result.columns:
