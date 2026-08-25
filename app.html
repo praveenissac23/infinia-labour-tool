@@ -900,9 +900,11 @@ function showStatus(elId, kind, text) {
 
 async function saveAttendance() {
   const rows = [];
+  let filledCount = 0;
   employees.forEach(emp => {
     const d = rowData[emp.emp_no];
     if (!d.am && !d.pm) return;
+    filledCount++;
     rows.push({
       emp_no: emp.emp_no, full_date: currentDate,
       am: d.am, pm: d.pm, site: d.site, engineer: d.engineer,
@@ -923,7 +925,10 @@ async function saveAttendance() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rows }),
     });
-    let msg = `Saved ${result.saved} worker(s) for ${currentDate}.`;
+    const unchangedCount = result.saved - filledCount;
+    let msg = `Saved for ${currentDate}: ${filledCount} worker(s) marked`;
+    if (unchangedCount > 0) msg += `, ${unchangedCount} left blank`;
+    msg += ".";
     if (result.blocked && result.blocked.length) {
       msg += "\n\nBlocked (Holiday needs previous day filled in first):\n" + result.blocked.join("\n");
       showStatus("att-status", "warn", msg);
