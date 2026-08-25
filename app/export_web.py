@@ -95,15 +95,15 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         ("Salary (AED):", summary.total_salary),
     ]
     for label, value in info:
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14
         lbl = ws.cell(row=r, column=1, value=label)
-        lbl.font = Font(bold=True, size=8)
+        lbl.font = Font(bold=True, size=9.5)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="right", vertical="center")
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=4)
         val = ws.cell(row=r, column=2, value=value)
         val.fill = PatternFill("solid", fgColor=GREY_FILL)
-        val.font = Font(size=8)
+        val.font = Font(size=9.5)
         val.alignment = Alignment(horizontal="left", vertical="center", indent=1)
         val.border = box_border
         for col in (3, 4):
@@ -117,7 +117,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     ws.row_dimensions[header_row].height = 13
     for i, h in enumerate(DAILY_HEADERS, start=1):
         c = ws.cell(row=header_row, column=i, value=h)
-        c.font = Font(bold=True, color="FFFFFF", size=10)
+        c.font = Font(bold=True, color="FFFFFF", size=11)
         c.fill = PatternFill("solid", fgColor=BRAND_RED)
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = border
@@ -132,13 +132,13 @@ def _write_worker_card(ws, summary, rows, border, start_row):
                 row.engineer if row else "", (row.ot if row and row.ot else ""),
                 (row.bh if row and row.bh else ""), (row.comments if row else "")]
         stripe = "F7F7F7" if idx % 2 == 0 else "FFFFFF"
-        ws.row_dimensions[r].height = 13
+        ws.row_dimensions[r].height = 14.5
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
             c.fill = PatternFill("solid", fgColor=stripe)
-            c.font = Font(size=9.5)
+            c.font = Font(size=10.5)
             if i == 4:  # Site column - values like "704" look numeric but
                 c.number_format = "@"  # aren't; "@" stops Excel's green
                 # triangle "number stored as text" warning on them.
@@ -146,10 +146,10 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     r += 1
 
     # OFFICE USE ONLY bar
-    ws.row_dimensions[r].height = 12
+    ws.row_dimensions[r].height = 14
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
     office_cell = ws.cell(row=r, column=1, value="OFFICE USE ONLY")
-    office_cell.font = Font(bold=True, size=8)
+    office_cell.font = Font(bold=True, size=9.5)
     office_cell.fill = PatternFill("solid", fgColor="BFBFBF")
     office_cell.alignment = Alignment(horizontal="center", vertical="center")
     office_cell.border = box_border
@@ -161,10 +161,10 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     # spacer columns so the three blocks read as distinct panels rather
     # than one continuous, cluttered table.
     for label, attr in TOTAL_DAYS_FIELDS:
-        ws.row_dimensions[r].height = 11
+        ws.row_dimensions[r].height = 13
         val = getattr(summary, attr, 0) or 0
         lbl = ws.cell(row=r, column=1, value=label)
-        lbl.font = Font(bold=True, size=8.5)
+        lbl.font = Font(bold=True, size=10)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -172,7 +172,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="center", vertical="center")
-        vcell.font = Font(size=8.5)
+        vcell.font = Font(size=10)
         r += 1
     total_days_end = r
 
@@ -181,7 +181,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         val = getattr(summary, attr, 0) or 0
         prefix = f"{sign} " if sign else ""
         lbl = ws.cell(row=r, column=4, value=label)
-        lbl.font = Font(bold=True, size=8.5)
+        lbl.font = Font(bold=True, size=10)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -189,12 +189,12 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
-        vcell.font = Font(size=8.5)
+        vcell.font = Font(size=10)
         r += 1
     for adj in summary.adjustments:
         sign = "-" if adj.is_deduction else "+"
         lbl = ws.cell(row=r, column=4, value=adj.description)
-        lbl.font = Font(bold=True, size=8.5)
+        lbl.font = Font(bold=True, size=10)
         lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -217,7 +217,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
 
     final_cell = ws.cell(row=block_start + 1, column=7, value=f"AED {_adjusted_final_salary(summary):,.2f}")
     final_cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
-    final_cell.font = Font(bold=True, size=11)
+    final_cell.font = Font(bold=True, size=13)
     final_cell.border = box_border
     final_cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.merge_cells(start_row=block_start + 1, start_column=7, end_row=block_start + 1, end_column=8)
@@ -257,6 +257,8 @@ def build_combined_excel(summaries_with_rows):
     ws.page_margins.right = 0.25
     ws.page_margins.top = 0.3
     ws.page_margins.bottom = 0.3
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = True
     ws.freeze_panes = "A1"
 
     thin = Side(style="thin", color="DDDDDD")
@@ -303,6 +305,8 @@ def build_separate_excel_files(summaries_with_rows):
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_options.horizontalCentered = True
+        ws.print_options.verticalCentered = True
         _write_worker_card(ws, summary, rows, border, 1)
         buf = io.BytesIO()
         wb.save(buf)
