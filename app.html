@@ -1129,11 +1129,11 @@ async function initReportColumnPicker() {
   const defaultMeasures = new Set(["days_present", "days_absent", "ot_hours", "bh_hours", "final_salary_cost"]);
 
   idEl.innerHTML = reportCatalog.dimensions.map(d => `
-    <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""}> ${d.label}</label>
+    <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""} onchange="loadReports()"> ${d.label}</label>
   `).join("");
   const measureEl = document.getElementById("report-column-picker-measure");
   measureEl.innerHTML = reportCatalog.measures.map(m => `
-    <label><input type="checkbox" data-measure="${m.key}" ${defaultMeasures.has(m.key) ? "checked" : ""}> ${m.label}</label>
+    <label ${m.hint ? `title="${m.hint}"` : ""}><input type="checkbox" data-measure="${m.key}" ${defaultMeasures.has(m.key) ? "checked" : ""} onchange="loadReports()"> ${m.label}${m.hint ? ' <span style="color:#aaa;">\u24D8</span>' : ""}</label>
   `).join("");
   idEl.dataset.built = "1";
 }
