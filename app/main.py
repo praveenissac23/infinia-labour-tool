@@ -516,10 +516,18 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     """
     Same validation and Holiday-previous-day rules as the desktop app's
     save_all(): every row is validated BEFORE anything is written, a
-    row cleared back to blank deletes any existing saved entry instead
-    of being silently skipped, and Holiday specifically requires
-    Site/Engineer to come from that worker's own saved entry the day
-    before - blocked with the exact missing date if that isn't there.
+    row cleared back to fully blank (no A.M/P.M and no Site) deletes
+    any existing saved entry instead of being silently skipped, and
+    Holiday specifically requires Site/Engineer to come from that
+    worker's own saved entry the day before - blocked with the exact
+    missing date if that isn't there.
+
+    A row with blank A.M/P.M but a real Site (an auto-filled Sunday
+    placeholder, or staff editing just the Site before marking
+    A.M/P.M) is kept rather than deleted - every save resubmits ALL
+    workers for the date, so treating that the same as a genuine clear
+    would silently wipe out every other worker's still-unmarked
+    placeholder too.
     """
     errors = []
     blocked = []
@@ -532,10 +540,23 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
             continue
 
         am, pm = (row_in.am or "").strip(), (row_in.pm or "").strip()
+        site_val = (row_in.site or "").strip()
         if not am and not pm:
-            # Cleared row - delete any existing saved entry for this day.
-            services.delete_daily_row_if_blank(db, row_in.emp_no, row_in.full_date)
-            to_process.append((employee, None))
+            if not site_val:
+                # Genuinely blank - delete any existing saved entry for this day.
+                services.delete_daily_row_if_blank(db, row_in.emp_no, row_in.full_date)
+                to_process.append((employee, None))
+            else:
+                # Blank A.M/P.M but a real Site - an auto-filled placeholder
+                # (Saturday -> Sunday) staff hasn't marked yet, or staff
+                # editing just the Site before marking A.M/P.M. Every save
+                # resubmits ALL workers for the date, so treating this the
+                # same as a genuine clear would silently wipe out every
+                # other worker's still-unmarked placeholder too - keep/
+                # update it instead, skip full validation since it isn't
+                # a real attendance entry yet.
+                row_in.am, row_in.pm = "", ""
+                to_process.append((employee, row_in))
             continue
 
         site, engineer = row_in.site, row_in.engineer
