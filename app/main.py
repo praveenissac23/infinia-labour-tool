@@ -81,6 +81,17 @@ def read_me(user: models.User = Depends(auth.get_current_user)):
     return {"username": user.username, "full_name": user.full_name, "role": user.role}
 
 
+@app.post("/auth/download-token")
+def get_download_token(user: models.User = Depends(auth.get_current_user)):
+    """
+    Issues a 60-second, download-only token - requires the normal
+    Authorization header (proper auth, not a URL param), then hands
+    back a short-lived token that export/backup links can safely carry
+    in their query string instead of the real session token.
+    """
+    return {"token": auth.create_download_token(user.username)}
+
+
 @app.post("/auth/change-password")
 def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depends(get_db),
                      user: models.User = Depends(auth.get_current_user)):
@@ -517,7 +528,7 @@ def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
     # loses the "real user tap" context by the time the async blob is
     # ready, so mobile browsers silently block the download. A direct,
     # synchronous navigation has no such problem.
-    user = auth.get_user_from_token_string(token, db)
+    user = auth.get_download_user_from_token(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
@@ -543,7 +554,7 @@ def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
 
 @app.get("/export/{month_year}/pdf")
 def export_pdf(month_year: str, token: str, db: Session = Depends(get_db)):
-    user = auth.get_user_from_token_string(token, db)
+    user = auth.get_download_user_from_token(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
@@ -589,7 +600,7 @@ def _get_summary_pairs(month_year: str, db: Session):
 @app.get("/export/{month_year}/excel-separate")
 def export_excel_separate(month_year: str, token: str, db: Session = Depends(get_db)):
     """One .xlsx per worker, zipped together - the 'Separate Files' option next to Combine."""
-    user = auth.get_user_from_token_string(token, db)
+    user = auth.get_download_user_from_token(token, db)
     pairs = _get_summary_pairs(month_year, db)
     files = export_web.build_separate_excel_files(pairs)
     buf = export_web.zip_files(files)
@@ -603,7 +614,7 @@ def export_excel_separate(month_year: str, token: str, db: Session = Depends(get
 @app.get("/export/{month_year}/pdf-separate")
 def export_pdf_separate(month_year: str, token: str, db: Session = Depends(get_db)):
     """One .pdf per worker, zipped together - the 'Separate Files' option next to Combine."""
-    user = auth.get_user_from_token_string(token, db)
+    user = auth.get_download_user_from_token(token, db)
     pairs = _get_summary_pairs(month_year, db)
     files = export_web.build_separate_pdf_files(pairs)
     buf = export_web.zip_files(files)
@@ -622,7 +633,7 @@ def full_backup(token: str, db: Session = Depends(get_db)):
     the web equivalent of the desktop app's local file being the
     backup. Downloadable any time from Settings.
     """
-    user = auth.get_user_from_token_string(token, db)
+    user = auth.get_download_user_from_token(token, db)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="This action requires admin access.")
 
