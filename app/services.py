@@ -184,9 +184,15 @@ def auto_fill_sunday_from_saturday(db: Session, employee: models.Employee, satur
     When a Saturday is saved with a real Site, the following Sunday gets
     that same Site/Engineer pre-filled automatically - A.M/P.M are left
     blank so staff still has to mark it (usually Holiday) themselves;
-    the day only turns green on the calendar once they do. Never
-    overwrites a Sunday that already has real A.M/P.M data, in case
-    staff already handled that day separately.
+    the day only turns green on the calendar once they do.
+
+    Only ever fires when Sunday has NO row at all yet - the moment a
+    Sunday row exists in any form (even the auto-fill's own first pass,
+    or staff manually setting just the Site with A.M/P.M still blank),
+    it's left alone for good. Some sites genuinely work on a Sunday
+    that's otherwise a rest day, so staff needs to be able to correct
+    the Site by hand and have that stick - a later Saturday edit must
+    never silently overwrite that choice back.
     """
     from datetime import timedelta
     if saturday_row.full_date.weekday() != 5:  # 5 = Saturday
@@ -201,13 +207,12 @@ def auto_fill_sunday_from_saturday(db: Session, employee: models.Employee, satur
         .filter(and_(models.DailyRow.emp_no == employee.emp_no, models.DailyRow.full_date == sunday_date))
         .first()
     )
-    if existing is not None and ((existing.am or "").strip() or (existing.pm or "").strip()):
-        return  # staff already marked Sunday themselves - leave it alone
+    if existing is not None:
+        return  # Sunday already has a row of its own - never touch it again
 
     cycle_start, cycle_end, month_year = pcyc.cycle_bounds_for(sunday_date)
-    if existing is None:
-        existing = models.DailyRow(employee_id=employee.id, emp_no=employee.emp_no)
-        db.add(existing)
+    existing = models.DailyRow(employee_id=employee.id, emp_no=employee.emp_no)
+    db.add(existing)
 
     existing.emp_name = employee.name
     existing.trade = employee.trade
