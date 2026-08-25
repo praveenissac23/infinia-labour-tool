@@ -289,6 +289,42 @@
           Save Attendance
         </button>
 
+        <!-- ============ IMPORT CONFIRMATION MODAL ============ -->
+        <div id="import-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:26px 30px; width:520px; max-width:92vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 4px;">Import Employee Data</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 18px;" id="import-modal-filename"></p>
+
+            <div style="margin-bottom:18px;">
+              <div style="font-weight:bold; font-size:13px; margin-bottom:8px;">Employees already in the system but not in this file:</div>
+              <label style="display:block; padding:8px 10px; border:1px solid #ddd; border-radius:6px; margin-bottom:6px; cursor:pointer;">
+                <input type="radio" name="import-mode" value="add_only" checked> Leave them as they are <span style="color:#888;">(recommended)</span>
+              </label>
+              <label style="display:block; padding:8px 10px; border:1px solid #ddd; border-radius:6px; cursor:pointer;">
+                <input type="radio" name="import-mode" value="replace"> Deactivate them <span style="color:#C0392B;">(they won't appear in Master Data anymore)</span>
+              </label>
+            </div>
+
+            <div style="margin-bottom:20px;">
+              <div style="font-weight:bold; font-size:13px; margin-bottom:8px;">If an Employee No in this file already exists:</div>
+              <label style="display:block; padding:8px 10px; border:1px solid #ddd; border-radius:6px; margin-bottom:6px; cursor:pointer;">
+                <input type="radio" name="import-duplicate" value="skip" checked> Skip it <span style="color:#888;">(keep the existing record untouched)</span>
+              </label>
+              <label style="display:block; padding:8px 10px; border:1px solid #ddd; border-radius:6px; margin-bottom:6px; cursor:pointer;">
+                <input type="radio" name="import-duplicate" value="update"> Update the existing record with this file's data
+              </label>
+              <label style="display:block; padding:8px 10px; border:1px solid #ddd; border-radius:6px; cursor:pointer;">
+                <input type="radio" name="import-duplicate" value="add_new"> Add as a new, separate record <span style="color:#888;">(e.g. D-01 (1))</span>
+              </label>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" onclick="closeImportModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="confirmImportEmployeeFile()">Confirm Import</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ MASTER DATA SCREEN ============ -->
         <div class="screen" id="screen-masterdata">
           <div class="status-msg" id="md-status"></div>
@@ -1001,15 +1037,41 @@ function downloadEmployeeTemplate() {
   showStatus("md-status", "ok", "Opening the employee template - check your downloads or the new tab.");
 }
 
+let pendingImportFile = null;
+
 async function importEmployeeFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
+  pendingImportFile = file;
+  document.getElementById("import-modal-filename").textContent = `File: ${file.name}`;
+  document.getElementById("import-modal-overlay").style.display = "flex";
+  input.value = "";
+}
+
+function closeImportModal() {
+  pendingImportFile = null;
+  document.getElementById("import-modal-overlay").style.display = "none";
+}
+
+async function confirmImportEmployeeFile() {
+  if (!pendingImportFile) return;
+  const mode = document.querySelector('input[name="import-mode"]:checked').value;
+  const duplicate = document.querySelector('input[name="import-duplicate"]:checked').value;
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", pendingImportFile);
+  formData.append("mode", mode);
+  formData.append("duplicate_handling", duplicate);
+
+  document.getElementById("import-modal-overlay").style.display = "none";
   showStatus("md-status", null);
   try {
     const result = await apiCall("/employees/import", { method: "POST", body: formData });
-    let msg = `Import done: ${result.created} created, ${result.updated} updated.`;
+    let parts = [`${result.created} created`];
+    if (result.updated) parts.push(`${result.updated} updated`);
+    if (result.skipped) parts.push(`${result.skipped} skipped`);
+    if (result.added_as_new) parts.push(`${result.added_as_new} added as new`);
+    if (result.deactivated) parts.push(`${result.deactivated} deactivated`);
+    let msg = `Import done: ${parts.join(", ")}.`;
     if (result.errors && result.errors.length) {
       msg += "\n" + result.errors.join("\n");
       showStatus("md-status", "warn", msg);
@@ -1022,7 +1084,7 @@ async function importEmployeeFile(input) {
   } catch (e) {
     showStatus("md-status", "err", "Import failed: " + (e.body?.detail || "Unknown error"));
   }
-  input.value = "";
+  pendingImportFile = null;
 }
 
 async function addSite() {
