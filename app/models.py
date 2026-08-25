@@ -139,6 +139,17 @@ class EmployeeSummary(Base):
     employee = relationship("Employee", back_populates="summaries")
     adjustments = relationship("SalaryAdjustment", back_populates="summary", cascade="all, delete-orphan")
 
+    def adjusted_final_salary(self):
+        """final_salary plus/minus every adjustment on this cycle's
+        summary - the same calculation done inline everywhere else in
+        the app (Reports preview, Salary Adjustments totals, exports),
+        exposed as a method here so the Report Builder's generic
+        aggregation engine (build_custom_report) can call it uniformly
+        alongside plain columns like final_salary."""
+        return self.final_salary + sum(
+            -a.amount if a.is_deduction else a.amount for a in self.adjustments
+        )
+
     __table_args__ = (
         UniqueConstraint("emp_no", "month_year", name="uix_emp_cycle"),
     )
