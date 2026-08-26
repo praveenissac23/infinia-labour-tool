@@ -563,14 +563,13 @@
             <h2>Staff Logins</h2>
             <div class="form-row">
               <input type="text" id="new-user-username" placeholder="Username">
-              <input type="text" id="new-user-fullname" placeholder="Full name">
               <input type="password" id="new-user-password" placeholder="Password">
               <select id="new-user-role"><option value="staff">Staff</option><option value="admin">Admin</option></select>
               <button class="btn btn-primary" onclick="createUser()">Add Login</button>
             </div>
             <div class="grid-wrap" style="max-height: 40vh;">
               <table>
-                <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th></th></tr></thead>
+                <thead><tr><th>Username</th><th>Role</th><th></th></tr></thead>
                 <tbody id="user-list-body"></tbody>
               </table>
             </div>
@@ -1882,34 +1881,59 @@ async function loadUsers() {
     // Staff can deactivate fellow staff, but not an admin account -
     // same rule the backend enforces, hidden here so it isn't offered
     // and then rejected.
-    const canDeactivate = u.active && (CURRENT_ROLE === "admin" || u.role !== "admin");
-    const action = u.active
-      ? (canDeactivate ? `<button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>` : "")
-      : "Inactive";
+    // Staff can manage fellow staff but not an admin account - same rule
+    // the backend enforces, hidden here so it isn't offered then rejected.
+    const canManage = CURRENT_ROLE === "admin" || u.role !== "admin";
+    let action = "Inactive";
+    if (u.active) {
+      action = canManage
+        ? `<button class="btn btn-dark" onclick="resetUserPassword(${u.id}, '${u.username}')">Reset Password</button>
+           <button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>`
+        : "";
+    }
     return `
     <tr>
-      <td>${u.username}</td><td>${u.full_name}</td><td>${u.role}</td>
+      <td>${u.username}</td><td>${u.role}</td>
       <td>${action}</td>
     </tr>`;
   }).join("");
 }
 
+async function resetUserPassword(id, username) {
+  const pw = prompt(`Enter a new password for "${username}" (at least 6 characters):`);
+  if (pw === null) return;                    // cancelled
+  if (pw.trim().length < 6) {
+    showStatus("settings-status", "warn", "Password must be at least 6 characters.");
+    return;
+  }
+  try {
+    await apiCall(`/users/${id}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: pw.trim() }),
+    });
+    showStatus("settings-status", "ok", `Password reset for ${username}.`);
+  } catch (e) {
+    showStatus("settings-status", "err", "Could not reset password: " + (e.body?.detail || "Unknown error"));
+  }
+}
+
 async function createUser() {
   const username = document.getElementById("new-user-username").value.trim();
-  const full_name = document.getElementById("new-user-fullname").value.trim();
+
   const password = document.getElementById("new-user-password").value;
   const role = document.getElementById("new-user-role").value;
-  if (!username || !full_name || !password) {
+  if (!username || !password) {
     showStatus("settings-status", "warn", "Fill in username, full name, and password.");
     return;
   }
   try {
     await apiCall("/users", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, full_name, password, role }),
+      body: JSON.stringify({ username, password, role }),
     });
     showStatus("settings-status", "ok", `Created login for ${username}.`);
-    ["new-user-username", "new-user-fullname", "new-user-password"].forEach(id => document.getElementById(id).value = "");
+    ["new-user-username", "new-user-password"].forEach(id => document.getElementById(id).value = "");
     await loadUsers();
   } catch (e) {
     showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
