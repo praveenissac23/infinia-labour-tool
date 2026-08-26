@@ -185,7 +185,7 @@ def list_employees(active_only: bool = False, db: Session = Depends(get_db),
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.require_admin)):
+                     user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
     if existing:
         for field, value in emp.dict().items():
@@ -201,7 +201,7 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
 
 @app.delete("/employees/{emp_no}")
 def deactivate_employee(emp_no: str, db: Session = Depends(get_db),
-                         user: models.User = Depends(auth.require_admin)):
+                         user: models.User = Depends(auth.get_current_user)):
     emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -268,7 +268,7 @@ def export_employees(token: str, db: Session = Depends(get_db)):
 @app.post("/employees/import")
 async def import_employees(file: UploadFile = File(...), mode: str = Form("add_only"),
                             duplicate_handling: str = Form("skip"),
-                            db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+                            db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
     Bulk create from the filled-in template, with explicit control over
     two independent choices instead of always silently updating:
@@ -379,7 +379,7 @@ def list_sites(db: Session = Depends(get_db), user: models.User = Depends(auth.g
 
 
 @app.post("/sites", response_model=schemas.SiteOut)
-def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Site).filter(models.Site.code == site.code).first()
     if existing:
         existing.active = True
@@ -395,7 +395,7 @@ def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.U
 
 @app.put("/sites/{site_id}", response_model=schemas.SiteOut)
 def rename_site(site_id: int, site: schemas.SiteIn, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.require_admin)):
+                 user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Site).filter(models.Site.id == site_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -407,7 +407,7 @@ def rename_site(site_id: int, site: schemas.SiteIn, db: Session = Depends(get_db
 
 
 @app.delete("/sites/{site_id}")
-def remove_site(site_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+def remove_site(site_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Site).filter(models.Site.id == site_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -424,7 +424,7 @@ def list_engineers(db: Session = Depends(get_db), user: models.User = Depends(au
 
 @app.post("/engineers", response_model=schemas.EngineerOut)
 def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
-                  user: models.User = Depends(auth.require_admin)):
+                  user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Engineer).filter(models.Engineer.name == eng.name).first()
     if existing:
         existing.active = True
@@ -440,7 +440,7 @@ def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
 
 @app.put("/engineers/{engineer_id}", response_model=schemas.EngineerOut)
 def rename_engineer(engineer_id: int, eng: schemas.EngineerIn, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.require_admin)):
+                     user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Engineer not found")
@@ -452,7 +452,7 @@ def rename_engineer(engineer_id: int, eng: schemas.EngineerIn, db: Session = Dep
 
 
 @app.delete("/engineers/{engineer_id}")
-def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Engineer not found")
@@ -473,7 +473,7 @@ def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
 
 @app.delete("/attendance/{target_date}")
 def clear_attendance_for_date(target_date: date, db: Session = Depends(get_db),
-                               user: models.User = Depends(auth.require_admin)):
+                               user: models.User = Depends(auth.get_current_user)):
     """
     Deletes every worker's attendance row for one specific date - the
     'Clear Day' button's confirmed action. Admin-only, since this wipes
@@ -1190,7 +1190,7 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/backup/{backup_id}/restore")
-def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
     Admin only, unlike taking a backup - this overwrites current data,
     so it stays behind the higher bar. Replaces employees, sites,
