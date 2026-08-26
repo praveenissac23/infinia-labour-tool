@@ -14,13 +14,19 @@ import data_engine as de
 import payroll_cycle as pcyc
 
 
-def validate_row(am, pm, site, engineer, bh, comments):
+def validate_row(am, pm, site, engineer, bh, comments, ot=None):
     """
     Identical rules to daily_attendance.validate_row() in the desktop
     app - copied directly here rather than importing that module,
     since it also imports master_data.py (file-based JSON storage),
     which the web app deliberately does not use at all. This is the
     ONLY function actually needed from that module.
+
+    Adds a sanity check the desktop version didn't have: OT/BH must
+    not be negative and must fit inside a real day. Negative hours
+    would silently SUBTRACT from a worker's pay (ot_amount is
+    hours * hourly_rate, so -5 hours = -AED 66.67 off their salary)
+    with nothing on screen explaining why the total looked wrong.
     """
     problems = []
     am = (am or "").strip()
@@ -36,6 +42,19 @@ def validate_row(am, pm, site, engineer, bh, comments):
         bh_val = 0.0
     if bh_val > 2 and not (comments or "").strip():
         problems.append("BH over 2 hours requires a comment.")
+
+    for label, raw in (("OT", ot), ("BH", bh)):
+        if raw in (None, ""):
+            continue
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            problems.append(f"{label} must be a number.")
+            continue
+        if val < 0:
+            problems.append(f"{label} cannot be negative.")
+        elif val > 24:
+            problems.append(f"{label} cannot be more than 24 hours in a day.")
     return problems
 
 
