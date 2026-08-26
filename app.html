@@ -812,6 +812,13 @@ function populateCycleSelects(currentCycle) {
   });
 }
 
+// Formats a money value with thousands separators and 2 decimals:
+// 1450 -> "1,450.00". Used everywhere an AED amount is shown so
+// larger totals stay readable at a glance.
+function money(v) {
+  return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function monthYearFor(d) {
   // Cycles run the 26th of one month through the 25th of the next, and
   // are labelled after the month they END in - so 26 Aug starts the
@@ -1339,7 +1346,7 @@ function getSelectedMeasures() {
 
 function reportFormatValue(key, v) {
   if (v === null || v === undefined) return "";
-  if (REPORT_MONEY_KEYS.has(key)) return `AED ${Number(v).toFixed(2)}`;
+  if (REPORT_MONEY_KEYS.has(key)) return `AED ${money(v)}`;
   return v;
 }
 
@@ -1495,14 +1502,14 @@ function renderAdjustmentsWorkerList() {
     return `
     <tr class="clickable-row ${s.id === selectedSummaryId ? 'selected-row' : ''}" onclick="selectSummary(${s.id})">
       <td>${s.emp_no}</td><td>${s.emp_name}</td>
-      <td>AED ${s.final_salary.toFixed(2)}</td><td>AED ${adjustedTotal.toFixed(2)}</td>
+      <td>AED ${money(s.final_salary)}</td><td>AED ${money(adjustedTotal)}</td>
     </tr>`;
   }).join("");
 
   if (totalRow) {
     const finalSum = sorted.reduce((sum, s) => sum + s.final_salary, 0);
     const adjustedSum = sorted.reduce((sum, s) => sum + s.final_salary + s.adjustments.reduce((a, adj) => a + (adj.is_deduction ? -adj.amount : adj.amount), 0), 0);
-    totalRow.innerHTML = `<td>TOTAL</td><td></td><td>AED ${finalSum.toFixed(2)}</td><td>AED ${adjustedSum.toFixed(2)}</td>`;
+    totalRow.innerHTML = `<td>TOTAL</td><td></td><td>AED ${money(finalSum)}</td><td>AED ${money(adjustedSum)}</td>`;
   }
 }
 
@@ -1525,7 +1532,7 @@ function renderAdjustmentRows(s) {
     <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:13px;">
       <span>${a.description}</span>
       <span style="display:flex; gap:10px; align-items:center;">
-        <strong style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"}AED ${a.amount.toFixed(2)}</strong>
+        <strong style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"}AED ${money(a.amount)}</strong>
         <button class="btn btn-gray" onclick="removeAdjustmentRow(${a.id})">Remove</button>
       </span>
     </div>
@@ -1752,13 +1759,13 @@ async function selectLiveCardWorker(empNo) {
   const summaryRows = [
     ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
     ["Absence/Leave", s.deduction, "-"], ["OT Amount", s.ot_amount, "+"], ["BH Amount", s.bh_amount, "+"],
-  ].map(([label, val, sign]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${sign} AED ${(val || 0).toFixed(2)}</span></div>`).join("");
+  ].map(([label, val, sign]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${sign} AED ${money(val)}</span></div>`).join("");
 
-  const adjRows = s.adjustments.map(a => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${a.amount.toFixed(2)}</span></div>`).join("");
+  const adjRows = s.adjustments.map(a => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${money(a.amount)}</span></div>`).join("");
 
   detail.innerHTML = `
     <h2 style="margin-bottom:2px;">${s.emp_no} - ${s.emp_name}</h2>
-    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${s.total_salary.toLocaleString()}</p>
+    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${money(s.total_salary)}</p>
     <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
         <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>
@@ -1770,7 +1777,7 @@ async function selectLiveCardWorker(empNo) {
       <div style="min-width:180px;"><h2 style="font-size:12px; margin-bottom:2px;">Salary Summary</h2>${summaryRows}${adjRows}</div>
       <div style="min-width:160px;">
         <div style="background:${BRAND_BLACK_HEX}; color:white; text-align:center; padding:6px; border-radius:6px 6px 0 0; font-size:11px; font-weight:bold;">FINAL SALARY TO PROCESS</div>
-        <div style="background:#C6EFCE; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${adjustedTotal.toFixed(2)}</div>
+        <div style="background:#C6EFCE; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${money(adjustedTotal)}</div>
       </div>
     </div>
   `;
