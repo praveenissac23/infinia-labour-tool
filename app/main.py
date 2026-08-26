@@ -133,7 +133,10 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
     new_user = models.User(
         username=payload.username,
         hashed_password=auth.hash_password(payload.password),
-        full_name=payload.full_name,
+        # Full name is no longer collected when creating a login; fall
+        # back to the username so the Activity Monitor and header still
+        # have something readable to show.
+        full_name=(payload.full_name or "").strip() or payload.username,
         role=payload.role,
     )
     db.add(new_user)
@@ -158,6 +161,29 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db),
     target.active = False
     db.commit()
     log_action(db, user.id, "deactivate_user", target.username)
+    return {"ok": True}
+
+
+@app.post("/users/{user_id}/reset-password")
+def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
+                         db: Session = Depends(get_db),
+                         user: models.User = Depends(auth.get_current_user)):
+    """
+    Set another user's password without knowing their current one - for
+    when someone forgets theirs. Anyone can reset a staff account (staff
+    manage staff), but only an admin can reset an admin's, matching the
+    same rule that governs creating and deactivating admins.
+    """
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.role == "admin" and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can reset an admin's password.")
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+    target.hashed_password = auth.hash_password(payload.new_password)
+    db.commit()
+    log_action(db, user.id, "reset_password", target.username)
     return {"ok": True}
 
 
