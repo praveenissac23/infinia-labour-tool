@@ -195,6 +195,17 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
         db.add(existing)
     db.commit()
     db.refresh(existing)
+
+    # Salary figures live on the Employee record but are copied into every
+    # EmployeeSummary when it's calculated, so editing Total/Basic Salary
+    # has to recalculate this worker's existing summaries - otherwise the
+    # cards, reports and payroll totals keep showing the OLD salary
+    # indefinitely, with no indication they're stale.
+    for (cycle,) in db.query(models.EmployeeSummary.month_year).filter(
+        models.EmployeeSummary.emp_no == existing.emp_no
+    ).distinct().all():
+        services.recalculate_summary(db, existing, cycle)
+
     log_action(db, user.id, "save_employee", f"{emp.emp_no} - {emp.name}")
     return existing
 
@@ -306,6 +317,7 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
             n += 1
 
     created, updated, skipped, added_as_new, errors = 0, 0, 0, 0, []
+    updated_emp_nos = set()
     file_emp_nos = set()
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or all(v is None or str(v).strip() == "" for v in row):
@@ -346,6 +358,7 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
                 existing.total_salary, existing.basic_salary = total_salary, basic_salary
                 existing.active = True
                 updated += 1
+                updated_emp_nos.add(emp_no)
         else:
             db.add(models.Employee(emp_no=emp_no, name=name, trade=trade,
                                     total_salary=total_salary, basic_salary=basic_salary, active=True))
@@ -363,6 +376,19 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
             deactivated += 1
 
     db.commit()
+
+    # Any employee whose salary figures were just overwritten needs their
+    # existing summaries recalculated, same reason as upsert_employee -
+    # otherwise cards and reports keep showing the pre-import salary.
+    for emp_no in updated_emp_nos:
+        emp_obj = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        if not emp_obj:
+            continue
+        for (cycle,) in db.query(models.EmployeeSummary.month_year).filter(
+            models.EmployeeSummary.emp_no == emp_no
+        ).distinct().all():
+            services.recalculate_summary(db, emp_obj, cycle)
+
     log_action(db, user.id, "import_employees",
                f"{created} created, {updated} updated, {skipped} skipped, "
                f"{added_as_new} added as new, {deactivated} deactivated, {len(errors)} errors")
