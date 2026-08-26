@@ -236,6 +236,11 @@
           </div>
 
           <div class="card">
+            <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:8px;">
+              <button class="btn btn-dark" style="padding:2px 10px;" onclick="shiftCalendarCycle('dash', -1)">&#9664;</button>
+              <strong id="dash-calendar-title" style="font-size:13px; min-width:150px; text-align:center;"></strong>
+              <button class="btn btn-dark" style="padding:2px 10px;" onclick="shiftCalendarCycle('dash', 1)">&#9654;</button>
+            </div>
             <div id="dash-calendar" class="dash-calendar"></div>
           </div>
         </div>
@@ -266,6 +271,11 @@
               </div>
             </div>
             <div class="card" style="padding:10px 14px; margin-bottom:0; flex-shrink:0;">
+              <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px;">
+                <button class="btn btn-dark" style="padding:1px 8px; font-size:11px;" onclick="shiftCalendarCycle('attendance', -1)">&#9664;</button>
+                <strong id="attendance-calendar-title" style="font-size:11.5px; min-width:120px; text-align:center;"></strong>
+                <button class="btn btn-dark" style="padding:1px 8px; font-size:11px;" onclick="shiftCalendarCycle('attendance', 1)">&#9654;</button>
+              </div>
               <div id="attendance-calendar" class="dash-calendar" style="max-width:280px;"></div>
             </div>
           </div>
@@ -401,7 +411,7 @@
         <div class="screen" id="screen-reports">
           <div class="toolbar">
             <label>Cycle (Month Year):</label>
-            <input type="text" id="report-cycle" placeholder="e.g. August 2026">
+            <select id="report-cycle" onchange="loadReports()"></select>
             <label>Date range (optional):</label>
             <input type="date" id="report-date-from">
             <span style="font-size:12px; color:#888;">to</span>
@@ -437,7 +447,7 @@
         <div class="screen" id="screen-combine">
           <div class="toolbar">
             <label>Cycle (Month Year):</label>
-            <input type="text" id="combine-cycle" placeholder="e.g. August 2026">
+            <select id="combine-cycle"></select>
           </div>
           <div class="status-msg" id="combine-status"></div>
           <div style="display:flex; gap:14px; flex-wrap:wrap;">
@@ -460,7 +470,7 @@
         <div class="screen" id="screen-adjustments">
           <div class="toolbar">
             <label>Cycle:</label>
-            <input type="text" id="adj-cycle" placeholder="e.g. August 2026">
+            <select id="adj-cycle" onchange="loadAdjustmentsList()"></select>
             <button class="btn btn-primary" onclick="loadAdjustmentsList()">Load</button>
             <label>Search:</label>
             <input type="text" id="adj-search-box" placeholder="Employee No or Name" oninput="renderAdjustmentsWorkerList()">
@@ -497,7 +507,7 @@
         <div class="screen" id="screen-livecard">
           <div class="toolbar">
             <label>Cycle:</label>
-            <input type="text" id="livecard-cycle" placeholder="e.g. August 2026">
+            <select id="livecard-cycle" onchange="onLiveCardCycleChange()"></select>
             <label>Search:</label>
             <input type="text" id="livecard-search" placeholder="Employee No or Name" oninput="renderLiveCardWorkerList()">
           </div>
@@ -524,7 +534,7 @@
         <div class="screen" id="screen-errorcheck">
           <div class="toolbar">
             <label>Cycle (Month Year):</label>
-            <input type="text" id="errcheck-cycle" placeholder="e.g. August 2026">
+            <select id="errcheck-cycle" onchange="loadErrorCheck()"></select>
             <button class="btn btn-primary" onclick="loadErrorCheck()">Run Check</button>
           </div>
           <div class="card">
@@ -699,8 +709,8 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
-  if (name === "dashboard") loadDashboardCalendar(monthYearFor(new Date()));
-  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
+  if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || monthYearFor(new Date()));
+  if (name === "attendance") loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -742,10 +752,7 @@ async function initApp() {
   renderMasterDataLists();
 
   const currentCycle = monthYearFor(new Date());
-  document.getElementById("report-cycle").value = currentCycle;
-  document.getElementById("adj-cycle").value = currentCycle;
-  document.getElementById("errcheck-cycle").value = currentCycle;
-  document.getElementById("combine-cycle").value = currentCycle;
+  populateCycleSelects(currentCycle);
 
   // Staff Logins is available to everyone now - staff can add fellow
   // staff - but only an admin gets the "Admin" role option in the
@@ -774,6 +781,35 @@ async function initApp() {
   if (lastScreen && SCREEN_TITLES[lastScreen] && (lastScreen !== "activity" || CURRENT_ROLE === "admin")) {
     switchScreen(lastScreen);
   }
+}
+
+// Builds the list of cycles offered in every cycle dropdown: the
+// current one plus the previous 23, so any past cycle can be pulled up
+// and reported on - that's the whole point of keeping the history.
+function buildCycleOptions(currentCycle, monthsBack = 23) {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  if (now.getDate() >= 26) { month += 1; if (month > 11) { month = 0; year += 1; } }
+  const out = [];
+  for (let i = 0; i <= monthsBack; i++) {
+    let m = month - i, y = year;
+    while (m < 0) { m += 12; y -= 1; }
+    out.push(new Date(y, m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }));
+  }
+  if (currentCycle && !out.includes(currentCycle)) out.unshift(currentCycle);
+  return out;
+}
+
+function populateCycleSelects(currentCycle) {
+  const cycles = buildCycleOptions(currentCycle);
+  const html = cycles.map(c => `<option value="${c}">${c}</option>`).join("");
+  ["report-cycle", "adj-cycle", "errcheck-cycle", "combine-cycle", "livecard-cycle"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = html;
+    el.value = currentCycle;
+  });
 }
 
 function monthYearFor(d) {
@@ -983,7 +1019,7 @@ async function saveAttendance() {
     }
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
+    loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
       showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
@@ -1134,7 +1170,7 @@ async function confirmClearDay() {
     showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${currentDate}.`);
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(monthYearFor(new Date()), "attendance-calendar");
+    loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
   } catch (e) {
     showStatus("att-status", "err", "Could not clear the day: " + (e.body?.detail || "Unknown error"));
   }
@@ -1556,9 +1592,26 @@ function startDashboardClock() {
   setInterval(tick, 1000 * 30);
 }
 
+// Which cycle each calendar is currently showing, so the arrows can
+// step backwards/forwards from wherever the user already is.
+const calendarCycle = { dash: null, attendance: null };
+
+function shiftCalendarCycle(which, delta) {
+  const containerId = which === "dash" ? "dash-calendar" : "attendance-calendar";
+  const current = calendarCycle[which] || monthYearFor(new Date());
+  const d = new Date(current + " 1");
+  d.setMonth(d.getMonth() + delta);
+  const next = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  loadDashboardCalendar(next, containerId);
+}
+
 async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
   const cal = document.getElementById(containerId);
   if (!cal) return;
+  const which = containerId === "dash-calendar" ? "dash" : "attendance";
+  calendarCycle[which] = cycle;
+  const titleEl = document.getElementById(`${containerId}-title`);
+  if (titleEl) titleEl.textContent = cycle;
   cal.innerHTML = '<div class="empty-note">Loading...</div>';
 
   let result;
@@ -1625,6 +1678,17 @@ function renderLiveCardWorkerList() {
     </tr>`).join("");
 }
 
+function onLiveCardCycleChange() {
+  // Re-fetch the currently selected worker's card for the newly chosen
+  // cycle, so switching cycle shows that same worker's older data
+  // rather than clearing the selection.
+  if (selectedLiveCardEmpNo) {
+    selectLiveCardWorker(selectedLiveCardEmpNo);
+  } else if (employees.length) {
+    selectLiveCardWorker(employees[0].emp_no);
+  }
+}
+
 function preloadLiveCardDefault() {
   if (selectedLiveCardEmpNo) return; // already have a selection, don't override it
   if (employees.length) selectLiveCardWorker(employees[0].emp_no);
@@ -1633,7 +1697,7 @@ function preloadLiveCardDefault() {
 async function selectLiveCardWorker(empNo) {
   selectedLiveCardEmpNo = empNo;
   renderLiveCardWorkerList();
-  const cycle = document.getElementById("livecard-cycle").value.trim() || monthYearFor(new Date());
+  const cycle = document.getElementById("livecard-cycle").value || monthYearFor(new Date());
   document.getElementById("livecard-cycle").value = cycle;
   const detail = document.getElementById("livecard-detail");
   detail.innerHTML = `<p class="empty-note">Loading...</p>`;
