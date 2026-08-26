@@ -663,6 +663,15 @@ def build_generic_result_excel(result_dict, cycle_label):
         cell.border = border
         ws.column_dimensions[get_column_letter(i)].width = 22
 
+    # Money columns get Excel's thousands-separator format so a figure
+    # like 21344.92 reads as 21,344.92 rather than a wall of digits.
+    # Applied as a cell number_format (not a pre-formatted string) so the
+    # value stays a real number Excel can still sum and chart.
+    MONEY_FMT = '#,##0.00'
+    def is_money(key):
+        k = key.lower()
+        return "cost" in k or "amount" in k or "salary" in k or "pay" in k
+
     r = 2
     for row in result_dict["rows"]:
         for i, c in enumerate(cols, start=1):
@@ -670,6 +679,8 @@ def build_generic_result_excel(result_dict, cycle_label):
             cell = ws.cell(row=r, column=i, value=v)
             cell.alignment = Alignment(horizontal="center")
             cell.border = border
+            if is_money(c["key"]) and isinstance(v, (int, float)):
+                cell.number_format = MONEY_FMT
         r += 1
 
     totals = result_dict.get("totals") or {}
@@ -681,6 +692,8 @@ def build_generic_result_excel(result_dict, cycle_label):
             cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
             cell.alignment = Alignment(horizontal="center")
             cell.border = border
+            if i > 1 and is_money(c["key"]) and isinstance(v, (int, float)):
+                cell.number_format = MONEY_FMT
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -696,16 +709,29 @@ def build_generic_result_pdf(result_dict, cycle_label):
                                  textColor=colors.white, fontName="Helvetica-Bold")
     bold_style = ParagraphStyle("TblBold", parent=styles["Normal"], fontSize=7.5, leading=9, fontName="Helvetica-Bold")
 
+    def is_money(key):
+        k = key.lower()
+        return "cost" in k or "amount" in k or "salary" in k or "pay" in k
+
+    def fmt(key, v):
+        """Money values get thousands separators (21,344.92); everything
+        else prints as-is, so day counts and hours stay plain integers."""
+        if v is None or v == "":
+            return ""
+        if is_money(key) and isinstance(v, (int, float)):
+            return f"{v:,.2f}"
+        return str(v)
+
     data = [[Paragraph(c["label"], head_style) for c in cols]]
     for row in result_dict["rows"]:
-        data.append([Paragraph(str(row.get(c["key"], "")), cell_style) for c in cols])
+        data.append([Paragraph(fmt(c["key"], row.get(c["key"], "")), cell_style) for c in cols])
 
     totals = result_dict.get("totals") or {}
     if totals:
         trow = []
         for i, c in enumerate(cols):
             v = totals.get(c["key"])
-            trow.append(Paragraph("TOTAL" if i == 0 else (str(v) if v is not None else ""), bold_style))
+            trow.append(Paragraph("TOTAL" if i == 0 else fmt(c["key"], v), bold_style))
         data.append(trow)
 
     buf = io.BytesIO()
