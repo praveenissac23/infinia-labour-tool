@@ -818,6 +818,14 @@ function money(v) {
   return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Thousands separators for plain counts/hours (1,776) without forcing
+// decimals - a whole number stays whole, a half-day still shows as 12.5.
+function num(v) {
+  if (v === null || v === undefined || v === "") return v;
+  const n = Number(v);
+  return isNaN(n) ? v : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 function monthYearFor(d) {
   // Cycles run the 26th of one month through the 25th of the next, and
   // are labelled after the month they END in - so 26 Aug starts the
@@ -1346,6 +1354,13 @@ function getSelectedMeasures() {
 function reportFormatValue(key, v) {
   if (v === null || v === undefined) return "";
   if (REPORT_MONEY_KEYS.has(key)) return `AED ${money(v)}`;
+  // Plain numbers (day counts, hours, headcount) also get thousands
+  // separators once they get large - 1,776 reads far better than 1776 -
+  // but keep them whole/decimal-as-is rather than forcing 2 decimals
+  // the way money values do.
+  if (typeof v === "number") {
+    return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  }
   return v;
 }
 
@@ -1457,6 +1472,18 @@ async function loadAdjustmentsList() {
   selectedSummaryId = null;
   document.getElementById("adj-detail-card").style.display = "none";
   renderAdjustmentsWorkerList();
+  // Open the first worker automatically so the detail panel isn't blank
+  // on arrival - matches how Live Card behaves. Uses the same sort order
+  // the list is rendered in, so "first" means the row actually shown at
+  // the top rather than whichever record happened to come back first.
+  if (currentSummaries.length) {
+    const first = [...currentSummaries].sort((a, b) => {
+      const av = adjValueFor(a, adjSortKey), bv = adjValueFor(b, adjSortKey);
+      if (typeof av === "number") return (av - bv) * adjSortDir;
+      return natCompare(av, bv) * adjSortDir;
+    })[0];
+    selectSummary(first.id);
+  }
 }
 
 let adjSortKey = "emp_no";
@@ -1753,7 +1780,7 @@ async function selectLiveCardWorker(empNo) {
     ["Present", s.present_days], ["Absent", s.absent_days], ["Sick", s.sick_days],
     ["Medical", s.medical_days], ["Friday", s.friday_days], ["Holiday", s.holiday_days],
     ["Leave", s.leave_days], ["OT", s.ot_hours], ["BH", s.bh_hours],
-  ].map(([label, val]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${val}</span></div>`).join("");
+  ].map(([label, val]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${num(val)}</span></div>`).join("");
 
   const summaryRows = [
     ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
