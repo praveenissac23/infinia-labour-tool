@@ -826,6 +826,29 @@ function num(v) {
   return isNaN(n) ? v : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+// Turns whatever the API returned into a readable sentence. FastAPI
+// sends a plain string for our own HTTPExceptions, but a LIST of
+// objects for request-validation failures (missing/wrong fields) -
+// concatenating that straight into a message produced the useless
+// "[object Object]" the user saw instead of the real problem.
+function errText(e) {
+  const d = e && e.body ? e.body.detail : null;
+  if (!d) return "Unknown error";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map(item => {
+      if (typeof item === "string") return item;
+      const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : "";
+      return field ? `${field}: ${item.msg}` : (item.msg || JSON.stringify(item));
+    }).join("; ");
+  }
+  if (typeof d === "object") {
+    if (Array.isArray(d.errors)) return d.errors.join("; ");
+    return d.msg || JSON.stringify(d);
+  }
+  return String(d);
+}
+
 function monthYearFor(d) {
   // Cycles run the 26th of one month through the 25th of the next, and
   // are labelled after the month they END in - so 26 Aug starts the
@@ -1038,7 +1061,7 @@ async function saveAttendance() {
     if (e.body && e.body.detail && e.body.detail.errors) {
       showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
     } else {
-      showStatus("att-status", "err", "Save failed: " + (e.body?.detail || "Unknown error"));
+      showStatus("att-status", "err", "Save failed: " + errText(e));
     }
   }
 }
@@ -1124,7 +1147,7 @@ async function saveEmployee() {
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();
   } catch (e) {
-    showStatus("md-status", "err", "Failed to save: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Failed to save: " + errText(e));
   }
 }
 
@@ -1186,7 +1209,7 @@ async function confirmClearDay() {
     await loadDate(currentDate, true);
     loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
   } catch (e) {
-    showStatus("att-status", "err", "Could not clear the day: " + (e.body?.detail || "Unknown error"));
+    showStatus("att-status", "err", "Could not clear the day: " + errText(e));
   }
 }
 
@@ -1219,7 +1242,7 @@ async function confirmImportEmployeeFile() {
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();
   } catch (e) {
-    showStatus("md-status", "err", "Import failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Import failed: " + errText(e));
   }
   pendingImportFile = null;
 }
@@ -1263,7 +1286,7 @@ async function editSite(id, currentCode) {
     populateSelect("bulk-site", sites.map(s => s.code), "Site");
     showStatus("md-status", "ok", `Renamed to ${newCode.trim()}.`);
   } catch (e) {
-    showStatus("md-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1276,7 +1299,7 @@ async function removeSite(id, code) {
     populateSelect("bulk-site", sites.map(s => s.code), "Site");
     showStatus("md-status", "ok", `Removed site ${code}.`);
   } catch (e) {
-    showStatus("md-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1293,7 +1316,7 @@ async function editEngineer(id, currentName) {
     populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
     showStatus("md-status", "ok", `Renamed to ${newName.trim()}.`);
   } catch (e) {
-    showStatus("md-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1306,7 +1329,7 @@ async function removeEngineer(id, name) {
     populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
     showStatus("md-status", "ok", `Removed engineer ${name}.`);
   } catch (e) {
-    showStatus("md-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("md-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1456,7 +1479,7 @@ async function loadReports() {
   try {
     currentCustomReport = await apiCall(url);
   } catch (e) {
-    showStatus("report-status", "err", "Could not load the report: " + (e.body?.detail || "Unknown error"));
+    showStatus("report-status", "err", "Could not load the report: " + errText(e));
     document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Could not load. Try again.</td></tr>`;
     return;
   }
@@ -1584,7 +1607,7 @@ async function addAdjustmentRow() {
     showStatus("adj-status", "ok", "Adjustment added.");
     await refreshCurrentCycleSummaries();
   } catch (e) {
-    showStatus("adj-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("adj-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1594,7 +1617,7 @@ async function removeAdjustmentRow(adjId) {
     showStatus("adj-status", "ok", "Adjustment removed.");
     await refreshCurrentCycleSummaries();
   } catch (e) {
-    showStatus("adj-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("adj-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1898,7 +1921,7 @@ async function changePassword() {
     document.getElementById("pw-current").value = "";
     document.getElementById("pw-new").value = "";
   } catch (e) {
-    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1941,7 +1964,7 @@ async function resetUserPassword(id, username) {
     });
     showStatus("settings-status", "ok", `Password reset for ${username}.`);
   } catch (e) {
-    showStatus("settings-status", "err", "Could not reset password: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Could not reset password: " + errText(e));
   }
 }
 
@@ -1963,7 +1986,7 @@ async function createUser() {
     ["new-user-username", "new-user-password"].forEach(id => document.getElementById(id).value = "");
     await loadUsers();
   } catch (e) {
-    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1973,7 +1996,7 @@ async function removeUser(userId) {
     showStatus("settings-status", "ok", "Login deactivated.");
     await loadUsers();
   } catch (e) {
-    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -1983,7 +2006,7 @@ async function takeBackupNow() {
     showStatus("settings-status", "ok", "Backup taken.");
     await loadBackupList();
   } catch (e) {
-    showStatus("settings-status", "err", "Failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Failed: " + errText(e));
   }
 }
 
@@ -2032,7 +2055,7 @@ async function restoreBackupById(id) {
     renderMasterDataLists();
     renderLiveCardWorkerList();
   } catch (e) {
-    showStatus("settings-status", "err", "Restore failed: " + (e.body?.detail || "Unknown error"));
+    showStatus("settings-status", "err", "Restore failed: " + errText(e));
   }
 }
 
