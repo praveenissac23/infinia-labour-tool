@@ -550,7 +550,7 @@
             </div>
           </div>
           <div class="card" id="user-mgmt-card" style="display:none;">
-            <h2>Staff Logins (admin only)</h2>
+            <h2>Staff Logins</h2>
             <div class="form-row">
               <input type="text" id="new-user-username" placeholder="Username">
               <input type="text" id="new-user-fullname" placeholder="Full name">
@@ -738,10 +738,19 @@ async function initApp() {
   document.getElementById("errcheck-cycle").value = currentCycle;
   document.getElementById("combine-cycle").value = currentCycle;
 
+  // Staff Logins is available to everyone now - staff can add fellow
+  // staff - but only an admin gets the "Admin" role option in the
+  // dropdown, matching the same rule the backend enforces.
+  document.getElementById("user-mgmt-card").style.display = "block";
+  if (CURRENT_ROLE !== "admin") {
+    const roleSel = document.getElementById("new-user-role");
+    const adminOpt = roleSel.querySelector('option[value="admin"]');
+    if (adminOpt) adminOpt.remove();
+  }
+  await loadUsers();
+
   if (CURRENT_ROLE === "admin") {
-    document.getElementById("user-mgmt-card").style.display = "block";
     document.getElementById("nav-activity").style.display = "block";
-    await loadUsers();
   }
 
   startDashboardClock();
@@ -1774,12 +1783,20 @@ async function changePassword() {
 
 async function loadUsers() {
   const users = await apiCall("/users");
-  document.getElementById("user-list-body").innerHTML = users.map(u => `
+  document.getElementById("user-list-body").innerHTML = users.map(u => {
+    // Staff can deactivate fellow staff, but not an admin account -
+    // same rule the backend enforces, hidden here so it isn't offered
+    // and then rejected.
+    const canDeactivate = u.active && (CURRENT_ROLE === "admin" || u.role !== "admin");
+    const action = u.active
+      ? (canDeactivate ? `<button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>` : "")
+      : "Inactive";
+    return `
     <tr>
       <td>${u.username}</td><td>${u.full_name}</td><td>${u.role}</td>
-      <td>${u.active ? `<button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>` : "Inactive"}</td>
-    </tr>
-  `).join("");
+      <td>${action}</td>
+    </tr>`;
+  }).join("");
 }
 
 async function createUser() {
