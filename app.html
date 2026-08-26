@@ -348,6 +348,20 @@
           </div>
         </div>
 
+        <!-- ============ RESET PASSWORD MODAL ============ -->
+        <div id="resetpw-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:26px 30px; width:440px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 4px;">Reset Password</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 16px;">Setting a new password for <strong id="resetpw-username"></strong>. It stays visible so you can read it back to them.</p>
+            <input type="text" id="resetpw-value" placeholder="New password (min 6 characters)" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:5px; font-size:13px; margin-bottom:6px;">
+            <div class="status-msg" id="resetpw-status" style="margin-bottom:14px;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" onclick="closeResetPwModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="confirmResetPassword()">Set Password</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ MASTER DATA SCREEN ============ -->
         <div class="screen" id="screen-masterdata">
           <div class="status-msg" id="md-status"></div>
@@ -1949,22 +1963,40 @@ async function loadUsers() {
   }).join("");
 }
 
-async function resetUserPassword(id, username) {
-  const pw = prompt(`Enter a new password for "${username}" (at least 6 characters):`);
-  if (pw === null) return;                    // cancelled
-  if (pw.trim().length < 6) {
-    showStatus("settings-status", "warn", "Password must be at least 6 characters.");
+let pendingResetUser = null;
+
+function resetUserPassword(id, username) {
+  pendingResetUser = { id, username };
+  document.getElementById("resetpw-username").textContent = username;
+  document.getElementById("resetpw-value").value = "";
+  showStatus("resetpw-status", null);
+  document.getElementById("resetpw-modal-overlay").style.display = "flex";
+  document.getElementById("resetpw-value").focus();
+}
+
+function closeResetPwModal() {
+  pendingResetUser = null;
+  document.getElementById("resetpw-modal-overlay").style.display = "none";
+}
+
+async function confirmResetPassword() {
+  if (!pendingResetUser) return;
+  const pw = document.getElementById("resetpw-value").value.trim();
+  if (pw.length < 6) {
+    showStatus("resetpw-status", "warn", "Password must be at least 6 characters.");
     return;
   }
+  const { id, username } = pendingResetUser;
   try {
     await apiCall(`/users/${id}/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_password: pw.trim() }),
+      body: JSON.stringify({ new_password: pw }),
     });
-    showStatus("settings-status", "ok", `Password reset for ${username}.`);
+    closeResetPwModal();
+    showStatus("settings-status", "ok", `Password for ${username} is now: ${pw}`);
   } catch (e) {
-    showStatus("settings-status", "err", "Could not reset password: " + errText(e));
+    showStatus("resetpw-status", "err", errText(e));
   }
 }
 
