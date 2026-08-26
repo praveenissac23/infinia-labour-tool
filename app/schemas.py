@@ -31,8 +31,15 @@ class ChangePasswordRequest(BaseModel):
 class UserIn(BaseModel):
     username: str
     password: str
-    full_name: str
+    # Kept on the model (existing users have one, and it's shown in the
+    # Activity Monitor) but no longer asked for when creating a login -
+    # it defaults to the username so nothing downstream sees a blank.
+    full_name: str = ""
     role: str = "staff"
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
 
 
 class UserOut(BaseModel):
