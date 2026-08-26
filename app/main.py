@@ -114,13 +114,19 @@ def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depend
 # instead of everyone sharing the one admin account)
 # ---------------------------------------------------------------------
 @app.get("/users", response_model=list[schemas.UserOut])
-def list_users(db: Session = Depends(get_db), user: models.User = Depends(auth.require_admin)):
+def list_users(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     return db.query(models.User).order_by(models.User.username).all()
 
 
 @app.post("/users", response_model=schemas.UserOut)
 def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.require_admin)):
+                 user: models.User = Depends(auth.get_current_user)):
+    # Staff can add fellow staff, but only an admin can mint another
+    # admin - otherwise any staff login could promote itself (or a new
+    # account) to admin, which would make every admin-only restriction
+    # meaningless, including the Activity Monitor.
+    if payload.role != "staff" and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can create an admin account.")
     existing = db.query(models.User).filter(models.User.username == payload.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="That username is already taken.")
@@ -139,12 +145,16 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
 
 @app.delete("/users/{user_id}")
 def deactivate_user(user_id: int, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.require_admin)):
+                     user: models.User = Depends(auth.get_current_user)):
     target = db.query(models.User).filter(models.User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id:
         raise HTTPException(status_code=400, detail="You can't deactivate your own account.")
+    # Same reasoning as create_user - staff must not be able to lock the
+    # real admin out of the system by deactivating the admin account.
+    if target.role == "admin" and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can deactivate an admin account.")
     target.active = False
     db.commit()
     log_action(db, user.id, "deactivate_user", target.username)
