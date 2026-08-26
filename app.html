@@ -623,6 +623,15 @@ let currentDate = null;
 let currentSummaries = [];
 let selectedSummaryId = null;
 
+// Sorts text that contains numbers the way people expect: F-891 before
+// F-921 before F-1050. Plain localeCompare() compares character by
+// character, so "F-1050" would sort BEFORE "F-891" (because "1" < "8"),
+// which looks wrong the moment emp numbers reach four digits.
+const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+function natCompare(a, b) {
+  return naturalCollator.compare(String(a ?? ""), String(b ?? ""));
+}
+
 async function apiCall(path, options = {}) {
   const headers = options.headers || {};
   if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
@@ -722,7 +731,7 @@ async function initApp() {
     apiCall("/sites"),
     apiCall("/engineers"),
   ]);
-  employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+  employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
 
   populateSelect("bulk-am", STATUS_OPTIONS, "A.M");
   populateSelect("bulk-pm", STATUS_OPTIONS, "P.M");
@@ -983,7 +992,7 @@ function renderMasterDataLists() {
   const sorted = [...employees].sort((a, b) => {
     const av = a[mdSortKey], bv = b[mdSortKey];
     if (typeof av === "number") return (av - bv) * mdSortDir;
-    return String(av).localeCompare(String(bv)) * mdSortDir;
+    return natCompare(av, bv) * mdSortDir;
   });
   ["emp_no", "name", "trade", "total_salary", "basic_salary"].forEach(k => {
     const el = document.getElementById("md-sort-" + k);
@@ -1047,7 +1056,7 @@ async function saveEmployee() {
     showStatus("md-status", "ok", `Saved ${emp_no}.`);
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
     employees = await apiCall("/employees?active_only=true");
-    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();
   } catch (e) {
     showStatus("md-status", "err", "Failed to save: " + (e.body?.detail || "Unknown error"));
@@ -1142,7 +1151,7 @@ async function confirmImportEmployeeFile() {
       showStatus("md-status", "ok", msg);
     }
     employees = await apiCall("/employees?active_only=true");
-    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();
   } catch (e) {
     showStatus("md-status", "err", "Import failed: " + (e.body?.detail || "Unknown error"));
@@ -1316,7 +1325,7 @@ function renderReportPreview() {
     rows.sort((a, b) => {
       const av = a[reportSortKey], bv = b[reportSortKey];
       if (typeof av === "number") return (av - bv) * reportSortDir;
-      return String(av ?? "").localeCompare(String(bv ?? "")) * reportSortDir;
+      return natCompare(av, bv) * reportSortDir;
     });
   }
 
@@ -1423,7 +1432,7 @@ function renderAdjustmentsWorkerList() {
   const sorted = [...filtered].sort((a, b) => {
     const av = adjValueFor(a, adjSortKey), bv = adjValueFor(b, adjSortKey);
     if (typeof av === "number") return (av - bv) * adjSortDir;
-    return String(av).localeCompare(String(bv)) * adjSortDir;
+    return natCompare(av, bv) * adjSortDir;
   });
   if (!sorted.length) {
     body.innerHTML = `<tr><td colspan="4" class="empty-note">No workers match "${search}".</td></tr>`;
@@ -1586,7 +1595,7 @@ function renderLiveCardWorkerList() {
     ? employees.filter(e => e.emp_no.toLowerCase().includes(search) || e.name.toLowerCase().includes(search))
     : employees;
   if (countEl) countEl.textContent = `(${filtered.length} of ${employees.length})`;
-  const sorted = [...filtered].sort((a, b) => String(a[lcSortKey]).localeCompare(String(b[lcSortKey])) * lcSortDir);
+  const sorted = [...filtered].sort((a, b) => natCompare(a[lcSortKey], b[lcSortKey]) * lcSortDir);
   ["emp_no", "name"].forEach(k => {
     const el = document.getElementById("lc-sort-" + k);
     if (el) el.textContent = k === lcSortKey ? (lcSortDir === 1 ? "\u25B2" : "\u25BC") : "";
@@ -1882,7 +1891,7 @@ async function restoreBackupById(id) {
     await apiCall(`/backup/${id}/restore`, { method: "POST" });
     showStatus("settings-status", "ok", `Restored from backup #${id}. Reloading data...`);
     employees = await apiCall("/employees?active_only=true");
-    employees.sort((a, b) => a.emp_no.localeCompare(b.emp_no));
+    employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();
     renderLiveCardWorkerList();
   } catch (e) {
