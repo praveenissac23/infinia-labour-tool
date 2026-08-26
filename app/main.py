@@ -588,7 +588,7 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
             site, engineer = prev
             row_in.site, row_in.engineer = site, engineer
 
-        problems = services.validate_row(am, pm, site, engineer, row_in.bh, row_in.comments)
+        problems = services.validate_row(am, pm, site, engineer, row_in.bh, row_in.comments, row_in.ot)
         if problems:
             errors.append(f"{row_in.emp_no}: " + "; ".join(problems))
             continue
