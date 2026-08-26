@@ -777,7 +777,22 @@ async function initApp() {
 }
 
 function monthYearFor(d) {
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  // Cycles run the 26th of one month through the 25th of the next, and
+  // are labelled after the month they END in - so 26 Aug starts the
+  // "September" cycle, not August. This mirrors cycle_bounds_for() in
+  // payroll_cycle.py exactly; returning the plain calendar month here
+  // meant that from the 26th onward the whole app defaulted to the
+  // cycle that had just closed.
+  // Built from year/month directly (day pinned to 1) rather than
+  // setMonth() on the original date, which would overflow for the 29th
+  // to 31st - e.g. 31 Jan + 1 month lands on 3 March, not February.
+  let year = d.getFullYear();
+  let month = d.getMonth();
+  if (d.getDate() >= 26) {
+    month += 1;
+    if (month > 11) { month = 0; year += 1; }
+  }
+  return new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function populateSelect(id, values, label) {
