@@ -64,7 +64,9 @@
   .btn-gray { background: #999; color: white; }
   .btn-gray:hover { background: #777; }
 
-  .status-msg { margin-bottom: 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
+  /* Hard cap so a long list of errors scrolls inside its own box
+     instead of turning the entire page red. */
+  .status-msg { margin-bottom: 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; max-height: 30vh; overflow-y: auto; }
   .status-msg.ok { background: #C6EFCE; color: #2E7D32; display: block; }
   .status-msg.err { background: #FFC7CE; color: #C0392B; display: block; white-space: pre-line; }
   .status-msg.warn { background: #FFF3CD; color: #8a6d1a; display: block; white-space: pre-line; }
@@ -1076,6 +1078,28 @@ function showStatus(elId, kind, text) {
   el.textContent = text;
 }
 
+// Every save submits all 74 workers, so one bad date produces 74
+// identical error lines and fills the whole screen. Group them: the
+// same message once, with a count of how many rows it applies to.
+function summariseErrors(errors) {
+  const groups = new Map();
+  errors.forEach(line => {
+    const idx = line.indexOf(": ");
+    const who = idx > -1 ? line.slice(0, idx) : "";
+    const msg = idx > -1 ? line.slice(idx + 2) : line;
+    if (!groups.has(msg)) groups.set(msg, []);
+    groups.get(msg).push(who);
+  });
+
+  const parts = [...groups.entries()].map(([msg, who]) => {
+    if (who.length === 1) return `${who[0]}: ${msg}`;
+    const names = who.slice(0, 3).filter(Boolean).join(", ");
+    const more = who.length > 3 ? ` +${who.length - 3} more` : "";
+    return `${msg}\n   Affects ${who.length} workers: ${names}${more}`;
+  });
+  return "Fix these before saving:\n" + parts.join("\n");
+}
+
 async function saveAttendance() {
   const rows = [];
   let filledCount = 0;
@@ -1118,7 +1142,7 @@ async function saveAttendance() {
     loadDashboardCalendar(monthYearFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
-      showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
+      showStatus("att-status", "err", summariseErrors(e.body.detail.errors));
     } else {
       showStatus("att-status", "err", "Save failed: " + errText(e));
     }
