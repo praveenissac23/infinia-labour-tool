@@ -110,6 +110,20 @@
      stretched to fill the whole row for two short options. */
   .form-row input[type=password] { width: 220px; }
   .form-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 130px; flex: 0 0 auto; }
+  /* Site / engineer chips - compact, wrap across the card, and the
+     whole block scrolls once it gets long instead of pushing the page
+     down. Buttons live on the chip so there's no separate column. */
+  .md-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; padding: 2px; }
+  .md-chip { display: inline-flex; align-items: center; gap: 4px; background: #F4F5F7;
+             border: 1px solid #e2e2e2; border-radius: 14px; padding: 3px 4px 3px 11px; font-size: 12.5px; }
+  .md-chip:hover { background: #ECEEF1; }
+  .md-chip-label { font-weight: 600; color: #2E3238; }
+  .md-chip-btn { border: none; background: transparent; cursor: pointer; font-size: 12px;
+                 color: #888; padding: 2px 5px; border-radius: 10px; line-height: 1; }
+  .md-chip-btn:hover { background: #DDE0E4; color: #2E3238; }
+  .md-chip-del:hover { background: var(--red); color: white; }
+  .md-chip-count { font-size: 11.5px; color: #999; margin-top: 8px; }
+
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
@@ -1241,22 +1255,27 @@ function renderMasterDataLists() {
     </tr>
   `).join("");
 
-  document.getElementById("md-site-list").innerHTML = sites.map(s => `
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; border-bottom:1px solid #f0f0f0;">
-      <span>${s.code}</span>
-      <span>
-        <button class="btn btn-gray" onclick="editSite(${s.id}, '${s.code.replace(/'/g, "\\'")}')">Edit</button>
-        <button class="btn btn-gray" onclick="removeSite(${s.id}, '${s.code.replace(/'/g, "\\'")}')">Remove</button>
-      </span>
-    </div>`).join("") || '<div class="empty-note">No sites yet.</div>';
-  document.getElementById("md-eng-list").innerHTML = engineers.map(e => `
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; border-bottom:1px solid #f0f0f0;">
-      <span>${e.name}</span>
-      <span>
-        <button class="btn btn-gray" onclick="editEngineer(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Edit</button>
-        <button class="btn btn-gray" onclick="removeEngineer(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Remove</button>
-      </span>
-    </div>`).join("") || '<div class="empty-note">No engineers yet.</div>';
+  // Compact chips that wrap across the width instead of one full-width
+  // row each - a long list of sites used to run down the page for
+  // screenfuls. Edit/Remove appear on the chip itself.
+  const chip = (label, onEdit, onRemove) => `
+    <span class="md-chip">
+      <span class="md-chip-label">${label}</span>
+      <button class="md-chip-btn" title="Rename" onclick="${onEdit}">&#9998;</button>
+      <button class="md-chip-btn md-chip-del" title="Remove" onclick="${onRemove}">&times;</button>
+    </span>`;
+
+  const esc = v => String(v).replace(/'/g, "\\'");
+  document.getElementById("md-site-list").innerHTML = sites.length
+    ? `<div class="md-chip-wrap">${sites.map(s =>
+        chip(s.code, `editSite(${s.id}, '${esc(s.code)}')`, `removeSite(${s.id}, '${esc(s.code)}')`)
+      ).join("")}</div><div class="md-chip-count">${sites.length} site${sites.length === 1 ? "" : "s"}</div>`
+    : '<div class="empty-note">No sites yet.</div>';
+  document.getElementById("md-eng-list").innerHTML = engineers.length
+    ? `<div class="md-chip-wrap">${engineers.map(e =>
+        chip(e.name, `editEngineer(${e.id}, '${esc(e.name)}')`, `removeEngineer(${e.id}, '${esc(e.name)}')`)
+      ).join("")}</div><div class="md-chip-count">${engineers.length} engineer${engineers.length === 1 ? "" : "s"}</div>`
+    : '<div class="empty-note">No engineers yet.</div>';
 }
 
 function editEmployee(empNo) {
