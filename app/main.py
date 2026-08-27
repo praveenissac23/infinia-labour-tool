@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -1190,21 +1190,48 @@ def build_backup_data(db: Session) -> dict:
     }
 
 
+AUTO_BACKUP_KEEP_DAYS = 40
+
 def maybe_create_auto_backup(db: Session):
-    """Called on login: creates one 'auto' backup per calendar month if
-    one doesn't already exist yet, so a snapshot always exists even if
-    nobody remembers to take one manually."""
-    month_start = date.today().replace(day=1)
+    """
+    Creates one 'auto' backup per calendar DAY, then prunes automatic
+    backups down to the most recent AUTO_BACKUP_KEEP_DAYS - a rolling
+    40-day window where day 41 replaces day 1.
+
+    Runs on login rather than a cron job: this app has no scheduler
+    process of its own, and a backup is only useful if the data has
+    actually been touched, which requires someone to be signed in
+    anyway. If nobody logs in on a given day there is nothing new to
+    snapshot, so no backup is the correct outcome, not a missed one.
+
+    Manual backups are never pruned - only the automatic ones - so a
+    snapshot someone deliberately took before a risky change is never
+    silently deleted out from under them.
+    """
+    today = date.today()
     existing = (
         db.query(models.Backup)
-        .filter(models.Backup.trigger == "auto", models.Backup.created_at >= month_start)
+        .filter(models.Backup.trigger == "auto",
+                func.date(models.Backup.created_at) == today)
         .first()
     )
-    if existing:
-        return
-    data = build_backup_data(db)
-    db.add(models.Backup(created_by=None, trigger="auto", data=json.dumps(data, default=str)))
-    db.commit()
+    if not existing:
+        data = build_backup_data(db)
+        db.add(models.Backup(created_by=None, trigger="auto", data=json.dumps(data, default=str)))
+        db.commit()
+
+    # Prune: keep only the newest N automatic backups.
+    old_auto = (
+        db.query(models.Backup)
+        .filter(models.Backup.trigger == "auto")
+        .order_by(models.Backup.created_at.desc())
+        .offset(AUTO_BACKUP_KEEP_DAYS)
+        .all()
+    )
+    if old_auto:
+        for b in old_auto:
+            db.delete(b)
+        db.commit()
 
 
 @app.post("/backup/create")
@@ -1226,7 +1253,7 @@ def list_backups(db: Session = Depends(get_db), user: models.User = Depends(auth
         db.query(models.Backup, models.User.username)
         .outerjoin(models.User, models.Backup.created_by == models.User.id)
         .order_by(models.Backup.created_at.desc())
-        .limit(50)
+        .limit(120)
         .all()
     )
     return [
