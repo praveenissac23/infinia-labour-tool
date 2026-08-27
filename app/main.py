@@ -53,6 +53,12 @@ def seed_on_startup():
     # the next restart, which is what kept resurrecting the F793-F798
     # duplicates and eventually crashed startup against the unique index.
     # Once real data exists, the database is authoritative, not the file.
+    # Add any newly-introduced columns to tables that already exist.
+    # create_all() only creates missing TABLES, never missing columns, so
+    # without this a new field works on a fresh database but breaks every
+    # existing one - which is exactly what the store rental fields did.
+    _add_missing_columns()
+
     db = SessionLocal()
     try:
         already_seeded = db.query(models.Employee).count() > 0
@@ -1253,6 +1259,32 @@ def build_backup_data(db: Session) -> dict:
     }
 
 
+def _add_missing_columns():
+    """Lightweight migration: ALTER TABLE ADD COLUMN for anything the
+    models declare but the live table doesn't have yet."""
+    from sqlalchemy import inspect, text
+    type_sql = {"VARCHAR": "VARCHAR", "FLOAT": "DOUBLE PRECISION", "DATE": "DATE",
+                "INTEGER": "INTEGER", "BOOLEAN": "BOOLEAN", "TEXT": "TEXT"}
+    insp = inspect(engine)
+    existing_tables = set(insp.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                t = type_sql.get(str(col.type).split("(")[0].upper())
+                if not t:
+                    continue
+                try:
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {t}'))
+                    print(f"Added column {table.name}.{col.name}")
+                except Exception as e:
+                    print(f"Could not add {table.name}.{col.name}: {e}")
+
+
 AUTO_BACKUP_KEEP_DAYS = 40
 
 def maybe_create_auto_backup(db: Session):
@@ -1413,3 +1445,305 @@ def delete_backup(backup_id: int, db: Session = Depends(get_db),
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------
+# STORE / INVENTORY
+# ---------------------------------------------------------------------
+CENTRAL = ""   # empty location string means the central store
+
+
+def _stock_map(db: Session, upto: date = None):
+    """
+    Current quantity of every item at every location, derived from the
+    movement ledger rather than stored - so a balance can never drift
+    away from the history that produced it.
+
+    Returns {(item_id, location): qty}. 'upto' gives the position as at
+    a date, which is what makes stock-as-at reporting possible.
+    """
+    q = db.query(models.StoreMovement)
+    if upto:
+        q = q.filter(models.StoreMovement.moved_on <= upto)
+    stock = {}
+    for m in q.all():
+        if m.kind == "in":
+            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
+        elif m.kind == "adjust":
+            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
+        elif m.kind in ("out", "return", "transfer"):
+            stock[(m.item_id, m.from_location)] = stock.get((m.item_id, m.from_location), 0) - m.qty
+            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
+    return stock
+
+
+@app.get("/store/items", response_model=list[schemas.StoreItemOut])
+def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
+                      user: models.User = Depends(auth.get_current_user)):
+    q = db.query(models.StoreItem)
+    if active_only:
+        q = q.filter(models.StoreItem.active == True)  # noqa: E712
+    return q.order_by(models.StoreItem.code).all()
+
+
+@app.post("/store/items", response_model=schemas.StoreItemOut)
+def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db),
+                       user: models.User = Depends(auth.get_current_user)):
+    existing = db.query(models.StoreItem).filter(models.StoreItem.code == payload.code).first()
+    if existing:
+        for k, v in payload.dict().items():
+            setattr(existing, k, v)
+        existing.active = True
+    else:
+        existing = models.StoreItem(**payload.dict())
+        db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    log_action(db, user.id, "store_save_item", f"{payload.code} - {payload.name}")
+    return existing
+
+
+@app.delete("/store/items/{item_id}")
+def deactivate_store_item(item_id: int, db: Session = Depends(get_db),
+                           user: models.User = Depends(auth.get_current_user)):
+    it = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
+    if not it:
+        raise HTTPException(status_code=404, detail="Item not found")
+    # Deactivate rather than delete - its movement history must survive.
+    it.active = False
+    db.commit()
+    log_action(db, user.id, "store_remove_item", it.code)
+    return {"ok": True}
+
+
+@app.get("/store/stock")
+def store_stock(location: str = None, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.get_current_user)):
+    """
+    Stock on hand. Without a location, one row per item showing the
+    central-store quantity, how much is out at sites, and the total -
+    plus a low flag when it has fallen to or below its reorder level.
+    """
+    items = db.query(models.StoreItem).filter(models.StoreItem.active == True).all()  # noqa: E712
+    stock = _stock_map(db)
+    rows = []
+    for it in items:
+        at_central = stock.get((it.id, CENTRAL), 0)
+        out_total = sum(v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL)
+        by_site = {loc: v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL and v}
+        if location is not None:
+            qty = stock.get((it.id, location), 0)
+            rows.append({"item_id": it.id, "code": it.code, "name": it.name,
+                          "category": it.category, "unit": it.unit, "item_type": it.item_type,
+                          "qty": round(qty, 2), "reorder_level": it.reorder_level,
+                          "low": qty <= it.reorder_level and it.reorder_level > 0})
+        else:
+            rows.append({"item_id": it.id, "code": it.code, "name": it.name,
+                          "category": it.category, "unit": it.unit, "item_type": it.item_type,
+                          "central": round(at_central, 2), "out_at_sites": round(out_total, 2),
+                          "total": round(at_central + out_total, 2),
+                          "by_site": {k: round(v, 2) for k, v in by_site.items()},
+                          "reorder_level": it.reorder_level,
+                          "low": at_central <= it.reorder_level and it.reorder_level > 0})
+    return rows
+
+
+@app.get("/store/movements", response_model=list[schemas.StoreMovementOut])
+def list_store_movements(item_id: int = None, location: str = None, kind: str = None,
+                          date_from: str = None, date_to: str = None, limit: int = 500,
+                          db: Session = Depends(get_db),
+                          user: models.User = Depends(auth.get_current_user)):
+    q = db.query(models.StoreMovement)
+    if item_id:
+        q = q.filter(models.StoreMovement.item_id == item_id)
+    if kind:
+        q = q.filter(models.StoreMovement.kind == kind)
+    if location:
+        q = q.filter(or_(models.StoreMovement.location == location,
+                          models.StoreMovement.from_location == location))
+    if date_from:
+        q = q.filter(models.StoreMovement.moved_on >= datetime.strptime(date_from, "%Y-%m-%d").date())
+    if date_to:
+        q = q.filter(models.StoreMovement.moved_on <= datetime.strptime(date_to, "%Y-%m-%d").date())
+    rows = q.order_by(models.StoreMovement.moved_on.desc(), models.StoreMovement.id.desc()).limit(limit).all()
+    out = []
+    for m in rows:
+        d = schemas.StoreMovementOut.model_validate(m).model_dump()
+        d["item_code"] = m.item.code if m.item else ""
+        d["item_name"] = m.item.name if m.item else ""
+        d["unit"] = m.item.unit if m.item else ""
+        out.append(d)
+    return out
+
+
+@app.post("/store/movements", response_model=schemas.StoreMovementOut)
+def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(get_db),
+                        user: models.User = Depends(auth.get_current_user)):
+    item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
+    if not item:
+        raise HTTPException(status_code=400, detail="Item not found.")
+    if payload.kind not in ("in", "out", "return", "adjust", "transfer"):
+        raise HTTPException(status_code=400, detail="Unknown movement type.")
+    if payload.qty <= 0 and payload.kind != "adjust":
+        raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
+    if payload.moved_on > date.today():
+        raise HTTPException(status_code=400, detail="Date is in the future.")
+
+    # Don't allow issuing more than is actually held - a negative balance
+    # means the ledger no longer describes anything real.
+    if payload.kind in ("out", "return", "transfer"):
+        have = _stock_map(db).get((item.id, payload.from_location), 0)
+        if payload.qty > have + 1e-9:
+            where = payload.from_location or "the central store"
+            raise HTTPException(status_code=400,
+                detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at {where}.")
+
+    m = models.StoreMovement(**payload.dict(), created_by=user.id)
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    log_action(db, user.id, "store_movement",
+               f"{payload.kind} {payload.qty} {item.unit} {item.code}")
+    d = schemas.StoreMovementOut.model_validate(m).model_dump()
+    d["item_code"], d["item_name"], d["unit"] = item.code, item.name, item.unit
+    return d
+
+
+@app.delete("/store/movements/{movement_id}")
+def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
+                           user: models.User = Depends(auth.get_current_user)):
+    m = db.query(models.StoreMovement).filter(models.StoreMovement.id == movement_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Movement not found")
+    db.delete(m)
+    db.commit()
+    log_action(db, user.id, "store_delete_movement", f"#{movement_id}")
+    return {"ok": True}
+
+
+@app.get("/store/report")
+def store_report(kind: str = "stock", date_from: str = None, date_to: str = None,
+                  db: Session = Depends(get_db),
+                  user: models.User = Depends(auth.get_current_user)):
+    """
+    kind='stock'     - current stock, central vs out at sites
+        ='low'       - items at or below reorder level
+        ='by_site'   - what each site currently holds
+        ='purchases' - what was received, with cost, over a period
+        ='usage'     - what was issued out, per item, over a period
+        ='returnable'- returnable items currently out, and where
+    """
+    d1 = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else None
+    d2 = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
+    items = {i.id: i for i in db.query(models.StoreItem).all()}
+    stock = _stock_map(db)
+
+    def moves(kinds):
+        q = db.query(models.StoreMovement).filter(models.StoreMovement.kind.in_(kinds))
+        if d1: q = q.filter(models.StoreMovement.moved_on >= d1)
+        if d2: q = q.filter(models.StoreMovement.moved_on <= d2)
+        return q.all()
+
+    if kind == "low":
+        rows = []
+        for i in items.values():
+            if not i.active or not i.reorder_level: continue
+            have = stock.get((i.id, CENTRAL), 0)
+            if have <= i.reorder_level:
+                rows.append({"code": i.code, "name": i.name, "unit": i.unit,
+                              "in_store": round(have, 2), "reorder_level": i.reorder_level,
+                              "shortfall": round(i.reorder_level - have, 2)})
+        return {"title": "Items to reorder", "rows": sorted(rows, key=lambda r: -r["shortfall"])}
+
+    if kind == "by_site":
+        rows = []
+        for (iid, loc), qty in stock.items():
+            if loc == CENTRAL or not qty or iid not in items: continue
+            i = items[iid]
+            rows.append({"site": loc, "code": i.code, "name": i.name,
+                          "unit": i.unit, "qty": round(qty, 2), "item_type": i.item_type})
+        return {"title": "Stock held at sites", "rows": sorted(rows, key=lambda r: (r["site"], r["code"]))}
+
+    if kind == "purchases":
+        agg = {}
+        for m in moves(["in"]):
+            i = items.get(m.item_id)
+            if not i: continue
+            a = agg.setdefault(i.id, {"code": i.code, "name": i.name, "unit": i.unit,
+                                       "qty": 0, "value": 0, "suppliers": set()})
+            a["qty"] += m.qty
+            a["value"] += m.qty * (m.unit_cost or 0)
+            if m.supplier: a["suppliers"].add(m.supplier)
+        rows = [{**v, "qty": round(v["qty"], 2), "value": round(v["value"], 2),
+                  "suppliers": ", ".join(sorted(v["suppliers"]))} for v in agg.values()]
+        return {"title": "Purchases received", "rows": sorted(rows, key=lambda r: -r["value"]),
+                "total_value": round(sum(r["value"] for r in rows), 2)}
+
+    if kind == "usage":
+        agg = {}
+        for m in moves(["out"]):
+            i = items.get(m.item_id)
+            if not i: continue
+            key = (i.id, m.location)
+            a = agg.setdefault(key, {"code": i.code, "name": i.name, "unit": i.unit,
+                                      "site": m.location, "qty": 0})
+            a["qty"] += m.qty
+        rows = [{**v, "qty": round(v["qty"], 2)} for v in agg.values()]
+        return {"title": "Materials issued", "rows": sorted(rows, key=lambda r: (r["site"], r["code"]))}
+
+    if kind == "returnable":
+        rows = []
+        for (iid, loc), qty in stock.items():
+            i = items.get(iid)
+            if not i or i.item_type != "returnable" or loc == CENTRAL or qty <= 0: continue
+            last = (db.query(models.StoreMovement)
+                      .filter(models.StoreMovement.item_id == iid,
+                               models.StoreMovement.location == loc,
+                               models.StoreMovement.kind == "out")
+                      .order_by(models.StoreMovement.moved_on.desc()).first())
+            rows.append({"code": i.code, "name": i.name, "unit": i.unit, "site": loc,
+                          "qty": round(qty, 2),
+                          "incharge": last.incharge if last else "",
+                          "since": last.moved_on.isoformat() if last else ""})
+        return {"title": "Returnable items still out", "rows": sorted(rows, key=lambda r: r["site"])}
+
+    if kind == "rentals":
+        # Hired-in equipment: where it is, what it costs, and whether it
+        # is overdue back to the supplier.
+        today = date.today()
+        rows = []
+        for i in items.values():
+            if not i.active or i.item_type != "rental": continue
+            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            where = ", ".join(f"{loc or 'store'}: {round(q,2)}" for loc, q in sorted(at.items())) or "-"
+            days = (today - i.rental_start).days if i.rental_start else None
+            est = round(days * (i.rental_rate or 0), 2) if (days is not None and i.rental_period == "day") else None
+            rows.append({"code": i.code, "name": i.name, "supplier": i.rental_supplier,
+                          "rate": i.rental_rate, "period": i.rental_period,
+                          "start": i.rental_start.isoformat() if i.rental_start else "",
+                          "due": i.rental_due.isoformat() if i.rental_due else "",
+                          "days_on_hire": days, "est_cost": est, "where": where,
+                          "overdue": bool(i.rental_due and i.rental_due < today)})
+        return {"title": "Rented equipment", "rows": sorted(rows, key=lambda r: (not r["overdue"], r["due"] or ""))}
+
+    if kind == "assets":
+        rows = []
+        for i in items.values():
+            if not i.active or i.item_type not in ("asset", "rental"): continue
+            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            rows.append({"code": i.code, "name": i.name, "item_type": i.item_type,
+                          "unit": i.unit, "total": round(sum(at.values()), 2),
+                          "where": ", ".join(f"{loc or 'store'}: {round(q,2)}" for loc, q in sorted(at.items())) or "-"})
+        return {"title": "Assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
+
+    # default: full stock position
+    rows = []
+    for i in items.values():
+        if not i.active: continue
+        c = stock.get((i.id, CENTRAL), 0)
+        o = sum(v for (iid, loc), v in stock.items() if iid == i.id and loc != CENTRAL)
+        rows.append({"code": i.code, "name": i.name, "category": i.category, "unit": i.unit,
+                      "item_type": i.item_type, "in_store": round(c, 2),
+                      "at_sites": round(o, 2), "total": round(c + o, 2),
+                      "low": bool(i.reorder_level and c <= i.reorder_level)})
+    return {"title": "Current stock", "rows": sorted(rows, key=lambda r: r["code"])}
