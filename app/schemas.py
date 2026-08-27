@@ -182,3 +182,78 @@ class EmployeeSummaryOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------
+# STORE / INVENTORY
+# ---------------------------------------------------------------------
+class StoreItemIn(BaseModel):
+    code: str
+    name: str
+    category: str = ""
+    unit: str = "pcs"
+    item_type: str = "consumable"
+    reorder_level: float = 0.0
+    notes: str = ""
+    rental_supplier: str = ""
+    rental_rate: float = 0.0
+    rental_period: str = "day"
+    rental_start: Optional[date] = None
+    rental_due: Optional[date] = None
+
+
+class StoreItemOut(BaseModel):
+    id: int
+    code: str
+    name: str
+    category: str
+    unit: str
+    item_type: str
+    reorder_level: float
+    notes: str
+    active: bool
+    # Optional because rows created before these columns existed have
+    # NULL in them - a plain str/float would reject those outright.
+    rental_supplier: Optional[str] = ""
+    rental_rate: Optional[float] = 0.0
+    rental_period: Optional[str] = "day"
+    rental_start: Optional[date] = None
+    rental_due: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StoreMovementIn(BaseModel):
+    item_id: int
+    kind: str
+    qty: float
+    from_location: str = ""
+    location: str = ""
+    incharge: str = ""
+    supplier: str = ""
+    unit_cost: float = 0.0
+    reference: str = ""
+    notes: str = ""
+    moved_on: date
+
+
+class StoreMovementOut(BaseModel):
+    id: int
+    item_id: int
+    kind: str
+    qty: float
+    from_location: str
+    location: str
+    incharge: str
+    supplier: str
+    unit_cost: float
+    reference: str
+    notes: str
+    moved_on: date
+    item_code: Optional[str] = None
+    item_name: Optional[str] = None
+    unit: Optional[str] = None
+
+    class Config:
+        from_attributes = True
