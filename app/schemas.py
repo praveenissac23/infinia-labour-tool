@@ -123,6 +123,11 @@ class DailyRowOut(BaseModel):
     site: str
     engineer: str
     comments: str
+    # Exposed so the frontend can tell whether a locally-saved draft is
+    # older than the server's data and should therefore be discarded
+    # rather than restored over it.
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
