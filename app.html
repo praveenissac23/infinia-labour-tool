@@ -1019,10 +1019,36 @@ async function loadDate(dateStr, preserveStatus) {
   // away doesn't silently lose typed-but-unsaved entries.
   const draft = loadDraft(dateStr);
   if (draft) {
-    Object.keys(draft).forEach(empNo => {
-      if (rowData[empNo]) rowData[empNo] = draft[empNo];
-    });
-    if (!preserveStatus) showStatus("att-status", "warn", "Restored unsaved changes from your last session on this date.");
+    // Only restore a draft that is NEWER than what the server already
+    // has for this date. Otherwise a draft left over from an earlier
+    // session masks fresher saved data - e.g. the Saturday->Sunday
+    // auto-fill would land correctly in the database but never appear
+    // on screen, because a stale draft overwrote it on load.
+    const serverSaved = existing.reduce((max, r) => {
+      const t = r.updated_at || r.created_at;
+      const ms = t ? Date.parse(t) : 0;
+      return ms > max ? ms : max;
+    }, 0);
+
+    if (serverSaved && draft.savedAt <= serverSaved) {
+      clearDraft(dateStr);            // stale - server data wins
+    } else {
+      Object.keys(draft.rows).forEach(empNo => {
+        if (rowData[empNo]) rowData[empNo] = draft.rows[empNo];
+      });
+      if (!preserveStatus) {
+        showStatus("att-status", "warn",
+          "Restored unsaved changes from your last session on this date. " +
+          "If this looks wrong, click Discard Draft to load the saved data instead.");
+        const box = document.getElementById("att-status");
+        const btn = document.createElement("button");
+        btn.className = "btn btn-dark";
+        btn.style.cssText = "margin-left:10px; padding:3px 10px; font-size:12px;";
+        btn.textContent = "Discard Draft";
+        btn.onclick = () => { clearDraft(dateStr); loadDate(dateStr); };
+        box.appendChild(btn);
+      }
+    }
   }
 
   const dateObj = new Date(dateStr + "T00:00:00");
@@ -1044,14 +1070,27 @@ function draftKey(dateStr) { return "infinia_draft_" + dateStr; }
 function loadDraft(dateStr) {
   try {
     const raw = localStorage.getItem(draftKey(dateStr));
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Drafts are stored as {savedAt, rows}. Anything in the old shape
+    // (bare rows, no timestamp) is from before this change and can't be
+    // dated, so it's discarded rather than trusted - a stale draft
+    // silently masking fresher server data is worse than losing it.
+    if (!parsed || !parsed.savedAt || !parsed.rows) {
+      localStorage.removeItem(draftKey(dateStr));
+      return null;
+    }
+    return parsed;
   } catch (e) { return null; }
 }
 let draftSaveTimer = null;
 function scheduleDraftSave() {
   clearTimeout(draftSaveTimer);
   draftSaveTimer = setTimeout(() => {
-    try { localStorage.setItem(draftKey(currentDate), JSON.stringify(rowData)); } catch (e) {}
+    try {
+      localStorage.setItem(draftKey(currentDate),
+        JSON.stringify({ savedAt: Date.now(), rows: rowData }));
+    } catch (e) {}
   }, 500);
 }
 function clearDraft(dateStr) {
