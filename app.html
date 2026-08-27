@@ -209,6 +209,7 @@
       <div class="nav-item" data-screen="combine" onclick="switchScreen('combine')">Combine</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
       <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
+      <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
       <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -587,6 +588,92 @@
         </div>
 
         <!-- ============ ERROR CHECK SCREEN ============ -->
+        <!-- ============ STORE / INVENTORY SCREEN ============ -->
+        <div class="screen" id="screen-store">
+          <div class="toolbar">
+            <label>View:</label>
+            <select id="store-view" onchange="loadStore()">
+              <option value="stock">Current stock</option>
+              <option value="low">Items to reorder</option>
+              <option value="by_site">Stock at sites</option>
+              <option value="assets">Assets &amp; equipment</option>
+              <option value="rentals">Rented equipment</option>
+              <option value="purchases">Purchases received</option>
+              <option value="usage">Materials issued</option>
+              <option value="movements">Movement history</option>
+            </select>
+            <span id="store-range-wrap">
+              <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
+              <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
+            </span>
+            <button class="btn btn-primary" onclick="loadStore()">Refresh</button>
+          </div>
+          <div class="status-msg" id="store-status"></div>
+
+          <div class="card">
+            <h2>Record a movement</h2>
+            <div class="form-row">
+              <select id="mv-kind" onchange="onMvKindChange()">
+                <option value="in">Receive into store</option>
+                <option value="out">Issue to site</option>
+                <option value="return">Return from site</option>
+                <option value="transfer">Transfer site to site</option>
+                <option value="adjust">Stock correction</option>
+              </select>
+              <select id="mv-item" style="min-width:220px;"></select>
+              <input type="number" id="mv-qty" placeholder="Qty" style="width:90px;" step="any">
+              <span id="mv-from-wrap" style="display:none;"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
+              <span id="mv-to-wrap"><label>To:</label><select id="mv-to" style="width:120px;"></select></span>
+              <input type="date" id="mv-date">
+            </div>
+            <div class="form-row">
+              <input type="text" id="mv-incharge" placeholder="In charge of" style="width:150px;">
+              <input type="text" id="mv-supplier" placeholder="Supplier" style="width:150px;">
+              <input type="number" id="mv-cost" placeholder="Unit cost" style="width:110px;" step="any">
+              <input type="text" id="mv-ref" placeholder="DO / Invoice no." style="width:140px;">
+              <input type="text" id="mv-notes" placeholder="Notes" style="width:180px;">
+              <button class="btn btn-primary" onclick="saveMovement()">Save Movement</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 id="store-table-title">Current stock</h2>
+            <div class="grid-wrap">
+              <table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Add / Update Item</h2>
+            <div class="form-row">
+              <input type="text" id="it-code" placeholder="Code (e.g. CEM-01)" style="width:140px;">
+              <input type="text" id="it-name" placeholder="Item name" style="width:190px;">
+              <input type="text" id="it-cat" placeholder="Category" style="width:130px;">
+              <input type="text" id="it-unit" placeholder="Unit (bags/pcs)" style="width:120px;">
+              <select id="it-type" onchange="onItemTypeChange()">
+                <option value="consumable">Consumable</option>
+                <option value="returnable">Returnable</option>
+                <option value="asset">Asset (owned)</option>
+                <option value="rental">Rental (hired in)</option>
+              </select>
+              <input type="number" id="it-reorder" placeholder="Reorder at" style="width:110px;" step="any">
+            </div>
+            <div class="form-row" id="it-rental-wrap" style="display:none;">
+              <input type="text" id="it-rsupplier" placeholder="Rental supplier" style="width:170px;">
+              <input type="number" id="it-rrate" placeholder="Rate" style="width:100px;" step="any">
+              <select id="it-rperiod" style="width:110px;">
+                <option value="day">per day</option><option value="week">per week</option><option value="month">per month</option>
+              </select>
+              <label>Start:</label><input type="date" id="it-rstart">
+              <label>Due back:</label><input type="date" id="it-rdue">
+            </div>
+            <div class="form-row">
+              <button class="btn btn-primary" onclick="saveStoreItem()">Save Item</button>
+            </div>
+            <div id="store-item-list"></div>
+          </div>
+        </div>
+
         <div class="screen" id="screen-errorcheck">
           <div class="toolbar">
             <label>Cycle:</label>
@@ -765,6 +852,7 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
+  if (name === "store") { document.getElementById("mv-date").value = isoLocal(new Date()); loadStoreItems().then(loadStore); }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
   // Calendar follows the date actually being viewed, not today - viewing
   // 27 Aug (an August-cycle date) while the calendar showed September
@@ -2108,6 +2196,188 @@ async function selectLiveCardWorker(empNo) {
   `;
 }
 const BRAND_BLACK_HEX = "#2E3238";
+
+// ============ STORE / INVENTORY ============
+let storeItems = [];
+
+function onItemTypeChange() {
+  const t = document.getElementById("it-type").value;
+  document.getElementById("it-rental-wrap").style.display = t === "rental" ? "" : "none";
+}
+
+function onMvKindChange() {
+  const k = document.getElementById("mv-kind").value;
+  // 'from' only matters when stock is leaving somewhere: issuing out of
+  // the store, coming back from a site, or moving between sites.
+  document.getElementById("mv-from-wrap").style.display = (k === "return" || k === "transfer") ? "" : "none";
+  document.getElementById("mv-to-wrap").style.display = (k === "in" || k === "adjust") ? "none" : "";
+}
+
+function storeLocationOptions(includeStore) {
+  const opts = includeStore ? ['<option value="">Central store</option>'] : [];
+  return opts.concat(sites.map(s => `<option value="${s.code}">${s.code}</option>`)).join("");
+}
+
+async function loadStoreItems() {
+  storeItems = await apiCall("/store/items");
+  document.getElementById("mv-item").innerHTML =
+    storeItems.map(i => `<option value="${i.id}">${i.code} - ${i.name} (${i.unit})</option>`).join("")
+    || '<option value="">No items yet</option>';
+  document.getElementById("mv-from").innerHTML = storeLocationOptions(true);
+  document.getElementById("mv-to").innerHTML = storeLocationOptions(true);
+  document.getElementById("store-item-list").innerHTML = storeItems.length
+    ? `<div class="md-chip-wrap">${storeItems.map(i => `
+        <span class="md-chip" title="${i.item_type}${i.reorder_level ? ', reorder at ' + i.reorder_level : ''}">
+          <span class="md-chip-label">${i.code}</span>
+          <span style="color:#777;">${i.name}</span>
+          <button class="md-chip-btn" onclick="editStoreItem(${i.id})">&#9998;</button>
+          <button class="md-chip-btn md-chip-del" onclick="removeStoreItem(${i.id}, '${String(i.code).replace(/'/g, "")}')">&times;</button>
+        </span>`).join("")}</div><div class="md-chip-count">${storeItems.length} item(s)</div>`
+    : '<div class="empty-note">No items yet - add one above.</div>';
+}
+
+function editStoreItem(id) {
+  const i = storeItems.find(x => x.id === id);
+  if (!i) return;
+  document.getElementById("it-code").value = i.code;
+  document.getElementById("it-name").value = i.name;
+  document.getElementById("it-cat").value = i.category || "";
+  document.getElementById("it-unit").value = i.unit || "";
+  document.getElementById("it-type").value = i.item_type;
+  document.getElementById("it-reorder").value = i.reorder_level || "";
+  document.getElementById("it-rsupplier").value = i.rental_supplier || "";
+  document.getElementById("it-rrate").value = i.rental_rate || "";
+  document.getElementById("it-rperiod").value = i.rental_period || "day";
+  document.getElementById("it-rstart").value = i.rental_start || "";
+  document.getElementById("it-rdue").value = i.rental_due || "";
+  onItemTypeChange();
+  showStatus("store-status", "ok", `Editing ${i.code} - change what you need and click Save Item.`);
+}
+
+async function saveStoreItem() {
+  const body = {
+    code: document.getElementById("it-code").value.trim(),
+    name: document.getElementById("it-name").value.trim(),
+    category: document.getElementById("it-cat").value.trim(),
+    unit: document.getElementById("it-unit").value.trim() || "pcs",
+    item_type: document.getElementById("it-type").value,
+    reorder_level: parseFloat(document.getElementById("it-reorder").value) || 0,
+    rental_supplier: document.getElementById("it-rsupplier").value.trim(),
+    rental_rate: parseFloat(document.getElementById("it-rrate").value) || 0,
+    rental_period: document.getElementById("it-rperiod").value,
+    rental_start: document.getElementById("it-rstart").value || null,
+    rental_due: document.getElementById("it-rdue").value || null,
+  };
+  if (!body.code || !body.name) {
+    showStatus("store-status", "warn", "Item needs a code and a name."); return;
+  }
+  try {
+    await apiCall("/store/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    showStatus("store-status", "ok", `Saved ${body.code}.`);
+    ["it-code","it-name","it-cat","it-unit","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+      .forEach(id => document.getElementById(id).value = "");
+    await loadStoreItems(); await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function removeStoreItem(id, code) {
+  if (!confirm(`Remove ${code}? Its movement history is kept.`)) return;
+  try {
+    await apiCall(`/store/items/${id}`, { method: "DELETE" });
+    showStatus("store-status", "ok", `Removed ${code}.`);
+    await loadStoreItems(); await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function saveMovement() {
+  const kind = document.getElementById("mv-kind").value;
+  const body = {
+    item_id: parseInt(document.getElementById("mv-item").value, 10),
+    kind,
+    qty: parseFloat(document.getElementById("mv-qty").value) || 0,
+    from_location: (kind === "return" || kind === "transfer") ? document.getElementById("mv-from").value : "",
+    location: (kind === "in" || kind === "adjust") ? "" : document.getElementById("mv-to").value,
+    incharge: document.getElementById("mv-incharge").value.trim(),
+    supplier: document.getElementById("mv-supplier").value.trim(),
+    unit_cost: parseFloat(document.getElementById("mv-cost").value) || 0,
+    reference: document.getElementById("mv-ref").value.trim(),
+    notes: document.getElementById("mv-notes").value.trim(),
+    moved_on: document.getElementById("mv-date").value || isoLocal(new Date()),
+  };
+  if (!body.item_id) { showStatus("store-status", "warn", "Pick an item."); return; }
+  if (!body.qty) { showStatus("store-status", "warn", "Enter a quantity."); return; }
+  try {
+    await apiCall("/store/movements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    showStatus("store-status", "ok", "Movement recorded.");
+    ["mv-qty","mv-incharge","mv-supplier","mv-cost","mv-ref","mv-notes"].forEach(id => document.getElementById(id).value = "");
+    await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function loadStore() {
+  const view = document.getElementById("store-view").value;
+  const from = document.getElementById("store-date-from").value;
+  const to = document.getElementById("store-date-to").value;
+  document.getElementById("store-range-wrap").style.display =
+    (view === "purchases" || view === "usage" || view === "movements") ? "" : "none";
+  const head = document.getElementById("store-head");
+  const body = document.getElementById("store-body");
+  body.innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
+  try {
+    if (view === "movements") {
+      let url = "/store/movements?limit=500";
+      if (from) url += `&date_from=${from}`;
+      if (to) url += `&date_to=${to}`;
+      const rows = await apiCall(url);
+      document.getElementById("store-table-title").textContent = "Movement history";
+      head.innerHTML = ["Date","Type","Item","Qty","From","To","In charge","Supplier","Ref",""]
+        .map(h => `<th>${h}</th>`).join("");
+      body.innerHTML = rows.length ? rows.map(m => `<tr>
+        <td>${m.moved_on}</td><td>${m.kind}</td><td>${m.item_code} - ${m.item_name}</td>
+        <td>${num(m.qty)} ${m.unit || ""}</td><td>${m.from_location || (m.kind==='in'?'-':'store')}</td>
+        <td>${m.location || 'store'}</td><td>${m.incharge || '-'}</td><td>${m.supplier || '-'}</td>
+        <td>${m.reference || '-'}</td>
+        <td><button class="btn btn-gray" onclick="deleteMovement(${m.id})">Delete</button></td>
+      </tr>`).join("") : `<tr><td class="empty-note">No movements yet.</td></tr>`;
+      return;
+    }
+    let url = `/store/report?kind=${view}`;
+    if (from) url += `&date_from=${from}`;
+    if (to) url += `&date_to=${to}`;
+    const d = await apiCall(url);
+    document.getElementById("store-table-title").textContent = d.title;
+    if (!d.rows.length) {
+      head.innerHTML = ""; body.innerHTML = `<tr><td class="empty-note">Nothing to show.</td></tr>`; return;
+    }
+    const keys = Object.keys(d.rows[0]).filter(k => k !== "low" && k !== "overdue");
+    const label = k => k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
+    head.innerHTML = keys.map(k => `<th>${label(k)}</th>`).join("");
+    body.innerHTML = d.rows.map(r => {
+      const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
+      return `<tr${flag}>` + keys.map(k => {
+        let v = r[k];
+        if (typeof v === "object" && v !== null)
+          v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
+        else if (typeof v === "number") v = k === "value" || k === "est_cost" || k === "rate" ? money(v) : num(v);
+        return `<td>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
+      }).join("") + "</tr>";
+    }).join("");
+    if (d.total_value !== undefined)
+      body.innerHTML += `<tr style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length-1}">TOTAL</td><td>AED ${money(d.total_value)}</td></tr>`;
+  } catch (e) {
+    body.innerHTML = `<tr><td class="empty-note">Could not load.</td></tr>`;
+    showStatus("store-status", "err", errText(e));
+  }
+}
+
+async function deleteMovement(id) {
+  if (!confirm("Delete this movement? Stock will be recalculated.")) return;
+  try {
+    await apiCall(`/store/movements/${id}`, { method: "DELETE" });
+    showStatus("store-status", "ok", "Movement deleted.");
+    await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
 
 // ============ ACTIVITY MONITOR (admin only) ============
 let currentActivityLog = [];
