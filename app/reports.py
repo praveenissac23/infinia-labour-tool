@@ -791,16 +791,30 @@ def _builder_daily_measure_contribution(r, measure_key, matched_summary=None):
         # entirely on Holiday for the period (0 Present days) had EVERY
         # row's contribution come out to 0, silently reporting their
         # whole actual cost as zero rather than the real paid amount.
-        paid_days_total = (getattr(matched_summary, "present_days", 0) if matched_summary else 0)
-        if matched_summary:
-            paid_days_total += (matched_summary.sick_days + matched_summary.medical_days
-                                 + matched_summary.friday_days + matched_summary.holiday_days)
-        if not matched_summary or not paid_days_total:
+        if not matched_summary:
             return 0
+        paid_days_total = (getattr(matched_summary, "present_days", 0) or 0)
+        paid_days_total += (matched_summary.sick_days + matched_summary.medical_days
+                             + matched_summary.friday_days + matched_summary.holiday_days)
         paid = {"present", "sick", "medical", "friday", "holiday"}
-        half = (0.5 if am in paid else 0) + (0.5 if pm in paid else 0)
-        share = half / paid_days_total
-        return share * matched_summary.adjusted_final_salary()
+
+        if paid_days_total:
+            half = (0.5 if am in paid else 0) + (0.5 if pm in paid else 0)
+            return (half / paid_days_total) * matched_summary.adjusted_final_salary()
+
+        # No paid days at all - the worker was absent (or on unpaid
+        # leave) for the whole period, so their cycle figure is a pure
+        # NEGATIVE deduction. Apportioning it across paid days would
+        # divide by zero, and returning 0 silently dropped a real cost
+        # from site reports while the Live Card and payroll correctly
+        # showed it. Spread it across the unpaid days instead so the
+        # deduction still lands, on the site those days were logged to.
+        unpaid_days_total = (matched_summary.absent_days or 0) + (matched_summary.leave_days or 0)
+        if not unpaid_days_total:
+            return 0
+        unpaid = {"absent", "leave"}
+        half = (0.5 if am in unpaid else 0) + (0.5 if pm in unpaid else 0)
+        return (half / unpaid_days_total) * matched_summary.adjusted_final_salary()
     status_map = {"days_present": "present", "days_absent": "absent", "days_sick": "sick",
                   "days_medical": "medical", "days_holiday": "holiday", "days_leave": "leave"}
     target = status_map.get(measure_key)
