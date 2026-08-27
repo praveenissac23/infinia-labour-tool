@@ -1083,11 +1083,24 @@ function selectHtml(empNo, field, values, current) {
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
 function onField(empNo, field, value) { rowData[empNo][field] = value; scheduleDraftSave(); }
 function onTick(empNo, checked) { checked ? ticked.add(empNo) : ticked.delete(empNo); }
+// The workers currently VISIBLE in the grid - i.e. matching the search
+// box. Select All and the header checkbox act on these only: ticking
+// them while a search was active used to select all 74 workers, so a
+// bulk-apply meant for 5 people silently overwrote everyone's day.
+function visibleEmployees() {
+  const search = document.getElementById("search-box").value.trim().toLowerCase();
+  const terms = search.split(",").map(t => t.trim()).filter(Boolean);
+  if (!terms.length) return employees;
+  return employees.filter(emp =>
+    terms.some(t => emp.emp_no.toLowerCase().includes(t) || emp.name.toLowerCase().includes(t))
+  );
+}
+
 function toggleAll(checked) {
-  employees.forEach(e => checked ? ticked.add(e.emp_no) : ticked.delete(e.emp_no));
+  visibleEmployees().forEach(e => checked ? ticked.add(e.emp_no) : ticked.delete(e.emp_no));
   renderRows();
 }
-function selectAll() { employees.forEach(e => ticked.add(e.emp_no)); renderRows(); }
+function selectAll() { visibleEmployees().forEach(e => ticked.add(e.emp_no)); renderRows(); }
 function selectNone() { ticked.clear(); renderRows(); }
 
 function applyBulk() {
