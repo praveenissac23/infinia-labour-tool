@@ -197,3 +197,76 @@ class Backup(Base):
     trigger = Column(String, nullable=False, default="manual")
     data = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------
+# STORE / INVENTORY
+# ---------------------------------------------------------------------
+class StoreItem(Base):
+    """
+    A material or tool the store holds. item_type drives the whole
+    behaviour downstream:
+      'consumable' - cement, sand, nails. Issued to a site and gone;
+                     stock only ever goes down when issued.
+      'returnable' - drills, ladders, scaffolding. Issued to a site and
+                     expected back, so the quantity currently out is
+                     tracked and can be returned to the central store.
+    Stock is never stored on this row - it is derived from movements, so
+    the ledger and the balance can never disagree.
+    """
+    __tablename__ = "store_items"
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    category = Column(String, default="")
+    unit = Column(String, default="pcs")          # bags, m, pcs, kg...
+    # consumable | returnable | asset | rental
+    #   asset  - owned equipment tracked individually (mixer, generator)
+    #   rental - hired in from a supplier, so it has a daily/monthly rate
+    #            and a date it must go back, and never counts as owned stock
+    item_type = Column(String, default="consumable")
+    reorder_level = Column(Float, default=0.0)
+    # Rental-only fields, ignored for other types
+    rental_supplier = Column(String, default="")
+    rental_rate = Column(Float, default=0.0)
+    rental_period = Column(String, default="day")     # day | week | month
+    rental_start = Column(Date, nullable=True)
+    rental_due = Column(Date, nullable=True)
+    notes = Column(Text, default="")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class StoreMovement(Base):
+    """
+    Every stock change, as an append-only ledger. Current stock is the
+    sum of these rather than a stored number, so there is one source of
+    truth and no chance of a balance drifting away from its history.
+
+    kind:
+      'in'       - received into the central store (purchase/delivery)
+      'out'      - issued from central store to a site
+      'return'   - returnable item coming back from a site
+      'adjust'   - correction after a stock count (qty may be negative)
+      'transfer' - moved between two sites
+    location is where the stock ENDS UP; from_location is where it came
+    from (used by 'out', 'return' and 'transfer').
+    """
+    __tablename__ = "store_movements"
+    id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, ForeignKey("store_items.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False, index=True)
+    qty = Column(Float, nullable=False, default=0.0)
+    from_location = Column(String, default="")     # "" = central store
+    location = Column(String, default="")          # "" = central store
+    incharge = Column(String, default="")          # who took responsibility
+    supplier = Column(String, default="")
+    unit_cost = Column(Float, default=0.0)
+    reference = Column(String, default="")         # DO / invoice number
+    notes = Column(Text, default="")
+    moved_on = Column(Date, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    item = relationship("StoreItem")
