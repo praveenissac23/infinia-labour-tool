@@ -101,7 +101,13 @@
   #loading { text-align: center; padding: 40px; color: #888; font-size: 13px; }
 
   .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  .form-row input[type=text], .form-row input[type=number] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .form-row input[type=text], .form-row input[type=number], .form-row input[type=password] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  /* Give the password fields room for their placeholder text - the
+     default width cut off "New password (min 6 characters)" mid-word.
+     The role dropdown gets a fixed width too; with no width set it
+     stretched to fill the whole row for two short options. */
+  .form-row input[type=password] { width: 220px; }
+  .form-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 130px; flex: 0 0 auto; }
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
@@ -132,7 +138,8 @@
     .bulk-bar select, .bulk-bar input[type=text] { flex: 1 1 45%; min-width: 100px; }
 
     .card { padding: 12px; }
-    .form-row input[type=text], .form-row input[type=number] { flex: 1 1 100%; }
+    .form-row input[type=text], .form-row input[type=number], .form-row input[type=password] { flex: 1 1 100%; width: auto; }
+    .form-row select { flex: 1 1 100%; width: auto; }
 
     table { font-size: 11px; }
     th, td { padding: 5px 4px; }
