@@ -460,11 +460,12 @@
         <div class="screen" id="screen-reports">
           <div class="toolbar">
             <label>Cycle:</label>
-            <select id="report-cycle" onchange="loadReports()"></select>
-            <label>Date range (optional):</label>
-            <input type="date" id="report-date-from">
+            <select id="report-cycle" onchange="onReportCycleChange()"></select>
+            <label>Narrow to dates:</label>
+            <input type="date" id="report-date-from" onchange="loadReports()">
             <span style="font-size:12px; color:#888;">to</span>
-            <input type="date" id="report-date-to">
+            <input type="date" id="report-date-to" onchange="loadReports()">
+            <button class="btn btn-dark" style="padding:5px 10px;" onclick="clearReportDateRange()" title="Clear the date range and show the whole cycle">Whole cycle</button>
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
             <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
@@ -809,6 +810,16 @@ async function initApp() {
 
   const currentCycle = monthYearFor(new Date());
   populateCycleSelects(currentCycle);
+  // Constrain the report date pickers to the cycle's own bounds. Only
+  // the bounds here - loadReports() runs when the screen is opened.
+  (() => {
+    const b = reportCycleBounds();
+    if (!b) return;
+    ["report-date-from", "report-date-to"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.min = b.start; el.max = b.end; }
+    });
+  })();
 
   // Staff Logins is available to everyone now - staff can add fellow
   // staff - but only an admin gets the "Admin" role option in the
@@ -1663,6 +1674,38 @@ function exportReportTable(fmt) {
   showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} of this report for ${cycle}.`);
 }
 
+// The date range NARROWS the selected cycle - it never reports outside
+// it. Constraining the pickers to the cycle's own bounds makes that
+// obvious, instead of letting someone pick dates that silently return
+// nothing because they fall in a different cycle.
+function reportCycleBounds() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  const d = parseMonthYear(cycle);
+  if (!d) return null;
+  const end = new Date(d.getFullYear(), d.getMonth(), 25);
+  const start = new Date(d.getFullYear(), d.getMonth() - 1, 26);
+  return { start: isoLocal(start), end: isoLocal(end) };
+}
+
+function onReportCycleChange() {
+  const b = reportCycleBounds();
+  const from = document.getElementById("report-date-from");
+  const to = document.getElementById("report-date-to");
+  if (b) {
+    [from, to].forEach(el => { el.min = b.start; el.max = b.end; });
+    // A range left over from another cycle would return nothing - drop it.
+    if (from.value && (from.value < b.start || from.value > b.end)) from.value = "";
+    if (to.value && (to.value < b.start || to.value > b.end)) to.value = "";
+  }
+  loadReports();
+}
+
+function clearReportDateRange() {
+  document.getElementById("report-date-from").value = "";
+  document.getElementById("report-date-to").value = "";
+  loadReports();
+}
+
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
@@ -1676,6 +1719,20 @@ async function loadReports() {
   const measures = getSelectedMeasures();
   const dateFrom = document.getElementById("report-date-from").value;
   const dateTo = document.getElementById("report-date-to").value;
+
+  // Reversed range would silently return nothing - say so instead.
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    showStatus("report-status", "warn", "The 'from' date is after the 'to' date - swap them to see results.");
+    document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">No results.</td></tr>`;
+    return;
+  }
+  // Always state the exact period being reported, so there's no doubt
+  // whether the cycle or the narrowed range is in effect.
+  const b = reportCycleBounds();
+  const periodLabel = (dateFrom || dateTo)
+    ? `Showing ${dateFrom || (b ? b.start : "cycle start")} to ${dateTo || (b ? b.end : "cycle end")} (within ${cycleLabel(cycle)})`
+    : `Showing the whole cycle: ${cycleLabel(cycle)}`;
+  showStatus("report-status", "ok", periodLabel);
 
   let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
   if (dateFrom) url += `&date_from=${dateFrom}`;
