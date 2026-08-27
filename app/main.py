@@ -613,7 +613,16 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     blocked = []
     to_process = []
 
+    today = date.today()
     for row_in in payload.rows:
+        # Attendance can't be recorded for a day that hasn't happened yet.
+        # Without this the app accepted any date at all - a save for
+        # 25 December went through months early - and those future days
+        # count as worked in the payroll totals, inflating salaries.
+        if row_in.full_date > today:
+            errors.append(f"{row_in.emp_no}: {row_in.full_date} is in the future - attendance can only be entered up to today.")
+            continue
+
         employee = db.query(models.Employee).filter(models.Employee.emp_no == row_in.emp_no).first()
         if not employee:
             errors.append(f"{row_in.emp_no}: employee not found.")
