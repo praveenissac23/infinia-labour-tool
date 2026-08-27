@@ -220,6 +220,13 @@ def auto_fill_sunday_from_saturday(db: Session, employee: models.Employee, satur
     if not site:
         return
     sunday_date = saturday_row.full_date + timedelta(days=1)
+    # Never pre-fill a Sunday that hasn't arrived yet - saving a future
+    # Saturday would otherwise silently create a row for a day even
+    # further ahead, which then shows on the worker's card as if it
+    # already happened.
+    from datetime import date as _date
+    if sunday_date > _date.today():
+        return
 
     existing = (
         db.query(models.DailyRow)
