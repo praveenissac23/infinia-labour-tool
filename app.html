@@ -443,7 +443,7 @@
         <!-- ============ REPORTS SCREEN ============ -->
         <div class="screen" id="screen-reports">
           <div class="toolbar">
-            <label>Cycle (Month Year):</label>
+            <label>Cycle:</label>
             <select id="report-cycle" onchange="loadReports()"></select>
             <label>Date range (optional):</label>
             <input type="date" id="report-date-from">
@@ -479,7 +479,7 @@
         <!-- ============ COMBINE SCREEN ============ -->
         <div class="screen" id="screen-combine">
           <div class="toolbar">
-            <label>Cycle (Month Year):</label>
+            <label>Cycle:</label>
             <select id="combine-cycle"></select>
           </div>
           <div class="status-msg" id="combine-status"></div>
@@ -566,7 +566,7 @@
         <!-- ============ ERROR CHECK SCREEN ============ -->
         <div class="screen" id="screen-errorcheck">
           <div class="toolbar">
-            <label>Cycle (Month Year):</label>
+            <label>Cycle:</label>
             <select id="errcheck-cycle" onchange="loadErrorCheck()"></select>
             <button class="btn btn-primary" onclick="loadErrorCheck()">Run Check</button>
           </div>
@@ -821,6 +821,20 @@ async function initApp() {
 // Builds the list of cycles offered in every cycle dropdown: the
 // current one plus the previous 23, so any past cycle can be pulled up
 // and reported on - that's the whole point of keeping the history.
+// "August 2026" -> "26 Jul - 25 Aug 2026". The stored value stays the
+// month name (that's the key the backend uses), but everything shown to
+// the user spells out the actual range, so there's no guessing which
+// dates a cycle covers - a real source of confusion, since a date like
+// 27 Aug belongs to the SEPTEMBER cycle.
+function cycleLabel(cycle) {
+  const d = new Date(cycle + " 1");
+  if (isNaN(d)) return cycle;
+  const end = new Date(d.getFullYear(), d.getMonth(), 25);
+  const start = new Date(d.getFullYear(), d.getMonth() - 1, 26);
+  const fmt = (x) => x.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return `${fmt(start)} - ${fmt(end)} ${end.getFullYear()}`;
+}
+
 function buildCycleOptions(currentCycle, monthsBack = 23) {
   const now = new Date();
   let year = now.getFullYear();
@@ -838,7 +852,7 @@ function buildCycleOptions(currentCycle, monthsBack = 23) {
 
 function populateCycleSelects(currentCycle) {
   const cycles = buildCycleOptions(currentCycle);
-  const html = cycles.map(c => `<option value="${c}">${c}</option>`).join("");
+  const html = cycles.map(c => `<option value="${c}">${cycleLabel(c)}</option>`).join("");
   ["report-cycle", "adj-cycle", "errcheck-cycle", "combine-cycle", "livecard-cycle"].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1708,7 +1722,7 @@ async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
   const which = containerId === "dash-calendar" ? "dash" : "attendance";
   calendarCycle[which] = cycle;
   const titleEl = document.getElementById(`${containerId}-title`);
-  if (titleEl) titleEl.textContent = cycle;
+  if (titleEl) titleEl.textContent = cycleLabel(cycle);
   cal.innerHTML = '<div class="empty-note">Loading...</div>';
 
   let result;
@@ -1855,7 +1869,7 @@ async function selectLiveCardWorker(empNo) {
 
   detail.innerHTML = `
     <h2 style="margin-bottom:2px;">${s.emp_no} - ${s.emp_name}</h2>
-    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${s.month_year} &nbsp;|&nbsp; Salary: AED ${money(s.total_salary)}</p>
+    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${cycleLabel(s.month_year)} &nbsp;|&nbsp; Salary: AED ${money(s.total_salary)}</p>
     <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
         <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>
