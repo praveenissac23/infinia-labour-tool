@@ -831,6 +831,44 @@ def builder_catalog(user: models.User = Depends(auth.get_current_user)):
     }
 
 
+def _report_source_rows(db: Session, month_year: str, date_from: str, date_to: str):
+    """
+    Picks the rows a report runs over.
+
+    When a date range is given it is used DIRECTLY against full_date, so
+    a report can span several cycles or any arbitrary window - previously
+    the query was pinned to a single month_year and the range could only
+    narrow within it, making a two-cycle report impossible.
+
+    With no range, it falls back to the whole selected cycle.
+
+    Summaries are per-worker-per-cycle, so for a range they are pulled
+    for every cycle the range touches; measures that come from summaries
+    (e.g. Final Salary Cost) are apportioned by the daily rows that fall
+    inside the window, which is what build_custom_report already does.
+    """
+    filters = {}
+    if date_from or date_to:
+        q = db.query(models.DailyRow)
+        if date_from:
+            d1 = datetime.strptime(date_from, "%Y-%m-%d").date()
+            q = q.filter(models.DailyRow.full_date >= d1)
+            filters["date_from"] = d1
+        if date_to:
+            d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
+            q = q.filter(models.DailyRow.full_date <= d2)
+            filters["date_to"] = d2
+        daily_rows = q.all()
+        cycles = {r.month_year for r in daily_rows} or {month_year}
+        summaries2 = (db.query(models.EmployeeSummary)
+                        .filter(models.EmployeeSummary.month_year.in_(cycles)).all())
+        return daily_rows, summaries2, filters
+
+    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
+    return daily_rows, summaries2, filters
+
+
 @app.get("/reports/custom")
 def custom_report(month_year: str, data_source: str = "daily", dimensions: str = "", measures: str = "",
                    date_from: str = None, date_to: str = None,
@@ -853,13 +891,7 @@ def custom_report(month_year: str, data_source: str = "daily", dimensions: str =
     """
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
-    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
-    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
-    filters = {}
-    if date_from:
-        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
-    if date_to:
-        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    daily_rows, summaries2, filters = _report_source_rows(db, month_year, date_from, date_to)
     source = data_source if data_source in ("daily", "summary") else "daily"
     result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
     return {"title": result.title, "note": result.note,
@@ -875,13 +907,7 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
     user = auth.get_download_user_from_token(token, db)
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
-    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
-    summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
-    filters = {}
-    if date_from:
-        filters["date_from"] = datetime.strptime(date_from, "%Y-%m-%d").date()
-    if date_to:
-        filters["date_to"] = datetime.strptime(date_to, "%Y-%m-%d").date()
+    daily_rows, summaries2, filters = _report_source_rows(db, month_year, date_from, date_to)
     source = data_source if data_source in ("daily", "summary") else "daily"
     result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
     result_dict = {"columns": [{"key": k, "label": label} for k, label in result.columns],
