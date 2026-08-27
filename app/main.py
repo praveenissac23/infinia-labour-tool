@@ -1328,6 +1328,25 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
     return {"ok": True, "restored_from": backup_id}
 
 
+@app.delete("/backup/{backup_id}")
+def delete_backup(backup_id: int, db: Session = Depends(get_db),
+                   user: models.User = Depends(auth.get_current_user)):
+    """
+    Remove a single backup. Useful for clearing out snapshots taken
+    before a known-bad state, so nobody restores one by mistake later -
+    a real risk, since a backup's date alone doesn't say whether the
+    data inside it was correct.
+    """
+    b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    when = b.created_at.isoformat() if b.created_at else str(backup_id)
+    db.delete(b)
+    db.commit()
+    log_action(db, user.id, "delete_backup", f"#{backup_id} ({when})")
+    return {"ok": True, "deleted": backup_id}
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
