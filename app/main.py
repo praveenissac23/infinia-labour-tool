@@ -552,20 +552,34 @@ def clear_attendance_for_date(target_date: date, db: Session = Depends(get_db),
 
 
 @app.get("/attendance/completion/{month_year}")
-def get_completion_status(month_year: str, db: Session = Depends(get_db),
+def get_completion_status(month_year: str, mode: str = "cycle",
+                           db: Session = Depends(get_db),
                            user: models.User = Depends(auth.get_current_user)):
     """
-    Per-day completion status for the whole cycle, for the dashboard
-    calendar: a day is 'complete' when every currently-active employee
-    has a saved attendance row for it. Mirrors the desktop app's own
-    dashboard calendar (green = complete, red = incomplete).
+    Per-day completion status for the calendar: a day is 'complete' when
+    every currently-active employee has a saved attendance row for it
+    (green = complete, red = incomplete).
+
+    mode="cycle"    - the payroll cycle, 26th of the previous month to
+                      the 25th of this one. Used where the view must
+                      line up with payroll.
+    mode="calendar" - the plain calendar month, 1st to last day. Used by
+                      the dashboard/attendance calendars, because a
+                      normal month is what people actually recognise
+                      when scanning for a date.
     """
     from datetime import datetime as dt, timedelta as td
+    import calendar as _cal
     try:
         parsed = dt.strptime(f"25 {month_year}", "%d %B %Y").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="month_year must look like 'August 2026'.")
-    cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
+    if mode == "calendar":
+        cycle_start = parsed.replace(day=1)
+        last = _cal.monthrange(parsed.year, parsed.month)[1]
+        cycle_end = parsed.replace(day=last)
+    else:
+        cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
 
     total_active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
     rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
