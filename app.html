@@ -747,7 +747,7 @@ function switchScreen(name) {
   // Calendar follows the date actually being viewed, not today - viewing
   // 27 Aug (an August-cycle date) while the calendar showed September
   // was contradictory, and made the highlighted day impossible to find.
-  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date((currentDate || new Date().toISOString().slice(0, 10)) + "T00:00:00")), "attendance-calendar");
+  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date((currentDate || isoLocal(new Date())) + "T00:00:00")), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -770,7 +770,7 @@ async function refreshDownloadToken() {
 }
 
 async function initApp() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoLocal(new Date());
   document.getElementById("date-picker").value = today;
   // Stop the picker offering days that haven't happened yet - the
   // backend rejects them anyway, but this makes it obvious up front
@@ -903,6 +903,17 @@ function errText(e) {
     return d.msg || JSON.stringify(d);
   }
   return String(d);
+}
+
+// Local-date ISO string. toISOString() converts to UTC first, so in
+// Dubai (UTC+4) a local midnight of 26 Aug became "2026-08-25" - every
+// Live Card row was looked up against the WRONG day, shifting the whole
+// card forward by one. Never use toISOString() for calendar dates.
+function isoLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function monthYearFor(d) {
@@ -1761,7 +1772,7 @@ async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
     return;
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = isoLocal(new Date());
   const firstDay = new Date(result.cycle_start + "T00:00:00");
   const leadingBlanks = (firstDay.getDay() + 6) % 7; // Monday-first week
 
@@ -1861,7 +1872,7 @@ async function selectLiveCardWorker(empNo) {
     let cur = new Date(data.cycle_start + "T00:00:00");
     const end = new Date(data.cycle_end + "T00:00:00");
     while (cur <= end) {
-      const iso = cur.toISOString().slice(0, 10);
+      const iso = isoLocal(cur);
       const r = days[iso];
       const label = cur.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
       gridRows += `<tr>
