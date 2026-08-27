@@ -21,7 +21,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from database import get_db, engine, Base
+from database import get_db, engine, Base, SessionLocal
 import models
 import schemas
 import services
@@ -47,6 +47,20 @@ def seed_on_startup():
     """
     import os
     import seed_data
+    # Only seed from master_data.json when there are NO employees yet.
+    # Re-running it on every boot meant the file was the permanent source
+    # of truth: employees deleted in the app were silently re-inserted at
+    # the next restart, which is what kept resurrecting the F793-F798
+    # duplicates and eventually crashed startup against the unique index.
+    # Once real data exists, the database is authoritative, not the file.
+    db = SessionLocal()
+    try:
+        already_seeded = db.query(models.Employee).count() > 0
+    finally:
+        db.close()
+    if already_seeded:
+        seed_data.run(None)          # users/defaults only, no employee import
+        return
     json_path = os.path.join(os.path.dirname(__file__), "master_data.json")
     seed_data.run(json_path if os.path.exists(json_path) else None)
 
