@@ -662,6 +662,7 @@ let employees = [];
 let sites = [];
 let engineers = [];
 let rowData = {};
+let savedSnapshot = {};
 let ticked = new Set();
 let currentDate = null;
 let currentSummaries = [];
@@ -975,6 +976,10 @@ async function loadDate(dateStr, preserveStatus) {
     };
   });
   ticked.clear();
+  // Snapshot of exactly what the server had when this date was opened,
+  // so the save message can report what YOU changed rather than how
+  // many workers happen to have attendance on the day.
+  savedSnapshot = JSON.parse(JSON.stringify(rowData));
 
   // Restore any unsaved draft for this date - same idea as the desktop
   // app resuming a session, so a refresh or an accidental navigation
@@ -1146,10 +1151,18 @@ async function saveAttendance() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rows }),
     });
-    const unchangedCount = result.saved - filledCount;
-    let msg = `Saved for ${currentDate}: ${filledCount} worker(s) marked`;
-    if (unchangedCount > 0) msg += `, ${unchangedCount} left blank`;
-    msg += ".";
+    // Report what actually CHANGED in this session, not how many
+    // workers have attendance overall - saving after editing 3 rows
+    // used to say "74 marked", which read like it had touched everyone.
+    const changed = employees.filter(emp => {
+      const before = savedSnapshot[emp.emp_no] || {};
+      const now = rowData[emp.emp_no] || {};
+      return ["am","pm","site","engineer","ot","bh","comments"]
+        .some(k => (before[k] || "") !== (now[k] || ""));
+    }).length;
+    let msg = changed === 0
+      ? `Saved for ${currentDate}: no changes to save.`
+      : `Saved for ${currentDate}: ${changed} worker(s) updated (${filledCount} marked on this day in total).`;
     if (result.blocked && result.blocked.length) {
       msg += "\n\nBlocked (Holiday needs previous day filled in first):\n" + result.blocked.join("\n");
       showStatus("att-status", "warn", msg);
