@@ -770,6 +770,10 @@ async function refreshDownloadToken() {
 async function initApp() {
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById("date-picker").value = today;
+  // Stop the picker offering days that haven't happened yet - the
+  // backend rejects them anyway, but this makes it obvious up front
+  // rather than after a failed save.
+  document.getElementById("date-picker").max = today;
 
   [employees, sites, engineers] = await Promise.all([
     apiCall("/employees?active_only=true"),
