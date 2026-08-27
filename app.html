@@ -814,7 +814,11 @@ async function initApp() {
   startDashboardClock();
   initReportColumnPicker();
   renderLiveCardWorkerList();
-  await loadDashboardCalendar(currentCycle);
+  // Open on today's actual calendar month, not the payroll cycle - on
+  // 27 Aug the cycle is "September 2026", so the calendar said September
+  // while the date said August, which read like a bug. Reports and
+  // payroll still use the 26th-25th cycle; only this view is calendar.
+  await loadDashboardCalendar(calendarMonthFor(new Date()));
 
   // Resume the screen the user was last on, same as reopening the
   // desktop app to where you left it - Dashboard stays the default
