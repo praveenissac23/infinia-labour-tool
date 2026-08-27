@@ -743,11 +743,11 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
-  if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || monthYearFor(new Date()));
+  if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
   // Calendar follows the date actually being viewed, not today - viewing
   // 27 Aug (an August-cycle date) while the calendar showed September
   // was contradictory, and made the highlighted day impossible to find.
-  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date((currentDate || isoLocal(new Date())) + "T00:00:00")), "attendance-calendar");
+  if (name === "attendance") loadDashboardCalendar(calendarMonthFor(new Date((currentDate || isoLocal(new Date())) + "T00:00:00")), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -916,6 +916,14 @@ function isoLocal(d) {
   return `${y}-${m}-${day}`;
 }
 
+// Plain calendar month of a date - "August 2026" for any day in August.
+// Distinct from monthYearFor(), which returns the payroll CYCLE a date
+// falls in (26 Aug belongs to the September cycle). The calendars use
+// this; reports and payroll use monthYearFor().
+function calendarMonthFor(d) {
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function monthYearFor(d) {
   // Cycles run the 26th of one month through the 25th of the next, and
   // are labelled after the month they END in - so 26 Aug starts the
@@ -990,7 +998,7 @@ async function loadDate(dateStr, preserveStatus) {
   // Keep the calendar on the same cycle as the date being viewed, so
   // picking a date in another cycle moves the calendar with it rather
   // than leaving it stranded on the previous month.
-  loadDashboardCalendar(monthYearFor(dateObj), "attendance-calendar");
+  loadDashboardCalendar(calendarMonthFor(dateObj), "attendance-calendar");
 }
 
 // ---- Attendance autosave draft (localStorage, per date) ----
@@ -1150,7 +1158,7 @@ async function saveAttendance() {
     }
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(monthYearFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
+    loadDashboardCalendar(calendarMonthFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
       showStatus("att-status", "err", summariseErrors(e.body.detail.errors));
@@ -1301,7 +1309,7 @@ async function confirmClearDay() {
     showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${currentDate}.`);
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(monthYearFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
+    loadDashboardCalendar(calendarMonthFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
   } catch (e) {
     showStatus("att-status", "err", "Could not clear the day: " + errText(e));
   }
@@ -1748,7 +1756,7 @@ const calendarCycle = { dash: null, attendance: null };
 
 function shiftCalendarCycle(which, delta) {
   const containerId = which === "dash" ? "dash-calendar" : "attendance-calendar";
-  const current = calendarCycle[which] || monthYearFor(new Date());
+  const current = calendarCycle[which] || calendarMonthFor(new Date());
   const d = new Date(current + " 1");
   d.setMonth(d.getMonth() + delta);
   const next = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -1761,12 +1769,15 @@ async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
   const which = containerId === "dash-calendar" ? "dash" : "attendance";
   calendarCycle[which] = cycle;
   const titleEl = document.getElementById(`${containerId}-title`);
-  if (titleEl) titleEl.textContent = cycleLabel(cycle);
+  if (titleEl) titleEl.textContent = cycle;   // plain "August 2026"
   cal.innerHTML = '<div class="empty-note">Loading...</div>';
 
   let result;
   try {
-    result = await apiCall(`/attendance/completion/${encodeURIComponent(cycle)}`);
+    // mode=calendar: the calendars show a normal 1st-to-last-day month,
+    // which is what people recognise when scanning for a date. Reports
+    // and payroll still run on the 26th-25th cycle underneath.
+    result = await apiCall(`/attendance/completion/${encodeURIComponent(cycle)}?mode=calendar`);
   } catch (e) {
     cal.innerHTML = '<div class="empty-note">Could not load calendar.</div>';
     return;
