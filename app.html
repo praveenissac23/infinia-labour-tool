@@ -742,7 +742,10 @@ function switchScreen(name) {
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || monthYearFor(new Date()));
-  if (name === "attendance") loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
+  // Calendar follows the date actually being viewed, not today - viewing
+  // 27 Aug (an August-cycle date) while the calendar showed September
+  // was contradictory, and made the highlighted day impossible to find.
+  if (name === "attendance") loadDashboardCalendar(monthYearFor(new Date((currentDate || new Date().toISOString().slice(0, 10)) + "T00:00:00")), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
 
@@ -952,6 +955,11 @@ async function loadDate(dateStr, preserveStatus) {
   document.getElementById("loading").style.display = "none";
   document.getElementById("grid-table").style.display = "table";
   renderRows();
+
+  // Keep the calendar on the same cycle as the date being viewed, so
+  // picking a date in another cycle moves the calendar with it rather
+  // than leaving it stranded on the previous month.
+  loadDashboardCalendar(monthYearFor(dateObj), "attendance-calendar");
 }
 
 // ---- Attendance autosave draft (localStorage, per date) ----
@@ -1089,7 +1097,7 @@ async function saveAttendance() {
     }
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
+    loadDashboardCalendar(monthYearFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
   } catch (e) {
     if (e.body && e.body.detail && e.body.detail.errors) {
       showStatus("att-status", "err", "Fix these before saving:\n" + e.body.detail.errors.join("\n"));
@@ -1240,7 +1248,7 @@ async function confirmClearDay() {
     showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${currentDate}.`);
     clearDraft(currentDate);
     await loadDate(currentDate, true);
-    loadDashboardCalendar(calendarCycle.attendance || monthYearFor(new Date()), "attendance-calendar");
+    loadDashboardCalendar(monthYearFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
   } catch (e) {
     showStatus("att-status", "err", "Could not clear the day: " + errText(e));
   }
