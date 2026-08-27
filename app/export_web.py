@@ -668,6 +668,7 @@ def build_generic_result_excel(result_dict, cycle_label):
     # Applied as a cell number_format (not a pre-formatted string) so the
     # value stays a real number Excel can still sum and chart.
     MONEY_FMT = '#,##0.00'
+    COUNT_FMT = '#,##0.##'   # separators, but no forced decimals
     def is_money(key):
         k = key.lower()
         return "cost" in k or "amount" in k or "salary" in k or "pay" in k
@@ -679,8 +680,8 @@ def build_generic_result_excel(result_dict, cycle_label):
             cell = ws.cell(row=r, column=i, value=v)
             cell.alignment = Alignment(horizontal="center")
             cell.border = border
-            if is_money(c["key"]) and isinstance(v, (int, float)):
-                cell.number_format = MONEY_FMT
+            if isinstance(v, (int, float)):
+                cell.number_format = MONEY_FMT if is_money(c["key"]) else COUNT_FMT
         r += 1
 
     totals = result_dict.get("totals") or {}
@@ -692,8 +693,8 @@ def build_generic_result_excel(result_dict, cycle_label):
             cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
             cell.alignment = Alignment(horizontal="center")
             cell.border = border
-            if i > 1 and is_money(c["key"]) and isinstance(v, (int, float)):
-                cell.number_format = MONEY_FMT
+            if i > 1 and isinstance(v, (int, float)):
+                cell.number_format = MONEY_FMT if is_money(c["key"]) else COUNT_FMT
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -714,12 +715,15 @@ def build_generic_result_pdf(result_dict, cycle_label):
         return "cost" in k or "amount" in k or "salary" in k or "pay" in k
 
     def fmt(key, v):
-        """Money values get thousands separators (21,344.92); everything
-        else prints as-is, so day counts and hours stay plain integers."""
+        """Money gets 2 decimals (21,344.92); other numbers get thousands
+        separators but keep their natural precision (1,776 stays whole,
+        12.5 stays 12.5)."""
         if v is None or v == "":
             return ""
-        if is_money(key) and isinstance(v, (int, float)):
-            return f"{v:,.2f}"
+        if isinstance(v, (int, float)):
+            if is_money(key):
+                return f"{v:,.2f}"
+            return f"{v:,.10g}" if v != int(v) else f"{int(v):,}"
         return str(v)
 
     data = [[Paragraph(c["label"], head_style) for c in cols]]
