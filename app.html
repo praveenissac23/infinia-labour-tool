@@ -834,7 +834,8 @@ async function initApp() {
 // dates a cycle covers - a real source of confusion, since a date like
 // 27 Aug belongs to the SEPTEMBER cycle.
 function cycleLabel(cycle) {
-  const d = new Date(cycle + " 1");
+  const d = parseMonthYear(cycle);
+  if (!d) return cycle;
   if (isNaN(d)) return cycle;
   const end = new Date(d.getFullYear(), d.getMonth(), 25);
   const start = new Date(d.getFullYear(), d.getMonth() - 1, 26);
@@ -921,6 +922,20 @@ function isoLocal(d) {
 // Distinct from monthYearFor(), which returns the payroll CYCLE a date
 // falls in (26 Aug belongs to the September cycle). The calendars use
 // this; reports and payroll use monthYearFor().
+// "August 2026" -> a real Date. new Date("August 2026 1") is a
+// non-standard format that Safari refuses to parse, which is what
+// produced "Invalid Date" and a calendar that wouldn't load on iPhone.
+const MONTH_NAMES = ["January","February","March","April","May","June",
+                     "July","August","September","October","November","December"];
+function parseMonthYear(s) {
+  const parts = String(s || "").trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const mi = MONTH_NAMES.indexOf(parts[0]);
+  const yr = parseInt(parts[1], 10);
+  if (mi < 0 || isNaN(yr)) return null;
+  return new Date(yr, mi, 1);
+}
+
 function calendarMonthFor(d) {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
@@ -1770,9 +1785,9 @@ const calendarCycle = { dash: null, attendance: null };
 function shiftCalendarCycle(which, delta) {
   const containerId = which === "dash" ? "dash-calendar" : "attendance-calendar";
   const current = calendarCycle[which] || calendarMonthFor(new Date());
-  const d = new Date(current + " 1");
+  const d = parseMonthYear(current) || new Date();
   d.setMonth(d.getMonth() + delta);
-  const next = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const next = calendarMonthFor(d);
   loadDashboardCalendar(next, containerId);
 }
 
