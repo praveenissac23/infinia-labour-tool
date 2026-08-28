@@ -324,3 +324,17 @@ class MaterialRequestOut(BaseModel):
 class MaterialRequestStatusIn(BaseModel):
     status: str
     office_remark: str = ""
+
+
+class ReceiveLineIn(BaseModel):
+    line_id: int
+    qty: float
+
+
+class ReceiveRequestIn(BaseModel):
+    """Receiving a delivery against a request, several lines at once."""
+    lines: list[ReceiveLineIn] = []
+    supplier: str = ""
+    reference: str = ""
+    received_on: Optional[date] = None
+    notes: str = ""
