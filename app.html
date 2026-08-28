@@ -872,7 +872,7 @@
                 <label>Date:</label><input type="date" id="in-date">
               </div>
               <div class="grid-wrap" style="max-height:260px;">
-                <table><thead><tr><th>Material</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
+                <table><thead><tr><th style="width:30%;">Material</th><th>Type</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
                 <tbody id="in-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -3019,6 +3019,10 @@ function onMaterialTyped(box) {
            || storeItems.find(i => i.name.toLowerCase() === txt);
   hidden.value = hit ? hit.id : "";
   box.style.background = (txt && !hit) ? "#FFF4F2" : "";
+  // If this material already has a type, show it rather than leaving
+  // the box on Consumable and quietly changing what the item is.
+  const typeSel = row.querySelector(".il-type");
+  if (typeSel && hit) typeSel.value = hit.item_type || "consumable";
   const unitCell = row.querySelector(".ol-have, .mr-unit");
   if (hit && unitCell) {
     if (unitCell.classList.contains("mr-unit")) unitCell.value = hit.unit;
@@ -3044,6 +3048,12 @@ function addInLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td>${materialPickerHtml("il-item", "material-list-all")}</td>
+    <td><select class="il-type" style="width:100%; min-width:120px;">
+          <option value="consumable">Consumable</option>
+          <option value="returnable">Returnable</option>
+          <option value="asset">Asset (we own it)</option>
+          <option value="rental">Rental (hired in)</option>
+        </select></td>
     <td><input type="number" class="il-qty" step="any" style="width:100%; min-width:90px;"></td>
     <td><input type="number" class="il-cost" step="any" style="width:100%; min-width:100px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
@@ -3105,12 +3115,29 @@ async function saveReceipt() {
     item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
     qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
     cost: parseFloat(tr.querySelector(".il-cost").value) || 0,
+    type: tr.querySelector(".il-type").value,
     note: tr.querySelector(".il-note").value.trim(),
   })).filter(l => l.item_id && l.qty > 0);
   if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
   let done = 0, failed = [];
   for (const l of lines) {
     try {
+      // If the keeper says this delivery is a rental or an asset, record
+      // that on the item - otherwise a hired generator would sit in the
+      // consumable stock reports forever.
+      const item = (storeItems || []).find(i => i.id === l.item_id);
+      if (item && l.type && item.item_type !== l.type) {
+        await apiCall("/store/items", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: item.code, name: item.name, category: item.category || "",
+                                  unit: item.unit, item_type: l.type,
+                                  reorder_level: item.reorder_level || 0,
+                                  rental_supplier: l.type === "rental" ? supplier : (item.rental_supplier || ""),
+                                  rental_rate: item.rental_rate || 0,
+                                  rental_period: item.rental_period || "day",
+                                  rental_start: item.rental_start || (l.type === "rental" ? when : null),
+                                  rental_due: item.rental_due || null }) });
+      }
       await apiCall("/store/movements", { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ item_id: l.item_id, kind: "in", qty: l.qty, location: "",
@@ -3122,6 +3149,7 @@ async function saveReceipt() {
   if (failed.length) showStatus("store-status", "err", failed[0]);
   else {
     showStatus("store-status", "ok", `Delivery saved: ${done} material(s) added to the store.`);
+    await loadStoreItems();   // a type may have changed, so refresh the list
     loadStoreHome();
     await loadStoreItems();   // stock changed - refresh what the pickers offer
     document.getElementById("in-lines").innerHTML = ""; addInLine();
