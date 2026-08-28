@@ -1794,7 +1794,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         for i in items.values():
             if not i.active or i.item_type != "rental": continue
             at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
-            where = ", ".join(f"{loc or 'store'}: {round(q,2)}" for loc, q in sorted(at.items())) or "-"
+            where = ", ".join(f"{loc or 'store'}: {q:g}" for loc, q in sorted(at.items())) or "-"
             days = (today - i.rental_start).days if i.rental_start else None
             est = round(days * (i.rental_rate or 0), 2) if (days is not None and i.rental_period == "day") else None
             rows.append({"code": i.code, "name": i.name, "supplier": i.rental_supplier,
@@ -1823,7 +1823,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "at_sites": round(sum(q for loc, q in at.items() if loc), 2),
                           "total": round(sum(at.values()), 2),
                           "written_off": round(lost, 2) if lost else 0,
-                          "where": ", ".join(f"{loc or 'store'}: {round(q,2)}"
+                          "where": ", ".join(f"{loc or 'store'}: {q:g}"
                                               for loc, q in sorted(at.items())) or "-"})
         return {"title": "Owned assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
 
@@ -1841,7 +1841,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "hired_from": i.rental_supplier or "-",
                           "on_hire": on_hire,
                           "in_store": round(at.get("", 0), 2),
-                          "at_sites": ", ".join(f"{loc}: {round(q,2)}"
+                          "at_sites": ", ".join(f"{loc}: {q:g}"
                                                  for loc, q in sorted(at.items()) if loc) or "-",
                           "lost_damaged": round(lost, 2) if lost else 0,
                           "since": i.rental_start.isoformat() if i.rental_start else "",
