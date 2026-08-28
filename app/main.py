@@ -6,7 +6,7 @@ validation logic (data_engine.py, daily_attendance.py, payroll_cycle.py)
 directly - the only thing that changed is the storage layer, from
 pickled sessions/JSON files to a real multi-user database.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 import io
 import json
@@ -2081,3 +2081,82 @@ def set_permissions(user_id: int, payload: schemas.PermissionsIn,
     db.commit()
     log_action(db, user.id, "set_permissions", f"{target.username}: {target.permissions or '(role default)'}")
     return {"ok": True, "permissions": effective_permissions(target)}
+
+
+# ---------------------------------------------------------------------
+# NOTIFICATIONS
+# ---------------------------------------------------------------------
+@app.get("/notifications")
+def get_notifications(db: Session = Depends(get_db),
+                       user: models.User = Depends(auth.get_current_user)):
+    """
+    Things that need someone's attention right now, gathered from the
+    live data rather than stored as messages - so a notification can
+    never go stale or contradict what the screens show. Each carries a
+    stable id so the browser can remember what has been read.
+    """
+    today = date.today()
+    allowed = effective_permissions(user)
+    out = []
+
+    if "store" in allowed:
+        items = {i.id: i for i in db.query(models.StoreItem).filter(models.StoreItem.active == True).all()}  # noqa: E712
+        stock = _stock_map(db)
+
+        low = []
+        for i in items.values():
+            if not i.reorder_level:
+                continue
+            have = stock.get((i.id, CENTRAL), 0)
+            if have <= i.reorder_level:
+                low.append((i, have))
+        for i, have in low[:20]:
+            out.append({"id": f"low-{i.id}-{have}", "kind": "low",
+                         "title": f"{i.name} is running low",
+                         "detail": f"{round(have, 2)} {i.unit} left, warn level is {round(i.reorder_level, 2)}",
+                         "screen": "store", "when": today.isoformat(), "level": "warn"})
+
+        reqs = db.query(models.MaterialRequest).all()
+        for m in reqs:
+            if m.status == "pending":
+                out.append({"id": f"req-pending-{m.id}", "kind": "request",
+                             "title": f"{m.ref} is waiting on the office",
+                             "detail": f"{len(m.lines)} material(s)" + (f" for site {m.site}" if m.site else ""),
+                             "screen": "store", "when": m.requested_on.isoformat(), "level": "info"})
+            if (m.needed_by and m.needed_by < today
+                    and m.status not in ("received", "closed", "rejected")):
+                out.append({"id": f"req-late-{m.id}-{m.needed_by}", "kind": "late",
+                             "title": f"{m.ref} is late",
+                             "detail": f"Was needed by {m.needed_by.isoformat()}",
+                             "screen": "store", "when": m.needed_by.isoformat(), "level": "warn"})
+
+        for i in items.values():
+            if i.item_type == "rental" and i.rental_due and i.rental_due < today:
+                out.append({"id": f"rent-{i.id}-{i.rental_due}", "kind": "rental",
+                             "title": f"{i.name} is overdue back to {i.rental_supplier or 'the supplier'}",
+                             "detail": f"Was due {i.rental_due.isoformat()}",
+                             "screen": "store", "when": i.rental_due.isoformat(), "level": "warn"})
+
+    if "attendance" in allowed:
+        # Yesterday with nothing entered is worth a nudge; today is still
+        # in progress so it isn't flagged.
+        y = today - timedelta(days=1)
+        marked = (db.query(models.DailyRow)
+                    .filter(models.DailyRow.full_date == y,
+                             or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
+                    .count())
+        active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
+        if active and marked == 0:
+            out.append({"id": f"att-none-{y}", "kind": "attendance",
+                         "title": "No attendance saved for yesterday",
+                         "detail": y.strftime("%A, %d %B %Y"),
+                         "screen": "attendance", "when": y.isoformat(), "level": "warn"})
+        elif active and marked < active:
+            out.append({"id": f"att-part-{y}-{marked}", "kind": "attendance",
+                         "title": "Yesterday's attendance is incomplete",
+                         "detail": f"{marked} of {active} workers marked",
+                         "screen": "attendance", "when": y.isoformat(), "level": "info"})
+
+    order = {"warn": 0, "info": 1}
+    out.sort(key=lambda n: (order.get(n["level"], 2), n["when"]))
+    return {"notifications": out[:50], "count": len(out)}
