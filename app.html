@@ -750,6 +750,7 @@
                 <option value="ordered">Ordered from supplier</option>
                 <option value="partial">Part delivered</option>
                 <option value="delivered">Delivered</option>
+                <option value="closed">Closed</option>
                 <option value="rejected">Rejected</option>
               </select>
               <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:250px;" oninput="loadRequests()">
@@ -3296,10 +3297,8 @@ async function saveReceive() {
     // A fully-delivered request drops out of the default "Still open"
     // list, so it looked like nothing had happened. Switch the filter to
     // show it, otherwise the keeper can't see the delivery they just made.
-    if (res.status === "delivered") {
-      const f = document.getElementById("mreq-filter");
-      if (f && f.value === "open") f.value = "delivered";
-    }
+    const f = document.getElementById("mreq-filter");
+    if (f && f.value !== "all" && f.value !== res.status) f.value = res.status;
     await loadRequests();
     // The store dashboard shows stock levels, so refresh those too if
     // they're already on screen.
@@ -3370,9 +3369,16 @@ async function setRequestStatus(id, status) {
     await apiCall(`/store/requests/${id}/status`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, office_remark: remark }) });
+    // Closing or rejecting drops the request out of the default "Still
+    // open" list, so move the filter with it - otherwise the request
+    // just vanishes and the button looks broken.
+    // Follow the request to wherever it has just moved, so it doesn't
+    // vanish from view - whatever filter was showing before.
+    const f = document.getElementById("mreq-filter");
+    if (f && f.value !== "all" && f.value !== status) f.value = status;
     showStatus("mreq-status", "ok", `${MR_LABEL[status] || status}.`);
     await loadRequests();
-  } catch (e) { showStatus("store-status", "err", errText(e)); }
+  } catch (e) { showStatus("mreq-status", "err", errText(e)); }
 }
 
 async function deleteRequest(id, ref) {
