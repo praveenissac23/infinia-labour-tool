@@ -703,25 +703,6 @@
         <div class="screen" id="screen-requests">
           <div class="status-msg" id="mreq-status"></div>
 
-          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px;">
-            <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">Waiting on office</div>
-              <div id="kpi-mr-pending" style="font-size:28px; font-weight:bold; color:var(--red);">-</div>
-            </div>
-            <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">Ordered</div>
-              <div id="kpi-mr-arranging" style="font-size:28px; font-weight:bold;">-</div>
-            </div>
-            <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">Part delivered</div>
-              <div id="kpi-mr-lpo" style="font-size:28px; font-weight:bold;">-</div>
-            </div>
-            <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">Late</div>
-              <div id="kpi-mr-late" style="font-size:28px; font-weight:bold; color:var(--red);">-</div>
-            </div>
-          </div>
-
           <div class="card">
             <h2>Raise a new request</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.</p>
@@ -3190,13 +3171,6 @@ async function loadRequests() {
   try {
     const all = await apiCall("/store/requests");
     const today = isoLocal(new Date());
-    document.getElementById("kpi-mr-pending").textContent = all.filter(r => r.status === "pending").length;
-    document.getElementById("kpi-mr-arranging").textContent =
-      all.filter(r => ["ordered","arranging","lpo_sent"].includes(r.status)).length;
-    document.getElementById("kpi-mr-lpo").textContent = all.filter(r => r.status === "partial").length;
-    document.getElementById("kpi-mr-late").textContent = all.filter(r =>
-      r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status)).length;
-
     const filter = document.getElementById("mreq-filter").value;
     const q = (document.getElementById("mreq-search").value || "").trim().toLowerCase();
     let list = all;
