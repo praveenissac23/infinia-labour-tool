@@ -781,25 +781,6 @@
 
           <!-- HOME -->
           <div id="store-home">
-            <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px;">
-              <div class="card" style="flex:1; min-width:180px; text-align:center;">
-                <div style="font-size:12px; color:#888;">Different materials</div>
-                <div id="kpi-items" style="font-size:30px; font-weight:bold;">-</div>
-              </div>
-              <div class="card" style="flex:1; min-width:180px; text-align:center;">
-                <div style="font-size:12px; color:#888;">Running out</div>
-                <div id="kpi-low" style="font-size:30px; font-weight:bold; color:var(--red);">-</div>
-              </div>
-              <div class="card" style="flex:1; min-width:180px; text-align:center;">
-                <div style="font-size:12px; color:#888;">Out at sites</div>
-                <div id="kpi-out" style="font-size:30px; font-weight:bold;">-</div>
-              </div>
-              <div class="card" style="flex:1; min-width:180px; text-align:center;">
-                <div style="font-size:12px; color:#888;">Requests waiting</div>
-                <div id="kpi-req" style="font-size:30px; font-weight:bold;">-</div>
-              </div>
-            </div>
-
             <div class="card">
               <h2>What do you want to do?</h2>
               <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
@@ -2692,22 +2673,12 @@ function storeGo(which) {
 
 async function loadStoreHome() {
   try {
-    const [stock, reqs] = await Promise.all([
-      apiCall("/store/report?kind=stock"),
-      apiCall("/store/requests"),
-    ]);
+    const stock = await apiCall("/store/report?kind=stock");
     const all = stock.rows || [];
     // Only materials that actually have stock somewhere. The catalogue
     // holds thousands of materials the company may never buy, and
     // listing every one at zero buries the few that are really there.
     const rows = all.filter(r => (r.in_store || 0) !== 0 || (r.at_sites || 0) !== 0);
-
-    document.getElementById("kpi-items").textContent = rows.length;
-    document.getElementById("kpi-low").textContent = rows.filter(r => r.low).length;
-    document.getElementById("kpi-out").textContent =
-      num(rows.reduce((t, r) => t + (r.at_sites || 0), 0));
-    document.getElementById("kpi-req").textContent =
-      reqs.filter(r => ["pending","approved","partial"].includes(r.status)).length;
 
     const head = document.getElementById("home-stock-head");
     const body = document.getElementById("home-stock-body");
