@@ -760,13 +760,14 @@
 
           <div class="card">
             <h2>Raise a new request</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.</p>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.
+              <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
             <div class="form-row">
-              <label>For site:</label><select id="mr-site" style="width:130px;"></select>
-              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}">
-              <label>Needed by:</label><input type="date" id="mr-needed">
+              <label>For site: <span style="color:#C0392B;">*</span></label><select id="mr-site" style="width:150px;"></select>
+              <label>Your name: <span style="color:#C0392B;">*</span></label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}">
+              <label>Needed by: <span style="color:#C0392B;">*</span></label><input type="date" id="mr-needed">
               <label>How urgent:</label>
-              <select id="mr-urgency" style="width:130px;">
+              <select id="mr-urgency" style="width:130px;" onchange="onUrgencyChange()">
                 <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
               </select>
             </div>
@@ -1312,14 +1313,23 @@ function switchScreen(name) {
   if (name === "errorcheck") loadErrorCheck();
   if (name === "requests") {
     loadStoreItems().then(() => {
+      // "Central store" as the first option meant an unset dropdown
+      // silently saved a request with no site, which printed as "-".
+      // Make the choice explicit, and keep central store as a real,
+      // deliberate option rather than the accidental default.
       document.getElementById("mr-site").innerHTML =
-        '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
+        '<option value="">-- choose a site --</option>' +
+        sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("") +
+        '<option value="STORE">Central store (stock top-up)</option>';
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#in-lines tr").length) addInLine();
       // The same store keeper raises most requests - remember who they
       // are so the name isn't typed fresh every single time.
       const mrBy = document.getElementById("mr-by");
       if (mrBy && !mrBy.value) { try { mrBy.value = localStorage.getItem("mrName") || ""; } catch (e) {} }
+      // A sensible needed-by beats an empty box: a week out for normal
+      // requests, changeable in one click, so nothing is saved undated.
+      setNeededByDefault();
       loadRequests();
     });
   }
@@ -1329,7 +1339,9 @@ function switchScreen(name) {
     document.getElementById("in-date").value = isoLocal(new Date());
     loadStoreItems().then(() => {
       const siteOpts = sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
-      document.getElementById("mr-site").innerHTML = '<option value="">Central store</option>' + siteOpts;
+      document.getElementById("mr-site").innerHTML = '<option value="">-- choose a site --</option>' +
+        sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("") +
+        '<option value="STORE">Central store (stock top-up)</option>';
       document.getElementById("out-site").innerHTML = '<option value="">-- choose --</option>' + siteOpts;
       document.getElementById("out-person").innerHTML = peopleOptions();
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
@@ -3737,10 +3749,10 @@ async function loadRequests() {
               ? `<div style="font-size:11px; color:#999;">waiting ${waitDays} days</div>` : "";
             return `<tr onclick="toggleRequest(${r.id})" style="cursor:pointer;${late ? ' background:#FFF8F7;' : ''}">
               <td><strong>${r.ref}</strong>${r.urgency === "urgent" && isOpen(r) ? '<div style="font-size:10px; font-weight:700; letter-spacing:.5px; color:#B26A00;">URGENT</div>' : ""}</td>
-              <td>${r.site || "-"}</td>
-              <td style="text-align:left;">${r.requested_by || "-"}</td>
+              <td>${r.site || '<span style="color:#999;">Central store</span>'}</td>
+              <td style="text-align:left;">${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
               <td>${r.requested_on}</td>
-              <td>${r.needed_by || "-"}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
+              <td>${r.needed_by || '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
               <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}</td>
               <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
               <td>
@@ -3909,7 +3921,41 @@ function addMrLine() {
 // kept for older markup; the picker now fills the unit itself
 function onMrItemChange(sel) { onMaterialTyped(sel); }
 
+// A needed-by date that matches the urgency chosen: urgent means
+// tomorrow, normal a week, "can wait" a fortnight. Always changeable -
+// this only replaces an empty box with a sensible starting point.
+const URGENCY_DAYS = { urgent: 1, normal: 7, low: 14 };
+
+function setNeededByDefault(force) {
+  const box = document.getElementById("mr-needed");
+  if (!box || (box.value && !force)) return;
+  const days = URGENCY_DAYS[document.getElementById("mr-urgency").value] ?? 7;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  box.value = isoLocal(d);
+}
+
+function onUrgencyChange() { setNeededByDefault(true); }
+
 async function submitMaterialRequest() {
+  // Everything the office needs to act on a request. Before this, a
+  // half-filled form saved happily and printed as a row of dashes -
+  // no site, nobody to ask, no date to chase.
+  const site = document.getElementById("mr-site").value;
+  const by = document.getElementById("mr-by").value.trim();
+  const needed = document.getElementById("mr-needed").value;
+  const focus = (id, msg) => {
+    showStatus("mreq-status", "warn", msg);
+    const el = document.getElementById(id);
+    el.focus();
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  if (!site) return focus("mr-site", "Choose which site this material is for - the office needs to know where it is going.");
+  if (!by) return focus("mr-by", "Type your name so the office knows who to come back to.");
+  if (!needed) return focus("mr-needed", "Put a date you need it by, so a late request can be chased.");
+  if (needed < isoLocal(new Date()))
+    return focus("mr-needed", "The needed-by date has already passed. Pick today or a day ahead.");
+
   const lines = [...document.querySelectorAll("#mr-lines tr")].map(tr => ({
     item_id: tr.querySelector(".mr-item").value ? parseInt(tr.querySelector(".mr-item").value, 10) : null,
     description: tr.querySelector(".mr-desc").value.trim(),
@@ -3921,10 +3967,17 @@ async function submitMaterialRequest() {
     notes: tr.querySelector(".mr-note").value.trim(),
   })).filter(l => l.qty_requested > 0);
   if (!lines.length) {
-    showStatus("store-status", "warn", "Add at least one material with a quantity before sending."); return;
+    showStatus("mreq-status", "warn", "Add at least one material with a quantity before sending."); return;
   }
   const bad = lines.find(l => !l.item_id && !l.description);
-  if (bad) { showStatus("store-status", "warn", "Every row needs a material picked or typed in."); return; }
+  if (bad) { showStatus("mreq-status", "warn", "Every row needs a material picked or typed in."); return; }
+  // "What is it for" is what the office judges the request on, so an
+  // empty one is worth a question - but not a hard block, since some
+  // top-ups genuinely have no single job behind them.
+  const noPurpose = lines.filter(l => !l.purpose).length;
+  if (noPurpose && !confirm(
+    `${noPurpose} material(s) have no "What is it for?" filled in.\n\n` +
+    "The office uses that to decide whether to order. Send without it?")) return;
   // Double-ordering is the expensive mistake here: the same cement asked
   // for twice arrives twice. If any of these materials is still waiting
   // to arrive on an open request, say so once and let the keeper decide.
@@ -3962,9 +4015,9 @@ async function submitMaterialRequest() {
     const r = await apiCall("/store/requests", { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        site: document.getElementById("mr-site").value,
-        requested_by: document.getElementById("mr-by").value.trim(),
-        needed_by: document.getElementById("mr-needed").value || null,
+        site: site === "STORE" ? "" : site,
+        requested_by: by,
+        needed_by: needed,
         urgency: document.getElementById("mr-urgency").value,
         notes: document.getElementById("mr-notes").value.trim(),
         lines,
@@ -3973,9 +4026,11 @@ async function submitMaterialRequest() {
     document.getElementById("mr-lines").innerHTML = "";
     addMrLine();
     document.getElementById("mr-notes").value = "";
+    // Fresh date for the next request rather than the one just used.
+    setNeededByDefault(true);
     await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
-  } catch (e) { showStatus("store-status", "err", errText(e)); }
+  } catch (e) { showStatus("mreq-status", "err", errText(e)); }
 }
 
 async function setRequestStatus(id, status) {
