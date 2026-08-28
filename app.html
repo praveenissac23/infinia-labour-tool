@@ -699,11 +699,11 @@
               <div id="kpi-mr-pending" style="font-size:28px; font-weight:bold; color:var(--red);">-</div>
             </div>
             <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">Being arranged</div>
+              <div style="font-size:12px; color:#888;">Ordered</div>
               <div id="kpi-mr-arranging" style="font-size:28px; font-weight:bold;">-</div>
             </div>
             <div class="card" style="flex:1; min-width:150px; text-align:center;">
-              <div style="font-size:12px; color:#888;">On order (LPO sent)</div>
+              <div style="font-size:12px; color:#888;">Part delivered</div>
               <div id="kpi-mr-lpo" style="font-size:28px; font-weight:bold;">-</div>
             </div>
             <div class="card" style="flex:1; min-width:150px; text-align:center;">
@@ -747,8 +747,7 @@
                 <option value="all">Everything</option>
                 <option value="pending">Waiting on office</option>
                 <option value="approved">Approved</option>
-                <option value="arranging">Being arranged</option>
-                <option value="lpo_sent">LPO sent</option>
+                <option value="ordered">Ordered from supplier</option>
                 <option value="partial">Part delivered</option>
                 <option value="delivered">Delivered</option>
                 <option value="rejected">Rejected</option>
@@ -3093,29 +3092,37 @@ async function saveReceipt() {
 
 // The real-life path a request takes. Kept in order so the screen can
 // show progress rather than a bare word nobody can act on.
-const MR_FLOW = ["pending", "approved", "arranging", "lpo_sent", "partial", "delivered"];
+// Four steps the office and site both understand. "Arranging" and
+// "LPO sent" were merged into "Ordered" - both just meant the office was
+// dealing with it, and two near-identical buttons invited mistakes.
+const MR_FLOW = ["pending", "approved", "ordered", "delivered"];
 const MR_LABEL = {
-  pending: "Waiting on office", approved: "Office approved", arranging: "Office arranging",
-  lpo_sent: "LPO sent to supplier", partial: "Part delivered", delivered: "Delivered to store",
+  pending: "Waiting on office", approved: "Office approved", ordered: "Ordered from supplier",
+  partial: "Part delivered", delivered: "Delivered to store",
   closed: "Closed", rejected: "Rejected by office",
+  // retired, kept so old requests still read sensibly
+  arranging: "Ordered from supplier", lpo_sent: "Ordered from supplier", received: "Delivered to store",
 };
 const MR_COLOUR = {
-  pending: "#C0392B", approved: "#2E7D32", arranging: "#B26A00", lpo_sent: "#1565C0",
+  pending: "#C0392B", approved: "#2E7D32", ordered: "#1565C0",
   partial: "#B26A00", delivered: "#2E7D32", closed: "#777", rejected: "#C0392B",
+  arranging: "#1565C0", lpo_sent: "#1565C0", received: "#2E7D32",
 };
-// What the office can do next, from wherever the request currently is.
+// One obvious next step at a time. Crucially there is no "mark it
+// delivered" shortcut any more - the only way to finish a request is to
+// record what actually arrived, so stock and paperwork can't disagree.
 const MR_NEXT = {
   pending: [["approved", "Approve"], ["rejected", "Reject"]],
-  approved: [["arranging", "Getting quotes"], ["rejected", "Reject"]],
-  arranging: [["lpo_sent", "LPO sent"]],
-  lpo_sent: [["delivered", "All delivered"]],
-  partial: [["delivered", "All delivered"]],
+  approved: [["ordered", "Mark as ordered"], ["rejected", "Reject"]],
+  ordered: [], arranging: [], lpo_sent: [], partial: [],
   delivered: [["closed", "Close"]],
 };
 
 function statusTrail(status) {
   if (status === "rejected") return `<span style="color:#C0392B; font-weight:600;">Rejected by office</span>`;
-  const at = MR_FLOW.indexOf(status);
+  const shown = { arranging: "ordered", lpo_sent: "ordered",
+                  partial: "ordered", received: "delivered", closed: "delivered" }[status] || status;
+  const at = MR_FLOW.indexOf(shown);
   return MR_FLOW.map((s, i) => {
     const done = at >= 0 && i <= at;
     return `<span style="font-size:11px; color:${done ? MR_COLOUR[s] : "#ccc"};
@@ -3148,8 +3155,9 @@ async function loadRequests() {
     const all = await apiCall("/store/requests");
     const today = isoLocal(new Date());
     document.getElementById("kpi-mr-pending").textContent = all.filter(r => r.status === "pending").length;
-    document.getElementById("kpi-mr-arranging").textContent = all.filter(r => r.status === "arranging").length;
-    document.getElementById("kpi-mr-lpo").textContent = all.filter(r => r.status === "lpo_sent").length;
+    document.getElementById("kpi-mr-arranging").textContent =
+      all.filter(r => ["ordered","arranging","lpo_sent"].includes(r.status)).length;
+    document.getElementById("kpi-mr-lpo").textContent = all.filter(r => r.status === "partial").length;
     document.getElementById("kpi-mr-late").textContent = all.filter(r =>
       r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status)).length;
 
@@ -3195,7 +3203,7 @@ async function loadRequests() {
           </div>
           <div>
             ${actions}
-            ${["approved","arranging","lpo_sent","partial"].includes(r.status)
+            ${!["delivered","closed","rejected","pending"].includes(r.status)
                ? `<button class="btn btn-primary" onclick="openReceive(${r.id})">Record delivery</button>` : ""}
             <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
             <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
