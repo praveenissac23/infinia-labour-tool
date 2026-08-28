@@ -1552,8 +1552,10 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
         code = f"ITM{n}"
     if not name:
         raise HTTPException(status_code=400, detail="Item needs a name.")
-    if payload.item_type not in ("consumable", "returnable", "asset", "rental"):
-        raise HTTPException(status_code=400, detail="Unknown item type.")
+    if payload.item_type == "returnable":
+        payload.item_type = "asset"        # retired type, folded into assets
+    if payload.item_type not in ("consumable", "asset", "rental"):
+        raise HTTPException(status_code=400, detail="Item type must be consumable, asset or rental.")
     if payload.reorder_level < 0:
         raise HTTPException(status_code=400, detail="Reorder level can't be negative.")
     payload.code, payload.name = code, name
@@ -1766,7 +1768,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows = []
         for (iid, loc), qty in stock.items():
             i = items.get(iid)
-            if not i or i.item_type != "returnable" or loc == CENTRAL or qty <= 0: continue
+            if not i or i.item_type not in ("returnable", "asset") or loc == CENTRAL or qty <= 0: continue
             last = (db.query(models.StoreMovement)
                       .filter(models.StoreMovement.item_id == iid,
                                models.StoreMovement.location == loc,
@@ -1807,7 +1809,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # never get added together and mistaken for company property.
         rows = []
         for i in items.values():
-            if not i.active or i.item_type != "asset": continue
+            if not i.active or i.item_type not in ("asset", "returnable"): continue
             at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
             lost = _lost_by_item(i.id)
             rows.append({"code": i.code, "name": i.name, "unit": i.unit,
