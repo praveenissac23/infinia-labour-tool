@@ -160,18 +160,25 @@
   .rep-group { font-size: 11px; font-weight: bold; letter-spacing: 0.8px; text-transform: uppercase;
                color: #999; margin: 16px 0 8px; }
   .rep-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-  .rep-tile { flex: 1 1 0; min-width: 118px; border: 1px solid #ddd; border-radius: 5px;
-              padding: 9px 8px; cursor: pointer; background: white; font-size: 12px;
-              font-weight: 600; text-align: center; color: #333; white-space: nowrap;
-              overflow: hidden; text-overflow: ellipsis; }
-  .rep-tile:hover { background: var(--red); border-color: var(--red); color: white; }
-  .rep-tile.active { background: var(--red); border-color: var(--red); color: white; }
+  .rep-tile { flex: 1 1 0; min-width: 150px; border: 1px solid #E6E6E6; border-radius: 8px;
+              padding: 12px 14px; cursor: pointer; background: white; font-size: 12.5px;
+              font-weight: 600; text-align: left; color: var(--black); position: relative;
+              transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease; }
+  .rep-tile:hover { border-color: var(--red); box-shadow: 0 3px 10px rgba(0,0,0,.08);
+                    transform: translateY(-1px); }
+  .rep-tile.active { border-color: var(--red); background: #FFF8F7;
+                     box-shadow: inset 3px 0 0 var(--red); }
   /* Each report tile carries the question it answers - a keeper who has
      never seen the screen should know what they'll get before clicking. */
   .rep-tile b { display: block; font-size: 12.5px; }
   .rep-tile span { display: block; font-size: 10.5px; color: #999; margin-top: 2px;
                    font-weight: normal; line-height: 1.3; }
-  .rep-tile:hover span, .rep-tile.active span { color: rgba(255,255,255,.85); }
+  /* Live counts on the tiles that represent work to do - 12 materials
+     low, 3 requests overdue - so the picker doubles as a to-do list. */
+  .rep-badge { position: absolute; top: 9px; right: 10px; background: var(--red); color: white;
+               font-size: 10.5px; font-weight: 700; min-width: 20px; height: 20px;
+               border-radius: 10px; padding: 0 6px; display: none;
+               align-items: center; justify-content: center; }
   .stat-chip { font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: 999px;
                border: 1px solid; display: inline-block; }
 
@@ -1030,7 +1037,7 @@
               <div class="rep-group">Stock &amp; Movement</div>
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything held: store vs sites</span></div>
-                <div class="rep-tile" onclick="pickReport('low')"><b>Reorder</b><span>Running low, needs buying</span></div>
+                <div class="rep-tile" onclick="pickReport('low')"><span class="rep-badge" id="badge-low"></span><b>Reorder</b><span>Running low, needs buying</span></div>
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>At Sites</b><span>What each site is holding</span></div>
                 <div class="rep-tile" onclick="pickReport('movements')"><b>Movements</b><span>Every in, out and transfer</span></div>
                 <div class="rep-tile" onclick="pickReport('purchases')"><b>Purchases</b><span>What arrived and what it cost</span></div>
@@ -1043,9 +1050,9 @@
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('hired')"><b>On Hire Now</b><span>Hired equipment out right now</span></div>
                 <div class="rep-tile" onclick="pickReport('rentals')"><b>Rental Details</b><span>Rates, suppliers, return dates</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_open')"><b>Open Requests</b><span>Waiting on office or supplier</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_outstanding')"><b>Outstanding</b><span>Materials still to arrive</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_overdue')"><b>Overdue</b><span>Past their needed-by date</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_open')"><span class="rep-badge" id="badge-mr-open"></span><b>Open Requests</b><span>Waiting on office or supplier</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_outstanding')"><span class="rep-badge" id="badge-mr-out"></span><b>Outstanding</b><span>Materials still to arrive</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_overdue')"><span class="rep-badge" id="badge-mr-over"></span><b>Overdue</b><span>Past their needed-by date</span></div>
                 <div class="rep-tile" onclick="pickReport('mr_history')"><b>Request History</b><span>Every request ever made</span></div>
               </div>
             </div>
@@ -2739,7 +2746,10 @@ function storeGo(which) {
   });
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
-  if (which === "reports") document.getElementById("store-report-result").style.display = "none";
+  if (which === "reports") {
+    document.getElementById("store-report-result").style.display = "none";
+    updateReportBadges();
+  }
   if (which === "other") setMvKind(null);
 }
 
@@ -3715,6 +3725,28 @@ async function exportStore(fmt) {
 
 // Picking a named report sets the underlying view and shows the result
 // panel - the dropdown still drives loadStore(), it's just hidden now.
+// Live counts on the report picker: the tiles that mean "something
+// needs doing" show how much, before anyone opens them. Failures are
+// silent - a missing badge is better than an error over a picker.
+async function updateReportBadges() {
+  try {
+    const [stk, reqs] = await Promise.all([apiCall("/store/stock"), apiCall("/store/requests")]);
+    storeStockCache = stk;
+    const today = isoLocal(new Date());
+    const isOpen = r => !["delivered", "received", "closed", "rejected"].includes(r.status);
+    const set = (id, n) => {
+      const b = document.getElementById(id);
+      if (b) { b.textContent = num(n); b.style.display = n ? "flex" : "none"; }
+    };
+    set("badge-low", stk.filter(s => s.low).length);
+    const open = reqs.filter(isOpen);
+    set("badge-mr-open", open.length);
+    set("badge-mr-out", open.filter(r =>
+      (r.lines || []).some(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0)).length);
+    set("badge-mr-over", reqs.filter(r => r.needed_by && r.needed_by < today && isOpen(r)).length);
+  } catch (e) { /* badges are a nicety, never an error */ }
+}
+
 function pickReport(kind) {
   // Mark which report is showing, so it's obvious what you're looking at
   // once the result panel opens below.
