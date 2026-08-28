@@ -731,7 +731,7 @@
                 <input type="text" id="mr-notes" placeholder="Why do you need it? (optional)" style="width:340px;">
               </div>
               <div class="grid-wrap" style="max-height:260px;">
-                <table><thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Cost each (optional)</th><th>Note</th><th></th></tr></thead>
+                <table><thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Note</th><th></th></tr></thead>
                 <tbody id="mr-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -2724,7 +2724,6 @@ function addMrLine() {
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
     <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
-    <td><input type="number" class="mr-cost" step="any" style="width:110px;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
   tb.appendChild(tr);
@@ -2739,7 +2738,7 @@ async function submitMaterialRequest() {
     description: tr.querySelector(".mr-desc").value.trim(),
     qty_requested: parseFloat(tr.querySelector(".mr-qty").value) || 0,
     unit: tr.querySelector(".mr-unit").value.trim() || "pcs",
-    est_cost: parseFloat(tr.querySelector(".mr-cost").value) || 0,
+    est_cost: 0,   // cost isn't asked for on a request - the office prices it
     notes: tr.querySelector(".mr-note").value.trim(),
   })).filter(l => l.qty_requested > 0);
   if (!lines.length) {
