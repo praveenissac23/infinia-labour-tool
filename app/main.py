@@ -1843,7 +1843,7 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
 def list_material_requests(status: str = None, site: str = None,
                             date_from: str = None, date_to: str = None,
                             db: Session = Depends(get_db),
-                            user: models.User = Depends(require_screen("store"))):
+                            user: models.User = Depends(require_screen("requests"))):
     q = db.query(models.MaterialRequest)
     if status:
         q = q.filter(models.MaterialRequest.status == status)
@@ -1858,7 +1858,7 @@ def list_material_requests(status: str = None, site: str = None,
 
 @app.post("/store/requests")
 def create_material_request(payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
-                             user: models.User = Depends(require_screen("store"))):
+                             user: models.User = Depends(require_screen("requests"))):
     lines = [l for l in payload.lines if l.qty_requested and l.qty_requested > 0]
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
@@ -1892,7 +1892,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
 @app.post("/store/requests/{req_id}/status")
 def set_material_request_status(req_id: int, payload: schemas.MaterialRequestStatusIn,
                                  db: Session = Depends(get_db),
-                                 user: models.User = Depends(auth.get_current_user)):
+                                 user: models.User = Depends(require_screen("requests"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -1911,7 +1911,7 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
 
 @app.delete("/store/requests/{req_id}")
 def delete_material_request(req_id: int, db: Session = Depends(get_db),
-                             user: models.User = Depends(auth.get_current_user)):
+                             user: models.User = Depends(require_screen("requests"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -1926,7 +1926,7 @@ def delete_material_request(req_id: int, db: Session = Depends(get_db),
 def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str = "",
                              unit_cost: float = 0.0, reference: str = "",
                              db: Session = Depends(get_db),
-                             user: models.User = Depends(auth.get_current_user)):
+                             user: models.User = Depends(require_screen("requests"))):
     """
     Record a delivery against one line of a request. This both files a
     normal 'in' stock movement AND advances the request, so outstanding
