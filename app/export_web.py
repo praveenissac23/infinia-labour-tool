@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
@@ -757,3 +757,210 @@ def build_generic_result_pdf(result_dict, cycle_label):
     doc.build([title, tbl])
     buf.seek(0)
     return buf
+
+
+# ---------------------------------------------------------------------
+# STORE / INVENTORY EXPORTS
+# ---------------------------------------------------------------------
+def build_store_report_excel(title, rows, subtitle=""):
+    """
+    Any store report as a formatted sheet: company header, report title,
+    the period it covers, bordered auto-width columns, and a totals row
+    for numeric money columns. Column set is taken from the data, so one
+    function serves every report rather than one per report drifting apart.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(2, len(rows[0]) if rows else 2))
+    h = ws.cell(row=1, column=1, value="INFINIA CONTRACTING LLC")
+    h.font = Font(bold=True, size=13)
+    h.alignment = Alignment(horizontal="center")
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(2, len(rows[0]) if rows else 2))
+    t = ws.cell(row=2, column=1, value=title)
+    t.font = Font(bold=True, size=11)
+    t.alignment = Alignment(horizontal="center")
+    if subtitle:
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=max(2, len(rows[0]) if rows else 2))
+        s = ws.cell(row=3, column=1, value=subtitle)
+        s.font = Font(size=9, italic=True, color="777777")
+        s.alignment = Alignment(horizontal="center")
+
+    r = 5
+    if not rows:
+        ws.cell(row=r, column=1, value="Nothing to show.").font = Font(italic=True, color="999999")
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+
+    cols = list(rows[0].keys())
+    money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    for i, k in enumerate(cols, start=1):
+        c = ws.cell(row=r, column=i, value=k.replace("_", " ").title())
+        c.font = Font(bold=True, color="FFFFFF", size=10)
+        c.fill = PatternFill("solid", fgColor=BRAND_RED)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border
+    r += 1
+
+    numeric_totals = {k: 0 for k in cols if money_like(k)}
+    for row in rows:
+        for i, k in enumerate(cols, start=1):
+            v = row.get(k, "")
+            if isinstance(v, dict):
+                v = ", ".join(f"{a}: {b}" for a, b in v.items()) or "-"
+            elif isinstance(v, bool):
+                v = "Yes" if v else ""
+            c = ws.cell(row=r, column=i, value=v)
+            c.border = border
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.font = Font(size=10)
+            if isinstance(v, (int, float)):
+                c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
+                if k in numeric_totals:
+                    numeric_totals[k] += v
+        r += 1
+
+    if numeric_totals:
+        for i, k in enumerate(cols, start=1):
+            v = round(numeric_totals[k], 2) if k in numeric_totals else ("TOTAL" if i == 1 else "")
+            c = ws.cell(row=r, column=i, value=v)
+            c.font = Font(bold=True)
+            c.fill = PatternFill("solid", fgColor=GREEN_FILL)
+            c.alignment = Alignment(horizontal="center")
+            c.border = border
+            if isinstance(v, (int, float)):
+                c.number_format = '#,##0.00'
+
+    for i, k in enumerate(cols, start=1):
+        width = max(len(str(k)) + 4, *(len(str(row.get(k, ""))) + 3 for row in rows))
+        ws.column_dimensions[get_column_letter(i)].width = min(max(width, 10), 40)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+
+
+def build_store_report_pdf(title, rows, subtitle=""):
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=10 * mm, bottomMargin=10 * mm,
+                             leftMargin=8 * mm, rightMargin=8 * mm)
+    styles = getSampleStyleSheet()
+    head = ParagraphStyle("H", parent=styles["Normal"], fontSize=8, leading=10,
+                           textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
+    cell = ParagraphStyle("C", parent=styles["Normal"], fontSize=8, leading=10, alignment=TA_CENTER)
+    el = [Paragraph("<b>INFINIA CONTRACTING LLC</b>",
+                     ParagraphStyle("T", parent=styles["Normal"], fontSize=13, alignment=TA_CENTER)),
+          Spacer(1, 3),
+          Paragraph(f"<b>{title}</b>",
+                     ParagraphStyle("S", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER))]
+    if subtitle:
+        el += [Spacer(1, 2), Paragraph(subtitle,
+                ParagraphStyle("Sub", parent=styles["Normal"], fontSize=8,
+                                textColor=colors.HexColor("#777777"), alignment=TA_CENTER))]
+    el.append(Spacer(1, 8))
+
+    if not rows:
+        el.append(Paragraph("Nothing to show.", cell))
+        doc.build(el); buf.seek(0); return buf
+
+    cols = list(rows[0].keys())
+    money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    data = [[Paragraph(k.replace("_", " ").title(), head) for k in cols]]
+    totals = {k: 0 for k in cols if money_like(k)}
+    for row in rows:
+        line = []
+        for k in cols:
+            v = row.get(k, "")
+            if isinstance(v, dict):
+                v = ", ".join(f"{a}: {b}" for a, b in v.items()) or "-"
+            elif isinstance(v, bool):
+                v = "Yes" if v else ""
+            elif isinstance(v, (int, float)):
+                if k in totals: totals[k] += v
+                v = f"{v:,.2f}" if money_like(k) else (f"{int(v):,}" if v == int(v) else f"{v:,.2f}")
+            line.append(Paragraph(str(v) if v not in (None, "") else "-", cell))
+        data.append(line)
+    if totals:
+        data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>", cell)
+                     for i, k in enumerate(cols)])
+
+    w = doc.width / len(cols)
+    tbl = Table(data, colWidths=[w] * len(cols), repeatRows=1)
+    style = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
+             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
+             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+             ("ROWBACKGROUNDS", (0, 1), (-1, -2 if totals else -1),
+              [colors.white, colors.HexColor("#F7F7F7")])]
+    if totals:
+        style.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#" + GREEN_FILL)))
+    tbl.setStyle(TableStyle(style))
+    el.append(tbl)
+    doc.build(el); buf.seek(0); return buf
+
+
+def build_material_request_pdf(mr: dict):
+    """The request itself as a document the store keeper can send to the office."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=14 * mm, bottomMargin=14 * mm,
+                             leftMargin=14 * mm, rightMargin=14 * mm)
+    styles = getSampleStyleSheet()
+    cen = lambda s, sz, b=False: Paragraph(
+        (f"<b>{s}</b>" if b else s),
+        ParagraphStyle("x", parent=styles["Normal"], fontSize=sz, alignment=TA_CENTER))
+    cell = ParagraphStyle("c", parent=styles["Normal"], fontSize=9, leading=11)
+    head = ParagraphStyle("h", parent=styles["Normal"], fontSize=9, leading=11,
+                           textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
+
+    el = [cen("INFINIA CONTRACTING LLC", 14, True), Spacer(1, 5),
+          cen("MATERIAL REQUEST", 11, True), Spacer(1, 12)]
+
+    info = [["Request No:", mr["ref"], "Date:", mr["requested_on"]],
+            ["Site:", mr["site"] or "-", "Needed by:", mr.get("needed_by") or "-"],
+            ["Requested by:", mr["requested_by"] or "-", "Urgency:", mr["urgency"].title()],
+            ["Status:", mr["status"].title(), "", ""]]
+    t = Table([[Paragraph(f"<b>{a}</b>", cell), Paragraph(str(b), cell),
+                Paragraph(f"<b>{c}</b>", cell), Paragraph(str(d), cell)] for a, b, c, d in info],
+              colWidths=[doc.width * 0.16, doc.width * 0.34, doc.width * 0.16, doc.width * 0.34])
+    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#DDDDDD")),
+                            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F4F5F7")),
+                            ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F4F5F7")),
+                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    el += [t, Spacer(1, 12)]
+
+    data = [[Paragraph(h, head) for h in ["#", "Item", "Unit", "Req Qty", "Appr Qty", "Recd Qty", "Balance", "Notes"]]]
+    for i, ln in enumerate(mr["lines"], start=1):
+        out = (ln["qty_requested"] or 0) - (ln["qty_received"] or 0)
+        name = (f'{ln.get("item_code")} - {ln.get("item_name")}' if ln.get("item_code") else
+                (ln.get("item_name") or ln.get("description") or "-"))
+        data.append([Paragraph(str(i), cell), Paragraph(name, cell), Paragraph(ln["unit"], cell),
+                     Paragraph(f'{ln["qty_requested"]:g}', cell),
+                     Paragraph(f'{ln["qty_approved"]:g}' if ln["qty_approved"] else "-", cell),
+                     Paragraph(f'{ln["qty_received"]:g}' if ln["qty_received"] else "-", cell),
+                     Paragraph(f"{out:g}" if out > 0 else "-", cell),
+                     Paragraph(ln.get("notes") or "-", cell)])
+    w = doc.width
+    tbl = Table(data, colWidths=[w*.05, w*.27, w*.08, w*.12, w*.12, w*.12, w*.13, w*.11], repeatRows=1)
+    tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
+                              ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
+                              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                              ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F7F7")])]))
+    el += [tbl, Spacer(1, 12)]
+
+    if mr.get("notes"):
+        el += [Paragraph(f"<b>Notes:</b> {mr['notes']}", cell), Spacer(1, 6)]
+    if mr.get("office_remark"):
+        el += [Paragraph(f"<b>Office remark:</b> {mr['office_remark']}", cell), Spacer(1, 6)]
+
+    el += [Spacer(1, 26),
+           Table([[Paragraph("Requested by", cell), Paragraph("Approved by", cell), Paragraph("Received by", cell)]],
+                 colWidths=[w/3]*3,
+                 style=TableStyle([("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.HexColor("#999999")),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                                    ("ALIGN", (0, 0), (-1, -1), "CENTER")]))]
+    doc.build(el); buf.seek(0); return buf
