@@ -234,6 +234,7 @@
 
       <div class="nav-group" data-group="store">Store</div>
       <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
+      <div class="nav-item" data-screen="requests" onclick="switchScreen('requests')">Material Requests</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -650,6 +651,82 @@
 
         <!-- ============ ERROR CHECK SCREEN ============ -->
         <!-- ============ STORE / INVENTORY SCREEN ============ -->
+        <!-- ============ MATERIAL REQUESTS ============
+             Two sides of the same thing: the site raises a request, the
+             office moves it along. Both see the same list, so nobody has
+             to ring up and ask where something has got to. -->
+        <div class="screen" id="screen-requests">
+          <div class="status-msg" id="mreq-status"></div>
+
+          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px;">
+            <div class="card" style="flex:1; min-width:150px; text-align:center;">
+              <div style="font-size:12px; color:#888;">Waiting on office</div>
+              <div id="kpi-mr-pending" style="font-size:28px; font-weight:bold; color:var(--red);">-</div>
+            </div>
+            <div class="card" style="flex:1; min-width:150px; text-align:center;">
+              <div style="font-size:12px; color:#888;">Being arranged</div>
+              <div id="kpi-mr-arranging" style="font-size:28px; font-weight:bold;">-</div>
+            </div>
+            <div class="card" style="flex:1; min-width:150px; text-align:center;">
+              <div style="font-size:12px; color:#888;">On order (LPO sent)</div>
+              <div id="kpi-mr-lpo" style="font-size:28px; font-weight:bold;">-</div>
+            </div>
+            <div class="card" style="flex:1; min-width:150px; text-align:center;">
+              <div style="font-size:12px; color:#888;">Late</div>
+              <div id="kpi-mr-late" style="font-size:28px; font-weight:bold; color:var(--red);">-</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Raise a new request</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.</p>
+            <div class="form-row">
+              <label>For site:</label><select id="mr-site" style="width:130px;"></select>
+              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:160px;">
+              <label>Needed by:</label><input type="date" id="mr-needed">
+              <label>How urgent:</label>
+              <select id="mr-urgency" style="width:130px;">
+                <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
+              </select>
+            </div>
+            <div class="grid-wrap" style="max-height:260px;">
+              <table>
+                <thead><tr><th style="width:32%;">Material</th><th>How many</th><th>Unit</th><th style="width:28%;">What is it for?</th><th>Note</th><th></th></tr></thead>
+                <tbody id="mr-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <input type="text" id="mr-notes" placeholder="Anything else the office should know (optional)" style="width:360px;">
+            </div>
+            <div class="form-row">
+              <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
+              <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="form-row">
+              <label>Show:</label>
+              <select id="mreq-filter" onchange="loadRequests()" style="width:210px;">
+                <option value="open">Still open</option>
+                <option value="all">Everything</option>
+                <option value="pending">Waiting on office</option>
+                <option value="approved">Approved</option>
+                <option value="arranging">Being arranged</option>
+                <option value="lpo_sent">LPO sent</option>
+                <option value="partial">Part delivered</option>
+                <option value="delivered">Delivered</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:250px;" oninput="loadRequests()">
+              <button class="btn btn-primary" onclick="loadRequests()">Refresh</button>
+              <button class="btn btn-dark" onclick="exportRequests('excel')">Download Excel</button>
+              <button class="btn btn-dark" onclick="exportRequests('pdf')">Download PDF</button>
+            </div>
+            <div id="mreq-list"></div>
+          </div>
+        </div>
+
         <!-- ============ STORE / INVENTORY ============
              Opens on its own dashboard: four cards showing the numbers
              that matter, then a menu of tasks. Each task opens its own
@@ -689,9 +766,9 @@
                   <div class="store-tile-t">Material arrived</div>
                   <div class="store-tile-s">A delivery came into the store</div>
                 </div>
-                <div class="store-tile" onclick="storeGo('request')">
+                <div class="store-tile" onclick="switchScreen('requests')">
                   <div class="store-tile-t">Ask office for materials</div>
-                  <div class="store-tile-s">Send a request to the office</div>
+                  <div class="store-tile-s">Raise and track material requests</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('items')">
                   <div class="store-tile-t">Manage the item list</div>
@@ -757,35 +834,6 @@
               <div class="form-row" style="margin-top:8px;">
                 <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
                 <button class="btn btn-primary" onclick="saveReceipt()">Save Delivery</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- REQUEST -->
-          <div id="store-request" style="display:none;">
-            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
-            <div class="card" style="margin-top:12px;">
-              <h2>Ask the office for materials</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">Fill this in when the store is running low. It makes a request you can print and send.</p>
-              <div class="form-row">
-                <label>For site:</label><select id="mr-site" style="width:130px;"></select>
-                <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:150px;">
-                <label>Needed by:</label><input type="date" id="mr-needed">
-                <label>How urgent:</label>
-                <select id="mr-urgency" style="width:120px;">
-                  <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
-                </select>
-              </div>
-              <div class="form-row">
-                <input type="text" id="mr-notes" placeholder="Why do you need it? (optional)" style="width:340px;">
-              </div>
-              <div class="grid-wrap" style="max-height:260px;">
-                <table><thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Note</th><th></th></tr></thead>
-                <tbody id="mr-lines"></tbody></table>
-              </div>
-              <div class="form-row" style="margin-top:8px;">
-                <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
-                <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
               </div>
             </div>
           </div>
@@ -1112,6 +1160,14 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
+  if (name === "requests") {
+    loadStoreItems().then(() => {
+      document.getElementById("mr-site").innerHTML =
+        '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
+      if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
+      loadRequests();
+    });
+  }
   if (name === "store") {
     document.getElementById("mv-date").value = isoLocal(new Date());
     document.getElementById("out-date").value = isoLocal(new Date());
@@ -2998,6 +3054,116 @@ async function saveReceipt() {
   await loadStore();
 }
 
+// The real-life path a request takes. Kept in order so the screen can
+// show progress rather than a bare word nobody can act on.
+const MR_FLOW = ["pending", "approved", "arranging", "lpo_sent", "partial", "delivered"];
+const MR_LABEL = {
+  pending: "Waiting on office", approved: "Office approved", arranging: "Office arranging",
+  lpo_sent: "LPO sent to supplier", partial: "Part delivered", delivered: "Delivered to store",
+  closed: "Closed", rejected: "Rejected by office",
+};
+const MR_COLOUR = {
+  pending: "#C0392B", approved: "#2E7D32", arranging: "#B26A00", lpo_sent: "#1565C0",
+  partial: "#B26A00", delivered: "#2E7D32", closed: "#777", rejected: "#C0392B",
+};
+// What the office can do next, from wherever the request currently is.
+const MR_NEXT = {
+  pending: [["approved", "Approve"], ["rejected", "Reject"]],
+  approved: [["arranging", "Getting quotes"], ["rejected", "Reject"]],
+  arranging: [["lpo_sent", "LPO sent"]],
+  lpo_sent: [["delivered", "All delivered"]],
+  partial: [["delivered", "All delivered"]],
+  delivered: [["closed", "Close"]],
+};
+
+function statusTrail(status) {
+  if (status === "rejected") return `<span style="color:#C0392B; font-weight:600;">Rejected by office</span>`;
+  const at = MR_FLOW.indexOf(status);
+  return MR_FLOW.map((s, i) => {
+    const done = at >= 0 && i <= at;
+    return `<span style="font-size:11px; color:${done ? MR_COLOUR[s] : "#ccc"};
+             font-weight:${i === at ? "700" : "400"};">${done ? "\u25CF" : "\u25CB"} ${MR_LABEL[s]}</span>`;
+  }).join('<span style="color:#ddd; font-size:11px;"> &rarr; </span>');
+}
+
+async function loadRequests() {
+  const box = document.getElementById("mreq-list");
+  box.innerHTML = '<div class="empty-note">Loading...</div>';
+  try {
+    const all = await apiCall("/store/requests");
+    const today = isoLocal(new Date());
+    document.getElementById("kpi-mr-pending").textContent = all.filter(r => r.status === "pending").length;
+    document.getElementById("kpi-mr-arranging").textContent = all.filter(r => r.status === "arranging").length;
+    document.getElementById("kpi-mr-lpo").textContent = all.filter(r => r.status === "lpo_sent").length;
+    document.getElementById("kpi-mr-late").textContent = all.filter(r =>
+      r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status)).length;
+
+    const filter = document.getElementById("mreq-filter").value;
+    const q = (document.getElementById("mreq-search").value || "").trim().toLowerCase();
+    let list = all;
+    if (filter === "open") list = all.filter(r => !["delivered","closed","rejected"].includes(r.status));
+    else if (filter !== "all") list = all.filter(r => r.status === filter);
+    if (q) list = list.filter(r =>
+      `${r.ref} ${r.site} ${r.requested_by}`.toLowerCase().includes(q) ||
+      r.lines.some(l => `${l.item_code || ""} ${l.item_name || ""} ${l.description || ""}`.toLowerCase().includes(q)));
+
+    if (!list.length) { box.innerHTML = '<div class="empty-note">Nothing to show.</div>'; return; }
+
+    box.innerHTML = list.map(r => {
+      const late = r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status);
+      const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
+        `<button class="btn ${s === "rejected" ? "btn-dark" : "btn-primary"}"
+                 ${s === "rejected" ? 'style="background:#8B2E22;"' : ""}
+                 onclick="setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
+      const rows = r.lines.map(l => {
+        const out = (l.qty_requested || 0) - (l.qty_received || 0);
+        return `<tr>
+          <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+          <td>${num(l.qty_requested)}</td>
+          <td>${l.unit}</td>
+          <td style="text-align:left;">${l.purpose || "-"}</td>
+          <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
+          <td>${out > 0 ? num(out) : "<span style='color:#2E7D32;'>complete</span>"}</td>
+        </tr>`;
+      }).join("");
+      return `<div class="card" style="margin-bottom:14px; border-left:5px solid ${MR_COLOUR[r.status] || "#ccc"};
+                   ${late ? "background:#FFF8F7;" : ""}">
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; align-items:flex-start;">
+          <div>
+            <strong style="font-size:15px;">${r.ref}</strong>
+            <span style="color:#888; font-size:12.5px;">
+              &nbsp;Site ${r.site || "-"} &nbsp;|&nbsp; asked by ${r.requested_by || "-"} on ${r.requested_on}
+              ${r.needed_by ? ` &nbsp;|&nbsp; needed by ${r.needed_by}` : ""}
+              ${r.urgency !== "normal" ? ` &nbsp;|&nbsp; <strong>${r.urgency}</strong>` : ""}
+            </span>
+            ${late ? '<span style="color:#C0392B; font-weight:600; font-size:12.5px;"> &nbsp;LATE</span>' : ""}
+          </div>
+          <div>
+            ${actions}
+            <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
+            <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+          </div>
+        </div>
+        <div style="margin:10px 0 12px;">${statusTrail(r.status)}</div>
+        <table style="font-size:12.5px;">
+          <thead><tr><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
+                     <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
+        ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
+      </div>`;
+    }).join("");
+  } catch (e) {
+    box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
+  }
+}
+
+async function exportRequests(fmt) {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  window.open(`${API}/export/store/report?kind=mr_history&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
+
 function addMrLine() {
   const tb = document.getElementById("mr-lines");
   const tr = document.createElement("tr");
@@ -3006,6 +3172,7 @@ function addMrLine() {
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
     <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
+    <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
   tb.appendChild(tr);
@@ -3020,6 +3187,7 @@ async function submitMaterialRequest() {
     description: tr.querySelector(".mr-desc").value.trim(),
     qty_requested: parseFloat(tr.querySelector(".mr-qty").value) || 0,
     unit: tr.querySelector(".mr-unit").value.trim() || "pcs",
+    purpose: tr.querySelector(".mr-purpose").value.trim(),
     est_cost: 0,   // cost isn't asked for on a request - the office prices it
     notes: tr.querySelector(".mr-note").value.trim(),
   })).filter(l => l.qty_requested > 0);
@@ -3039,12 +3207,11 @@ async function submitMaterialRequest() {
         notes: document.getElementById("mr-notes").value.trim(),
         lines,
       }) });
-    showStatus("store-status", "ok", `Request ${r.ref} sent. Use "Requests waiting on the office" above to see it, or download it as a PDF to email.`);
+    showStatus("mreq-status", "ok", `Request ${r.ref} sent to the office. You can print it below to email across.`);
     document.getElementById("mr-lines").innerHTML = "";
     addMrLine();
     document.getElementById("mr-notes").value = "";
-    document.getElementById("store-view").value = "mr_open";
-    await loadStore();
+    await loadRequests();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
@@ -3055,8 +3222,8 @@ async function setRequestStatus(id, status) {
     await apiCall(`/store/requests/${id}/status`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, office_remark: remark }) });
-    showStatus("store-status", "ok", `Request marked as ${status}.`);
-    await loadStore();
+    showStatus("mreq-status", "ok", `${MR_LABEL[status] || status}.`);
+    await loadRequests();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
@@ -3064,8 +3231,8 @@ async function deleteRequest(id, ref) {
   if (!confirm(`Delete request ${ref}? This cannot be undone.`)) return;
   try {
     await apiCall(`/store/requests/${id}`, { method: "DELETE" });
-    showStatus("store-status", "ok", `${ref} deleted.`);
-    await loadStore();
+    showStatus("mreq-status", "ok", `${ref} deleted.`);
+    await loadRequests();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
@@ -3294,7 +3461,7 @@ async function changePassword() {
 const SCREEN_LABELS = {
   dashboard: "Dashboard", attendance: "Daily Attendance", masterdata: "Master Data",
   reports: "Reports / Summaries", combine: "Combine", adjustments: "Salary Adjustments",
-  livecard: "Live Card", store: "Store / Inventory", errorcheck: "Error Check",
+  livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests", errorcheck: "Error Check",
   settings: "Settings", activity: "Activity Monitor",
 };
 let permsUserId = null;
@@ -3369,7 +3536,7 @@ async function applyScreenPermissions() {
     // group whose items are all hidden.
     const groups = {
       attendance: ["attendance","masterdata","reports","combine","adjustments","livecard","errorcheck"],
-      store: ["store"],
+      store: ["store","requests"],
       admin: ["settings","activity"],
     };
     document.querySelectorAll(".nav-group").forEach(g => {
