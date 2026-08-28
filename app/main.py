@@ -88,15 +88,16 @@ app.add_middleware(
 # PER-USER SCREEN PERMISSIONS
 # ---------------------------------------------------------------------
 ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
-               "adjustments", "livecard", "store", "errorcheck", "settings", "activity"]
+               "adjustments", "livecard", "store", "requests", "errorcheck",
+               "settings", "activity"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
 ROLE_DEFAULTS = {
     "admin": ALL_SCREENS,
     "staff": [s for s in ALL_SCREENS if s != "activity"],
-    "office": ["dashboard", "store", "reports"],
-    "site": ["dashboard", "attendance", "store"],
+    "office": ["dashboard", "store", "requests", "reports"],
+    "site": ["dashboard", "attendance", "store", "requests"],
 }
 
 
@@ -1880,7 +1881,8 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
         db.add(models.MaterialRequestLine(request_id=mr.id, item_id=l.item_id,
                                            description=l.description, qty_requested=l.qty_requested,
                                            qty_approved=l.qty_approved or 0, unit=unit,
-                                           est_cost=l.est_cost or 0, notes=l.notes))
+                                           est_cost=l.est_cost or 0, notes=l.notes,
+                                           purpose=l.purpose))
     db.commit()
     db.refresh(mr)
     log_action(db, user.id, "material_request", f"{mr.ref} - {len(lines)} item(s)")
@@ -1894,13 +1896,14 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
-    allowed = ("pending", "approved", "rejected", "partial", "received", "closed")
+    allowed = ("pending", "approved", "arranging", "lpo_sent", "partial",
+               "delivered", "received", "closed", "rejected")
     if payload.status not in allowed:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed)}")
     mr.status = payload.status
     if payload.office_remark:
         mr.office_remark = payload.office_remark
-    mr.closed_on = date.today() if payload.status in ("received", "closed", "rejected") else None
+    mr.closed_on = date.today() if payload.status in ("delivered", "received", "closed", "rejected") else None
     db.commit()
     log_action(db, user.id, "material_request_status", f"{mr.ref} -> {payload.status}")
     return {"ok": True, "status": mr.status}
@@ -1977,13 +1980,13 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
                   "days_late": (today - m.needed_by).days if m.needed_by else 0,
                   "status": m.status, "urgency": m.urgency, "items": len(m.lines)}
                  for m in reqs
-                 if m.needed_by and m.needed_by < today and m.status not in ("received", "closed", "rejected")]
+                 if m.needed_by and m.needed_by < today and m.status not in ("delivered", "received", "closed", "rejected")]
         return {"title": "Overdue material requests", "rows": sorted(rows, key=lambda r: -r["days_late"])}
 
     if kind == "outstanding":
         rows = []
         for m in reqs:
-            if m.status in ("received", "closed", "rejected"):
+            if m.status in ("delivered", "received", "closed", "rejected"):
                 continue
             for l in m.lines:
                 out = (l.qty_requested or 0) - (l.qty_received or 0)
@@ -2124,7 +2127,7 @@ def get_notifications(db: Session = Depends(get_db),
                              "detail": f"{len(m.lines)} material(s)" + (f" for site {m.site}" if m.site else ""),
                              "screen": "store", "when": m.requested_on.isoformat(), "level": "info"})
             if (m.needed_by and m.needed_by < today
-                    and m.status not in ("received", "closed", "rejected")):
+                    and m.status not in ("delivered", "received", "closed", "rejected")):
                 out.append({"id": f"req-late-{m.id}-{m.needed_by}", "kind": "late",
                              "title": f"{m.ref} is late",
                              "detail": f"Was needed by {m.needed_by.isoformat()}",
