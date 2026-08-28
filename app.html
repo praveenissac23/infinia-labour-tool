@@ -110,6 +110,8 @@
      stretched to fill the whole row for two short options. */
   .form-row input[type=password] { width: 220px; }
   .form-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 130px; flex: 0 0 auto; }
+  /* inline style="width:.." on a select must win over the 130px default */
+  .form-row select[style*="width"], .toolbar select[style*="width"] { flex: 0 0 auto; }
   /* Site / engineer chips - compact, wrap across the card, and the
      whole block scrolls once it gets long instead of pushing the page
      down. Buttons live on the chip so there's no separate column. */
@@ -591,34 +593,41 @@
         <!-- ============ STORE / INVENTORY SCREEN ============ -->
         <div class="screen" id="screen-store">
           <div class="toolbar">
-            <label>View:</label>
-            <select id="store-view" onchange="loadStore()">
-              <option value="stock">Current stock</option>
-              <option value="low">Items to reorder</option>
-              <option value="by_site">Stock at sites</option>
-              <option value="assets">Assets &amp; equipment</option>
-              <option value="rentals">Rented equipment</option>
-              <option value="purchases">Purchases received</option>
-              <option value="usage">Materials issued</option>
-              <option value="movements">Movement history</option>
+            <label>Show me:</label>
+            <select id="store-view" onchange="loadStore()" style="width:290px;">
+              <option value="stock">What do we have in the store?</option>
+              <option value="low">What is running out?</option>
+              <option value="by_site">What is at each site?</option>
+              <option value="assets">Our machines and equipment</option>
+              <option value="rentals">Equipment we have hired</option>
+              <option value="purchases">What we bought (and cost)</option>
+              <option value="usage">What we sent to sites</option>
+              <option value="movements">Everything that happened</option>
+              <option value="mr_open">Requests waiting on the office</option>
+              <option value="mr_outstanding">Materials still to arrive</option>
+              <option value="mr_overdue">Requests that are late</option>
+              <option value="mr_history">All past requests</option>
             </select>
             <span id="store-range-wrap">
               <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
               <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
             </span>
-            <button class="btn btn-primary" onclick="loadStore()">Refresh</button>
+            <button class="btn btn-primary" onclick="loadStore()">Show</button>
+            <button class="btn btn-dark" onclick="exportStore('excel')">Download Excel</button>
+            <button class="btn btn-dark" onclick="exportStore('pdf')">Download PDF</button>
           </div>
           <div class="status-msg" id="store-status"></div>
 
           <div class="card">
-            <h2>Record a movement</h2>
+            <h2>Record what happened to stock</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Use this every time material comes in, goes out to a site, or comes back.</p>
             <div class="form-row">
-              <select id="mv-kind" onchange="onMvKindChange()">
-                <option value="in">Receive into store</option>
-                <option value="out">Issue to site</option>
-                <option value="return">Return from site</option>
-                <option value="transfer">Transfer site to site</option>
-                <option value="adjust">Stock correction</option>
+              <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
+                <option value="in">Material ARRIVED at the store</option>
+                <option value="out">Material SENT to a site</option>
+                <option value="return">Material CAME BACK from a site</option>
+                <option value="transfer">Material MOVED between two sites</option>
+                <option value="adjust">Fix a wrong number (after counting)</option>
               </select>
               <select id="mv-item" style="min-width:220px;"></select>
               <input type="number" id="mv-qty" placeholder="Qty" style="width:90px;" step="any">
@@ -644,7 +653,37 @@
           </div>
 
           <div class="card">
-            <h2>Add / Update Item</h2>
+            <h2>Ask the office for materials</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Fill this in when the store is running low. It creates a request you can print and send to the office.</p>
+            <div class="form-row">
+              <label>For site:</label><select id="mr-site" style="width:130px;"></select>
+              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:150px;">
+              <label>Needed by:</label><input type="date" id="mr-needed">
+              <label>How urgent:</label>
+              <select id="mr-urgency" style="width:120px;">
+                <option value="normal">Normal</option>
+                <option value="urgent">Urgent</option>
+                <option value="low">Can wait</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <input type="text" id="mr-notes" placeholder="Why do you need it? (optional)" style="width:340px;">
+            </div>
+            <div class="grid-wrap" style="max-height:260px;">
+              <table>
+                <thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Cost each (optional)</th><th>Note</th><th></th></tr></thead>
+                <tbody id="mr-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
+              <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Add or change an item in the store list</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Every material or tool needs to be listed here once, before you can record it coming in or going out.</p>
             <div class="form-row">
               <input type="text" id="it-code" placeholder="Code (e.g. CEM-01)" style="width:140px;">
               <input type="text" id="it-name" placeholder="Item name" style="width:190px;">
@@ -852,7 +891,15 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
-  if (name === "store") { document.getElementById("mv-date").value = isoLocal(new Date()); loadStoreItems().then(loadStore); }
+  if (name === "store") {
+    document.getElementById("mv-date").value = isoLocal(new Date());
+    loadStoreItems().then(() => {
+      document.getElementById("mr-site").innerHTML =
+        '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
+      if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
+      loadStore();
+    });
+  }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
   // Calendar follows the date actually being viewed, not today - viewing
   // 27 Aug (an August-cycle date) while the calendar showed September
@@ -2314,6 +2361,108 @@ async function saveMovement() {
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
+function addMrLine() {
+  const tb = document.getElementById("mr-lines");
+  const opts = storeItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.code} - ${i.name}</option>`).join("");
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><select class="mr-item" onchange="onMrItemChange(this)" style="width:100%;">
+          <option value="">-- type it below instead --</option>${opts}
+        </select>
+        <input type="text" class="mr-desc" placeholder="Or write the material name" style="width:100%; margin-top:4px;"></td>
+    <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
+    <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
+    <td><input type="number" class="mr-cost" step="any" style="width:110px;"></td>
+    <td><input type="text" class="mr-note" style="width:100%;"></td>
+    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+  tb.appendChild(tr);
+}
+
+function onMrItemChange(sel) {
+  // Copy the item's unit across so the store keeper doesn't have to know it.
+  const opt = sel.options[sel.selectedIndex];
+  const unit = opt ? opt.getAttribute("data-unit") : "";
+  const row = sel.closest("tr");
+  if (unit) row.querySelector(".mr-unit").value = unit;
+  if (sel.value) row.querySelector(".mr-desc").value = "";
+}
+
+async function submitMaterialRequest() {
+  const lines = [...document.querySelectorAll("#mr-lines tr")].map(tr => ({
+    item_id: tr.querySelector(".mr-item").value ? parseInt(tr.querySelector(".mr-item").value, 10) : null,
+    description: tr.querySelector(".mr-desc").value.trim(),
+    qty_requested: parseFloat(tr.querySelector(".mr-qty").value) || 0,
+    unit: tr.querySelector(".mr-unit").value.trim() || "pcs",
+    est_cost: parseFloat(tr.querySelector(".mr-cost").value) || 0,
+    notes: tr.querySelector(".mr-note").value.trim(),
+  })).filter(l => l.qty_requested > 0);
+  if (!lines.length) {
+    showStatus("store-status", "warn", "Add at least one material with a quantity before sending."); return;
+  }
+  const bad = lines.find(l => !l.item_id && !l.description);
+  if (bad) { showStatus("store-status", "warn", "Every row needs a material picked or typed in."); return; }
+  try {
+    const r = await apiCall("/store/requests", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        site: document.getElementById("mr-site").value,
+        requested_by: document.getElementById("mr-by").value.trim(),
+        needed_by: document.getElementById("mr-needed").value || null,
+        urgency: document.getElementById("mr-urgency").value,
+        notes: document.getElementById("mr-notes").value.trim(),
+        lines,
+      }) });
+    showStatus("store-status", "ok", `Request ${r.ref} sent. Use "Requests waiting on the office" above to see it, or download it as a PDF to email.`);
+    document.getElementById("mr-lines").innerHTML = "";
+    addMrLine();
+    document.getElementById("mr-notes").value = "";
+    document.getElementById("store-view").value = "mr_open";
+    await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function setRequestStatus(id, status) {
+  const remark = status === "rejected" || status === "approved"
+    ? (prompt(`Any remark from the office? (optional)`) || "") : "";
+  try {
+    await apiCall(`/store/requests/${id}/status`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, office_remark: remark }) });
+    showStatus("store-status", "ok", `Request marked as ${status}.`);
+    await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function deleteRequest(id, ref) {
+  if (!confirm(`Delete request ${ref}? This cannot be undone.`)) return;
+  try {
+    await apiCall(`/store/requests/${id}`, { method: "DELETE" });
+    showStatus("store-status", "ok", `${ref} deleted.`);
+    await loadStore();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+async function downloadRequestPdf(id) {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  window.open(`${API}/export/store/request/${id}?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
+
+async function exportStore(fmt) {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  const view = document.getElementById("store-view").value;
+  if (view === "movements") {
+    showStatus("store-status", "warn", "Pick one of the other views to download - the full history isn't a report.");
+    return;
+  }
+  const from = document.getElementById("store-date-from").value;
+  const to = document.getElementById("store-date-to").value;
+  let url = `${API}/export/store/report?kind=${view}&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`;
+  if (from) url += `&date_from=${from}`;
+  if (to) url += `&date_to=${to}`;
+  window.open(url, "_blank");
+  showStatus("store-status", "ok", `Downloading ${fmt.toUpperCase()}.`);
+}
+
 async function loadStore() {
   const view = document.getElementById("store-view").value;
   const from = document.getElementById("store-date-from").value;
@@ -2341,6 +2490,44 @@ async function loadStore() {
       </tr>`).join("") : `<tr><td class="empty-note">No movements yet.</td></tr>`;
       return;
     }
+    // Material-request views come from a different endpoint and get
+    // action buttons (approve / print / delete) that stock views don't.
+    if (view.startsWith("mr_")) {
+      const all = await apiCall("/store/requests");
+      const wanted = {
+        mr_open: r => ["pending","approved","partial"].includes(r.status),
+        mr_overdue: r => r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status),
+        mr_outstanding: r => !["received","closed","rejected"].includes(r.status),
+        mr_history: () => true,
+      }[view];
+      const list = all.filter(wanted);
+      document.getElementById("store-table-title").textContent = {
+        mr_open: "Requests waiting on the office", mr_overdue: "Requests that are late",
+        mr_outstanding: "Materials still to arrive", mr_history: "All past requests"}[view];
+      head.innerHTML = ["Request No","Site","Asked on","Needed by","Urgency","Status","Materials","What you can do"]
+        .map(h => `<th>${h}</th>`).join("");
+      body.innerHTML = list.length ? list.map(r => {
+        const late = r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status);
+        const items = r.lines.map(l => {
+          const out = (l.qty_requested || 0) - (l.qty_received || 0);
+          return `${l.item_code || l.description}: ${num(l.qty_requested)} ${l.unit}` +
+                 (l.qty_received ? ` (${num(l.qty_received)} arrived, ${num(out)} still to come)` : "");
+        }).join("<br>");
+        return `<tr${late ? ' style="background:#FFE9E6;"' : ''}>
+          <td><strong>${r.ref}</strong></td><td>${r.site || "-"}</td><td>${r.requested_on}</td>
+          <td>${r.needed_by || "-"}</td><td>${r.urgency}</td><td>${r.status}</td>
+          <td style="text-align:left; font-size:12px;">${items}</td>
+          <td>
+            <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
+            ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'approved')">Office approved</button>` : ""}
+            ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'rejected')">Rejected</button>` : ""}
+            ${["received","closed"].includes(r.status) ? "" : `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'closed')">Close</button>`}
+            <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+          </td></tr>`;
+      }).join("") : `<tr><td class="empty-note">Nothing here.</td></tr>`;
+      return;
+    }
+
     let url = `/store/report?kind=${view}`;
     if (from) url += `&date_from=${from}`;
     if (to) url += `&date_to=${to}`;
