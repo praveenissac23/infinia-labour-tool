@@ -959,7 +959,7 @@
               </div>
               <div class="grid-wrap" style="max-height:460px;">
                 <table>
-                  <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In central store</th><th></th></tr></thead>
+                  <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In central store</th><th>Out at sites</th><th>Total held</th><th></th></tr></thead>
                   <tbody id="il-body"></tbody>
                 </table>
               </div>
@@ -1001,13 +1001,14 @@
 
                 <div style="display:grid; grid-template-columns:150px 1fr; gap:12px 14px; align-items:center;">
                   <label style="font-size:13px;">Material</label>
-                  <select id="mv-item" style="width:100%;"></select>
+                  <select id="mv-item" style="width:100%;" onchange="updateMvHint()"></select>
+                  <p id="mv-stock-hint" style="font-size:12px; color:#666; margin:6px 0 0;"></p>
 
                   <label style="font-size:13px;">How many</label>
                   <input type="number" id="mv-qty" placeholder="Quantity" style="width:180px;" step="any">
 
                   <label style="font-size:13px;" id="mv-from-label">From</label>
-                  <span id="mv-from-wrap"><select id="mv-from" style="width:200px;"></select></span>
+                  <span id="mv-from-wrap"><select id="mv-from" style="width:200px;" onchange="updateMvHint()"></select></span>
 
                   <label style="font-size:13px;" id="mv-to-label">To</label>
                   <span id="mv-to-wrap"><select id="mv-to" style="width:200px;"></select></span>
@@ -2979,6 +2980,8 @@ function renderItemMaster(page) {
       <td><span class="pill pill-${i.item_type}">${i.item_type}</span></td>
       <td class="num-col">${i.reorder_level ? num(i.reorder_level) : "-"}</td>
       <td class="num-col">${(s && s.central) ? num(s.central) : '<span class="zero">0</span>'}</td>
+      <td class="num-col">${(s && s.out_at_sites) ? num(s.out_at_sites) : '<span class="zero">0</span>'}</td>
+      <td class="num-col">${(s && s.total) ? `<strong>${num(s.total)}</strong>` : '<span class="zero">0</span>'}</td>
       <td>
         <button class="btn btn-gray" onclick="editStoreItem(${i.id})">Edit</button>
         <button class="btn btn-dark" style="background:#8B2E22;" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
@@ -3047,6 +3050,29 @@ function onMvKindChange() {
   };
   show("mv-from-label", "mv-from-wrap", cfg.from);
   show("mv-to-label", "mv-to-wrap", cfg.to);
+  updateMvHint();
+}
+
+// The number the keeper is about to act on: what the chosen place
+// actually holds of the chosen material. Stops returning 10 ladders
+// from a site that only has 6 before the server has to say no.
+function updateMvHint() {
+  const el = document.getElementById("mv-stock-hint");
+  if (!el) return;
+  const kind = document.getElementById("mv-kind").value;
+  const id = parseInt(document.getElementById("mv-item").value, 10);
+  const s = (storeStockCache || []).find(x => x.item_id === id);
+  if (!s) { el.innerHTML = ""; return; }
+  const parts = [`Central store: ${num(s.central || 0)} ${s.unit}`]
+    .concat(Object.entries(s.by_site || {}).filter(([, q]) => q)
+      .map(([site, q]) => `site ${site}: ${num(q)}`));
+  let lead = "";
+  const from = document.getElementById("mv-from").value;
+  if (["return", "transfer", "lost"].includes(kind) && document.getElementById("mv-from-wrap").style.display !== "none") {
+    const have = from === "" ? (s.central || 0) : ((s.by_site || {})[from] || 0);
+    lead = `<strong>${from === "" ? "Central store" : "Site " + from} holds ${num(have)} ${s.unit}.</strong> `;
+  }
+  el.innerHTML = lead + parts.join(" &middot; ");
 }
 
 function storeLocationOptions(includeStore) {
@@ -3130,6 +3156,13 @@ async function saveStoreItem() {
   if (!body.name) {
     showStatus("store-status", "warn", "Type the item name."); return;
   }
+  // With thousands of materials, the quiet catalogue-killer is the same
+  // thing entered twice under two codes. Warn once, then respect the
+  // keeper's answer - some genuinely similar names are legitimate.
+  const norm = t => t.toLowerCase().replace(/\s+/g, " ").trim();
+  const dup = (storeItems || []).find(i => norm(i.name) === norm(body.name) && i.code !== body.code);
+  if (dup && !confirm(
+    `"${dup.code} - ${dup.name}" already exists with this name.\n\nSave this as a separate item anyway?`)) return;
   try {
     const r = await apiCall("/store/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     showStatus("store-status", "ok", `Saved ${r.code} - ${r.name}.`);
@@ -3269,6 +3302,10 @@ function onMaterialTyped(box) {
       stockHint.innerHTML = bits.join(" &middot; ");
     } else stockHint.innerHTML = "";
   }
+  // Give-out rows: if a quantity was typed before the material was
+  // picked, re-check it against stock now the item is known.
+  const oq = row.querySelector(".ol-qty");
+  if (oq && oq.value) checkOutQty(oq);
 }
 
 function addOutLine() {
@@ -3276,7 +3313,7 @@ function addOutLine() {
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
-    <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;"></td>
+    <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;" oninput="checkOutQty(this)"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'out-lines')">Remove</button></td>`;
@@ -3314,6 +3351,23 @@ async function showOnHand(sel) {
 
 let storeStockCache = [];
 
+// The moment a quantity exceeds what the central store holds, say so -
+// in red, on the row, while the keeper is still typing. Cheaper than a
+// server rejection after the whole form is filled.
+function checkOutQty(box) {
+  const row = box.closest("tr");
+  const id = parseInt(row.querySelector(".ol-item").value, 10) || 0;
+  const s = (storeStockCache || []).find(x => x.item_id === id);
+  const have = s ? (s.central || 0) : 0;
+  const q = parseFloat(box.value) || 0;
+  const over = id && q > have;
+  box.style.background = over ? "#FFF4F2" : "";
+  const cell = row.querySelector(".ol-have");
+  if (cell && id) cell.innerHTML = over
+    ? `<span style="color:#C0392B; font-weight:700;">only ${num(have)} ${s ? s.unit : ""}</span>`
+    : (s ? `${num(have)} ${s.unit}` : "-");
+}
+
 async function saveIssue() {
   const person = document.getElementById("out-person").value;
   const site = document.getElementById("out-site").value;
@@ -3326,6 +3380,20 @@ async function saveIssue() {
   if (!person) { showStatus("store-status", "warn", "Choose who is taking the material."); return; }
   if (!site) { showStatus("store-status", "warn", "Choose which site it is going to."); return; }
   if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
+  // Stop an over-issue before it reaches the server, with the exact
+  // numbers: which material, how much was asked, how much exists.
+  const overs = lines.map(l => {
+    const s = (storeStockCache || []).find(x => x.item_id === l.item_id);
+    const it = (storeItems || []).find(i => i.id === l.item_id);
+    return s && l.qty > (s.central || 0)
+      ? `${it ? it.name : "Item"} - asked ${num(l.qty)}, only ${num(s.central || 0)} in central store`
+      : null;
+  }).filter(Boolean);
+  if (overs.length) {
+    showStatus("store-status", "warn",
+      "Not enough in the store. " + overs.join("; ") + ". Lower the quantity, or record the arrival first.");
+    return;
+  }
   let done = 0, failed = [];
   for (const l of lines) {
     try {
@@ -3340,7 +3408,13 @@ async function saveIssue() {
     showStatus("store-status", failed.length === lines.length ? "err" : "warn",
       `${done} of ${lines.length} saved. Problem: ${failed[0]}`);
   } else {
-    showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${done} material(s).`);
+    // Name exactly what left the store - a receipt in one sentence,
+    // readable back to the person walking out with the material.
+    const given = lines.map(l => {
+      const it = (storeItems || []).find(i => i.id === l.item_id);
+      return it ? `${num(l.qty)} ${it.unit} ${it.name}` : `${num(l.qty)}`;
+    }).join(", ");
+    showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${given}.`);
     loadStoreHome();
     await loadStoreItems();   // stock changed - refresh what the pickers offer
     document.getElementById("out-lines").innerHTML = ""; addOutLine();
