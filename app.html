@@ -150,12 +150,13 @@
 
   .rep-group { font-size: 11px; font-weight: bold; letter-spacing: 0.8px; text-transform: uppercase;
                color: #999; margin: 16px 0 8px; }
-  .rep-row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .rep-tile { flex: 1 1 220px; min-width: 200px; border: 1px solid #e2e2e2; border-left: 4px solid var(--red);
-              border-radius: 6px; padding: 11px 14px; cursor: pointer; background: white; }
-  .rep-tile:hover { background: #FDF3F2; border-color: var(--red); }
-  .rep-tile b { display: block; font-size: 13.5px; }
-  .rep-tile span { display: block; font-size: 11.5px; color: #888; margin-top: 2px; }
+  .rep-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .rep-tile { flex: 1 1 0; min-width: 150px; border: 1px solid #ddd; border-radius: 5px;
+              padding: 9px 12px; cursor: pointer; background: white; font-size: 12.5px;
+              font-weight: 600; text-align: center; color: #333; white-space: nowrap;
+              overflow: hidden; text-overflow: ellipsis; }
+  .rep-tile:hover { background: var(--red); border-color: var(--red); color: white; }
+  .rep-tile.active { background: var(--red); border-color: var(--red); color: white; }
 
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
@@ -988,37 +989,32 @@
 
               <div class="rep-group">Stock</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything the store holds right now</span></div>
-                <div class="rep-tile" onclick="pickReport('low')"><b>Reorder Report</b><span>Materials at or below their warning level</span></div>
-                <div class="rep-tile" onclick="pickReport('by_site')"><b>Stock at Sites</b><span>What each site is currently holding</span></div>
+                <div class="rep-tile" onclick="pickReport('stock')">Current Stock</div>
+                <div class="rep-tile" onclick="pickReport('low')">Reorder Report</div>
+                <div class="rep-tile" onclick="pickReport('by_site')">Stock at Sites</div>
+                <div class="rep-tile" onclick="pickReport('movements')">Movement Register</div>
               </div>
 
-              <div class="rep-group">Owned Assets</div>
+              <div class="rep-group">Assets &amp; Hired Equipment</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('assets')"><b>Asset Register</b><span>Machines and tools the company owns, and where they are</span></div>
-                <div class="rep-tile" onclick="pickReport('by_site')"><b>Assets at Sites</b><span>Owned equipment currently out, and where it is</span></div>
-              </div>
-
-              <div class="rep-group">Hired / Rental</div>
-              <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('hired')"><b>On Hire Now</b><span>What we have on hire, from whom, and at which site</span></div>
-                <div class="rep-tile" onclick="pickReport('rentals')"><b>Rental Details</b><span>Hire supplier, start date and due-back date</span></div>
-                <div class="rep-tile" onclick="pickReport('lost')"><b>Lost &amp; Damaged</b><span>Written off, owned or hired, with the reason</span></div>
+                <div class="rep-tile" onclick="pickReport('assets')">Asset Register</div>
+                <div class="rep-tile" onclick="pickReport('hired')">On Hire Now</div>
+                <div class="rep-tile" onclick="pickReport('rentals')">Rental Details</div>
+                <div class="rep-tile" onclick="pickReport('lost')">Lost &amp; Damaged</div>
               </div>
 
               <div class="rep-group">Purchases &amp; Consumption</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('purchases')"><b>Purchase Report</b><span>What was bought, from whom, at what cost</span></div>
-                <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption by Site</b><span>Materials issued out to each site</span></div>
-                <div class="rep-tile" onclick="pickReport('movements')"><b>Movement Register</b><span>Every stock movement, in date order</span></div>
+                <div class="rep-tile" onclick="pickReport('purchases')">Purchase Report</div>
+                <div class="rep-tile" onclick="pickReport('usage')">Consumption by Site</div>
               </div>
 
               <div class="rep-group">Material Requests</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('mr_open')"><b>Open Requests</b><span>Raised but not yet delivered</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_outstanding')"><b>Outstanding Materials</b><span>Ordered but still to arrive</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_overdue')"><b>Overdue Requests</b><span>Past their needed-by date</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_history')"><b>Request History</b><span>Every request ever raised</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_open')">Open Requests</div>
+                <div class="rep-tile" onclick="pickReport('mr_outstanding')">Outstanding Materials</div>
+                <div class="rep-tile" onclick="pickReport('mr_overdue')">Overdue Requests</div>
+                <div class="rep-tile" onclick="pickReport('mr_history')">Request History</div>
               </div>
             </div>
 
@@ -3539,6 +3535,10 @@ async function exportStore(fmt) {
 // Picking a named report sets the underlying view and shows the result
 // panel - the dropdown still drives loadStore(), it's just hidden now.
 function pickReport(kind) {
+  // Mark which report is showing, so it's obvious what you're looking at
+  // once the result panel opens below.
+  document.querySelectorAll(".rep-tile").forEach(t =>
+    t.classList.toggle("active", (t.getAttribute("onclick") || "").includes(`'${kind}'`)));
   const sel = document.getElementById("store-view");
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
