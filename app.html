@@ -868,8 +868,14 @@
             </div>
 
             <div class="card">
-              <h2>What is in the store right now</h2>
-              <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;">What is in the store right now</h2>
+                  <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
+                </div>
+                <input type="text" id="home-stock-search" placeholder="Search material or code"
+                       style="width:220px;" oninput="filterHomeStock()">
+              </div>
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
               </div>
@@ -2755,7 +2761,13 @@ function storeGo(which) {
 
 async function loadStoreHome() {
   try {
-    const stock = await apiCall("/store/report?kind=stock");
+    // The detail drill-down needs the per-site breakdown and item ids
+    // from /store/stock, so fetch it alongside the summary.
+    const [stock, stk] = await Promise.all([
+      apiCall("/store/report?kind=stock"),
+      apiCall("/store/stock").catch(() => storeStockCache || []),
+    ]);
+    storeStockCache = stk;
     const all = stock.rows || [];
     // Only materials that actually have stock somewhere. The catalogue
     // holds thousands of materials the company may never buy, and
@@ -2769,8 +2781,11 @@ async function loadStoreHome() {
     // down to items with stock by the server, so use storeItems for the
     // total or the note would claim the catalogue is tiny.
     const catalogue = (storeItems || []).length;
-    if (note) note.textContent = catalogue
-      ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.`
+    const lowN = rows.filter(r => r.low).length;
+    if (note) note.innerHTML = catalogue
+      ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.` +
+        (lowN ? ` <span style="color:#C0392B; font-weight:600;">${lowN} low on stock.</span>` : "") +
+        ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
       : "";
     if (!rows.length) {
       head.innerHTML = "";
@@ -2786,7 +2801,8 @@ async function loadStoreHome() {
       { t: '<span style="color:#FFD79A;">&#9679;</span>&nbsp;Out at sites', w: "12%" },
       { t: "Total held", w: "11%" }, { t: "", w: "11%" },
     ].map(h => `<th style="width:${h.w}">${h.t}</th>`).join("");
-    body.innerHTML = rows.map(r => `<tr${r.low ? ' style="background:#FFE9E6;"' : ''}>
+    body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
+        style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
       <td style="color:#999; font-size:12px;">${r.code}</td>
       <td style="text-align:left; font-weight:500;">${r.name}</td>
       <td>${r.unit}</td>
@@ -2794,12 +2810,125 @@ async function loadStoreHome() {
       <td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>
       <td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>
       <td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>
-      <td>${r.low ? `<button class="btn btn-primary" onclick="requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
-      </tr>`).join("");
+      <td>${r.low ? `<button class="btn btn-primary" onclick="event.stopPropagation(); requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
+      </tr>
+      <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
+        <td colspan="8" style="text-align:left; padding:0;">
+          <div id="sdc-${r.code}" style="padding:16px 20px;"></div>
+        </td></tr>`).join("");
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
       `<tr><td class="empty-note">Could not load: ${errText(e)}</td></tr>`;
   }
+}
+
+// Search across the dashboard stock list; a hidden material also
+// collapses its open detail panel so nothing orphaned stays behind.
+function filterHomeStock() {
+  const q = (document.getElementById("home-stock-search").value || "").trim().toLowerCase();
+  document.querySelectorAll("#home-stock-body tr[data-code]").forEach(tr => {
+    const hit = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = hit ? "" : "none";
+    if (!hit) {
+      const d = document.getElementById("sd-" + tr.dataset.code);
+      if (d) d.style.display = "none";
+    }
+  });
+}
+
+// The full breakup of one material: where every unit sits right now,
+// what is already on order, and the last few movements - the questions
+// a keeper asks before giving out, requesting, or chasing anything.
+const MOVE_LABEL = { in: "Arrived", out: "Given out", return: "Came back",
+                     transfer: "Moved site to site", lost: "Lost / damaged", adjust: "Correction" };
+
+async function toggleStockDetail(code) {
+  const row = document.getElementById("sd-" + code);
+  if (!row) return;
+  const opening = row.style.display === "none";
+  row.style.display = opening ? "" : "none";
+  if (!opening) return;
+  const box = document.getElementById("sdc-" + code);
+  if (box.dataset.loaded) return;
+  box.innerHTML = '<span style="color:#999; font-size:12px;">Loading the breakup...</span>';
+  try {
+    const s = (storeStockCache || []).find(x => x.code === code);
+    if (!s) { box.innerHTML = '<span style="color:#999;">No detail available.</span>'; return; }
+    if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
+    let moves = [];
+    try { moves = await apiCall(`/store/movements?item_id=${s.item_id}&limit=8`); } catch (e) {}
+
+    // Where it sits: central first, then each site, then the total.
+    const places = [["Central store", s.central || 0]]
+      .concat(Object.entries(s.by_site || {}).map(([site, q]) => [`Site ${site}`, q]));
+    const whereRows = places.filter(([, q]) => q)
+      .map(([p, q]) => `<tr><td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${p}</td>
+        <td class="num-col" style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${num(q)} ${s.unit}</td></tr>`)
+      .join("") +
+      `<tr><td style="text-align:left; padding:5px 10px; font-weight:700;">Total held</td>
+        <td class="num-col" style="padding:5px 10px; font-weight:700;">${num(s.total || 0)} ${s.unit}</td></tr>`;
+
+    // Already on order: open request lines still waiting to arrive.
+    const onOrder = (mrCache || [])
+      .filter(r => !["delivered", "received", "closed", "rejected"].includes(r.status))
+      .flatMap(r => (r.lines || [])
+        .filter(l => l.item_id === s.item_id)
+        .map(l => ({ ref: r.ref, out: (l.qty_requested || 0) - (l.qty_received || 0) })))
+      .filter(x => x.out > 0);
+    const chips = [];
+    if (s.low) chips.push(`<span class="stat-chip" style="border-color:#C0392B; color:#C0392B; background:#C0392B12;">Low on stock</span>`);
+    if (s.reorder_level) chips.push(`<span class="stat-chip" style="border-color:#999; color:#777; background:#f7f7f7;">Warn under ${num(s.reorder_level)} ${s.unit}</span>`);
+    if (onOrder.length) {
+      const totalOut = onOrder.reduce((a, x) => a + x.out, 0);
+      chips.push(`<span class="stat-chip" style="border-color:#B26A00; color:#B26A00; background:#B26A0012;">${num(totalOut)} ${s.unit} on order (${onOrder.map(x => x.ref).join(", ")})</span>`);
+    }
+
+    const moveRows = moves.length ? moves.map(m => `<tr>
+        <td style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.moved_on}</td>
+        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${MOVE_LABEL[m.kind] || m.kind}</td>
+        <td class="num-col" style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${num(m.qty)} ${s.unit}</td>
+        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.kind === "in" ? (m.supplier || "supplier") : (m.location || m.from_location || "store")}</td>
+        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.incharge || "-"}</td>
+      </tr>`).join("")
+      : '<tr><td colspan="5" style="padding:8px 10px; color:#999;">No movements recorded yet.</td></tr>';
+
+    box.innerHTML = `
+      ${chips.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">${chips.join("")}</div>` : ""}
+      <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:0 1 300px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Where it is right now</div>
+          <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">${whereRows}</table>
+        </div>
+        <div style="flex:1 1 420px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Last ${moves.length || ""} movements</div>
+          <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">
+            <tr><th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px;">Date</th>
+                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">What happened</th>
+                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px;">Qty</th>
+                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">Where / from</th>
+                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">Who</th></tr>
+            ${moveRows}
+          </table>
+        </div>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button class="btn btn-primary" onclick="requestMore('${code}')">Request more</button>
+        <button class="btn btn-dark" onclick="viewItemMovements('${code}')">Full movement history</button>
+      </div>`;
+    box.dataset.loaded = "1";
+  } catch (e) {
+    box.innerHTML = `<span style="color:#C0392B; font-size:12px;">Could not load: ${errText(e)}</span>`;
+  }
+}
+
+// Jump to the Movements report already filtered down to this material.
+function viewItemMovements(code) {
+  storeGo("reports");
+  pickReport("movements");
+  setTimeout(() => {
+    const s = document.getElementById("store-report-search");
+    if (s) { s.value = code; filterStoreReport(); }
+  }, 900);
 }
 
 // The material list can run to thousands of rows, so it's shown as a
