@@ -1489,7 +1489,21 @@ def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
 @app.post("/store/items", response_model=schemas.StoreItemOut)
 def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db),
                        user: models.User = Depends(auth.get_current_user)):
-    existing = db.query(models.StoreItem).filter(models.StoreItem.code == payload.code).first()
+    # Validate on the server, not just in the browser - a blank code or
+    # name creates an item that can't be identified in any report.
+    code = (payload.code or "").strip()
+    name = (payload.name or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Item needs a code.")
+    if not name:
+        raise HTTPException(status_code=400, detail="Item needs a name.")
+    if payload.item_type not in ("consumable", "returnable", "asset", "rental"):
+        raise HTTPException(status_code=400, detail="Unknown item type.")
+    if payload.reorder_level < 0:
+        raise HTTPException(status_code=400, detail="Reorder level can't be negative.")
+    payload.code, payload.name = code, name
+
+    existing = db.query(models.StoreItem).filter(models.StoreItem.code == code).first()
     if existing:
         for k, v in payload.dict().items():
             setattr(existing, k, v)
