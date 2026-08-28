@@ -110,6 +110,9 @@
      stretched to fill the whole row for two short options. */
   .form-row input[type=password] { width: 220px; }
   .form-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 130px; flex: 0 0 auto; }
+  /* Cycle pickers hold a full date range ("26 Aug - 25 Sept 2026"), which
+     the 130px default cut off mid-year. */
+  #report-cycle, #adj-cycle, #livecard-cycle, #errcheck-cycle, #combine-cycle { width: 185px; }
   /* inline style="width:.." on a select must win over the 130px default */
   .form-row select[style*="width"], .toolbar select[style*="width"] { flex: 0 0 auto; }
   /* Site / engineer chips - compact, wrap across the card, and the
