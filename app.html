@@ -735,7 +735,7 @@
             </div>
             <div class="grid-wrap" style="max-height:260px;">
               <table>
-                <thead><tr><th style="width:34%;">Material</th><th style="width:9%;">How many</th><th style="width:8%;">Unit</th><th style="width:24%;">What is it for?</th><th style="width:19%;">Note</th><th style="width:6%;"></th></tr></thead>
+                <thead><tr><th style="width:26%;">Material</th><th style="width:12%;">Type</th><th style="width:9%;">How many</th><th style="width:7%;">Unit</th><th style="width:22%;">What is it for?</th><th style="width:17%;">Note</th><th style="width:6%;"></th></tr></thead>
                 <tbody id="mr-lines"></tbody>
               </table>
             </div>
@@ -1024,24 +1024,27 @@
               </div>
             </div>
 
-            <div class="card" id="store-report-result" style="display:none;">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div class="card" id="store-report-result" style="display:none; padding:0; overflow:hidden;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;
+                          gap:12px; padding:18px 22px; border-bottom:1px solid #eee; background:#FAFAFA;">
                 <div>
-                  <h2 id="store-table-title" style="margin:0;">Current stock</h2>
-                  <p id="store-report-sub" style="font-size:12px; color:#888; margin:3px 0 0;"></p>
+                  <h2 id="store-table-title" style="margin:0; font-size:16px;">Current stock</h2>
+                  <p id="store-report-sub" style="font-size:12px; color:#999; margin:4px 0 0;"></p>
                 </div>
-                <div class="form-row" style="margin:0;">
+                <div class="form-row" style="margin:0; align-items:center;">
                   <span id="store-range-wrap">
-                    <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
-                    <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
+                    <label>From</label><input type="date" id="store-date-from" onchange="loadStore()">
+                    <label>To</label><input type="date" id="store-date-to" onchange="loadStore()">
                   </span>
-                  <button class="btn btn-dark" onclick="exportStore('excel')">Excel</button>
-                  <button class="btn btn-dark" onclick="exportStore('pdf')">PDF</button>
+                  <button class="btn btn-dark" onclick="exportStore('excel')">Export Excel</button>
+                  <button class="btn btn-dark" onclick="exportStore('pdf')">Export PDF</button>
                 </div>
               </div>
-              <div class="grid-wrap" style="margin-top:12px;">
+              <div class="grid-wrap" style="margin:0; border:none; border-radius:0;">
                 <table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
               </div>
+              <div id="store-report-foot" style="padding:10px 22px; border-top:1px solid #eee;
+                   font-size:12px; color:#888; background:#FAFAFA;"></div>
             </div>
             <select id="store-view" onchange="loadStore()" style="display:none;">
               <option value="stock"></option>
@@ -3021,7 +3024,7 @@ function onMaterialTyped(box) {
   box.style.background = (txt && !hit) ? "#FFF4F2" : "";
   // If this material already has a type, show it rather than leaving
   // the box on Consumable and quietly changing what the item is.
-  const typeSel = row.querySelector(".il-type");
+  const typeSel = row.querySelector(".il-type, .mr-type");
   if (typeSel && hit) typeSel.value = hit.item_type || "consumable";
   const unitCell = row.querySelector(".ol-have, .mr-unit");
   if (hit && unitCell) {
@@ -3384,7 +3387,13 @@ function addMrLine() {
   tr.innerHTML = `
     <td>${materialPickerHtml("mr-item", "material-list-all")}
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
-    <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
+    <td><select class="mr-type" style="width:100%; min-width:110px;">
+          <option value="consumable">Consumable</option>
+          <option value="returnable">Returnable</option>
+          <option value="asset">Asset (to own)</option>
+          <option value="rental">Rental (to hire)</option>
+        </select></td>
+    <td><input type="number" class="mr-qty" step="any" style="width:100%; min-width:80px;"></td>
     <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
@@ -3402,6 +3411,7 @@ async function submitMaterialRequest() {
     qty_requested: parseFloat(tr.querySelector(".mr-qty").value) || 0,
     unit: tr.querySelector(".mr-unit").value.trim() || "pcs",
     purpose: tr.querySelector(".mr-purpose").value.trim(),
+    item_type: tr.querySelector(".mr-type").value,
     est_cost: 0,   // cost isn't asked for on a request - the office prices it
     notes: tr.querySelector(".mr-note").value.trim(),
   })).filter(l => l.qty_requested > 0);
@@ -3411,6 +3421,20 @@ async function submitMaterialRequest() {
   const bad = lines.find(l => !l.item_id && !l.description);
   if (bad) { showStatus("store-status", "warn", "Every row needs a material picked or typed in."); return; }
   try {
+    // Record the type the requester chose, so a hired generator is
+    // classified from the moment it's asked for, not after it arrives.
+    for (const l of lines) {
+      const item = (storeItems || []).find(i => i.id === l.item_id);
+      if (item && l.item_type && item.item_type !== l.item_type) {
+        try {
+          await apiCall("/store/items", { method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: item.code, name: item.name, category: item.category || "",
+                                    unit: item.unit, item_type: l.item_type,
+                                    reorder_level: item.reorder_level || 0 }) });
+        } catch (e) { /* classification is a nicety, don't block the request */ }
+      }
+    }
     const r = await apiCall("/store/requests", { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3425,6 +3449,7 @@ async function submitMaterialRequest() {
     document.getElementById("mr-lines").innerHTML = "";
     addMrLine();
     document.getElementById("mr-notes").value = "";
+    await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
@@ -3566,9 +3591,16 @@ async function loadStore() {
       try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
     }
     document.getElementById("store-table-title").textContent = d.title;
+    const foot = document.getElementById("store-report-foot");
     if (!d.rows.length) {
-      head.innerHTML = ""; body.innerHTML = `<tr><td class="empty-note">Nothing to show.</td></tr>`; return;
+      head.innerHTML = "";
+      body.innerHTML = `<tr><td class="empty-note" style="padding:34px 20px;">
+        Nothing to show for this report yet.</td></tr>`;
+      if (foot) foot.textContent = "";
+      return;
     }
+    if (foot) foot.textContent = `${num(d.rows.length)} row(s)` +
+      (d.total_value !== undefined ? ` \u00b7 total AED ${money(d.total_value)}` : "");
     const keys = Object.keys(d.rows[0]).filter(k => k !== "low" && k !== "overdue");
     const label = k => k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = keys.map(k => `<th>${label(k)}</th>`).join("");
