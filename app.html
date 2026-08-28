@@ -432,6 +432,36 @@
           </div>
         </div>
 
+        <!-- ============ RECEIVE DELIVERY MODAL ============ -->
+        <div id="recv-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:24px 28px; width:760px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 4px;">Record what arrived</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 16px;">
+              Delivery against <strong id="recv-ref"></strong>. The quantities are already filled in -
+              change any that arrived short, and clear the ones that didn't come at all.
+            </p>
+            <div class="form-row">
+              <label>Supplier:</label><input type="text" id="recv-supplier" placeholder="Who delivered it" style="width:200px;">
+              <label>DO / Invoice no:</label><input type="text" id="recv-ref-no" style="width:170px;">
+              <label>Date:</label><input type="date" id="recv-date">
+            </div>
+            <div class="grid-wrap" style="max-height:320px;">
+              <table>
+                <thead><tr><th style="width:38%;">Material</th><th>Ordered</th><th>Already in</th><th>Still due</th><th style="width:16%;">Arrived now</th></tr></thead>
+                <tbody id="recv-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:10px;">
+              <input type="text" id="recv-notes" placeholder="Note (optional)" style="width:100%;">
+            </div>
+            <div class="status-msg" id="recv-status" style="margin:10px 0;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" onclick="closeReceive()">Cancel</button>
+              <button class="btn btn-primary" onclick="saveReceive()">Save Delivery</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ PERMISSIONS MODAL ============ -->
         <div id="perms-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
           <div style="background:white; border-radius:10px; padding:26px 30px; width:460px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
@@ -3165,6 +3195,8 @@ async function loadRequests() {
           </div>
           <div>
             ${actions}
+            ${["approved","arranging","lpo_sent","partial"].includes(r.status)
+               ? `<button class="btn btn-primary" onclick="openReceive(${r.id})">Record delivery</button>` : ""}
             <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
             <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
           </div>
@@ -3182,6 +3214,75 @@ async function loadRequests() {
   } catch (e) {
     box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
   }
+}
+
+// Receiving against a request: the materials, quantities and units are
+// already known, so the keeper only confirms what actually turned up
+// instead of typing the whole delivery again.
+let recvRequest = null;
+
+async function openReceive(id) {
+  const all = await apiCall("/store/requests");
+  const r = all.find(x => x.id === id);
+  if (!r) return;
+  recvRequest = r;
+  document.getElementById("recv-ref").textContent = `${r.ref} (site ${r.site || "-"})`;
+  document.getElementById("recv-date").value = isoLocal(new Date());
+  document.getElementById("recv-supplier").value = "";
+  document.getElementById("recv-ref-no").value = r.ref;
+  document.getElementById("recv-notes").value = "";
+  showStatus("recv-status", null);
+
+  document.getElementById("recv-lines").innerHTML = r.lines.map(l => {
+    const due = (l.qty_requested || 0) - (l.qty_received || 0);
+    const name = (l.item_code ? `<strong>${l.item_code}</strong> ` : "") + (l.item_name || l.description);
+    const canReceive = l.item_id && due > 0;
+    return `<tr data-line="${l.id}">
+      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not a store item)</span>'}</td>
+      <td>${num(l.qty_requested)} ${l.unit}</td>
+      <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
+      <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
+      <td>${canReceive
+            ? `<input type="number" class="recv-qty" step="any" value="${due}" max="${due}" style="width:100%;">`
+            : "-"}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("recv-modal-overlay").style.display = "flex";
+}
+
+function closeReceive() {
+  recvRequest = null;
+  document.getElementById("recv-modal-overlay").style.display = "none";
+}
+
+async function saveReceive() {
+  if (!recvRequest) return;
+  const lines = [...document.querySelectorAll("#recv-lines tr")].map(tr => {
+    const box = tr.querySelector(".recv-qty");
+    return box ? { line_id: parseInt(tr.getAttribute("data-line"), 10),
+                   qty: parseFloat(box.value) || 0 } : null;
+  }).filter(l => l && l.qty > 0);
+  if (!lines.length) {
+    showStatus("recv-status", "warn", "Enter how much arrived for at least one material."); return;
+  }
+  try {
+    const res = await apiCall(`/store/requests/${recvRequest.id}/receive-bulk`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lines,
+        supplier: document.getElementById("recv-supplier").value.trim(),
+        reference: document.getElementById("recv-ref-no").value.trim(),
+        received_on: document.getElementById("recv-date").value || null,
+        notes: document.getElementById("recv-notes").value.trim(),
+      }),
+    });
+    closeReceive();
+    const msg = res.status === "delivered"
+      ? `All materials received - ${recvRequest.ref} is complete and the stock has gone up.`
+      : `${res.received_lines} material(s) received. The rest is still due.`;
+    showStatus("mreq-status", "ok", msg + (res.warnings && res.warnings.length ? ` (${res.warnings[0]})` : ""));
+    await loadRequests();
+  } catch (e) { showStatus("recv-status", "err", errText(e)); }
 }
 
 async function exportRequests(fmt) {
