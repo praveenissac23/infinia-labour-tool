@@ -231,6 +231,24 @@
       <div class="topbar">
         <h1 id="screen-title">Dashboard</h1>
         <div style="display:flex; align-items:center; gap:14px;">
+          <span id="bell-wrap" style="position:relative; margin-right:16px; display:none;">
+            <button id="bell-btn" onclick="toggleBell()" title="Notifications"
+                    style="background:none; border:none; cursor:pointer; font-size:19px; position:relative; padding:4px 6px;">
+              &#128276;
+              <span id="bell-count" style="display:none; position:absolute; top:-2px; right:-4px;
+                    background:var(--red); color:white; border-radius:9px; font-size:10.5px;
+                    min-width:17px; height:17px; line-height:17px; text-align:center; padding:0 4px; font-weight:bold;"></span>
+            </button>
+            <div id="bell-panel" style="display:none; position:absolute; right:0; top:34px; width:370px;
+                 background:white; border:1px solid #ddd; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.18);
+                 z-index:200; text-align:left;">
+              <div style="padding:10px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                <strong style="font-size:13.5px;">Notifications</strong>
+                <button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="markAllRead()">Mark all read</button>
+              </div>
+              <div id="bell-list" style="max-height:380px; overflow-y:auto;"></div>
+            </div>
+          </span>
           <span class="who" id="who-label"></span>
           <button onclick="doLogout()">Sign out</button>
         </div>
@@ -1165,6 +1183,8 @@ async function initApp() {
   }
   // Runs last so it can hide anything the lines above turned on.
   await applyScreenPermissions();
+  await loadNotifications();
+  setInterval(loadNotifications, 120000);   // refresh every 2 minutes
 
   startDashboardClock();
   initReportColumnPicker();
@@ -2443,6 +2463,87 @@ async function selectLiveCardWorker(empNo) {
   `;
 }
 const BRAND_BLACK_HEX = "#2E3238";
+
+// ============ NOTIFICATIONS ============
+// Read state lives in the browser: notifications are derived from live
+// data, so there is nothing on the server to mark. Ids are stable, so a
+// thing you've already seen stays read until the situation changes.
+let notifications = [];
+const READ_KEY = "infinia_read_notifications";
+
+function readIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); }
+  catch (e) { return new Set(); }
+}
+function saveReadIds(set) {
+  try { localStorage.setItem(READ_KEY, JSON.stringify([...set].slice(-300))); } catch (e) {}
+}
+
+async function loadNotifications() {
+  try {
+    const d = await apiCall("/notifications");
+    notifications = d.notifications || [];
+  } catch (e) {
+    notifications = [];
+  }
+  renderBell();
+}
+
+function renderBell() {
+  const wrap = document.getElementById("bell-wrap");
+  if (!wrap) return;
+  wrap.style.display = "inline-block";
+  const read = readIds();
+  const unread = notifications.filter(n => !read.has(n.id));
+  const badge = document.getElementById("bell-count");
+  if (unread.length) {
+    badge.textContent = unread.length > 99 ? "99+" : unread.length;
+    badge.style.display = "block";
+  } else {
+    badge.style.display = "none";
+  }
+  const list = document.getElementById("bell-list");
+  list.innerHTML = notifications.length ? notifications.map(n => {
+    const isNew = !read.has(n.id);
+    const colour = n.level === "warn" ? "#C0392B" : "#2E7D32";
+    return `<div onclick="openNotification('${n.id}','${n.screen}')"
+      style="padding:10px 14px; border-bottom:1px solid #f2f2f2; cursor:pointer;
+             background:${isNew ? '#FFF8F7' : 'white'};">
+      <div style="font-size:13px; font-weight:${isNew ? '600' : '400'}; color:${colour};">
+        ${isNew ? '<span style="color:var(--red);">\u25CF</span> ' : ''}${n.title}
+      </div>
+      <div style="font-size:11.5px; color:#888; margin-top:2px;">${n.detail}</div>
+    </div>`;
+  }).join("") : '<div style="padding:18px; text-align:center; color:#999; font-size:12.5px;">Nothing needs attention.</div>';
+}
+
+function toggleBell() {
+  const p = document.getElementById("bell-panel");
+  p.style.display = p.style.display === "none" ? "block" : "none";
+}
+
+function openNotification(id, screen) {
+  const read = readIds(); read.add(id); saveReadIds(read);
+  document.getElementById("bell-panel").style.display = "none";
+  renderBell();
+  if (screen) switchScreen(screen);
+}
+
+function markAllRead() {
+  const read = readIds();
+  notifications.forEach(n => read.add(n.id));
+  saveReadIds(read);
+  renderBell();
+}
+
+// Close the panel when clicking elsewhere.
+document.addEventListener("click", (e) => {
+  const wrap = document.getElementById("bell-wrap");
+  if (wrap && !wrap.contains(e.target)) {
+    const p = document.getElementById("bell-panel");
+    if (p) p.style.display = "none";
+  }
+});
 
 // ============ STORE / INVENTORY ============
 let storeItems = [];
