@@ -272,6 +272,7 @@ class MaterialRequestLineIn(BaseModel):
     unit: str = "pcs"
     est_cost: float = 0.0
     notes: str = ""
+    purpose: str = ""
 
 
 class MaterialRequestIn(BaseModel):
@@ -294,6 +295,7 @@ class MaterialRequestLineOut(BaseModel):
     unit: str
     est_cost: float
     notes: str
+    purpose: Optional[str] = ""
     item_code: Optional[str] = None
     item_name: Optional[str] = None
 
