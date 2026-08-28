@@ -618,31 +618,69 @@
           </div>
           <div class="status-msg" id="store-status"></div>
 
+          <!-- The store keeper's main job: handing material to someone.
+               This sits first because it happens many times a day. -->
+          <div class="card" style="border:2px solid var(--red);">
+            <h2 style="color:var(--red);">GIVE OUT material</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
+            <div class="form-row">
+              <label>Who is taking it:</label>
+              <select id="out-person" style="width:260px;"></select>
+              <label>Going to site:</label>
+              <select id="out-site" style="width:130px;"></select>
+              <label>Date:</label><input type="date" id="out-date">
+            </div>
+            <div class="grid-wrap" style="max-height:220px;">
+              <table>
+                <thead><tr><th>Material</th><th>How many</th><th>In store now</th><th>Note</th><th></th></tr></thead>
+                <tbody id="out-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <button class="btn btn-dark" onclick="addOutLine()">+ Add another material</button>
+              <button class="btn btn-primary" onclick="saveIssue()">Give Out &amp; Save</button>
+            </div>
+          </div>
+
           <div class="card">
-            <h2>Record what happened to stock</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Use this every time material comes in, goes out to a site, or comes back.</p>
+            <h2>Material RECEIVED into the store</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">When a delivery arrives from a supplier.</p>
+            <div class="form-row">
+              <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:180px;">
+              <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:150px;">
+              <label>Date:</label><input type="date" id="in-date">
+            </div>
+            <div class="grid-wrap" style="max-height:200px;">
+              <table>
+                <thead><tr><th>Material</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
+                <tbody id="in-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
+              <button class="btn btn-primary" onclick="saveReceipt()">Save Delivery</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Other things</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Material coming back from a site, moving between sites, or fixing a number after counting the store.</p>
             <div class="form-row">
               <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
-                <option value="in">Material ARRIVED at the store</option>
-                <option value="out">Material SENT to a site</option>
                 <option value="return">Material CAME BACK from a site</option>
                 <option value="transfer">Material MOVED between two sites</option>
                 <option value="adjust">Fix a wrong number (after counting)</option>
               </select>
               <select id="mv-item" style="min-width:220px;"></select>
-              <input type="number" id="mv-qty" placeholder="Qty" style="width:90px;" step="any">
-              <span id="mv-from-wrap" style="display:none;"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
+              <input type="number" id="mv-qty" placeholder="How many" style="width:110px;" step="any">
+              <span id="mv-from-wrap"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
               <span id="mv-to-wrap"><label>To:</label><select id="mv-to" style="width:120px;"></select></span>
               <input type="date" id="mv-date">
+              <input type="text" id="mv-notes" placeholder="Note" style="width:160px;">
+              <button class="btn btn-primary" onclick="saveMovement()">Save</button>
             </div>
-            <div class="form-row">
-              <input type="text" id="mv-incharge" placeholder="In charge of" style="width:150px;">
-              <input type="text" id="mv-supplier" placeholder="Supplier" style="width:150px;">
-              <input type="number" id="mv-cost" placeholder="Unit cost" style="width:110px;" step="any">
-              <input type="text" id="mv-ref" placeholder="DO / Invoice no." style="width:140px;">
-              <input type="text" id="mv-notes" placeholder="Notes" style="width:180px;">
-              <button class="btn btn-primary" onclick="saveMovement()">Save Movement</button>
-            </div>
+            <input type="hidden" id="mv-incharge"><input type="hidden" id="mv-supplier">
+            <input type="hidden" id="mv-cost"><input type="hidden" id="mv-ref">
           </div>
 
           <div class="card">
@@ -893,10 +931,16 @@ function switchScreen(name) {
   if (name === "errorcheck") loadErrorCheck();
   if (name === "store") {
     document.getElementById("mv-date").value = isoLocal(new Date());
+    document.getElementById("out-date").value = isoLocal(new Date());
+    document.getElementById("in-date").value = isoLocal(new Date());
     loadStoreItems().then(() => {
-      document.getElementById("mr-site").innerHTML =
-        '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
+      const siteOpts = sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
+      document.getElementById("mr-site").innerHTML = '<option value="">Central store</option>' + siteOpts;
+      document.getElementById("out-site").innerHTML = '<option value="">-- choose --</option>' + siteOpts;
+      document.getElementById("out-person").innerHTML = peopleOptions();
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
+      if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
+      if (!document.querySelectorAll("#in-lines tr").length) addInLine();
       loadStore();
     });
   }
@@ -2253,11 +2297,11 @@ function onItemTypeChange() {
 }
 
 function onMvKindChange() {
+  // This panel now only covers returns, site-to-site transfers and
+  // count corrections - giving out and receiving have their own panels.
   const k = document.getElementById("mv-kind").value;
-  // 'from' only matters when stock is leaving somewhere: issuing out of
-  // the store, coming back from a site, or moving between sites.
-  document.getElementById("mv-from-wrap").style.display = (k === "return" || k === "transfer") ? "" : "none";
-  document.getElementById("mv-to-wrap").style.display = (k === "in" || k === "adjust") ? "none" : "";
+  document.getElementById("mv-from-wrap").style.display = (k === "adjust") ? "none" : "";
+  document.getElementById("mv-to-wrap").style.display = (k === "adjust") ? "none" : "";
 }
 
 function storeLocationOptions(includeStore) {
@@ -2359,6 +2403,117 @@ async function saveMovement() {
     ["mv-qty","mv-incharge","mv-supplier","mv-cost","mv-ref","mv-notes"].forEach(id => document.getElementById(id).value = "");
     await loadStore();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
+// Everyone who might take material from the store: employees (workers,
+// drivers, foremen) plus site engineers. Both lists already exist in the
+// app, so the store keeper picks a real person rather than typing a name.
+function peopleOptions() {
+  const emp = employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.emp_no} - ${e.name} (${e.trade || "worker"})</option>`);
+  const eng = engineers.map(e => `<option value="${e.name}">${e.name} (site engineer)</option>`);
+  return '<option value="">-- choose --</option>' + eng.join("") + emp.join("");
+}
+
+function stockOptionsHtml() {
+  return '<option value="">-- choose material --</option>' +
+    storeItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.code} - ${i.name}</option>`).join("");
+}
+
+function addOutLine() {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><select class="ol-item" onchange="showOnHand(this)" style="width:100%;">${stockOptionsHtml()}</select></td>
+    <td><input type="number" class="ol-qty" step="any" style="width:100px;"></td>
+    <td class="ol-have" style="color:#777;">-</td>
+    <td><input type="text" class="ol-note" style="width:100%;"></td>
+    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+  document.getElementById("out-lines").appendChild(tr);
+}
+
+function addInLine() {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><select class="il-item" style="width:100%;">${stockOptionsHtml()}</select></td>
+    <td><input type="number" class="il-qty" step="any" style="width:100px;"></td>
+    <td><input type="number" class="il-cost" step="any" style="width:110px;"></td>
+    <td><input type="text" class="il-note" style="width:100%;"></td>
+    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+  document.getElementById("in-lines").appendChild(tr);
+}
+
+// Show what's actually in the store next to the quantity box, so the
+// keeper sees straight away if he's about to give out more than he has.
+async function showOnHand(sel) {
+  const cellEl = sel.closest("tr").querySelector(".ol-have");
+  if (!sel.value) { cellEl.textContent = "-"; return; }
+  const row = (storeStockCache || []).find(s => String(s.item_id) === sel.value);
+  cellEl.textContent = row ? `${num(row.central)} ${row.unit}` : "-";
+  cellEl.style.color = row && row.central <= 0 ? "#C0392B" : "#777";
+}
+
+let storeStockCache = [];
+
+async function saveIssue() {
+  const person = document.getElementById("out-person").value;
+  const site = document.getElementById("out-site").value;
+  const when = document.getElementById("out-date").value || isoLocal(new Date());
+  const lines = [...document.querySelectorAll("#out-lines tr")].map(tr => ({
+    item_id: parseInt(tr.querySelector(".ol-item").value, 10) || 0,
+    qty: parseFloat(tr.querySelector(".ol-qty").value) || 0,
+    note: tr.querySelector(".ol-note").value.trim(),
+  })).filter(l => l.item_id && l.qty > 0);
+  if (!person) { showStatus("store-status", "warn", "Choose who is taking the material."); return; }
+  if (!site) { showStatus("store-status", "warn", "Choose which site it is going to."); return; }
+  if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
+  let done = 0, failed = [];
+  for (const l of lines) {
+    try {
+      await apiCall("/store/movements", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: l.item_id, kind: "out", qty: l.qty, location: site,
+                                incharge: person, notes: l.note, moved_on: when }) });
+      done++;
+    } catch (e) { failed.push(errText(e)); }
+  }
+  if (failed.length) {
+    showStatus("store-status", failed.length === lines.length ? "err" : "warn",
+      `${done} of ${lines.length} saved. Problem: ${failed[0]}`);
+  } else {
+    showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${done} material(s).`);
+    document.getElementById("out-lines").innerHTML = ""; addOutLine();
+  }
+  await loadStore();
+}
+
+async function saveReceipt() {
+  const supplier = document.getElementById("in-supplier").value.trim();
+  const ref = document.getElementById("in-ref").value.trim();
+  const when = document.getElementById("in-date").value || isoLocal(new Date());
+  const lines = [...document.querySelectorAll("#in-lines tr")].map(tr => ({
+    item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
+    qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
+    cost: parseFloat(tr.querySelector(".il-cost").value) || 0,
+    note: tr.querySelector(".il-note").value.trim(),
+  })).filter(l => l.item_id && l.qty > 0);
+  if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
+  let done = 0, failed = [];
+  for (const l of lines) {
+    try {
+      await apiCall("/store/movements", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: l.item_id, kind: "in", qty: l.qty, location: "",
+                                supplier, unit_cost: l.cost, reference: ref,
+                                notes: l.note, moved_on: when }) });
+      done++;
+    } catch (e) { failed.push(errText(e)); }
+  }
+  if (failed.length) showStatus("store-status", "err", failed[0]);
+  else {
+    showStatus("store-status", "ok", `Delivery saved: ${done} material(s) added to the store.`);
+    document.getElementById("in-lines").innerHTML = ""; addInLine();
+    document.getElementById("in-supplier").value = ""; document.getElementById("in-ref").value = "";
+  }
+  await loadStore();
 }
 
 function addMrLine() {
@@ -2532,6 +2687,10 @@ async function loadStore() {
     if (from) url += `&date_from=${from}`;
     if (to) url += `&date_to=${to}`;
     const d = await apiCall(url);
+    if (view === "stock") {
+      // keep a copy so the give-out rows can show what's on hand
+      try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+    }
     document.getElementById("store-table-title").textContent = d.title;
     if (!d.rows.length) {
       head.innerHTML = ""; body.innerHTML = `<tr><td class="empty-note">Nothing to show.</td></tr>`; return;
