@@ -733,14 +733,14 @@
                 <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
               </select>
             </div>
-            <div class="grid-wrap" style="max-height:260px;">
+            <div class="grid-wrap" style="max-height:none;">
               <table>
                 <thead><tr><th style="width:26%;">Material</th><th style="width:12%;">Type</th><th style="width:9%;">How many</th><th style="width:7%;">Unit</th><th style="width:22%;">What is it for?</th><th style="width:17%;">Note</th><th style="width:6%;"></th></tr></thead>
                 <tbody id="mr-lines"></tbody>
               </table>
             </div>
             <div class="form-row" style="margin-top:8px;">
-              <input type="text" id="mr-notes" placeholder="Anything else the office should know (optional)" style="width:520px;">
+              <input type="text" id="mr-notes" placeholder="Anything else the office should know (optional)" style="width:100%;">
             </div>
             <div class="form-row">
               <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
@@ -849,8 +849,8 @@
                 <label>Going to site:</label><select id="out-site" style="width:130px;"></select>
                 <label>Date:</label><input type="date" id="out-date">
               </div>
-              <div class="grid-wrap" style="max-height:260px;">
-                <table><thead><tr><th>Material</th><th>How many</th><th>In store now</th><th>Note</th><th></th></tr></thead>
+              <div class="grid-wrap" style="max-height:none;">
+                <table><thead><tr><th style="width:34%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In store now</th><th style="width:33%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -871,8 +871,8 @@
                 <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:150px;">
                 <label>Date:</label><input type="date" id="in-date">
               </div>
-              <div class="grid-wrap" style="max-height:260px;">
-                <table><thead><tr><th style="width:30%;">Material</th><th>Type</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
+              <div class="grid-wrap" style="max-height:none;">
+                <table><thead><tr><th style="width:28%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:29%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="in-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
