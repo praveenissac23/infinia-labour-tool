@@ -71,15 +71,24 @@
   .status-msg.err { background: #FFC7CE; color: #C0392B; display: block; white-space: pre-line; }
   .status-msg.warn { background: #FFF3CD; color: #8a6d1a; display: block; white-space: pre-line; }
 
-  .card { background: white; border-radius: 8px; border: 1px solid #eee; padding: 16px; margin-bottom: 14px; }
-  .card h2 { font-size: 14px; margin: 0 0 12px; }
+  .card { background: white; border-radius: 9px; border: 1px solid #E8E8E8;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.04); padding: 20px 22px; margin-bottom: 16px; }
+  .card h2 { font-size: 14.5px; margin: 0 0 14px; letter-spacing: -0.1px; }
 
-  .grid-wrap { background: white; border-radius: 8px; border: 1px solid #eee; overflow: auto; max-height: 60vh; }
+  .grid-wrap { background: white; border-radius: 8px; border: 1px solid #E8E8E8; overflow: auto; max-height: 60vh; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  th { background: var(--red); color: white; padding: 9px 8px; text-align: center; position: sticky; top: 0; z-index: 1; white-space: nowrap; border: 1px solid #A5301F; }
+  th { background: var(--red); color: white; padding: 10px 10px; text-align: center;
+       position: sticky; top: 0; z-index: 1; white-space: nowrap;
+       font-size: 11.5px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase;
+       border: none; border-right: 1px solid rgba(255,255,255,0.15); }
+  th:last-child { border-right: none; }
   th.sortable { cursor: pointer; user-select: none; }
   th.sortable:hover { background: var(--red-hover); }
-  td { padding: 6px 6px; text-align: center; border: 1px solid #e2e2e2; }
+  /* Row rules only - a full grid of borders makes a dense table look
+     like a spreadsheet and hides the data. */
+  td { padding: 9px 10px; text-align: center; border: none; border-bottom: 1px solid #EDEDED; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: #FCFCFC; }
   tr:hover td { background: #FFF7F5; }
   .lc-compact { font-size: 10.5px; line-height: 1.1; }
   .lc-compact table { table-layout: fixed; }
@@ -157,6 +166,19 @@
               overflow: hidden; text-overflow: ellipsis; }
   .rep-tile:hover { background: var(--red); border-color: var(--red); color: white; }
   .rep-tile.active { background: var(--red); border-color: var(--red); color: white; }
+
+  /* Type pills - a word in a coloured chip reads faster than plain text
+     in a column of similar-looking values. */
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 11px;
+          font-weight: 600; letter-spacing: 0.2px; text-transform: capitalize; }
+  .pill-consumable { background: #EEF3F8; color: #34618E; }
+  .pill-asset      { background: #E8F5E9; color: #2E7D32; }
+  .pill-rental     { background: #FFF3E0; color: #B26A00; }
+  .pill-returnable { background: #EEF3F8; color: #34618E; }
+
+  /* Numbers line up on the decimal when right-aligned, which makes a
+     column of quantities scannable instead of ragged. */
+  .num-col { text-align: right; padding-right: 16px; font-variant-numeric: tabular-nums; }
 
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
@@ -1380,7 +1402,11 @@ function money(v) {
 function num(v) {
   if (v === null || v === undefined || v === "") return v;
   const n = Number(v);
-  return isNaN(n) ? v : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (isNaN(n)) return v;
+  // Quantities are counts of things - 400 bags, 3 mixers. Showing
+  // "400.00" reads like money and adds noise, so only keep decimals
+  // when the value genuinely has them (half days, 7.5 hours).
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 // Turns whatever the API returned into a readable sentence. FastAPI
@@ -2708,10 +2734,19 @@ async function loadStoreHome() {
         : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
-    head.innerHTML = ["Code","Name","Unit","Type","In store","At sites","Total",""].map(h => `<th>${h}</th>`).join("");
+    head.innerHTML = [
+      { t: "Code", w: "8%" }, { t: "Material", w: "" }, { t: "Unit", w: "8%" },
+      { t: "Type", w: "11%" }, { t: "In central store", w: "13%" },
+      { t: "Out at sites", w: "12%" }, { t: "Total held", w: "11%" }, { t: "", w: "11%" },
+    ].map(h => `<th style="width:${h.w}">${h.t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr${r.low ? ' style="background:#FFE9E6;"' : ''}>
-      <td>${r.code}</td><td style="text-align:left;">${r.name}</td><td>${r.unit}</td><td>${r.item_type}</td>
-      <td>${num(r.in_store)}</td><td>${num(r.at_sites)}</td><td><strong>${num(r.total)}</strong></td>
+      <td style="color:#999; font-size:12px;">${r.code}</td>
+      <td style="text-align:left; font-weight:500;">${r.name}</td>
+      <td>${r.unit}</td>
+      <td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>
+      <td class="num-col">${num(r.in_store)}</td>
+      <td class="num-col">${num(r.at_sites)}</td>
+      <td class="num-col"><strong>${num(r.total)}</strong></td>
       <td>${r.low ? `<button class="btn btn-primary" onclick="requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
       </tr>`).join("");
   } catch (e) {
@@ -3651,16 +3686,25 @@ async function loadStore() {
     if (foot) foot.textContent = `${num(d.rows.length)} row(s)` +
       (d.total_value !== undefined ? ` \u00b7 total AED ${money(d.total_value)}` : "");
     const keys = Object.keys(d.rows[0]).filter(k => k !== "low" && k !== "overdue");
-    const label = k => k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
+    const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
+                   item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
+                   lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
+                   written_off: "Written off", qty: "Qty", name: "Material", code: "Code" };
+    const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = keys.map(k => `<th>${label(k)}</th>`).join("");
     body.innerHTML = d.rows.map(r => {
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       return `<tr${flag}>` + keys.map(k => {
-        let v = r[k];
-        if (typeof v === "object" && v !== null)
+        let v = r[k], cls = "";
+        if (typeof v === "object" && v !== null) {
           v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
-        else if (typeof v === "number") v = k === "value" || k === "est_cost" || k === "rate" ? money(v) : num(v);
-        return `<td>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
+        } else if (typeof v === "number") {
+          v = ["value", "est_cost", "rate"].includes(k) ? money(v) : num(v);
+          cls = ' class="num-col"';
+        } else if (k === "item_type" || k === "type") {
+          v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
+        }
+        return `<td${cls}>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
       }).join("") + "</tr>";
     }).join("");
     if (d.total_value !== undefined)
