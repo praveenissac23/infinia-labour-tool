@@ -284,7 +284,15 @@ class MaterialRequest(Base):
     asked for, what was approved, and what has actually arrived, so the
     store keeper can see what is still outstanding.
 
-    status: pending -> approved | rejected -> partial -> received/closed
+    status walks the real-life path a request takes:
+      pending    - sent by the store keeper, office hasn't looked yet
+      approved   - office agrees to buy it
+      arranging  - office is getting quotes / choosing a supplier
+      lpo_sent   - purchase order raised with the supplier
+      partial    - some of it has arrived
+      delivered  - everything has arrived at the store
+      closed     - finished and filed away
+      rejected   - office declined
     """
     __tablename__ = "material_requests"
     id = Column(Integer, primary_key=True)
@@ -323,6 +331,10 @@ class MaterialRequestLine(Base):
     unit = Column(String, default="pcs")
     est_cost = Column(Float, default=0.0)
     notes = Column(Text, default="")
+    # What the material is actually for - the office needs this to judge
+    # whether to order, and it stops "200 bags of cement" arriving with
+    # nobody remembering which job it was for.
+    purpose = Column(String, default="")
 
     request = relationship("MaterialRequest", back_populates="lines")
     item = relationship("StoreItem")
