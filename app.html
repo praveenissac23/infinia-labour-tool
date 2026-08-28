@@ -151,8 +151,8 @@
   .rep-group { font-size: 11px; font-weight: bold; letter-spacing: 0.8px; text-transform: uppercase;
                color: #999; margin: 16px 0 8px; }
   .rep-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-  .rep-tile { flex: 1 1 0; min-width: 150px; border: 1px solid #ddd; border-radius: 5px;
-              padding: 9px 12px; cursor: pointer; background: white; font-size: 12.5px;
+  .rep-tile { flex: 1 1 0; min-width: 118px; border: 1px solid #ddd; border-radius: 5px;
+              padding: 9px 8px; cursor: pointer; background: white; font-size: 12px;
               font-weight: 600; text-align: center; color: #333; white-space: nowrap;
               overflow: hidden; text-overflow: ellipsis; }
   .rep-tile:hover { background: var(--red); border-color: var(--red); color: white; }
@@ -987,33 +987,25 @@
               <h2>Store Reports</h2>
               <p style="font-size:12px; color:#888; margin:0 0 14px;">Pick a report. Every one can be downloaded as Excel or PDF with the company header.</p>
 
-              <div class="rep-group">Stock</div>
+              <div class="rep-group">Stock &amp; Movement</div>
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('stock')">Current Stock</div>
-                <div class="rep-tile" onclick="pickReport('low')">Reorder Report</div>
-                <div class="rep-tile" onclick="pickReport('by_site')">Stock at Sites</div>
-                <div class="rep-tile" onclick="pickReport('movements')">Movement Register</div>
+                <div class="rep-tile" onclick="pickReport('low')">Reorder</div>
+                <div class="rep-tile" onclick="pickReport('by_site')">At Sites</div>
+                <div class="rep-tile" onclick="pickReport('movements')">Movements</div>
+                <div class="rep-tile" onclick="pickReport('purchases')">Purchases</div>
+                <div class="rep-tile" onclick="pickReport('usage')">Consumption</div>
+                <div class="rep-tile" onclick="pickReport('assets')">Assets</div>
+                <div class="rep-tile" onclick="pickReport('lost')">Lost / Damaged</div>
               </div>
 
-              <div class="rep-group">Assets &amp; Hired Equipment</div>
+              <div class="rep-group">Hired Equipment &amp; Material Requests</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('assets')">Asset Register</div>
                 <div class="rep-tile" onclick="pickReport('hired')">On Hire Now</div>
                 <div class="rep-tile" onclick="pickReport('rentals')">Rental Details</div>
-                <div class="rep-tile" onclick="pickReport('lost')">Lost &amp; Damaged</div>
-              </div>
-
-              <div class="rep-group">Purchases &amp; Consumption</div>
-              <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('purchases')">Purchase Report</div>
-                <div class="rep-tile" onclick="pickReport('usage')">Consumption by Site</div>
-              </div>
-
-              <div class="rep-group">Material Requests</div>
-              <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('mr_open')">Open Requests</div>
-                <div class="rep-tile" onclick="pickReport('mr_outstanding')">Outstanding Materials</div>
-                <div class="rep-tile" onclick="pickReport('mr_overdue')">Overdue Requests</div>
+                <div class="rep-tile" onclick="pickReport('mr_outstanding')">Outstanding</div>
+                <div class="rep-tile" onclick="pickReport('mr_overdue')">Overdue</div>
                 <div class="rep-tile" onclick="pickReport('mr_history')">Request History</div>
               </div>
             </div>
