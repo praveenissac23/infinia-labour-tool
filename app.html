@@ -176,6 +176,24 @@
   .pill-rental     { background: #FFF3E0; color: #B26A00; }
   .pill-returnable { background: #EEF3F8; color: #34618E; }
 
+  /* ---- Polish layer ----
+     Small things that separate software from a spreadsheet: state
+     changes ease in rather than snap, focused fields glow softly in the
+     brand colour, and zeros step back so real quantities stand out. */
+  .btn { transition: background .15s ease, transform .06s ease; }
+  .btn:active { transform: translateY(1px); }
+  td { transition: background .12s ease; }
+  input[type=text]:focus, input[type=number]:focus, input[type=date]:focus,
+  input[type=password]:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--red);
+    box-shadow: 0 0 0 3px rgba(192,57,43,0.10);
+  }
+  .pill { font-weight: 600; letter-spacing: .2px; text-transform: capitalize; }
+  .zero { color: #C6C6C6; }
+  .grid-wrap::-webkit-scrollbar { height: 8px; width: 8px; }
+  .grid-wrap::-webkit-scrollbar-thumb { background: #D8D8D8; border-radius: 8px; }
+  .grid-wrap::-webkit-scrollbar-thumb:hover { background: #BFBFBF; }
+
   /* Numbers line up on the decimal when right-aligned, which makes a
      column of quantities scannable instead of ragged. */
   .num-col { text-align: right; padding-right: 16px; font-variant-numeric: tabular-nums; }
@@ -855,7 +873,7 @@
                 <label>Date:</label><input type="date" id="out-date">
               </div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:3%;">#</th><th style="width:32%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In store now</th><th style="width:32%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:32%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In central store</th><th style="width:32%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -920,7 +938,7 @@
               </div>
               <div class="grid-wrap" style="max-height:460px;">
                 <table>
-                  <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In store</th><th></th></tr></thead>
+                  <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In central store</th><th></th></tr></thead>
                   <tbody id="il-body"></tbody>
                 </table>
               </div>
@@ -2741,17 +2759,19 @@ async function loadStoreHome() {
     }
     head.innerHTML = [
       { t: "Code", w: "8%" }, { t: "Material", w: "" }, { t: "Unit", w: "8%" },
-      { t: "Type", w: "11%" }, { t: "In central store", w: "13%" },
-      { t: "Out at sites", w: "12%" }, { t: "Total held", w: "11%" }, { t: "", w: "11%" },
+      { t: "Type", w: "11%" },
+      { t: '<span style="color:#9BD0F5;">&#9679;</span>&nbsp;In central store', w: "13%" },
+      { t: '<span style="color:#FFD79A;">&#9679;</span>&nbsp;Out at sites', w: "12%" },
+      { t: "Total held", w: "11%" }, { t: "", w: "11%" },
     ].map(h => `<th style="width:${h.w}">${h.t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr${r.low ? ' style="background:#FFE9E6;"' : ''}>
       <td style="color:#999; font-size:12px;">${r.code}</td>
       <td style="text-align:left; font-weight:500;">${r.name}</td>
       <td>${r.unit}</td>
       <td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>
-      <td class="num-col">${num(r.in_store)}</td>
-      <td class="num-col">${num(r.at_sites)}</td>
-      <td class="num-col"><strong>${num(r.total)}</strong></td>
+      <td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>
+      <td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>
+      <td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>
       <td>${r.low ? `<button class="btn btn-primary" onclick="requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
       </tr>`).join("");
   } catch (e) {
@@ -2800,15 +2820,14 @@ function renderItemMaster(page) {
   const body = document.getElementById("il-body");
   body.innerHTML = slice.length ? slice.map(i => {
     const s = stockBy[i.id];
-    const inStore = s ? num(s.central) : "0";
     return `<tr>
-      <td>${i.code}</td>
-      <td style="text-align:left;">${i.name}</td>
+      <td style="color:#999; font-size:12px;">${i.code}</td>
+      <td style="text-align:left; font-weight:500;">${i.name}</td>
       <td>${i.category || "-"}</td>
       <td>${i.unit}</td>
-      <td>${i.item_type}</td>
-      <td>${i.reorder_level ? num(i.reorder_level) : "-"}</td>
-      <td>${inStore}</td>
+      <td><span class="pill pill-${i.item_type}">${i.item_type}</span></td>
+      <td class="num-col">${i.reorder_level ? num(i.reorder_level) : "-"}</td>
+      <td class="num-col">${(s && s.central) ? num(s.central) : '<span class="zero">0</span>'}</td>
       <td>
         <button class="btn btn-gray" onclick="editStoreItem(${i.id})">Edit</button>
         <button class="btn btn-dark" style="background:#8B2E22;" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
@@ -3800,6 +3819,7 @@ async function loadStore() {
         } else if (typeof v === "number") {
           v = ["value", "est_cost", "rate"].includes(k) ? money(v) : num(v);
           cls = ' class="num-col"';
+          if (r[k] === 0 && !["value", "est_cost", "rate"].includes(k)) v = '<span class="zero">0</span>';
         } else if (k === "item_type" || k === "type") {
           v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
         }
