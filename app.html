@@ -2316,6 +2316,19 @@ async function loadStoreItems() {
     || '<option value="">No items yet</option>';
   document.getElementById("mv-from").innerHTML = storeLocationOptions(true);
   document.getElementById("mv-to").innerHTML = storeLocationOptions(true);
+
+  // Refresh the material dropdowns in the Give Out and Delivery rows
+  // too. Without this, a newly-added item never appears in them, and
+  // any row already on screen keeps a stale list - which is what made
+  // "add an item then use it" appear broken.
+  document.querySelectorAll(".ol-item, .il-item").forEach(sel => {
+    const keep = sel.value;
+    sel.innerHTML = stockOptionsHtml();
+    if (keep) sel.value = keep;
+  });
+  // If a panel somehow has no row at all, put one back.
+  if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
+  if (!document.querySelectorAll("#in-lines tr").length) addInLine();
   document.getElementById("store-item-list").innerHTML = storeItems.length
     ? `<div class="md-chip-wrap">${storeItems.map(i => `
         <span class="md-chip" title="${i.item_type}${i.reorder_level ? ', reorder at ' + i.reorder_level : ''}">
