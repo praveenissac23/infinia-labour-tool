@@ -2163,3 +2163,64 @@ def get_notifications(db: Session = Depends(get_db),
     order = {"warn": 0, "info": 1}
     out.sort(key=lambda n: (order.get(n["level"], 2), n["when"]))
     return {"notifications": out[:50], "count": len(out)}
+
+
+@app.post("/store/requests/{req_id}/receive-bulk")
+def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
+                          db: Session = Depends(get_db),
+                          user: models.User = Depends(require_screen("requests"))):
+    """
+    Record a whole delivery against a request in one go.
+
+    The store keeper opens the request, adjusts the quantities that
+    actually turned up (a supplier often sends less than was ordered) and
+    saves. Each line files its own 'in' stock movement, so the ledger
+    stays the single source of truth, and the request advances to
+    'partial' or 'delivered' by itself based on what is still owed.
+    """
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    when = payload.received_on or date.today()
+    if when > date.today():
+        raise HTTPException(status_code=400, detail="Delivery date is in the future.")
+
+    wanted = [l for l in payload.lines if l.qty and l.qty > 0]
+    if not wanted:
+        raise HTTPException(status_code=400, detail="Enter how much arrived for at least one material.")
+
+    errors, done = [], 0
+    for w in wanted:
+        line = db.query(models.MaterialRequestLine).filter(
+            models.MaterialRequestLine.id == w.line_id,
+            models.MaterialRequestLine.request_id == req_id).first()
+        if not line:
+            errors.append(f"Line {w.line_id} is not on this request."); continue
+        if not line.item_id:
+            errors.append(f"'{line.description}' isn't a store item yet, so it can't be received into stock.")
+            continue
+        outstanding = (line.qty_requested or 0) - (line.qty_received or 0)
+        if w.qty > outstanding + 1e-9:
+            name = line.item.name if line.item else line.description
+            errors.append(f"{name}: only {round(outstanding, 2)} {line.unit} still due.")
+            continue
+        db.add(models.StoreMovement(
+            item_id=line.item_id, kind="in", qty=w.qty, location="",
+            supplier=payload.supplier, reference=payload.reference or mr.ref,
+            notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
+        line.qty_received = (line.qty_received or 0) + w.qty
+        done += 1
+
+    if errors and not done:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+
+    all_done = all((l.qty_received or 0) >= (l.qty_requested or 0) - 1e-9 for l in mr.lines)
+    any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
+    mr.status = "delivered" if all_done else ("partial" if any_done else mr.status)
+    if all_done:
+        mr.closed_on = when
+    db.commit()
+    log_action(db, user.id, "material_request_receive",
+               f"{mr.ref}: {done} line(s) received on {when}")
+    return {"ok": True, "received_lines": done, "status": mr.status, "warnings": errors}
