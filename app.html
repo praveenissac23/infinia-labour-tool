@@ -848,6 +848,10 @@
                   <div class="store-tile-t">Give Out Material</div>
                   <div class="store-tile-s">Someone is taking material to a site</div>
                 </div>
+                <div class="store-tile" onclick="storeGo('arrive')">
+                  <div class="store-tile-t">Material Arrived</div>
+                  <div class="store-tile-s">A delivery has come to the store</div>
+                </div>
                 <div class="store-tile" onclick="switchScreen('requests')">
                   <div class="store-tile-t">Material Requests</div>
                   <div class="store-tile-s">Ask the office and track what is coming</div>
@@ -871,7 +875,8 @@
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                 <div>
                   <h2 style="margin-bottom:4px;">What is in the store right now</h2>
-                  <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
+                  <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 8px;"></p>
+                  <div id="home-stats" style="display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px;"></div>
                 </div>
                 <input type="text" id="home-stock-search" placeholder="Search material or code"
                        style="width:220px;" oninput="filterHomeStock()">
@@ -879,6 +884,31 @@
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
               </div>
+            </div>
+          </div>
+
+          <!-- MATERIAL ARRIVED
+               The most common daily event gets its own front door. The
+               right path (delivery against a request) is listed first
+               with one button per waiting request; buying without a
+               request is the explained exception underneath. -->
+          <div id="store-arrive" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <h2>A delivery has arrived</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 14px;">
+                If it was ordered through a request, record it against that request -
+                the quantities are already filled in and the paperwork stays matched.
+              </p>
+              <div id="arrive-list"><div class="empty-note">Loading...</div></div>
+            </div>
+            <div class="card">
+              <h2>Bought without a request?</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Only for material purchased directly, with no request behind it.
+                The delivery still goes into stock with its supplier and cost.
+              </p>
+              <button class="btn btn-primary" onclick="goDirectPurchase()">Record a direct purchase</button>
             </div>
           </div>
 
@@ -2745,7 +2775,7 @@ let storeItems = [];
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","items","other","reports"];
+const STORE_PANELS = ["home","give","arrive","items","other","reports"];
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -2753,6 +2783,7 @@ function storeGo(which) {
   });
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
+  if (which === "arrive") loadArrivePanel();
   if (which === "reports") {
     document.getElementById("store-report-result").style.display = "none";
     updateReportBadges();
@@ -2760,15 +2791,66 @@ function storeGo(which) {
   if (which === "other") setMvKind(null);
 }
 
+// Every open request with materials still due, one Record delivery
+// button each - so a truck at the gate maps straight onto the paperwork
+// that ordered it.
+async function loadArrivePanel() {
+  const box = document.getElementById("arrive-list");
+  box.innerHTML = '<div class="empty-note">Loading...</div>';
+  try {
+    const reqs = await apiCall("/store/requests");
+    mrCache = reqs;
+    const waiting = reqs
+      .filter(r => !["delivered", "received", "closed", "rejected", "pending"].includes(r.status))
+      .map(r => ({ r, due: (r.lines || []).filter(l => l.item_id &&
+                     (l.qty_requested || 0) - (l.qty_received || 0) > 0) }))
+      .filter(x => x.due.length);
+    if (!waiting.length) {
+      box.innerHTML = `<div class="empty-note">No approved requests are waiting for a delivery right now.<br>
+        <span style="font-size:12px;">Requests still marked "Waiting on office" appear here once the office approves them.</span></div>`;
+      return;
+    }
+    box.innerHTML = waiting.map(({ r, due }) => {
+      const preview = due.slice(0, 3)
+        .map(l => `${l.item_name || l.description}: ${num((l.qty_requested || 0) - (l.qty_received || 0))} ${l.unit} due`)
+        .join(" &middot; ") + (due.length > 3 ? ` <span style="color:#999;">+${due.length - 3} more</span>` : "");
+      return `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px;
+                  flex-wrap:wrap; padding:12px 2px; border-bottom:1px solid #EFEFEF;">
+        <div style="min-width:220px;">
+          <strong>${r.ref}</strong> &middot; site ${r.site || "-"} &middot;
+          <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>
+          <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
+        </div>
+        <button class="btn btn-primary" onclick="openReceive(${r.id})">Record delivery</button>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
+  }
+}
+
+// Direct purchase lives on the requests screen; open it there with the
+// form already expanded so the keeper lands ready to type.
+function goDirectPurchase() {
+  switchScreen("requests");
+  setTimeout(() => {
+    const p = document.getElementById("direct-purchase");
+    if (p && p.style.display === "none") toggleDirectPurchase();
+  }, 600);
+}
+
 async function loadStoreHome() {
   try {
     // The detail drill-down needs the per-site breakdown and item ids
-    // from /store/stock, so fetch it alongside the summary.
-    const [stock, stk] = await Promise.all([
+    // from /store/stock, so fetch it alongside the summary. Requests
+    // ride along too, for the overview chips.
+    const [stock, stk, reqs] = await Promise.all([
       apiCall("/store/report?kind=stock"),
       apiCall("/store/stock").catch(() => storeStockCache || []),
+      apiCall("/store/requests").catch(() => mrCache || []),
     ]);
     storeStockCache = stk;
+    mrCache = reqs;
     const all = stock.rows || [];
     // Only materials that actually have stock somewhere. The catalogue
     // holds thousands of materials the company may never buy, and
@@ -2785,9 +2867,22 @@ async function loadStoreHome() {
     const lowN = rows.filter(r => r.low).length;
     if (note) note.innerHTML = catalogue
       ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.` +
-        (lowN ? ` <span style="color:#C0392B; font-weight:600;">${lowN} low on stock.</span>` : "") +
         ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
       : "";
+    // The morning overview: is anything low, is anything late, is the
+    // office sitting on requests - answered before a single row is read.
+    const today = isoLocal(new Date());
+    const isOpenR = r => !["delivered", "received", "closed", "rejected"].includes(r.status);
+    const openN = (reqs || []).filter(isOpenR).length;
+    const overN = (reqs || []).filter(r => r.needed_by && r.needed_by < today && isOpenR(r)).length;
+    const statsEl = document.getElementById("home-stats");
+    if (statsEl) statsEl.innerHTML = [
+      [`${num(rows.length)} with stock`, "#2E7D32"],
+      lowN ? [`${num(lowN)} low on stock`, "#C0392B"] : null,
+      openN ? [`${num(openN)} open requests`, "#1565C0"] : null,
+      overN ? [`${num(overN)} requests overdue`, "#C0392B"] : null,
+    ].filter(Boolean).map(([t, c]) =>
+      `<span class="stat-chip" style="border-color:${c}; color:${c}; background:${c}12;">${t}</span>`).join("");
     if (!rows.length) {
       head.innerHTML = "";
       body.innerHTML = all.length
@@ -3759,6 +3854,10 @@ async function saveReceive() {
     const f = document.getElementById("mreq-filter");
     if (f && f.value !== "all" && f.value !== res.status) f.value = res.status;
     await loadRequests();
+    // If the delivery was recorded from the Material Arrived panel,
+    // refresh its list too so the completed request drops off it.
+    const ap = document.getElementById("store-arrive");
+    if (ap && ap.style.display !== "none") loadArrivePanel();
     // The store dashboard shows stock levels, so refresh those too if
     // they're already on screen.
     if (typeof loadStoreItems === "function") { try { await loadStoreItems(); } catch (e) {} }
