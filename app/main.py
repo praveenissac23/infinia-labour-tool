@@ -1951,7 +1951,8 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
         rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
                   "requested_by": m.requested_by, "urgency": m.urgency, "status": m.status,
                   "items": len(m.lines),
-                  "est_value": round(sum((l.est_cost or 0) * (l.qty_requested or 0) for l in m.lines), 2),
+                  # No estimated value: the store keeper doesn't price a
+                  # request, the office does when it orders.
                   "closed_on": m.closed_on.isoformat() if m.closed_on else ""}
                 for m in reqs]
         return {"title": "Material request history", "rows": rows}
