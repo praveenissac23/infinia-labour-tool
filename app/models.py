@@ -270,3 +270,54 @@ class StoreMovement(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     item = relationship("StoreItem")
+
+
+class MaterialRequest(Base):
+    """
+    A request from the store keeper to the office for materials to be
+    ordered. The office orders in their own system; this tracks what was
+    asked for, what was approved, and what has actually arrived, so the
+    store keeper can see what is still outstanding.
+
+    status: pending -> approved | rejected -> partial -> received/closed
+    """
+    __tablename__ = "material_requests"
+    id = Column(Integer, primary_key=True)
+    ref = Column(String, unique=True, nullable=False, index=True)   # MR-0001
+    site = Column(String, default="")
+    requested_by = Column(String, default="")
+    needed_by = Column(Date, nullable=True)
+    urgency = Column(String, default="normal")      # low | normal | urgent
+    status = Column(String, default="pending", index=True)
+    notes = Column(Text, default="")
+    office_remark = Column(Text, default="")
+    requested_on = Column(Date, nullable=False, index=True)
+    closed_on = Column(Date, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    lines = relationship("MaterialRequestLine", back_populates="request",
+                          cascade="all, delete-orphan")
+
+
+class MaterialRequestLine(Base):
+    """
+    One material on a request. qty_received is filled as deliveries come
+    in, so outstanding = qty_requested - qty_received and a request can
+    sit at 'partial' honestly rather than being all-or-nothing.
+    """
+    __tablename__ = "material_request_lines"
+    id = Column(Integer, primary_key=True)
+    request_id = Column(Integer, ForeignKey("material_requests.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("store_items.id"), nullable=True)
+    description = Column(String, default="")     # free text if not a known item
+    qty_requested = Column(Float, nullable=False, default=0.0)
+    qty_approved = Column(Float, default=0.0)
+    qty_received = Column(Float, default=0.0)
+    unit = Column(String, default="pcs")
+    est_cost = Column(Float, default=0.0)
+    notes = Column(Text, default="")
+
+    request = relationship("MaterialRequest", back_populates="lines")
+    item = relationship("StoreItem")
