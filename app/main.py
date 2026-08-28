@@ -84,6 +84,45 @@ app.add_middleware(
 # ---------------------------------------------------------------------
 # AUTH
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# PER-USER SCREEN PERMISSIONS
+# ---------------------------------------------------------------------
+ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
+               "adjustments", "livecard", "store", "errorcheck", "settings", "activity"]
+
+# What a role can see when no explicit permissions have been set, so
+# existing accounts keep working exactly as before this was added.
+ROLE_DEFAULTS = {
+    "admin": ALL_SCREENS,
+    "staff": [s for s in ALL_SCREENS if s != "activity"],
+    "office": ["dashboard", "store", "reports"],
+    "site": ["dashboard", "attendance", "store"],
+}
+
+
+def effective_permissions(user: models.User) -> list:
+    if user.role == "admin":
+        return list(ALL_SCREENS)          # admin always has everything
+    raw = (user.permissions or "").strip()
+    if raw:
+        return [s for s in raw.split(",") if s in ALL_SCREENS]
+    return list(ROLE_DEFAULTS.get(user.role, ROLE_DEFAULTS["staff"]))
+
+
+def require_screen(screen: str):
+    """
+    Dependency that blocks an endpoint unless the user may open the screen
+    it belongs to. Hiding a menu item is presentation only - without this
+    the endpoint is still reachable by anyone with a login.
+    """
+    def _check(user: models.User = Depends(auth.get_current_user)):
+        if screen not in effective_permissions(user):
+            raise HTTPException(status_code=403,
+                detail=f"You don't have access to {screen}. Ask an admin to enable it.")
+        return user
+    return _check
+
+
 def log_action(db: Session, user_id, action: str, details: str = ""):
     db.add(models.AuditLog(user_id=user_id, action=action, details=details))
     db.commit()
@@ -145,7 +184,11 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
     # admin - otherwise any staff login could promote itself (or a new
     # account) to admin, which would make every admin-only restriction
     # meaningless, including the Activity Monitor.
-    if payload.role != "staff" and user.role != "admin":
+    # staff / office / site are all non-privileged; only an admin can
+    # mint another admin, otherwise any login could promote itself.
+    if payload.role not in ("staff", "office", "site", "admin"):
+        raise HTTPException(status_code=400, detail="Role must be staff, office, site or admin.")
+    if payload.role == "admin" and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can create an admin account.")
     existing = db.query(models.User).filter(models.User.username == payload.username).first()
     if existing:
@@ -1479,7 +1522,7 @@ def _stock_map(db: Session, upto: date = None):
 
 @app.get("/store/items", response_model=list[schemas.StoreItemOut])
 def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
-                      user: models.User = Depends(auth.get_current_user)):
+                      user: models.User = Depends(require_screen("store"))):
     q = db.query(models.StoreItem)
     if active_only:
         q = q.filter(models.StoreItem.active == True)  # noqa: E712
@@ -1488,7 +1531,7 @@ def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
 
 @app.post("/store/items", response_model=schemas.StoreItemOut)
 def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db),
-                       user: models.User = Depends(auth.get_current_user)):
+                       user: models.User = Depends(require_screen("store"))):
     # Validate on the server, not just in the browser - a blank code or
     # name creates an item that can't be identified in any report.
     code = (payload.code or "").strip()
@@ -1539,7 +1582,7 @@ def deactivate_store_item(item_id: int, db: Session = Depends(get_db),
 
 @app.get("/store/stock")
 def store_stock(location: str = None, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.get_current_user)):
+                 user: models.User = Depends(require_screen("store"))):
     """
     Stock on hand. Without a location, one row per item showing the
     central-store quantity, how much is out at sites, and the total -
@@ -1573,7 +1616,7 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
 def list_store_movements(item_id: int = None, location: str = None, kind: str = None,
                           date_from: str = None, date_to: str = None, limit: int = 500,
                           db: Session = Depends(get_db),
-                          user: models.User = Depends(auth.get_current_user)):
+                          user: models.User = Depends(require_screen("store"))):
     q = db.query(models.StoreMovement)
     if item_id:
         q = q.filter(models.StoreMovement.item_id == item_id)
@@ -1599,7 +1642,7 @@ def list_store_movements(item_id: int = None, location: str = None, kind: str = 
 
 @app.post("/store/movements", response_model=schemas.StoreMovementOut)
 def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(get_db),
-                        user: models.User = Depends(auth.get_current_user)):
+                        user: models.User = Depends(require_screen("store"))):
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")
@@ -1645,7 +1688,7 @@ def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
 @app.get("/store/report")
 def store_report(kind: str = "stock", date_from: str = None, date_to: str = None,
                   db: Session = Depends(get_db),
-                  user: models.User = Depends(auth.get_current_user)):
+                  user: models.User = Depends(require_screen("store"))):
     # NOTE: also called directly by the export endpoint, which passes
     # user=None after verifying a download token instead.
     """
@@ -1799,7 +1842,7 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
 def list_material_requests(status: str = None, site: str = None,
                             date_from: str = None, date_to: str = None,
                             db: Session = Depends(get_db),
-                            user: models.User = Depends(auth.get_current_user)):
+                            user: models.User = Depends(require_screen("store"))):
     q = db.query(models.MaterialRequest)
     if status:
         q = q.filter(models.MaterialRequest.status == status)
@@ -1814,7 +1857,7 @@ def list_material_requests(status: str = None, site: str = None,
 
 @app.post("/store/requests")
 def create_material_request(payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
-                             user: models.User = Depends(auth.get_current_user)):
+                             user: models.User = Depends(require_screen("store"))):
     lines = [l for l in payload.lines if l.qty_requested and l.qty_requested > 0]
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
@@ -2008,3 +2051,33 @@ def export_material_request(req_id: int, token: str = None, db: Session = Depend
     buf = export_web.build_material_request_pdf(_mr_out(mr))
     return StreamingResponse(buf, media_type="application/pdf",
                               headers={"Content-Disposition": f'attachment; filename="{mr.ref}.pdf"'})
+
+
+@app.get("/permissions/screens")
+def list_screens(user: models.User = Depends(auth.get_current_user)):
+    return {"screens": ALL_SCREENS, "role_defaults": ROLE_DEFAULTS}
+
+
+@app.get("/permissions/me")
+def my_permissions(user: models.User = Depends(auth.get_current_user)):
+    return {"role": user.role, "screens": effective_permissions(user)}
+
+
+@app.post("/users/{user_id}/permissions")
+def set_permissions(user_id: int, payload: schemas.PermissionsIn,
+                     db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.require_admin)):
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.role == "admin":
+        raise HTTPException(status_code=400,
+            detail="An admin always has access to everything - nothing to set.")
+    wanted = [s.strip() for s in (payload.permissions or "").split(",") if s.strip()]
+    bad = [s for s in wanted if s not in ALL_SCREENS]
+    if bad:
+        raise HTTPException(status_code=400, detail=f"Unknown screen(s): {', '.join(bad)}")
+    target.permissions = ",".join(wanted)
+    db.commit()
+    log_action(db, user.id, "set_permissions", f"{target.username}: {target.permissions or '(role default)'}")
+    return {"ok": True, "permissions": effective_permissions(target)}
