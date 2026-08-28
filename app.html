@@ -3220,6 +3220,11 @@ function requestMore(code) {
   }, 900);
 }
 
+function toggleRequest(id) {
+  const row = document.getElementById("mr-detail-" + id);
+  if (row) row.style.display = row.style.display === "none" ? "" : "none";
+}
+
 async function loadRequests() {
   const box = document.getElementById("mreq-list");
   box.innerHTML = '<div class="empty-note">Loading...</div>';
@@ -3244,53 +3249,64 @@ async function loadRequests() {
 
     if (!list.length) { box.innerHTML = '<div class="empty-note">Nothing to show.</div>'; return; }
 
-    box.innerHTML = list.map(r => {
-      const late = r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status);
-      const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
-        `<button class="btn ${s === "rejected" ? "btn-dark" : "btn-primary"}"
-                 ${s === "rejected" ? 'style="background:#8B2E22;"' : ""}
-                 onclick="setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
-      const rows = r.lines.map(l => {
-        const out = (l.qty_requested || 0) - (l.qty_received || 0);
-        return `<tr>
-          <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
-          <td>${num(l.qty_requested)}</td>
-          <td>${l.unit}</td>
-          <td style="text-align:left;">${l.purpose || "-"}</td>
-          <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
-          <td>${out > 0 ? num(out) : "<span style='color:#2E7D32;'>complete</span>"}</td>
-        </tr>`;
-      }).join("");
-      return `<div class="card" style="margin-bottom:14px; border-left:5px solid ${MR_COLOUR[r.status] || "#ccc"};
-                   ${late ? "background:#FFF8F7;" : ""}">
-        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; align-items:flex-start;">
-          <div>
-            <strong style="font-size:15px;">${r.ref}</strong>
-            <span style="color:#888; font-size:12.5px;">
-              &nbsp;Site ${r.site || "-"} &nbsp;|&nbsp; asked by ${r.requested_by || "-"} on ${r.requested_on}
-              ${r.needed_by ? ` &nbsp;|&nbsp; needed by ${r.needed_by}` : ""}
-              ${r.urgency !== "normal" ? ` &nbsp;|&nbsp; <strong>${r.urgency}</strong>` : ""}
-            </span>
-            ${late ? '<span style="color:#C0392B; font-weight:600; font-size:12.5px;"> &nbsp;LATE</span>' : ""}
-          </div>
-          <div>
-            ${actions}
-            ${!["delivered","closed","rejected","pending"].includes(r.status)
-               ? `<button class="btn btn-primary" onclick="openReceive(${r.id})">Record delivery</button>` : ""}
-            <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
-            <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
-          </div>
-        </div>
-        <div style="margin:10px 0 12px;">${statusTrail(r.status)}</div>
-        <table style="font-size:12.5px;">
-          <thead><tr><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
-                     <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th></tr></thead>
-          <tbody>${rows}</tbody>
+    // One row per request, details on demand. A card each was unusable
+    // once there were more than a handful - you scrolled past everything
+    // to find one reference.
+    box.innerHTML = `
+      <div class="grid-wrap" style="max-height:none;">
+        <table>
+          <thead><tr>
+            <th style="width:9%;">Request</th><th style="width:6%;">Site</th>
+            <th style="width:14%;">Asked by</th><th style="width:9%;">Asked on</th>
+            <th style="width:9%;">Needed by</th><th style="width:6%;">Items</th>
+            <th style="width:15%;">Status</th><th>What you can do</th>
+          </tr></thead>
+          <tbody>${list.map(r => {
+            const late = r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status);
+            const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
+              `<button class="btn ${s === "rejected" ? "btn-dark" : "btn-primary"}"
+                       ${s === "rejected" ? 'style="background:#8B2E22;"' : ""}
+                       onclick="event.stopPropagation(); setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
+            const canReceive = !["delivered","closed","rejected","pending"].includes(r.status);
+            return `<tr onclick="toggleRequest(${r.id})" style="cursor:pointer;${late ? ' background:#FFF8F7;' : ''}">
+              <td><strong>${r.ref}</strong></td>
+              <td>${r.site || "-"}</td>
+              <td style="text-align:left;">${r.requested_by || "-"}</td>
+              <td>${r.requested_on}</td>
+              <td>${r.needed_by || "-"}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
+              <td>${r.lines.length}</td>
+              <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span></td>
+              <td>
+                ${actions}
+                ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}
+                <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
+                <button class="btn btn-dark" style="background:#8B2E22;" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+              </td></tr>
+              <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
+                <td colspan="8" style="text-align:left; padding:14px 18px;">
+                  <div style="margin-bottom:10px;">${statusTrail(r.status)}</div>
+                  <table style="font-size:12.5px; background:white;">
+                    <thead><tr><th style="width:4%;">#</th><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
+                      <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th></tr></thead>
+                    <tbody>${r.lines.map((l, i) => {
+                      const out = (l.qty_requested || 0) - (l.qty_received || 0);
+                      return `<tr>
+                        <td>${i + 1}</td>
+                        <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+                        <td>${num(l.qty_requested)}</td><td>${l.unit}</td>
+                        <td style="text-align:left;">${l.purpose || "-"}</td>
+                        <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
+                        <td>${out > 0 ? num(out) : '<span style="color:#2E7D32;">complete</span>'}</td>
+                      </tr>`;
+                    }).join("")}</tbody>
+                  </table>
+                  ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
+                  ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
+                </td></tr>`;
+          }).join("")}</tbody>
         </table>
-        ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
-        ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
-      </div>`;
-    }).join("");
+      </div>
+      <p style="font-size:12px; color:#888; margin:10px 2px 0;">${list.length} request(s) &middot; click any row to see the materials.</p>`;
   } catch (e) {
     box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
   }
