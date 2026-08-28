@@ -42,12 +42,17 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class PermissionsIn(BaseModel):
+    permissions: str = ""
+
+
 class UserOut(BaseModel):
     id: int
     username: str
     full_name: str
     role: str
     active: bool
+    permissions: Optional[str] = ""
 
     class Config:
         from_attributes = True
