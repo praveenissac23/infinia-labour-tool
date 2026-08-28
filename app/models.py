@@ -28,7 +28,12 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="staff")  # "admin" | "staff"
+    role = Column(String, nullable=False, default="staff")
+    # Comma-separated list of screens this user may open, e.g.
+    # "dashboard,store,reports". Empty means "use the role default",
+    # so existing users keep working unchanged. Admin ignores it and
+    # always has everything.
+    permissions = Column(Text, default="")  # "admin" | "staff"
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
