@@ -735,7 +735,7 @@
             </div>
             <div class="grid-wrap" style="max-height:none;">
               <table>
-                <thead><tr><th style="width:26%;">Material</th><th style="width:12%;">Type</th><th style="width:9%;">How many</th><th style="width:7%;">Unit</th><th style="width:22%;">What is it for?</th><th style="width:17%;">Note</th><th style="width:6%;"></th></tr></thead>
+                <thead><tr><th style="width:3%;">#</th><th style="width:24%;">Material</th><th style="width:11%;">Type</th><th style="width:9%;">How many</th><th style="width:7%;">Unit</th><th style="width:21%;">What is it for?</th><th style="width:19%;">Note</th><th style="width:6%;"></th></tr></thead>
                 <tbody id="mr-lines"></tbody>
               </table>
             </div>
@@ -850,7 +850,7 @@
                 <label>Date:</label><input type="date" id="out-date">
               </div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:34%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In store now</th><th style="width:33%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:32%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In store now</th><th style="width:32%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -872,7 +872,7 @@
                 <label>Date:</label><input type="date" id="in-date">
               </div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:28%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:29%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:26%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:28%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="in-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -3037,17 +3037,20 @@ function onMaterialTyped(box) {
 function addOutLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
+    <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
     <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
-    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+    <td><button class="btn btn-gray" onclick="removeEntryRow(this,'out-lines')">Remove</button></td>`;
   document.getElementById("out-lines").appendChild(tr);
+  renumberRows("out-lines");
 }
 
 function addInLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
+    <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("il-item", "material-list-all")}</td>
     <td><select class="il-type" style="width:100%; min-width:120px;">
           <option value="consumable">Consumable</option>
@@ -3057,8 +3060,9 @@ function addInLine() {
     <td><input type="number" class="il-qty" step="any" style="width:100%; min-width:90px;"></td>
     <td><input type="number" class="il-cost" step="any" style="width:100%; min-width:100px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
-    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+    <td><button class="btn btn-gray" onclick="removeEntryRow(this,'in-lines')">Remove</button></td>`;
   document.getElementById("in-lines").appendChild(tr);
+  renumberRows("in-lines");
 }
 
 // Show what's actually in the store next to the quantity box, so the
@@ -3378,10 +3382,26 @@ async function exportRequests(fmt) {
   window.open(`${API}/export/store/report?kind=mr_history&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
+// Serial numbers down the left of each entry table so rows can be
+// referred to by number, and renumbered on add/remove so there are
+// never gaps in the sequence.
+function renumberRows(tbodyId) {
+  document.querySelectorAll(`#${tbodyId} tr`).forEach((tr, i) => {
+    const cell = tr.querySelector(".row-no");
+    if (cell) cell.textContent = i + 1;
+  });
+}
+
+function removeEntryRow(btn, tbodyId) {
+  btn.closest("tr").remove();
+  renumberRows(tbodyId);
+}
+
 function addMrLine() {
   const tb = document.getElementById("mr-lines");
   const tr = document.createElement("tr");
   tr.innerHTML = `
+    <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("mr-item", "material-list-all")}
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><select class="mr-type" style="width:100%; min-width:110px;">
@@ -3393,8 +3413,9 @@ function addMrLine() {
     <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
-    <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
+    <td><button class="btn btn-gray" onclick="removeEntryRow(this,'mr-lines')">Remove</button></td>`;
   tb.appendChild(tr);
+  renumberRows("mr-lines");
 }
 
 // kept for older markup; the picker now fills the unit itself
