@@ -962,7 +962,8 @@
                 <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
                   <option value="return">Material CAME BACK from a site</option>
                   <option value="transfer">Material MOVED between two sites</option>
-                  <option value="adjust">Fix a wrong number (after counting)</option>
+                  <option value="lost">LOST or DAMAGED (write it off)</option>
+                <option value="adjust">Fix a wrong number (after counting)</option>
                 </select>
                 <select id="mv-item" style="min-width:220px;"></select>
                 <input type="number" id="mv-qty" placeholder="How many" style="width:110px;" step="any">
@@ -994,11 +995,17 @@
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>Stock at Sites</b><span>What each site is currently holding</span></div>
               </div>
 
-              <div class="rep-group">Equipment</div>
+              <div class="rep-group">Owned Assets</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('assets')"><b>Assets &amp; Equipment</b><span>Machines and tools the company owns</span></div>
-                <div class="rep-tile" onclick="pickReport('rentals')"><b>Hired Equipment</b><span>Rentals on hire, with cost and due-back date</span></div>
+                <div class="rep-tile" onclick="pickReport('assets')"><b>Asset Register</b><span>Machines and tools the company owns, and where they are</span></div>
                 <div class="rep-tile" onclick="pickReport('returnable')"><b>Tools Out at Sites</b><span>Returnable items not yet back, and who has them</span></div>
+              </div>
+
+              <div class="rep-group">Hired / Rental</div>
+              <div class="rep-row">
+                <div class="rep-tile" onclick="pickReport('hired')"><b>On Hire Now</b><span>What we have on hire, from whom, and at which site</span></div>
+                <div class="rep-tile" onclick="pickReport('rentals')"><b>Rental Details</b><span>Hire supplier, start date and due-back date</span></div>
+                <div class="rep-tile" onclick="pickReport('lost')"><b>Lost &amp; Damaged</b><span>Written off, owned or hired, with the reason</span></div>
               </div>
 
               <div class="rep-group">Purchases &amp; Consumption</div>
@@ -2822,7 +2829,8 @@ function onMvKindChange() {
   // count corrections - giving out and receiving have their own panels.
   const k = document.getElementById("mv-kind").value;
   document.getElementById("mv-from-wrap").style.display = (k === "adjust") ? "none" : "";
-  document.getElementById("mv-to-wrap").style.display = (k === "adjust") ? "none" : "";
+  // A write-off leaves the company altogether, so there is no destination.
+  document.getElementById("mv-to-wrap").style.display = (k === "adjust" || k === "lost") ? "none" : "";
 }
 
 function storeLocationOptions(includeStore) {
@@ -2930,8 +2938,8 @@ async function saveMovement() {
     item_id: parseInt(document.getElementById("mv-item").value, 10),
     kind,
     qty: parseFloat(document.getElementById("mv-qty").value) || 0,
-    from_location: (kind === "return" || kind === "transfer") ? document.getElementById("mv-from").value : "",
-    location: (kind === "in" || kind === "adjust") ? "" : document.getElementById("mv-to").value,
+    from_location: ["return", "transfer", "lost"].includes(kind) ? document.getElementById("mv-from").value : "",
+    location: ["in", "adjust", "lost"].includes(kind) ? "" : document.getElementById("mv-to").value,
     incharge: document.getElementById("mv-incharge").value.trim(),
     supplier: document.getElementById("mv-supplier").value.trim(),
     unit_cost: parseFloat(document.getElementById("mv-cost").value) || 0,
@@ -3449,7 +3457,7 @@ function pickReport(kind) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["purchases", "usage", "movements"].includes(kind);
+  const needsDates = ["purchases", "usage", "movements", "lost"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
