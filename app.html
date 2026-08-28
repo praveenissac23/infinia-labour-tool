@@ -3284,12 +3284,26 @@ async function saveReceive() {
         notes: document.getElementById("recv-notes").value.trim(),
       }),
     });
+    // Keep the ref before closing - closeReceive() clears recvRequest,
+    // and reading it afterwards threw, which silently skipped the
+    // refresh below and left the screen looking like nothing happened.
+    const ref = recvRequest.ref;
     closeReceive();
     const msg = res.status === "delivered"
-      ? `All materials received - ${recvRequest.ref} is complete and the stock has gone up.`
+      ? `All materials received - ${ref} is complete and the stock has gone up.`
       : `${res.received_lines} material(s) received. The rest is still due.`;
     showStatus("mreq-status", "ok", msg + (res.warnings && res.warnings.length ? ` (${res.warnings[0]})` : ""));
+    // A fully-delivered request drops out of the default "Still open"
+    // list, so it looked like nothing had happened. Switch the filter to
+    // show it, otherwise the keeper can't see the delivery they just made.
+    if (res.status === "delivered") {
+      const f = document.getElementById("mreq-filter");
+      if (f && f.value === "open") f.value = "delivered";
+    }
     await loadRequests();
+    // The store dashboard shows stock levels, so refresh those too if
+    // they're already on screen.
+    if (typeof loadStoreItems === "function") { try { await loadStoreItems(); } catch (e) {} }
   } catch (e) { showStatus("recv-status", "err", errText(e)); }
 }
 
