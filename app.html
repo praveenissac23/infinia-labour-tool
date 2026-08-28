@@ -148,6 +148,15 @@
   .grid-wrap td input[type=text], .grid-wrap td input[type=number] { padding: 6px 8px; font-size: 13px; }
   .grid-wrap td select { padding: 6px 8px; font-size: 13px; width: 100%; }
 
+  .rep-group { font-size: 11px; font-weight: bold; letter-spacing: 0.8px; text-transform: uppercase;
+               color: #999; margin: 16px 0 8px; }
+  .rep-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .rep-tile { flex: 1 1 220px; min-width: 200px; border: 1px solid #e2e2e2; border-left: 4px solid var(--red);
+              border-radius: 6px; padding: 11px 14px; cursor: pointer; background: white; }
+  .rep-tile:hover { background: #FDF3F2; border-color: var(--red); }
+  .rep-tile b { display: block; font-size: 13.5px; }
+  .rep-tile span { display: block; font-size: 11.5px; color: #888; margin-top: 2px; }
+
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
@@ -794,23 +803,23 @@
               <h2>What do you want to do?</h2>
               <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
                 <div class="store-tile" onclick="storeGo('give')">
-                  <div class="store-tile-t">Give out material</div>
+                  <div class="store-tile-t">Give Out Material</div>
                   <div class="store-tile-s">Someone is taking material to a site</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('receive')">
-                  <div class="store-tile-t">Material arrived</div>
-                  <div class="store-tile-s">A delivery came into the store</div>
+                  <div class="store-tile-t">Material Arrived</div>
+                  <div class="store-tile-s">Record a delivery from a supplier</div>
                 </div>
                 <div class="store-tile" onclick="switchScreen('requests')">
-                  <div class="store-tile-t">Ask office for materials</div>
-                  <div class="store-tile-s">Raise and track material requests</div>
+                  <div class="store-tile-t">Material Requests</div>
+                  <div class="store-tile-s">Ask the office and track what is coming</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('items')">
-                  <div class="store-tile-t">Manage the item list</div>
+                  <div class="store-tile-t">Material List</div>
                   <div class="store-tile-s">Add or change materials and tools</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('other')">
-                  <div class="store-tile-t">Returns &amp; corrections</div>
+                  <div class="store-tile-t">Returns &amp; Corrections</div>
                   <div class="store-tile-s">Came back, moved, or wrong number</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('reports')">
@@ -855,7 +864,7 @@
           <div id="store-receive" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
             <div class="card" style="margin-top:12px;">
-              <h2>Material arrived at the store</h2>
+              <h2>Material Arrived</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">When a delivery comes in from a supplier.</p>
               <div class="form-row">
                 <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:180px;">
@@ -968,46 +977,68 @@
             </div>
           </div>
 
-          <!-- REPORTS -->
+          <!-- REPORTS
+               A picker of named reports rather than one long dropdown -
+               the store keeper chooses the question, not a database view. -->
           <div id="store-reports" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
-            <div class="toolbar" style="margin-top:12px;">
-              <label>Show me:</label>
-              <select id="store-view" onchange="loadStore()" style="width:290px;">
-                <optgroup label="Stock">
-                  <option value="stock">What do we have in the store?</option>
-                  <option value="low">What is running out?</option>
-                  <option value="by_site">What is at each site?</option>
-                </optgroup>
-                <optgroup label="Equipment">
-                  <option value="assets">Our machines and equipment</option>
-                  <option value="rentals">Equipment we have hired</option>
-                  <option value="returnable">Tools still out at sites</option>
-                </optgroup>
-                <optgroup label="Money &amp; movement">
-                  <option value="purchases">What we bought (and cost)</option>
-                  <option value="usage">What we sent to sites</option>
-                  <option value="movements">Everything that happened</option>
-                </optgroup>
-                <optgroup label="Office requests">
-                  <option value="mr_open">Requests waiting on the office</option>
-                  <option value="mr_outstanding">Materials still to arrive</option>
-                  <option value="mr_overdue">Requests that are late</option>
-                  <option value="mr_history">All past requests</option>
-                </optgroup>
-              </select>
-              <span id="store-range-wrap">
-                <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
-                <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
-              </span>
-              <button class="btn btn-primary" onclick="loadStore()">Show</button>
-              <button class="btn btn-dark" onclick="exportStore('excel')">Download Excel</button>
-              <button class="btn btn-dark" onclick="exportStore('pdf')">Download PDF</button>
+
+            <div class="card" style="margin-top:12px;">
+              <h2>Store Reports</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 14px;">Pick a report. Every one can be downloaded as Excel or PDF with the company header.</p>
+
+              <div class="rep-group">Stock</div>
+              <div class="rep-row">
+                <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything the store holds right now</span></div>
+                <div class="rep-tile" onclick="pickReport('low')"><b>Reorder Report</b><span>Materials at or below their warning level</span></div>
+                <div class="rep-tile" onclick="pickReport('by_site')"><b>Stock at Sites</b><span>What each site is currently holding</span></div>
+              </div>
+
+              <div class="rep-group">Equipment</div>
+              <div class="rep-row">
+                <div class="rep-tile" onclick="pickReport('assets')"><b>Assets &amp; Equipment</b><span>Machines and tools the company owns</span></div>
+                <div class="rep-tile" onclick="pickReport('rentals')"><b>Hired Equipment</b><span>Rentals on hire, with cost and due-back date</span></div>
+                <div class="rep-tile" onclick="pickReport('returnable')"><b>Tools Out at Sites</b><span>Returnable items not yet back, and who has them</span></div>
+              </div>
+
+              <div class="rep-group">Purchases &amp; Consumption</div>
+              <div class="rep-row">
+                <div class="rep-tile" onclick="pickReport('purchases')"><b>Purchase Report</b><span>What was bought, from whom, at what cost</span></div>
+                <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption by Site</b><span>Materials issued out to each site</span></div>
+                <div class="rep-tile" onclick="pickReport('movements')"><b>Movement Register</b><span>Every stock movement, in date order</span></div>
+              </div>
+
+              <div class="rep-group">Material Requests</div>
+              <div class="rep-row">
+                <div class="rep-tile" onclick="pickReport('mr_open')"><b>Open Requests</b><span>Raised but not yet delivered</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_outstanding')"><b>Outstanding Materials</b><span>Ordered but still to arrive</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_overdue')"><b>Overdue Requests</b><span>Past their needed-by date</span></div>
+                <div class="rep-tile" onclick="pickReport('mr_history')"><b>Request History</b><span>Every request ever raised</span></div>
+              </div>
             </div>
-            <div class="card">
-              <h2 id="store-table-title">Current stock</h2>
-              <div class="grid-wrap"><table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table></div>
+
+            <div class="card" id="store-report-result" style="display:none;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <h2 id="store-table-title" style="margin:0;">Current stock</h2>
+                  <p id="store-report-sub" style="font-size:12px; color:#888; margin:3px 0 0;"></p>
+                </div>
+                <div class="form-row" style="margin:0;">
+                  <span id="store-range-wrap">
+                    <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
+                    <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
+                  </span>
+                  <button class="btn btn-dark" onclick="exportStore('excel')">Excel</button>
+                  <button class="btn btn-dark" onclick="exportStore('pdf')">PDF</button>
+                </div>
+              </div>
+              <div class="grid-wrap" style="margin-top:12px;">
+                <table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
+              </div>
             </div>
+            <select id="store-view" onchange="loadStore()" style="display:none;">
+              <option value="stock"></option>
+            </select>
           </div>
         </div>
 
@@ -2660,7 +2691,7 @@ function storeGo(which) {
   });
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
-  if (which === "reports") loadStore();
+  if (which === "reports") document.getElementById("store-report-result").style.display = "none";
 }
 
 async function loadStoreHome() {
@@ -3411,12 +3442,26 @@ async function exportStore(fmt) {
   showStatus("store-status", "ok", `Downloading ${fmt.toUpperCase()}.`);
 }
 
+// Picking a named report sets the underlying view and shows the result
+// panel - the dropdown still drives loadStore(), it's just hidden now.
+function pickReport(kind) {
+  const sel = document.getElementById("store-view");
+  sel.innerHTML = `<option value="${kind}"></option>`;
+  sel.value = kind;
+  document.getElementById("store-report-result").style.display = "";
+  const needsDates = ["purchases", "usage", "movements"].includes(kind);
+  document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
+  document.getElementById("store-report-sub").textContent = needsDates
+    ? "Pick a date range, or leave blank for everything."
+    : `As at ${isoLocal(new Date())}`;
+  loadStore();
+  document.getElementById("store-report-result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function loadStore() {
   const view = document.getElementById("store-view").value;
   const from = document.getElementById("store-date-from").value;
   const to = document.getElementById("store-date-to").value;
-  document.getElementById("store-range-wrap").style.display =
-    (view === "purchases" || view === "usage" || view === "movements") ? "" : "none";
   const head = document.getElementById("store-head");
   const body = document.getElementById("store-body");
   body.innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
