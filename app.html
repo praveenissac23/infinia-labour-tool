@@ -129,6 +129,14 @@
   .md-chip-del:hover { background: var(--red); color: white; }
   .md-chip-count { font-size: 11.5px; color: #999; margin-top: 8px; }
 
+  /* Big tap targets on the store home - one per task, so it's obvious
+     what each does without reading a manual. */
+  .store-tile { flex: 1 1 210px; min-width: 200px; border: 2px solid var(--red); border-radius: 8px;
+                padding: 14px 16px; cursor: pointer; background: white; }
+  .store-tile:hover { background: #FDF3F2; }
+  .store-tile-t { font-weight: bold; font-size: 15px; color: var(--red); }
+  .store-tile-s { font-size: 12px; color: #888; margin-top: 3px; }
+
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
@@ -594,165 +602,249 @@
 
         <!-- ============ ERROR CHECK SCREEN ============ -->
         <!-- ============ STORE / INVENTORY SCREEN ============ -->
+        <!-- ============ STORE / INVENTORY ============
+             Opens on its own dashboard: four cards showing the numbers
+             that matter, then a menu of tasks. Each task opens its own
+             clean panel instead of stacking every form on one page. -->
         <div class="screen" id="screen-store">
-          <div class="toolbar">
-            <label>Show me:</label>
-            <select id="store-view" onchange="loadStore()" style="width:290px;">
-              <option value="stock">What do we have in the store?</option>
-              <option value="low">What is running out?</option>
-              <option value="by_site">What is at each site?</option>
-              <option value="assets">Our machines and equipment</option>
-              <option value="rentals">Equipment we have hired</option>
-              <option value="purchases">What we bought (and cost)</option>
-              <option value="usage">What we sent to sites</option>
-              <option value="movements">Everything that happened</option>
-              <option value="mr_open">Requests waiting on the office</option>
-              <option value="mr_outstanding">Materials still to arrive</option>
-              <option value="mr_overdue">Requests that are late</option>
-              <option value="mr_history">All past requests</option>
-            </select>
-            <span id="store-range-wrap">
-              <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
-              <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
-            </span>
-            <button class="btn btn-primary" onclick="loadStore()">Show</button>
-            <button class="btn btn-dark" onclick="exportStore('excel')">Download Excel</button>
-            <button class="btn btn-dark" onclick="exportStore('pdf')">Download PDF</button>
-          </div>
           <div class="status-msg" id="store-status"></div>
 
-          <!-- The store keeper's main job: handing material to someone.
-               This sits first because it happens many times a day. -->
-          <div class="card" style="border:2px solid var(--red);">
-            <h2 style="color:var(--red);">GIVE OUT material</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
-            <div class="form-row">
-              <label>Who is taking it:</label>
-              <select id="out-person" style="width:260px;"></select>
-              <label>Going to site:</label>
-              <select id="out-site" style="width:130px;"></select>
-              <label>Date:</label><input type="date" id="out-date">
+          <!-- HOME -->
+          <div id="store-home">
+            <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px;">
+              <div class="card" style="flex:1; min-width:180px; text-align:center;">
+                <div style="font-size:12px; color:#888;">Different materials</div>
+                <div id="kpi-items" style="font-size:30px; font-weight:bold;">-</div>
+              </div>
+              <div class="card" style="flex:1; min-width:180px; text-align:center;">
+                <div style="font-size:12px; color:#888;">Running out</div>
+                <div id="kpi-low" style="font-size:30px; font-weight:bold; color:var(--red);">-</div>
+              </div>
+              <div class="card" style="flex:1; min-width:180px; text-align:center;">
+                <div style="font-size:12px; color:#888;">Out at sites</div>
+                <div id="kpi-out" style="font-size:30px; font-weight:bold;">-</div>
+              </div>
+              <div class="card" style="flex:1; min-width:180px; text-align:center;">
+                <div style="font-size:12px; color:#888;">Requests waiting</div>
+                <div id="kpi-req" style="font-size:30px; font-weight:bold;">-</div>
+              </div>
             </div>
-            <div class="grid-wrap" style="max-height:220px;">
-              <table>
-                <thead><tr><th>Material</th><th>How many</th><th>In store now</th><th>Note</th><th></th></tr></thead>
-                <tbody id="out-lines"></tbody>
-              </table>
+
+            <div class="card">
+              <h2>What do you want to do?</h2>
+              <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+                <div class="store-tile" onclick="storeGo('give')">
+                  <div class="store-tile-t">Give out material</div>
+                  <div class="store-tile-s">Someone is taking material to a site</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('receive')">
+                  <div class="store-tile-t">Material arrived</div>
+                  <div class="store-tile-s">A delivery came into the store</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('request')">
+                  <div class="store-tile-t">Ask office for materials</div>
+                  <div class="store-tile-s">Send a request to the office</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('items')">
+                  <div class="store-tile-t">Manage the item list</div>
+                  <div class="store-tile-s">Add or change materials and tools</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('other')">
+                  <div class="store-tile-t">Returns &amp; corrections</div>
+                  <div class="store-tile-s">Came back, moved, or wrong number</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('reports')">
+                  <div class="store-tile-t">Reports</div>
+                  <div class="store-tile-s">Stock, purchases, usage, requests</div>
+                </div>
+              </div>
             </div>
-            <div class="form-row" style="margin-top:8px;">
-              <button class="btn btn-dark" onclick="addOutLine()">+ Add another material</button>
-              <button class="btn btn-primary" onclick="saveIssue()">Give Out &amp; Save</button>
+
+            <div class="card">
+              <h2>What is in the store right now</h2>
+              <div class="grid-wrap" style="max-height:420px;">
+                <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
+              </div>
             </div>
           </div>
 
-          <div class="card">
-            <h2>Material RECEIVED into the store</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">When a delivery arrives from a supplier.</p>
-            <div class="form-row">
-              <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:180px;">
-              <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:150px;">
-              <label>Date:</label><input type="date" id="in-date">
-            </div>
-            <div class="grid-wrap" style="max-height:200px;">
-              <table>
-                <thead><tr><th>Material</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
-                <tbody id="in-lines"></tbody>
-              </table>
-            </div>
-            <div class="form-row" style="margin-top:8px;">
-              <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
-              <button class="btn btn-primary" onclick="saveReceipt()">Save Delivery</button>
+          <!-- GIVE OUT -->
+          <div id="store-give" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px; border:2px solid var(--red);">
+              <h2 style="color:var(--red);">Give out material</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
+              <div class="form-row">
+                <label>Who is taking it:</label><select id="out-person" style="width:260px;"></select>
+                <label>Going to site:</label><select id="out-site" style="width:130px;"></select>
+                <label>Date:</label><input type="date" id="out-date">
+              </div>
+              <div class="grid-wrap" style="max-height:260px;">
+                <table><thead><tr><th>Material</th><th>How many</th><th>In store now</th><th>Note</th><th></th></tr></thead>
+                <tbody id="out-lines"></tbody></table>
+              </div>
+              <div class="form-row" style="margin-top:8px;">
+                <button class="btn btn-dark" onclick="addOutLine()">+ Add another material</button>
+                <button class="btn btn-primary" onclick="saveIssue()">Give Out &amp; Save</button>
+              </div>
             </div>
           </div>
 
-          <div class="card">
-            <h2>Other things</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Material coming back from a site, moving between sites, or fixing a number after counting the store.</p>
-            <div class="form-row">
-              <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
-                <option value="return">Material CAME BACK from a site</option>
-                <option value="transfer">Material MOVED between two sites</option>
-                <option value="adjust">Fix a wrong number (after counting)</option>
+          <!-- RECEIVE -->
+          <div id="store-receive" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <h2>Material arrived at the store</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">When a delivery comes in from a supplier.</p>
+              <div class="form-row">
+                <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:180px;">
+                <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:150px;">
+                <label>Date:</label><input type="date" id="in-date">
+              </div>
+              <div class="grid-wrap" style="max-height:260px;">
+                <table><thead><tr><th>Material</th><th>How many</th><th>Cost each</th><th>Note</th><th></th></tr></thead>
+                <tbody id="in-lines"></tbody></table>
+              </div>
+              <div class="form-row" style="margin-top:8px;">
+                <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
+                <button class="btn btn-primary" onclick="saveReceipt()">Save Delivery</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- REQUEST -->
+          <div id="store-request" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <h2>Ask the office for materials</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">Fill this in when the store is running low. It makes a request you can print and send.</p>
+              <div class="form-row">
+                <label>For site:</label><select id="mr-site" style="width:130px;"></select>
+                <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:150px;">
+                <label>Needed by:</label><input type="date" id="mr-needed">
+                <label>How urgent:</label>
+                <select id="mr-urgency" style="width:120px;">
+                  <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <input type="text" id="mr-notes" placeholder="Why do you need it? (optional)" style="width:340px;">
+              </div>
+              <div class="grid-wrap" style="max-height:260px;">
+                <table><thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Cost each (optional)</th><th>Note</th><th></th></tr></thead>
+                <tbody id="mr-lines"></tbody></table>
+              </div>
+              <div class="form-row" style="margin-top:8px;">
+                <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
+                <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ITEMS -->
+          <div id="store-items" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <h2>Add or change an item</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">Every material or tool is listed here once, before it can be received or given out.</p>
+              <div class="form-row">
+                <input type="text" id="it-code" placeholder="Code (e.g. CEM-01)" style="width:150px;">
+                <input type="text" id="it-name" placeholder="Item name" style="width:200px;">
+                <input type="text" id="it-cat" placeholder="Category" style="width:140px;">
+                <input type="text" id="it-unit" placeholder="Unit (bags/pcs)" style="width:130px;">
+                <select id="it-type" onchange="onItemTypeChange()" style="width:170px;">
+                  <option value="consumable">Consumable</option>
+                  <option value="returnable">Returnable</option>
+                  <option value="asset">Asset (we own it)</option>
+                  <option value="rental">Rental (hired in)</option>
+                </select>
+                <input type="number" id="it-reorder" placeholder="Warn me under" style="width:130px;" step="any">
+              </div>
+              <div class="form-row" id="it-rental-wrap" style="display:none;">
+                <input type="text" id="it-rsupplier" placeholder="Rental supplier" style="width:170px;">
+                <input type="number" id="it-rrate" placeholder="Rate" style="width:100px;" step="any">
+                <select id="it-rperiod" style="width:110px;">
+                  <option value="day">per day</option><option value="week">per week</option><option value="month">per month</option>
+                </select>
+                <label>Start:</label><input type="date" id="it-rstart">
+                <label>Due back:</label><input type="date" id="it-rdue">
+              </div>
+              <div class="form-row">
+                <button class="btn btn-primary" onclick="saveStoreItem()">Save Item</button>
+                <button class="btn btn-dark" onclick="clearItemForm()">Clear form</button>
+              </div>
+              <div id="store-item-list"></div>
+            </div>
+          </div>
+
+          <!-- OTHER -->
+          <div id="store-other" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <h2>Returns and corrections</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">Material coming back from a site, moving between sites, or fixing a number after counting.</p>
+              <div class="form-row">
+                <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
+                  <option value="return">Material CAME BACK from a site</option>
+                  <option value="transfer">Material MOVED between two sites</option>
+                  <option value="adjust">Fix a wrong number (after counting)</option>
+                </select>
+                <select id="mv-item" style="min-width:220px;"></select>
+                <input type="number" id="mv-qty" placeholder="How many" style="width:110px;" step="any">
+                <span id="mv-from-wrap"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
+                <span id="mv-to-wrap"><label>To:</label><select id="mv-to" style="width:120px;"></select></span>
+                <input type="date" id="mv-date">
+                <input type="text" id="mv-notes" placeholder="Note" style="width:160px;">
+                <button class="btn btn-primary" onclick="saveMovement()">Save</button>
+              </div>
+              <input type="hidden" id="mv-incharge"><input type="hidden" id="mv-supplier">
+              <input type="hidden" id="mv-cost"><input type="hidden" id="mv-ref">
+            </div>
+          </div>
+
+          <!-- REPORTS -->
+          <div id="store-reports" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="toolbar" style="margin-top:12px;">
+              <label>Show me:</label>
+              <select id="store-view" onchange="loadStore()" style="width:290px;">
+                <optgroup label="Stock">
+                  <option value="stock">What do we have in the store?</option>
+                  <option value="low">What is running out?</option>
+                  <option value="by_site">What is at each site?</option>
+                </optgroup>
+                <optgroup label="Equipment">
+                  <option value="assets">Our machines and equipment</option>
+                  <option value="rentals">Equipment we have hired</option>
+                  <option value="returnable">Tools still out at sites</option>
+                </optgroup>
+                <optgroup label="Money &amp; movement">
+                  <option value="purchases">What we bought (and cost)</option>
+                  <option value="usage">What we sent to sites</option>
+                  <option value="movements">Everything that happened</option>
+                </optgroup>
+                <optgroup label="Office requests">
+                  <option value="mr_open">Requests waiting on the office</option>
+                  <option value="mr_outstanding">Materials still to arrive</option>
+                  <option value="mr_overdue">Requests that are late</option>
+                  <option value="mr_history">All past requests</option>
+                </optgroup>
               </select>
-              <select id="mv-item" style="min-width:220px;"></select>
-              <input type="number" id="mv-qty" placeholder="How many" style="width:110px;" step="any">
-              <span id="mv-from-wrap"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
-              <span id="mv-to-wrap"><label>To:</label><select id="mv-to" style="width:120px;"></select></span>
-              <input type="date" id="mv-date">
-              <input type="text" id="mv-notes" placeholder="Note" style="width:160px;">
-              <button class="btn btn-primary" onclick="saveMovement()">Save</button>
+              <span id="store-range-wrap">
+                <label>From:</label><input type="date" id="store-date-from" onchange="loadStore()">
+                <label>To:</label><input type="date" id="store-date-to" onchange="loadStore()">
+              </span>
+              <button class="btn btn-primary" onclick="loadStore()">Show</button>
+              <button class="btn btn-dark" onclick="exportStore('excel')">Download Excel</button>
+              <button class="btn btn-dark" onclick="exportStore('pdf')">Download PDF</button>
             </div>
-            <input type="hidden" id="mv-incharge"><input type="hidden" id="mv-supplier">
-            <input type="hidden" id="mv-cost"><input type="hidden" id="mv-ref">
-          </div>
-
-          <div class="card">
-            <h2 id="store-table-title">Current stock</h2>
-            <div class="grid-wrap">
-              <table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
+            <div class="card">
+              <h2 id="store-table-title">Current stock</h2>
+              <div class="grid-wrap"><table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table></div>
             </div>
-          </div>
-
-          <div class="card">
-            <h2>Ask the office for materials</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Fill this in when the store is running low. It creates a request you can print and send to the office.</p>
-            <div class="form-row">
-              <label>For site:</label><select id="mr-site" style="width:130px;"></select>
-              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:150px;">
-              <label>Needed by:</label><input type="date" id="mr-needed">
-              <label>How urgent:</label>
-              <select id="mr-urgency" style="width:120px;">
-                <option value="normal">Normal</option>
-                <option value="urgent">Urgent</option>
-                <option value="low">Can wait</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <input type="text" id="mr-notes" placeholder="Why do you need it? (optional)" style="width:340px;">
-            </div>
-            <div class="grid-wrap" style="max-height:260px;">
-              <table>
-                <thead><tr><th>Material</th><th>How many</th><th>Unit</th><th>Cost each (optional)</th><th>Note</th><th></th></tr></thead>
-                <tbody id="mr-lines"></tbody>
-              </table>
-            </div>
-            <div class="form-row" style="margin-top:8px;">
-              <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
-              <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Add or change an item in the store list</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">Every material or tool needs to be listed here once, before you can record it coming in or going out.</p>
-            <div class="form-row">
-              <input type="text" id="it-code" placeholder="Code (e.g. CEM-01)" style="width:140px;">
-              <input type="text" id="it-name" placeholder="Item name" style="width:190px;">
-              <input type="text" id="it-cat" placeholder="Category" style="width:130px;">
-              <input type="text" id="it-unit" placeholder="Unit (bags/pcs)" style="width:120px;">
-              <select id="it-type" onchange="onItemTypeChange()">
-                <option value="consumable">Consumable</option>
-                <option value="returnable">Returnable</option>
-                <option value="asset">Asset (owned)</option>
-                <option value="rental">Rental (hired in)</option>
-              </select>
-              <input type="number" id="it-reorder" placeholder="Reorder at" style="width:110px;" step="any">
-            </div>
-            <div class="form-row" id="it-rental-wrap" style="display:none;">
-              <input type="text" id="it-rsupplier" placeholder="Rental supplier" style="width:170px;">
-              <input type="number" id="it-rrate" placeholder="Rate" style="width:100px;" step="any">
-              <select id="it-rperiod" style="width:110px;">
-                <option value="day">per day</option><option value="week">per week</option><option value="month">per month</option>
-              </select>
-              <label>Start:</label><input type="date" id="it-rstart">
-              <label>Due back:</label><input type="date" id="it-rdue">
-            </div>
-            <div class="form-row">
-              <button class="btn btn-primary" onclick="saveStoreItem()">Save Item</button>
-            </div>
-            <div id="store-item-list"></div>
           </div>
         </div>
+
 
         <div class="screen" id="screen-errorcheck">
           <div class="toolbar">
@@ -944,7 +1036,7 @@ function switchScreen(name) {
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
       if (!document.querySelectorAll("#in-lines tr").length) addInLine();
-      loadStore();
+      storeGo("home");
     });
   }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
@@ -2294,6 +2386,58 @@ const BRAND_BLACK_HEX = "#2E3238";
 // ============ STORE / INVENTORY ============
 let storeItems = [];
 
+// Store sections. Only one is on screen at a time, so each task gets a
+// clean page instead of six forms stacked together.
+const STORE_PANELS = ["home","give","receive","request","items","other","reports"];
+function storeGo(which) {
+  STORE_PANELS.forEach(p => {
+    const el = document.getElementById("store-" + p);
+    if (el) el.style.display = (p === which) ? "" : "none";
+  });
+  showStatus("store-status", null);
+  if (which === "home") loadStoreHome();
+  if (which === "reports") loadStore();
+}
+
+async function loadStoreHome() {
+  try {
+    const [stock, reqs] = await Promise.all([
+      apiCall("/store/report?kind=stock"),
+      apiCall("/store/requests"),
+    ]);
+    const rows = stock.rows || [];
+    document.getElementById("kpi-items").textContent = rows.length;
+    document.getElementById("kpi-low").textContent = rows.filter(r => r.low).length;
+    document.getElementById("kpi-out").textContent =
+      num(rows.reduce((t, r) => t + (r.at_sites || 0), 0));
+    document.getElementById("kpi-req").textContent =
+      reqs.filter(r => ["pending","approved","partial"].includes(r.status)).length;
+
+    const head = document.getElementById("home-stock-head");
+    const body = document.getElementById("home-stock-body");
+    if (!rows.length) {
+      head.innerHTML = "";
+      body.innerHTML = `<tr><td class="empty-note">Nothing in the store yet. Use "Manage the item list" to add your materials, then "Material arrived" to put stock in.</td></tr>`;
+      return;
+    }
+    head.innerHTML = ["Code","Name","Unit","Type","In store","At sites","Total"].map(h => `<th>${h}</th>`).join("");
+    body.innerHTML = rows.map(r => `<tr${r.low ? ' style="background:#FFE9E6;"' : ''}>
+      <td>${r.code}</td><td>${r.name}</td><td>${r.unit}</td><td>${r.item_type}</td>
+      <td>${num(r.in_store)}</td><td>${num(r.at_sites)}</td><td><strong>${num(r.total)}</strong></td></tr>`).join("");
+  } catch (e) {
+    document.getElementById("home-stock-body").innerHTML =
+      `<tr><td class="empty-note">Could not load: ${errText(e)}</td></tr>`;
+  }
+}
+
+function clearItemForm() {
+  ["it-code","it-name","it-cat","it-unit","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  document.getElementById("it-type").value = "consumable";
+  onItemTypeChange();
+  showStatus("store-status", null);
+}
+
 function onItemTypeChange() {
   const t = document.getElementById("it-type").value;
   document.getElementById("it-rental-wrap").style.display = t === "rental" ? "" : "none";
@@ -2496,6 +2640,7 @@ async function saveIssue() {
       `${done} of ${lines.length} saved. Problem: ${failed[0]}`);
   } else {
     showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${done} material(s).`);
+    loadStoreHome();
     document.getElementById("out-lines").innerHTML = ""; addOutLine();
   }
   await loadStore();
@@ -2526,6 +2671,7 @@ async function saveReceipt() {
   if (failed.length) showStatus("store-status", "err", failed[0]);
   else {
     showStatus("store-status", "ok", `Delivery saved: ${done} material(s) added to the store.`);
+    loadStoreHome();
     document.getElementById("in-lines").innerHTML = ""; addInLine();
     document.getElementById("in-supplier").value = ""; document.getElementById("in-ref").value = "";
   }
