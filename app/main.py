@@ -1515,6 +1515,10 @@ def _stock_map(db: Session, upto: date = None):
             stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
         elif m.kind == "adjust":
             stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
+        elif m.kind == "lost":
+            # Written off - it leaves wherever it was and doesn't arrive
+            # anywhere, so only the 'from' side moves.
+            stock[(m.item_id, m.from_location)] = stock.get((m.item_id, m.from_location), 0) - m.qty
         elif m.kind in ("out", "return", "transfer"):
             stock[(m.item_id, m.from_location)] = stock.get((m.item_id, m.from_location), 0) - m.qty
             stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
@@ -1647,7 +1651,7 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")
-    if payload.kind not in ("in", "out", "return", "adjust", "transfer"):
+    if payload.kind not in ("in", "out", "return", "adjust", "transfer", "lost"):
         raise HTTPException(status_code=400, detail="Unknown movement type.")
     if payload.qty <= 0 and payload.kind != "adjust":
         raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
@@ -1656,7 +1660,7 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
 
     # Don't allow issuing more than is actually held - a negative balance
     # means the ledger no longer describes anything real.
-    if payload.kind in ("out", "return", "transfer"):
+    if payload.kind in ("out", "return", "transfer", "lost"):
         have = _stock_map(db).get((item.id, payload.from_location), 0)
         if payload.qty > have + 1e-9:
             where = payload.from_location or "the central store"
@@ -1793,15 +1797,63 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "overdue": bool(i.rental_due and i.rental_due < today)})
         return {"title": "Rented equipment", "rows": sorted(rows, key=lambda r: (not r["overdue"], r["due"] or ""))}
 
+    def _lost_by_item(iid):
+        return sum(m.qty for m in db.query(models.StoreMovement)
+                    .filter(models.StoreMovement.item_id == iid,
+                             models.StoreMovement.kind == "lost").all())
+
     if kind == "assets":
+        # Owned only - hired equipment has its own register, so the two
+        # never get added together and mistaken for company property.
         rows = []
         for i in items.values():
-            if not i.active or i.item_type not in ("asset", "rental"): continue
+            if not i.active or i.item_type != "asset": continue
             at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
-            rows.append({"code": i.code, "name": i.name, "item_type": i.item_type,
-                          "unit": i.unit, "total": round(sum(at.values()), 2),
-                          "where": ", ".join(f"{loc or 'store'}: {round(q,2)}" for loc, q in sorted(at.items())) or "-"})
-        return {"title": "Assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
+            lost = _lost_by_item(i.id)
+            rows.append({"code": i.code, "name": i.name, "unit": i.unit,
+                          "in_store": round(at.get("", 0), 2),
+                          "at_sites": round(sum(q for loc, q in at.items() if loc), 2),
+                          "total": round(sum(at.values()), 2),
+                          "written_off": round(lost, 2) if lost else 0,
+                          "where": ", ".join(f"{loc or 'store'}: {round(q,2)}"
+                                              for loc, q in sorted(at.items())) or "-"})
+        return {"title": "Owned assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
+
+    if kind == "hired":
+        # Everything currently on hire: what, from whom, where it is, and
+        # anything already lost or damaged that the supplier will charge for.
+        rows = []
+        for i in items.values():
+            if not i.active or i.item_type != "rental": continue
+            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            lost = _lost_by_item(i.id)
+            on_hire = round(sum(at.values()), 2)
+            if on_hire <= 0 and not lost: continue
+            rows.append({"code": i.code, "name": i.name, "unit": i.unit,
+                          "hired_from": i.rental_supplier or "-",
+                          "on_hire": on_hire,
+                          "in_store": round(at.get("", 0), 2),
+                          "at_sites": ", ".join(f"{loc}: {round(q,2)}"
+                                                 for loc, q in sorted(at.items()) if loc) or "-",
+                          "lost_damaged": round(lost, 2) if lost else 0,
+                          "since": i.rental_start.isoformat() if i.rental_start else "",
+                          "due_back": i.rental_due.isoformat() if i.rental_due else ""})
+        return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
+
+    if kind == "lost":
+        rows = []
+        q = db.query(models.StoreMovement).filter(models.StoreMovement.kind == "lost")
+        if d1: q = q.filter(models.StoreMovement.moved_on >= d1)
+        if d2: q = q.filter(models.StoreMovement.moved_on <= d2)
+        for m in q.order_by(models.StoreMovement.moved_on.desc()).all():
+            i = items.get(m.item_id)
+            if not i: continue
+            rows.append({"date": m.moved_on.isoformat(), "code": i.code, "name": i.name,
+                          "type": i.item_type, "qty": round(m.qty, 2), "unit": i.unit,
+                          "where": m.from_location or "central store",
+                          "hired_from": i.rental_supplier if i.item_type == "rental" else "-",
+                          "reason": m.notes or "-"})
+        return {"title": "Lost and damaged", "rows": rows}
 
     # default: full stock position
     # Only materials that actually hold stock, or that someone has set a
