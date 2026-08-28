@@ -70,6 +70,43 @@ def _num(v):
     return str(int(f)) if f == int(f) else str(f)
 
 
+# The web app and the exports must speak the same language: the column is
+# called "In central store" on screen, so the Excel and PDF say the same,
+# not a machine-ish "In Store". One map, used by every store export.
+STORE_LABELS = {
+    "in_store": "In central store", "at_sites": "Out at sites", "total": "Total held",
+    "by_site": "Where at sites", "item_type": "Type", "reorder_level": "Warn under",
+    "hired_from": "Hired from", "on_hire": "On hire", "due_back": "Due back",
+    "lost_damaged": "Lost / damaged", "written_off": "Written off",
+    "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
+    "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
+    "days_late": "Days late", "outstanding": "Still to come",
+}
+
+
+def _store_label(k):
+    return STORE_LABELS.get(k, k.replace("_", " ").title())
+
+
+def _clean_qty(v):
+    """380.0 -> '380', 7.5 -> '7.5'. Counts of things never show a fake
+    decimal - 400 bags, not 400.0 - and genuinely fractional values keep
+    only the decimals they actually have."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return f"{int(f):,}" if f == int(f) else f"{f:,.2f}".rstrip("0").rstrip(".")
+
+
+def _is_texty(k):
+    """Columns that read as words, so they sit flush left like prose;
+    numbers go flush right so digits line up down the column."""
+    return any(w in k.lower() for w in
+               ("name", "item", "category", "note", "description", "supplier",
+                "purpose", "site", "status", "urgency", "hired", "person"))
+
+
 def _cycle_dates(month_year):
     """
     Every actual calendar date in this cycle, in order - 26th of the
@@ -796,8 +833,9 @@ def build_store_report_excel(title, rows, subtitle=""):
 
     cols = list(rows[0].keys())
     money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    header_row = r
     for i, k in enumerate(cols, start=1):
-        c = ws.cell(row=r, column=i, value=k.replace("_", " ").title())
+        c = ws.cell(row=r, column=i, value=_store_label(k))
         c.font = Font(bold=True, color="FFFFFF", size=10)
         c.fill = PatternFill("solid", fgColor=BRAND_RED)
         c.alignment = Alignment(horizontal="center", vertical="center")
@@ -809,17 +847,25 @@ def build_store_report_excel(title, rows, subtitle=""):
         for i, k in enumerate(cols, start=1):
             v = row.get(k, "")
             if isinstance(v, dict):
-                v = ", ".join(f"{a}: {b}" for a, b in v.items()) or "-"
+                # Site breakdowns are counts: "704: 380", never "704: 380.0".
+                v = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items()) or "-"
             elif isinstance(v, bool):
                 v = "Yes" if v else ""
+            elif k == "item_type" and v:
+                v = str(v).title()
             c = ws.cell(row=r, column=i, value=v)
             c.border = border
-            c.alignment = Alignment(horizontal="center", vertical="center")
             c.font = Font(size=10)
             if isinstance(v, (int, float)):
+                # Numbers flush right with thousands separators; counts
+                # keep no fake decimals, money always shows two.
                 c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
+                c.alignment = Alignment(horizontal="right", vertical="center")
                 if k in numeric_totals:
                     numeric_totals[k] += v
+            else:
+                c.alignment = Alignment(horizontal="left" if _is_texty(k) else "center",
+                                        vertical="center")
         r += 1
 
     if numeric_totals:
@@ -828,13 +874,18 @@ def build_store_report_excel(title, rows, subtitle=""):
             c = ws.cell(row=r, column=i, value=v)
             c.font = Font(bold=True)
             c.fill = PatternFill("solid", fgColor=GREEN_FILL)
-            c.alignment = Alignment(horizontal="center")
+            c.alignment = Alignment(horizontal="right" if isinstance(v, (int, float)) else "center")
             c.border = border
             if isinstance(v, (int, float)):
                 c.number_format = '#,##0.00'
 
+    # Long reports stay usable: headers stay put while scrolling, and the
+    # filter arrows let the office slice by site or type right in Excel.
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
+    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(len(cols))}{header_row + len(rows)}"
+
     for i, k in enumerate(cols, start=1):
-        width = max(len(str(k)) + 4, *(len(str(row.get(k, ""))) + 3 for row in rows))
+        width = max(len(str(_store_label(k))) + 4, *(len(str(row.get(k, ""))) + 3 for row in rows))
         ws.column_dimensions[get_column_letter(i)].width = min(max(width, 10), 40)
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
@@ -870,23 +921,32 @@ def build_store_report_pdf(title, rows, subtitle=""):
 
     cols = list(rows[0].keys())
     money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
-    data = [[Paragraph(k.replace("_", " ").title(), head) for k in cols]]
+    cellL = ParagraphStyle("CL", parent=cell, alignment=TA_LEFT)
+    cellR = ParagraphStyle("CR", parent=cell, alignment=TA_RIGHT)
+    data = [[Paragraph(_store_label(k), head) for k in cols]]
     totals = {k: 0 for k in cols if money_like(k)}
     for row in rows:
         line = []
         for k in cols:
             v = row.get(k, "")
+            sty = cellL if _is_texty(k) else cell
             if isinstance(v, dict):
-                v = ", ".join(f"{a}: {b}" for a, b in v.items()) or "-"
+                # Site breakdowns are counts: "704: 380", never "704: 380.0".
+                v = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items()) or "-"
+                sty = cellL
             elif isinstance(v, bool):
                 v = "Yes" if v else ""
             elif isinstance(v, (int, float)):
                 if k in totals: totals[k] += v
-                v = f"{v:,.2f}" if money_like(k) else (f"{int(v):,}" if v == int(v) else f"{v:,.2f}")
-            line.append(Paragraph(str(v) if v not in (None, "") else "-", cell))
+                v = f"{v:,.2f}" if money_like(k) else _clean_qty(v)
+                sty = cellR
+            elif k == "item_type" and v:
+                v = str(v).title()
+            line.append(Paragraph(str(v) if v not in (None, "") else "-", sty))
         data.append(line)
     if totals:
-        data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>", cell)
+        data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>",
+                               cellR if k in totals else cell)
                      for i, k in enumerate(cols)])
 
     w = doc.width / len(cols)
@@ -920,12 +980,18 @@ def build_material_request_pdf(mr: dict):
     el = [cen("INFINIA CONTRACTING LLC", 14, True), Spacer(1, 5),
           cen("MATERIAL REQUEST", 11, True), Spacer(1, 12)]
 
+    cellR = ParagraphStyle("cr", parent=cell, alignment=TA_RIGHT)
+    urg = mr["urgency"]
+    urg_p = (Paragraph('<font color="#B26A00"><b>Urgent</b></font>', cell)
+             if urg == "urgent" else Paragraph(str(urg).title(), cell))
     info = [["Request No:", mr["ref"], "Date:", mr["requested_on"]],
             ["Site:", mr["site"] or "-", "Needed by:", mr.get("needed_by") or "-"],
-            ["Requested by:", mr["requested_by"] or "-", "Urgency:", mr["urgency"].title()],
+            ["Requested by:", mr["requested_by"] or "-", "Urgency:", urg_p],
             ["Status:", mr["status"].title(), "", ""]]
-    t = Table([[Paragraph(f"<b>{a}</b>", cell), Paragraph(str(b), cell),
-                Paragraph(f"<b>{c}</b>", cell), Paragraph(str(d), cell)] for a, b, c, d in info],
+    t = Table([[Paragraph(f"<b>{a}</b>", cell),
+                b if isinstance(b, Paragraph) else Paragraph(str(b), cell),
+                Paragraph(f"<b>{c}</b>", cell),
+                d if isinstance(d, Paragraph) else Paragraph(str(d), cell)] for a, b, c, d in info],
               colWidths=[doc.width * 0.16, doc.width * 0.34, doc.width * 0.16, doc.width * 0.34])
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#DDDDDD")),
                             ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F4F5F7")),
@@ -933,19 +999,25 @@ def build_material_request_pdf(mr: dict):
                             ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     el += [t, Spacer(1, 12)]
 
-    data = [[Paragraph(h, head) for h in ["#", "Item", "Unit", "Req Qty", "Appr Qty", "Recd Qty", "Balance", "Notes"]]]
+    # "What it is for" travels with the request - it's the one thing the
+    # office needs to judge whether to order, so the printed copy carries
+    # it just like the screen does.
+    lhead = ParagraphStyle("lh", parent=head, fontSize=8)
+    data = [[Paragraph(h, lhead) for h in
+             ["#", "Material", "Unit", "Requested", "Approved", "Received", "Still due", "What it is for", "Notes"]]]
     for i, ln in enumerate(mr["lines"], start=1):
         out = (ln["qty_requested"] or 0) - (ln["qty_received"] or 0)
         name = (f'{ln.get("item_code")} - {ln.get("item_name")}' if ln.get("item_code") else
                 (ln.get("item_name") or ln.get("description") or "-"))
         data.append([Paragraph(str(i), cell), Paragraph(name, cell), Paragraph(ln["unit"], cell),
-                     Paragraph(f'{ln["qty_requested"]:g}', cell),
-                     Paragraph(f'{ln["qty_approved"]:g}' if ln["qty_approved"] else "-", cell),
-                     Paragraph(f'{ln["qty_received"]:g}' if ln["qty_received"] else "-", cell),
-                     Paragraph(f"{out:g}" if out > 0 else "-", cell),
+                     Paragraph(_clean_qty(ln["qty_requested"]), cellR),
+                     Paragraph(_clean_qty(ln["qty_approved"]) if ln["qty_approved"] else "-", cellR),
+                     Paragraph(_clean_qty(ln["qty_received"]) if ln["qty_received"] else "-", cellR),
+                     Paragraph(_clean_qty(out) if out > 0 else "-", cellR),
+                     Paragraph(ln.get("purpose") or "-", cell),
                      Paragraph(ln.get("notes") or "-", cell)])
     w = doc.width
-    tbl = Table(data, colWidths=[w*.05, w*.27, w*.08, w*.12, w*.12, w*.12, w*.13, w*.11], repeatRows=1)
+    tbl = Table(data, colWidths=[w*.03, w*.22, w*.08, w*.11, w*.11, w*.10, w*.10, w*.14, w*.11], repeatRows=1)
     tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
                               ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
                               ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
