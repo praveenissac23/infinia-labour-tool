@@ -915,22 +915,54 @@
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
             <div class="card" style="margin-top:12px;">
               <h2>Returns and corrections</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">Material coming back from a site, moving between sites, or fixing a number after counting.</p>
-              <div class="form-row">
-                <select id="mv-kind" onchange="onMvKindChange()" style="width:270px;">
-                  <option value="return">Material CAME BACK from a site</option>
-                  <option value="transfer">Material MOVED between two sites</option>
-                  <option value="lost">LOST or DAMAGED (write it off)</option>
-                <option value="adjust">Fix a wrong number (after counting)</option>
-                </select>
-                <select id="mv-item" style="min-width:220px;"></select>
-                <input type="number" id="mv-qty" placeholder="How many" style="width:110px;" step="any">
-                <span id="mv-from-wrap"><label>From:</label><select id="mv-from" style="width:120px;"></select></span>
-                <span id="mv-to-wrap"><label>To:</label><select id="mv-to" style="width:120px;"></select></span>
-                <input type="date" id="mv-date">
-                <input type="text" id="mv-notes" placeholder="Note" style="width:160px;">
-                <button class="btn btn-primary" onclick="saveMovement()">Save</button>
+              <p style="font-size:12px; color:#888; margin:0 0 16px;">
+                Pick what happened. The form below asks only for what that case needs.
+              </p>
+
+              <!-- Choosing the case first means the form can hide the boxes
+                   that don't apply, instead of showing eight controls at once
+                   and leaving the keeper to work out which matter. -->
+              <div class="rep-row" style="margin-bottom:18px;">
+                <div class="rep-tile" onclick="setMvKind('return')">Came back from a site</div>
+                <div class="rep-tile" onclick="setMvKind('transfer')">Moved between two sites</div>
+                <div class="rep-tile" onclick="setMvKind('lost')">Lost or damaged</div>
+                <div class="rep-tile" onclick="setMvKind('adjust')">Fix a wrong number</div>
               </div>
+              <select id="mv-kind" onchange="onMvKindChange()" style="display:none;">
+                <option value="return"></option><option value="transfer"></option>
+                <option value="lost"></option><option value="adjust"></option>
+              </select>
+
+              <div id="mv-form" style="display:none; max-width:640px;">
+                <p id="mv-hint" style="font-size:12.5px; color:#666; background:#F7F7F7;
+                   padding:10px 14px; border-radius:6px; margin:0 0 16px;"></p>
+
+                <div style="display:grid; grid-template-columns:150px 1fr; gap:12px 14px; align-items:center;">
+                  <label style="font-size:13px;">Material</label>
+                  <select id="mv-item" style="width:100%;"></select>
+
+                  <label style="font-size:13px;">How many</label>
+                  <input type="number" id="mv-qty" placeholder="Quantity" style="width:180px;" step="any">
+
+                  <label style="font-size:13px;" id="mv-from-label">From</label>
+                  <span id="mv-from-wrap"><select id="mv-from" style="width:200px;"></select></span>
+
+                  <label style="font-size:13px;" id="mv-to-label">To</label>
+                  <span id="mv-to-wrap"><select id="mv-to" style="width:200px;"></select></span>
+
+                  <label style="font-size:13px;">Date</label>
+                  <input type="date" id="mv-date" style="width:200px;">
+
+                  <label style="font-size:13px;" id="mv-notes-label">Note</label>
+                  <input type="text" id="mv-notes" placeholder="Optional" style="width:100%;">
+                </div>
+
+                <div class="form-row" style="margin-top:18px;">
+                  <button class="btn btn-primary" onclick="saveMovement()">Save</button>
+                  <button class="btn btn-dark" onclick="setMvKind(null)">Cancel</button>
+                </div>
+              </div>
+
               <input type="hidden" id="mv-incharge"><input type="hidden" id="mv-supplier">
               <input type="hidden" id="mv-cost"><input type="hidden" id="mv-ref">
             </div>
@@ -2647,6 +2679,7 @@ function storeGo(which) {
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
   if (which === "reports") document.getElementById("store-report-result").style.display = "none";
+  if (which === "other") setMvKind(null);
 }
 
 async function loadStoreHome() {
@@ -2762,13 +2795,48 @@ function onItemTypeChange() {
   document.getElementById("it-rental-wrap").style.display = t === "rental" ? "" : "none";
 }
 
+// Each case needs a different set of boxes, so the form is built from
+// the case rather than showing everything and hiding some of it badly.
+const MV_CASES = {
+  return:   { title: "Material came back from a site",
+              hint: "Something was sent out and has now been returned to the central store.",
+              from: "Coming back from", to: null, note: "Note" },
+  transfer: { title: "Material moved between two sites",
+              hint: "Material went straight from one site to another without passing through the store.",
+              from: "Moving from", to: "Moving to", note: "Note" },
+  lost:     { title: "Lost or damaged",
+              hint: "Write material off. It leaves the company - stock goes down and it doesn't arrive anywhere.",
+              from: "Lost from", to: null, note: "What happened?" },
+  adjust:   { title: "Fix a wrong number",
+              hint: "After counting the store. Enter the difference: a positive number to add, a negative one to take away.",
+              from: null, to: null, note: "Why is it being corrected?" },
+};
+
+function setMvKind(kind) {
+  const form = document.getElementById("mv-form");
+  document.querySelectorAll("#store-other .rep-tile").forEach(t =>
+    t.classList.toggle("active", !!kind && (t.getAttribute("onclick") || "").includes(`'${kind}'`)));
+  if (!kind) { form.style.display = "none"; showStatus("store-status", null); return; }
+  document.getElementById("mv-kind").value = kind;
+  form.style.display = "";
+  onMvKindChange();
+  document.getElementById("mv-date").value = document.getElementById("mv-date").value || isoLocal(new Date());
+}
+
 function onMvKindChange() {
-  // This panel now only covers returns, site-to-site transfers and
-  // count corrections - giving out and receiving have their own panels.
   const k = document.getElementById("mv-kind").value;
-  document.getElementById("mv-from-wrap").style.display = (k === "adjust") ? "none" : "";
-  // A write-off leaves the company altogether, so there is no destination.
-  document.getElementById("mv-to-wrap").style.display = (k === "adjust" || k === "lost") ? "none" : "";
+  const cfg = MV_CASES[k] || MV_CASES.return;
+  document.getElementById("mv-hint").textContent = cfg.hint;
+  document.getElementById("mv-notes-label").textContent = cfg.note;
+
+  const show = (labelId, wrapId, text) => {
+    const on = !!text;
+    document.getElementById(labelId).style.display = on ? "" : "none";
+    document.getElementById(wrapId).style.display = on ? "" : "none";
+    if (on) document.getElementById(labelId).textContent = text;
+  };
+  show("mv-from-label", "mv-from-wrap", cfg.from);
+  show("mv-to-label", "mv-to-wrap", cfg.to);
 }
 
 function storeLocationOptions(includeStore) {
