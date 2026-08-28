@@ -1760,11 +1760,17 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return {"title": "Assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
 
     # default: full stock position
+    # Only materials that actually hold stock, or that someone has set a
+    # reorder level on (so a watched item shows even when it hits zero).
+    # The catalogue can run to thousands of materials; listing every one
+    # at zero makes the few real ones impossible to find.
     rows = []
     for i in items.values():
         if not i.active: continue
         c = stock.get((i.id, CENTRAL), 0)
         o = sum(v for (iid, loc), v in stock.items() if iid == i.id and loc != CENTRAL)
+        if c == 0 and o == 0 and not i.reorder_level:
+            continue
         rows.append({"code": i.code, "name": i.name, "category": i.category, "unit": i.unit,
                       "item_type": i.item_type, "in_store": round(c, 2),
                       "at_sites": round(o, 2), "total": round(c + o, 2),
