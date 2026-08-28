@@ -1896,8 +1896,12 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
-    allowed = ("pending", "approved", "arranging", "lpo_sent", "partial",
-               "delivered", "received", "closed", "rejected")
+    # Four steps, not six: "arranging" and "lpo_sent" both just meant
+    # "the office is dealing with it", which made the screen busier
+    # without telling anyone anything they could act on. Old values are
+    # still accepted so existing requests keep working.
+    allowed = ("pending", "approved", "ordered", "partial", "delivered",
+               "closed", "rejected", "arranging", "lpo_sent", "received")
     if payload.status not in allowed:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed)}")
     mr.status = payload.status
