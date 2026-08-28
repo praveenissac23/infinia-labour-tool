@@ -2247,8 +2247,13 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
         raise HTTPException(status_code=404, detail="Request not found")
 
     when = payload.received_on or date.today()
-    if when > date.today():
-        raise HTTPException(status_code=400, detail="Delivery date is in the future.")
+    # Deliveries are often written up a few days late, and sometimes
+    # booked a day or two ahead for a load already on its way. Both are
+    # real, so only a date far in the future is refused - that is a
+    # typed year or month slip, not a delivery.
+    if when > date.today() + timedelta(days=30):
+        raise HTTPException(status_code=400,
+            detail="Delivery date is more than a month ahead - check the date.")
 
     wanted = [l for l in payload.lines if l.qty and l.qty > 0]
     if not wanted:

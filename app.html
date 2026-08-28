@@ -767,7 +767,7 @@
               <label>Your name: <span style="color:#C0392B;">*</span></label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}">
               <label>Needed by: <span style="color:#C0392B;">*</span></label><input type="date" id="mr-needed">
               <label>How urgent:</label>
-              <select id="mr-urgency" style="width:130px;" onchange="onUrgencyChange()">
+              <select id="mr-urgency" style="width:130px;">
                 <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
               </select>
             </div>
@@ -3840,6 +3840,13 @@ async function saveReceive() {
   if (!lines.length) {
     showStatus("recv-status", "warn", "Enter how much arrived for at least one material."); return;
   }
+  // A delivery dated ahead is allowed - a load already on its way gets
+  // booked in - but it adds stock that isn't physically there yet, so
+  // it is worth one glance at the date before saving.
+  const when = document.getElementById("recv-date").value;
+  if (when && when > isoLocal(new Date()) &&
+      !confirm(`The delivery date ${when} is in the future.\n\n` +
+               "The stock will go up straight away. Save anyway?")) return;
   try {
     const res = await apiCall(`/store/requests/${recvRequest.id}/receive-bulk`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -3921,21 +3928,16 @@ function addMrLine() {
 // kept for older markup; the picker now fills the unit itself
 function onMrItemChange(sel) { onMaterialTyped(sel); }
 
-// A needed-by date that matches the urgency chosen: urgent means
-// tomorrow, normal a week, "can wait" a fortnight. Always changeable -
-// this only replaces an empty box with a sensible starting point.
-const URGENCY_DAYS = { urgent: 1, normal: 7, low: 14 };
-
+// Needed by starts at tomorrow: the commonest real answer, and never
+// an empty box. Changing it is one click, and once the keeper has set
+// a date nothing moves it again.
 function setNeededByDefault(force) {
   const box = document.getElementById("mr-needed");
   if (!box || (box.value && !force)) return;
-  const days = URGENCY_DAYS[document.getElementById("mr-urgency").value] ?? 7;
   const d = new Date();
-  d.setDate(d.getDate() + days);
+  d.setDate(d.getDate() + 1);
   box.value = isoLocal(d);
 }
-
-function onUrgencyChange() { setNeededByDefault(true); }
 
 async function submitMaterialRequest() {
   // Everything the office needs to act on a request. Before this, a
