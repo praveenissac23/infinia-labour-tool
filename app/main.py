@@ -1639,6 +1639,8 @@ def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
 def store_report(kind: str = "stock", date_from: str = None, date_to: str = None,
                   db: Session = Depends(get_db),
                   user: models.User = Depends(auth.get_current_user)):
+    # NOTE: also called directly by the export endpoint, which passes
+    # user=None after verifying a download token instead.
     """
     kind='stock'     - current stock, central vs out at sites
         ='low'       - items at or below reorder level
@@ -1761,3 +1763,234 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                       "at_sites": round(o, 2), "total": round(c + o, 2),
                       "low": bool(i.reorder_level and c <= i.reorder_level)})
     return {"title": "Current stock", "rows": sorted(rows, key=lambda r: r["code"])}
+
+
+# ---------------------------------------------------------------------
+# MATERIAL REQUESTS (store keeper -> office)
+# ---------------------------------------------------------------------
+def _next_mr_ref(db: Session) -> str:
+    last = db.query(models.MaterialRequest).order_by(models.MaterialRequest.id.desc()).first()
+    n = (last.id + 1) if last else 1
+    return f"MR-{n:04d}"
+
+
+def _mr_out(mr: models.MaterialRequest) -> dict:
+    d = schemas.MaterialRequestOut.model_validate(mr).model_dump()
+    for i, ln in enumerate(mr.lines):
+        d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
+        d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
+    return d
+
+
+@app.get("/store/requests")
+def list_material_requests(status: str = None, site: str = None,
+                            date_from: str = None, date_to: str = None,
+                            db: Session = Depends(get_db),
+                            user: models.User = Depends(auth.get_current_user)):
+    q = db.query(models.MaterialRequest)
+    if status:
+        q = q.filter(models.MaterialRequest.status == status)
+    if site:
+        q = q.filter(models.MaterialRequest.site == site)
+    if date_from:
+        q = q.filter(models.MaterialRequest.requested_on >= datetime.strptime(date_from, "%Y-%m-%d").date())
+    if date_to:
+        q = q.filter(models.MaterialRequest.requested_on <= datetime.strptime(date_to, "%Y-%m-%d").date())
+    return [_mr_out(m) for m in q.order_by(models.MaterialRequest.id.desc()).all()]
+
+
+@app.post("/store/requests")
+def create_material_request(payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
+                             user: models.User = Depends(auth.get_current_user)):
+    lines = [l for l in payload.lines if l.qty_requested and l.qty_requested > 0]
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
+    for l in lines:
+        if not l.item_id and not (l.description or "").strip():
+            raise HTTPException(status_code=400, detail="Every line needs an item or a description.")
+    mr = models.MaterialRequest(
+        ref=_next_mr_ref(db), site=payload.site, requested_by=payload.requested_by,
+        needed_by=payload.needed_by, urgency=payload.urgency, notes=payload.notes,
+        requested_on=payload.requested_on or date.today(), created_by=user.id,
+    )
+    db.add(mr)
+    db.flush()
+    for l in lines:
+        unit = l.unit
+        if l.item_id:
+            it = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
+            if it:
+                unit = it.unit
+        db.add(models.MaterialRequestLine(request_id=mr.id, item_id=l.item_id,
+                                           description=l.description, qty_requested=l.qty_requested,
+                                           qty_approved=l.qty_approved or 0, unit=unit,
+                                           est_cost=l.est_cost or 0, notes=l.notes))
+    db.commit()
+    db.refresh(mr)
+    log_action(db, user.id, "material_request", f"{mr.ref} - {len(lines)} item(s)")
+    return _mr_out(mr)
+
+
+@app.post("/store/requests/{req_id}/status")
+def set_material_request_status(req_id: int, payload: schemas.MaterialRequestStatusIn,
+                                 db: Session = Depends(get_db),
+                                 user: models.User = Depends(auth.get_current_user)):
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    allowed = ("pending", "approved", "rejected", "partial", "received", "closed")
+    if payload.status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed)}")
+    mr.status = payload.status
+    if payload.office_remark:
+        mr.office_remark = payload.office_remark
+    mr.closed_on = date.today() if payload.status in ("received", "closed", "rejected") else None
+    db.commit()
+    log_action(db, user.id, "material_request_status", f"{mr.ref} -> {payload.status}")
+    return {"ok": True, "status": mr.status}
+
+
+@app.delete("/store/requests/{req_id}")
+def delete_material_request(req_id: int, db: Session = Depends(get_db),
+                             user: models.User = Depends(auth.get_current_user)):
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    ref = mr.ref
+    db.delete(mr)
+    db.commit()
+    log_action(db, user.id, "material_request_delete", ref)
+    return {"ok": True}
+
+
+@app.post("/store/requests/{req_id}/receive")
+def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str = "",
+                             unit_cost: float = 0.0, reference: str = "",
+                             db: Session = Depends(get_db),
+                             user: models.User = Depends(auth.get_current_user)):
+    """
+    Record a delivery against one line of a request. This both files a
+    normal 'in' stock movement AND advances the request, so outstanding
+    quantities stay honest instead of the two drifting apart.
+    """
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    line = db.query(models.MaterialRequestLine).filter(
+        models.MaterialRequestLine.id == line_id,
+        models.MaterialRequestLine.request_id == req_id).first()
+    if not line:
+        raise HTTPException(status_code=404, detail="Request line not found")
+    if qty <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
+    outstanding = line.qty_requested - (line.qty_received or 0)
+    if qty > outstanding + 1e-9:
+        raise HTTPException(status_code=400,
+            detail=f"Only {round(outstanding, 2)} {line.unit} still outstanding on this line.")
+    if not line.item_id:
+        raise HTTPException(status_code=400,
+            detail="This line isn't linked to a store item, so it can't be received into stock. "
+                   "Create the item first, then edit the request.")
+
+    db.add(models.StoreMovement(item_id=line.item_id, kind="in", qty=qty, location="",
+                                 supplier=supplier, unit_cost=unit_cost,
+                                 reference=reference or mr.ref, moved_on=date.today(),
+                                 notes=f"Against {mr.ref}", created_by=user.id))
+    line.qty_received = (line.qty_received or 0) + qty
+    all_done = all((l.qty_received or 0) >= l.qty_requested - 1e-9 for l in mr.lines)
+    any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
+    mr.status = "received" if all_done else ("partial" if any_done else mr.status)
+    if all_done:
+        mr.closed_on = date.today()
+    db.commit()
+    log_action(db, user.id, "material_request_receive", f"{mr.ref} line {line_id}: {qty}")
+    return {"ok": True, "status": mr.status, "qty_received": line.qty_received}
+
+
+@app.get("/store/requests/report")
+def material_request_report(kind: str = "open", db: Session = Depends(get_db),
+                            user: models.User = Depends(auth.get_current_user)):
+    # Also called directly by the export endpoint with user=None.
+    """kind='open' | 'overdue' | 'outstanding' | 'history'"""
+    today = date.today()
+    reqs = db.query(models.MaterialRequest).order_by(models.MaterialRequest.id.desc()).all()
+
+    if kind == "overdue":
+        rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
+                  "needed_by": m.needed_by.isoformat() if m.needed_by else "",
+                  "days_late": (today - m.needed_by).days if m.needed_by else 0,
+                  "status": m.status, "urgency": m.urgency, "items": len(m.lines)}
+                 for m in reqs
+                 if m.needed_by and m.needed_by < today and m.status not in ("received", "closed", "rejected")]
+        return {"title": "Overdue material requests", "rows": sorted(rows, key=lambda r: -r["days_late"])}
+
+    if kind == "outstanding":
+        rows = []
+        for m in reqs:
+            if m.status in ("received", "closed", "rejected"):
+                continue
+            for l in m.lines:
+                out = (l.qty_requested or 0) - (l.qty_received or 0)
+                if out <= 0:
+                    continue
+                rows.append({"ref": m.ref, "site": m.site, "status": m.status,
+                              "item": (l.item.code + " - " + l.item.name) if l.item else l.description,
+                              "unit": l.unit, "requested": l.qty_requested,
+                              "received": l.qty_received or 0, "outstanding": round(out, 2),
+                              "needed_by": m.needed_by.isoformat() if m.needed_by else ""})
+        return {"title": "Outstanding materials", "rows": rows}
+
+    if kind == "history":
+        rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
+                  "requested_by": m.requested_by, "urgency": m.urgency, "status": m.status,
+                  "items": len(m.lines),
+                  "est_value": round(sum((l.est_cost or 0) * (l.qty_requested or 0) for l in m.lines), 2),
+                  "closed_on": m.closed_on.isoformat() if m.closed_on else ""}
+                for m in reqs]
+        return {"title": "Material request history", "rows": rows}
+
+    rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
+              "needed_by": m.needed_by.isoformat() if m.needed_by else "",
+              "urgency": m.urgency, "status": m.status, "items": len(m.lines),
+              "requested_by": m.requested_by}
+            for m in reqs if m.status in ("pending", "approved", "partial")]
+    return {"title": "Open material requests", "rows": rows}
+
+
+@app.get("/export/store/report")
+def export_store_report(kind: str = "stock", format: str = "excel",
+                         date_from: str = None, date_to: str = None,
+                         token: str = None, db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    # Material-request reports live under a different builder to the
+    # stock ones, but both export through the same formatter.
+    if kind.startswith("mr_"):
+        data = material_request_report(kind=kind[3:], db=db, user=None)
+    else:
+        data = store_report(kind=kind, date_from=date_from, date_to=date_to, db=db, user=None)
+    sub = ""
+    if date_from or date_to:
+        sub = f"{date_from or 'start'} to {date_to or 'today'}"
+    else:
+        sub = f"As at {date.today().isoformat()}"
+    if format == "pdf":
+        buf = export_web.build_store_report_pdf(data["title"], data["rows"], sub)
+        media, ext = "application/pdf", "pdf"
+    else:
+        buf = export_web.build_store_report_excel(data["title"], data["rows"], sub)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
+    name = f"{kind}_{date.today().isoformat()}.{ext}"
+    return StreamingResponse(buf, media_type=media,
+                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/export/store/request/{req_id}")
+def export_material_request(req_id: int, token: str = None, db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    buf = export_web.build_material_request_pdf(_mr_out(mr))
+    return StreamingResponse(buf, media_type="application/pdf",
+                              headers={"Content-Disposition": f'attachment; filename="{mr.ref}.pdf"'})
