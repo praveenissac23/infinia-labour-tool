@@ -1494,7 +1494,14 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     code = (payload.code or "").strip()
     name = (payload.name or "").strip()
     if not code:
-        raise HTTPException(status_code=400, detail="Item needs a code.")
+        # Auto-number new items ITM1, ITM2... The store keeper shouldn't
+        # have to invent a code; existing items still keep whatever code
+        # they were given, and an edit sends the code back unchanged.
+        used = {i.code for i in db.query(models.StoreItem).all()}
+        n = 1
+        while f"ITM{n}" in used:
+            n += 1
+        code = f"ITM{n}"
     if not name:
         raise HTTPException(status_code=400, detail="Item needs a name.")
     if payload.item_type not in ("consumable", "returnable", "asset", "rental"):
