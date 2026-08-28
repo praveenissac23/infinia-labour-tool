@@ -2471,11 +2471,7 @@ async function loadStoreItems() {
   // too. Without this, a newly-added item never appears in them, and
   // any row already on screen keeps a stale list - which is what made
   // "add an item then use it" appear broken.
-  document.querySelectorAll(".ol-item, .il-item").forEach(sel => {
-    const keep = sel.value;
-    sel.innerHTML = stockOptionsHtml();
-    if (keep) sel.value = keep;
-  });
+  buildMaterialDatalist();
   // If a panel somehow has no row at all, put one back.
   if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
   if (!document.querySelectorAll("#in-lines tr").length) addInLine();
@@ -2582,10 +2578,49 @@ function stockOptionsHtml() {
     storeItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.code} - ${i.name}</option>`).join("");
 }
 
+// With thousands of materials a plain dropdown is unusable - you can't
+// scroll to "Cement" past 3,000 entries. A text box backed by a
+// <datalist> filters as you type and still works on a phone keyboard.
+function materialPickerHtml(cls) {
+  return `<input list="material-list" class="${cls}-txt" placeholder="Start typing, e.g. cement"
+                 style="width:100%;" oninput="onMaterialTyped(this)">
+          <input type="hidden" class="${cls}">`;
+}
+
+function buildMaterialDatalist() {
+  let dl = document.getElementById("material-list");
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = "material-list";
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = storeItems.map(i => `<option value="${i.code} - ${i.name}">`).join("");
+}
+
+// Match what was typed back to a real item, so the hidden id stays in
+// step with the visible text and a half-typed name can't be submitted.
+function onMaterialTyped(box) {
+  const row = box.closest("tr");
+  const hidden = row.querySelector('input[type=hidden]');
+  const txt = box.value.trim().toLowerCase();
+  const hit = storeItems.find(i => `${i.code} - ${i.name}`.toLowerCase() === txt)
+           || storeItems.find(i => i.name.toLowerCase() === txt);
+  hidden.value = hit ? hit.id : "";
+  box.style.background = (txt && !hit) ? "#FFF4F2" : "";
+  const unitCell = row.querySelector(".ol-have, .mr-unit");
+  if (hit && unitCell) {
+    if (unitCell.classList.contains("mr-unit")) unitCell.value = hit.unit;
+    else {
+      const s = (storeStockCache || []).find(s => s.item_id === hit.id);
+      unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
+    }
+  }
+}
+
 function addOutLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><select class="ol-item" onchange="showOnHand(this)" style="width:100%;">${stockOptionsHtml()}</select></td>
+    <td>${materialPickerHtml("ol-item")}</td>
     <td><input type="number" class="ol-qty" step="any" style="width:100px;"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
@@ -2596,7 +2631,7 @@ function addOutLine() {
 function addInLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><select class="il-item" style="width:100%;">${stockOptionsHtml()}</select></td>
+    <td>${materialPickerHtml("il-item")}</td>
     <td><input type="number" class="il-qty" step="any" style="width:100px;"></td>
     <td><input type="number" class="il-cost" step="any" style="width:110px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
@@ -2683,13 +2718,10 @@ async function saveReceipt() {
 
 function addMrLine() {
   const tb = document.getElementById("mr-lines");
-  const opts = storeItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.code} - ${i.name}</option>`).join("");
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><select class="mr-item" onchange="onMrItemChange(this)" style="width:100%;">
-          <option value="">-- type it below instead --</option>${opts}
-        </select>
-        <input type="text" class="mr-desc" placeholder="Or write the material name" style="width:100%; margin-top:4px;"></td>
+    <td>${materialPickerHtml("mr-item")}
+        <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
     <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
     <td><input type="number" class="mr-cost" step="any" style="width:110px;"></td>
@@ -2698,14 +2730,8 @@ function addMrLine() {
   tb.appendChild(tr);
 }
 
-function onMrItemChange(sel) {
-  // Copy the item's unit across so the store keeper doesn't have to know it.
-  const opt = sel.options[sel.selectedIndex];
-  const unit = opt ? opt.getAttribute("data-unit") : "";
-  const row = sel.closest("tr");
-  if (unit) row.querySelector(".mr-unit").value = unit;
-  if (sel.value) row.querySelector(".mr-desc").value = "";
-}
+// kept for older markup; the picker now fills the unit itself
+function onMrItemChange(sel) { onMaterialTyped(sel); }
 
 async function submitMaterialRequest() {
   const lines = [...document.querySelectorAll("#mr-lines tr")].map(tr => ({
