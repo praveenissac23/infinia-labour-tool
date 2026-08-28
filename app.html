@@ -730,7 +730,7 @@
             <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.</p>
             <div class="form-row">
               <label>For site:</label><select id="mr-site" style="width:130px;"></select>
-              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;">
+              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}">
               <label>Needed by:</label><input type="date" id="mr-needed">
               <label>How urgent:</label>
               <select id="mr-urgency" style="width:130px;">
@@ -780,6 +780,7 @@
               <label>Show:</label>
               <select id="mreq-filter" onchange="loadRequests()" style="width:210px;">
                 <option value="open">Still open</option>
+                <option value="late">Late (past needed-by)</option>
                 <option value="all">Everything</option>
                 <option value="pending">Waiting on office</option>
                 <option value="approved">Approved</option>
@@ -1241,6 +1242,10 @@ function switchScreen(name) {
         '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#in-lines tr").length) addInLine();
+      // The same store keeper raises most requests - remember who they
+      // are so the name isn't typed fresh every single time.
+      const mrBy = document.getElementById("mr-by");
+      if (mrBy && !mrBy.value) { try { mrBy.value = localStorage.getItem("mrName") || ""; } catch (e) {} }
       loadRequests();
     });
   }
@@ -3072,6 +3077,28 @@ function onMaterialTyped(box) {
       unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
     }
   }
+  // On the request form, show the two numbers that stop double-ordering:
+  // what the store already holds, and what is already on an open request
+  // still waiting to arrive.
+  const stockHint = row.querySelector(".mr-stock");
+  if (stockHint) {
+    if (hit) {
+      const s = (storeStockCache || []).find(x => x.item_id === hit.id);
+      const bits = [`In central store now: <strong>${num(s ? (s.central || 0) : 0)} ${hit.unit}</strong>`];
+      if (s && (s.out_at_sites || 0) > 0) bits.push(`${num(s.out_at_sites)} out at sites`);
+      const onOrder = (mrCache || [])
+        .filter(r => !["delivered", "closed", "rejected"].includes(r.status))
+        .flatMap(r => (r.lines || [])
+          .filter(l => l.item_id === hit.id)
+          .map(l => ({ ref: r.ref, out: (l.qty_requested || 0) - (l.qty_received || 0) })))
+        .filter(x => x.out > 0);
+      if (onOrder.length) {
+        const total = onOrder.reduce((a, x) => a + x.out, 0);
+        bits.push(`<span style="color:#B26A00; font-weight:600;">${num(total)} ${hit.unit} already on order (${onOrder.map(x => x.ref).join(", ")})</span>`);
+      }
+      stockHint.innerHTML = bits.join(" &middot; ");
+    } else stockHint.innerHTML = "";
+  }
 }
 
 function addOutLine() {
@@ -3281,50 +3308,102 @@ function toggleRequest(id) {
   if (row) row.style.display = row.style.display === "none" ? "" : "none";
 }
 
+// Open requests cached here so the entry form can warn about materials
+// already on order without another server round-trip per keystroke.
+let mrCache = [];
+
 async function loadRequests() {
   const box = document.getElementById("mreq-list");
   box.innerHTML = '<div class="empty-note">Loading...</div>';
   try {
     const all = await apiCall("/store/requests");
+    mrCache = all;
     const today = isoLocal(new Date());
+    const isOpen = r => !["delivered", "closed", "rejected"].includes(r.status);
+    const isLate = r => !!(r.needed_by && r.needed_by < today && isOpen(r));
+
+    // Counts up top, tappable, so the state of play is visible before
+    // anyone touches the filter: what's waiting, what's ordered, what's
+    // late. Grey when zero - a loud red "0 late" would cry wolf.
+    const openReqs = all.filter(isOpen);
+    const counts = [
+      ["pending", "waiting on office", openReqs.filter(r => r.status === "pending").length, "#C0392B"],
+      ["ordered", "ordered", openReqs.filter(r => ["ordered", "arranging", "lpo_sent"].includes(r.status)).length, "#1565C0"],
+      ["partial", "part delivered", openReqs.filter(r => r.status === "partial").length, "#B26A00"],
+      ["late", "late", all.filter(isLate).length, "#C0392B"],
+    ];
+    const nUrgent = openReqs.filter(r => r.urgency === "urgent").length;
+    const pills = `<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:2px 2px 12px;">` +
+      counts.map(([val, label, n, colour]) => `
+        <span onclick="document.getElementById('mreq-filter').value='${val}'; loadRequests();"
+              title="Show only these"
+              style="cursor:pointer; font-size:12px; font-weight:600; padding:4px 12px; border-radius:999px;
+                     border:1px solid ${n ? colour : "#ddd"}; color:${n ? colour : "#999"};
+                     background:${n ? colour + "12" : "#fafafa"};">${n} ${label}</span>`).join("") +
+      (nUrgent ? `<span style="font-size:12px; font-weight:600; padding:4px 12px; border-radius:999px;
+                     border:1px solid #B26A00; color:#B26A00; background:#B26A0012;">${nUrgent} marked urgent</span>` : "") +
+      `</div>`;
+
     const filter = document.getElementById("mreq-filter").value;
     const q = (document.getElementById("mreq-search").value || "").trim().toLowerCase();
     let list = all;
-    if (filter === "open") list = all.filter(r => !["delivered","closed","rejected"].includes(r.status));
+    if (filter === "open") list = all.filter(isOpen);
+    else if (filter === "late") list = all.filter(isLate);
     else if (filter !== "all") list = all.filter(r => r.status === filter);
     if (q) list = list.filter(r =>
       `${r.ref} ${r.site} ${r.requested_by}`.toLowerCase().includes(q) ||
       r.lines.some(l => `${l.item_code || ""} ${l.item_name || ""} ${l.description || ""}`.toLowerCase().includes(q)));
 
-    if (!list.length) { box.innerHTML = '<div class="empty-note">Nothing to show.</div>'; return; }
+    // Late first, then urgent, then newest - whatever needs chasing must
+    // never sit buried under routine requests.
+    list = [...list].sort((a, b) =>
+      (isLate(b) - isLate(a)) ||
+      (((b.urgency === "urgent" && isOpen(b)) ? 1 : 0) - ((a.urgency === "urgent" && isOpen(a)) ? 1 : 0)) ||
+      (b.id - a.id));
+
+    if (!list.length) { box.innerHTML = pills + '<div class="empty-note">Nothing to show.</div>'; return; }
 
     // One row per request, details on demand. A card each was unusable
     // once there were more than a handful - you scrolled past everything
     // to find one reference.
-    box.innerHTML = `
+    box.innerHTML = pills + `
       <div class="grid-wrap" style="max-height:none;">
         <table>
           <thead><tr>
-            <th style="width:9%;">Request</th><th style="width:6%;">Site</th>
-            <th style="width:14%;">Asked by</th><th style="width:9%;">Asked on</th>
-            <th style="width:9%;">Needed by</th><th style="width:6%;">Items</th>
-            <th style="width:15%;">Status</th><th>What you can do</th>
+            <th style="width:8%;">Request</th><th style="width:6%;">Site</th>
+            <th style="width:11%;">Asked by</th><th style="width:8%;">Asked on</th>
+            <th style="width:9%;">Needed by</th><th style="width:19%; text-align:left;">Materials</th>
+            <th style="width:13%;">Status</th><th>What you can do</th>
           </tr></thead>
           <tbody>${list.map(r => {
-            const late = r.needed_by && r.needed_by < today && !["delivered","closed","rejected"].includes(r.status);
+            const late = isLate(r);
             const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
               `<button class="btn ${s === "rejected" ? "btn-dark" : "btn-primary"}"
                        ${s === "rejected" ? 'style="background:#8B2E22;"' : ""}
                        onclick="event.stopPropagation(); setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
             const canReceive = !["delivered","closed","rejected","pending"].includes(r.status);
+            // A short preview of what was asked for, so nobody has to
+            // open every row just to find "the cement one".
+            const names = r.lines.map(l => l.item_name || l.description).filter(Boolean);
+            const preview = names.slice(0, 2).join(", ") +
+              (names.length > 2 ? ` <span style="color:#999;">+${names.length - 2} more</span>` : "");
+            const nDone = r.lines.filter(l => (l.qty_received || 0) >= (l.qty_requested || 0) - 1e-9).length;
+            const progress = (nDone > 0 && nDone < r.lines.length)
+              ? `<div style="font-size:11px; color:#B26A00; margin-top:2px;">${nDone} of ${r.lines.length} items fully arrived</div>` : "";
+            // How long a request has sat unanswered - two days is a
+            // nudge, not an accusation, so it only appears from there.
+            const waitDays = r.status === "pending"
+              ? Math.round((new Date(today) - new Date(r.requested_on)) / 86400000) : 0;
+            const aging = waitDays >= 2
+              ? `<div style="font-size:11px; color:#999;">waiting ${waitDays} days</div>` : "";
             return `<tr onclick="toggleRequest(${r.id})" style="cursor:pointer;${late ? ' background:#FFF8F7;' : ''}">
-              <td><strong>${r.ref}</strong></td>
+              <td><strong>${r.ref}</strong>${r.urgency === "urgent" && isOpen(r) ? '<div style="font-size:10px; font-weight:700; letter-spacing:.5px; color:#B26A00;">URGENT</div>' : ""}</td>
               <td>${r.site || "-"}</td>
               <td style="text-align:left;">${r.requested_by || "-"}</td>
               <td>${r.requested_on}</td>
               <td>${r.needed_by || "-"}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
-              <td>${r.lines.length}</td>
-              <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span></td>
+              <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}</td>
+              <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
               <td>
                 ${actions}
                 ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}
@@ -3468,7 +3547,8 @@ function addMrLine() {
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("mr-item", "material-list-all")}
-        <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
+        <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;">
+        <div class="mr-stock" style="font-size:11px; color:#888; margin-top:3px; text-align:left;"></div></td>
     <td><select class="mr-type" style="width:100%; min-width:110px;">
           <option value="consumable">Consumable</option>
           <option value="asset">Asset (to own)</option>
@@ -3502,6 +3582,25 @@ async function submitMaterialRequest() {
   }
   const bad = lines.find(l => !l.item_id && !l.description);
   if (bad) { showStatus("store-status", "warn", "Every row needs a material picked or typed in."); return; }
+  // Double-ordering is the expensive mistake here: the same cement asked
+  // for twice arrives twice. If any of these materials is still waiting
+  // to arrive on an open request, say so once and let the keeper decide.
+  if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
+  const openNow = (mrCache || []).filter(r => !["delivered", "closed", "rejected"].includes(r.status));
+  const dups = [];
+  for (const l of lines) {
+    if (!l.item_id) continue;
+    for (const r of openNow) for (const rl of (r.lines || [])) {
+      const out = (rl.qty_requested || 0) - (rl.qty_received || 0);
+      if (rl.item_id === l.item_id && out > 0) {
+        const it = (storeItems || []).find(i => i.id === l.item_id);
+        dups.push(`${it ? it.name : "This material"} - ${num(out)} ${rl.unit} still to arrive on ${r.ref}`);
+      }
+    }
+  }
+  if (dups.length && !confirm(
+    "Some of this is already on an open request:\n\n" + [...new Set(dups)].join("\n") +
+    "\n\nSend this new request anyway?")) return;
   try {
     // Record the type the requester chose, so a hired generator is
     // classified from the moment it's asked for, not after it arrives.
