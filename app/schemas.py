@@ -257,3 +257,63 @@ class StoreMovementOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MaterialRequestLineIn(BaseModel):
+    item_id: Optional[int] = None
+    description: str = ""
+    qty_requested: float
+    qty_approved: float = 0.0
+    unit: str = "pcs"
+    est_cost: float = 0.0
+    notes: str = ""
+
+
+class MaterialRequestIn(BaseModel):
+    site: str = ""
+    requested_by: str = ""
+    needed_by: Optional[date] = None
+    urgency: str = "normal"
+    notes: str = ""
+    requested_on: Optional[date] = None
+    lines: list[MaterialRequestLineIn] = []
+
+
+class MaterialRequestLineOut(BaseModel):
+    id: int
+    item_id: Optional[int] = None
+    description: str
+    qty_requested: float
+    qty_approved: float
+    qty_received: float
+    unit: str
+    est_cost: float
+    notes: str
+    item_code: Optional[str] = None
+    item_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialRequestOut(BaseModel):
+    id: int
+    ref: str
+    site: str
+    requested_by: str
+    needed_by: Optional[date] = None
+    urgency: str
+    status: str
+    notes: str
+    office_remark: str
+    requested_on: date
+    closed_on: Optional[date] = None
+    lines: list[MaterialRequestLineOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialRequestStatusIn(BaseModel):
+    status: str
+    office_remark: str = ""
