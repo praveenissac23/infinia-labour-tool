@@ -143,6 +143,11 @@
                letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.38); }
   .nav-group:first-of-type { padding-top: 10px; }
 
+  /* Inputs sitting inside a data table should fill their cell rather
+     than keep the narrow default width used in toolbars. */
+  .grid-wrap td input[type=text], .grid-wrap td input[type=number] { padding: 6px 8px; font-size: 13px; }
+  .grid-wrap td select { padding: 6px 8px; font-size: 13px; width: 100%; }
+
   .empty-note { color: #888; font-size: 13px; padding: 10px; }
   .clickable-row { cursor: pointer; }
   .selected-row td { background: #FFE9A8 !important; }
@@ -682,7 +687,7 @@
             <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.</p>
             <div class="form-row">
               <label>For site:</label><select id="mr-site" style="width:130px;"></select>
-              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:160px;">
+              <label>Your name:</label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;">
               <label>Needed by:</label><input type="date" id="mr-needed">
               <label>How urgent:</label>
               <select id="mr-urgency" style="width:130px;">
@@ -691,12 +696,12 @@
             </div>
             <div class="grid-wrap" style="max-height:260px;">
               <table>
-                <thead><tr><th style="width:32%;">Material</th><th>How many</th><th>Unit</th><th style="width:28%;">What is it for?</th><th>Note</th><th></th></tr></thead>
+                <thead><tr><th style="width:34%;">Material</th><th style="width:9%;">How many</th><th style="width:8%;">Unit</th><th style="width:24%;">What is it for?</th><th style="width:19%;">Note</th><th style="width:6%;"></th></tr></thead>
                 <tbody id="mr-lines"></tbody>
               </table>
             </div>
             <div class="form-row" style="margin-top:8px;">
-              <input type="text" id="mr-notes" placeholder="Anything else the office should know (optional)" style="width:360px;">
+              <input type="text" id="mr-notes" placeholder="Anything else the office should know (optional)" style="width:520px;">
             </div>
             <div class="form-row">
               <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
@@ -2664,10 +2669,12 @@ async function loadStoreHome() {
         : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
-    head.innerHTML = ["Code","Name","Unit","Type","In store","At sites","Total"].map(h => `<th>${h}</th>`).join("");
+    head.innerHTML = ["Code","Name","Unit","Type","In store","At sites","Total",""].map(h => `<th>${h}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr${r.low ? ' style="background:#FFE9E6;"' : ''}>
-      <td>${r.code}</td><td>${r.name}</td><td>${r.unit}</td><td>${r.item_type}</td>
-      <td>${num(r.in_store)}</td><td>${num(r.at_sites)}</td><td><strong>${num(r.total)}</strong></td></tr>`).join("");
+      <td>${r.code}</td><td style="text-align:left;">${r.name}</td><td>${r.unit}</td><td>${r.item_type}</td>
+      <td>${num(r.in_store)}</td><td>${num(r.at_sites)}</td><td><strong>${num(r.total)}</strong></td>
+      <td>${r.low ? `<button class="btn btn-primary" onclick="requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
+      </tr>`).join("");
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
       `<tr><td class="empty-note">Could not load: ${errText(e)}</td></tr>`;
@@ -2957,7 +2964,7 @@ function addOutLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
-    <td><input type="number" class="ol-qty" step="any" style="width:100px;"></td>
+    <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
@@ -2968,8 +2975,8 @@ function addInLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td>${materialPickerHtml("il-item", "material-list-all")}</td>
-    <td><input type="number" class="il-qty" step="any" style="width:100px;"></td>
-    <td><input type="number" class="il-cost" step="any" style="width:110px;"></td>
+    <td><input type="number" class="il-qty" step="any" style="width:100%; min-width:90px;"></td>
+    <td><input type="number" class="il-cost" step="any" style="width:100%; min-width:100px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
   document.getElementById("in-lines").appendChild(tr);
@@ -3086,6 +3093,24 @@ function statusTrail(status) {
   }).join('<span style="color:#ddd; font-size:11px;"> &rarr; </span>');
 }
 
+// Jump from "this is running low" straight into asking for more, with
+// the material already chosen - otherwise the keeper has to remember the
+// name and find it again among thousands.
+function requestMore(code) {
+  switchScreen("requests");
+  setTimeout(() => {
+    const item = (storeItems || []).find(i => i.code === code);
+    if (!item) return;
+    let row = document.querySelector("#mr-lines tr");
+    if (!row) { addMrLine(); row = document.querySelector("#mr-lines tr"); }
+    const box = row.querySelector(".mr-item-txt");
+    box.value = `${item.code} - ${item.name}`;
+    onMaterialTyped(box);
+    row.querySelector(".mr-qty").focus();
+    showStatus("mreq-status", "ok", `${item.name} added - type how many you need and what it is for.`);
+  }, 900);
+}
+
 async function loadRequests() {
   const box = document.getElementById("mreq-list");
   box.innerHTML = '<div class="empty-note">Loading...</div>';
@@ -3171,7 +3196,7 @@ function addMrLine() {
     <td>${materialPickerHtml("mr-item", "material-list-all")}
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
-    <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
+    <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="this.closest('tr').remove()">Remove</button></td>`;
