@@ -727,6 +727,29 @@
             <div class="form-row">
               <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
               <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
+              <button class="btn btn-dark" style="margin-left:auto;" onclick="toggleDirectPurchase()">Direct purchase (no request)</button>
+            </div>
+          </div>
+
+          <div class="card" id="direct-purchase" style="display:none;">
+            <h2>Direct purchase</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">
+              Only for material bought without going through the office - everything else
+              should come in through a request, using <strong>Record delivery</strong>.
+            </p>
+            <div class="form-row">
+              <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:200px;">
+              <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:170px;">
+              <label>Date:</label><input type="date" id="in-date">
+            </div>
+            <div class="grid-wrap" style="max-height:none;">
+              <table><thead><tr><th style="width:3%;">#</th><th style="width:26%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:28%;">Note</th><th style="width:7%;"></th></tr></thead>
+              <tbody id="in-lines"></tbody></table>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
+              <button class="btn btn-primary" onclick="saveReceipt()">Save Purchase</button>
+              <button class="btn btn-dark" onclick="toggleDirectPurchase()">Cancel</button>
             </div>
           </div>
 
@@ -768,10 +791,6 @@
                 <div class="store-tile" onclick="storeGo('give')">
                   <div class="store-tile-t">Give Out Material</div>
                   <div class="store-tile-s">Someone is taking material to a site</div>
-                </div>
-                <div class="store-tile" onclick="storeGo('receive')">
-                  <div class="store-tile-t">Material Arrived</div>
-                  <div class="store-tile-s">Record a delivery from a supplier</div>
                 </div>
                 <div class="store-tile" onclick="switchScreen('requests')">
                   <div class="store-tile-t">Material Requests</div>
@@ -819,28 +838,6 @@
               <div class="form-row" style="margin-top:8px;">
                 <button class="btn btn-dark" onclick="addOutLine()">+ Add another material</button>
                 <button class="btn btn-primary" onclick="saveIssue()">Give Out &amp; Save</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- RECEIVE -->
-          <div id="store-receive" style="display:none;">
-            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
-            <div class="card" style="margin-top:12px;">
-              <h2>Material Arrived</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">When a delivery comes in from a supplier.</p>
-              <div class="form-row">
-                <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:180px;">
-                <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:150px;">
-                <label>Date:</label><input type="date" id="in-date">
-              </div>
-              <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:3%;">#</th><th style="width:26%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:28%;">Note</th><th style="width:7%;"></th></tr></thead>
-                <tbody id="in-lines"></tbody></table>
-              </div>
-              <div class="form-row" style="margin-top:8px;">
-                <button class="btn btn-dark" onclick="addInLine()">+ Add another material</button>
-                <button class="btn btn-primary" onclick="saveReceipt()">Save Delivery</button>
               </div>
             </div>
           </div>
@@ -1189,6 +1186,7 @@ function switchScreen(name) {
       document.getElementById("mr-site").innerHTML =
         '<option value="">Central store</option>' + sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
+      if (!document.querySelectorAll("#in-lines tr").length) addInLine();
       loadRequests();
     });
   }
@@ -1203,7 +1201,6 @@ function switchScreen(name) {
       document.getElementById("out-person").innerHTML = peopleOptions();
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
-      if (!document.querySelectorAll("#in-lines tr").length) addInLine();
       storeGo("home");
     });
   }
@@ -2641,7 +2638,7 @@ let storeItems = [];
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","receive","request","items","other","reports"];
+const STORE_PANELS = ["home","give","items","other","reports"];
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -3092,7 +3089,9 @@ async function saveReceipt() {
   }
   if (failed.length) showStatus("store-status", "err", failed[0]);
   else {
-    showStatus("store-status", "ok", `Delivery saved: ${done} material(s) added to the store.`);
+    showStatus("mreq-status", "ok", `Purchase saved: ${done} material(s) added to the store.`);
+    const dp = document.getElementById("direct-purchase");
+    if (dp) dp.style.display = "none";
     await loadStoreItems();   // a type may have changed, so refresh the list
     loadStoreHome();
     await loadStoreItems();   // stock changed - refresh what the pickers offer
@@ -3158,6 +3157,20 @@ function requestMore(code) {
     row.querySelector(".mr-qty").focus();
     showStatus("mreq-status", "ok", `${item.name} added - type how many you need and what it is for.`);
   }, 900);
+}
+
+// Direct purchase is tucked away on the requests screen: it's the
+// exception, so it stays hidden until asked for rather than sitting
+// alongside the normal route as an equal-looking choice.
+function toggleDirectPurchase() {
+  const p = document.getElementById("direct-purchase");
+  const showing = p.style.display !== "none";
+  p.style.display = showing ? "none" : "";
+  if (!showing) {
+    document.getElementById("in-date").value = isoLocal(new Date());
+    if (!document.querySelectorAll("#in-lines tr").length) addInLine();
+    p.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
 
 function toggleRequest(id) {
