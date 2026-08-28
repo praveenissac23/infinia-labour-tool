@@ -402,6 +402,11 @@
           <div style="background:white; border-radius:10px; padding:26px 30px; width:460px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">What can they open?</h2>
             <p style="font-size:12.5px; color:#888; margin:0 0 14px;">Tick the screens <strong id="perms-user"></strong> is allowed to use.</p>
+            <div class="form-row" style="margin-bottom:8px;">
+              <button class="btn btn-dark" onclick="permsSetAll(true)">Tick everything</button>
+              <button class="btn btn-dark" onclick="permsSetAll(false)">Untick everything</button>
+              <button class="btn btn-dark" onclick="permsUseRoleDefault()">Use role default</button>
+            </div>
             <div id="perms-list" style="max-height:320px; overflow-y:auto; margin-bottom:14px;"></div>
             <div class="status-msg" id="perms-status" style="margin-bottom:12px;"></div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -3198,6 +3203,22 @@ async function openPerms(id, username) {
       ${SCREEN_LABELS[s] || s}
     </label>`).join("");
   document.getElementById("perms-modal-overlay").style.display = "flex";
+}
+
+function permsSetAll(on) {
+  document.querySelectorAll("#perms-list input").forEach(i => { i.checked = on; });
+  showStatus("perms-status", null);
+}
+
+// Put the ticks back to whatever this person's role gives by default,
+// so an admin can undo fiddling without remembering the original set.
+async function permsUseRoleDefault() {
+  if (!permsUserId) return;
+  const u = (await apiCall("/users")).find(x => x.id === permsUserId);
+  const cfg = await apiCall("/permissions/screens");
+  const def = cfg.role_defaults[u.role] || [];
+  document.querySelectorAll("#perms-list input").forEach(i => { i.checked = def.includes(i.value); });
+  showStatus("perms-status", "ok", `Set back to the default for a ${u.role} login.`);
 }
 
 function closePerms() {
