@@ -397,6 +397,20 @@
           </div>
         </div>
 
+        <!-- ============ PERMISSIONS MODAL ============ -->
+        <div id="perms-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:26px 30px; width:460px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 4px;">What can they open?</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 14px;">Tick the screens <strong id="perms-user"></strong> is allowed to use.</p>
+            <div id="perms-list" style="max-height:320px; overflow-y:auto; margin-bottom:14px;"></div>
+            <div class="status-msg" id="perms-status" style="margin-bottom:12px;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" onclick="closePerms()">Cancel</button>
+              <button class="btn btn-primary" onclick="savePerms()">Save</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ RESET PASSWORD MODAL ============ -->
         <div id="resetpw-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
           <div style="background:white; border-radius:10px; padding:26px 30px; width:440px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
@@ -914,12 +928,17 @@
             <div class="form-row">
               <input type="text" id="new-user-username" placeholder="Username">
               <input type="text" id="new-user-password" placeholder="Password">
-              <select id="new-user-role"><option value="staff">Staff</option><option value="admin">Admin</option></select>
+              <select id="new-user-role" style="width:150px;">
+                <option value="staff">Staff (office team)</option>
+                <option value="office">Office (store only)</option>
+                <option value="site">Site (attendance + store)</option>
+                <option value="admin">Admin</option>
+              </select>
               <button class="btn btn-primary" onclick="createUser()">Add Login</button>
             </div>
             <div class="grid-wrap" style="max-height: 40vh;">
               <table>
-                <thead><tr><th>Username</th><th>Role</th><th></th></tr></thead>
+                <thead><tr><th>Username</th><th>Role</th><th>Can open</th><th></th></tr></thead>
                 <tbody id="user-list-body"></tbody>
               </table>
             </div>
@@ -1139,6 +1158,8 @@ async function initApp() {
   if (CURRENT_ROLE === "admin") {
     document.getElementById("nav-activity").style.display = "block";
   }
+  // Runs last so it can hide anything the lines above turned on.
+  await applyScreenPermissions();
 
   startDashboardClock();
   initReportColumnPicker();
@@ -3151,6 +3172,70 @@ async function changePassword() {
   }
 }
 
+// Friendly names for the screens, so the permissions list reads like
+// the menu rather than internal ids.
+const SCREEN_LABELS = {
+  dashboard: "Dashboard", attendance: "Daily Attendance", masterdata: "Master Data",
+  reports: "Reports / Summaries", combine: "Combine", adjustments: "Salary Adjustments",
+  livecard: "Live Card", store: "Store / Inventory", errorcheck: "Error Check",
+  settings: "Settings", activity: "Activity Monitor",
+};
+let permsUserId = null;
+
+async function openPerms(id, username) {
+  permsUserId = id;
+  document.getElementById("perms-user").textContent = username;
+  showStatus("perms-status", null);
+  const u = (await apiCall("/users")).find(x => x.id === id);
+  const cfg = await apiCall("/permissions/screens");
+  // No explicit list yet -> show what the role gives them by default.
+  const current = (u.permissions || "").trim()
+    ? u.permissions.split(",")
+    : (cfg.role_defaults[u.role] || []);
+  document.getElementById("perms-list").innerHTML = cfg.screens.map(s => `
+    <label style="display:block; padding:6px 4px; border-bottom:1px solid #f0f0f0;">
+      <input type="checkbox" value="${s}" ${current.includes(s) ? "checked" : ""}>
+      ${SCREEN_LABELS[s] || s}
+    </label>`).join("");
+  document.getElementById("perms-modal-overlay").style.display = "flex";
+}
+
+function closePerms() {
+  permsUserId = null;
+  document.getElementById("perms-modal-overlay").style.display = "none";
+}
+
+async function savePerms() {
+  if (!permsUserId) return;
+  const picked = [...document.querySelectorAll("#perms-list input:checked")].map(i => i.value);
+  if (!picked.length) {
+    showStatus("perms-status", "warn", "Tick at least one screen, or they can't use the app at all.");
+    return;
+  }
+  try {
+    await apiCall(`/users/${permsUserId}/permissions`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permissions: picked.join(",") }) });
+    closePerms();
+    showStatus("settings-status", "ok", "Saved. They'll see the change next time they sign in.");
+    await loadUsers();
+  } catch (e) { showStatus("perms-status", "err", errText(e)); }
+}
+
+// Hide menu items this user isn't allowed to open. The backend enforces
+// it as well - this is so they aren't shown doors that won't open.
+async function applyScreenPermissions() {
+  try {
+    const me = await apiCall("/permissions/me");
+    MY_SCREENS = me.screens || [];
+    document.querySelectorAll(".nav-item").forEach(n => {
+      const s = n.getAttribute("data-screen");
+      if (s && !MY_SCREENS.includes(s)) n.style.display = "none";
+    });
+  } catch (e) { /* leave the menu as-is if this fails */ }
+}
+let MY_SCREENS = [];
+
 async function loadUsers() {
   const users = await apiCall("/users");
   document.getElementById("user-list-body").innerHTML = users.map(u => {
@@ -3167,9 +3252,13 @@ async function loadUsers() {
            <button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>`
         : "";
     }
+    const perms = u.role === "admin"
+      ? '<span style="color:#888;">Everything</span>'
+      : `<button class="btn btn-gray" onclick="openPerms(${u.id}, '${u.username}')">Choose screens</button>`;
     return `
     <tr>
       <td>${u.username}</td><td>${u.role}</td>
+      <td>${u.active ? perms : "-"}</td>
       <td>${action}</td>
     </tr>`;
   }).join("");
