@@ -3381,8 +3381,12 @@ function onMaterialTyped(box) {
   if (typeSel && hit) typeSel.value = hit.item_type || "consumable";
   const unitCell = row.querySelector(".ol-have, .mr-unit");
   if (hit && unitCell) {
-    if (unitCell.classList.contains("mr-unit")) unitCell.value = hit.unit;
-    else {
+    if (unitCell.classList.contains("mr-unit")) {
+      // Only fill a unit the requester hasn't typed themselves -
+      // replacing "tonne" with the catalogue's "pcs" changed the
+      // meaning of the request under their hands.
+      if (!unitCell.dataset.touched) unitCell.value = hit.unit;
+    } else {
       const s = (storeStockCache || []).find(s => s.item_id === hit.id);
       unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
     }
@@ -3812,8 +3816,16 @@ async function openReceive(id) {
     const due = (l.qty_requested || 0) - (l.qty_received || 0);
     const name = (l.item_code ? `<strong>${l.item_code}</strong> ` : "") + (l.item_name || l.description);
     const canReceive = l.item_id && due > 0;
+    // Stock is counted in the store list's unit. If the request was
+    // raised in another one, say so here - entering 25 against a "pcs"
+    // item when 25 tonne arrived would silently corrupt the balance.
+    const item = (storeItems || []).find(i => i.id === l.item_id);
+    const clash = item && l.unit && item.unit &&
+                  l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
     return `<tr data-line="${l.id}">
-      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not a store item)</span>'}</td>
+      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not a store item)</span>'}
+        ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
+          Asked in ${l.unit}, but the store counts this in ${item.unit} - enter the quantity in ${item.unit}.</div>` : ""}</td>
       <td>${num(l.qty_requested)} ${l.unit}</td>
       <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
       <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
@@ -3917,7 +3929,8 @@ function addMrLine() {
           <option value="rental">Rental (to hire)</option>
         </select></td>
     <td><input type="number" class="mr-qty" step="any" style="width:100%; min-width:80px;"></td>
-    <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"></td>
+    <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"
+               oninput="this.dataset.touched='1'"></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'mr-lines')">Remove</button></td>`;
@@ -4000,6 +4013,29 @@ async function submitMaterialRequest() {
     "Some of this is already on an open request:\n\n" + [...new Set(dups)].join("\n") +
     "\n\nSend this new request anyway?")) return;
   try {
+    // A unit that disagrees with the catalogue is usually the catalogue
+    // being wrong - rebar bought by the tonne sits in the list as "pcs".
+    // It matters because deliveries add stock in the catalogue's unit,
+    // so leaving them out of step would put 25 into a pcs balance that
+    // was meant to be 25 tonne. Offer the fix once, at the moment the
+    // keeper has shown what the real unit is.
+    for (const l of lines) {
+      const item = (storeItems || []).find(i => i.id === l.item_id);
+      if (!item || !l.unit) continue;
+      if (l.unit.toLowerCase().trim() === (item.unit || "").toLowerCase().trim()) continue;
+      if (!confirm(
+        `"${item.name}" is counted in ${item.unit} in the store list, but you asked for ${num(l.qty_requested)} ${l.unit}.\n\n` +
+        `Stock is counted in the store list's unit, so they should match.\n\n` +
+        `OK  - change the material to ${l.unit} (recommended)\n` +
+        `Cancel - keep ${item.unit} and send the request as ${l.unit} anyway`)) continue;
+      try {
+        await apiCall("/store/items", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: item.code, name: item.name, category: item.category || "",
+                                  unit: l.unit, item_type: item.item_type,
+                                  reorder_level: item.reorder_level || 0 }) });
+      } catch (e) { /* the request itself still matters more */ }
+    }
     // Record the type the requester chose, so a hired generator is
     // classified from the moment it's asked for, not after it arrives.
     for (const l of lines) {

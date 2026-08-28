@@ -1933,11 +1933,16 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     db.add(mr)
     db.flush()
     for l in lines:
-        unit = l.unit
-        if l.item_id:
+        # The requester's own unit wins. Overwriting "tonne" with the
+        # catalogue's "pcs" quietly changed what was being asked for -
+        # the office read 25 pcs of rebar when 25 tonne was meant. The
+        # catalogue unit is only a fallback for a line that has none.
+        unit = (l.unit or "").strip()
+        if not unit and l.item_id:
             it = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
             if it:
                 unit = it.unit
+        unit = unit or "pcs"
         db.add(models.MaterialRequestLine(request_id=mr.id, item_id=l.item_id,
                                            description=l.description, qty_requested=l.qty_requested,
                                            qty_approved=l.qty_approved or 0, unit=unit,
