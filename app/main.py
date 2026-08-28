@@ -1659,6 +1659,12 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
     if payload.moved_on > date.today():
         raise HTTPException(status_code=400, detail="Date is in the future.")
+    # Moving something from a place to the same place changes nothing but
+    # leaves a confusing entry in the ledger, so reject it outright.
+    if payload.kind in ("return", "transfer") and payload.from_location == payload.location:
+        where = payload.location or "the central store"
+        raise HTTPException(status_code=400,
+            detail=f"'From' and 'To' are both {where} - pick different places.")
 
     # Don't allow issuing more than is actually held - a negative balance
     # means the ledger no longer describes anything real.
