@@ -3502,12 +3502,10 @@ async function submitMaterialRequest() {
 }
 
 async function setRequestStatus(id, status) {
-  const remark = status === "rejected" || status === "approved"
-    ? (prompt(`Any remark from the office? (optional)`) || "") : "";
   try {
     await apiCall(`/store/requests/${id}/status`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, office_remark: remark }) });
+      body: JSON.stringify({ status }) });
     // Closing or rejecting drops the request out of the default "Still
     // open" list, so move the filter with it - otherwise the request
     // just vanishes and the button looks broken.
