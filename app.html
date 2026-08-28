@@ -662,6 +662,7 @@
 
             <div class="card">
               <h2>What is in the store right now</h2>
+              <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
               </div>
@@ -2408,7 +2409,12 @@ async function loadStoreHome() {
       apiCall("/store/report?kind=stock"),
       apiCall("/store/requests"),
     ]);
-    const rows = stock.rows || [];
+    const all = stock.rows || [];
+    // Only materials that actually have stock somewhere. The catalogue
+    // holds thousands of materials the company may never buy, and
+    // listing every one at zero buries the few that are really there.
+    const rows = all.filter(r => (r.in_store || 0) !== 0 || (r.at_sites || 0) !== 0);
+
     document.getElementById("kpi-items").textContent = rows.length;
     document.getElementById("kpi-low").textContent = rows.filter(r => r.low).length;
     document.getElementById("kpi-out").textContent =
@@ -2418,9 +2424,19 @@ async function loadStoreHome() {
 
     const head = document.getElementById("home-stock-head");
     const body = document.getElementById("home-stock-body");
+    const note = document.getElementById("home-stock-note");
+    // storeItems is the full catalogue; `all` has already been filtered
+    // down to items with stock by the server, so use storeItems for the
+    // total or the note would claim the catalogue is tiny.
+    const catalogue = (storeItems || []).length;
+    if (note) note.textContent = catalogue
+      ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.`
+      : "";
     if (!rows.length) {
       head.innerHTML = "";
-      body.innerHTML = `<tr><td class="empty-note">Nothing in the store yet. Use "Manage the item list" to add your materials, then "Material arrived" to put stock in.</td></tr>`;
+      body.innerHTML = all.length
+        ? `<tr><td class="empty-note">The store is empty. Use "Material arrived" to record a delivery.</td></tr>`
+        : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
     head.innerHTML = ["Code","Name","Unit","Type","In store","At sites","Total"].map(h => `<th>${h}</th>`).join("");
