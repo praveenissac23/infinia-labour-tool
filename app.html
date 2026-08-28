@@ -777,7 +777,38 @@
                 <button class="btn btn-primary" onclick="saveStoreItem()">Save Item</button>
                 <button class="btn btn-dark" onclick="clearItemForm()">Clear form</button>
               </div>
-              <div id="store-item-list"></div>
+            </div>
+
+            <div class="card">
+              <h2>All materials in the list</h2>
+              <div class="form-row">
+                <input type="text" id="il-search" placeholder="Search by name or code" style="width:300px;" oninput="renderItemMaster(1)">
+                <select id="il-filter" onchange="renderItemMaster(1)" style="width:200px;">
+                  <option value="">All types</option>
+                  <option value="consumable">Consumable</option>
+                  <option value="returnable">Returnable</option>
+                  <option value="asset">Asset (we own it)</option>
+                  <option value="rental">Rental (hired in)</option>
+                </select>
+                <select id="il-stock" onchange="renderItemMaster(1)" style="width:200px;">
+                  <option value="">Everything</option>
+                  <option value="instock">Only what has stock</option>
+                  <option value="zero">Only what is at zero</option>
+                </select>
+                <span id="il-count" style="font-size:12.5px; color:#888;"></span>
+              </div>
+              <div class="grid-wrap" style="max-height:460px;">
+                <table>
+                  <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In store</th><th></th></tr></thead>
+                  <tbody id="il-body"></tbody>
+                </table>
+              </div>
+              <div class="form-row" style="margin-top:8px;">
+                <button class="btn btn-dark" onclick="itemPage(-1)">&larr; Previous</button>
+                <span id="il-page" style="font-size:13px;"></span>
+                <button class="btn btn-dark" onclick="itemPage(1)">Next &rarr;</button>
+              </div>
+              <div id="store-item-list" style="display:none;"></div>
             </div>
           </div>
 
@@ -2449,6 +2480,68 @@ async function loadStoreHome() {
   }
 }
 
+// The material list can run to thousands of rows, so it's shown as a
+// searchable, paged table rather than every item at once.
+let itemPageNo = 1;
+const ITEMS_PER_PAGE = 50;
+
+function filteredItems() {
+  const q = (document.getElementById("il-search").value || "").trim().toLowerCase();
+  const type = document.getElementById("il-filter").value;
+  const stockMode = document.getElementById("il-stock").value;
+  const stockBy = {};
+  (storeStockCache || []).forEach(s => { stockBy[s.item_id] = s; });
+  return (storeItems || []).filter(i => {
+    if (q && !(`${i.code} ${i.name} ${i.category || ""}`.toLowerCase().includes(q))) return false;
+    if (type && i.item_type !== type) return false;
+    if (stockMode) {
+      const s = stockBy[i.id];
+      const total = s ? (s.central || 0) + (s.out_at_sites || 0) : 0;
+      if (stockMode === "instock" && total === 0) return false;
+      if (stockMode === "zero" && total !== 0) return false;
+    }
+    return true;
+  });
+}
+
+function renderItemMaster(page) {
+  if (page) itemPageNo = page;
+  const rows = filteredItems();
+  const pages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
+  if (itemPageNo > pages) itemPageNo = pages;
+  const slice = rows.slice((itemPageNo - 1) * ITEMS_PER_PAGE, itemPageNo * ITEMS_PER_PAGE);
+  const stockBy = {};
+  (storeStockCache || []).forEach(s => { stockBy[s.item_id] = s; });
+
+  document.getElementById("il-count").textContent =
+    `${num(rows.length)} material(s)` + (rows.length !== (storeItems || []).length ? ` of ${num(storeItems.length)}` : "");
+  document.getElementById("il-page").textContent = `Page ${itemPageNo} of ${pages}`;
+
+  const body = document.getElementById("il-body");
+  body.innerHTML = slice.length ? slice.map(i => {
+    const s = stockBy[i.id];
+    const inStore = s ? num(s.central) : "0";
+    return `<tr>
+      <td>${i.code}</td>
+      <td style="text-align:left;">${i.name}</td>
+      <td>${i.category || "-"}</td>
+      <td>${i.unit}</td>
+      <td>${i.item_type}</td>
+      <td>${i.reorder_level ? num(i.reorder_level) : "-"}</td>
+      <td>${inStore}</td>
+      <td>
+        <button class="btn btn-gray" onclick="editStoreItem(${i.id})">Edit</button>
+        <button class="btn btn-dark" style="background:#8B2E22;" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
+      </td></tr>`;
+  }).join("") : `<tr><td class="empty-note">Nothing matches that search.</td></tr>`;
+}
+
+function itemPage(delta) {
+  const pages = Math.max(1, Math.ceil(filteredItems().length / ITEMS_PER_PAGE));
+  itemPageNo = Math.min(pages, Math.max(1, itemPageNo + delta));
+  renderItemMaster();
+}
+
 function clearItemForm() {
   ["it-code","it-name","it-cat","it-unit","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
@@ -2488,6 +2581,8 @@ async function loadStoreItems() {
   // any row already on screen keeps a stale list - which is what made
   // "add an item then use it" appear broken.
   buildMaterialDatalist();
+  try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+  if (document.getElementById("il-body")) renderItemMaster();
   // If a panel somehow has no row at all, put one back.
   if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
   if (!document.querySelectorAll("#in-lines tr").length) addInLine();
@@ -2517,7 +2612,9 @@ function editStoreItem(id) {
   document.getElementById("it-rstart").value = i.rental_start || "";
   document.getElementById("it-rdue").value = i.rental_due || "";
   onItemTypeChange();
-  showStatus("store-status", "ok", `Editing ${i.code} - change what you need and click Save Item.`);
+  showStatus("store-status", "ok", `Editing ${i.code} - ${i.name}. Change what you need, then Save Item.`);
+  document.getElementById("it-name").scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("it-name").focus();
 }
 
 async function saveStoreItem() {
