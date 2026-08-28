@@ -2570,9 +2570,21 @@ function storeLocationOptions(includeStore) {
 
 async function loadStoreItems() {
   storeItems = await apiCall("/store/items");
+  // Stock first: the pickers below need it to decide which materials
+  // can be offered.
+  try { storeStockCache = await apiCall("/store/stock"); } catch (e) { storeStockCache = []; }
+  buildMaterialDatalist();
+  // Returns, transfers and corrections all act on stock that exists
+  // somewhere, so this list is limited to materials with a balance -
+  // offering the whole catalogue here would be thousands of choices
+  // that can only ever fail.
+  const anyStock = new Set((storeStockCache || [])
+    .filter(s => (s.central || 0) !== 0 || (s.out_at_sites || 0) !== 0)
+    .map(s => s.item_id));
+  const mvItems = (storeItems || []).filter(i => anyStock.has(i.id));
   document.getElementById("mv-item").innerHTML =
-    storeItems.map(i => `<option value="${i.id}">${i.code} - ${i.name} (${i.unit})</option>`).join("")
-    || '<option value="">No items yet</option>';
+    mvItems.map(i => `<option value="${i.id}">${i.code} - ${i.name} (${i.unit})</option>`).join("")
+    || '<option value="">Nothing in the store yet</option>';
   document.getElementById("mv-from").innerHTML = storeLocationOptions(true);
   document.getElementById("mv-to").innerHTML = storeLocationOptions(true);
 
@@ -2580,8 +2592,6 @@ async function loadStoreItems() {
   // too. Without this, a newly-added item never appears in them, and
   // any row already on screen keeps a stale list - which is what made
   // "add an item then use it" appear broken.
-  buildMaterialDatalist();
-  try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
   if (document.getElementById("il-body")) renderItemMaster();
   // If a panel somehow has no row at all, put one back.
   if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
@@ -2694,20 +2704,39 @@ function stockOptionsHtml() {
 // With thousands of materials a plain dropdown is unusable - you can't
 // scroll to "Cement" past 3,000 entries. A text box backed by a
 // <datalist> filters as you type and still works on a phone keyboard.
-function materialPickerHtml(cls) {
-  return `<input list="material-list" class="${cls}-txt" placeholder="Start typing, e.g. cement"
+// Two lists, because the right choice depends on what you're doing:
+//   "stock"     - only materials the store actually holds. Used when
+//                 giving out or returning, since you can't hand over or
+//                 send back something that isn't there.
+//   "all"       - the whole catalogue. Used when receiving a delivery or
+//                 asking the office, where the point is that you DON'T
+//                 have it yet.
+function materialPickerHtml(cls, listName) {
+  const list = listName || "material-list-all";
+  const hint = list === "material-list-stock" ? "Start typing - only what is in the store" : "Start typing, e.g. cement";
+  return `<input list="${list}" class="${cls}-txt" placeholder="${hint}"
                  style="width:100%;" oninput="onMaterialTyped(this)">
           <input type="hidden" class="${cls}">`;
 }
 
 function buildMaterialDatalist() {
-  let dl = document.getElementById("material-list");
-  if (!dl) {
-    dl = document.createElement("datalist");
-    dl.id = "material-list";
-    document.body.appendChild(dl);
-  }
-  dl.innerHTML = storeItems.map(i => `<option value="${i.code} - ${i.name}">`).join("");
+  const mk = (id) => {
+    let dl = document.getElementById(id);
+    if (!dl) { dl = document.createElement("datalist"); dl.id = id; document.body.appendChild(dl); }
+    return dl;
+  };
+  mk("material-list-all").innerHTML =
+    (storeItems || []).map(i => `<option value="${i.code} - ${i.name}">`).join("");
+
+  const withStock = new Set((storeStockCache || [])
+    .filter(s => (s.central || 0) > 0)
+    .map(s => s.item_id));
+  mk("material-list-stock").innerHTML = (storeItems || [])
+    .filter(i => withStock.has(i.id))
+    .map(i => {
+      const s = (storeStockCache || []).find(x => x.item_id === i.id);
+      return `<option value="${i.code} - ${i.name}" label="${s ? num(s.central) + ' ' + i.unit + ' in store' : ''}">`;
+    }).join("");
 }
 
 // Match what was typed back to a real item, so the hidden id stays in
@@ -2733,7 +2762,7 @@ function onMaterialTyped(box) {
 function addOutLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td>${materialPickerHtml("ol-item")}</td>
+    <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
     <td><input type="number" class="ol-qty" step="any" style="width:100px;"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
@@ -2744,7 +2773,7 @@ function addOutLine() {
 function addInLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td>${materialPickerHtml("il-item")}</td>
+    <td>${materialPickerHtml("il-item", "material-list-all")}</td>
     <td><input type="number" class="il-qty" step="any" style="width:100px;"></td>
     <td><input type="number" class="il-cost" step="any" style="width:110px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
@@ -2792,6 +2821,7 @@ async function saveIssue() {
   } else {
     showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${done} material(s).`);
     loadStoreHome();
+    await loadStoreItems();   // stock changed - refresh what the pickers offer
     document.getElementById("out-lines").innerHTML = ""; addOutLine();
   }
   await loadStore();
@@ -2823,6 +2853,7 @@ async function saveReceipt() {
   else {
     showStatus("store-status", "ok", `Delivery saved: ${done} material(s) added to the store.`);
     loadStoreHome();
+    await loadStoreItems();   // stock changed - refresh what the pickers offer
     document.getElementById("in-lines").innerHTML = ""; addInLine();
     document.getElementById("in-supplier").value = ""; document.getElementById("in-ref").value = "";
   }
@@ -2833,7 +2864,7 @@ function addMrLine() {
   const tb = document.getElementById("mr-lines");
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td>${materialPickerHtml("mr-item")}
+    <td>${materialPickerHtml("mr-item", "material-list-all")}
         <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;"></td>
     <td><input type="number" class="mr-qty" step="any" style="width:90px;"></td>
     <td><input type="text" class="mr-unit" value="pcs" style="width:70px;"></td>
