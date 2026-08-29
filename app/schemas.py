@@ -276,6 +276,10 @@ class MaterialRequestLineIn(BaseModel):
     est_cost: float = 0.0
     notes: str = ""
     purpose: str = ""
+    # The type the requester picked. The browser always sent this, but
+    # the schema silently dropped it, so auto-cataloguing a typed
+    # material crashed on a field that no longer existed.
+    item_type: str = "consumable"
 
 
 class MaterialRequestIn(BaseModel):

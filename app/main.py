@@ -1716,6 +1716,15 @@ def _next_item_code(db):
     return f"ITM{n}"
 
 
+def _proper_name(s: str) -> str:
+    """First letter of each word up, the rest untouched, so "cushions"
+    becomes "Cushions" while "cement OPC 42.5" keeps OPC as OPC. The
+    server does this itself: names arrive from several paths and only
+    some of them pass through the browser's tidying."""
+    return " ".join(w[0].upper() + w[1:] if w else w
+                    for w in " ".join((s or "").split()).split(" "))
+
+
 def _find_or_create_item(db, name, unit, item_type):
     """Return the catalogue item for a typed-in material, creating it if
     it's genuinely new.
@@ -1733,7 +1742,7 @@ def _find_or_create_item(db, name, unit, item_type):
         func.lower(models.StoreItem.name) == clean.lower()).first()
     if existing:
         return existing
-    it = models.StoreItem(code=_next_item_code(db), name=clean,
+    it = models.StoreItem(code=_next_item_code(db), name=_proper_name(clean),
                           unit=(unit or "pcs").strip() or "pcs",
                           item_type=item_type if item_type in ("consumable", "asset", "rental") else "consumable",
                           category="", reorder_level=0, active=True)
