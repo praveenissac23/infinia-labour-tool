@@ -787,9 +787,19 @@
           <div class="status-msg" id="mreq-status"></div>
 
           <div class="card">
-            <h2>Raise a new request</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.
-              <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h2 style="margin-bottom:4px;">Raise a new request</h2>
+                <p style="font-size:12px; color:#888; margin:0;">For the site or store keeper. Say what you need, how much, and what it is for.
+                  <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
+              </div>
+              <button class="btn btn-primary" id="mr-form-toggle" onclick="toggleMrForm()">+ New request</button>
+            </div>
+            <!-- Collapsed by default: the office and admin land straight
+                 on the list of requests to process, which is their job.
+                 The browser remembers the choice, so a keeper who opens
+                 the form once finds it open every day after. -->
+            <div id="mr-form-body" style="display:none; margin-top:14px;">
             <div class="field-grid">
               <div class="field"><label>For site <span style="color:var(--red);">*</span></label>
                 <select id="mr-site"></select></div>
@@ -815,6 +825,7 @@
               <button class="btn btn-dark" onclick="addMrLine()">+ Add another material</button>
               <button class="btn btn-primary" onclick="submitMaterialRequest()">Send Request to Office</button>
               <button class="btn btn-dark" style="margin-left:auto;" onclick="toggleDirectPurchase()">Direct purchase (no request)</button>
+            </div>
             </div>
           </div>
 
@@ -1379,6 +1390,7 @@ function switchScreen(name) {
       // A sensible needed-by beats an empty box: a week out for normal
       // requests, changeable in one click, so nothing is saved undated.
       setNeededByDefault();
+      restoreMrFormState();
       loadRequests();
     });
   }
@@ -3787,6 +3799,7 @@ function statusTrail(status) {
 function requestMore(code) {
   switchScreen("requests");
   setTimeout(() => {
+    toggleMrForm(true);   // the form starts collapsed; open it before filling it
     const item = (storeItems || []).find(i => i.code === code);
     if (!item) return;
     let row = document.querySelector("#mr-lines tr");
@@ -4104,6 +4117,24 @@ function setNeededByDefault(force) {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   box.value = isoLocal(d);
+}
+
+// The raise form starts collapsed - processing the list is the office
+// and admin's job, so they land straight on it. The browser remembers
+// each person's choice: a keeper who opens the form once finds it open
+// every day after, so neither role clicks twice for their daily work.
+function toggleMrForm(forceOpen) {
+  const body = document.getElementById("mr-form-body");
+  const btn = document.getElementById("mr-form-toggle");
+  const open = forceOpen === true || body.style.display === "none";
+  body.style.display = open ? "" : "none";
+  btn.textContent = open ? "Hide the form" : "+ New request";
+  btn.className = open ? "btn btn-dark" : "btn btn-primary";
+  try { localStorage.setItem("mrFormOpen", open ? "1" : ""); } catch (e) {}
+}
+
+function restoreMrFormState() {
+  try { if (localStorage.getItem("mrFormOpen")) toggleMrForm(true); } catch (e) {}
 }
 
 async function submitMaterialRequest() {
