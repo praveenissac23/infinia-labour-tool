@@ -1252,7 +1252,6 @@
                 <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything held: store vs sites</span></div>
                 <div class="rep-tile" onclick="pickReport('low')"><span class="rep-badge" id="badge-low"></span><b>Reorder</b><span>Running low, needs buying</span></div>
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>At Sites</b><span>What each site is holding</span></div>
-                <div class="rep-tile" onclick="pickReport('movements')"><b>Movements</b><span>Every in, out and transfer</span></div>
                 <div class="rep-tile" onclick="pickReport('purchases')"><b>Purchases</b><span>What arrived and what it cost</span></div>
                 <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption</b><span>What sites have used up</span></div>
                 <div class="rep-tile" onclick="pickReport('assets')"><b>Assets</b><span>Owned equipment and where it is</span></div>
@@ -4757,10 +4756,6 @@ async function downloadRequestPdf(id) {
 async function exportStore(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
   const view = document.getElementById("store-view").value;
-  if (view === "movements") {
-    showStatus("store-status", "warn", "Pick one of the other views to download - the full history isn't a report.");
-    return;
-  }
   const from = document.getElementById("store-date-from").value;
   const to = document.getElementById("store-date-to").value;
   let url = `${API}/export/store/report?kind=${view}&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`;
@@ -4803,7 +4798,7 @@ function pickReport(kind) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["purchases", "usage", "movements", "lost"].includes(kind);
+  const needsDates = ["purchases", "usage", "lost"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
@@ -4857,33 +4852,6 @@ async function loadStore() {
   const body = document.getElementById("store-body");
   body.innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
   try {
-    if (view === "movements") {
-      let url = "/store/movements?limit=500";
-      if (from) url += `&date_from=${from}`;
-      if (to) url += `&date_to=${to}`;
-      const rows = await apiCall(url);
-      document.getElementById("store-table-title").textContent = "Movement history";
-      head.innerHTML = ["Date","Type","Item","Qty","From","To","In charge","Supplier","Ref",""]
-        .map(h => `<th>${h}</th>`).join("");
-      body.innerHTML = rows.length ? rows.map(m => `<tr>
-        <td>${m.moved_on}</td><td>${m.kind}</td><td>${m.item_code} - ${m.item_name}</td>
-        <td>${num(m.qty)} ${m.unit || ""}</td><td>${m.from_location || (m.kind==='in'?'-':'store')}</td>
-        <td>${m.location || 'store'}</td><td>${m.incharge || '-'}</td><td>${m.supplier || '-'}</td>
-        <td>${m.reference || '-'}</td>
-        <td><button class="btn btn-gray" onclick="deleteMovement(${m.id})">Delete</button></td>
-      </tr>`).join("") : `<tr><td class="empty-note">No movements yet.</td></tr>`;
-      const inN = rows.filter(m => m.kind === "in").length;
-      const outN = rows.filter(m => m.kind === "out").length;
-      setStoreStats([
-        [`${num(rows.length)} movements`, "#777"],
-        inN ? [`${num(inN)} arrived`, "#2E7D32"] : null,
-        outN ? [`${num(outN)} given out`, "#1565C0"] : null,
-      ]);
-      const mfoot = document.getElementById("store-report-foot");
-      mfoot.dataset.base = `${num(rows.length)} movement(s)` + (rows.length >= 500 ? " \u00b7 showing the latest 500" : "");
-      filterStoreReport();
-      return;
-    }
     // Material-request views come from a different endpoint and get
     // action buttons (approve / print / delete) that stock views don't.
     if (view.startsWith("mr_")) {
@@ -5012,14 +4980,6 @@ async function loadStore() {
   }
 }
 
-async function deleteMovement(id) {
-  if (!confirm("Delete this movement? Stock will be recalculated.")) return;
-  try {
-    await apiCall(`/store/movements/${id}`, { method: "DELETE" });
-    showStatus("store-status", "ok", "Movement deleted.");
-    await loadStore();
-  } catch (e) { showStatus("store-status", "err", errText(e)); }
-}
 
 // ============ ACTIVITY MONITOR (admin only) ============
 let currentActivityLog = [];
