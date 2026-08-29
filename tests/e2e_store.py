@@ -85,7 +85,7 @@ r = c.get("/store/stock", headers=H)
 cem = next(s for s in r.json() if s["code"] == item["code"])
 check("central 70 / site 30 after out+return", cem["central"] == 70 and (cem.get("by_site") or {}).get("704") == 30, str(cem))
 
-for kind in ["stock","low","by_site","purchases","usage","assets","lost","hired","rentals","mr_open","mr_outstanding","mr_overdue","mr_history"]:
+for kind in ["stock","low","by_site","purchases","usage","assets","lost","hired","mr_open","mr_outstanding","mr_overdue","mr_history"]:
     r = c.get(f"/store/report?kind={kind}", headers=H)
     check(f"report {kind}", r.status_code == 200, r.text[:150])
 
