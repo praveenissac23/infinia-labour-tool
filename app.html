@@ -961,7 +961,7 @@
               </div>
             </div>
             <div class="grid-wrap" style="max-height:none;">
-              <table><thead><tr><th style="width:3%;">#</th><th style="width:26%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:28%;">Note</th><th style="width:7%;"></th></tr></thead>
+              <table><thead><tr><th style="width:3%;">#</th><th style="width:30%;">Material</th><th style="width:14%;">Type</th><th style="width:12%;">How many</th><th style="width:34%;">Note</th><th style="width:7%;"></th></tr></thead>
               <tbody id="in-lines"></tbody></table>
             </div>
             <div class="form-row" style="margin-top:8px;">
@@ -3841,7 +3841,6 @@ function addInLine() {
           <option value="rental">Rental (hired in)</option>
         </select></td>
     <td><input type="number" class="il-qty" step="any" style="width:100%; min-width:90px;"></td>
-    <td><input type="number" class="il-cost" step="any" style="width:100%; min-width:100px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'in-lines')">Remove</button></td>`;
   document.getElementById("in-lines").appendChild(tr);
@@ -3938,7 +3937,7 @@ async function saveReceipt() {
   const lines = [...document.querySelectorAll("#in-lines tr")].map(tr => ({
     item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
     qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
-    cost: parseFloat(tr.querySelector(".il-cost").value) || 0,
+    cost: 0,   // cost tracking removed from the counter - the office's books hold prices
     type: tr.querySelector(".il-type").value,
     note: tr.querySelector(".il-note").value.trim(),
   })).filter(l => l.item_id && l.qty > 0);
