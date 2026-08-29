@@ -3022,8 +3022,10 @@ function storeGo(which) {
   if (which === "arrive") loadArrivePanel();
   if (which === "suppliers") loadSupplierScreen();
   if (which === "reports") {
-    document.getElementById("store-report-result").style.display = "none";
     updateReportBadges();
+    // Current stock is what people come here for; showing it straight
+    // away saves a click and makes the screen useful on arrival.
+    pickReport("stock", true);
   }
   if (which === "other") setMvKind(null);
 }
@@ -4780,7 +4782,7 @@ async function updateReportBadges() {
   } catch (e) { /* badges are a nicety, never an error */ }
 }
 
-function pickReport(kind) {
+function pickReport(kind, noScroll) {
   // Mark which report is showing, so it's obvious what you're looking at
   // once the result panel opens below.
   document.querySelectorAll(".rep-tile").forEach(t =>
@@ -4805,7 +4807,10 @@ function pickReport(kind) {
     sf.innerHTML = '<option value="">All sites together</option>' +
       (sites || []).map(s => `<option value="${s.code}">Only site ${s.code}</option>`).join("");
   loadStore();
-  document.getElementById("store-report-result").scrollIntoView({ behavior: "smooth", block: "start" });
+  // Scrolling on arrival would yank the picker off screen before the
+  // keeper has seen it; only scroll when they actively choose a report.
+  if (!noScroll)
+    document.getElementById("store-report-result").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // Turns the report's headline numbers into small coloured chips under

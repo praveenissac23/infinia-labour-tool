@@ -1747,6 +1747,15 @@ def _next_item_code(db):
     return f"ITM{n}"
 
 
+def _clean_export_qty(v):
+    """400.0 -> 400, 7.5 -> 7.5 - counts never carry a fake decimal."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return str(int(f)) if f == int(f) else str(f)
+
+
 def _proper_name(s: str) -> str:
     """First letter of each word up, the rest untouched, so "cushions"
     becomes "Cushions" while "cement OPC 42.5" keeps OPC as OPC. The
@@ -2119,12 +2128,17 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     for i in items.values():
         if not i.active: continue
         c = stock.get((i.id, CENTRAL), 0)
-        o = sum(v for (iid, loc), v in stock.items() if iid == i.id and loc != CENTRAL)
+        per_site = {loc: round(v, 2) for (iid, loc), v in stock.items()
+                    if iid == i.id and loc != CENTRAL and v}
+        o = sum(per_site.values())
         if c == 0 and o == 0 and not i.reorder_level:
             continue
         rows.append({"code": i.code, "name": i.name, "category": i.category, "unit": i.unit,
                       "item_type": i.item_type, "in_store": round(c, 2),
                       "at_sites": round(o, 2), "total": round(c + o, 2),
+                      # Which site holds what, so a row can open into a
+                      # proper breakdown instead of one crowded cell.
+                      "by_site": per_site,
                       "low": bool(i.reorder_level and c <= i.reorder_level)})
     return {"title": "Current stock", "rows": sorted(rows, key=lambda r: r["code"])}
 
@@ -2394,6 +2408,18 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         sub = f"{date_from or 'start'} to {date_to or 'today'}"
     else:
         sub = f"As at {date.today().isoformat()}"
+    # On screen the site split opens as its own panel; on paper there is
+    # nowhere to expand, so it becomes a readable column instead of a
+    # raw mapping.
+    rows = []
+    for r in data["rows"]:
+        r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        if isinstance(r.get("by_site"), dict):
+            per = r.pop("by_site")
+            r["at_which_sites"] = ", ".join(f"{loc}: {_clean_export_qty(q)}"
+                                             for loc, q in sorted(per.items())) or "-"
+        rows.append(r)
+    data = {**data, "rows": rows}
     if format == "pdf":
         buf = export_web.build_store_report_pdf(data["title"], data["rows"], sub)
         media, ext = "application/pdf", "pdf"
