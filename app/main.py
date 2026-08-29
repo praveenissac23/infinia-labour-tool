@@ -125,6 +125,21 @@ def require_screen(screen: str):
     return _check
 
 
+def require_any_screen(*screens):
+    """Some data belongs to two jobs at once: suppliers are used by the
+    keeper (store screen) receiving deliveries and by the office
+    (requests screen) placing orders. Either permission opens the door -
+    demanding one specific screen was silently blanking the supplier
+    list for whoever happened to hold the other."""
+    def _check(user: models.User = Depends(auth.get_current_user)):
+        perms = effective_permissions(user)
+        if not any(s in perms for s in screens):
+            raise HTTPException(status_code=403,
+                detail=f"You don't have access to this. Ask an admin to enable {' or '.join(screens)}.")
+        return user
+    return _check
+
+
 def log_action(db: Session, user_id, action: str, details: str = ""):
     db.add(models.AuditLog(user_id=user_id, action=action, details=details))
     db.commit()
@@ -1577,7 +1592,7 @@ def _find_or_create_supplier(db, name, contact_person="", phone=""):
 
 @app.get("/store/suppliers")
 def list_suppliers(db: Session = Depends(get_db),
-                    user: models.User = Depends(require_screen("store"))):
+                    user: models.User = Depends(require_any_screen("store", "requests"))):
     return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
              "phone": s.phone or "", "notes": s.notes or ""}
             for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
@@ -1586,7 +1601,7 @@ def list_suppliers(db: Session = Depends(get_db),
 
 @app.post("/store/suppliers")
 def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
-                   user: models.User = Depends(require_screen("store"))):
+                   user: models.User = Depends(require_any_screen("store", "requests"))):
     if not (payload.name or "").strip():
         raise HTTPException(status_code=400, detail="Supplier needs a name.")
     sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
@@ -2506,8 +2521,6 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     # can chase the next order without asking who sold it to us.
     sup = _find_or_create_supplier(db, payload.supplier)
     sup_name = sup.name if sup else (payload.supplier or "")
-    if sup and not mr.supplier_id:
-        mr.supplier_id = sup.id
 
     errors, done = [], 0
     for w in wanted:
@@ -2529,7 +2542,16 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
             supplier=sup_name, reference=payload.reference or mr.ref,
             notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
         line.qty_received = (line.qty_received or 0) + w.qty
+        # The trader on the delivery note is who this line was bought
+        # from - learn it on lines that never got a supplier at ordering.
+        if sup and not line.supplier_id:
+            line.supplier_id = sup.id
         done += 1
+
+    # The request-level supplier is a shortcut kept only while every
+    # line agrees; recompute rather than overwrite.
+    sup_ids = {l.supplier_id for l in mr.lines}
+    mr.supplier_id = list(sup_ids)[0] if len(sup_ids) == 1 and None not in sup_ids else None
 
     if errors and not done:
         raise HTTPException(status_code=400, detail={"errors": errors})

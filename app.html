@@ -4275,9 +4275,13 @@ async function openReceive(id) {
   document.getElementById("recv-ref").textContent =
     r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`;
   document.getElementById("recv-date").value = isoLocal(new Date());
-  // Prefill from the supplier already on the request, if the office
-  // recorded one when they ordered it.
-  const sup = r.supplier || null;
+  // Prefill from the supplier of the lines still due. On a split
+  // request the request-level supplier is empty by design, but if
+  // everything still owed comes from one trader, that name is known.
+  const dueSups = [...new Map((r.lines || [])
+    .filter(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0 && l.supplier)
+    .map(l => [l.supplier.id, l.supplier])).values()];
+  const sup = dueSups.length === 1 ? dueSups[0] : (r.supplier || null);
   document.getElementById("recv-supplier").value = sup ? sup.name : "";
   document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
   document.getElementById("recv-phone").value = sup ? (sup.phone || "") : "";
@@ -4297,6 +4301,7 @@ async function openReceive(id) {
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
     return `<tr data-line="${l.id}">
       <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
+        ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
           Asked in ${l.unit}, but the store counts this in ${item.unit} - enter the quantity in ${item.unit}.</div>` : ""}</td>
       <td>${num(l.qty_requested)} ${l.unit}</td>
