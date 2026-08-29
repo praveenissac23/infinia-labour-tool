@@ -8,6 +8,7 @@ pickled sessions/JSON files to a real multi-user database.
 """
 from datetime import date, datetime, timedelta
 from typing import Optional
+import re
 import io
 import json
 
@@ -1525,6 +1526,77 @@ def _stock_map(db: Session, upto: date = None):
     return stock
 
 
+def _supplier_key(name: str) -> str:
+    """Fold a supplier name to a comparison key: lower case, punctuation
+    dropped, spacing collapsed, and the usual trading suffixes removed.
+    "AL RAHA TRADING LLC", "Al-Raha Trading" and "al raha  trading llc."
+    all land on "al raha", so one supplier is one record."""
+    s = re.sub(r"[^a-z0-9 ]+", " ", (name or "").lower())
+    s = " ".join(s.split())
+    for suffix in (" llc", " l l c", " trading", " general trading", " co", " company",
+                   " est", " establishment", " fzc", " fze", " ltd", " limited"):
+        while s.endswith(suffix):
+            s = s[: -len(suffix)].strip()
+    return s
+
+
+def _tidy_supplier_name(name: str) -> str:
+    """Store the name the way it should be read: each word capitalised,
+    but abbreviations people write in capitals (LLC, FZE, ADNOC) kept."""
+    keep = {"llc", "fze", "fzc", "uae", "adnoc", "gi", "pvc", "upvc", "ppr", "opc"}
+    out = []
+    for w in " ".join((name or "").split()).split(" "):
+        if not w:
+            continue
+        out.append(w.upper() if w.lower() in keep else w[0].upper() + w[1:].lower())
+    return " ".join(out)
+
+
+def _find_or_create_supplier(db, name, contact_person="", phone=""):
+    """Look a supplier up by its folded key, creating it the first time.
+    Contact details fill in as they are learned: a blank phone today is
+    filled by tomorrow's delivery note, but an existing one is never
+    overwritten with an empty box."""
+    key = _supplier_key(name)
+    if not key:
+        return None
+    sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first()
+    if not sup:
+        sup = models.Supplier(name=_tidy_supplier_name(name), name_key=key,
+                              contact_person=(contact_person or "").strip(),
+                              phone=(phone or "").strip(), active=True)
+        db.add(sup)
+        db.flush()
+        return sup
+    if contact_person and contact_person.strip():
+        sup.contact_person = contact_person.strip()
+    if phone and phone.strip():
+        sup.phone = phone.strip()
+    return sup
+
+
+@app.get("/store/suppliers")
+def list_suppliers(db: Session = Depends(get_db),
+                    user: models.User = Depends(require_screen("store"))):
+    return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
+             "phone": s.phone or "", "notes": s.notes or ""}
+            for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
+                       .order_by(models.Supplier.name).all()]
+
+
+@app.post("/store/suppliers")
+def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("store"))):
+    if not (payload.name or "").strip():
+        raise HTTPException(status_code=400, detail="Supplier needs a name.")
+    sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
+    if payload.notes:
+        sup.notes = payload.notes
+    db.commit()
+    return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person or "",
+            "phone": sup.phone or ""}
+
+
 @app.post("/store/request-lines/{line_id}/link-item")
 def link_line_item(line_id: int, payload: schemas.LinkLineItemIn,
                     db: Session = Depends(get_db),
@@ -1790,6 +1862,12 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
                 detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at {where}.")
 
     m = models.StoreMovement(**payload.dict(), created_by=user.id)
+    # An arrival names a supplier; record it once, tidily, so the name
+    # is offered back with its phone number the next time.
+    if payload.kind == "in" and (payload.supplier or "").strip():
+        sup = _find_or_create_supplier(db, payload.supplier)
+        if sup:
+            m.supplier = sup.name
     db.add(m)
     db.commit()
     db.refresh(m)
@@ -2007,6 +2085,13 @@ def _next_mr_ref(db: Session) -> str:
 
 def _mr_out(mr: models.MaterialRequest) -> dict:
     d = schemas.MaterialRequestOut.model_validate(mr).model_dump()
+    # Supplier travels with the request so the list can show who to
+    # chase without a second call per row.
+    sup = getattr(mr, "supplier", None)
+    d["supplier"] = ({"id": sup.id, "name": sup.name,
+                      "contact_person": sup.contact_person or "", "phone": sup.phone or ""}
+                     if sup else None)
+    d["expected_on"] = mr.expected_on.isoformat() if getattr(mr, "expected_on", None) else None
     for i, ln in enumerate(mr.lines):
         d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
         d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
@@ -2099,6 +2184,17 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
     mr.status = payload.status
     if payload.office_remark:
         mr.office_remark = payload.office_remark
+    # Ordering is when the supplier becomes known. Capturing it here
+    # gives the keeper a name and number to chase, instead of a request
+    # that says "ordered" and nothing else.
+    if getattr(payload, "supplier", None) and payload.supplier.strip():
+        sup = _find_or_create_supplier(db, payload.supplier,
+                                        getattr(payload, "contact_person", "") or "",
+                                        getattr(payload, "phone", "") or "")
+        if sup:
+            mr.supplier_id = sup.id
+    if getattr(payload, "expected_on", None):
+        mr.expected_on = payload.expected_on
     mr.closed_on = date.today() if payload.status in ("delivered", "received", "closed", "rejected") else None
     db.commit()
     log_action(db, user.id, "material_request_status", f"{mr.ref} -> {payload.status}")
@@ -2391,6 +2487,14 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     if not wanted:
         raise HTTPException(status_code=400, detail="Enter how much arrived for at least one material.")
 
+    # Learn the supplier as the delivery is recorded: the name is tidied
+    # to one spelling, and the request keeps a link to it so the keeper
+    # can chase the next order without asking who sold it to us.
+    sup = _find_or_create_supplier(db, payload.supplier)
+    sup_name = sup.name if sup else (payload.supplier or "")
+    if sup and not mr.supplier_id:
+        mr.supplier_id = sup.id
+
     errors, done = [], 0
     for w in wanted:
         line = db.query(models.MaterialRequestLine).filter(
@@ -2408,7 +2512,7 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
             continue
         db.add(models.StoreMovement(
             item_id=line.item_id, kind="in", qty=w.qty, location="",
-            supplier=payload.supplier, reference=payload.reference or mr.ref,
+            supplier=sup_name, reference=payload.reference or mr.ref,
             notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
         line.qty_received = (line.qty_received or 0) + w.qty
         done += 1

@@ -325,6 +325,10 @@ class MaterialRequestOut(BaseModel):
 
 
 class MaterialRequestStatusIn(BaseModel):
+    supplier: str = ''
+    contact_person: str = ''
+    phone: str = ''
+    expected_on: date | None = None
     status: str
     office_remark: str = ""
 
@@ -354,3 +358,10 @@ class ApplyUnitsIn(BaseModel):
 
 class LinkLineItemIn(BaseModel):
     item_id: int
+
+
+class SupplierIn(BaseModel):
+    name: str
+    contact_person: str = ""
+    phone: str = ""
+    notes: str = ""

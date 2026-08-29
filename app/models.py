@@ -207,6 +207,29 @@ class Backup(Base):
 # ---------------------------------------------------------------------
 # STORE / INVENTORY
 # ---------------------------------------------------------------------
+class Supplier(Base):
+    """
+    Who the company buys from. Built up as the store keeper works rather
+    than typed into a separate master screen first: the first delivery
+    from "Al Raha Trading" creates the record, and every later mention
+    finds it again and fills in the phone number and contact person.
+
+    name_key holds the name folded to lower case with punctuation and
+    spacing stripped, so "AL RAHA TRADING", "Al Raha Trading" and
+    "al-raha  trading" are recognised as one supplier instead of three.
+    """
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    name_key = Column(String, unique=True, index=True, nullable=False)
+    contact_person = Column(String, default="")
+    phone = Column(String, default="")
+    notes = Column(Text, default="")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class StoreItem(Base):
     """
     A material or tool the store holds. item_type drives the whole
@@ -304,6 +327,11 @@ class MaterialRequest(Base):
     status = Column(String, default="pending", index=True)
     notes = Column(Text, default="")
     office_remark = Column(Text, default="")
+    # Who the office ordered it from, captured at "mark as ordered", so
+    # the keeper chasing a late delivery has a name and a number in
+    # front of them instead of asking the office who bought it.
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    expected_on = Column(Date, nullable=True)
     requested_on = Column(Date, nullable=False, index=True)
     closed_on = Column(Date, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -312,6 +340,7 @@ class MaterialRequest(Base):
 
     lines = relationship("MaterialRequestLine", back_populates="request",
                           cascade="all, delete-orphan")
+    supplier = relationship("Supplier")
 
 
 class MaterialRequestLine(Base):

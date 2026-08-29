@@ -558,7 +558,13 @@
             </p>
             <div class="form-row">
               <div class="field-grid" style="margin-bottom:0; width:100%;">
-                <div class="field"><label>Supplier</label><input type="text" id="recv-supplier" placeholder="Who delivered it"></div>
+                <div class="field"><label>Supplier</label>
+                  <input type="text" id="recv-supplier" list="supplier-list" placeholder="Who delivered it"
+                         oninput="onSupplierTyped(this, 'recv')"></div>
+                <div class="field"><label>Contact person</label>
+                  <input type="text" id="recv-contact" placeholder="Who to call there"></div>
+                <div class="field"><label>Contact number</label>
+                  <input type="text" id="recv-phone" placeholder="Phone"></div>
                 <div class="field"><label>DO / Invoice no</label><input type="text" id="recv-ref-no" placeholder="From the delivery note"></div>
                 <div class="field"><label>Delivery date</label><input type="date" id="recv-date"></div>
               </div>
@@ -1452,6 +1458,7 @@ function switchScreen(name) {
       // requests, changeable in one click, so nothing is saved undated.
       setNeededByDefault();
       restoreMrFormState();
+      loadSuppliers();
       loadRequests();
     });
   }
@@ -3662,6 +3669,48 @@ function materialPickerHtml(cls, listName) {
           <input type="hidden" class="${cls}">`;
 }
 
+// ---- Suppliers -------------------------------------------------------
+// The list builds itself as deliveries are recorded, rather than being
+// typed into a master screen first. Picking a known name fills in its
+// contact person and phone, so the keeper chasing an order has someone
+// to call without hunting through old delivery notes.
+let suppliers = [];
+
+async function loadSuppliers() {
+  try {
+    suppliers = await apiCall("/store/suppliers");
+    let dl = document.getElementById("supplier-list");
+    if (!dl) { dl = document.createElement("datalist"); dl.id = "supplier-list"; document.body.appendChild(dl); }
+    dl.innerHTML = suppliers.map(s => `<option value="${s.name}">`).join("");
+  } catch (e) { /* the field still accepts a new name typed in full */ }
+}
+
+function findSupplier(name) {
+  // Match the way the server does - case, punctuation and trading
+  // suffixes ignored - so "al raha" finds "Al Raha Trading LLC".
+  const key = t => {
+    let s = String(t || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).join(" ").trim();
+    for (const suf of [" llc", " trading", " general trading", " co", " company", " est",
+                       " establishment", " fzc", " fze", " ltd", " limited"]) {
+      while (s.endsWith(suf)) s = s.slice(0, -suf.length).trim();
+    }
+    return s;
+  };
+  const k = key(name);
+  return k ? (suppliers || []).find(s => key(s.name) === k) : null;
+}
+
+// Fill the contact boxes the moment a known supplier is recognised,
+// without clobbering anything the keeper has already typed.
+function onSupplierTyped(box, prefix) {
+  const hit = findSupplier(box.value);
+  if (!hit) return;
+  const c = document.getElementById(`${prefix}-contact`);
+  const p = document.getElementById(`${prefix}-phone`);
+  if (c && !c.value) c.value = hit.contact_person || "";
+  if (p && !p.value) p.value = hit.phone || "";
+}
+
 function buildMaterialDatalist() {
   const mk = (id) => {
     let dl = document.getElementById(id);
@@ -4076,7 +4125,9 @@ async function loadRequests() {
               <td style="text-align:left;">${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
               <td>${r.requested_on}</td>
               <td>${r.needed_by || '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
-              <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}</td>
+              <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}${
+                r.supplier ? `<div style="font-size:11px; color:#777; margin-top:3px;">
+                  From ${r.supplier.name}${r.supplier.phone ? ` &middot; <a href="tel:${r.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${r.supplier.phone}</a>` : ""}${r.supplier.contact_person ? ` (${r.supplier.contact_person})` : ""}</div>` : ""}</td>
               <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
               <td>
                 ${["delivered", "closed", "rejected"].includes(r.status)
@@ -4160,7 +4211,12 @@ async function openReceive(id) {
   document.getElementById("recv-ref").textContent =
     r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`;
   document.getElementById("recv-date").value = isoLocal(new Date());
-  document.getElementById("recv-supplier").value = "";
+  // Prefill from the supplier already on the request, if the office
+  // recorded one when they ordered it.
+  const sup = r.supplier || null;
+  document.getElementById("recv-supplier").value = sup ? sup.name : "";
+  document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
+  document.getElementById("recv-phone").value = sup ? (sup.phone || "") : "";
   document.getElementById("recv-ref-no").value = r.ref;
   document.getElementById("recv-notes").value = "";
   showStatus("recv-status", null);
@@ -4227,7 +4283,7 @@ async function saveReceive() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lines,
-        supplier: properName(document.getElementById("recv-supplier").value.trim()),
+        supplier: document.getElementById("recv-supplier").value.trim(),
         reference: document.getElementById("recv-ref-no").value.trim(),
         received_on: document.getElementById("recv-date").value || null,
         notes: document.getElementById("recv-notes").value.trim(),
@@ -4247,6 +4303,18 @@ async function saveReceive() {
     // show it, otherwise the keeper can't see the delivery they just made.
     const f = document.getElementById("mreq-filter");
     if (f && f.value !== "all" && f.value !== res.status) f.value = res.status;
+    // Remember the supplier's contact details for next time.
+    const supName = document.getElementById("recv-supplier").value.trim();
+    if (supName) {
+      try {
+        await apiCall("/store/suppliers", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: supName,
+            contact_person: document.getElementById("recv-contact").value.trim(),
+            phone: document.getElementById("recv-phone").value.trim() }) });
+        await loadSuppliers();
+      } catch (e) { /* the delivery itself is already saved */ }
+    }
     await loadRequests();
     // If the delivery was recorded from the Material Arrived panel,
     // refresh its list too so the completed request drops off it.
@@ -4457,10 +4525,29 @@ async function submitMaterialRequest() {
 }
 
 async function setRequestStatus(id, status) {
+  const body = { status };
+  // "Ordered" is the moment the supplier becomes known. Ask once, here,
+  // so the keeper chasing a late delivery has a name and a number
+  // instead of a request that says "ordered" and nothing else.
+  if (status === "ordered") {
+    const name = (prompt("Ordered from which supplier?\n\nLeave blank to skip.") || "").trim();
+    if (name) {
+      body.supplier = name;
+      const known = findSupplier(name);
+      if (known && (known.contact_person || known.phone)) {
+        // Already on file - don't make anyone retype it.
+        body.contact_person = known.contact_person || "";
+        body.phone = known.phone || "";
+      } else {
+        body.contact_person = (prompt(`Contact person at ${name}? (optional)`) || "").trim();
+        body.phone = (prompt(`Contact number for ${name}? (optional)`) || "").trim();
+      }
+    }
+  }
   try {
     await apiCall(`/store/requests/${id}/status`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }) });
+      body: JSON.stringify(body) });
     // Closing or rejecting drops the request out of the default "Still
     // open" list, so move the filter with it - otherwise the request
     // just vanishes and the button looks broken.
@@ -4469,6 +4556,7 @@ async function setRequestStatus(id, status) {
     const f = document.getElementById("mreq-filter");
     if (f && f.value !== "all" && f.value !== status) f.value = status;
     showStatus("mreq-status", "ok", `${MR_LABEL[status] || status}.`);
+    if (body.supplier) await loadSuppliers();
     await loadRequests();
   } catch (e) { showStatus("mreq-status", "err", errText(e)); }
 }
