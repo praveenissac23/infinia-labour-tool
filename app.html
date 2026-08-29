@@ -135,6 +135,12 @@
   input[type=date], select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
                              border-radius: 7px; font-size: 13.5px; background: white; }
   textarea { border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; padding: 9px 10px; }
+  /* Inputs inside line tables (material pickers, quantities, notes)
+     match the 36px standard everywhere else - the picker is the most
+     typed-in box in the store, it shouldn't be the smallest. */
+  td input[type=text], td input[type=number], td select {
+    height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
+    border-radius: 7px; font-size: 13.5px; background: white; }
   /* Give the password fields room for their placeholder text - the
      default width cut off "New password (min 6 characters)" mid-word.
      The role dropdown gets a fixed width too; with no width set it
