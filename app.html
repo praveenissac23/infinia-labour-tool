@@ -993,10 +993,6 @@
                   <div class="store-tile-t">Suppliers</div>
                   <div class="store-tile-s">Who we buy from, and how to reach them</div>
                 </div>
-                <div class="store-tile" onclick="storeGo('dash')">
-                  <div class="store-tile-t">Dashboard</div>
-                  <div class="store-tile-s">Numbers, low stock and activity</div>
-                </div>
                 <div class="store-tile" onclick="storeGo('reports')">
                   <div class="store-tile-t">Reports</div>
                   <div class="store-tile-s">Stock, purchases, usage, requests</div>
@@ -1037,26 +1033,6 @@
                        style="width:220px;" oninput="renderSuppliers()">
               </div>
               <div id="sup-list" style="margin-top:12px;"></div>
-            </div>
-          </div>
-
-          <!-- DASHBOARD
-               The numbers view the owner asked for, on its own page:
-               KPIs up top, what needs buying, and the store's pulse. -->
-          <div id="store-dash" style="display:none;">
-            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
-            <div class="kpi-grid" id="home-kpis" style="margin-top:12px;"></div>
-            <div class="two-col" style="align-items:start;">
-              <div class="card" style="margin-bottom:0;">
-                <h2 style="margin-bottom:2px;">Needs buying soon</h2>
-                <p style="font-size:12px; color:#888; margin:0 0 8px;">Below their warn level - worst first.</p>
-                <div id="home-low"></div>
-              </div>
-              <div class="card" style="margin-bottom:0;">
-                <h2 style="margin-bottom:2px;">Latest store activity</h2>
-                <p style="font-size:12px; color:#888; margin:0 0 8px;">The most recent movements in and out.</p>
-                <div id="home-activity"></div>
-              </div>
             </div>
           </div>
 
@@ -3035,7 +3011,7 @@ function setUnitSelect(sel, unit) {
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","arrive","dash","suppliers","items","other","reports"];
+const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports"];
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -3045,7 +3021,6 @@ function storeGo(which) {
   if (which === "home") loadStoreHome();
   if (which === "arrive") loadArrivePanel();
   if (which === "suppliers") loadSupplierScreen();
-  if (which === "dash") loadStoreHome();   // same data feeds the dashboard panel
   if (which === "reports") {
     document.getElementById("store-report-result").style.display = "none";
     updateReportBadges();
@@ -3106,14 +3081,11 @@ async function loadStoreHome() {
     // The detail drill-down needs the per-site breakdown and item ids
     // from /store/stock, so fetch it alongside the summary. Requests
     // ride along too, for the overview chips.
-    const [stock, stk, reqs, moves] = await Promise.all([
+    const [stock, stk] = await Promise.all([
       apiCall("/store/report?kind=stock"),
       apiCall("/store/stock").catch(() => storeStockCache || []),
-      apiCall("/store/requests").catch(() => mrCache || []),
-      apiCall("/store/movements?limit=50").catch(() => []),
     ]);
     storeStockCache = stk;
-    mrCache = reqs;
     const all = stock.rows || [];
     // Only materials that actually have stock somewhere. The catalogue
     // holds thousands of materials the company may never buy, and
@@ -3132,52 +3104,13 @@ async function loadStoreHome() {
       ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.` +
         ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
       : "";
-    // The morning overview as proper KPI cards, each a doorway: click
-    // the number to land on the screen that deals with it.
-    const today = isoLocal(new Date());
-    const isOpenR = r => !["delivered", "received", "closed", "rejected"].includes(r.status);
-    const openN = (reqs || []).filter(isOpenR).length;
-    const overN = (reqs || []).filter(r => r.needed_by && r.needed_by < today && isOpenR(r)).length;
-    const movedToday = (moves || []).filter(m => m.moved_on === today).length;
-    const kpiEl = document.getElementById("home-kpis");
-    if (kpiEl) kpiEl.innerHTML = [
-      [num(rows.length), "Materials with stock", "good", "storeGo('reports'); pickReport('stock')"],
-      [num(lowN), "Low on stock", lowN ? "warn" : "", "storeGo('reports'); pickReport('low')"],
-      [num(openN), "Open requests", "", "switchScreen('requests')"],
-      [num(overN), "Requests overdue", overN ? "warn" : "", "storeGo('reports'); pickReport('mr_overdue')"],
-      [num(movedToday), "Movements today", "", "storeGo('reports'); pickReport('movements')"],
-    ].map(([n, l, cls, go]) =>
-      `<div class="kpi ${cls}" onclick="${go}"><div class="kpi-n">${n}</div><div class="kpi-l">${l}</div></div>`).join("");
-
-    // Needs buying soon: worst coverage first, one-click Request more.
-    const lowEl = document.getElementById("home-low");
-    if (lowEl) {
-      const lows = rows.filter(r => r.low)
-        .sort((a, b) => ((a.total || 0) / (a.reorder_level || 1)) - ((b.total || 0) / (b.reorder_level || 1)))
-        .slice(0, 8);
-      lowEl.innerHTML = lows.length ? lows.map(r => `<div class="mini-row">
-          <div style="min-width:0;"><strong>${r.name}</strong>
-            <div style="font-size:11.5px; color:#999;">${num(r.in_store || 0)} ${r.unit} in store &middot; warn under ${num(r.reorder_level || 0)}</div></div>
-          <button class="btn btn-primary" style="flex:0 0 auto;" onclick="requestMore('${String(r.code)}')">Request more</button>
-        </div>`).join("")
-        : '<div class="empty-note" style="padding:14px 4px;">Nothing is below its warn level.</div>';
-    }
-
-    // Latest activity: the store's pulse, eight lines, newest first.
-    const actEl = document.getElementById("home-activity");
-    if (actEl) {
-      const acts = (moves || []).slice(0, 8);
-      actEl.innerHTML = acts.length ? acts.map(m => `<div class="mini-row">
-          <div style="min-width:0;">
-            <strong>${MOVE_LABEL[m.kind] || m.kind}</strong> &middot; ${m.item_name || m.item_code || ""}
-            <div style="font-size:11.5px; color:#999;">${m.moved_on} &middot; ${m.kind === "in" ? (m.supplier || "supplier") : (m.location || m.from_location || "store")}${m.incharge ? " \u00b7 " + m.incharge : ""}</div>
-          </div>
-          <span class="num-col" style="flex:0 0 auto; font-weight:600;">${num(m.qty)} ${m.unit || ""}</span>
-        </div>`).join("")
-        : '<div class="empty-note" style="padding:14px 4px;">No movements recorded yet.</div>';
-    }
+    // The one number worth surfacing here, and it opens the report that
+    // deals with it. Everything else lives in Reports.
     const statsEl = document.getElementById("home-stats");
-    if (statsEl) statsEl.innerHTML = "";
+    if (statsEl) statsEl.innerHTML = lowN
+      ? `<span class="stat-chip" style="border-color:#C0392B; color:#C0392B; background:#C0392B12; cursor:pointer;"
+            onclick="storeGo('reports'); pickReport('low')">${num(lowN)} low on stock - see what to buy</span>`
+      : "";
     if (!rows.length) {
       head.innerHTML = "";
       body.innerHTML = all.length
