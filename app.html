@@ -8,7 +8,7 @@
 <style>
   :root {
     --red: #C0392B; --red-hover: #A5301F; --black: #2E3238; --darkgray: #3E434A;
-    --silver: #C7CBD1; --lightgray: #F4F5F7;
+    --silver: #C7CBD1; --lightgray: #F1EFEA;
   }
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
@@ -86,19 +86,19 @@
   /* Light, quiet headers. Solid brand-red header bars on every table
      were the single loudest amateur signal - red now belongs to
      actions and warnings only, so when it appears, it means something. */
-  th { background: #F6F7F9; color: #5B6167; padding: 10px 10px; text-align: center;
+  th { background: #F5F3EE; color: #5B6167; padding: 10px 10px; text-align: center;
        position: sticky; top: 0; z-index: 1; white-space: nowrap;
        font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-       border: none; border-bottom: 2px solid #E4E7EB; }
+       border: none; border-bottom: 2px solid #E6E2DA; }
   th:last-child { border-right: none; }
   th.sortable { cursor: pointer; user-select: none; }
-  th.sortable:hover { background: #EEF0F3; }
+  th.sortable:hover { background: #EFECE5; }
   /* Row rules only - a full grid of borders makes a dense table look
      like a spreadsheet and hides the data. */
   td { padding: 9px 10px; text-align: center; border: none; border-bottom: 1px solid #EDEDED; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:nth-child(even) td { background: #FCFCFC; }
-  tr:hover td { background: #F5F8FB; }
+  tr:hover td { background: #F7F4EE; }
   .lc-compact { font-size: 10.5px; line-height: 1.1; }
   .lc-compact table { table-layout: fixed; }
   .lc-compact th { padding: 4px 3px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
@@ -937,27 +937,14 @@
                   <div class="store-tile-t">Returns &amp; Corrections</div>
                   <div class="store-tile-s">Came back, moved, or wrong number</div>
                 </div>
+                <div class="store-tile" onclick="storeGo('dash')">
+                  <div class="store-tile-t">Dashboard</div>
+                  <div class="store-tile-s">Numbers, low stock and activity</div>
+                </div>
                 <div class="store-tile" onclick="storeGo('reports')">
                   <div class="store-tile-t">Reports</div>
                   <div class="store-tile-s">Stock, purchases, usage, requests</div>
                 </div>
-              </div>
-            </div>
-
-            <!-- The dashboard proper: numbers first, then what needs
-                 attention, then the full stock table for browsing. -->
-            <div class="kpi-grid" id="home-kpis"></div>
-
-            <div class="two-col" style="margin-bottom:16px;">
-              <div class="card" style="margin-bottom:0;">
-                <h2 style="margin-bottom:2px;">Needs buying soon</h2>
-                <p style="font-size:12px; color:#888; margin:0 0 8px;">Below their warn level - worst first.</p>
-                <div id="home-low"></div>
-              </div>
-              <div class="card" style="margin-bottom:0;">
-                <h2 style="margin-bottom:2px;">Latest store activity</h2>
-                <p style="font-size:12px; color:#888; margin:0 0 8px;">The most recent movements in and out.</p>
-                <div id="home-activity"></div>
               </div>
             </div>
 
@@ -973,6 +960,26 @@
               </div>
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
+              </div>
+            </div>
+          </div>
+
+          <!-- DASHBOARD
+               The numbers view the owner asked for, on its own page:
+               KPIs up top, what needs buying, and the store's pulse. -->
+          <div id="store-dash" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="kpi-grid" id="home-kpis" style="margin-top:12px;"></div>
+            <div class="two-col" style="align-items:start;">
+              <div class="card" style="margin-bottom:0;">
+                <h2 style="margin-bottom:2px;">Needs buying soon</h2>
+                <p style="font-size:12px; color:#888; margin:0 0 8px;">Below their warn level - worst first.</p>
+                <div id="home-low"></div>
+              </div>
+              <div class="card" style="margin-bottom:0;">
+                <h2 style="margin-bottom:2px;">Latest store activity</h2>
+                <p style="font-size:12px; color:#888; margin:0 0 8px;">The most recent movements in and out.</p>
+                <div id="home-activity"></div>
               </div>
             </div>
           </div>
@@ -2938,7 +2945,7 @@ function setUnitSelect(sel, unit) {
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","arrive","items","other","reports"];
+const STORE_PANELS = ["home","give","arrive","dash","items","other","reports"];
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -2947,6 +2954,7 @@ function storeGo(which) {
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
   if (which === "arrive") loadArrivePanel();
+  if (which === "dash") loadStoreHome();   // same data feeds the dashboard panel
   if (which === "reports") {
     document.getElementById("store-report-result").style.display = "none";
     updateReportBadges();
