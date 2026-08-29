@@ -3137,7 +3137,7 @@ async function loadStoreHome() {
       <td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>
       <td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>
       <td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>
-      <td>${r.low ? `<button class="btn btn-primary" onclick="event.stopPropagation(); requestMore('${String(r.code)}')">Request more</button>` : ""}</td>
+      <td>${r.low ? '<span style="color:#C0392B; font-size:11.5px; font-weight:600;">low</span>' : ""}</td>
       </tr>
       <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
         <td colspan="8" style="text-align:left; padding:0;">
@@ -3163,12 +3163,9 @@ function filterHomeStock() {
   });
 }
 
-// The full breakup of one material: where every unit sits right now,
-// what is already on order, and the last few movements - the questions
-// a keeper asks before giving out, requesting, or chasing anything.
-const MOVE_LABEL = { in: "Arrived", out: "Given out", return: "Came back",
-                     transfer: "Moved site to site", lost: "Lost / damaged", adjust: "Correction" };
-
+// The breakup of one material: where every unit sits right now, and
+// what is already on order - the two questions a keeper asks before
+// giving anything out.
 async function toggleStockDetail(code) {
   const row = document.getElementById("sd-" + code);
   if (!row) return;
@@ -3182,8 +3179,6 @@ async function toggleStockDetail(code) {
     const s = (storeStockCache || []).find(x => x.code === code);
     if (!s) { box.innerHTML = '<span style="color:#999;">No detail available.</span>'; return; }
     if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
-    let moves = [];
-    try { moves = await apiCall(`/store/movements?item_id=${s.item_id}&limit=8`); } catch (e) {}
 
     // Where it sits: central first, then each site, then the total.
     const places = [["Central store", s.central || 0]]
@@ -3210,37 +3205,11 @@ async function toggleStockDetail(code) {
       chips.push(`<span class="stat-chip" style="border-color:#B26A00; color:#B26A00; background:#B26A0012;">${num(totalOut)} ${s.unit} on order (${onOrder.map(x => x.ref).join(", ")})</span>`);
     }
 
-    const moveRows = moves.length ? moves.map(m => `<tr>
-        <td style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.moved_on}</td>
-        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${MOVE_LABEL[m.kind] || m.kind}</td>
-        <td class="num-col" style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${num(m.qty)} ${s.unit}</td>
-        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.kind === "in" ? (m.supplier || "supplier") : (m.location || m.from_location || "store")}</td>
-        <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">${m.incharge || "-"}</td>
-      </tr>`).join("")
-      : '<tr><td colspan="5" style="padding:8px 10px; color:#999;">No movements recorded yet.</td></tr>';
-
     box.innerHTML = `
       ${chips.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">${chips.join("")}</div>` : ""}
-      <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start;">
-        <div style="flex:0 1 300px;">
-          <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Where it is right now</div>
-          <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">${whereRows}</table>
-        </div>
-        <div style="flex:1 1 420px;">
-          <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Last ${moves.length || ""} movements</div>
-          <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">
-            <tr><th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px;">Date</th>
-                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">What happened</th>
-                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px;">Qty</th>
-                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">Where / from</th>
-                <th style="background:#F4F5F7; color:#666; font-size:10.5px; padding:5px 10px; text-align:left;">Who</th></tr>
-            ${moveRows}
-          </table>
-        </div>
-      </div>
-      <div style="margin-top:12px; display:flex; gap:8px;">
-        <button class="btn btn-primary" onclick="requestMore('${code}')">Request more</button>
-        <button class="btn btn-dark" onclick="viewItemMovements('${code}')">Full movement history</button>
+      <div style="max-width:340px;">
+        <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Where it is right now</div>
+        <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">${whereRows}</table>
       </div>`;
     box.dataset.loaded = "1";
   } catch (e) {
@@ -3248,15 +3217,6 @@ async function toggleStockDetail(code) {
   }
 }
 
-// Jump to the Movements report already filtered down to this material.
-function viewItemMovements(code) {
-  storeGo("reports");
-  pickReport("movements");
-  setTimeout(() => {
-    const s = document.getElementById("store-report-search");
-    if (s) { s.value = code; filterStoreReport(); }
-  }, 900);
-}
 
 // The material list can run to thousands of rows, so it's shown as a
 // searchable, paged table rather than every item at once.
@@ -4007,24 +3967,6 @@ function statusTrail(status) {
   }).join('<span style="color:#ddd; font-size:11px;"> &rarr; </span>');
 }
 
-// Jump from "this is running low" straight into asking for more, with
-// the material already chosen - otherwise the keeper has to remember the
-// name and find it again among thousands.
-function requestMore(code) {
-  switchScreen("requests");
-  setTimeout(() => {
-    toggleMrForm(true);   // the form starts collapsed; open it before filling it
-    const item = (storeItems || []).find(i => i.code === code);
-    if (!item) return;
-    let row = document.querySelector("#mr-lines tr");
-    if (!row) { addMrLine(); row = document.querySelector("#mr-lines tr"); }
-    const box = row.querySelector(".mr-item-txt");
-    box.value = `${item.code} - ${item.name}`;
-    onMaterialTyped(box);
-    row.querySelector(".mr-qty").focus();
-    showStatus("mreq-status", "ok", `${item.name} added - type how many you need and what it is for.`);
-  }, 900);
-}
 
 // Direct purchase is tucked away on the requests screen: it's the
 // exception, so it stays hidden until asked for rather than sitting
