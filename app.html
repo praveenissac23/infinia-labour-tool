@@ -549,6 +549,35 @@
         </div>
 
         <!-- ============ RECEIVE DELIVERY MODAL ============ -->
+        <!-- ORDER MODAL
+             One supplier, however many requests. Ten requests going to
+             the same trader are one form, not ten prompts. -->
+        <div id="order-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:10px; padding:24px 28px; width:620px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 4px;">Mark as ordered</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 16px;" id="order-modal-sub"></p>
+            <div class="field-grid" style="margin-bottom:14px;">
+              <div class="field"><label>Supplier</label>
+                <input type="text" id="order-supplier" list="supplier-list" placeholder="Who it was ordered from"
+                       oninput="onSupplierTyped(this, 'order')"></div>
+              <div class="field"><label>Contact person</label>
+                <input type="text" id="order-contact" placeholder="Who to call there"></div>
+              <div class="field"><label>Contact number</label>
+                <input type="text" id="order-phone" placeholder="Phone"></div>
+              <div class="field"><label>Expected delivery</label>
+                <input type="date" id="order-expected"></div>
+            </div>
+            <p style="font-size:12px; color:#999; margin:0 0 14px;">
+              Known suppliers fill in their own contact details as you type the name.
+            </p>
+            <div id="order-status"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+              <button class="btn btn-dark" onclick="closeOrderModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="saveOrderModal()" id="order-save-btn">Mark as ordered</button>
+            </div>
+          </div>
+        </div>
+
         <div id="recv-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
           <div style="background:white; border-radius:10px; padding:24px 28px; width:760px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">Record what arrived</h2>
@@ -4068,6 +4097,12 @@ async function loadRequests() {
                      border:1px solid #B26A00; color:#B26A00; background:#B26A0012;">${nUrgent} marked urgent</span>` : "") +
       `</div>`;
 
+    const orderBar = `<div id="mr-order-bar" style="display:none; align-items:center; gap:10px;
+        background:#FFF8F7; border:1px solid #E8C7C2; border-radius:8px; padding:9px 14px; margin-bottom:10px;">
+        <strong id="mr-order-count" style="font-size:12.5px;"></strong>
+        <button class="btn btn-primary" onclick="openOrderModal(pickedOrderIds())">Mark as ordered from one supplier</button>
+        <button class="btn btn-dark" onclick="clearOrderChecks()">Clear</button>
+      </div>`;
     const filter = document.getElementById("mreq-filter").value;
     const q = (document.getElementById("mreq-search").value || "").trim().toLowerCase();
     let list = all;
@@ -4090,10 +4125,11 @@ async function loadRequests() {
     // One row per request, details on demand. A card each was unusable
     // once there were more than a handful - you scrolled past everything
     // to find one reference.
-    box.innerHTML = pills + `
+    box.innerHTML = pills + orderBar + `
       <div class="grid-wrap" style="max-height:none;">
         <table>
           <thead><tr>
+            <th style="width:3%;"><input type="checkbox" id="mr-check-all" onclick="event.stopPropagation(); toggleAllOrderChecks(this)" title="Tick every request that can be ordered"></th>
             <th style="width:8%;">Request</th><th style="width:6%;">Site</th>
             <th style="width:11%;">Asked by</th><th style="width:8%;">Asked on</th>
             <th style="width:9%;">Needed by</th><th style="width:19%; text-align:left;">Materials</th>
@@ -4119,7 +4155,9 @@ async function loadRequests() {
               ? Math.round((new Date(today) - new Date(r.requested_on)) / 86400000) : 0;
             const aging = waitDays >= 2
               ? `<div style="font-size:11px; color:#999;">waiting ${waitDays} days</div>` : "";
+            const canOrder = ["pending", "approved"].includes(r.status);
             return `<tr onclick="toggleRequest(${r.id})" style="cursor:pointer;${late ? ' background:#FFF8F7;' : ''}">
+              <td>${canOrder ? `<input type="checkbox" class="mr-pick" value="${r.id}" onclick="event.stopPropagation(); updateOrderBar()">` : ""}</td>
               <td><strong>${r.ref}</strong>${r.urgency === "urgent" && isOpen(r) ? '<div style="font-size:10px; font-weight:700; letter-spacing:.5px; color:#B26A00;">URGENT</div>' : ""}</td>
               <td>${r.site || '<span style="color:#999;">Central store</span>'}</td>
               <td style="text-align:left;">${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
@@ -4138,7 +4176,7 @@ async function loadRequests() {
                 <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>`}
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
-                <td colspan="8" style="text-align:left; padding:14px 18px;">
+                <td colspan="9" style="text-align:left; padding:14px 18px;">
                   <div style="margin-bottom:10px;">${statusTrail(r.status)}</div>
                   <table style="font-size:12.5px; background:white;">
                     <thead><tr><th style="width:4%;">#</th><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
@@ -4166,7 +4204,10 @@ async function loadRequests() {
           }).join("")}</tbody>
         </table>
       </div>
-      <p style="font-size:12px; color:#888; margin:10px 2px 0;">${list.length} request(s) &middot; click any row to see the materials.</p>`;
+      <p style="font-size:12px; color:#888; margin:10px 2px 0;">${list.length} request(s) &middot; click any row to see the materials.${
+        list.some(r => ["pending","approved"].includes(r.status))
+          ? " Tick several going to the same supplier to order them together." : ""}</p>`;
+    updateOrderBar();   // the list just re-rendered, so nothing is ticked
   } catch (e) {
     box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
   }
@@ -4524,26 +4565,98 @@ async function submitMaterialRequest() {
   } catch (e) { showStatus("mreq-status", "err", errText(e)); }
 }
 
-async function setRequestStatus(id, status) {
-  const body = { status };
-  // "Ordered" is the moment the supplier becomes known. Ask once, here,
-  // so the keeper chasing a late delivery has a name and a number
-  // instead of a request that says "ordered" and nothing else.
-  if (status === "ordered") {
-    const name = (prompt("Ordered from which supplier?\n\nLeave blank to skip.") || "").trim();
-    if (name) {
-      body.supplier = name;
-      const known = findSupplier(name);
-      if (known && (known.contact_person || known.phone)) {
-        // Already on file - don't make anyone retype it.
-        body.contact_person = known.contact_person || "";
-        body.phone = known.phone || "";
-      } else {
-        body.contact_person = (prompt(`Contact person at ${name}? (optional)`) || "").trim();
-        body.phone = (prompt(`Contact number for ${name}? (optional)`) || "").trim();
-      }
-    }
+// ---- Bulk ordering ---------------------------------------------------
+function pickedOrderIds() {
+  return [...document.querySelectorAll(".mr-pick:checked")].map(c => parseInt(c.value, 10));
+}
+
+function updateOrderBar() {
+  const n = pickedOrderIds().length;
+  const bar = document.getElementById("mr-order-bar");
+  if (!bar) return;
+  bar.style.display = n ? "flex" : "none";
+  const c = document.getElementById("mr-order-count");
+  if (c) c.textContent = `${num(n)} request${n === 1 ? "" : "s"} selected`;
+}
+
+function toggleAllOrderChecks(box) {
+  // Only rows still visible after a search or filter, so a hidden
+  // request can never be ordered by accident.
+  document.querySelectorAll(".mr-pick").forEach(c => {
+    if (c.closest("tr").style.display !== "none") c.checked = box.checked;
+  });
+  updateOrderBar();
+}
+
+function clearOrderChecks() {
+  document.querySelectorAll(".mr-pick").forEach(c => c.checked = false);
+  const all = document.getElementById("mr-check-all");
+  if (all) all.checked = false;
+  updateOrderBar();
+}
+
+// Requests waiting to be marked as ordered. Ten going to the same
+// trader are one form filled once, not ten prompts.
+let orderIds = [];
+
+function openOrderModal(ids) {
+  orderIds = Array.isArray(ids) ? ids : [ids];
+  if (!orderIds.length) { showStatus("mreq-status", "warn", "Tick the requests to mark as ordered."); return; }
+  const refs = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).ref).filter(Boolean);
+  document.getElementById("order-modal-sub").textContent = orderIds.length === 1
+    ? `Request ${refs[0]} - who was it ordered from?`
+    : `${orderIds.length} requests (${refs.join(", ")}) - all from one supplier.`;
+  // Reuse the supplier already on any of them, so a second delivery
+  // from the same trader needs no typing at all.
+  const known = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).supplier).find(Boolean);
+  document.getElementById("order-supplier").value = known ? known.name : "";
+  document.getElementById("order-contact").value = known ? (known.contact_person || "") : "";
+  document.getElementById("order-phone").value = known ? (known.phone || "") : "";
+  document.getElementById("order-expected").value = "";
+  showStatus("order-status", null);
+  document.getElementById("order-modal-overlay").style.display = "flex";
+}
+
+function closeOrderModal() {
+  document.getElementById("order-modal-overlay").style.display = "none";
+  orderIds = [];
+}
+
+async function saveOrderModal() {
+  const name = document.getElementById("order-supplier").value.trim();
+  if (!name) { showStatus("order-status", "warn", "Type who it was ordered from."); return; }
+  const body = {
+    status: "ordered", supplier: name,
+    contact_person: document.getElementById("order-contact").value.trim(),
+    phone: document.getElementById("order-phone").value.trim(),
+    expected_on: document.getElementById("order-expected").value || null,
+  };
+  const btn = document.getElementById("order-save-btn");
+  btn.disabled = true;
+  let done = 0, failed = [];
+  for (const id of orderIds) {
+    try {
+      await apiCall(`/store/requests/${id}/status`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      done++;
+    } catch (e) { failed.push(errText(e)); }
   }
+  btn.disabled = false;
+  closeOrderModal();
+  showStatus("mreq-status", failed.length ? "warn" : "ok",
+    failed.length ? `${done} of ${orderIds.length} marked. Problem: ${failed[0]}`
+                  : `${done} request(s) ordered from ${name}.`);
+  await loadSuppliers();
+  const f = document.getElementById("mreq-filter");
+  if (f && f.value !== "all" && f.value !== "ordered") f.value = "ordered";
+  await loadRequests();
+}
+
+async function setRequestStatus(id, status) {
+  // Ordering needs supplier details, so it goes through the modal -
+  // which also handles several requests at once.
+  if (status === "ordered") { openOrderModal([id]); return; }
+  const body = { status };
   try {
     await apiCall(`/store/requests/${id}/status`, { method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -4556,7 +4669,6 @@ async function setRequestStatus(id, status) {
     const f = document.getElementById("mreq-filter");
     if (f && f.value !== "all" && f.value !== status) f.value = status;
     showStatus("mreq-status", "ok", `${MR_LABEL[status] || status}.`);
-    if (body.supplier) await loadSuppliers();
     await loadRequests();
   } catch (e) { showStatus("mreq-status", "err", errText(e)); }
 }
