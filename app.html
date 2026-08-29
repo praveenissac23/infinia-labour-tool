@@ -826,7 +826,7 @@
               <div class="field"><label>For site <span style="color:var(--red);">*</span></label>
                 <select id="mr-site"></select></div>
               <div class="field"><label>Your name <span style="color:var(--red);">*</span></label>
-                <input type="text" id="mr-by" placeholder="Who is asking" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}"></div>
+                <select id="mr-by" onchange="onRequesterChange(this)"></select></div>
               <div class="field"><label>Needed by <span style="color:var(--red);">*</span></label>
                 <input type="date" id="mr-needed"></div>
               <div class="field"><label>How urgent</label>
@@ -858,9 +858,11 @@
               should come in through a request, using <strong>Record delivery</strong>.
             </p>
             <div class="form-row">
-              <label>Supplier:</label><input type="text" id="in-supplier" placeholder="Who delivered it" style="width:200px;">
-              <label>DO / Invoice no:</label><input type="text" id="in-ref" style="width:170px;">
-              <label>Date:</label><input type="date" id="in-date">
+              <div class="field-grid" style="margin-bottom:0; width:100%;">
+                <div class="field"><label>Supplier</label><input type="text" id="in-supplier" placeholder="Who delivered it"></div>
+                <div class="field"><label>DO / Invoice no</label><input type="text" id="in-ref" placeholder="From the delivery note"></div>
+                <div class="field"><label>Date</label><input type="date" id="in-date"></div>
+              </div>
             </div>
             <div class="grid-wrap" style="max-height:none;">
               <table><thead><tr><th style="width:3%;">#</th><th style="width:26%;">Material</th><th style="width:13%;">Type</th><th style="width:11%;">How many</th><th style="width:12%;">Cost each</th><th style="width:28%;">Note</th><th style="width:7%;"></th></tr></thead>
@@ -882,7 +884,7 @@
               mark as ordered, and record what arrives. Click any row for the full detail.</p>
             <div class="form-row">
               <label>Show:</label>
-              <select id="mreq-filter" onchange="loadRequests()" style="width:210px;">
+              <select id="mreq-filter" onchange="loadRequests()" style="width:220px;">
                 <option value="open">Still open</option>
                 <option value="late">Late (past needed-by)</option>
                 <option value="all">Everything</option>
@@ -894,7 +896,7 @@
                 <option value="closed">Closed</option>
                 <option value="rejected">Rejected</option>
               </select>
-              <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:250px;" oninput="loadRequests()">
+              <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:220px;" oninput="loadRequests()">
               <button class="btn btn-primary" onclick="loadRequests()">Refresh</button>
               <button class="btn btn-dark" onclick="exportRequests('excel')">Download Excel</button>
               <button class="btn btn-dark" onclick="exportRequests('pdf')">Download PDF</button>
@@ -1428,10 +1430,10 @@ function switchScreen(name) {
         '<option value="STORE">Central store (stock top-up)</option>';
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#in-lines tr").length) addInLine();
-      // The same store keeper raises most requests - remember who they
-      // are so the name isn't typed fresh every single time.
+      // Requesters come from the engineers list and past requests, so
+      // the same person is always the same spelling.
       const mrBy = document.getElementById("mr-by");
-      if (mrBy && !mrBy.value) { try { mrBy.value = localStorage.getItem("mrName") || ""; } catch (e) {} }
+      if (mrBy) mrBy.innerHTML = requesterOptions();
       // A sensible needed-by beats an empty box: a week out for normal
       // requests, changeable in one click, so nothing is saved undated.
       setNeededByDefault();
@@ -3493,7 +3495,7 @@ function editStoreItem(id) {
 async function saveStoreItem() {
   const body = {
     code: document.getElementById("it-code").value.trim(),
-    name: document.getElementById("it-name").value.trim(),
+    name: properName(document.getElementById("it-name").value.trim()),
     category: document.getElementById("it-cat").value.trim(),
     unit: document.getElementById("it-unit").value.trim() || "pcs",
     item_type: document.getElementById("it-type").value,
@@ -3563,8 +3565,45 @@ async function saveMovement() {
 // app, so the store keeper picks a real person rather than typing a name.
 function peopleOptions() {
   const emp = employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.emp_no} - ${e.name} (${e.trade || "worker"})</option>`);
-  const eng = engineers.map(e => `<option value="${e.name}">${e.name} (site engineer)</option>`);
+  const eng = engineers.map(e => `<option value="${properName(e.name)}">${properName(e.name)} (site engineer)</option>`);
   return '<option value="">-- choose --</option>' + eng.join("") + emp.join("");
+}
+
+// "febiyan" -> "Febiyan", "site OPC store" -> "Site OPC Store": first
+// letter up, the rest untouched, so abbreviations survive. One rule for
+// every name and label in the app - names are written once, read
+// hundreds of times, and mixed casing reads as carelessness.
+function properName(s) {
+  return String(s || "").trim().split(/\s+/)
+    .map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+}
+
+// "Your name" on a request is a dropdown of the people who actually
+// raise requests - site engineers and past requesters - with Other for
+// a genuine newcomer. Free typing gave three spellings of one person.
+function requesterOptions() {
+  const names = new Set(engineers.map(e => properName(e.name)));
+  (mrCache || []).forEach(r => { if (r.requested_by) names.add(properName(r.requested_by)); });
+  let saved = "";
+  try { saved = properName(localStorage.getItem("mrName") || ""); } catch (e) {}
+  if (saved) names.add(saved);
+  const opts = [...names].sort((a, b) => a.localeCompare(b));
+  return '<option value="">-- choose --</option>' +
+    opts.map(n => `<option value="${n}"${n === saved ? " selected" : ""}>${n}</option>`).join("") +
+    '<option value="__other">Someone else...</option>';
+}
+
+function onRequesterChange(sel) {
+  if (sel.value === "__other") {
+    const n = properName(prompt("Type the name:") || "");
+    if (n) {
+      const o = document.createElement("option");
+      o.value = o.textContent = n;
+      sel.insertBefore(o, sel.lastElementChild);
+      sel.value = n;
+    } else sel.value = "";
+  }
+  try { localStorage.setItem("mrName", sel.value); } catch (e) {}
 }
 
 function stockOptionsHtml() {
@@ -3779,7 +3818,7 @@ async function saveIssue() {
 }
 
 async function saveReceipt() {
-  const supplier = document.getElementById("in-supplier").value.trim();
+  const supplier = properName(document.getElementById("in-supplier").value.trim());
   const ref = document.getElementById("in-ref").value.trim();
   const when = document.getElementById("in-date").value || isoLocal(new Date());
   const lines = [...document.querySelectorAll("#in-lines tr")].map(tr => ({
@@ -4118,7 +4157,7 @@ async function saveReceive() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lines,
-        supplier: document.getElementById("recv-supplier").value.trim(),
+        supplier: properName(document.getElementById("recv-supplier").value.trim()),
         reference: document.getElementById("recv-ref-no").value.trim(),
         received_on: document.getElementById("recv-date").value || null,
         notes: document.getElementById("recv-notes").value.trim(),
@@ -4229,7 +4268,7 @@ async function submitMaterialRequest() {
   // half-filled form saved happily and printed as a row of dashes -
   // no site, nobody to ask, no date to chase.
   const site = document.getElementById("mr-site").value;
-  const by = document.getElementById("mr-by").value.trim();
+  const by = properName(document.getElementById("mr-by").value.trim());
   const needed = document.getElementById("mr-needed").value;
   const focus = (id, msg) => {
     showStatus("mreq-status", "warn", msg);
