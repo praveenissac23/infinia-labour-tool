@@ -1133,39 +1133,43 @@
                    that don't apply, instead of showing eight controls at once
                    and leaving the keeper to work out which matter. -->
               <div class="rep-row" style="margin-bottom:18px;">
-                <div class="rep-tile" onclick="setMvKind('return')">Came back from a site</div>
-                <div class="rep-tile" onclick="setMvKind('transfer')">Moved between two sites</div>
-                <div class="rep-tile" onclick="setMvKind('lost')">Lost or damaged</div>
-                <div class="rep-tile" onclick="setMvKind('adjust')">Fix a wrong number</div>
+                <div class="rep-tile" onclick="setMvKind('return')"><b>Came back from a site</b><span>Material returned to the store</span></div>
+                <div class="rep-tile" onclick="setMvKind('transfer')"><b>Moved between two sites</b><span>Went straight from one site to another</span></div>
+                <div class="rep-tile" onclick="setMvKind('lost')"><b>Lost or damaged</b><span>Write it off the books</span></div>
+                <div class="rep-tile" onclick="setMvKind('adjust')"><b>Fix a wrong number</b><span>After counting the store</span></div>
               </div>
               <select id="mv-kind" onchange="onMvKindChange()" style="display:none;">
                 <option value="return"></option><option value="transfer"></option>
                 <option value="lost"></option><option value="adjust"></option>
               </select>
 
-              <div id="mv-form" style="display:none; max-width:640px;">
+              <div id="mv-form" style="display:none; max-width:760px;">
                 <p id="mv-hint" style="font-size:12.5px; color:#666; background:#F7F7F7;
                    padding:10px 14px; border-radius:6px; margin:0 0 16px;"></p>
 
-                <div style="display:grid; grid-template-columns:150px 1fr; gap:12px 14px; align-items:center;">
-                  <label style="font-size:13px;">Material</label>
-                  <select id="mv-item" style="width:100%;" onchange="updateMvHint()"></select>
-                  <p id="mv-stock-hint" style="font-size:12px; color:#666; margin:6px 0 0;"></p>
+                <!-- Stacked fields like every other form. The old
+                     two-column grid put the stock hint in as an extra
+                     child, which pushed every later label out of step
+                     with its own box. -->
+                <div class="field" style="max-width:420px; margin-bottom:4px;">
+                  <label>Material</label>
+                  <select id="mv-item" onchange="updateMvHint()"></select>
+                </div>
+                <p id="mv-stock-hint" style="font-size:12px; color:#666; margin:0 0 14px;"></p>
 
-                  <label style="font-size:13px;">How many</label>
-                  <input type="number" id="mv-qty" placeholder="Quantity" style="width:180px;" step="any">
-
-                  <label style="font-size:13px;" id="mv-from-label">From</label>
-                  <span id="mv-from-wrap"><select id="mv-from" style="width:200px;" onchange="updateMvHint()"></select></span>
-
-                  <label style="font-size:13px;" id="mv-to-label">To</label>
-                  <span id="mv-to-wrap"><select id="mv-to" style="width:200px;"></select></span>
-
-                  <label style="font-size:13px;">Date</label>
-                  <input type="date" id="mv-date" style="width:200px;">
-
-                  <label style="font-size:13px;" id="mv-notes-label">Note</label>
-                  <input type="text" id="mv-notes" placeholder="Optional" style="width:100%;">
+                <div class="field-grid">
+                  <div class="field"><label>How many</label>
+                    <input type="number" id="mv-qty" placeholder="Quantity" step="any"></div>
+                  <div class="field" id="mv-from-field"><label id="mv-from-label">From</label>
+                    <span id="mv-from-wrap"><select id="mv-from" onchange="updateMvHint()"></select></span></div>
+                  <div class="field" id="mv-to-field"><label id="mv-to-label">To</label>
+                    <span id="mv-to-wrap"><select id="mv-to"></select></span></div>
+                  <div class="field"><label>Date</label>
+                    <input type="date" id="mv-date"></div>
+                </div>
+                <div class="field" style="max-width:620px;">
+                  <label id="mv-notes-label">Note</label>
+                  <input type="text" id="mv-notes" placeholder="Optional">
                 </div>
 
                 <div class="form-row" style="margin-top:18px;">
@@ -3406,14 +3410,16 @@ function onMvKindChange() {
   document.getElementById("mv-hint").textContent = cfg.hint;
   document.getElementById("mv-notes-label").textContent = cfg.note;
 
-  const show = (labelId, wrapId, text) => {
+  // Hide the entire field block, not the label and box separately -
+  // a half-hidden field leaves a hole in the grid and pushes the rest
+  // out of line.
+  const show = (fieldId, labelId, text) => {
     const on = !!text;
-    document.getElementById(labelId).style.display = on ? "" : "none";
-    document.getElementById(wrapId).style.display = on ? "" : "none";
+    document.getElementById(fieldId).style.display = on ? "" : "none";
     if (on) document.getElementById(labelId).textContent = text;
   };
-  show("mv-from-label", "mv-from-wrap", cfg.from);
-  show("mv-to-label", "mv-to-wrap", cfg.to);
+  show("mv-from-field", "mv-from-label", cfg.from);
+  show("mv-to-field", "mv-to-label", cfg.to);
   updateMvHint();
 }
 
@@ -3432,7 +3438,7 @@ function updateMvHint() {
       .map(([site, q]) => `site ${site}: ${num(q)}`));
   let lead = "";
   const from = document.getElementById("mv-from").value;
-  if (["return", "transfer", "lost"].includes(kind) && document.getElementById("mv-from-wrap").style.display !== "none") {
+  if (["return", "transfer", "lost"].includes(kind) && document.getElementById("mv-from-field").style.display !== "none") {
     const have = from === "" ? (s.central || 0) : ((s.by_site || {})[from] || 0);
     lead = `<strong>${from === "" ? "Central store" : "Site " + from} holds ${num(have)} ${s.unit}.</strong> `;
   }
