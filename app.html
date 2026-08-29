@@ -306,10 +306,13 @@
   .dash-clock { font-size: 64px; font-weight: bold; color: var(--black); }
   .dash-clock-ampm { font-size: 15px; color: #888; margin-top: 4px; }
   .dash-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-  .dash-tile { background: white; border: 2px solid var(--red); border-radius: 10px; padding: 18px 14px; cursor: pointer; text-align: center; transition: background 0.15s; }
-  .dash-tile:hover { background: #FFF5F3; }
-  .dash-tile-title { font-weight: bold; font-size: 14px; color: var(--black); }
-  .dash-tile-sub { font-size: 11px; color: #888; margin-top: 4px; }
+  .dash-tile { background: white; border: 1px solid #E4E7EB; border-radius: 10px; padding: 18px 16px;
+               cursor: pointer; text-align: center; position: relative;
+               transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease; }
+  .dash-tile:hover { border-color: var(--red); box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+                     transform: translateY(-1px); }
+  .dash-tile-title { font-weight: 700; font-size: 14.5px; color: var(--black); }
+  .dash-tile-sub { font-size: 12px; color: #7A8087; margin-top: 4px; }
   .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; max-width: 320px; margin: 0 auto; }
   .dash-cal-head { font-size: 8px; font-weight: bold; color: #888; text-align: center; padding: 2px 0; }
   .dash-cal-day { border-radius: 4px; padding: 4px 2px; text-align: center; font-size: 9px; font-weight: bold; cursor: pointer; color: white; }
@@ -394,27 +397,27 @@
           </div>
 
           <div class="dash-tiles">
-            <div class="dash-tile" onclick="switchScreen('attendance')">
+            <div class="dash-tile" data-screen="attendance" onclick="switchScreen('attendance')">
               <div class="dash-tile-title">Daily Attendance</div>
               <div class="dash-tile-sub">Enter today's attendance</div>
             </div>
-            <div class="dash-tile" onclick="switchScreen('masterdata')">
+            <div class="dash-tile" data-screen="masterdata" onclick="switchScreen('masterdata')">
               <div class="dash-tile-title">Master Data</div>
               <div class="dash-tile-sub">Employees, sites, engineers</div>
             </div>
-            <div class="dash-tile" onclick="switchScreen('reports')">
+            <div class="dash-tile" data-screen="reports" onclick="switchScreen('reports')">
               <div class="dash-tile-title">Reports</div>
               <div class="dash-tile-sub">Summaries &amp; exports</div>
             </div>
-            <div class="dash-tile" onclick="switchScreen('adjustments')">
+            <div class="dash-tile" data-screen="adjustments" onclick="switchScreen('adjustments')">
               <div class="dash-tile-title">Salary Adjustments</div>
               <div class="dash-tile-sub">Bonuses &amp; deductions</div>
             </div>
-            <div class="dash-tile" onclick="switchScreen('errorcheck')">
+            <div class="dash-tile" data-screen="errorcheck" onclick="switchScreen('errorcheck')">
               <div class="dash-tile-title">Error Check</div>
               <div class="dash-tile-sub">Find missing data</div>
             </div>
-            <div class="dash-tile" onclick="switchScreen('settings')">
+            <div class="dash-tile" data-screen="settings" onclick="switchScreen('settings')">
               <div class="dash-tile-title">Settings</div>
               <div class="dash-tile-sub">Password &amp; staff logins</div>
             </div>
@@ -4893,10 +4896,17 @@ async function applyScreenPermissions() {
   try {
     const me = await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
-    document.querySelectorAll(".nav-item").forEach(n => {
+    document.querySelectorAll(".nav-item, .dash-tile[data-screen]").forEach(n => {
       const s = n.getAttribute("data-screen");
       if (s && !MY_SCREENS.includes(s)) n.style.display = "none";
     });
+    // The dashboard's clock-and-calendar is an attendance tool. A user
+    // who can't open attendance shouldn't stare at its completeness
+    // colours - and if their whole job is the store, land them there.
+    const hasAttendance = MY_SCREENS.includes("attendance");
+    const cal = document.getElementById("dash-calendar");
+    if (!hasAttendance && cal) { const card = cal.closest(".card"); if (card) card.style.display = "none"; }
+    if (!hasAttendance && MY_SCREENS.includes("store")) switchScreen("store");
     // A heading with nothing under it is just clutter, so hide any
     // group whose items are all hidden.
     const groups = {
