@@ -260,8 +260,7 @@
   .mini-row:last-child { border-bottom: none; }
   /* ---- Raise-request page ----
      Numbered steps guide an untrained requester through the form; the
-     quick-add chips put the store's most-asked-for materials one click
-     away; the tracker below answers "where has my request got to". */
+     tracker below answers "where has my request got to". */
   .step-label { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px;
                 font-size: 12px; font-weight: 700; letter-spacing: .5px;
                 text-transform: uppercase; color: #7A3B33; }
@@ -269,10 +268,6 @@
   .step-n { width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: white;
             display: inline-flex; align-items: center; justify-content: center;
             font-size: 11.5px; font-weight: 700; flex: 0 0 auto; }
-  .chip-add { display: inline-block; padding: 5px 12px; border: 1px solid #E7CEC9;
-              border-radius: 999px; background: #FDF6F5; color: #7A3B33; font-size: 12px;
-              font-weight: 600; cursor: pointer; transition: background .12s ease, border-color .12s ease; }
-  .chip-add:hover { background: #FAEBE8; border-color: var(--red); }
   .mymr-row { border: 1px solid #EDE9E2; border-radius: 8px; padding: 10px 14px;
               margin-bottom: 8px; cursor: pointer; background: white;
               transition: border-color .12s ease, box-shadow .12s ease; }
@@ -912,7 +907,6 @@
                 </select></div>
             </div>
             <div class="step-label"><span class="step-n">2</span> What you need</div>
-            <div id="mr-quick-add" style="display:none; margin:0 0 10px;"></div>
             <div class="grid-wrap" style="max-height:none;">
               <table>
                 <thead><tr><th style="width:3%;">#</th><th style="width:30%;">Material</th><th style="width:10%;">Type</th><th style="width:8%;">How many</th><th style="width:11%;">Unit</th><th style="width:20%;">What is it for?</th><th style="width:13%;">Note</th><th style="width:5%;"></th></tr></thead>
@@ -1558,7 +1552,6 @@ function switchScreen(name) {
       // The raise screen shows the requester their own recent requests
       // so they can see where things have got to without chasing.
       loadRequests();
-      renderQuickAdd();
     });
   }
 
@@ -4049,40 +4042,6 @@ function toggleRequest(id) {
 // already on order without another server round-trip per keystroke.
 let mrCache = [];
 
-// ---- Raise-screen extras --------------------------------------------
-// The store's most-asked-for materials as one-click chips: history
-// already knows that cement and rebar come up every week, so the
-// keeper shouldn't have to type them every week.
-function renderQuickAdd() {
-  const box = document.getElementById("mr-quick-add");
-  if (!box) return;
-  const counts = {};
-  (mrCache || []).forEach(r => (r.lines || []).forEach(l => {
-    if (l.item_id) counts[l.item_id] = (counts[l.item_id] || 0) + 1;
-  }));
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6)
-    .map(([id]) => (storeItems || []).find(i => i.id === parseInt(id, 10)))
-    .filter(Boolean);
-  if (top.length < 2) { box.style.display = "none"; return; }
-  box.style.display = "";
-  box.innerHTML = '<span style="font-size:11.5px; color:#999; margin-right:4px;">Often requested:</span>' +
-    top.map(i => `<span class="chip-add" onclick="quickAddMaterial('${i.code}')">${i.name}</span>`).join(" ");
-}
-
-function quickAddMaterial(code) {
-  const item = (storeItems || []).find(i => i.code === code);
-  if (!item) return;
-  // Use the first empty line rather than always appending, so six chip
-  // clicks make six lines, not six plus the blank starter.
-  let row = [...document.querySelectorAll("#mr-lines tr")]
-    .find(tr => !(tr.querySelector(".mr-item-txt") || {}).value);
-  if (!row) { addMrLine(); row = document.querySelector("#mr-lines tr:last-child"); }
-  const boxEl = row.querySelector(".mr-item-txt");
-  boxEl.value = `${item.code} - ${item.name}`;
-  onMaterialTyped(boxEl);
-  row.querySelector(".mr-qty").focus();
-}
-
 // The requester's tracker: their requests, newest first, with a status
 // trail and a delivery progress bar - the answer to "where has it got
 // to" without ringing the office.
@@ -4146,10 +4105,9 @@ function renderMyRequests() {
 async function loadRequests() {
   const box = document.getElementById("mreq-list");
   // The raise screen has no approvals list; it still calls this to
-  // refresh the cache that feeds the tracker and the quick-add chips.
+  // refresh the cache that feeds the tracker below the form.
   if (!box) {
     try { mrCache = await apiCall("/store/requests"); } catch (e) {}
-    renderQuickAdd();
     renderMyRequests();
     return;
   }
