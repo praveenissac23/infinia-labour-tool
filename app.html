@@ -1253,9 +1253,7 @@
               <div class="rep-group">Stock &amp; Movement</div>
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything held: store vs sites</span></div>
-                <div class="rep-tile" onclick="pickReport('low')"><span class="rep-badge" id="badge-low"></span><b>Reorder</b><span>Running low, needs buying</span></div>
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>At Sites</b><span>What each site is holding</span></div>
-                <div class="rep-tile" onclick="pickReport('purchases')"><b>Purchases</b><span>What arrived and what it cost</span></div>
                 <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption</b><span>What sites have used up</span></div>
                 <div class="rep-tile" onclick="pickReport('assets')"><b>Assets</b><span>Owned equipment and where it is</span></div>
                 <div class="rep-tile" onclick="pickReport('lost')"><b>Lost / Damaged</b><span>Written off, and where</span></div>
@@ -1265,8 +1263,6 @@
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('hired')"><b>On Hire Now</b><span>Hired equipment out right now</span></div>
                 <div class="rep-tile" onclick="pickReport('mr_open')"><span class="rep-badge" id="badge-mr-open"></span><b>Open Requests</b><span>Waiting on office or supplier</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_outstanding')"><span class="rep-badge" id="badge-mr-out"></span><b>Outstanding</b><span>Materials still to arrive</span></div>
-                <div class="rep-tile" onclick="pickReport('mr_overdue')"><span class="rep-badge" id="badge-mr-over"></span><b>Overdue</b><span>Past their needed-by date</span></div>
                 <div class="rep-tile" onclick="pickReport('mr_history')"><b>Request History</b><span>Every request ever made</span></div>
               </div>
             </div>
@@ -3108,12 +3104,11 @@ async function loadStoreHome() {
       ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.` +
         ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
       : "";
-    // The one number worth surfacing here, and it opens the report that
-    // deals with it. Everything else lives in Reports.
+    // Low stock is still worth flagging here - the rows themselves are
+    // marked, so the count just says how many to look for.
     const statsEl = document.getElementById("home-stats");
     if (statsEl) statsEl.innerHTML = lowN
-      ? `<span class="stat-chip" style="border-color:#C0392B; color:#C0392B; background:#C0392B12; cursor:pointer;"
-            onclick="storeGo('reports'); pickReport('low')">${num(lowN)} low on stock - see what to buy</span>`
+      ? `<span class="stat-chip" style="border-color:#C0392B; color:#C0392B; background:#C0392B12;">${num(lowN)} low on stock</span>`
       : "";
     if (!rows.length) {
       head.innerHTML = "";
@@ -4776,18 +4771,12 @@ async function updateReportBadges() {
   try {
     const [stk, reqs] = await Promise.all([apiCall("/store/stock"), apiCall("/store/requests")]);
     storeStockCache = stk;
-    const today = isoLocal(new Date());
     const isOpen = r => !["delivered", "received", "closed", "rejected"].includes(r.status);
     const set = (id, n) => {
       const b = document.getElementById(id);
       if (b) { b.textContent = num(n); b.style.display = n ? "flex" : "none"; }
     };
-    set("badge-low", stk.filter(s => s.low).length);
-    const open = reqs.filter(isOpen);
-    set("badge-mr-open", open.length);
-    set("badge-mr-out", open.filter(r =>
-      (r.lines || []).some(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0)).length);
-    set("badge-mr-over", reqs.filter(r => r.needed_by && r.needed_by < today && isOpen(r)).length);
+    set("badge-mr-open", reqs.filter(isOpen).length);
   } catch (e) { /* badges are a nicety, never an error */ }
 }
 
@@ -4800,7 +4789,7 @@ function pickReport(kind) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["purchases", "usage", "lost"].includes(kind);
+  const needsDates = ["usage", "lost"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
