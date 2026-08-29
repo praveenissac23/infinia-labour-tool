@@ -193,7 +193,10 @@ class EmployeeSummaryOut(BaseModel):
 # STORE / INVENTORY
 # ---------------------------------------------------------------------
 class StoreItemIn(BaseModel):
-    code: str
+    # Blank code means "generate the next ITM number" - the server has
+    # always done that, but the schema demanded a code anyway, so any
+    # caller that left it out was rejected with "code: Field required".
+    code: str = ""
     name: str
     category: str = ""
     unit: str = "pcs"
