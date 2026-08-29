@@ -989,6 +989,10 @@
                   <div class="store-tile-t">Material List</div>
                   <div class="store-tile-s">Add or change materials and tools</div>
                 </div>
+                <div class="store-tile" onclick="storeGo('suppliers')">
+                  <div class="store-tile-t">Suppliers</div>
+                  <div class="store-tile-s">Who we buy from, and how to reach them</div>
+                </div>
                 <div class="store-tile" onclick="storeGo('dash')">
                   <div class="store-tile-t">Dashboard</div>
                   <div class="store-tile-s">Numbers, low stock and activity</div>
@@ -1013,6 +1017,26 @@
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
               </div>
+            </div>
+          </div>
+
+          <!-- SUPPLIERS
+               The list builds itself as deliveries are recorded; this
+               screen is for looking one up, correcting a name, or
+               filling in a phone number that was never captured. -->
+          <div id="store-suppliers" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;">Suppliers</h2>
+                  <p style="font-size:12px; color:#888; margin:0;">Added automatically the first time you record a
+                    delivery or place an order. Click any row to correct the name or add contact details.</p>
+                </div>
+                <input type="text" id="sup-search" placeholder="Search name or contact"
+                       style="width:220px;" oninput="renderSuppliers()">
+              </div>
+              <div id="sup-list" style="margin-top:12px;"></div>
             </div>
           </div>
 
@@ -3011,7 +3035,7 @@ function setUnitSelect(sel, unit) {
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","arrive","dash","items","other","reports"];
+const STORE_PANELS = ["home","give","arrive","dash","suppliers","items","other","reports"];
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -3020,6 +3044,7 @@ function storeGo(which) {
   showStatus("store-status", null);
   if (which === "home") loadStoreHome();
   if (which === "arrive") loadArrivePanel();
+  if (which === "suppliers") loadSupplierScreen();
   if (which === "dash") loadStoreHome();   // same data feeds the dashboard panel
   if (which === "reports") {
     document.getElementById("store-report-result").style.display = "none";
@@ -4601,6 +4626,91 @@ async function submitMaterialRequest() {
     await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
   } catch (e) { showStatus("mreq-status", "err", errText(e)); }
+}
+
+// The supplier screen: who we buy from, how to reach them, and what
+// each still owes us. Rows expand to correct a name or fill in a phone
+// number that was never captured at the counter.
+async function loadSupplierScreen() {
+  const box = document.getElementById("sup-list");
+  box.innerHTML = '<div class="empty-note">Loading...</div>';
+  try {
+    await loadSuppliers();
+    if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
+    renderSuppliers();
+  } catch (e) {
+    box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
+  }
+}
+
+function renderSuppliers() {
+  const box = document.getElementById("sup-list");
+  if (!box) return;
+  const q = (document.getElementById("sup-search").value || "").trim().toLowerCase();
+  const list = (suppliers || []).filter(s =>
+    !q || `${s.name} ${s.contact_person} ${s.phone}`.toLowerCase().includes(q));
+  if (!list.length) {
+    box.innerHTML = `<div class="empty-note">${(suppliers || []).length
+      ? "No supplier matches that search."
+      : "No suppliers yet. They are added the first time you record a delivery or mark a request as ordered."}</div>`;
+    return;
+  }
+  // What each supplier still owes, so the screen doubles as a chase list.
+  const open = (mrCache || []).filter(r => !["delivered", "received", "closed", "rejected"].includes(r.status));
+  const owed = {};
+  open.forEach(r => (r.lines || []).forEach(l => {
+    const due = (l.qty_requested || 0) - (l.qty_received || 0);
+    if (l.supplier && due > 0) {
+      const e = owed[l.supplier.id] || (owed[l.supplier.id] = { items: 0, refs: new Set() });
+      e.items++; e.refs.add(r.ref);
+    }
+  }));
+  box.innerHTML = `<div class="grid-wrap" style="max-height:none;">
+    <table>
+      <thead><tr><th style="text-align:left;">Supplier</th><th style="width:18%;">Contact person</th>
+        <th style="width:16%;">Phone</th><th style="width:24%; text-align:left;">Still to deliver</th></tr></thead>
+      <tbody>${list.map(s => {
+        const o = owed[s.id];
+        return `<tr onclick="toggleSupplierEdit(${s.id})" style="cursor:pointer;">
+          <td style="text-align:left; font-weight:500;">${s.name}</td>
+          <td>${s.contact_person || '<span class="zero">-</span>'}</td>
+          <td>${s.phone ? `<a href="tel:${s.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${s.phone}</a>` : '<span class="zero">-</span>'}</td>
+          <td style="text-align:left; font-size:12px;">${o
+            ? `<span style="color:#B26A00; font-weight:600;">${num(o.items)} material(s)</span> on ${[...o.refs].join(", ")}`
+            : '<span style="color:#999;">nothing outstanding</span>'}</td>
+        </tr>
+        <tr id="sup-edit-${s.id}" style="display:none; background:#FAFAFA;">
+          <td colspan="4" style="text-align:left; padding:16px 20px;">
+            <div class="field-grid" style="margin-bottom:10px;">
+              <div class="field"><label>Supplier name</label><input type="text" id="se-name-${s.id}" value="${s.name}"></div>
+              <div class="field"><label>Contact person</label><input type="text" id="se-contact-${s.id}" value="${s.contact_person || ""}" placeholder="Who to call there"></div>
+              <div class="field"><label>Contact number</label><input type="text" id="se-phone-${s.id}" value="${s.phone || ""}" placeholder="Phone"></div>
+            </div>
+            <button class="btn btn-primary" onclick="event.stopPropagation(); saveSupplierEdit(${s.id})">Save changes</button>
+          </td></tr>`;
+      }).join("")}</tbody>
+    </table></div>
+    <p style="font-size:12px; color:#888; margin:10px 2px 0;">${num(list.length)} supplier(s) &middot; click a row to edit.</p>`;
+}
+
+function toggleSupplierEdit(id) {
+  const row = document.getElementById(`sup-edit-${id}`);
+  if (row) row.style.display = row.style.display === "none" ? "" : "none";
+}
+
+async function saveSupplierEdit(id) {
+  const name = document.getElementById(`se-name-${id}`).value.trim();
+  if (!name) { showStatus("store-status", "warn", "A supplier needs a name."); return; }
+  try {
+    await apiCall(`/store/suppliers/${id}`, { method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name,
+        contact_person: document.getElementById(`se-contact-${id}`).value.trim(),
+        phone: document.getElementById(`se-phone-${id}`).value.trim() }) });
+    showStatus("store-status", "ok", "Supplier updated.");
+    await loadSuppliers();
+    renderSuppliers();
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
 // ---- Bulk ordering ---------------------------------------------------

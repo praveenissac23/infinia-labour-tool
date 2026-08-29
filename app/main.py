@@ -1578,13 +1578,13 @@ def _find_or_create_supplier(db, name, contact_person="", phone=""):
     sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first()
     if not sup:
         sup = models.Supplier(name=_tidy_supplier_name(name), name_key=key,
-                              contact_person=(contact_person or "").strip(),
+                              contact_person=_proper_name((contact_person or "").strip()),
                               phone=(phone or "").strip(), active=True)
         db.add(sup)
         db.flush()
         return sup
     if contact_person and contact_person.strip():
-        sup.contact_person = contact_person.strip()
+        sup.contact_person = _proper_name(contact_person.strip())
     if phone and phone.strip():
         sup.phone = phone.strip()
     return sup
@@ -1610,6 +1610,37 @@ def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
     db.commit()
     return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person or "",
             "phone": sup.phone or ""}
+
+
+@app.put("/store/suppliers/{supplier_id}")
+def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
+                     db: Session = Depends(get_db),
+                     user: models.User = Depends(require_any_screen("store", "requests"))):
+    """Edit a supplier in place. Renaming recomputes the folded key and
+    refuses a name that would collide with another supplier - two
+    records silently becoming aliases of each other is how contact
+    numbers get lost."""
+    sup = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Supplier needs a name.")
+    key = _supplier_key(name)
+    clash = db.query(models.Supplier).filter(models.Supplier.name_key == key,
+                                              models.Supplier.id != supplier_id).first()
+    if clash:
+        raise HTTPException(status_code=400,
+            detail=f'That name matches the existing supplier "{clash.name}".')
+    sup.name = _tidy_supplier_name(name)
+    sup.name_key = key
+    sup.contact_person = _proper_name((payload.contact_person or "").strip())
+    sup.phone = (payload.phone or "").strip()
+    if payload.notes is not None:
+        sup.notes = payload.notes
+    db.commit()
+    return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person,
+            "phone": sup.phone}
 
 
 @app.post("/store/request-lines/{line_id}/link-item")
