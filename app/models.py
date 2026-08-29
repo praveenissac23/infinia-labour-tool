@@ -359,6 +359,11 @@ class MaterialRequestLine(Base):
     qty_received = Column(Float, default=0.0)
     unit = Column(String, default="pcs")
     est_cost = Column(Float, default=0.0)
+    # The office often splits one request across traders on price: the
+    # cement from one, the rebar from another. Supplier therefore lives
+    # on the line, and the request-level supplier is just a shortcut for
+    # the common case where every line went to the same place.
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     notes = Column(Text, default="")
     # What the material is actually for - the office needs this to judge
     # whether to order, and it stops "200 bags of cement" arriving with
@@ -367,3 +372,4 @@ class MaterialRequestLine(Base):
 
     request = relationship("MaterialRequest", back_populates="lines")
     item = relationship("StoreItem")
+    supplier = relationship("Supplier")

@@ -325,6 +325,7 @@ class MaterialRequestOut(BaseModel):
 
 
 class MaterialRequestStatusIn(BaseModel):
+    line_ids: list[int] = []
     supplier: str = ''
     contact_person: str = ''
     phone: str = ''

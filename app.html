@@ -567,6 +567,16 @@
               <div class="field"><label>Expected delivery</label>
                 <input type="date" id="order-expected"></div>
             </div>
+            <div id="order-lines-box" style="display:none; margin-bottom:14px;">
+              <div style="font-size:10.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#6B7075; margin-bottom:6px;">
+                Which materials go to this supplier
+              </div>
+              <p style="font-size:12px; color:#888; margin:0 0 8px;">
+                All ticked by default. Untick the ones going elsewhere and order them separately -
+                the request stays one request, each material remembers its own supplier.
+              </p>
+              <div class="grid-wrap" style="max-height:220px;"><table><tbody id="order-lines"></tbody></table></div>
+            </div>
             <p style="font-size:12px; color:#999; margin:0 0 14px;">
               Known suppliers fill in their own contact details as you type the name.
             </p>
@@ -4164,8 +4174,21 @@ async function loadRequests() {
               <td>${r.requested_on}</td>
               <td>${r.needed_by || '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
               <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}${
-                r.supplier ? `<div style="font-size:11px; color:#777; margin-top:3px;">
-                  From ${r.supplier.name}${r.supplier.phone ? ` &middot; <a href="tel:${r.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${r.supplier.phone}</a>` : ""}${r.supplier.contact_person ? ` (${r.supplier.contact_person})` : ""}</div>` : ""}</td>
+                (() => {
+                const sups = [...new Map((r.lines || []).filter(l => l.supplier)
+                  .map(l => [l.supplier.id, l.supplier])).values()];
+                if (!sups.length) return "";
+                if (sups.length === 1) {
+                  const s = sups[0];
+                  return `<div style="font-size:11px; color:#777; margin-top:3px;">From ${s.name}${
+                    s.phone ? ` &middot; <a href="tel:${s.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${s.phone}</a>` : ""}${
+                    s.contact_person ? ` (${s.contact_person})` : ""}</div>`;
+                }
+                // Split across traders on price - name them here; the
+                // detail row shows which material went where.
+                return `<div style="font-size:11px; color:#777; margin-top:3px;">From ${sups.length} suppliers: ${
+                  sups.map(s => s.name).join(", ")}</div>`;
+              })()}</td>
               <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
               <td>
                 ${["delivered", "closed", "rejected"].includes(r.status)
@@ -4180,7 +4203,7 @@ async function loadRequests() {
                   <div style="margin-bottom:10px;">${statusTrail(r.status)}</div>
                   <table style="font-size:12.5px; background:white;">
                     <thead><tr><th style="width:4%;">#</th><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
-                      <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th></tr></thead>
+                      <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th><th style="text-align:left;">Ordered from</th></tr></thead>
                     <tbody>${r.lines.map((l, i) => {
                       const out = (l.qty_requested || 0) - (l.qty_received || 0);
                       return `<tr>
@@ -4606,6 +4629,27 @@ function openOrderModal(ids) {
   document.getElementById("order-modal-sub").textContent = orderIds.length === 1
     ? `Request ${refs[0]} - who was it ordered from?`
     : `${orderIds.length} requests (${refs.join(", ")}) - all from one supplier.`;
+
+  // One request can be split across traders on price, so its materials
+  // are listed to tick. Several requests at once is the "all from one
+  // supplier" case, where a line picker would only be in the way.
+  const box = document.getElementById("order-lines-box");
+  const single = orderIds.length === 1 ? mrCache.find(r => r.id === orderIds[0]) : null;
+  if (single && (single.lines || []).length > 1) {
+    box.style.display = "";
+    document.getElementById("order-lines").innerHTML = single.lines.map(l => `
+      <tr>
+        <td style="width:6%;"><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}></td>
+        <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+        <td style="width:18%;">${num(l.qty_requested)} ${l.unit}</td>
+        <td style="width:28%; text-align:left; font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
+          ${l.supplier ? `already: ${l.supplier.name}` : "no supplier yet"}</td>
+      </tr>`).join("");
+  } else {
+    box.style.display = "none";
+    document.getElementById("order-lines").innerHTML = "";
+  }
+
   // Reuse the supplier already on any of them, so a second delivery
   // from the same trader needs no typing at all.
   const known = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).supplier).find(Boolean);
@@ -4625,8 +4669,16 @@ function closeOrderModal() {
 async function saveOrderModal() {
   const name = document.getElementById("order-supplier").value.trim();
   if (!name) { showStatus("order-status", "warn", "Type who it was ordered from."); return; }
+  // When the line picker is showing, only the ticked materials go to
+  // this supplier; the rest stay open for the next one.
+  const picker = document.getElementById("order-lines-box");
+  const lineIds = picker.style.display !== "none"
+    ? [...document.querySelectorAll(".ol-pick:checked")].map(c => parseInt(c.value, 10)) : [];
+  if (picker.style.display !== "none" && !lineIds.length) {
+    showStatus("order-status", "warn", "Tick at least one material for this supplier."); return;
+  }
   const body = {
-    status: "ordered", supplier: name,
+    status: "ordered", supplier: name, line_ids: lineIds,
     contact_person: document.getElementById("order-contact").value.trim(),
     phone: document.getElementById("order-phone").value.trim(),
     expected_on: document.getElementById("order-expected").value || null,
@@ -4642,14 +4694,26 @@ async function saveOrderModal() {
     } catch (e) { failed.push(errText(e)); }
   }
   btn.disabled = false;
+  const wasSingle = orderIds.length === 1 ? orderIds[0] : null;
   closeOrderModal();
   showStatus("mreq-status", failed.length ? "warn" : "ok",
     failed.length ? `${done} of ${orderIds.length} marked. Problem: ${failed[0]}`
-                  : `${done} request(s) ordered from ${name}.`);
+                  : (lineIds.length ? `${num(lineIds.length)} material(s) ordered from ${name}.`
+                                    : `${done} request(s) ordered from ${name}.`));
   await loadSuppliers();
   const f = document.getElementById("mreq-filter");
   if (f && f.value !== "all" && f.value !== "ordered") f.value = "ordered";
   await loadRequests();
+  // Materials left without a supplier? Offer to place the next order
+  // straight away, rather than making the office find the request again.
+  if (wasSingle && !failed.length) {
+    const r = mrCache.find(x => x.id === wasSingle);
+    const left = r ? (r.lines || []).filter(l => !l.supplier) : [];
+    if (left.length && confirm(
+      `${left.length} material(s) on ${r.ref} still have no supplier:\n\n` +
+      left.map(l => `\u2022 ${l.item_name || l.description}`).join("\n") +
+      "\n\nOrder them from another supplier now?")) openOrderModal([wasSingle]);
+  }
 }
 
 async function setRequestStatus(id, status) {

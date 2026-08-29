@@ -2095,6 +2095,10 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
     for i, ln in enumerate(mr.lines):
         d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
         d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
+        ls = ln.supplier
+        d["lines"][i]["supplier"] = ({"id": ls.id, "name": ls.name,
+                                       "contact_person": ls.contact_person or "",
+                                       "phone": ls.phone or ""} if ls else None)
     return d
 
 
@@ -2192,7 +2196,17 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
                                         getattr(payload, "contact_person", "") or "",
                                         getattr(payload, "phone", "") or "")
         if sup:
-            mr.supplier_id = sup.id
+            # A request can be split across traders on price - cement
+            # from one, rebar from another. If specific lines were named,
+            # only those go to this supplier; otherwise the whole request
+            # does. The request-level supplier is kept as a shortcut only
+            # while every line agrees.
+            line_ids = getattr(payload, "line_ids", None) or []
+            targets = [l for l in mr.lines if (not line_ids or l.id in line_ids)]
+            for l in targets:
+                l.supplier_id = sup.id
+            sup_ids = {l.supplier_id for l in mr.lines}
+            mr.supplier_id = sup.id if len(sup_ids) == 1 and None not in sup_ids else None
     if getattr(payload, "expected_on", None):
         mr.expected_on = payload.expected_on
     mr.closed_on = date.today() if payload.status in ("delivered", "received", "closed", "rejected") else None
