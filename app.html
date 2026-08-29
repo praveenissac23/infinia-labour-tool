@@ -56,13 +56,19 @@
   .bulk-bar .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .bulk-bar select { width: 150px; flex: 0 0 auto; }
   .bulk-bar select, .bulk-bar input[type=text] { padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px; }
-  .btn { padding: 7px 14px; border: none; border-radius: 5px; font-size: 12px; font-weight: bold; cursor: pointer; display: inline-block; }
+  /* One red primary per screen area; everything else is quiet. Danger
+     actions are ghosts - visible, never shouting next to real work. */
+  .btn { padding: 8px 14px; border: 1px solid transparent; border-radius: 7px;
+         font-size: 12.5px; font-weight: 600; cursor: pointer; display: inline-block;
+         line-height: 1.25; }
   .btn-primary { background: var(--red); color: white; }
   .btn-primary:hover { background: var(--red-hover); }
-  .btn-dark { background: var(--black); color: white; }
-  .btn-dark:hover { background: var(--darkgray); }
-  .btn-gray { background: #999; color: white; }
-  .btn-gray:hover { background: #777; }
+  .btn-dark { background: white; color: #3A4046; border-color: #D5D9DE; }
+  .btn-dark:hover { background: #F6F7F9; border-color: #C3C9D0; }
+  .btn-gray { background: white; color: #6B7075; border-color: #D5D9DE; }
+  .btn-gray:hover { background: #F6F7F9; color: #3A4046; }
+  .btn-danger { background: white; color: var(--red); border-color: #E8C7C2; }
+  .btn-danger:hover { background: #FDF3F2; border-color: var(--red); }
 
   /* Hard cap so a long list of errors scrolls inside its own box
      instead of turning the entire page red. */
@@ -71,25 +77,28 @@
   .status-msg.err { background: #FFC7CE; color: #C0392B; display: block; white-space: pre-line; }
   .status-msg.warn { background: #FFF3CD; color: #8a6d1a; display: block; white-space: pre-line; }
 
-  .card { background: white; border-radius: 9px; border: 1px solid #E8E8E8;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.04); padding: 20px 22px; margin-bottom: 16px; }
-  .card h2 { font-size: 14.5px; margin: 0 0 14px; letter-spacing: -0.1px; }
+  .card { background: white; border-radius: 10px; border: 1px solid #E9EBEE;
+          box-shadow: 0 1px 2px rgba(16,24,40,0.04); padding: 20px 22px; margin-bottom: 16px; }
+  .card h2 { font-size: 15.5px; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.15px; }
 
   .grid-wrap { background: white; border-radius: 8px; border: 1px solid #E8E8E8; overflow: auto; max-height: 60vh; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  th { background: var(--red); color: white; padding: 10px 10px; text-align: center;
+  /* Light, quiet headers. Solid brand-red header bars on every table
+     were the single loudest amateur signal - red now belongs to
+     actions and warnings only, so when it appears, it means something. */
+  th { background: #F6F7F9; color: #5B6167; padding: 10px 10px; text-align: center;
        position: sticky; top: 0; z-index: 1; white-space: nowrap;
-       font-size: 11.5px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase;
-       border: none; border-right: 1px solid rgba(255,255,255,0.15); }
+       font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+       border: none; border-bottom: 2px solid #E4E7EB; }
   th:last-child { border-right: none; }
   th.sortable { cursor: pointer; user-select: none; }
-  th.sortable:hover { background: var(--red-hover); }
+  th.sortable:hover { background: #EEF0F3; }
   /* Row rules only - a full grid of borders makes a dense table look
      like a spreadsheet and hides the data. */
   td { padding: 9px 10px; text-align: center; border: none; border-bottom: 1px solid #EDEDED; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:nth-child(even) td { background: #FCFCFC; }
-  tr:hover td { background: #FFF7F5; }
+  tr:hover td { background: #F5F8FB; }
   .lc-compact { font-size: 10.5px; line-height: 1.1; }
   .lc-compact table { table-layout: fixed; }
   .lc-compact th { padding: 4px 3px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
@@ -111,14 +120,27 @@
   td.empno { font-weight: bold; }
   #loading { text-align: center; padding: 40px; color: #888; font-size: 13px; }
 
-  .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  .form-row input[type=text], .form-row input[type=number], .form-row input[type=password] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .form-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .form-row input[type=text], .form-row input[type=number], .form-row input[type=password] { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; }
+
+  /* Stacked fields: the label sits above its box, every box is the
+     same height, and a grid keeps widths even - the difference between
+     a form that looks engineered and one that looks improvised. */
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field > label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
+                   text-transform: uppercase; color: #6B7075; }
+  .field > input, .field > select { width: 100% !important; }
+  .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px 14px; margin-bottom: 14px; max-width: 980px; }
+  input[type=date], select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
+                             border-radius: 7px; font-size: 13.5px; background: white; }
+  textarea { border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; padding: 9px 10px; }
   /* Give the password fields room for their placeholder text - the
      default width cut off "New password (min 6 characters)" mid-word.
      The role dropdown gets a fixed width too; with no width set it
      stretched to fill the whole row for two short options. */
   .form-row input[type=password] { width: 220px; }
-  .form-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; width: 130px; flex: 0 0 auto; }
+  .form-row select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; width: 150px; flex: 0 0 auto; }
   /* Cycle pickers hold a full date range ("26 Aug - 25 Sept 2026"), which
      the 130px default cut off mid-year. */
   #report-cycle, #adj-cycle, #livecard-cycle, #errcheck-cycle, #combine-cycle { width: 185px; }
@@ -140,11 +162,15 @@
 
   /* Big tap targets on the store home - one per task, so it's obvious
      what each does without reading a manual. */
-  .store-tile { flex: 1 1 210px; min-width: 200px; border: 2px solid var(--red); border-radius: 8px;
-                padding: 14px 16px; cursor: pointer; background: white; }
-  .store-tile:hover { background: #FDF3F2; }
-  .store-tile-t { font-weight: bold; font-size: 15px; color: var(--red); }
-  .store-tile-s { font-size: 12px; color: #888; margin-top: 3px; }
+  .store-tile { flex: 1 1 210px; min-width: 200px; border: 1px solid #E4E7EB; border-radius: 10px;
+                padding: 16px 18px; cursor: pointer; background: white; position: relative;
+                transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease; }
+  .store-tile:hover { border-color: var(--red); box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+                      transform: translateY(-1px); }
+  .store-tile:hover::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px;
+                              width: 3px; border-radius: 3px; background: var(--red); }
+  .store-tile-t { font-weight: 700; font-size: 14.5px; color: var(--black); }
+  .store-tile-s { font-size: 12px; color: #7A8087; margin-top: 4px; line-height: 1.35; }
 
   /* Section headings in the sidebar - Attendance & Payroll, Store and
      Admin are separate areas of the app, so the menu says so. */
@@ -404,7 +430,7 @@
                 <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
                 <button class="btn btn-dark" onclick="selectAll()">Select All</button>
                 <button class="btn btn-dark" onclick="selectNone()">Select None</button>
-                <button class="btn btn-dark" style="background:#8B2E22;" onclick="openClearDayModal()">Clear Day</button>
+                <button class="btn btn-danger" onclick="openClearDayModal()">Clear Day</button>
               </div>
             </div>
             <div class="card" style="padding:10px 14px; margin-bottom:0; flex-shrink:0;">
@@ -480,7 +506,7 @@
             <p style="font-size:14px; margin:0 0 20px;">Are you sure you want to delete <strong id="clearday-modal-date"></strong>'s attendance?</p>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
               <button class="btn btn-dark" onclick="closeClearDayModal()">Cancel</button>
-              <button class="btn btn-primary" style="background:#8B2E22;" onclick="confirmClearDay()">Yes</button>
+              <button class="btn btn-danger" onclick="confirmClearDay()">Yes</button>
             </div>
           </div>
         </div>
@@ -492,7 +518,7 @@
             <p style="font-size:14px; margin:0 0 20px;">Delete the backup from <strong id="delbackup-when"></strong>? This can't be undone.</p>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
               <button class="btn btn-dark" onclick="closeDeleteBackupModal()">Cancel</button>
-              <button class="btn btn-primary" style="background:#8B2E22;" onclick="confirmDeleteBackup()">Delete</button>
+              <button class="btn btn-danger" onclick="confirmDeleteBackup()">Delete</button>
             </div>
           </div>
         </div>
@@ -506,9 +532,11 @@
               change any that arrived short, and clear the ones that didn't come at all.
             </p>
             <div class="form-row">
-              <label>Supplier:</label><input type="text" id="recv-supplier" placeholder="Who delivered it" style="width:200px;">
-              <label>DO / Invoice no:</label><input type="text" id="recv-ref-no" style="width:170px;">
-              <label>Date:</label><input type="date" id="recv-date">
+              <div class="field-grid" style="margin-bottom:0; width:100%;">
+                <div class="field"><label>Supplier</label><input type="text" id="recv-supplier" placeholder="Who delivered it"></div>
+                <div class="field"><label>DO / Invoice no</label><input type="text" id="recv-ref-no" placeholder="From the delivery note"></div>
+                <div class="field"><label>Delivery date</label><input type="date" id="recv-date"></div>
+              </div>
             </div>
             <div class="grid-wrap" style="max-height:320px;">
               <table>
@@ -762,14 +790,17 @@
             <h2>Raise a new request</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">For the site or store keeper. Say what you need, how much, and what it is for.
               <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
-            <div class="form-row">
-              <label>For site: <span style="color:#C0392B;">*</span></label><select id="mr-site" style="width:150px;"></select>
-              <label>Your name: <span style="color:#C0392B;">*</span></label><input type="text" id="mr-by" placeholder="Who is asking" style="width:190px;" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}">
-              <label>Needed by: <span style="color:#C0392B;">*</span></label><input type="date" id="mr-needed">
-              <label>How urgent:</label>
-              <select id="mr-urgency" style="width:130px;">
-                <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
-              </select>
+            <div class="field-grid">
+              <div class="field"><label>For site <span style="color:var(--red);">*</span></label>
+                <select id="mr-site"></select></div>
+              <div class="field"><label>Your name <span style="color:var(--red);">*</span></label>
+                <input type="text" id="mr-by" placeholder="Who is asking" oninput="try{localStorage.setItem('mrName', this.value)}catch(e){}"></div>
+              <div class="field"><label>Needed by <span style="color:var(--red);">*</span></label>
+                <input type="date" id="mr-needed"></div>
+              <div class="field"><label>How urgent</label>
+                <select id="mr-urgency">
+                  <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="low">Can wait</option>
+                </select></div>
             </div>
             <div class="grid-wrap" style="max-height:none;">
               <table>
@@ -920,9 +951,11 @@
               <h2 style="color:var(--red);">Give out material</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
               <div class="form-row">
-                <label>Who is taking it:</label><select id="out-person" style="width:260px;"></select>
-                <label>Going to site:</label><select id="out-site" style="width:130px;"></select>
-                <label>Date:</label><input type="date" id="out-date">
+                <div class="field-grid" style="margin-bottom:0; width:100%;">
+                  <div class="field"><label>Who is taking it</label><select id="out-person"></select></div>
+                  <div class="field"><label>Going to site</label><select id="out-site"></select></div>
+                  <div class="field"><label>Date</label><input type="date" id="out-date"></div>
+                </div>
               </div>
               <div class="grid-wrap" style="max-height:none;">
                 <table><thead><tr><th style="width:3%;">#</th><th style="width:32%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In central store</th><th style="width:32%;">Note</th><th style="width:7%;"></th></tr></thead>
@@ -2964,8 +2997,8 @@ async function loadStoreHome() {
     head.innerHTML = [
       { t: "Code", w: "8%" }, { t: "Material", w: "" }, { t: "Unit", w: "8%" },
       { t: "Type", w: "11%" },
-      { t: '<span style="color:#9BD0F5;">&#9679;</span>&nbsp;In central store', w: "13%" },
-      { t: '<span style="color:#FFD79A;">&#9679;</span>&nbsp;Out at sites', w: "12%" },
+      { t: '<span style="color:#2E86C1;">&#9679;</span>&nbsp;In central store', w: "13%" },
+      { t: '<span style="color:#D9930D;">&#9679;</span>&nbsp;Out at sites', w: "12%" },
       { t: "Total held", w: "11%" }, { t: "", w: "11%" },
     ].map(h => `<th style="width:${h.w}">${h.t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
@@ -3150,7 +3183,7 @@ function renderItemMaster(page) {
       <td class="num-col">${(s && s.total) ? `<strong>${num(s.total)}</strong>` : '<span class="zero">0</span>'}</td>
       <td>
         <button class="btn btn-gray" onclick="editStoreItem(${i.id})">Edit</button>
-        <button class="btn btn-dark" style="background:#8B2E22;" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
+        <button class="btn btn-danger" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
       </td></tr>`;
   }).join("") : `<tr><td class="empty-note">Nothing matches that search.</td></tr>`;
 }
@@ -3855,8 +3888,7 @@ async function loadRequests() {
           <tbody>${list.map(r => {
             const late = isLate(r);
             const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
-              `<button class="btn ${s === "rejected" ? "btn-dark" : "btn-primary"}"
-                       ${s === "rejected" ? 'style="background:#8B2E22;"' : ""}
+              `<button class="btn ${s === "rejected" ? "btn-danger" : "btn-primary"}"
                        onclick="event.stopPropagation(); setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
             const canReceive = !["delivered","closed","rejected","pending"].includes(r.status);
             // A short preview of what was asked for, so nobody has to
@@ -3885,7 +3917,7 @@ async function loadRequests() {
                 ${actions}
                 ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}
                 <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
-                <button class="btn btn-dark" style="background:#8B2E22;" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
                 <td colspan="8" style="text-align:left; padding:14px 18px;">
@@ -4386,7 +4418,7 @@ async function loadStore() {
             ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'approved')">Office approved</button>` : ""}
             ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'rejected')">Rejected</button>` : ""}
             ${["received","closed"].includes(r.status) ? "" : `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'closed')">Close</button>`}
-            <button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+            <button class="btn btn-danger" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
           </td></tr>`;
       }).join("") : `<tr><td class="empty-note">Nothing here.</td></tr>`;
       const lateN = list.filter(r => r.needed_by && r.needed_by < isoLocal(new Date()) &&
@@ -4796,7 +4828,7 @@ async function loadBackupList() {
         year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
       });
       const restoreBtn = `<button class="btn btn-gray" onclick="restoreBackupById(${b.id})">Restore</button>`;
-      const deleteBtn = `<button class="btn btn-dark" style="background:#8B2E22;" onclick="deleteBackupById(${b.id}, '${when.replace(/'/g, "")}')">Delete</button>`;
+      const deleteBtn = `<button class="btn btn-danger" onclick="deleteBackupById(${b.id}, '${when.replace(/'/g, "")}')">Delete</button>`;
       return `<tr>
         <td>${when}</td><td>${b.trigger}</td><td>${b.created_by}</td>
         <td><button class="btn btn-dark" onclick="downloadBackupById(${b.id})">Download</button> ${restoreBtn} ${deleteBtn}</td>
