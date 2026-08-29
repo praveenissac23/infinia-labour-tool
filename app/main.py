@@ -89,15 +89,17 @@ app.add_middleware(
 # PER-USER SCREEN PERMISSIONS
 # ---------------------------------------------------------------------
 ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
-               "adjustments", "livecard", "store", "requests", "errorcheck",
-               "settings", "activity"]
+               "adjustments", "livecard", "store", "requests", "approvals",
+               "errorcheck", "settings", "activity"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
 ROLE_DEFAULTS = {
     "admin": ALL_SCREENS,
     "staff": [s for s in ALL_SCREENS if s != "activity"],
-    "office": ["dashboard", "store", "requests", "reports"],
+    # The office approves and orders; a site raises requests and does
+    # not approve its own.
+    "office": ["dashboard", "store", "requests", "approvals", "reports"],
     "site": ["dashboard", "attendance", "store", "requests"],
 }
 
@@ -1592,7 +1594,7 @@ def _find_or_create_supplier(db, name, contact_person="", phone=""):
 
 @app.get("/store/suppliers")
 def list_suppliers(db: Session = Depends(get_db),
-                    user: models.User = Depends(require_any_screen("store", "requests"))):
+                    user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
              "phone": s.phone or "", "notes": s.notes or ""}
             for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
@@ -1601,7 +1603,7 @@ def list_suppliers(db: Session = Depends(get_db),
 
 @app.post("/store/suppliers")
 def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
-                   user: models.User = Depends(require_any_screen("store", "requests"))):
+                   user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     if not (payload.name or "").strip():
         raise HTTPException(status_code=400, detail="Supplier needs a name.")
     sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
@@ -1615,7 +1617,7 @@ def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
 @app.put("/store/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
                      db: Session = Depends(get_db),
-                     user: models.User = Depends(require_any_screen("store", "requests"))):
+                     user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     """Edit a supplier in place. Renaming recomputes the folded key and
     refuses a name that would collide with another supplier - two
     records silently becoming aliases of each other is how contact
@@ -1646,7 +1648,7 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
 @app.post("/store/request-lines/{line_id}/link-item")
 def link_line_item(line_id: int, payload: schemas.LinkLineItemIn,
                     db: Session = Depends(get_db),
-                    user: models.User = Depends(require_screen("requests"))):
+                    user: models.User = Depends(require_any_screen("requests", "approvals"))):
     """Attach a store item to a line that was typed as free text.
 
     Someone asks for "Cushions", which isn't in the catalogue yet. The
@@ -2175,7 +2177,7 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
 def list_material_requests(status: str = None, site: str = None,
                             date_from: str = None, date_to: str = None,
                             db: Session = Depends(get_db),
-                            user: models.User = Depends(require_screen("requests"))):
+                            user: models.User = Depends(require_any_screen("requests", "approvals"))):
     q = db.query(models.MaterialRequest)
     if status:
         q = q.filter(models.MaterialRequest.status == status)
@@ -2190,7 +2192,7 @@ def list_material_requests(status: str = None, site: str = None,
 
 @app.post("/store/requests")
 def create_material_request(payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
-                             user: models.User = Depends(require_screen("requests"))):
+                             user: models.User = Depends(require_any_screen("requests", "approvals"))):
     lines = [l for l in payload.lines if l.qty_requested and l.qty_requested > 0]
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
@@ -2242,7 +2244,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
 @app.post("/store/requests/{req_id}/status")
 def set_material_request_status(req_id: int, payload: schemas.MaterialRequestStatusIn,
                                  db: Session = Depends(get_db),
-                                 user: models.User = Depends(require_screen("requests"))):
+                                 user: models.User = Depends(require_any_screen("requests", "approvals"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -2286,7 +2288,7 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
 
 @app.delete("/store/requests/{req_id}")
 def delete_material_request(req_id: int, db: Session = Depends(get_db),
-                             user: models.User = Depends(require_screen("requests"))):
+                             user: models.User = Depends(require_any_screen("requests", "approvals"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -2301,7 +2303,7 @@ def delete_material_request(req_id: int, db: Session = Depends(get_db),
 def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str = "",
                              unit_cost: float = 0.0, reference: str = "",
                              db: Session = Depends(get_db),
-                             user: models.User = Depends(require_screen("requests"))):
+                             user: models.User = Depends(require_any_screen("requests", "approvals"))):
     """
     Record a delivery against one line of a request. This both files a
     normal 'in' stock movement AND advances the request, so outstanding
@@ -2555,7 +2557,7 @@ def get_notifications(db: Session = Depends(get_db),
 @app.post("/store/requests/{req_id}/receive-bulk")
 def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
                           db: Session = Depends(get_db),
-                          user: models.User = Depends(require_screen("requests"))):
+                          user: models.User = Depends(require_any_screen("requests", "approvals"))):
     """
     Record a whole delivery against a request in one go.
 

@@ -362,6 +362,7 @@
       <div class="nav-group" data-group="store">Store</div>
       <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
       <div class="nav-item" data-screen="requests" onclick="switchScreen('requests')">Material Requests</div>
+      <div class="nav-item" data-screen="approvals" onclick="switchScreen('approvals')">Material Approvals</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -869,13 +870,13 @@
                 <p style="font-size:12px; color:#888; margin:0;">For the site or store keeper. Say what you need, how much, and what it is for.
                   <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
               </div>
-              <button class="btn btn-primary" id="mr-form-toggle" onclick="toggleMrForm()">+ New request</button>
+
             </div>
             <!-- Collapsed by default: the office and admin land straight
                  on the list of requests to process, which is their job.
                  The browser remembers the choice, so a keeper who opens
                  the form once finds it open every day after. -->
-            <div id="mr-form-body" style="display:none; margin-top:14px;">
+            <div id="mr-form-body" style="margin-top:14px;">
             <div class="field-grid">
               <div class="field"><label>For site <span style="color:var(--red);">*</span></label>
                 <select id="mr-site"></select></div>
@@ -929,11 +930,18 @@
             </div>
           </div>
 
-          <!-- The processing side. Its own titled card with breathing
-               room above, so raising a request and acting on requests
-               read as two different jobs on one screen. -->
-          <div class="card" style="margin-top:24px; border-top:3px solid var(--red);">
-            <h2 style="margin-bottom:2px;">Requests &amp; approvals</h2>
+
+        </div>
+
+
+        <!-- ============ MATERIAL APPROVALS ============
+             The office's own screen. Raising a request and acting on
+             requests are different jobs done by different people, so
+             they no longer share a page. -->
+        <div class="screen" id="screen-approvals">
+          <div class="status-msg" id="appr-status"></div>
+          <div class="card">
+            <h2 style="margin-bottom:2px;">Material approvals</h2>
             <p style="font-size:12px; color:#888; margin:0 0 12px;">For the office: approve or reject,
               mark as ordered, and record what arrives. Click any row for the full detail.</p>
             <div class="form-row">
@@ -1468,6 +1476,9 @@ const SCREEN_TITLES = {
   errorcheck: "Error Check",
   settings: "Settings",
   activity: "Activity Monitor",
+  store: "Store / Inventory",
+  requests: "Material Requests",
+  approvals: "Material Approvals",
 };
 
 function switchScreen(name) {
@@ -1502,7 +1513,15 @@ function switchScreen(name) {
       // A sensible needed-by beats an empty box: a week out for normal
       // requests, changeable in one click, so nothing is saved undated.
       setNeededByDefault();
-      restoreMrFormState();
+      loadSuppliers();
+      // The raise screen shows the requester their own recent requests
+      // so they can see where things have got to without chasing.
+      loadRequests();
+    });
+  }
+
+  if (name === "approvals") {
+    loadStoreItems().then(() => {
       loadSuppliers();
       loadRequests();
     });
@@ -3911,7 +3930,7 @@ async function saveReceipt() {
   }
   if (failed.length) showStatus("store-status", "err", failed[0]);
   else {
-    showStatus("mreq-status", "ok", `Purchase saved: ${done} material(s) added to the store.`);
+    mreqStatus("ok", `Purchase saved: ${done} material(s) added to the store.`);
     const dp = document.getElementById("direct-purchase");
     if (dp) dp.style.display = "none";
     await loadStoreItems();   // a type may have changed, so refresh the list
@@ -4277,7 +4296,7 @@ async function saveReceive() {
     const msg = res.status === "delivered"
       ? `All materials received - ${ref} is complete and the stock has gone up.`
       : `${res.received_lines} material(s) received. The rest is still due.`;
-    showStatus("mreq-status", "ok", msg + (res.warnings && res.warnings.length ? ` (${res.warnings[0]})` : ""));
+    mreqStatus("ok", msg + (res.warnings && res.warnings.length ? ` (${res.warnings[0]})` : ""));
     // A fully-delivered request drops out of the default "Still open"
     // list, so it looked like nothing had happened. Switch the filter to
     // show it, otherwise the keeper can't see the delivery they just made.
@@ -4367,19 +4386,10 @@ function setNeededByDefault(force) {
 // and admin's job, so they land straight on it. The browser remembers
 // each person's choice: a keeper who opens the form once finds it open
 // every day after, so neither role clicks twice for their daily work.
-function toggleMrForm(forceOpen) {
-  const body = document.getElementById("mr-form-body");
-  const btn = document.getElementById("mr-form-toggle");
-  const open = forceOpen === true || body.style.display === "none";
-  body.style.display = open ? "" : "none";
-  btn.textContent = open ? "Hide the form" : "+ New request";
-  btn.className = open ? "btn btn-dark" : "btn btn-primary";
-  try { localStorage.setItem("mrFormOpen", open ? "1" : ""); } catch (e) {}
-}
-
-function restoreMrFormState() {
-  try { if (localStorage.getItem("mrFormOpen")) toggleMrForm(true); } catch (e) {}
-}
+// The raise form had a collapse toggle only because the approvals list
+// shared its page. On its own screen it is the whole point, so it is
+// always open; the shim keeps older call sites harmless.
+function toggleMrForm() {}
 
 async function submitMaterialRequest() {
   // Everything the office needs to act on a request. Before this, a
@@ -4389,7 +4399,7 @@ async function submitMaterialRequest() {
   const by = personName(document.getElementById("mr-by").value.trim());
   const needed = document.getElementById("mr-needed").value;
   const focus = (id, msg) => {
-    showStatus("mreq-status", "warn", msg);
+    mreqStatus("warn", msg);
     const el = document.getElementById(id);
     el.focus();
     el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -4411,10 +4421,10 @@ async function submitMaterialRequest() {
     notes: tr.querySelector(".mr-note").value.trim(),
   })).filter(l => l.qty_requested > 0);
   if (!lines.length) {
-    showStatus("mreq-status", "warn", "Add at least one material with a quantity before sending."); return;
+    mreqStatus("warn", "Add at least one material with a quantity before sending."); return;
   }
   const bad = lines.find(l => !l.item_id && !l.description);
-  if (bad) { showStatus("mreq-status", "warn", "Every row needs a material picked or typed in."); return; }
+  if (bad) { mreqStatus("warn", "Every row needs a material picked or typed in."); return; }
   // "What is it for" is what the office judges the request on, so an
   // empty one is worth a question - but not a hard block, since some
   // top-ups genuinely have no single job behind them.
@@ -4489,7 +4499,7 @@ async function submitMaterialRequest() {
         notes: document.getElementById("mr-notes").value.trim(),
         lines,
       }) });
-    showStatus("mreq-status", "ok", `Request ${r.ref} sent to the office.` +
+    mreqStatus("ok", `Request ${r.ref} sent to the office.` +
       (r.new_items && r.new_items.length
         ? ` New to the item list: ${r.new_items.join(", ")} - ready to receive and give out.`
         : " You can print it below to email across."));
@@ -4501,7 +4511,7 @@ async function submitMaterialRequest() {
     // Newly created materials must appear in the pickers straight away.
     await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
-  } catch (e) { showStatus("mreq-status", "err", errText(e)); }
+  } catch (e) { mreqStatus("err", errText(e)); }
 }
 
 // The supplier screen: who we buy from, how to reach them, and what
@@ -4625,7 +4635,7 @@ let orderIds = [];
 
 function openOrderModal(ids) {
   orderIds = Array.isArray(ids) ? ids : [ids];
-  if (!orderIds.length) { showStatus("mreq-status", "warn", "Tick the requests to mark as ordered."); return; }
+  if (!orderIds.length) { mreqStatus("warn", "Tick the requests to mark as ordered."); return; }
   const refs = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).ref).filter(Boolean);
   document.getElementById("order-modal-sub").textContent = orderIds.length === 1
     ? `Request ${refs[0]} - who was it ordered from?`
@@ -4697,7 +4707,7 @@ async function saveOrderModal() {
   btn.disabled = false;
   const wasSingle = orderIds.length === 1 ? orderIds[0] : null;
   closeOrderModal();
-  showStatus("mreq-status", failed.length ? "warn" : "ok",
+  mreqStatus(failed.length ? "warn" : "ok",
     failed.length ? `${done} of ${orderIds.length} marked. Problem: ${failed[0]}`
                   : (lineIds.length ? `${num(lineIds.length)} material(s) ordered from ${name}.`
                                     : `${done} request(s) ordered from ${name}.`));
@@ -4733,16 +4743,16 @@ async function setRequestStatus(id, status) {
     // vanish from view - whatever filter was showing before.
     const f = document.getElementById("mreq-filter");
     if (f && f.value !== "all" && f.value !== status) f.value = status;
-    showStatus("mreq-status", "ok", `${MR_LABEL[status] || status}.`);
+    mreqStatus("ok", `${MR_LABEL[status] || status}.`);
     await loadRequests();
-  } catch (e) { showStatus("mreq-status", "err", errText(e)); }
+  } catch (e) { mreqStatus("err", errText(e)); }
 }
 
 async function deleteRequest(id, ref) {
   if (!confirm(`Delete request ${ref}? This cannot be undone.`)) return;
   try {
     await apiCall(`/store/requests/${id}`, { method: "DELETE" });
-    showStatus("mreq-status", "ok", `${ref} deleted.`);
+    mreqStatus("ok", `${ref} deleted.`);
     await loadRequests();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
@@ -5120,7 +5130,8 @@ async function changePassword() {
 const SCREEN_LABELS = {
   dashboard: "Dashboard", attendance: "Daily Attendance", masterdata: "Master Data",
   reports: "Reports / Summaries", combine: "Combine", adjustments: "Salary Adjustments",
-  livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests", errorcheck: "Error Check",
+  livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests",
+  approvals: "Material Approvals", errorcheck: "Error Check",
   settings: "Settings", activity: "Activity Monitor",
 };
 let permsUserId = null;
