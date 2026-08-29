@@ -6,7 +6,7 @@ validation logic (data_engine.py, daily_attendance.py, payroll_cycle.py)
 directly - the only thing that changed is the storage layer, from
 pickled sessions/JSON files to a real multi-user database.
 """
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import re
 import io
@@ -2199,6 +2199,36 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     for l in lines:
         if not l.item_id and not (l.description or "").strip():
             raise HTTPException(status_code=400, detail="Every line needs an item or a description.")
+
+    # Repeat-click guard. A browser fault once let the save succeed while
+    # the confirmation crashed, so the keeper kept clicking Send and one
+    # request became thirty. If an identical request - same person, same
+    # site, same materials and quantities - already exists from the last
+    # few minutes, hand that one back instead of minting another.
+    sig = sorted((l.item_id or 0, " ".join((l.description or "").lower().split()),
+                  round(l.qty_requested, 3)) for l in lines)
+    recent = (db.query(models.MaterialRequest)
+                .filter(models.MaterialRequest.requested_by == payload.requested_by,
+                        models.MaterialRequest.site == (payload.site or ""),
+                        models.MaterialRequest.status == "pending")
+                .order_by(models.MaterialRequest.id.desc()).limit(5).all())
+    now = datetime.now(timezone.utc)
+    def _recent(ts):
+        if not ts:
+            return True   # a pending twin with no timestamp is still a twin
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (now - ts) <= timedelta(minutes=10)
+    for prev in recent:
+        if not _recent(prev.created_at):
+            continue
+        prev_sig = sorted((pl.item_id or 0, " ".join((pl.description or "").lower().split()),
+                           round(pl.qty_requested or 0, 3)) for pl in prev.lines)
+        if prev_sig == sig:
+            out = _mr_out(prev)
+            out["duplicate_of"] = prev.ref
+            return out
+
     mr = models.MaterialRequest(
         ref=_next_mr_ref(db), site=payload.site, requested_by=payload.requested_by,
         needed_by=payload.needed_by, urgency=payload.urgency, notes=payload.notes,

@@ -4141,6 +4141,7 @@ async function loadRequests() {
         background:#FFF8F7; border:1px solid #E8C7C2; border-radius:8px; padding:9px 14px; margin-bottom:10px;">
         <strong id="mr-order-count" style="font-size:12.5px;"></strong>
         <button class="btn btn-primary" onclick="openOrderModal(pickedOrderIds())">Mark as ordered from one supplier</button>
+        <button class="btn btn-danger" onclick="deletePicked()">Delete selected</button>
         <button class="btn btn-dark" onclick="clearOrderChecks()">Clear</button>
       </div>`;
     const filter = document.getElementById("mreq-filter").value;
@@ -4558,6 +4559,12 @@ async function submitMaterialRequest() {
   if (dups.length && !confirm(
     "Some of this is already on an open request:\n\n" + dups.join("\n") +
     "\n\nSend this new request anyway?")) return;
+  // One save per click, one click per save. The button locks while the
+  // request is in flight and while confirms are pending is fine - the
+  // lock releases in finally whatever happens.
+  const sendBtn = document.getElementById("mr-send-btn");
+  if (sendBtn && sendBtn.disabled) return;
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Sending..."; }
   try {
     // A unit that disagrees with the catalogue is usually the catalogue
     // being wrong - rebar bought by the tonne sits in the list as "pcs".
@@ -4606,19 +4613,34 @@ async function submitMaterialRequest() {
         notes: document.getElementById("mr-notes").value.trim(),
         lines,
       }) });
-    mreqStatus("ok", `Request ${r.ref} sent to the office.` +
-      (r.new_items && r.new_items.length
-        ? ` New to the item list: ${r.new_items.join(", ")} - ready to receive and give out.`
-        : " You can print it below to email across."));
-    document.getElementById("mr-lines").innerHTML = "";
-    addMrLine();
-    document.getElementById("mr-notes").value = "";
-    // Fresh date for the next request rather than the one just used.
-    setNeededByDefault(true);
+    // The save has succeeded. Everything from here is housekeeping -
+    // and once, a crash in this part made a saved request look like a
+    // dead button, so thirty copies got clicked into existence. The
+    // confirmation is now the very first thing, and the housekeeping
+    // is fenced so no failure in it can hide a successful save.
+    if (r.duplicate_of) {
+      mreqStatus("warn", `This exact request was already sent as ${r.duplicate_of} - it has not been sent again.`);
+    } else {
+      mreqStatus("ok", `Request ${r.ref} sent to the office.` +
+        (r.new_items && r.new_items.length
+          ? ` New to the item list: ${r.new_items.join(", ")} - ready to receive and give out.`
+          : " You can print it below to email across."));
+    }
+    try {
+      document.getElementById("mr-lines").innerHTML = "";
+      addMrLine();
+      document.getElementById("mr-notes").value = "";
+      // Fresh date for the next request rather than the one just used.
+      setNeededByDefault(true);
+    } catch (e) { console.error("post-save housekeeping:", e); }
     // Newly created materials must appear in the pickers straight away.
     await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
   } catch (e) { mreqStatus("err", errText(e)); }
+  finally {
+    const b = document.getElementById("mr-send-btn");
+    if (b) { b.disabled = false; b.textContent = "Send Request to Office"; }
+  }
 }
 
 // The supplier screen: who we buy from, how to reach them, and what
@@ -4853,6 +4875,23 @@ async function setRequestStatus(id, status) {
     mreqStatus("ok", `${MR_LABEL[status] || status}.`);
     await loadRequests();
   } catch (e) { mreqStatus("err", errText(e)); }
+}
+
+// Cleaning up a run of mistaken requests one row at a time is thirty
+// clicks; ticking them and confirming once is two.
+async function deletePicked() {
+  const ids = pickedOrderIds();
+  if (!ids.length) { mreqStatus("warn", "Tick the requests to delete."); return; }
+  const refs = ids.map(id => (mrCache.find(r => r.id === id) || {}).ref).filter(Boolean);
+  if (!confirm(`Delete ${ids.length} request(s)?\n\n${refs.join(", ")}\n\nThis cannot be undone.`)) return;
+  let done = 0, failed = 0;
+  for (const id of ids) {
+    try { await apiCall(`/store/requests/${id}`, { method: "DELETE" }); done++; }
+    catch (e) { failed++; }
+  }
+  mreqStatus(failed ? "warn" : "ok",
+    failed ? `${done} deleted, ${failed} could not be deleted.` : `${done} request(s) deleted.`);
+  await loadRequests();
 }
 
 async function deleteRequest(id, ref) {
