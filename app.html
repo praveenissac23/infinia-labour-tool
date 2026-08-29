@@ -3792,7 +3792,10 @@ function onMaterialTyped(box) {
         .filter(x => x.out > 0);
       if (onOrder.length) {
         const total = onOrder.reduce((a, x) => a + x.out, 0);
-        bits.push(`<span style="color:#B26A00; font-weight:600;">${num(total)} ${hit.unit} already on order (${onOrder.map(x => x.ref).join(", ")})</span>`);
+        // Three refs orient the keeper; twenty-nine drown the form.
+        const refs = [...new Set(onOrder.map(x => x.ref))];
+        const shown = refs.slice(0, 3).join(", ") + (refs.length > 3 ? ` +${refs.length - 3} more` : "");
+        bits.push(`<span style="color:#B26A00; font-weight:600;">${num(total)} ${hit.unit} already on order (${shown})</span>`);
       }
       stockHint.innerHTML = bits.join(" &middot; ");
     } else stockHint.innerHTML = "";
@@ -4531,19 +4534,29 @@ async function submitMaterialRequest() {
   // to arrive on an open request, say so once and let the keeper decide.
   if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
   const openNow = (mrCache || []).filter(r => !["delivered", "closed", "rejected"].includes(r.status));
-  const dups = [];
+  // One line per material, however many requests it is spread over -
+  // a confirm box listing twenty-nine refs is unreadable and gets
+  // dismissed without being read, which defeats the warning.
+  const byItem = {};
   for (const l of lines) {
     if (!l.item_id) continue;
     for (const r of openNow) for (const rl of (r.lines || [])) {
       const out = (rl.qty_requested || 0) - (rl.qty_received || 0);
       if (rl.item_id === l.item_id && out > 0) {
-        const it = (storeItems || []).find(i => i.id === l.item_id);
-        dups.push(`${it ? it.name : "This material"} - ${num(out)} ${rl.unit} still to arrive on ${r.ref}`);
+        const e = byItem[l.item_id] || (byItem[l.item_id] = { total: 0, unit: rl.unit, refs: new Set() });
+        e.total += out; e.refs.add(r.ref);
       }
     }
   }
+  const dups = Object.entries(byItem).map(([id, e]) => {
+    const it = (storeItems || []).find(i => i.id === parseInt(id, 10));
+    const refs = [...e.refs];
+    const shown = refs.slice(0, 3).join(", ") + (refs.length > 3 ? ` +${refs.length - 3} more` : "");
+    return `${it ? it.name : "This material"} - ${num(e.total)} ${e.unit} still to arrive` +
+           (refs.length > 1 ? ` across ${refs.length} requests (${shown})` : ` on ${refs[0]}`);
+  });
   if (dups.length && !confirm(
-    "Some of this is already on an open request:\n\n" + [...new Set(dups)].join("\n") +
+    "Some of this is already on an open request:\n\n" + dups.join("\n") +
     "\n\nSend this new request anyway?")) return;
   try {
     // A unit that disagrees with the catalogue is usually the catalogue
