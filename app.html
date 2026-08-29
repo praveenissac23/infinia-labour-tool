@@ -3140,7 +3140,7 @@ async function loadStoreHome() {
       </tr>
       <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
         <td colspan="8" style="text-align:left; padding:0;">
-          <div id="sdc-${r.code}" style="padding:16px 20px;"></div>
+          <div id="sdc-${r.code}" style="padding:16px 34px 16px 20px;"></div>
         </td></tr>`).join("");
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
@@ -3205,8 +3205,8 @@ async function toggleStockDetail(code) {
     }
 
     box.innerHTML = `
-      ${chips.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">${chips.join("")}</div>` : ""}
-      <div style="max-width:340px;">
+      ${chips.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; justify-content:flex-end;">${chips.join("")}</div>` : ""}
+      <div style="max-width:340px; margin-left:auto;">
         <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Where it is right now</div>
         <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">${whereRows}</table>
       </div>`;
