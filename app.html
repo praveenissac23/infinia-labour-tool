@@ -4817,6 +4817,17 @@ function setStoreStats(chips) {
       background:${colour}12;">${txt}</span>`).join("");
 }
 
+// Open one report row's site breakdown. The caret flips so it is
+// obvious which rows are already open when several are.
+function toggleReportRow(idx) {
+  const row = document.getElementById("rr-" + idx);
+  if (!row) return;
+  const open = row.style.display === "none";
+  row.style.display = open ? "" : "none";
+  const caret = row.previousElementSibling && row.previousElementSibling.firstElementChild;
+  if (caret) caret.innerHTML = open ? "&#9662;" : "&#9656;";
+}
+
 // Client-side search across whatever report is on screen. Hides rows
 // that don't match; the TOTAL row and empty notes always stay visible.
 function filterStoreReport() {
@@ -4825,6 +4836,13 @@ function filterStoreReport() {
   let shown = 0, total = 0;
   rows.forEach(tr => {
     if (tr.querySelector(".empty-note") || tr.dataset.total) return;
+    // Expanded breakdowns aren't rows in their own right: they never
+    // count, and they close when their material is filtered out.
+    if (tr.dataset.detail) {
+      const parent = tr.previousElementSibling;
+      if (parent && parent.style.display === "none") tr.style.display = "none";
+      return;
+    }
     total++;
     const hit = !q || tr.textContent.toLowerCase().includes(q);
     tr.style.display = hit ? "" : "none";
@@ -4939,16 +4957,29 @@ async function loadStore() {
       odN ? [`${num(odN)} overdue`, "#C0392B"] : null,
       d.total_value !== undefined ? [`AED ${money(d.total_value)} total`, "#2E7D32"] : null,
     ]);
-    const keys = Object.keys(d.rows[0]).filter(k => k !== "low" && k !== "overdue");
+    // The stock report knows where every unit sits, but squeezing that
+    // into one cell made it unreadable. Hide it from the columns and
+    // give the row an expandable breakdown instead.
+    const expandable = view === "stock" && "by_site" in d.rows[0];
+    const keys = Object.keys(d.rows[0])
+      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site"));
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
                    written_off: "Written off", qty: "Qty", name: "Material", code: "Code" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
-    head.innerHTML = keys.map(k => `<th>${label(k)}</th>`).join("");
-    body.innerHTML = d.rows.map(r => {
+    head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
+      keys.map(k => `<th>${label(k)}</th>`).join("");
+    body.innerHTML = d.rows.map((r, idx) => {
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
-      return `<tr${flag}>` + keys.map(k => {
+      // A caret only where there is something to open - material sitting
+      // out at sites. Everything else stays a plain row.
+      const sites = Object.entries(r.by_site || {}).filter(([, q]) => q);
+      const canOpen = expandable && sites.length;
+      const opener = expandable
+        ? `<td style="color:#B26A00; font-weight:700;">${canOpen ? "&#9656;" : ""}</td>` : "";
+      return `<tr${flag}${canOpen ? ` onclick="toggleReportRow(${idx})" style="cursor:pointer;${flag ? "background:#FFE9E6;" : ""}"` : ""}>`
+        + opener + keys.map(k => {
         let v = r[k], cls = "";
         if (typeof v === "object" && v !== null) {
           v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
@@ -4960,10 +4991,25 @@ async function loadStore() {
           v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
         }
         return `<td${cls}>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
-      }).join("") + "</tr>";
+      }).join("") + "</tr>" + (canOpen ? `
+        <tr id="rr-${idx}" data-detail="1" style="display:none; background:#FAFAFA;">
+          <td colspan="${keys.length + 1}" style="text-align:left; padding:14px 20px;">
+            <div style="max-width:340px; margin-left:auto;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#999; margin-bottom:6px;">Where it is right now</div>
+              <table style="background:white; border:1px solid #EDEDED; border-radius:6px; font-size:12.5px;">
+                <tr><td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">Central store</td>
+                    <td class="num-col" style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${num(r.in_store || 0)} ${r.unit || ""}</td></tr>
+                ${sites.map(([site, q]) => `<tr>
+                  <td style="text-align:left; padding:5px 10px; border-bottom:1px solid #EFEFEF;">Site ${site}</td>
+                  <td class="num-col" style="padding:5px 10px; border-bottom:1px solid #EFEFEF;">${num(q)} ${r.unit || ""}</td></tr>`).join("")}
+                <tr><td style="text-align:left; padding:5px 10px; font-weight:700;">Total held</td>
+                    <td class="num-col" style="padding:5px 10px; font-weight:700;">${num(r.total || 0)} ${r.unit || ""}</td></tr>
+              </table>
+            </div>
+          </td></tr>` : "");
     }).join("");
     if (d.total_value !== undefined)
-      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length-1}">TOTAL</td><td>AED ${money(d.total_value)}</td></tr>`;
+      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td></tr>`;
     filterStoreReport();
   } catch (e) {
     body.innerHTML = `<tr><td class="empty-note">Could not load.</td></tr>`;
