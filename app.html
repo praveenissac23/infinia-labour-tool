@@ -830,7 +830,7 @@
             </div>
             <div class="grid-wrap" style="max-height:none;">
               <table>
-                <thead><tr><th style="width:3%;">#</th><th style="width:24%;">Material</th><th style="width:11%;">Type</th><th style="width:9%;">How many</th><th style="width:7%;">Unit</th><th style="width:21%;">What is it for?</th><th style="width:19%;">Note</th><th style="width:6%;"></th></tr></thead>
+                <thead><tr><th style="width:3%;">#</th><th style="width:30%;">Material</th><th style="width:10%;">Type</th><th style="width:8%;">How many</th><th style="width:11%;">Unit</th><th style="width:20%;">What is it for?</th><th style="width:13%;">Note</th><th style="width:5%;"></th></tr></thead>
                 <tbody id="mr-lines"></tbody>
               </table>
             </div>
@@ -867,7 +867,13 @@
             </div>
           </div>
 
-          <div class="card">
+          <!-- The processing side. Its own titled card with breathing
+               room above, so raising a request and acting on requests
+               read as two different jobs on one screen. -->
+          <div class="card" style="margin-top:24px; border-top:3px solid var(--red);">
+            <h2 style="margin-bottom:2px;">Requests &amp; approvals</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 12px;">For the office: approve or reject,
+              mark as ordered, and record what arrives. Click any row for the full detail.</p>
             <div class="form-row">
               <label>Show:</label>
               <select id="mreq-filter" onchange="loadRequests()" style="width:210px;">
@@ -2885,15 +2891,15 @@ let storeItems = [];
 // construction subset - the full standard has hundreds of entries a
 // keeper would never scroll past.
 const UNITS = [
-  ["Count", [["pcs", "Pieces (pcs)"], ["set", "Set"], ["pair", "Pair"], ["sheet", "Sheet"],
-             ["roll", "Roll"], ["bundle", "Bundle"], ["coil", "Coil"], ["length", "Length"]]],
-  ["Weight", [["kg", "Kilogram (kg)"], ["t", "Tonne (t)"], ["g", "Gram (g)"]]],
-  ["Length", [["m", "Metre (m)"], ["mm", "Millimetre (mm)"], ["ft", "Foot (ft)"]]],
-  ["Area / Volume", [["m2", "Square metre (m\u00b2)"], ["m3", "Cubic metre (m\u00b3)"],
-                     ["L", "Litre (L)"], ["gal", "Gallon (gal)"]]],
-  ["Packaging", [["bag", "Bag"], ["box", "Box"], ["drum", "Drum"], ["can", "Can"],
-                 ["carton", "Carton"], ["tube", "Tube"], ["pallet", "Pallet"], ["tin", "Tin"]]],
-  ["Time (for rentals)", [["day", "Day"], ["week", "Week"], ["month", "Month"]]],
+  ["Count", [["pcs", "pcs - Pieces"], ["set", "set - Set"], ["pair", "pair - Pair"], ["sheet", "sheet - Sheet"],
+             ["roll", "roll - Roll"], ["bundle", "bundle - Bundle"], ["coil", "coil - Coil"], ["length", "length - Length"]]],
+  ["Weight", [["kg", "kg - Kilogram"], ["t", "t - Tonne"], ["g", "g - Gram"]]],
+  ["Length", [["m", "m - Metre"], ["mm", "mm - Millimetre"], ["ft", "ft - Foot"]]],
+  ["Area / Volume", [["m2", "m\u00b2 - Square metre"], ["m3", "m\u00b3 - Cubic metre"],
+                     ["L", "L - Litre"], ["gal", "gal - Gallon"]]],
+  ["Packaging", [["bag", "bag - Bag"], ["box", "box - Box"], ["drum", "drum - Drum"], ["can", "can - Can"],
+                 ["carton", "carton - Carton"], ["tube", "tube - Tube"], ["pallet", "pallet - Pallet"], ["tin", "tin - Tin"]]],
+  ["Time (for rentals)", [["day", "day - Day"], ["week", "week - Week"], ["month", "month - Month"]]],
 ];
 
 function unitOptionsHtml(current) {
