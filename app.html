@@ -1190,30 +1190,25 @@
             <div class="card">
               <h2>All materials in the list</h2>
               <div class="form-row">
-                <input type="text" id="il-search" placeholder="Search by name or code" style="width:300px;" oninput="renderItemMaster(1)">
-                <select id="il-filter" onchange="renderItemMaster(1)" style="width:200px;">
+                <input type="text" id="il-search" placeholder="Search by name or code" style="width:300px;" oninput="renderItemMaster()">
+                <select id="il-filter" onchange="renderItemMaster()" style="width:200px;">
                   <option value="">All types</option>
                   <option value="consumable">Consumable</option>
                   <option value="asset">Asset (we own it)</option>
                   <option value="rental">Rental (hired in)</option>
                 </select>
-                <select id="il-stock" onchange="renderItemMaster(1)" style="width:200px;">
+                <select id="il-stock" onchange="renderItemMaster()" style="width:200px;">
                   <option value="">Everything</option>
                   <option value="instock">Only what has stock</option>
                   <option value="zero">Only what is at zero</option>
                 </select>
                 <span id="il-count" style="font-size:12.5px; color:#888;"></span>
               </div>
-              <div class="grid-wrap" style="max-height:460px;">
+              <div class="grid-wrap" style="max-height:64vh;">
                 <table>
                   <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Type</th><th>Warn under</th><th>In central store</th><th>Out at sites</th><th>Total held</th><th></th></tr></thead>
                   <tbody id="il-body"></tbody>
                 </table>
-              </div>
-              <div class="form-row" style="margin-top:8px;">
-                <button class="btn btn-dark" onclick="itemPage(-1)">&larr; Previous</button>
-                <span id="il-page" style="font-size:13px;"></span>
-                <button class="btn btn-dark" onclick="itemPage(1)">Next &rarr;</button>
               </div>
               <div id="store-item-list" style="display:none;"></div>
             </div>
@@ -3271,9 +3266,6 @@ async function toggleStockDetail(code) {
 
 // The material list can run to thousands of rows, so it's shown as a
 // searchable, paged table rather than every item at once.
-let itemPageNo = 1;
-const ITEMS_PER_PAGE = 50;
-
 function filteredItems() {
   const q = (document.getElementById("il-search").value || "").trim().toLowerCase();
   const type = document.getElementById("il-filter").value;
@@ -3293,21 +3285,19 @@ function filteredItems() {
   });
 }
 
-function renderItemMaster(page) {
-  if (page) itemPageNo = page;
+function renderItemMaster() {
+  // One scrollable window instead of 65 pages: the search box does the
+  // narrowing, the scrollbar does the rest, and every match is
+  // reachable without clicking Next dozens of times.
   const rows = filteredItems();
-  const pages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
-  if (itemPageNo > pages) itemPageNo = pages;
-  const slice = rows.slice((itemPageNo - 1) * ITEMS_PER_PAGE, itemPageNo * ITEMS_PER_PAGE);
   const stockBy = {};
   (storeStockCache || []).forEach(s => { stockBy[s.item_id] = s; });
 
   document.getElementById("il-count").textContent =
     `${num(rows.length)} material(s)` + (rows.length !== (storeItems || []).length ? ` of ${num(storeItems.length)}` : "");
-  document.getElementById("il-page").textContent = `Page ${itemPageNo} of ${pages}`;
 
   const body = document.getElementById("il-body");
-  body.innerHTML = slice.length ? slice.map(i => {
+  body.innerHTML = rows.length ? rows.map(i => {
     const s = stockBy[i.id];
     return `<tr>
       <td style="color:#999; font-size:12px;">${i.code}</td>
@@ -3326,11 +3316,6 @@ function renderItemMaster(page) {
   }).join("") : `<tr><td class="empty-note">Nothing matches that search.</td></tr>`;
 }
 
-function itemPage(delta) {
-  const pages = Math.max(1, Math.ceil(filteredItems().length / ITEMS_PER_PAGE));
-  itemPageNo = Math.min(pages, Math.max(1, itemPageNo + delta));
-  renderItemMaster();
-}
 
 // ---- Automatic unit recognition -------------------------------------
 // The backend reads every material name and proposes a standard unit
