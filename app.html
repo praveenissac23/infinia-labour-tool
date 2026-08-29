@@ -938,6 +938,22 @@
           <!-- ITEMS -->
           <div id="store-items" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+
+            <!-- Units health check: the system reads every material name
+                 and proposes the standard unit it should carry. Nothing
+                 changes without the keeper ticking and applying. -->
+            <div class="card" style="margin-top:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;">Fix units automatically</h2>
+                  <p style="font-size:12px; color:#888; margin:0;">The system reads each material's name and suggests
+                    the standard unit - cement in bags, rebar in tonnes, cable in metres. You review and apply.</p>
+                </div>
+                <button class="btn btn-primary" onclick="loadUnitSuggestions()">Check all materials</button>
+              </div>
+              <div id="unit-review" style="margin-top:12px;"></div>
+            </div>
+
             <div class="card" style="margin-top:12px;">
               <h2>Add or change an item</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">Every material or tool is listed here once, before it can be received or given out.</p>
@@ -948,7 +964,7 @@
                 <input type="hidden" id="it-code">
                 <input type="text" id="it-name" placeholder="Item name" style="width:230px;">
                 <input type="text" id="it-cat" placeholder="Category" style="width:140px;">
-                <input type="text" id="it-unit" placeholder="Unit (bags/pcs)" style="width:130px;">
+                <select id="it-unit" style="width:170px;"></select>
                 <select id="it-type" onchange="onItemTypeChange()" style="width:170px;">
                   <option value="consumable">Consumable</option>
                   <option value="asset">Asset (we own it)</option>
@@ -2785,6 +2801,49 @@ document.addEventListener("click", (e) => {
 // ============ STORE / INVENTORY ============
 let storeItems = [];
 
+// Standard units, following UN/CEFACT Recommendation 20 (units of
+// measure in international trade: t, kg, m, m2, m3, L...) with the
+// packaging units of Recommendation 21 (bag, drum, roll). A curated
+// construction subset - the full standard has hundreds of entries a
+// keeper would never scroll past.
+const UNITS = [
+  ["Count", [["pcs", "Pieces (pcs)"], ["set", "Set"], ["pair", "Pair"], ["sheet", "Sheet"],
+             ["roll", "Roll"], ["bundle", "Bundle"], ["coil", "Coil"], ["length", "Length"]]],
+  ["Weight", [["kg", "Kilogram (kg)"], ["t", "Tonne (t)"], ["g", "Gram (g)"]]],
+  ["Length", [["m", "Metre (m)"], ["mm", "Millimetre (mm)"], ["ft", "Foot (ft)"]]],
+  ["Area / Volume", [["m2", "Square metre (m\u00b2)"], ["m3", "Cubic metre (m\u00b3)"],
+                     ["L", "Litre (L)"], ["gal", "Gallon (gal)"]]],
+  ["Packaging", [["bag", "Bag"], ["box", "Box"], ["drum", "Drum"], ["can", "Can"],
+                 ["carton", "Carton"], ["tube", "Tube"], ["pallet", "Pallet"], ["tin", "Tin"]]],
+  ["Time (for rentals)", [["day", "Day"], ["week", "Week"], ["month", "Month"]]],
+];
+
+function unitOptionsHtml(current) {
+  const known = UNITS.flatMap(([, us]) => us.map(([v]) => v.toLowerCase()));
+  const cur = (current || "").trim();
+  // A unit already in the data but not on the standard list (old
+  // free-typed values like "bags") stays selectable rather than being
+  // silently replaced - the keeper decides when to modernise it.
+  const legacy = cur && !known.includes(cur.toLowerCase())
+    ? `<option value="${cur}" selected>${cur} (as entered)</option>` : "";
+  return legacy + UNITS.map(([group, us]) =>
+    `<optgroup label="${group}">` + us.map(([v, label]) =>
+      `<option value="${v}"${v.toLowerCase() === cur.toLowerCase() ? " selected" : ""}>${label}</option>`)
+      .join("") + `</optgroup>`).join("");
+}
+
+// Set a unit select's value, adding the option first if it isn't on
+// the standard list, so .value assignment never silently fails.
+function setUnitSelect(sel, unit) {
+  if (!sel || !unit) return;
+  if (![...sel.options].some(o => o.value.toLowerCase() === unit.toLowerCase())) {
+    const o = document.createElement("option");
+    o.value = o.textContent = unit;
+    sel.insertBefore(o, sel.firstChild);
+  }
+  sel.value = [...sel.options].find(o => o.value.toLowerCase() === unit.toLowerCase()).value;
+}
+
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
 const STORE_PANELS = ["home","give","arrive","items","other","reports"];
@@ -3102,9 +3161,71 @@ function itemPage(delta) {
   renderItemMaster();
 }
 
+// ---- Automatic unit recognition -------------------------------------
+// The backend reads every material name and proposes a standard unit
+// (cement -> bag, rebar -> t, cable -> m). This renders the review:
+// each row shows current vs suggested with the reason, every suggestion
+// is itself a dropdown the keeper can override, and only ticked rows
+// are applied. Recognition proposes; the keeper decides.
+async function loadUnitSuggestions() {
+  const box = document.getElementById("unit-review");
+  box.innerHTML = '<div class="empty-note">Reading all material names...</div>';
+  try {
+    const d = await apiCall("/store/items/suggest-units");
+    const sugg = d.suggestions || [];
+    if (!sugg.length) {
+      box.innerHTML = '<div class="empty-note">Every material the system recognises already has the right unit. The rest keep what they have.</div>';
+      return;
+    }
+    box.innerHTML = `
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+        <span class="stat-chip" style="border-color:#1565C0; color:#1565C0; background:#1565C012;">${num(sugg.length)} materials recognised</span>
+        <label style="font-size:12px; color:#666;"><input type="checkbox" id="ur-all" checked onchange="document.querySelectorAll('.ur-pick').forEach(c => c.checked = this.checked)"> tick / untick all</label>
+        <button class="btn btn-primary" onclick="applyUnitSuggestions()">Apply ticked changes</button>
+      </div>
+      <div class="grid-wrap" style="max-height:420px;">
+        <table>
+          <thead><tr><th style="width:5%;"></th><th style="width:9%;">Code</th>
+            <th style="text-align:left;">Material</th><th style="width:12%;">Unit now</th>
+            <th style="width:17%;">Change to</th><th style="width:26%; text-align:left;">Why</th></tr></thead>
+          <tbody>${sugg.map(s => `<tr>
+            <td><input type="checkbox" class="ur-pick" data-id="${s.id}" checked></td>
+            <td style="color:#999; font-size:12px;">${s.code}</td>
+            <td style="text-align:left; font-weight:500;">${s.name}</td>
+            <td>${s.current || "-"}</td>
+            <td><select class="ur-unit" data-id="${s.id}" style="width:100%;">${unitOptionsHtml(s.suggested)}</select></td>
+            <td style="text-align:left; font-size:12px; color:#777;">"${s.matched}" &rarr; ${s.reason}</td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="empty-note">Could not check: ${errText(e)}</div>`;
+  }
+}
+
+async function applyUnitSuggestions() {
+  const changes = [...document.querySelectorAll(".ur-pick:checked")].map(c => ({
+    id: parseInt(c.dataset.id, 10),
+    unit: document.querySelector(`.ur-unit[data-id="${c.dataset.id}"]`).value,
+  }));
+  if (!changes.length) { showStatus("store-status", "warn", "Nothing is ticked."); return; }
+  if (!confirm(`Change the unit on ${num(changes.length)} material(s)?\n\n` +
+               "Stock counts and future requests will use the new units.")) return;
+  try {
+    const r = await apiCall("/store/items/apply-units", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes }) });
+    showStatus("store-status", "ok", `Updated ${num(r.updated)} material(s).`);
+    await loadStoreItems();
+    renderItemMaster();
+    loadUnitSuggestions();   // re-check: applied rows drop off the list
+  } catch (e) { showStatus("store-status", "err", errText(e)); }
+}
+
 function clearItemForm() {
-  ["it-code","it-name","it-cat","it-unit","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+  ["it-code","it-name","it-cat","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  document.getElementById("it-unit").innerHTML = unitOptionsHtml("pcs");
   document.getElementById("it-type").value = "consumable";
   onItemTypeChange();
   showStatus("store-status", null);
@@ -3232,7 +3353,7 @@ function editStoreItem(id) {
   document.getElementById("it-code").value = i.code;
   document.getElementById("it-name").value = i.name;
   document.getElementById("it-cat").value = i.category || "";
-  document.getElementById("it-unit").value = i.unit || "";
+  document.getElementById("it-unit").innerHTML = unitOptionsHtml(i.unit || "pcs");
   document.getElementById("it-type").value = i.item_type;
   document.getElementById("it-reorder").value = i.reorder_level || "";
   document.getElementById("it-rsupplier").value = i.rental_supplier || "";
@@ -3273,8 +3394,9 @@ async function saveStoreItem() {
   try {
     const r = await apiCall("/store/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     showStatus("store-status", "ok", `Saved ${r.code} - ${r.name}.`);
-    ["it-code","it-name","it-cat","it-unit","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+    ["it-code","it-name","it-cat","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
       .forEach(id => document.getElementById(id).value = "");
+    document.getElementById("it-unit").innerHTML = unitOptionsHtml("pcs");
     await loadStoreItems(); await loadStore();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
@@ -3382,10 +3504,10 @@ function onMaterialTyped(box) {
   const unitCell = row.querySelector(".ol-have, .mr-unit");
   if (hit && unitCell) {
     if (unitCell.classList.contains("mr-unit")) {
-      // Only fill a unit the requester hasn't typed themselves -
+      // Only fill a unit the requester hasn't chosen themselves -
       // replacing "tonne" with the catalogue's "pcs" changed the
       // meaning of the request under their hands.
-      if (!unitCell.dataset.touched) unitCell.value = hit.unit;
+      if (!unitCell.dataset.touched) setUnitSelect(unitCell, hit.unit);
     } else {
       const s = (storeStockCache || []).find(s => s.item_id === hit.id);
       unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
@@ -3929,8 +4051,8 @@ function addMrLine() {
           <option value="rental">Rental (to hire)</option>
         </select></td>
     <td><input type="number" class="mr-qty" step="any" style="width:100%; min-width:80px;"></td>
-    <td><input type="text" class="mr-unit" value="pcs" style="width:100%; min-width:60px;"
-               oninput="this.dataset.touched='1'"></td>
+    <td><select class="mr-unit" style="width:100%; min-width:90px;"
+                onchange="this.dataset.touched='1'">${unitOptionsHtml("pcs")}</select></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
     <td><input type="text" class="mr-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'mr-lines')">Remove</button></td>`;

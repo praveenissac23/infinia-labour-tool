@@ -1534,6 +1534,66 @@ def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
     return q.order_by(models.StoreItem.code).all()
 
 
+# Recognising a material from its name. Units follow UN/CEFACT Rec 20
+# symbols (t, kg, m, m2, m3, L) plus Rec 21 packaging (bag, drum, roll).
+# Rules run top to bottom, first match wins, so the specific ones
+# (welding rod -> box) sit above the general ones (rod -> kg). A rule
+# only fires on whole words, so "sanding disc" never matches "sand".
+UNIT_RULES = [
+    (("cement", "gypsum powder", "grout", "plaster", "mortar", "adhesive powder", "tile adhesive", "white cement", "putty"), "bag", "powders are bought by the bag"),
+    (("rebar", "rebars", "reinforcement", "tor steel", "tmt"), "t", "rebar is bought by the tonne"),
+    (("sand", "aggregate", "gravel", "sweet soil", "crush", "readymix", "ready mix", "concrete"), "m3", "loose material is measured in cubic metres"),
+    (("nail", "nails", "screw", "screws", "binding wire"), "kg", "loose fixings are bought by weight"),
+    (("cable", "wire", "conduit", "trunking", "hose", "rope", "chain", "gi pipe", "pvc pipe", "ppr pipe", "upvc", "duct", "tube pipe"), "m", "run material is measured by the metre"),
+    (("paint", "primer", "thinner", "curing compound", "admixture", "bitumen", "sealer", "chemical", "diesel", "petrol", "oil", "waterproofing liquid"), "L", "liquids are measured in litres"),
+    (("plywood", "gypsum board", "mdf", "gi sheet", "cement board", "shutter ply", "marine ply"), "sheet", "boards are counted in sheets"),
+    (("mesh roll", "geotextile", "membrane", "felt", "polythene", "shade net", "hessian", "insulation roll"), "roll", "rolled goods are counted in rolls"),
+    (("welding rod", "electrode", "welding electrodes"), "box", "welding rods come by the box"),
+    (("silicone", "sealant cartridge", "pu foam", "gun foam"), "tube", "cartridges are counted in tubes"),
+    (("glove", "gloves", "boot", "boots", "goggle", "goggles"), "pair", "safety wear comes in pairs"),
+]
+
+
+def _suggest_unit(name: str):
+    words = " " + " ".join((name or "").lower().replace("/", " ").replace("-", " ").split()) + " "
+    for keys, unit, reason in UNIT_RULES:
+        for k in keys:
+            if f" {k} " in words or (k.endswith(" ") and k in words):
+                return unit, k, reason
+    return None, None, None
+
+
+@app.get("/store/items/suggest-units")
+def suggest_units(db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("store"))):
+    """Walk the whole catalogue and propose a standard unit for every
+    material whose name identifies it - cement to bags, rebar to tonnes,
+    cable to metres. Nothing is changed here: the keeper reviews the
+    list and applies only the rows they agree with."""
+    out = []
+    for it in db.query(models.StoreItem).filter(models.StoreItem.active == True).all():  # noqa: E712
+        unit, matched, reason = _suggest_unit(it.name)
+        if unit and unit.lower() != (it.unit or "").lower().strip():
+            out.append({"id": it.id, "code": it.code, "name": it.name,
+                        "current": it.unit, "suggested": unit,
+                        "matched": matched, "reason": reason})
+    return {"suggestions": out}
+
+
+@app.post("/store/items/apply-units")
+def apply_units(payload: schemas.ApplyUnitsIn, db: Session = Depends(get_db),
+                 user: models.User = Depends(require_screen("store"))):
+    """Apply the unit changes the keeper ticked in the review."""
+    done = 0
+    for ch in payload.changes:
+        it = db.query(models.StoreItem).filter(models.StoreItem.id == ch.id).first()
+        if it and ch.unit and ch.unit.strip():
+            it.unit = ch.unit.strip()
+            done += 1
+    db.commit()
+    return {"updated": done}
+
+
 @app.post("/store/items", response_model=schemas.StoreItemOut)
 def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db),
                        user: models.User = Depends(require_screen("store"))):

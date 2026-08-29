@@ -338,3 +338,12 @@ class ReceiveRequestIn(BaseModel):
     reference: str = ""
     received_on: Optional[date] = None
     notes: str = ""
+
+
+class UnitChange(BaseModel):
+    id: int
+    unit: str
+
+
+class ApplyUnitsIn(BaseModel):
+    changes: list[UnitChange]
