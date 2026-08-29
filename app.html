@@ -3843,8 +3843,10 @@ const MR_COLOUR = {
 const MR_NEXT = {
   pending: [["approved", "Approve"], ["rejected", "Reject"]],
   approved: [["ordered", "Mark as ordered"], ["rejected", "Reject"]],
-  ordered: [], arranging: [], lpo_sent: [], partial: [],
-  delivered: [["closed", "Close"]],
+  // Delivered is the end of the road: the material is in, the request
+  // is done, and it lives on in the history. Making someone click
+  // "Close" after that was paperwork about paperwork.
+  ordered: [], arranging: [], lpo_sent: [], partial: [], delivered: [],
 };
 
 function statusTrail(status) {
@@ -3993,10 +3995,12 @@ async function loadRequests() {
               <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}</td>
               <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
               <td>
-                ${actions}
+                ${["delivered", "closed", "rejected"].includes(r.status)
+                  ? '<span style="color:#B5B9BE; font-size:12px;">Finished &middot; click the row for details</span>'
+                  : `${actions}
                 ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}
                 <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
-                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>`}
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
                 <td colspan="8" style="text-align:left; padding:14px 18px;">
@@ -4018,6 +4022,11 @@ async function loadRequests() {
                   </table>
                   ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
                   ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
+                  ${["delivered", "closed", "rejected"].includes(r.status) ? `
+                  <div style="margin-top:12px; display:flex; gap:8px;">
+                    <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print for records</button>
+                    <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
+                  </div>` : ""}
                 </td></tr>`;
           }).join("")}</tbody>
         </table>
