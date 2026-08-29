@@ -63,12 +63,15 @@
          line-height: 1.25; }
   .btn-primary { background: var(--red); color: white; }
   .btn-primary:hover { background: var(--red-hover); }
-  .btn-dark { background: white; color: #3A4046; border-color: #D5D9DE; }
-  .btn-dark:hover { background: #F6F7F9; border-color: #C3C9D0; }
-  .btn-gray { background: white; color: #6B7075; border-color: #D5D9DE; }
-  .btn-gray:hover { background: #F6F7F9; color: #3A4046; }
-  .btn-danger { background: white; color: var(--red); border-color: #E8C7C2; }
-  .btn-danger:hover { background: #FDF3F2; border-color: var(--red); }
+  /* Secondary buttons pick up a faint red wash rather than plain white,
+     so they read as part of the brand while the solid primary still
+     clearly leads. */
+  .btn-dark { background: #FDF6F5; color: #7A3B33; border-color: #E7CEC9; }
+  .btn-dark:hover { background: #FAEBE8; border-color: #D9B6B0; color: #5F2E27; }
+  .btn-gray { background: #FDF6F5; color: #8A6560; border-color: #E7CEC9; }
+  .btn-gray:hover { background: #FAEBE8; color: #5F2E27; }
+  .btn-danger { background: #FDF0EE; color: var(--red); border-color: #E8C7C2; }
+  .btn-danger:hover { background: #F9E2DE; border-color: var(--red); }
 
   /* Hard cap so a long list of errors scrolls inside its own box
      instead of turning the entire page red. */
