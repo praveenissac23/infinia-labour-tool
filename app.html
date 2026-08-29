@@ -3582,14 +3582,23 @@ async function saveMovement() {
 // app, so the store keeper picks a real person rather than typing a name.
 function peopleOptions() {
   const emp = employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.emp_no} - ${e.name} (${e.trade || "worker"})</option>`);
-  const eng = engineers.map(e => `<option value="${properName(e.name)}">${properName(e.name)} (site engineer)</option>`);
+  const eng = engineers.map(e => `<option value="${personName(e.name)}">${personName(e.name)} (site engineer)</option>`);
   return '<option value="">-- choose --</option>' + eng.join("") + emp.join("");
 }
 
-// "febiyan" -> "Febiyan", "site OPC store" -> "Site OPC Store": first
-// letter up, the rest untouched, so abbreviations survive. One rule for
-// every name and label in the app - names are written once, read
-// hundreds of times, and mixed casing reads as carelessness.
+// People's names: "akhil" and "AKHIL" both become "Akhil", so the same
+// person can't sit in a list twice. Used only for names of people -
+// material names keep their abbreviations via properName below.
+function personName(s) {
+  return String(s || "").trim().split(/\s+/).map(w => {
+    if (!w) return w;
+    if (w === w.toUpperCase() && /[A-Z]{2,}/.test(w)) w = w.toLowerCase();
+    return w[0].toUpperCase() + w.slice(1);
+  }).join(" ");
+}
+
+// Everything else (materials, suppliers): capitalise the first letter
+// and leave the rest alone, so "cement OPC 42.5" keeps OPC as OPC.
 function properName(s) {
   return String(s || "").trim().split(/\s+/)
     .map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
@@ -3599,20 +3608,27 @@ function properName(s) {
 // raise requests - site engineers and past requesters - with Other for
 // a genuine newcomer. Free typing gave three spellings of one person.
 function requesterOptions() {
-  const names = new Set(engineers.map(e => properName(e.name)));
-  (mrCache || []).forEach(r => { if (r.requested_by) names.add(properName(r.requested_by)); });
+  // Collapse on lower case, so "Akhil", "AKHIL" and "akhil" are one
+  // entry, not three. The tidiest spelling of each is what shows.
+  const seen = new Map();
+  const add = raw => {
+    const n = personName(raw);
+    if (n) seen.set(n.toLowerCase(), n);
+  };
+  engineers.forEach(e => add(e.name));
+  (mrCache || []).forEach(r => { if (r.requested_by) add(r.requested_by); });
   let saved = "";
-  try { saved = properName(localStorage.getItem("mrName") || ""); } catch (e) {}
-  if (saved) names.add(saved);
-  const opts = [...names].sort((a, b) => a.localeCompare(b));
+  try { saved = personName(localStorage.getItem("mrName") || ""); } catch (e) {}
+  if (saved) add(saved);
+  const opts = [...seen.values()].sort((a, b) => a.localeCompare(b));
   return '<option value="">-- choose --</option>' +
-    opts.map(n => `<option value="${n}"${n === saved ? " selected" : ""}>${n}</option>`).join("") +
+    opts.map(n => `<option value="${n}"${n.toLowerCase() === saved.toLowerCase() ? " selected" : ""}>${n}</option>`).join("") +
     '<option value="__other">Someone else...</option>';
 }
 
 function onRequesterChange(sel) {
   if (sel.value === "__other") {
-    const n = properName(prompt("Type the name:") || "");
+    const n = personName(prompt("Type the name:") || "");
     if (n) {
       const o = document.createElement("option");
       o.value = o.textContent = n;
@@ -4322,7 +4338,7 @@ async function submitMaterialRequest() {
   // half-filled form saved happily and printed as a row of dashes -
   // no site, nobody to ask, no date to chase.
   const site = document.getElementById("mr-site").value;
-  const by = properName(document.getElementById("mr-by").value.trim());
+  const by = personName(document.getElementById("mr-by").value.trim());
   const needed = document.getElementById("mr-needed").value;
   const focus = (id, msg) => {
     showStatus("mreq-status", "warn", msg);
