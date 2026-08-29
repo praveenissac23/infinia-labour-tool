@@ -347,3 +347,7 @@ class UnitChange(BaseModel):
 
 class ApplyUnitsIn(BaseModel):
     changes: list[UnitChange]
+
+
+class LinkLineItemIn(BaseModel):
+    item_id: int

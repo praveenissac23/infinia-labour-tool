@@ -1525,6 +1525,31 @@ def _stock_map(db: Session, upto: date = None):
     return stock
 
 
+@app.post("/store/request-lines/{line_id}/link-item")
+def link_line_item(line_id: int, payload: schemas.LinkLineItemIn,
+                    db: Session = Depends(get_db),
+                    user: models.User = Depends(require_screen("requests"))):
+    """Attach a store item to a line that was typed as free text.
+
+    Someone asks for "Cushions", which isn't in the catalogue yet. The
+    request is fine, but the delivery can't be received into stock
+    because there's nothing to count it against. Rather than a dead end
+    at the delivery modal, the keeper adds it to the item list from
+    there and the line is linked to it."""
+    line = db.query(models.MaterialRequestLine).filter(
+        models.MaterialRequestLine.id == line_id).first()
+    if not line:
+        raise HTTPException(status_code=404, detail="Request line not found.")
+    item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    line.item_id = item.id
+    if not line.unit:
+        line.unit = item.unit
+    db.commit()
+    return {"ok": True, "item_id": item.id, "code": item.code}
+
+
 @app.get("/store/items", response_model=list[schemas.StoreItemOut])
 def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
                       user: models.User = Depends(require_screen("store"))):

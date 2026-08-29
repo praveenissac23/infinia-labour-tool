@@ -4101,12 +4101,39 @@ async function loadRequests() {
 // instead of typing the whole delivery again.
 let recvRequest = null;
 
+// A request line typed as free text ("Cushions") has nothing in the
+// catalogue to count a delivery against. Rather than leaving the keeper
+// stuck at the modal, add it to the item list here, link the line to
+// it, and reopen ready to receive.
+async function addLineToCatalogue(lineId) {
+  const r = recvRequest;
+  const line = r && (r.lines || []).find(l => l.id === lineId);
+  if (!line) return;
+  const name = properName(line.description || line.item_name || "");
+  if (!confirm(`Add "${name}" to the item list?\n\n` +
+               `It will be counted in ${line.unit || "pcs"}, so this delivery and every future one can go into stock.`)) return;
+  try {
+    const item = await apiCall("/store/items", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, unit: line.unit || "pcs",
+                              item_type: line.item_type || "consumable",
+                              category: "", reorder_level: 0 }) });
+    await apiCall(`/store/request-lines/${lineId}/link-item`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_id: item.id }) });
+    await loadStoreItems();
+    showStatus("recv-status", "ok", `${item.code} - ${item.name} added. Enter how much arrived.`);
+    await openReceive(r.id);   // reopen so the line now offers a quantity box
+  } catch (e) { showStatus("recv-status", "err", errText(e)); }
+}
+
 async function openReceive(id) {
   const all = await apiCall("/store/requests");
   const r = all.find(x => x.id === id);
   if (!r) return;
   recvRequest = r;
-  document.getElementById("recv-ref").textContent = `${r.ref} (site ${r.site || "-"})`;
+  document.getElementById("recv-ref").textContent =
+    r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`;
   document.getElementById("recv-date").value = isoLocal(new Date());
   document.getElementById("recv-supplier").value = "";
   document.getElementById("recv-ref-no").value = r.ref;
@@ -4124,7 +4151,7 @@ async function openReceive(id) {
     const clash = item && l.unit && item.unit &&
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
     return `<tr data-line="${l.id}">
-      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not a store item)</span>'}
+      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
           Asked in ${l.unit}, but the store counts this in ${item.unit} - enter the quantity in ${item.unit}.</div>` : ""}</td>
       <td>${num(l.qty_requested)} ${l.unit}</td>
@@ -4132,7 +4159,9 @@ async function openReceive(id) {
       <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
       <td>${canReceive
             ? `<input type="number" class="recv-qty" step="any" value="${due}" max="${due}" style="width:100%;">`
-            : "-"}</td>
+            : (!l.item_id && due > 0
+                ? `<button class="btn btn-primary" onclick="addLineToCatalogue(${l.id})">Add to item list</button>`
+                : "-")}</td>
     </tr>`;
   }).join("");
   document.getElementById("recv-modal-overlay").style.display = "flex";
@@ -4151,7 +4180,15 @@ async function saveReceive() {
                    qty: parseFloat(box.value) || 0 } : null;
   }).filter(l => l && l.qty > 0);
   if (!lines.length) {
-    showStatus("recv-status", "warn", "Enter how much arrived for at least one material."); return;
+    // If nothing could be received because no line is in the catalogue,
+    // say that - "enter a quantity" is impossible advice when there is
+    // no box to type into.
+    const unlinked = (recvRequest.lines || []).filter(l => !l.item_id &&
+      (l.qty_requested || 0) - (l.qty_received || 0) > 0);
+    showStatus("recv-status", "warn", unlinked.length
+      ? `${unlinked.map(l => l.description || l.item_name).join(", ")} ${unlinked.length > 1 ? "are" : "is"} not in the item list yet - use "Add to item list" first, then enter how much arrived.`
+      : "Enter how much arrived for at least one material.");
+    return;
   }
   // A delivery dated ahead is allowed - a load already on its way gets
   // booked in - but it adds stock that isn't physically there yet, so
