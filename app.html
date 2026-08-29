@@ -2007,6 +2007,15 @@ function applyBulk() {
   renderRows();
 }
 
+// Requests and approvals live on separate screens but share code paths
+// (submit, ordering, deliveries), so a message must land on whichever
+// screen is actually open.
+function mreqStatus(kind, text) {
+  const appr = document.getElementById("screen-approvals");
+  const onApprovals = appr && appr.classList.contains("active");
+  showStatus(onApprovals ? "appr-status" : "mreq-status", kind, text);
+}
+
 function showStatus(elId, kind, text) {
   const el = document.getElementById(elId);
   if (!kind) { el.className = "status-msg"; el.textContent = ""; return; }
