@@ -964,7 +964,8 @@
           <div id="store-home">
             <div class="card">
               <h2>What do you want to do?</h2>
-              <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+              <div class="rep-group" style="margin-top:10px;">Every day</div>
+              <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div class="store-tile" onclick="storeGo('give')">
                   <div class="store-tile-t">Give Out Material</div>
                   <div class="store-tile-s">Someone is taking material to a site</div>
@@ -977,13 +978,16 @@
                   <div class="store-tile-t">Material Requests</div>
                   <div class="store-tile-s">Ask the office and track what is coming</div>
                 </div>
-                <div class="store-tile" onclick="storeGo('items')">
-                  <div class="store-tile-t">Material List</div>
-                  <div class="store-tile-s">Add or change materials and tools</div>
-                </div>
                 <div class="store-tile" onclick="storeGo('other')">
                   <div class="store-tile-t">Returns &amp; Corrections</div>
                   <div class="store-tile-s">Came back, moved, or wrong number</div>
+                </div>
+              </div>
+              <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
+              <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div class="store-tile" onclick="storeGo('items')">
+                  <div class="store-tile-t">Material List</div>
+                  <div class="store-tile-s">Add or change materials and tools</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('dash')">
                   <div class="store-tile-t">Dashboard</div>
@@ -1065,7 +1069,9 @@
               <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
               <div class="form-row">
                 <div class="field-grid" style="margin-bottom:0; width:100%;">
-                  <div class="field"><label>Who is taking it</label><select id="out-person"></select></div>
+                  <div class="field"><label>Who is taking it</label>
+                    <input type="text" id="out-person" list="people-list"
+                           placeholder="Start typing a name or number"></div>
                   <div class="field"><label>Going to site</label><select id="out-site"></select></div>
                   <div class="field"><label>Date</label><input type="date" id="out-date"></div>
                 </div>
@@ -1511,7 +1517,14 @@ function switchScreen(name) {
         sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("") +
         '<option value="STORE">Central store (stock top-up)</option>';
       document.getElementById("out-site").innerHTML = '<option value="">-- choose --</option>' + siteOpts;
-      document.getElementById("out-person").innerHTML = peopleOptions();
+      // 80+ people in a plain dropdown means endless scrolling on the
+      // most-used screen. A type-to-search box finds "raj" in two
+      // keystrokes, the same way the material picker works.
+      let pl = document.getElementById("people-list");
+      if (!pl) { pl = document.createElement("datalist"); pl.id = "people-list"; document.body.appendChild(pl); }
+      pl.innerHTML =
+        engineers.map(e => `<option value="${personName(e.name)}">${personName(e.name)} (site engineer)</option>`).join("") +
+        employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.trade || "worker"}</option>`).join("");
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
       storeGo("home");
@@ -4194,9 +4207,7 @@ async function loadRequests() {
                 ${["delivered", "closed", "rejected"].includes(r.status)
                   ? '<span style="color:#B5B9BE; font-size:12px;">Finished &middot; click the row for details</span>'
                   : `${actions}
-                ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}
-                <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
-                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>`}
+                ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}`}
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
                 <td colspan="9" style="text-align:left; padding:14px 18px;">
@@ -4218,11 +4229,10 @@ async function loadRequests() {
                   </table>
                   ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
                   ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
-                  ${["delivered", "closed", "rejected"].includes(r.status) ? `
                   <div style="margin-top:12px; display:flex; gap:8px;">
-                    <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print for records</button>
+                    <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
                     <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
-                  </div>` : ""}
+                  </div>
                 </td></tr>`;
           }).join("")}</tbody>
         </table>
