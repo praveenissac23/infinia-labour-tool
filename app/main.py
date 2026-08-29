@@ -1619,6 +1619,42 @@ def apply_units(payload: schemas.ApplyUnitsIn, db: Session = Depends(get_db),
     return {"updated": done}
 
 
+def _next_item_code(db):
+    """ITM1, ITM2... The keeper never invents a code; existing items keep
+    whatever code they were given."""
+    used = {i.code for i in db.query(models.StoreItem).all()}
+    n = 1
+    while f"ITM{n}" in used:
+        n += 1
+    return f"ITM{n}"
+
+
+def _find_or_create_item(db, name, unit, item_type):
+    """Return the catalogue item for a typed-in material, creating it if
+    it's genuinely new.
+
+    A material asked for by name only ("Cushions") used to live as loose
+    text on one request: it couldn't be received into stock, couldn't be
+    given out, and the next person asking typed it slightly differently.
+    Adding it to the list at request time means it has a code, a unit,
+    and a history from the moment it is first asked for.
+    """
+    clean = " ".join((name or "").split())
+    if not clean:
+        return None
+    existing = db.query(models.StoreItem).filter(
+        func.lower(models.StoreItem.name) == clean.lower()).first()
+    if existing:
+        return existing
+    it = models.StoreItem(code=_next_item_code(db), name=clean,
+                          unit=(unit or "pcs").strip() or "pcs",
+                          item_type=item_type if item_type in ("consumable", "asset", "rental") else "consumable",
+                          category="", reorder_level=0, active=True)
+    db.add(it)
+    db.flush()
+    return it
+
+
 @app.post("/store/items", response_model=schemas.StoreItemOut)
 def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db),
                        user: models.User = Depends(require_screen("store"))):
@@ -1627,14 +1663,7 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     code = (payload.code or "").strip()
     name = (payload.name or "").strip()
     if not code:
-        # Auto-number new items ITM1, ITM2... The store keeper shouldn't
-        # have to invent a code; existing items still keep whatever code
-        # they were given, and an edit sends the code back unchanged.
-        used = {i.code for i in db.query(models.StoreItem).all()}
-        n = 1
-        while f"ITM{n}" in used:
-            n += 1
-        code = f"ITM{n}"
+        code = _next_item_code(db)
     if not name:
         raise HTTPException(status_code=400, detail="Item needs a name.")
     if payload.item_type == "returnable":
@@ -2017,6 +2046,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     )
     db.add(mr)
     db.flush()
+    created = []
     for l in lines:
         # The requester's own unit wins. Overwriting "tonne" with the
         # catalogue's "pcs" quietly changed what was being asked for -
@@ -2028,7 +2058,16 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
             if it:
                 unit = it.unit
         unit = unit or "pcs"
-        db.add(models.MaterialRequestLine(request_id=mr.id, item_id=l.item_id,
+        item_id = l.item_id
+        # A material typed by name joins the item list here and now, with
+        # its own generated code, so it can be received into stock, given
+        # out, reported on, and picked from the list next time.
+        if not item_id:
+            it = _find_or_create_item(db, l.description, unit, l.item_type)
+            if it:
+                item_id = it.id
+                created.append(f"{it.code} - {it.name}")
+        db.add(models.MaterialRequestLine(request_id=mr.id, item_id=item_id,
                                            description=l.description, qty_requested=l.qty_requested,
                                            qty_approved=l.qty_approved or 0, unit=unit,
                                            est_cost=l.est_cost or 0, notes=l.notes,
@@ -2036,7 +2075,10 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     db.commit()
     db.refresh(mr)
     log_action(db, user.id, "material_request", f"{mr.ref} - {len(lines)} item(s)")
-    return _mr_out(mr)
+    out = _mr_out(mr)
+    if created:
+        out["new_items"] = created
+    return out
 
 
 @app.post("/store/requests/{req_id}/status")

@@ -4416,12 +4416,16 @@ async function submitMaterialRequest() {
         notes: document.getElementById("mr-notes").value.trim(),
         lines,
       }) });
-    showStatus("mreq-status", "ok", `Request ${r.ref} sent to the office. You can print it below to email across.`);
+    showStatus("mreq-status", "ok", `Request ${r.ref} sent to the office.` +
+      (r.new_items && r.new_items.length
+        ? ` New to the item list: ${r.new_items.join(", ")} - ready to receive and give out.`
+        : " You can print it below to email across."));
     document.getElementById("mr-lines").innerHTML = "";
     addMrLine();
     document.getElementById("mr-notes").value = "";
     // Fresh date for the next request rather than the one just used.
     setNeededByDefault(true);
+    // Newly created materials must appear in the pickers straight away.
     await loadStoreItems();   // types may have changed, refresh the cached list
     await loadRequests();
   } catch (e) { showStatus("mreq-status", "err", errText(e)); }
