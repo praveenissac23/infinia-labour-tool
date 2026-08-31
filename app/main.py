@@ -1550,13 +1550,23 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
     # the account they are signed in with, so existing logins are kept
     # and only missing ones are put back.
     have = {u.username for u in db.query(models.User).all()}
+    taken = {u.id for u in db.query(models.User).all()}
     for u in data.get("users", []):
-        if u.get("username") not in have:
-            u = dict(u)
-            for f in ("created_at", "last_login"):
-                if u.get(f):
-                    u[f] = datetime.fromisoformat(u[f])
-            db.add(models.User(**u))
+        if u.get("username") in have:
+            continue
+        u = dict(u)
+        for f in ("created_at", "last_login"):
+            if u.get(f):
+                u[f] = datetime.fromisoformat(u[f])
+        # On a rebuilt server the rescue admin already holds an id the
+        # snapshot also claims. The login matters, the number does not -
+        # let the database allocate a free one rather than failing the
+        # whole restore.
+        if u.get("id") in taken:
+            u.pop("id", None)
+        else:
+            taken.add(u.get("id"))
+        db.add(models.User(**u))
     db.commit()
 
     log_action(db, user.id, "restore_backup", f"restored from backup #{backup_id}")

@@ -83,6 +83,49 @@ ck('a request keeps its supplier link', (req['lines'][0].get('supplier') or {}).
 ck('a request keeps what arrived', req['lines'][0]['qty_received'] == 100)
 ck('admin can still sign in after a restore', c.post('/auth/login', data={'username': 'admin', 'password': 'p'}).status_code == 200)
 
+# ---- Restoring onto a REBUILT server, which is the real disaster case.
+# The rescue admin already holds an id the snapshot claims, so this is
+# where an id collision would break the whole restore.
+import subprocess, os, tempfile
+snap = json.dumps(json.loads(database.SessionLocal().query(models.Backup)
+                             .filter(models.Backup.id == bid).first().data))
+fresh = tempfile.NamedTemporaryFile(suffix='.db', delete=False).name
+script = f"""
+import sys, json; sys.path.insert(0, '.')
+import os
+os.environ['DATABASE_URL'] = 'sqlite:///{fresh}'
+from fastapi.testclient import TestClient
+import database, models, auth
+models.Base.metadata.create_all(database.engine)
+import main
+db = database.SessionLocal()
+db.add(models.User(username='rescue', hashed_password=auth.hash_password('p'), full_name='R', role='admin'))
+db.add(models.Backup(created_by=1, trigger='file', data=open({fresh!r} + '.json').read()))
+db.commit(); db.close()
+c = TestClient(main.app)
+H = {{'Authorization': 'Bearer ' + c.post('/auth/login', data={{'username': 'rescue', 'password': 'p'}}).json()['access_token']}}
+bid = database.SessionLocal().query(models.Backup).first().id
+r = c.post(f'/backup/{{bid}}/restore', headers=H)
+items = len(c.get('/store/items', headers=H).json())
+reqs = c.get('/store/requests', headers=H).json()
+stock = {{s['code']: s['central'] for s in c.get('/store/stock', headers=H).json()}}
+login = c.post('/auth/login', data={{'username': 'admin', 'password': 'p'}}).status_code
+print(json.dumps({{'status': r.status_code, 'items': items, 'requests': len(reqs),
+                  'supplier': (reqs[0]['lines'][0].get('supplier') or {{}}).get('name') if reqs else None,
+                  'stock': stock, 'old_admin_login': login}}))
+"""
+open(fresh + '.json', 'w').write(snap)
+env = dict(os.environ); env['DATABASE_URL'] = f'sqlite:///{fresh}'
+res = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, env=env, cwd='.')
+try:
+    out = json.loads(res.stdout.strip().splitlines()[-1])
+    ck('restores onto a rebuilt server', out['status'] == 200, res.stderr[-200:])
+    ck('materials came back there too', out['items'] == before['items'], str(out))
+    ck('requests and supplier links came back', out['requests'] == before['requests'] and out['supplier'] == 'Al Raha Trading', str(out))
+    ck('original staff can sign in on the new server', out['old_admin_login'] == 200)
+except Exception as e:
+    ck('rebuilt-server restore readable', False, f"{e} :: {res.stdout[-200:]} {res.stderr[-200:]}")
+
 print()
 print('BACKUP COMPLETE AND RESTORABLE' if not FAIL else f'{len(FAIL)} PROBLEM(S): {FAIL}')
 sys.exit(1 if FAIL else 0)
