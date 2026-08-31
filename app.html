@@ -3980,22 +3980,49 @@ function properName(s) {
 // "Your name" on a request is a dropdown of the people who actually
 // raise requests - site engineers and past requesters - with Other for
 // a genuine newcomer. Free typing gave three spellings of one person.
+// Two names that differ by a letter or two are the same person typed
+// twice - "Febiyan" and "Febiyans". Master Data holds the right
+// spelling, so anything close to a name already there is treated as
+// that person rather than offered as a second choice.
+function sameName(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  if (a === b) return true;
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  if (long.length - short.length > 2) return false;
+  if (long.startsWith(short)) return true;         // Febiyan / Febiyans
+  // One substitution or one missing letter apart.
+  let i = 0, j = 0, slips = 0;
+  while (i < long.length && j < short.length) {
+    if (long[i] === short[j]) { i++; j++; continue; }
+    if (++slips > 1) return false;
+    long.length === short.length ? (i++, j++) : i++;
+  }
+  return true;
+}
+
 function requesterOptions() {
-  // Collapse on lower case, so "Akhil", "AKHIL" and "akhil" are one
-  // entry, not three. The tidiest spelling of each is what shows.
-  const seen = new Map();
-  const add = raw => {
+  // Master Data first: those spellings are the ones that count. A name
+  // from an old request only joins the list if it is nobody already
+  // there under a different spelling.
+  const known = [];
+  const add = (raw, authoritative) => {
     const n = personName(raw);
-    if (n) seen.set(n.toLowerCase(), n);
+    if (!n) return;
+    // Two names both in Master Data are two people, however alike -
+    // Ali and Alia must both stay. Only a name picked up from an old
+    // request is folded into a master spelling it nearly matches.
+    const hit = known.find(k => sameName(k.name, n) && !(authoritative && k.authoritative));
+    if (!hit) { known.push({ name: n, authoritative }); return; }
+    if (authoritative && !hit.authoritative) { hit.name = n; hit.authoritative = true; }
   };
-  engineers.forEach(e => add(e.name));
-  (mrCache || []).forEach(r => { if (r.requested_by) add(r.requested_by); });
+  engineers.forEach(e => add(e.name, true));
+  (mrCache || []).forEach(r => { if (r.requested_by) add(r.requested_by, false); });
   let saved = "";
   try { saved = personName(localStorage.getItem("mrName") || ""); } catch (e) {}
-  if (saved) add(saved);
-  const opts = [...seen.values()].sort((a, b) => a.localeCompare(b));
+  if (saved) add(saved, false);
+  const opts = known.map(k => k.name).sort((a, b) => a.localeCompare(b));
   return '<option value="">-- choose --</option>' +
-    opts.map(n => `<option value="${n}"${n.toLowerCase() === saved.toLowerCase() ? " selected" : ""}>${n}</option>`).join("") +
+    opts.map(n => `<option value="${n}"${saved && sameName(n, saved) ? " selected" : ""}>${n}</option>`).join("") +
     '<option value="__other">Someone else...</option>';
 }
 
