@@ -3356,7 +3356,7 @@ async function loadUnitSuggestions() {
         <table>
           <thead><tr><th style="width:5%;"></th><th style="width:9%;">Code</th>
             <th>Material</th><th style="width:12%;">Unit now</th>
-            <th style="width:17%;">Change to</th><th style="width:26%; text-align:left;">Why</th></tr></thead>
+            <th style="width:17%;">Change to</th><th style="width:26%;">Why</th></tr></thead>
           <tbody>${sugg.map(s => `<tr>
             <td><input type="checkbox" class="ur-pick" data-id="${s.id}" checked></td>
             <td style="color:#999; font-size:12px;">${s.code}</td>
@@ -4177,7 +4177,7 @@ async function loadRequests() {
             <th style="width:3%;"><input type="checkbox" id="mr-check-all" onclick="event.stopPropagation(); toggleAllOrderChecks(this)" title="Tick every request that can be ordered"></th>
             <th style="width:8%;">Request</th><th style="width:6%;">Site</th>
             <th style="width:11%;">Asked by</th><th style="width:8%;">Asked on</th>
-            <th style="width:9%;">Needed by</th><th style="width:19%; text-align:left;">Materials</th>
+            <th style="width:9%;">Needed by</th><th style="width:19%;">Materials</th>
             <th style="width:13%;">Status</th><th>What you can do</th>
           </tr></thead>
           <tbody>${list.map(r => {
@@ -4235,17 +4235,20 @@ async function loadRequests() {
                 <td colspan="9" style="text-align:left; padding:14px 18px;">
                   <div style="margin-bottom:10px;">${statusTrail(r.status)}</div>
                   <table style="font-size:12.5px; background:white;">
-                    <thead><tr><th style="width:4%;">#</th><th style="text-align:left;">Material</th><th>Qty</th><th>Unit</th>
-                      <th style="text-align:left;">What it is for</th><th>Arrived</th><th>Still to come</th><th style="text-align:left;">Ordered from</th></tr></thead>
+                    <thead><tr><th style="width:4%;">#</th><th>Material</th><th>Qty</th><th>Unit</th>
+                      <th>What it is for</th><th>Arrived</th><th>Still to come</th><th>Ordered from</th></tr></thead>
                     <tbody>${r.lines.map((l, i) => {
                       const out = (l.qty_requested || 0) - (l.qty_received || 0);
                       return `<tr>
                         <td>${i + 1}</td>
                         <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
                         <td>${num(l.qty_requested)}</td><td>${l.unit}</td>
-                        <td style="text-align:left;">${l.purpose || "-"}</td>
+                        <td>${l.purpose || "-"}</td>
                         <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
                         <td>${out > 0 ? num(out) : '<span style="color:#2E7D32;">complete</span>'}</td>
+                        <td style="font-size:11.5px;">${l.supplier
+                          ? `${l.supplier.name}${l.supplier.phone ? `<div><a href="tel:${l.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${l.supplier.phone}</a>${l.supplier.contact_person ? ` (${l.supplier.contact_person})` : ""}</div>` : ""}`
+                          : '<span style="color:#999;">not ordered yet</span>'}</td>
                       </tr>`;
                     }).join("")}</tbody>
                   </table>
@@ -4332,7 +4335,7 @@ async function openReceive(id) {
     const clash = item && l.unit && item.unit &&
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
     return `<tr data-line="${l.id}">
-      <td style="text-align:left;">${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
+      <td>${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
         ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
           Asked in ${l.unit}, but the store counts this in ${item.unit} - enter the quantity in ${item.unit}.</div>` : ""}</td>
