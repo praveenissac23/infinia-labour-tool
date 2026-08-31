@@ -83,6 +83,26 @@ ck('a request keeps its supplier link', (req['lines'][0].get('supplier') or {}).
 ck('a request keeps what arrived', req['lines'][0]['qty_received'] == 100)
 ck('admin can still sign in after a restore', c.post('/auth/login', data={'username': 'admin', 'password': 'p'}).status_code == 200)
 
+# ---- An OLD backup must never erase data it predates. A snapshot taken
+# before the store existed carries no store keys at all; restoring it
+# should bring back the payroll side and leave the inventory alone.
+old_style = {"generated_at": "2026-08-01T00:00:00",
+             "employees": [{"id": 1, "emp_no": "101", "name": "Rajan", "trade": "Mason",
+                            "total_salary": 2500.0, "basic_salary": 1500.0, "active": True,
+                            "created_at": None, "updated_at": None}],
+             "sites": [], "engineers": [], "daily_rows": [], "summaries": [], "adjustments": []}
+d3 = database.SessionLocal()
+d3.add(models.Backup(created_by=1, trigger='old-format', data=json.dumps(old_style)))
+d3.commit()
+old_id = d3.query(models.Backup).order_by(models.Backup.id.desc()).first().id
+d3.close()
+items_before_old = len(c.get('/store/items', headers=H).json())
+ck('an old-format backup restores without error',
+   c.post(f'/backup/{old_id}/restore', headers=H).status_code == 200)
+ck('an old backup does not erase the store',
+   len(c.get('/store/items', headers=H).json()) == items_before_old,
+   f"{len(c.get('/store/items', headers=H).json())} vs {items_before_old}")
+
 # ---- Restoring onto a REBUILT server, which is the real disaster case.
 # The rescue admin already holds an id the snapshot claims, so this is
 # where an id collision would break the whole restore.
