@@ -1126,8 +1126,7 @@
             <div class="card">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                 <div>
-                  <h2 style="margin-bottom:4px;">What is in the store right now</h2>
-                  <p id="home-stock-note" style="font-size:12px; color:#888; margin:0 0 8px;"></p>
+                  <h2 style="margin-bottom:4px;">What is in the store and sites right now</h2>
                   <div id="home-stats" style="display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px;"></div>
                 </div>
                 <input type="text" id="home-stock-search" placeholder="Search material or code"
@@ -3484,26 +3483,14 @@ async function loadStoreHome() {
     ]);
     storeStockCache = stk;
     const all = stock.rows || [];
-    // This screen answers one question: what can I hand out today. A
-    // material fully issued to sites is not in the store, so it does not
-    // belong here - it is still tracked, under At Sites and Current
-    // Stock in Reports.
-    const rows = all.filter(r => (r.in_store || 0) > 0);
-    const goneOut = all.filter(r => (r.in_store || 0) <= 0 && (r.at_sites || 0) > 0).length;
+    // Everything the company holds, wherever it is: in the central store,
+    // out at a site, or split between them. The columns say which.
+    const rows = all.filter(r => (r.in_store || 0) > 0 || (r.at_sites || 0) > 0);
 
     const head = document.getElementById("home-stock-head");
     const body = document.getElementById("home-stock-body");
-    const note = document.getElementById("home-stock-note");
-    // storeItems is the full catalogue; `all` has already been filtered
-    // down to items with stock by the server, so use storeItems for the
-    // total or the note would claim the catalogue is tiny.
-    const catalogue = (storeItems || []).length;
     const lowN = rows.filter(r => r.low).length;
-    if (note) note.innerHTML = catalogue
-      ? `Showing ${num(rows.length)} material(s) held in the central store, out of ${num(catalogue)} in the item list.` +
-        (goneOut ? ` <span style="color:#B26A00;">${num(goneOut)} more are fully out at sites.</span>` : "") +
-        ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
-      : "";
+
     // Low stock is still worth flagging here - the rows themselves are
     // marked, so the count just says how many to look for.
     const statsEl = document.getElementById("home-stats");
