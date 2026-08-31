@@ -1661,9 +1661,13 @@ def decide_request_line(line_id: int, payload: schemas.LineDecisionIn,
         models.MaterialRequestLine.id == line_id).first()
     if not line:
         raise HTTPException(status_code=404, detail="Request line not found.")
-    if (line.qty_received or 0) > 0 and payload.decision == "rejected":
-        raise HTTPException(status_code=400,
-            detail="Some of this has already arrived, so it can't be rejected now.")
+    if payload.decision == "rejected":
+        if (line.qty_received or 0) > 0:
+            raise HTTPException(status_code=400,
+                detail="Some of this has already arrived, so it can't be rejected now.")
+        if line.supplier_id:
+            raise HTTPException(status_code=400,
+                detail="This has already been ordered from a supplier, so it can't be rejected now.")
     line.status = payload.decision
     line.reject_reason = (payload.reason or "").strip() if payload.decision == "rejected" else ""
 
@@ -2364,6 +2368,10 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
                        and (l.status or "pending") != "rejected"]
             for l in targets:
                 l.supplier_id = sup.id
+                # Buying something is approving it. Leaving the line
+                # "pending" made the screen contradict itself: ordered
+                # from Newstar, yet still asking Approve or Reject.
+                l.status = "approved"
             sup_ids = {l.supplier_id for l in mr.lines}
             mr.supplier_id = sup.id if len(sup_ids) == 1 and None not in sup_ids else None
     if getattr(payload, "expected_on", None):

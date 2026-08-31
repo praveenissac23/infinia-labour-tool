@@ -623,8 +623,8 @@
           <div style="background:white; border-radius:12px; padding:28px 32px; width:820px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">Record what arrived</h2>
             <p style="font-size:12.5px; color:#888; margin:0 0 16px;">
-              Delivery against <strong id="recv-ref"></strong>. The quantities are already filled in -
-              change any that arrived short, and clear the ones that didn't come at all.
+              Delivery against <strong id="recv-ref"></strong>. Type how much arrived of each material -
+              leave the rest blank and they stay due. Use <strong>Fill what is due</strong> if the whole lot came.
             </p>
             <div class="form-row">
               <div class="field-grid" style="margin-bottom:0; width:100%; max-width:none;
@@ -653,6 +653,7 @@
             </div>
             <div class="status-msg" id="recv-status" style="margin:10px 0;"></div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button class="btn btn-dark" style="margin-right:auto;" onclick="fillAllDue()">Fill what is due</button>
               <button class="btn btn-dark" onclick="closeReceive()">Cancel</button>
               <button class="btn btn-primary" onclick="saveReceive()">Save Delivery</button>
             </div>
@@ -4273,23 +4274,28 @@ function renderFollowUp() {
 // One material's decision. The office often wants nine of ten things
 // and not the tenth, so each line can be approved or turned down on its
 // own; a rejected material can be put back if it was a mistake.
+// What this one material needs from the office right now. Each state
+// offers only what makes sense there: a rejected material can be put
+// back, an approved one can still be turned down, but something already
+// ordered or delivered is past the point of a decision.
 function lineDecisionHtml(l, r) {
   const st = l.status || "pending";
-  const settled = ["delivered", "received", "closed"].includes(r.status);
-  if ((l.qty_received || 0) > 0 || settled) {
-    return st === "rejected" ? '<span style="color:#C0392B; font-size:11.5px;">Rejected</span>'
-                             : '<span style="color:#999; font-size:11.5px;">-</span>';
-  }
+  const due = (l.qty_requested || 0) - (l.qty_received || 0);
   if (st === "rejected") {
     return `<div style="font-size:11.5px; color:#C0392B; font-weight:600;">Rejected</div>
       ${l.reject_reason ? `<div style="font-size:11px; color:#999;">${l.reject_reason}</div>` : ""}
       <button class="btn btn-dark" style="margin-top:4px;"
         onclick="event.stopPropagation(); decideLine(${l.id}, 'pending')">Undo</button>`;
   }
+  if ((l.qty_received || 0) > 0)
+    return due > 0 ? '<span style="color:#B26A00; font-size:11.5px; font-weight:600;">Part arrived</span>'
+                   : '<span style="color:#2E7D32; font-size:11.5px; font-weight:600;">Arrived</span>';
+  if (l.supplier)
+    return '<span style="color:#1565C0; font-size:11.5px; font-weight:600;">On order</span>';
   if (st === "approved") {
     return `<div style="font-size:11.5px; color:#2E7D32; font-weight:600;">Approved</div>
-      <button class="btn btn-danger" style="margin-top:4px;"
-        onclick="event.stopPropagation(); decideLine(${l.id}, 'rejected')">Reject this</button>`;
+      <div style="font-size:11px; color:#999; margin-bottom:4px;">waiting to be ordered</div>
+      <button class="btn btn-danger" onclick="event.stopPropagation(); decideLine(${l.id}, 'rejected')">Reject this</button>`;
   }
   return `<button class="btn btn-primary" onclick="event.stopPropagation(); decideLine(${l.id}, 'approved')">Approve</button>
           <button class="btn btn-danger" onclick="event.stopPropagation(); decideLine(${l.id}, 'rejected')">Reject</button>`;
@@ -4537,12 +4543,10 @@ function dueSuppliers(r) {
 // Buttons for the action cell: one per trader when the request was
 // split, a single button otherwise.
 function receiveButtonsHtml(r) {
-  const sups = dueSuppliers(r);
-  if (sups.length <= 1)
-    return `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>`;
-  return sups.map(s =>
-    `<button class="btn ${s.name ? "btn-primary" : "btn-dark"}" onclick="event.stopPropagation(); openReceive(${r.id}, ${s.id})">${s.name ? "Delivery from " + s.name : "Delivery (not ordered yet)"}</button>`
-  ).join(" ");
+  // One button. Whatever turned up gets a quantity typed against it;
+  // everything else stays due. A button per trader looked clever and
+  // read as clutter.
+  return `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>`;
 }
 
 let recvSupplierId = null;   // the trader this delivery is from, when the request was split
@@ -4619,7 +4623,8 @@ async function openReceive(id, supplierId) {
       <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
       <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
       <td>${canReceive
-            ? `<input type="number" class="recv-qty" step="any" value="${due}" max="${due}" style="width:100%;">`
+            ? `<input type="number" class="recv-qty" step="any" max="${due}" placeholder="0" style="width:100%;"
+                       title="Leave blank if this did not arrive">`
             : (!l.item_id && due > 0
                 ? `<button class="btn btn-primary" onclick="addLineToCatalogue(${l.id})">Add to item list</button>`
                 : "-")}</td>
@@ -4639,6 +4644,12 @@ async function openReceive(id, supplierId) {
 function closeReceive() {
   recvRequest = null;
   document.getElementById("recv-modal-overlay").style.display = "none";
+}
+
+// The whole order arriving at once is common enough to deserve one
+// click - but it is a choice, not the default.
+function fillAllDue() {
+  document.querySelectorAll("#recv-lines .recv-qty").forEach(b => { b.value = b.getAttribute("max") || ""; });
 }
 
 async function saveReceive() {
