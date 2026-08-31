@@ -2412,6 +2412,24 @@ let reportCatalog = null;
 let currentCustomReport = null;
 let reportSortKey = null;
 let reportSortDir = 1;
+// Columns appear in the order they were ticked, and can be dragged into
+// any order after that. Both live here: a list of keys the user has
+// arranged, which survives ticking and unticking.
+let reportColOrder = [];
+
+function noteColumnPick(box, key) {
+  if (box.checked) { if (!reportColOrder.includes(key)) reportColOrder.push(key); }
+  else reportColOrder = reportColOrder.filter(k => k !== key);
+  loadReports();
+}
+
+// Sort selected keys by the user's arrangement; anything not yet placed
+// (a default column, say) keeps its catalogue position at the front.
+function inPickedOrder(keys) {
+  const placed = reportColOrder.filter(k => keys.includes(k));
+  const rest = keys.filter(k => !reportColOrder.includes(k));
+  return [...rest, ...placed];
+}
 const REPORT_MONEY_KEYS = new Set([
   "basic_pay_input", "total_salary_component", "deduction",
   "ot_amount", "bh_amount", "final_salary", "adjusted_final_salary",
@@ -2432,20 +2450,22 @@ async function initReportColumnPicker() {
   const defaultMeasures = new Set(["days_present", "days_absent", "ot_hours", "bh_hours", "ot_amount", "bh_amount", "final_salary_cost"]);
 
   idEl.innerHTML = reportCatalog.dimensions.map(d => `
-    <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""} onchange="loadReports()"> ${d.label}</label>
+    <label><input type="checkbox" data-dim="${d.key}" ${defaultDims.has(d.key) ? "checked" : ""} onchange="noteColumnPick(this, '${d.key}')"> ${d.label}</label>
   `).join("");
   const measureEl = document.getElementById("report-column-picker-measure");
   measureEl.innerHTML = reportCatalog.measures.map(m => `
-    <label ${m.hint ? `title="${m.hint}"` : ""}><input type="checkbox" data-measure="${m.key}" ${defaultMeasures.has(m.key) ? "checked" : ""} onchange="loadReports()"> ${m.label}${m.hint ? ' <span style="color:#aaa;">\u24D8</span>' : ""}</label>
+    <label ${m.hint ? `title="${m.hint}"` : ""}><input type="checkbox" data-measure="${m.key}" ${defaultMeasures.has(m.key) ? "checked" : ""} onchange="noteColumnPick(this, '${m.key}')"> ${m.label}${m.hint ? ' <span style="color:#aaa;">\u24D8</span>' : ""}</label>
   `).join("");
   idEl.dataset.built = "1";
+  // The columns that start ticked are the first arrangement.
+  reportColOrder = [...defaultDims, ...defaultMeasures];
 }
 
 function getSelectedDimensions() {
-  return [...document.querySelectorAll('#report-column-picker-id input[data-dim]:checked')].map(el => el.dataset.dim);
+  return inPickedOrder([...document.querySelectorAll('#report-column-picker-id input[data-dim]:checked')].map(el => el.dataset.dim));
 }
 function getSelectedMeasures() {
-  return [...document.querySelectorAll('#report-column-picker-measure input[data-measure]:checked')].map(el => el.dataset.measure);
+  return inPickedOrder([...document.querySelectorAll('#report-column-picker-measure input[data-measure]:checked')].map(el => el.dataset.measure));
 }
 
 function reportFormatValue(key, v) {
@@ -2459,6 +2479,45 @@ function reportFormatValue(key, v) {
     return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
   }
   return v;
+}
+
+// ---- Column dragging -------------------------------------------------
+let colDragKey = null;
+
+function colDragStart(e, key) {
+  colDragKey = key;
+  e.dataTransfer.effectAllowed = "move";
+  try { e.dataTransfer.setData("text/plain", key); } catch (err) {}
+}
+
+function colDragOver(e) {
+  if (!colDragKey) return;
+  e.preventDefault();
+  e.currentTarget.style.borderLeft = "3px solid var(--red)";
+}
+
+function colDrop(e, targetKey) {
+  e.preventDefault();
+  e.stopPropagation();           // a drop must not also count as a sort click
+  e.currentTarget.style.borderLeft = "";
+  if (!colDragKey || colDragKey === targetKey) return;
+  const keys = (currentCustomReport.columns || []).map(c => c.key);
+  const order = keys.filter(k => k !== colDragKey);
+  order.splice(order.indexOf(targetKey), 0, colDragKey);
+  // Remember the arrangement, including columns not currently shown, so
+  // ticking a column back on puts it where it was.
+  const hidden = reportColOrder.filter(k => !keys.includes(k));
+  reportColOrder = [...order, ...hidden];
+  colDragKey = null;
+  // Reorder what is on screen without asking the server again.
+  const byKey = Object.fromEntries(currentCustomReport.columns.map(c => [c.key, c]));
+  currentCustomReport.columns = order.map(k => byKey[k]);
+  renderReportPreview();
+}
+
+function colDragEnd() {
+  colDragKey = null;
+  document.querySelectorAll("#report-head-row th").forEach(th => th.style.borderLeft = "");
 }
 
 function sortReportBy(key) {
@@ -2478,9 +2537,19 @@ function renderReportPreview() {
     totalRow.innerHTML = "";
     return;
   }
+  // Headers are draggable: pick one up and drop it where you want the
+  // column to sit. Clicking still sorts, so the two do not fight - a
+  // drag only counts once the header has actually moved.
   headRow.innerHTML = result.columns.map(c => {
     const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
-    return `<th class="sortable" onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
+    return `<th class="sortable" draggable="true" data-key="${c.key}"
+                ondragstart="colDragStart(event, '${c.key}')"
+                ondragover="colDragOver(event)"
+                ondragleave="this.style.borderLeft=''"
+                ondrop="colDrop(event, '${c.key}')"
+                ondragend="colDragEnd()"
+                title="Drag to move this column, click to sort"
+                onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
   }).join("");
 
   if (!result.rows.length) {
