@@ -3808,6 +3808,25 @@ function onMaterialTyped(box) {
   // picked, re-check it against stock now the item is known.
   const oq = row.querySelector(".ol-qty");
   if (oq && oq.value) checkOutQty(oq);
+
+  // Filling the last line means there is probably another one coming,
+  // so open a fresh row underneath. No focus is stolen - the cursor
+  // stays where the keeper is typing - and the button stays for anyone
+  // who wants to add one deliberately.
+  autoAppendLine(row);
+}
+
+// Keep exactly one empty row at the bottom of a line table. Rows are
+// only added, never removed, so nothing the keeper typed can vanish.
+function autoAppendLine(row) {
+  const tbody = row.parentElement;
+  if (!tbody || row !== tbody.lastElementChild) return;
+  const picked = row.querySelector(".mr-item-txt, .il-item-txt");
+  const typed = row.querySelector(".mr-desc, .il-desc");
+  const filled = (picked && picked.value.trim()) || (typed && typed.value.trim());
+  if (!filled) return;
+  if (tbody.id === "mr-lines") addMrLine();
+  else if (tbody.id === "in-lines") addInLine();
 }
 
 function addOutLine() {
@@ -4456,7 +4475,7 @@ function addMrLine() {
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("mr-item", "material-list-all")}
-        <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;">
+        <input type="text" class="mr-desc" placeholder="Not in the list? write it here" style="width:100%; margin-top:4px;" oninput="autoAppendLine(this.closest('tr'))">
         <div class="mr-stock" style="font-size:11px; color:#888; margin-top:3px; text-align:left;"></div></td>
     <td><select class="mr-type" style="width:100%; min-width:110px;">
           <option value="consumable">Consumable</option>
