@@ -66,6 +66,12 @@ def get_download_user_from_token(token: str, db: Session) -> models.User:
     download URL can only ever be used for the one thing it was
     issued for, for the one minute it's valid."""
     credentials_exception = HTTPException(status_code=401, detail="Invalid or expired download link.")
+    # A link with no token at all, or a mangled one, must be refused the
+    # same way an expired one is. Passing None into the decoder raised a
+    # different error and surfaced as a 500 - a broken link looked like a
+    # broken server.
+    if not token or not isinstance(token, str):
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("scope") != "download":
@@ -73,7 +79,9 @@ def get_download_user_from_token(token: str, db: Session) -> models.User:
         username = payload.get("sub")
         if username is None:
             raise credentials_exception
-    except JWTError:
+    except HTTPException:
+        raise
+    except Exception:
         raise credentials_exception
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None or not user.active:

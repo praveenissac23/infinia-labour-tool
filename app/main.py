@@ -192,7 +192,10 @@ def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depend
 # instead of everyone sharing the one admin account)
 # ---------------------------------------------------------------------
 @app.get("/users", response_model=list[schemas.UserOut])
-def list_users(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def list_users(db: Session = Depends(get_db),
+                user: models.User = Depends(require_screen("settings"))):
+    """Who can log in, and what each may open, is administration - not
+    something a store keeper or site engineer needs to read."""
     return db.query(models.User).order_by(models.User.username).all()
 
 
@@ -295,10 +298,20 @@ def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
 def list_employees(active_only: bool = False, db: Session = Depends(get_db),
                     user: models.User = Depends(auth.get_current_user)):
+    """Every logged-in user may read the worker list - the store needs
+    names to record who took material. Pay is another matter: only
+    someone who can open Master Data or Salary Adjustments sees it, so a
+    store keeper or site engineer can no longer read all 74 salaries."""
+    perms = effective_permissions(user)
+    may_see_pay = any(s in perms for s in ("masterdata", "adjustments", "livecard"))
     q = db.query(models.Employee)
     if active_only:
         q = q.filter(models.Employee.active == True)  # noqa: E712
-    return q.order_by(models.Employee.emp_no).all()
+    rows = q.order_by(models.Employee.emp_no).all()
+    if may_see_pay:
+        return rows
+    return [{"id": e.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "",
+             "active": e.active, "total_salary": 0, "basic_salary": 0} for e in rows]
 
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
