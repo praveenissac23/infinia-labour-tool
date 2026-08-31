@@ -1013,6 +1013,7 @@
                 <button class="btn btn-dark" onclick="loadFollowUp()">Refresh</button>
               </div>
             </div>
+            <div class="status-msg" id="fu-status" style="margin-top:10px;"></div>
             <div id="fu-pills" style="display:flex; gap:6px; flex-wrap:wrap; margin:12px 0 10px;"></div>
             <div id="fu-list"></div>
           </div>
@@ -2036,9 +2037,10 @@ function applyBulk() {
 // (submit, ordering, deliveries), so a message must land on whichever
 // screen is actually open.
 function mreqStatus(kind, text) {
-  const appr = document.getElementById("screen-approvals");
-  const onApprovals = appr && appr.classList.contains("active");
-  showStatus(onApprovals ? "appr-status" : "mreq-status", kind, text);
+  const active = id => { const el = document.getElementById(id); return el && el.classList.contains("active"); };
+  showStatus(active("screen-approvals") ? "appr-status"
+           : active("screen-followup") ? "fu-status"
+           : active("screen-store") ? "store-status" : "mreq-status", kind, text);
 }
 
 function showStatus(elId, kind, text) {
@@ -4499,8 +4501,11 @@ async function openReceive(id, supplierId) {
   if (!r) return;
   recvRequest = r;
   recvSupplierId = (supplierId === undefined || supplierId === null) ? null : supplierId;
+  // Find the chosen trader on any line, due or not, so a message about
+  // an already-complete delivery can still name them.
   const chosen = recvSupplierId === null ? null
-    : (dueSuppliers(r).find(s => s.id === recvSupplierId) || null);
+    : ((r.lines || []).map(l => l.supplier || r.supplier || null)
+         .find(s => (s ? s.id : 0) === recvSupplierId) || null);
   document.getElementById("recv-ref").textContent =
     (chosen && chosen.name ? `${chosen.name}'s delivery against ` : "") +
     (r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`);
@@ -4530,6 +4535,16 @@ async function openReceive(id, supplierId) {
     const s = l.supplier || r.supplier || null;
     return (s ? s.id : 0) === recvSupplierId;
   });
+  // Nothing left from this trader? Say so instead of opening a screen
+  // with nothing to fill in. A stale button is the usual cause.
+  const anyDue = shownLines.some(l =>
+    (l.qty_requested || 0) - (l.qty_received || 0) > 0 && (l.status || "pending") !== "rejected");
+  if (!anyDue) {
+    const who = chosen && chosen.name ? `from ${chosen.name} ` : "";
+    mreqStatus("ok", `Everything ${who}on ${r.ref} has already arrived - nothing left to record.`);
+    if (document.getElementById("screen-followup").classList.contains("active")) loadFollowUp();
+    return;
+  }
   document.getElementById("recv-lines").innerHTML = shownLines.map(l => {
     const due = (l.qty_requested || 0) - (l.qty_received || 0);
     const rejected = (l.status || "pending") === "rejected";
@@ -4631,6 +4646,10 @@ async function saveReceive() {
     // refresh its list too so the completed request drops off it.
     const ap = document.getElementById("store-arrive");
     if (ap && ap.style.display !== "none") loadArrivePanel();
+    // ...and the chase list, so a delivered material drops off it and
+    // its 'It arrived' button cannot be clicked twice.
+    const fu = document.getElementById("screen-followup");
+    if (fu && fu.classList.contains("active")) loadFollowUp();
     // The store dashboard shows stock levels, so refresh those too if
     // they're already on screen.
     if (typeof loadStoreItems === "function") { try { await loadStoreItems(); } catch (e) {} }
