@@ -91,16 +91,15 @@ setTimeout(async()=>{
   ok("ordered request offers Record delivery", !!recvBtn);
   click(recvBtn); await wait(300);
   const qtyBoxes=[...d.querySelectorAll("#recv-lines .recv-qty")];
-  ok("delivery opens with blank quantities", d.getElementById("recv-modal-overlay").style.display==="flex" && qtyBoxes.length>0 && qtyBoxes.every(b=>!b.value) && errsSince(n).length===0);
+  ok("delivery opens with the trader's quantities filled in", d.getElementById("recv-modal-overlay").style.display==="flex" && qtyBoxes.length>0 && qtyBoxes.some(b=>b.value) && errsSince(n).length===0);
   ok("each material shows where it comes from", d.querySelectorAll("#recv-lines tr td:last-child").length===qtyBoxes.length);
-  // Fill covers the chosen trader's materials and leaves other
-  // suppliers' lines blank - a delivery is one truck.
-  w.fillAllDue();
+  // The quantities arrive filled in for the chosen trader; other
+  // suppliers' lines stay blank - a delivery is one truck.
   const who = (d.getElementById("recv-supplier").value || "").trim().toLowerCase();
   const rows = [...d.querySelectorAll("#recv-lines tr")].filter(tr => tr.querySelector(".recv-qty"));
   const mine = rows.filter(tr => { const s = (tr.dataset.sup || "").toLowerCase(); return !who || !s || s === who; });
   const others = rows.filter(tr => !mine.includes(tr));
-  ok("Fill covers the chosen supplier's materials", mine.length > 0 && mine.every(tr => tr.querySelector(".recv-qty").value));
+  ok("the chosen supplier's materials are prefilled", mine.length > 0 && mine.every(tr => tr.querySelector(".recv-qty").value));
   ok("other suppliers' materials stay blank", others.every(tr => !tr.querySelector(".recv-qty").value), others.length + " other rows");
   qtyBoxes[qtyBoxes.length-1].value="";   // one material did not turn up
   await w.saveReceive(); await wait(300); ok("Save Delivery runs without error", errsSince(n).length===0);
