@@ -2718,8 +2718,8 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     # Learn the supplier as the delivery is recorded: the name is tidied
     # to one spelling, and the request keeps a link to it so the keeper
     # can chase the next order without asking who sold it to us.
-    sup = _find_or_create_supplier(db, payload.supplier)
-    sup_name = sup.name if sup else (payload.supplier or "")
+    sup = _find_or_create_supplier(db, payload.supplier) if (payload.supplier or "").strip() else None
+    sup_name = sup.name if sup else ""
 
     errors, done = [], 0
     for w in wanted:
@@ -2740,9 +2740,17 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
             name = line.item.name if line.item else line.description
             errors.append(f"{name}: only {round(outstanding, 2)} {line.unit} still due.")
             continue
-        # If the counter left the supplier blank, the line already knows
-        # who it was ordered from - no reason to make anyone retype it.
-        line_sup = sup_name or (line.supplier.name if line.supplier else "")
+        # Supplier, in order of authority: what was typed against this
+        # material, then the trader it was ordered from, then whoever
+        # the delivery header names.
+        own = (getattr(w, "supplier", "") or "").strip()
+        if own:
+            own_sup = _find_or_create_supplier(db, own)
+            if own_sup and not line.supplier_id:
+                line.supplier_id = own_sup.id
+            line_sup = own_sup.name if own_sup else own
+        else:
+            line_sup = (line.supplier.name if line.supplier else "") or sup_name
         db.add(models.StoreMovement(
             item_id=line.item_id, kind="in", qty=w.qty, location="",
             supplier=line_sup, reference=payload.reference or mr.ref,

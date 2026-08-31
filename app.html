@@ -643,7 +643,8 @@
             </div>
             <div class="grid-wrap" style="max-height:320px;">
               <table>
-                <thead><tr><th style="width:38%;">Material</th><th>Ordered</th><th>Already in</th><th>Still due</th><th style="width:16%;">Arrived now</th></tr></thead>
+                <thead><tr><th style="width:30%;">Material</th><th>Ordered</th><th>Already in</th><th>Still due</th>
+                  <th style="width:14%;">Arrived now</th><th style="width:20%;">From</th></tr></thead>
                 <tbody id="recv-lines"></tbody>
               </table>
             </div>
@@ -4622,6 +4623,14 @@ async function openReceive(id, supplierId) {
             : (!l.item_id && due > 0
                 ? `<button class="btn btn-primary" onclick="addLineToCatalogue(${l.id})">Add to item list</button>`
                 : "-")}</td>
+      <td style="font-size:11.5px;">${
+        l.supplier ? l.supplier.name
+        : canReceive
+          ? `<select class="recv-line-sup" style="width:100%; font-size:12px;">
+               <option value="">same as above</option>
+               ${(suppliers || []).map(s => `<option value="${s.name}">${s.name}</option>`).join("")}
+             </select>`
+          : '<span style="color:#999;">-</span>'}</td>
     </tr>`;
   }).join("");
   document.getElementById("recv-modal-overlay").style.display = "flex";
@@ -4636,8 +4645,10 @@ async function saveReceive() {
   if (!recvRequest) return;
   const lines = [...document.querySelectorAll("#recv-lines tr")].map(tr => {
     const box = tr.querySelector(".recv-qty");
+    const ownSup = tr.querySelector(".recv-line-sup");
     return box ? { line_id: parseInt(tr.getAttribute("data-line"), 10),
-                   qty: parseFloat(box.value) || 0 } : null;
+                   qty: parseFloat(box.value) || 0,
+                   supplier: ownSup ? ownSup.value : "" } : null;
   }).filter(l => l && l.qty > 0);
   if (!lines.length) {
     // If nothing could be received because no line is in the catalogue,

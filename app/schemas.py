@@ -341,6 +341,10 @@ class MaterialRequestStatusIn(BaseModel):
 class ReceiveLineIn(BaseModel):
     line_id: int
     qty: float
+    # A material that was never assigned a trader can name its own here,
+    # so two unordered materials on one request can come from two
+    # different suppliers.
+    supplier: str = ""
 
 
 class ReceiveRequestIn(BaseModel):
