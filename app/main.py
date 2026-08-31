@@ -2063,14 +2063,18 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             i = items.get(m.item_id)
             if not i: continue
             a = agg.setdefault(i.id, {"code": i.code, "name": i.name, "unit": i.unit,
-                                       "qty": 0, "value": 0, "suppliers": set()})
+                                       "qty": 0, "deliveries": 0, "last_arrived": None,
+                                       "suppliers": set()})
             a["qty"] += m.qty
-            a["value"] += m.qty * (m.unit_cost or 0)
+            a["deliveries"] += 1
+            if m.moved_on and (not a["last_arrived"] or m.moved_on > a["last_arrived"]):
+                a["last_arrived"] = m.moved_on
             if m.supplier: a["suppliers"].add(m.supplier)
-        rows = [{**v, "qty": round(v["qty"], 2), "value": round(v["value"], 2),
-                  "suppliers": ", ".join(sorted(v["suppliers"]))} for v in agg.values()]
-        return {"title": "Purchases received", "rows": sorted(rows, key=lambda r: -r["value"]),
-                "total_value": round(sum(r["value"] for r in rows), 2)}
+        rows = [{**v, "qty": round(v["qty"], 2),
+                  "last_arrived": v["last_arrived"].isoformat() if v["last_arrived"] else "-",
+                  "suppliers": ", ".join(sorted(v["suppliers"])) or "not recorded"}
+                for v in agg.values()]
+        return {"title": "Purchases received", "rows": sorted(rows, key=lambda r: -r["qty"])}
 
     if kind == "usage":
         agg = {}
@@ -2201,6 +2205,10 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
 
     # default: full stock position
     # Only materials that actually hold stock, or that someone has set a
+    if kind not in ("stock", "low", "by_site", "purchases", "usage", "assets",
+                    "lost", "hired", "rentals"):
+        raise HTTPException(status_code=400,
+            detail=f"There is no report called '{kind}'.")
     # reorder level on (so a watched item shows even when it hits zero).
     # The catalogue can run to thousands of materials; listing every one
     # at zero makes the few real ones impossible to find.
@@ -2213,7 +2221,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         o = sum(per_site.values())
         if c == 0 and o == 0 and not i.reorder_level:
             continue
-        rows.append({"code": i.code, "name": i.name, "category": i.category, "unit": i.unit,
+        rows.append({"code": i.code, "name": i.name, "unit": i.unit,
                       "item_type": i.item_type, "in_store": round(c, 2),
                       "at_sites": round(o, 2), "total": round(c + o, 2),
                       # Which site holds what, so a row can open into a

@@ -5362,7 +5362,7 @@ async function loadStore() {
       document.getElementById("store-table-title").textContent = {
         mr_open: "Requests waiting on the office", mr_overdue: "Requests that are late",
         mr_outstanding: "Materials still to arrive", mr_history: "All past requests"}[view];
-      head.innerHTML = ["Request No","Site","Asked on","Needed by","Urgency","Status","Materials","What you can do"]
+      head.innerHTML = ["Request No","Site","Asked on","Needed by","Urgency","Status","Materials"]
         .map(h => `<th>${h}</th>`).join("");
       body.innerHTML = list.length ? list.map(r => {
         const late = r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status);
@@ -5377,10 +5377,6 @@ async function loadStore() {
           <td style="font-size:12px;">${items}</td>
           <td>
             <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
-            ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'approved')">Office approved</button>` : ""}
-            ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'rejected')">Rejected</button>` : ""}
-            ${["received","closed"].includes(r.status) ? "" : `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'closed')">Close</button>`}
-            <button class="btn btn-danger" onclick="deleteRequest(${r.id}, '${r.ref}')">Delete</button>
           </td></tr>`;
       }).join("") : `<tr><td class="empty-note">Nothing here.</td></tr>`;
       const lateN = list.filter(r => r.needed_by && r.needed_by < isoLocal(new Date()) &&
