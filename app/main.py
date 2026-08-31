@@ -1661,7 +1661,7 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
 @app.post("/store/request-lines/{line_id}/decision")
 def decide_request_line(line_id: int, payload: schemas.LineDecisionIn,
                          db: Session = Depends(get_db),
-                         user: models.User = Depends(require_any_screen("requests", "approvals"))):
+                         user: models.User = Depends(require_screen("approvals"))):
     """Approve or reject one material without touching the rest.
 
     The office often wants nine of ten materials and not the tenth. The
@@ -2377,7 +2377,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
 @app.post("/store/requests/{req_id}/status")
 def set_material_request_status(req_id: int, payload: schemas.MaterialRequestStatusIn,
                                  db: Session = Depends(get_db),
-                                 user: models.User = Depends(require_any_screen("requests", "approvals"))):
+                                 user: models.User = Depends(require_screen("approvals"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -2440,7 +2440,7 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
 
 @app.delete("/store/requests/{req_id}")
 def delete_material_request(req_id: int, db: Session = Depends(get_db),
-                             user: models.User = Depends(require_any_screen("requests", "approvals"))):
+                             user: models.User = Depends(require_screen("approvals"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -2752,7 +2752,7 @@ def get_notifications(db: Session = Depends(get_db),
 @app.post("/store/requests/{req_id}/receive-bulk")
 def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
                           db: Session = Depends(get_db),
-                          user: models.User = Depends(require_any_screen("requests", "approvals"))):
+                          user: models.User = Depends(require_any_screen("store", "approvals"))):
     """
     Record a whole delivery against a request in one go.
 

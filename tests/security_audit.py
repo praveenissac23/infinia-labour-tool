@@ -48,6 +48,29 @@ a = c.get('/employees', headers=H('admin')).json()
 ck('admin still sees pay', a[0]['total_salary'] == 2500)
 ck('admin still lists logins', c.get('/users', headers=H('admin')).status_code == 200)
 
+# A site engineer may raise a request but must not approve, order or
+# delete one - the screens hide those, and the API must too.
+db2 = database.SessionLocal()
+db2.add(models.User(username='site2', hashed_password=auth.hash_password('p'), full_name='S2', role='site'))
+db2.add(models.User(username='office', hashed_password=auth.hash_password('p'), full_name='O', role='office'))
+db2.commit(); db2.close()
+S2, OF = H('site2'), H('office')
+it = c.post('/store/items', json={'name': 'Cement', 'unit': 'bag'}, headers=OF).json()
+mr = c.post('/store/requests', json={'site': '905', 'requested_by': 'Amal', 'needed_by': '2026-09-05',
+    'urgency': 'normal', 'notes': '', 'lines': [{'item_id': it['id'], 'qty_requested': 10, 'unit': 'bag',
+    'purpose': 'x', 'item_type': 'consumable', 'description': '', 'est_cost': 0, 'notes': ''}]}, headers=S2).json()
+LN = mr['lines'][0]['id']
+ck('site can raise a request', 'id' in mr)
+ck('site cannot approve its own request',
+   c.post(f"/store/requests/{mr['id']}/status", json={'status': 'approved'}, headers=S2).status_code == 403)
+ck('site cannot approve a single material',
+   c.post(f'/store/request-lines/{LN}/decision', json={'decision': 'approved'}, headers=S2).status_code == 403)
+ck('site cannot order from a supplier',
+   c.post(f"/store/requests/{mr['id']}/status", json={'status': 'ordered', 'supplier': 'X'}, headers=S2).status_code == 403)
+ck('site cannot delete a request', c.delete(f"/store/requests/{mr['id']}", headers=S2).status_code == 403)
+ck('office can approve',
+   c.post(f"/store/requests/{mr['id']}/status", json={'status': 'approved'}, headers=OF).status_code == 200)
+
 # Nothing without a login
 for p in ['/store/requests', '/store/items', '/notifications', '/store/suppliers', '/employees', '/users']:
     ck(f'no login refused: {p}', c.get(p).status_code in (401, 403), str(c.get(p).status_code))
