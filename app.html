@@ -3215,10 +3215,12 @@ async function loadStoreHome() {
     ]);
     storeStockCache = stk;
     const all = stock.rows || [];
-    // Only materials that actually have stock somewhere. The catalogue
-    // holds thousands of materials the company may never buy, and
-    // listing every one at zero buries the few that are really there.
-    const rows = all.filter(r => (r.in_store || 0) !== 0 || (r.at_sites || 0) !== 0);
+    // This screen answers one question: what can I hand out today. A
+    // material fully issued to sites is not in the store, so it does not
+    // belong here - it is still tracked, under At Sites and Current
+    // Stock in Reports.
+    const rows = all.filter(r => (r.in_store || 0) > 0);
+    const goneOut = all.filter(r => (r.in_store || 0) <= 0 && (r.at_sites || 0) > 0).length;
 
     const head = document.getElementById("home-stock-head");
     const body = document.getElementById("home-stock-body");
@@ -3229,7 +3231,8 @@ async function loadStoreHome() {
     const catalogue = (storeItems || []).length;
     const lowN = rows.filter(r => r.low).length;
     if (note) note.innerHTML = catalogue
-      ? `Showing ${rows.length} material(s) that have stock, out of ${num(catalogue)} in the item list.` +
+      ? `Showing ${num(rows.length)} material(s) held in the central store, out of ${num(catalogue)} in the item list.` +
+        (goneOut ? ` <span style="color:#B26A00;">${num(goneOut)} more are fully out at sites.</span>` : "") +
         ` <span style="color:#aaa;">Click any material for the full breakup.</span>`
       : "";
     // Low stock is still worth flagging here - the rows themselves are
@@ -3241,7 +3244,7 @@ async function loadStoreHome() {
     if (!rows.length) {
       head.innerHTML = "";
       body.innerHTML = all.length
-        ? `<tr><td class="empty-note">The store is empty. Use "Material arrived" to record a delivery.</td></tr>`
+        ? `<tr><td class="empty-note">Nothing is in the central store right now${goneOut ? ` - ${num(goneOut)} material(s) are out at sites` : ""}. Use "Material arrived" to record a delivery.</td></tr>`
         : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
