@@ -1598,7 +1598,10 @@ function switchScreen(name) {
   if (name === "activity") loadActivityLog();
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
-  if (name === "settings") loadBackupList();
+  if (name === "settings") {
+    loadBackupList();
+    loadUsers().catch(e => showStatus("settings-status", "err", "Could not load the staff list: " + errText(e)));
+  }
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "errorcheck") loadErrorCheck();
@@ -1719,11 +1722,9 @@ async function initApp() {
     const adminOpt = roleSel.querySelector('option[value="admin"]');
     if (adminOpt) adminOpt.remove();
   }
-  // Only someone who can open Settings may read the staff list. This
-  // used to run for everyone and, once the endpoint was locked down,
-  // its failure stopped the clock, the calendar and everything else
-  // that starts after it.
-  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
+  // The staff list belongs to the Settings screen and loads when that
+  // screen opens. It used to load here, before permissions were even
+  // known - so the check could never pass and nobody saw the list.
 
   if (CURRENT_ROLE === "admin") {
     document.getElementById("nav-activity").style.display = "block";
