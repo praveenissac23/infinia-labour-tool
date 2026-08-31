@@ -702,7 +702,7 @@
             </div>
             <div class="status-msg" id="recv-status" style="margin:10px 0;"></div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
-              <button class="btn btn-dark" style="margin-right:auto;" onclick="fillAllDue()">Fill what is due</button>
+              <button class="btn btn-dark" style="margin-right:auto;" id="recv-fill-btn" onclick="fillAllDue()">Fill what is due</button>
               <button class="btn btn-dark" onclick="closeReceive()">Cancel</button>
               <button class="btn btn-primary" onclick="saveReceive()">Save Delivery</button>
             </div>
@@ -4055,6 +4055,25 @@ function fillSupplierPick(prefix, currentName) {
   }
 }
 
+// Show at a glance which materials this delivery covers: the chosen
+// trader's rows stay bright, everyone else's dim.
+function markRecvRows() {
+  const who = (document.getElementById("recv-supplier").value || "").trim().toLowerCase();
+  let mineCount = 0, otherCount = 0;
+  document.querySelectorAll("#recv-lines tr").forEach(tr => {
+    if (!tr.querySelector(".recv-qty")) return;
+    const rowSup = (tr.dataset.sup || "").trim().toLowerCase();
+    const mine = !who || !rowSup || rowSup === who;
+    tr.style.opacity = mine ? "" : "0.45";
+    mine ? mineCount++ : otherCount++;
+  });
+  const btn = document.getElementById("recv-fill-btn");
+  if (btn) {
+    const name = document.getElementById("recv-supplier").value.trim();
+    btn.textContent = (otherCount && name) ? `Fill ${name}'s materials` : "Fill what is due";
+  }
+}
+
 function onSupplierPick(prefix) {
   const sel = document.getElementById(`${prefix}-supplier-pick`);
   const box = document.getElementById(`${prefix}-supplier`);
@@ -4071,6 +4090,7 @@ function onSupplierPick(prefix) {
   // A chosen supplier brings its own contacts; a cleared one clears them.
   if (c) c.value = hit ? (hit.contact_person || "") : "";
   if (p) p.value = hit ? (hit.phone || "") : "";
+  if (prefix === "recv") markRecvRows();
 }
 
 // Fill the contact boxes the moment a known supplier is recognised,
@@ -4885,7 +4905,7 @@ async function openReceive(id, supplierId) {
     const item = (storeItems || []).find(i => i.id === l.item_id);
     const clash = item && l.unit && item.unit &&
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
-    return `<tr data-line="${l.id}">
+    return `<tr data-line="${l.id}" data-sup="${l.supplier ? l.supplier.name : ""}">
       <td>${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
         ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
@@ -4894,8 +4914,8 @@ async function openReceive(id, supplierId) {
       <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
       <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
       <td>${canReceive
-            ? `<input type="number" class="recv-qty" step="any" max="${due}" placeholder="0" style="width:100%;"
-                       title="Leave blank if this did not arrive">`
+            ? `<input type="number" class="recv-qty" step="any" max="${due}" style="width:100%;"
+                       placeholder="how many" title="Leave blank if this did not arrive">`
             : (!l.item_id && due > 0
                 ? `<button class="btn btn-primary" onclick="addLineToCatalogue(${l.id})">Add to item list</button>`
                 : "-")}</td>
@@ -4910,6 +4930,7 @@ async function openReceive(id, supplierId) {
     </tr>`;
   }).join("");
   document.getElementById("recv-modal-overlay").style.display = "flex";
+  markRecvRows();
 }
 
 function closeReceive() {
@@ -4917,10 +4938,25 @@ function closeReceive() {
   document.getElementById("recv-modal-overlay").style.display = "none";
 }
 
-// The whole order arriving at once is common enough to deserve one
-// click - but it is a choice, not the default.
+// The whole order arriving at once deserves one click - but a delivery
+// is one trader's truck, so this fills that trader's materials and
+// leaves everyone else's alone.
 function fillAllDue() {
-  document.querySelectorAll("#recv-lines .recv-qty").forEach(b => { b.value = b.getAttribute("max") || ""; });
+  const who = (document.getElementById("recv-supplier").value || "").trim().toLowerCase();
+  let filled = 0, skipped = 0;
+  document.querySelectorAll("#recv-lines tr").forEach(tr => {
+    const box = tr.querySelector(".recv-qty");
+    if (!box) return;
+    const rowSup = (tr.dataset.sup || "").trim().toLowerCase();
+    // A material with no trader of its own follows the delivery header.
+    const mine = !who || !rowSup || rowSup === who;
+    if (mine) { box.value = box.getAttribute("max") || ""; filled++; }
+    else skipped++;
+  });
+  showStatus("recv-status", "ok", skipped
+    ? `Filled ${num(filled)} material(s) from ${document.getElementById("recv-supplier").value}. ` +
+      `${num(skipped)} from another supplier left blank - record those when their delivery comes.`
+    : `Filled ${num(filled)} material(s).`);
 }
 
 async function saveReceive() {
