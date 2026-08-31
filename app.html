@@ -72,6 +72,10 @@
   .btn-gray:hover { background: #FAEBE8; color: #5F2E27; }
   .btn-danger { background: #FDF0EE; color: var(--red); border-color: #E8C7C2; }
   .btn-danger:hover { background: #F9E2DE; border-color: var(--red); }
+  /* Buttons in a table cell wrap onto a second line when the cell is
+     narrow. Without a margin the second line sits on top of the first;
+     with one, they stack cleanly and stay centred. */
+  td .btn { margin: 3px 2px; white-space: nowrap; vertical-align: middle; }
 
   /* Hard cap so a long list of errors scrolls inside its own box
      instead of turning the entire page red. */
@@ -3186,7 +3190,7 @@ async function loadStoreHome() {
     body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
         style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
       <td style="color:#999; font-size:12px;">${r.code}</td>
-      <td style="text-align:left; font-weight:500;">${r.name}</td>
+      <td style="font-weight:500;">${r.name}</td>
       <td>${r.unit}</td>
       <td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>
       <td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>
@@ -3310,7 +3314,7 @@ function renderItemMaster() {
     const s = stockBy[i.id];
     return `<tr>
       <td style="color:#999; font-size:12px;">${i.code}</td>
-      <td style="text-align:left; font-weight:500;">${i.name}</td>
+      <td style="font-weight:500;">${i.name}</td>
       <td>${i.category || "-"}</td>
       <td>${i.unit}</td>
       <td><span class="pill pill-${i.item_type}">${i.item_type}</span></td>
@@ -3351,15 +3355,15 @@ async function loadUnitSuggestions() {
       <div class="grid-wrap" style="max-height:420px;">
         <table>
           <thead><tr><th style="width:5%;"></th><th style="width:9%;">Code</th>
-            <th style="text-align:left;">Material</th><th style="width:12%;">Unit now</th>
+            <th>Material</th><th style="width:12%;">Unit now</th>
             <th style="width:17%;">Change to</th><th style="width:26%; text-align:left;">Why</th></tr></thead>
           <tbody>${sugg.map(s => `<tr>
             <td><input type="checkbox" class="ur-pick" data-id="${s.id}" checked></td>
             <td style="color:#999; font-size:12px;">${s.code}</td>
-            <td style="text-align:left; font-weight:500;">${s.name}</td>
+            <td style="font-weight:500;">${s.name}</td>
             <td>${s.current || "-"}</td>
             <td><select class="ur-unit" data-id="${s.id}" style="width:100%;">${unitOptionsHtml(s.suggested)}</select></td>
-            <td style="text-align:left; font-size:12px; color:#777;">"${s.matched}" &rarr; ${s.reason}</td>
+            <td style="font-size:12px; color:#777;">"${s.matched}" &rarr; ${s.reason}</td>
           </tr>`).join("")}</tbody>
         </table>
       </div>`;
@@ -4201,10 +4205,10 @@ async function loadRequests() {
               <td>${canOrder ? `<input type="checkbox" class="mr-pick" value="${r.id}" onclick="event.stopPropagation(); updateOrderBar()">` : ""}</td>
               <td><strong>${r.ref}</strong>${r.urgency === "urgent" && isOpen(r) ? '<div style="font-size:10px; font-weight:700; letter-spacing:.5px; color:#B26A00;">URGENT</div>' : ""}</td>
               <td>${r.site || '<span style="color:#999;">Central store</span>'}</td>
-              <td style="text-align:left;">${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
+              <td>${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
               <td>${r.requested_on}</td>
               <td>${r.needed_by || '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
-              <td style="text-align:left; font-size:12.5px;">${preview || "-"}${progress}${
+              <td style="font-size:12.5px;">${preview || "-"}${progress}${
                 (() => {
                 const sups = [...new Map((r.lines || []).filter(l => l.supplier)
                   .map(l => [l.supplier.id, l.supplier])).values()];
@@ -4237,7 +4241,7 @@ async function loadRequests() {
                       const out = (l.qty_requested || 0) - (l.qty_received || 0);
                       return `<tr>
                         <td>${i + 1}</td>
-                        <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+                        <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
                         <td>${num(l.qty_requested)}</td><td>${l.unit}</td>
                         <td style="text-align:left;">${l.purpose || "-"}</td>
                         <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
@@ -4682,15 +4686,15 @@ function renderSuppliers() {
   }));
   box.innerHTML = `<div class="grid-wrap" style="max-height:none;">
     <table>
-      <thead><tr><th style="text-align:left;">Supplier</th><th style="width:18%;">Contact person</th>
-        <th style="width:16%;">Phone</th><th style="width:24%; text-align:left;">Still to deliver</th></tr></thead>
+      <thead><tr><th>Supplier</th><th style="width:18%;">Contact person</th>
+        <th style="width:16%;">Phone</th><th style="width:24%;">Still to deliver</th></tr></thead>
       <tbody>${list.map(s => {
         const o = owed[s.id];
         return `<tr onclick="toggleSupplierEdit(${s.id})" style="cursor:pointer;">
-          <td style="text-align:left; font-weight:500;">${s.name}</td>
+          <td style="font-weight:500;">${s.name}</td>
           <td>${s.contact_person || '<span class="zero">-</span>'}</td>
           <td>${s.phone ? `<a href="tel:${s.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${s.phone}</a>` : '<span class="zero">-</span>'}</td>
-          <td style="text-align:left; font-size:12px;">${o
+          <td style="font-size:12px;">${o
             ? `<span style="color:#B26A00; font-weight:600;">${num(o.items)} material(s)</span> on ${[...o.refs].join(", ")}`
             : '<span style="color:#999;">nothing outstanding</span>'}</td>
         </tr>
@@ -4780,9 +4784,9 @@ function openOrderModal(ids) {
     document.getElementById("order-lines").innerHTML = single.lines.map(l => `
       <tr>
         <td style="width:6%;"><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}></td>
-        <td style="text-align:left;">${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+        <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
         <td style="width:18%;">${num(l.qty_requested)} ${l.unit}</td>
-        <td style="width:28%; text-align:left; font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
+        <td style="width:28%; font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
           ${l.supplier ? `already: ${l.supplier.name}` : "no supplier yet"}</td>
       </tr>`).join("");
   } else {
@@ -5048,7 +5052,7 @@ async function loadStore() {
         return `<tr${late ? ' style="background:#FFE9E6;"' : ''}>
           <td><strong>${r.ref}</strong></td><td>${r.site || "-"}</td><td>${r.requested_on}</td>
           <td>${r.needed_by || "-"}</td><td>${r.urgency}</td><td>${r.status}</td>
-          <td style="text-align:left; font-size:12px;">${items}</td>
+          <td style="font-size:12px;">${items}</td>
           <td>
             <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
             ${r.status === "pending" ? `<button class="btn btn-gray" onclick="setRequestStatus(${r.id},'approved')">Office approved</button>` : ""}
@@ -5146,7 +5150,7 @@ async function loadStore() {
           v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
         } else if (typeof v === "number") {
           v = ["value", "est_cost", "rate"].includes(k) ? money(v) : num(v);
-          cls = ' class="num-col"';
+          cls = ' style="font-variant-numeric:tabular-nums;"';   // centred like every other column
           if (r[k] === 0 && !["value", "est_cost", "rate"].includes(k)) v = '<span class="zero">0</span>';
         } else if (k === "item_type" || k === "type") {
           v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
