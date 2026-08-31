@@ -455,28 +455,51 @@
             <div id="dash-calendar" class="dash-calendar"></div>
           </div>
 
-          <!-- The store is daily work for several people, so it gets its
-               own doors on the dashboard rather than only a sidebar
-               link. Each hides itself if the person cannot open it. -->
+          <!-- The store's own doors, the same ones the Store screen
+               offers, grouped the same way. Each hides itself if the
+               person cannot open it. -->
           <div class="card" id="dash-store-card">
             <h2 style="margin-bottom:4px;">Store &amp; Materials</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 12px;">Stock, requests and what is still to arrive.</p>
-            <div class="dash-tiles">
-              <div class="dash-tile" data-screen="store" onclick="switchScreen('store')">
-                <div class="dash-tile-title">Store / Inventory</div>
-                <div class="dash-tile-sub">What is held, given out and returned</div>
+            <div class="rep-group" style="margin-top:10px;">Every day</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('give')">
+                <div class="store-tile-t">Give Out Material</div>
+                <div class="store-tile-s">Someone is taking material to a site</div>
               </div>
-              <div class="dash-tile" data-screen="requests" onclick="switchScreen('requests')">
-                <div class="dash-tile-title">Material Requests</div>
-                <div class="dash-tile-sub">Ask the office for material</div>
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('arrive')">
+                <div class="store-tile-t">Material Arrived</div>
+                <div class="store-tile-s">A delivery has come to the store</div>
               </div>
-              <div class="dash-tile" data-screen="approvals" onclick="switchScreen('approvals')">
-                <div class="dash-tile-title">Material Approvals</div>
-                <div class="dash-tile-sub">Approve, order and record deliveries</div>
+              <div class="store-tile" data-screen="requests" onclick="switchScreen('requests')">
+                <div class="store-tile-t">Material Requests</div>
+                <div class="store-tile-s">Ask the office for material</div>
               </div>
-              <div class="dash-tile" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">
-                <div class="dash-tile-title">Order Follow-up</div>
-                <div class="dash-tile-sub">What is coming, and who to call</div>
+              <div class="store-tile" data-screen="approvals" onclick="switchScreen('approvals')">
+                <div class="store-tile-t">Material Approvals</div>
+                <div class="store-tile-s">Approve, order and record deliveries</div>
+              </div>
+              <div class="store-tile" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">
+                <div class="store-tile-t">Order Follow-up</div>
+                <div class="store-tile-s">What is coming, from whom, and who to call</div>
+              </div>
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('other')">
+                <div class="store-tile-t">Returns &amp; Corrections</div>
+                <div class="store-tile-s">Came back, moved, or wrong number</div>
+              </div>
+            </div>
+            <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('items')">
+                <div class="store-tile-t">Material List</div>
+                <div class="store-tile-s">Add or change materials and tools</div>
+              </div>
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('suppliers')">
+                <div class="store-tile-t">Suppliers</div>
+                <div class="store-tile-s">Who we buy from, and how to reach them</div>
+              </div>
+              <div class="store-tile" data-screen="store" onclick="dashStoreGo('reports')">
+                <div class="store-tile-t">Reports</div>
+                <div class="store-tile-s">Stock, purchases, usage, requests</div>
               </div>
             </div>
           </div>
@@ -3323,6 +3346,14 @@ function setUnitSelect(sel, unit) {
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
 const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports"];
+// A store door on the dashboard opens the store screen already on the
+// panel that was asked for, rather than dropping the person on the
+// store home to click again.
+function dashStoreGo(panel) {
+  switchScreen("store");
+  setTimeout(() => storeGo(panel), 60);
+}
+
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
@@ -5896,7 +5927,7 @@ async function applyScreenPermissions() {
   try {
     const me = await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
-    document.querySelectorAll(".nav-item, .dash-tile[data-screen]").forEach(n => {
+    document.querySelectorAll(".nav-item, .dash-tile[data-screen], .store-tile[data-screen]").forEach(n => {
       const s = n.getAttribute("data-screen");
       if (s && !MY_SCREENS.includes(s)) n.style.display = "none";
     });
