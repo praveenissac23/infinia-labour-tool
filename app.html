@@ -1670,24 +1670,40 @@ async function initApp() {
     const adminOpt = roleSel.querySelector('option[value="admin"]');
     if (adminOpt) adminOpt.remove();
   }
-  await loadUsers();
+  // Only someone who can open Settings may read the staff list. This
+  // used to run for everyone and, once the endpoint was locked down,
+  // its failure stopped the clock, the calendar and everything else
+  // that starts after it.
+  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
 
   if (CURRENT_ROLE === "admin") {
     document.getElementById("nav-activity").style.display = "block";
   }
   // Runs last so it can hide anything the lines above turned on.
   await applyScreenPermissions();
-  await loadNotifications();
-  setInterval(loadNotifications, 120000);   // refresh every 2 minutes
 
-  startDashboardClock();
-  initReportColumnPicker();
-  renderLiveCardWorkerList();
+  // Each of these stands on its own: one failing must never stop the
+  // clock, the calendar or the screen the person actually wants. A
+  // broken piece reports itself to the console instead of silently
+  // taking the page down.
+  const safely = (label, fn) => {
+    try { const r = fn(); if (r && r.catch) r.catch(e => console.error(label + ":", e)); }
+    catch (e) { console.error(label + ":", e); }
+  };
+  safely("clock", () => startDashboardClock());
+  safely("notifications", () => loadNotifications());
+  setInterval(() => safely("notifications", () => loadNotifications()), 120000);
+  safely("report columns", () => initReportColumnPicker());
+  safely("live card list", () => renderLiveCardWorkerList());
   // Open on today's actual calendar month, not the payroll cycle - on
   // 27 Aug the cycle is "September 2026", so the calendar said September
   // while the date said August, which read like a bug. Reports and
   // payroll still use the 26th-25th cycle; only this view is calendar.
-  await loadDashboardCalendar(calendarMonthFor(new Date()));
+  // The calendar is an attendance tool; a store keeper has no such
+  // screen, and its failure must not stop the page resuming where the
+  // person left off.
+  if (MY_SCREENS.includes("attendance"))
+    safely("calendar", () => loadDashboardCalendar(calendarMonthFor(new Date())));
 
   // Resume the screen the user was last on, same as reopening the
   // desktop app to where you left it - Dashboard stays the default
@@ -2441,7 +2457,11 @@ async function initReportColumnPicker() {
   if (idEl.dataset.built) return;
   try {
     const catalog = await apiCall("/reports/builder-catalog");
-    reportCatalog = catalog.daily;
+    reportCatalog = (catalog && catalog.daily) || null;
+    if (!reportCatalog || !reportCatalog.dimensions) {
+      showStatus("report-status", "warn", "Report options are not available yet - try again in a minute.");
+      return;
+    }
   } catch (e) {
     showStatus("report-status", "err", "Could not load the report options - the server may still be updating. Try again in a minute, or refresh the page.");
     throw e;
@@ -2946,6 +2966,13 @@ async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
     result = await apiCall(`/attendance/completion/${encodeURIComponent(cycle)}?mode=calendar`);
   } catch (e) {
     cal.innerHTML = '<div class="empty-note">Could not load calendar.</div>';
+    return;
+  }
+
+  // A month with nothing recorded is a normal state, not a failure -
+  // say so plainly rather than leaving a half-drawn grid behind.
+  if (!result || !Array.isArray(result.days) || !result.days.length || !result.cycle_start) {
+    cal.innerHTML = '<div class="empty-note">No attendance recorded for this month yet.</div>';
     return;
   }
 
@@ -3590,7 +3617,7 @@ async function applyUnitSuggestions() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ changes }) });
     showStatus("store-status", "ok", `Updated ${num(r.updated)} material(s).`);
-    await loadStoreItems();
+    await loadStoreItems(true);
     renderItemMaster();
     loadUnitSuggestions();   // re-check: applied rows drop off the list
   } catch (e) { showStatus("store-status", "err", errText(e)); }
@@ -3684,11 +3711,26 @@ function storeLocationOptions(includeStore) {
   return opts.concat(sites.map(s => `<option value="${s.code}">${s.code}</option>`)).join("");
 }
 
-async function loadStoreItems() {
-  storeItems = await apiCall("/store/items");
-  // Stock first: the pickers below need it to decide which materials
-  // can be offered.
-  try { storeStockCache = await apiCall("/store/stock"); } catch (e) { storeStockCache = []; }
+// The catalogue runs to thousands of materials and barely changes
+// during a shift, while this is called from a dozen places - after
+// every save, on every screen change. Refetching all of it each time
+// made the store feel slow for no gain, so a recent copy is reused and
+// the two calls now go together rather than one after the other.
+let storeItemsFetchedAt = 0;
+const STORE_ITEMS_TTL = 60000;   // a minute
+
+async function loadStoreItems(force) {
+  if (!force && storeItems && storeItems.length && Date.now() - storeItemsFetchedAt < STORE_ITEMS_TTL) {
+    buildMaterialDatalist();
+    return;
+  }
+  const [items, stock] = await Promise.all([
+    apiCall("/store/items"),
+    apiCall("/store/stock").catch(() => []),
+  ]);
+  storeItems = items;
+  storeStockCache = stock;
+  storeItemsFetchedAt = Date.now();
   buildMaterialDatalist();
   // Returns, transfers and corrections all act on stock that exists
   // somewhere, so this list is limited to materials with a balance -
@@ -3984,7 +4026,16 @@ function onSupplierTyped(box, prefix) {
   if (p && !p.value) p.value = hit.phone || "";
 }
 
+let datalistBuiltFor = "";
+
 function buildMaterialDatalist() {
+  // Writing 3,239 options into the pickers is the slowest thing the
+  // store does, and it was repeated on every screen change. The lists
+  // only need rebuilding when the catalogue or the stock behind them
+  // has actually changed.
+  const sig = `${(storeItems || []).length}:${(storeStockCache || []).length}:${storeItemsFetchedAt}`;
+  if (sig === datalistBuiltFor && document.getElementById("material-list-all")) return;
+  datalistBuiltFor = sig;
   const mk = (id) => {
     let dl = document.getElementById(id);
     if (!dl) { dl = document.createElement("datalist"); dl.id = id; document.body.appendChild(dl); }
@@ -4670,7 +4721,7 @@ async function addLineToCatalogue(lineId) {
     await apiCall(`/store/request-lines/${lineId}/link-item`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ item_id: item.id }) });
-    await loadStoreItems();
+    await loadStoreItems(true);
     showStatus("recv-status", "ok", `${item.code} - ${item.name} added. Enter how much arrived.`);
     await openReceive(r.id, recvSupplierId);   // reopen so the line now offers a quantity box
   } catch (e) { showStatus("recv-status", "err", errText(e)); }
@@ -4877,7 +4928,7 @@ async function saveReceive() {
     if (fu && fu.classList.contains("active")) loadFollowUp();
     // The store dashboard shows stock levels, so refresh those too if
     // they're already on screen.
-    if (typeof loadStoreItems === "function") { try { await loadStoreItems(); } catch (e) {} }
+    if (typeof loadStoreItems === "function") { try { await loadStoreItems(true); } catch (e) {} }
   } catch (e) { showStatus("recv-status", "err", errText(e)); }
 }
 
@@ -5092,7 +5143,7 @@ async function submitMaterialRequest() {
       setNeededByDefault(true);
     } catch (e) { console.error("post-save housekeeping:", e); }
     // Newly created materials must appear in the pickers straight away.
-    await loadStoreItems();   // types may have changed, refresh the cached list
+    await loadStoreItems(true);   // the catalogue itself changed
     await loadRequests();
   } catch (e) { mreqStatus("err", errText(e)); }
   finally {
@@ -5805,7 +5856,11 @@ async function savePerms() {
       body: JSON.stringify({ permissions: picked.join(",") }) });
     closePerms();
     showStatus("settings-status", "ok", "Saved. They'll see the change next time they sign in.");
-    await loadUsers();
+    // Only someone who can open Settings may read the staff list. This
+  // used to run for everyone and, once the endpoint was locked down,
+  // its failure stopped the clock, the calendar and everything else
+  // that starts after it.
+  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
   } catch (e) { showStatus("perms-status", "err", errText(e)); }
 }
 
@@ -5923,7 +5978,11 @@ async function createUser() {
     });
     showStatus("settings-status", "ok", `Created login for ${username}.`);
     ["new-user-username", "new-user-password"].forEach(id => document.getElementById(id).value = "");
-    await loadUsers();
+    // Only someone who can open Settings may read the staff list. This
+  // used to run for everyone and, once the endpoint was locked down,
+  // its failure stopped the clock, the calendar and everything else
+  // that starts after it.
+  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
   } catch (e) {
     showStatus("settings-status", "err", "Failed: " + errText(e));
   }
@@ -5933,7 +5992,11 @@ async function removeUser(userId) {
   try {
     await apiCall(`/users/${userId}`, { method: "DELETE" });
     showStatus("settings-status", "ok", "Login deactivated.");
-    await loadUsers();
+    // Only someone who can open Settings may read the staff list. This
+  // used to run for everyone and, once the endpoint was locked down,
+  // its failure stopped the clock, the calendar and everything else
+  // that starts after it.
+  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
   } catch (e) {
     showStatus("settings-status", "err", "Failed: " + errText(e));
   }
