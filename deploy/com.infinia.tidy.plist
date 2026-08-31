@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Runs the backup every morning at 9:00.
+
+  Install:
+    mkdir -p ~/Library/LaunchAgents
+    cp com.infinia.tidy.plist ~/Library/LaunchAgents/
+    # edit the path below to wherever you saved tidy-backups.sh
+    launchctl unload ~/Library/LaunchAgents/com.infinia.tidy.plist 2>/dev/null
+    launchctl load  ~/Library/LaunchAgents/com.infinia.tidy.plist
+
+  Check it is scheduled:   launchctl list | grep infinia
+  Run it right now:        launchctl start com.infinia.tidy
+
+  If the Mac is asleep or off at 9:00, launchd runs the job as soon as
+  it wakes - a missed morning still gets its backup.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.infinia.tidy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- CHANGE THIS to where you saved the script -->
+        <string>/Users/YOURNAME/Scripts/tidy-backups.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>9</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+
+    <!-- Catch up after the Mac was asleep at 9:00 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/infinia-tidy.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/infinia-tidy.err</string>
+</dict>
+</plist>

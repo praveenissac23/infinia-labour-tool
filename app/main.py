@@ -1322,6 +1322,10 @@ def _row_to_dict(obj):
     return d
 
 
+# Daily snapshots older than this are cleared as new ones are taken.
+BACKUP_KEEP_DAYS = 40
+
+
 def build_backup_data(db: Session) -> dict:
     """Everything the company would need to rebuild this system.
 
@@ -1494,6 +1498,16 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     if not existing or existing.created_at.date() != today:
         db.add(models.Backup(created_by=user.id, trigger="daily",
                              data=json.dumps(build_backup_data(db), default=str)))
+        # Each snapshot is several megabytes, so old ones are cleared as
+        # new ones arrive - otherwise the database quietly grows by a
+        # copy of itself every day. Manual backups are left alone: those
+        # were taken deliberately, usually before something risky.
+        cutoff = datetime.now(timezone.utc) - timedelta(days=BACKUP_KEEP_DAYS)
+        old_ones = (db.query(models.Backup)
+                      .filter(models.Backup.trigger == "daily",
+                              models.Backup.created_at < cutoff).all())
+        for b in old_ones:
+            db.delete(b)
         db.commit()
     buf = io.BytesIO(body.encode("utf-8"))
     return StreamingResponse(

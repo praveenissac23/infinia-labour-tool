@@ -16,7 +16,7 @@ set -uo pipefail
 SITE="https://app.infinia.ae"
 USERNAME="admin"                       # the login it signs in with
 DEST="$HOME/Downloads/Portal Backup"
-KEEP_DAYS=60                           # older copies are deleted
+KEEP_DAYS=40                           # older copies are deleted
 LOG="$DEST/backup-log.txt"
 
 mkdir -p "$DEST"
