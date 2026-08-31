@@ -57,7 +57,8 @@ setTimeout(async()=>{
   // Approve / Reject request-level (reset filter: saving an order moves it to Ordered)
   d.getElementById("mreq-filter").value="all"; await w.loadRequests(); await wait(200);
   n=errs.length; click(find("Approve")); await wait(200); ok("Approve click no error", errsSince(n).length===0);
-  n=errs.length; click(find("Reject")); await wait(200); ok("Reject click no error", errsSince(n).length===0);
+  const rowBtnCount = [...d.querySelectorAll("#mreq-list tbody tr[onclick]")].map(tr=>tr.querySelectorAll("button").length);
+  ok("every row offers exactly one action", rowBtnCount.every(c=>c===1), rowBtnCount.join(","));
   // Expand a row, per-line decisions
   n=errs.length; click(d.querySelector("#mreq-list tbody tr[onclick]")); await wait(100);
   const lineBtns=[...d.querySelectorAll('[id^="mr-detail-"] button')].map(b=>b.textContent.trim());

@@ -4127,9 +4127,13 @@ const MR_COLOUR = {
 // One obvious next step at a time. Crucially there is no "mark it
 // delivered" shortcut any more - the only way to finish a request is to
 // record what actually arrived, so stock and paperwork can't disagree.
+// One forward action per row. Rejecting lives with the material in the
+// expanded detail, where the office can say which material and why -
+// a row-level Reject next to a per-material Reject was two buttons
+// meaning different things.
 const MR_NEXT = {
-  pending: [["approved", "Approve"], ["rejected", "Reject"]],
-  approved: [["ordered", "Mark as ordered"], ["rejected", "Reject"]],
+  pending: [["approved", "Approve"]],
+  approved: [["ordered", "Mark as ordered"]],
   // Delivered is the end of the road: the material is in, the request
   // is done, and it lives on in the history. Making someone click
   // "Close" after that was paperwork about paperwork.
@@ -4403,10 +4407,16 @@ async function loadRequests() {
           </tr></thead>
           <tbody>${list.map(r => {
             const late = isLate(r);
+            const many = (r.lines || []).length > 1;
             const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
+              [s, s === "approved" && many ? "Approve all" : label]).map(([s, label]) =>
               `<button class="btn ${s === "rejected" ? "btn-danger" : "btn-primary"}"
                        onclick="event.stopPropagation(); setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
-            const canReceive = !["delivered","closed","rejected","pending"].includes(r.status);
+            // Recording a delivery belongs to material that has actually
+            // been ordered. An approved request's next step is ordering,
+            // so it shows that one button and no other.
+            const canReceive = !["delivered","closed","rejected","pending","approved"].includes(r.status)
+              || (r.lines || []).some(l => l.supplier && (l.qty_requested || 0) - (l.qty_received || 0) > 0);
             // A short preview of what was asked for, so nobody has to
             // open every row just to find "the cement one".
             const names = r.lines.map(l => l.item_name || l.description).filter(Boolean);
