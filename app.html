@@ -5010,15 +5010,20 @@ function openOrderModal(ids) {
   const single = orderIds.length === 1 ? mrCache.find(r => r.id === orderIds[0]) : null;
   if (single && (single.lines || []).length > 1) {
     box.style.display = "";
-    document.getElementById("order-lines").innerHTML = single.lines.map(l => `
-      <tr onclick="const c=this.querySelector('.ol-pick'); if(event.target!==c) c.checked=!c.checked;" style="cursor:pointer;">
-        <td><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}
-                   onclick="event.stopPropagation();"></td>
+    document.getElementById("order-lines").innerHTML = single.lines.map(l => {
+      // A rejected material is not being bought: shown for context,
+      // unticked and unclickable, so it cannot be ordered by accident.
+      const rej = (l.status || "pending") === "rejected";
+      return `
+      <tr onclick="${rej ? "" : "const c=this.querySelector('.ol-pick'); if(event.target!==c) c.checked=!c.checked;"}"
+          style="${rej ? "opacity:.5; text-decoration:line-through;" : "cursor:pointer;"}">
+        <td>${rej ? "" : `<input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}
+                   onclick="event.stopPropagation();">`}</td>
         <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
-        <td>${num(l.qty_requested)} ${l.unit}${rejected ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">REJECTED</div>' : ""}</td>
-        <td style="font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
-          ${l.supplier ? `already: ${l.supplier.name}` : "not ordered yet"}</td>
-      </tr>`).join("");
+        <td>${num(l.qty_requested)} ${l.unit}</td>
+        <td style="font-size:11.5px; color:${rej ? "#C0392B" : l.supplier ? "#2E7D32" : "#999"};">
+          ${rej ? "rejected by office" : l.supplier ? `already: ${l.supplier.name}` : "not ordered yet"}</td>
+      </tr>`; }).join("");
   } else {
     box.style.display = "none";
     document.getElementById("order-lines").innerHTML = "";
