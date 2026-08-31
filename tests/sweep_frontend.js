@@ -69,10 +69,15 @@ setTimeout(async()=>{
   // Per-supplier delivery buttons on split request
   d.getElementById("mreq-filter").value="all"; await w.loadRequests(); await wait(200);
   n=errs.length;
-  const delBtns=[...d.querySelectorAll("#mreq-list button")].filter(b=>/^Delivery from/.test(b.textContent.trim())).map(b=>b.textContent.trim());
-  ok("split request offers per-trader delivery", delBtns.includes("Delivery from Al Raha") && delBtns.includes("Delivery from Gateway"));
-  click([...d.querySelectorAll("#mreq-list button")].find(b=>b.textContent.trim()==="Delivery from Gateway")); await wait(300);
-  ok("Gateway delivery opens with only its line", d.getElementById("recv-modal-overlay").style.display==="flex" && d.querySelectorAll("#recv-lines tr").length===1 && d.getElementById("recv-supplier").value==="Gateway" && errsSince(n).length===0);
+  const recvBtn=[...d.querySelectorAll("#mreq-list button")].find(b=>b.textContent.trim()==="Record delivery");
+  ok("ordered request offers Record delivery", !!recvBtn);
+  click(recvBtn); await wait(300);
+  const qtyBoxes=[...d.querySelectorAll("#recv-lines .recv-qty")];
+  ok("delivery opens with blank quantities", d.getElementById("recv-modal-overlay").style.display==="flex" && qtyBoxes.length>0 && qtyBoxes.every(b=>!b.value) && errsSince(n).length===0);
+  ok("each material shows where it comes from", d.querySelectorAll("#recv-lines tr td:last-child").length===qtyBoxes.length);
+  w.fillAllDue();
+  ok("Fill what is due fills every quantity", qtyBoxes.every(b=>b.value));
+  qtyBoxes[qtyBoxes.length-1].value="";   // one material did not turn up
   await w.saveReceive(); await wait(300); ok("Save Delivery runs without error", errsSince(n).length===0);
   // Bulk bar
   n=errs.length; const all=d.getElementById("mr-check-all"); if(all){ all.checked=true; w.toggleAllOrderChecks(all); }
