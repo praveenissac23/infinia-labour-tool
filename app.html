@@ -582,7 +582,8 @@
             <div class="field-grid" style="margin-bottom:18px; max-width:none;
                  grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
               <div class="field"><label>Supplier</label>
-                <input type="text" id="order-supplier" list="supplier-list" placeholder="Who it was ordered from"
+                <select id="order-supplier-pick" onchange="onSupplierPick('order')"></select>
+                <input type="text" id="order-supplier" placeholder="Type the supplier's name" style="display:none; margin-top:6px;"
                        oninput="onSupplierTyped(this, 'order')"></div>
               <div class="field"><label>Contact person</label>
                 <input type="text" id="order-contact" placeholder="Who to call there"></div>
@@ -629,7 +630,8 @@
               <div class="field-grid" style="margin-bottom:0; width:100%; max-width:none;
                      grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
                 <div class="field"><label>Supplier</label>
-                  <input type="text" id="recv-supplier" list="supplier-list" placeholder="Who delivered it"
+                  <select id="recv-supplier-pick" onchange="onSupplierPick('recv')"></select>
+                  <input type="text" id="recv-supplier" placeholder="Type the supplier's name" style="display:none; margin-top:6px;"
                          oninput="onSupplierTyped(this, 'recv')"></div>
                 <div class="field"><label>Contact person</label>
                   <input type="text" id="recv-contact" placeholder="Who to call there"></div>
@@ -942,7 +944,9 @@
             </p>
             <div class="form-row">
               <div class="field-grid" style="margin-bottom:0; width:100%;">
-                <div class="field"><label>Supplier</label><input type="text" id="in-supplier" placeholder="Who delivered it"></div>
+                <div class="field"><label>Supplier</label>
+                  <select id="in-supplier-pick" onchange="onSupplierPick('in')"></select>
+                  <input type="text" id="in-supplier" placeholder="Type the supplier's name" style="display:none; margin-top:6px;"></div>
                 <div class="field"><label>DO / Invoice no</label><input type="text" id="in-ref" placeholder="From the delivery note"></div>
                 <div class="field"><label>Date</label><input type="date" id="in-date"></div>
               </div>
@@ -3781,6 +3785,52 @@ function findSupplier(name) {
   return k ? (suppliers || []).find(s => key(s.name) === k) : null;
 }
 
+// The supplier control is a real dropdown of the master list plus
+// "Someone else..." for a new name. A datalist only offered names
+// matching what was already typed, so a prefilled box hid every other
+// supplier - it looked broken.
+function fillSupplierPick(prefix, currentName) {
+  const sel = document.getElementById(`${prefix}-supplier-pick`);
+  const box = document.getElementById(`${prefix}-supplier`);
+  if (!sel || !box) return;
+  const list = [...(suppliers || [])].sort((a, b) => a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">-- choose a supplier --</option>' +
+    list.map(s => `<option value="${s.id}">${s.name}</option>`).join("") +
+    '<option value="__new">Someone else (type a name)...</option>';
+  const hit = currentName ? findSupplier(currentName) : null;
+  if (hit) {
+    sel.value = String(hit.id);
+    box.value = hit.name;
+    box.style.display = "none";
+  } else if (currentName) {
+    sel.value = "__new";
+    box.value = currentName;
+    box.style.display = "";
+  } else {
+    sel.value = "";
+    box.value = "";
+    box.style.display = "none";
+  }
+}
+
+function onSupplierPick(prefix) {
+  const sel = document.getElementById(`${prefix}-supplier-pick`);
+  const box = document.getElementById(`${prefix}-supplier`);
+  const c = document.getElementById(`${prefix}-contact`);
+  const p = document.getElementById(`${prefix}-phone`);
+  if (sel.value === "__new") {
+    box.value = ""; box.style.display = ""; box.focus();
+    if (c) c.value = ""; if (p) p.value = "";
+    return;
+  }
+  box.style.display = "none";
+  const hit = (suppliers || []).find(s => String(s.id) === sel.value);
+  box.value = hit ? hit.name : "";
+  // A chosen supplier brings its own contacts; a cleared one clears them.
+  if (c) c.value = hit ? (hit.contact_person || "") : "";
+  if (p) p.value = hit ? (hit.phone || "") : "";
+}
+
 // Fill the contact boxes the moment a known supplier is recognised,
 // without clobbering anything the keeper has already typed.
 function onSupplierTyped(box, prefix) {
@@ -4106,6 +4156,7 @@ function toggleDirectPurchase() {
   p.style.display = showing ? "none" : "";
   if (!showing) {
     document.getElementById("in-date").value = isoLocal(new Date());
+    loadSuppliers().then(() => fillSupplierPick("in", document.getElementById("in-supplier").value));
     if (!document.querySelectorAll("#in-lines tr").length) addInLine();
     p.scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -4489,7 +4540,7 @@ function receiveButtonsHtml(r) {
   if (sups.length <= 1)
     return `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>`;
   return sups.map(s =>
-    `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id}, ${s.id})">Delivery from ${s.name || "unassigned"}</button>`
+    `<button class="btn ${s.name ? "btn-primary" : "btn-dark"}" onclick="event.stopPropagation(); openReceive(${r.id}, ${s.id})">${s.name ? "Delivery from " + s.name : "Delivery (not ordered yet)"}</button>`
   ).join(" ");
 }
 
@@ -4524,6 +4575,8 @@ async function openReceive(id, supplierId) {
   document.getElementById("recv-supplier").value = sup ? sup.name : "";
   document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
   document.getElementById("recv-phone").value = sup ? (sup.phone || "") : "";
+  if (!(suppliers || []).length) { try { await loadSuppliers(); } catch (e) {} }
+  fillSupplierPick("recv", sup ? sup.name : "");
   document.getElementById("recv-ref-no").value = r.ref;
   document.getElementById("recv-notes").value = "";
   showStatus("recv-status", null);
@@ -4995,8 +5048,9 @@ function clearOrderChecks() {
 // trader are one form filled once, not ten prompts.
 let orderIds = [];
 
-function openOrderModal(ids) {
+async function openOrderModal(ids) {
   orderIds = Array.isArray(ids) ? ids : [ids];
+  if (!(suppliers || []).length) { try { await loadSuppliers(); } catch (e) {} }
   if (!orderIds.length) { mreqStatus("warn", "Tick the requests to mark as ordered."); return; }
   const refs = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).ref).filter(Boolean);
   document.getElementById("order-modal-sub").textContent = orderIds.length === 1
@@ -5035,6 +5089,7 @@ function openOrderModal(ids) {
   document.getElementById("order-supplier").value = known ? known.name : "";
   document.getElementById("order-contact").value = known ? (known.contact_person || "") : "";
   document.getElementById("order-phone").value = known ? (known.phone || "") : "";
+  fillSupplierPick("order", known ? known.name : "");
   document.getElementById("order-expected").value = "";
   showStatus("order-status", null);
   document.getElementById("order-modal-overlay").style.display = "flex";
