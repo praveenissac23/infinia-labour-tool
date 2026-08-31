@@ -6233,6 +6233,9 @@ async function confirmDeleteBackup() {
 async function dailyBackupToThisComputer() {
   try {
     if (localStorage.getItem("autoBackupOff") === "1") return;
+    // Only the machines allowed to see pay keep a copy - a full backup
+    // carries every salary.
+    if (!MY_SCREENS.some(s => ["approvals", "settings", "masterdata", "adjustments"].includes(s))) return;
     const today = isoLocal(new Date());
     if (localStorage.getItem("autoBackupDate") === today) return;
     if (new Date().getHours() < 9) return;        // from 9am, as asked

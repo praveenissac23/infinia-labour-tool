@@ -1470,6 +1470,17 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     a file sitting in a Downloads folder should not carry them.
     """
     user = auth.get_download_user_from_token(token, db)
+    # A full copy carries every worker's pay, so it goes only to the
+    # machines that are allowed to see pay anyway. A site engineer or
+    # store keeper holding a copy would undo the salary privacy the rest
+    # of the app enforces.
+    perms = effective_permissions(user)
+    # Office and admin machines only: approvals marks the office, and
+    # the payroll screens mark an admin. A site engineer or store keeper
+    # is not given a file carrying every salary.
+    if not any(s in perms for s in ("approvals", "settings", "masterdata", "adjustments")):
+        raise HTTPException(status_code=403,
+            detail="Only office and admin accounts can download a full backup.")
     data = build_backup_data(db)
     data["users"] = [{**u, "hashed_password": ""} for u in data.get("users", [])]
     data["downloaded_by"] = user.username
