@@ -1625,7 +1625,7 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
     sup = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
     if not sup:
         raise HTTPException(status_code=404, detail="Supplier not found.")
-    name = (payload.name or "").strip()
+    name = _proper_name((payload.name or "").strip())
     if not name:
         raise HTTPException(status_code=400, detail="Supplier needs a name.")
     key = _supplier_key(name)
@@ -1758,6 +1758,21 @@ def _clean_export_qty(v):
     return str(int(f)) if f == int(f) else str(f)
 
 
+def _person_name(s: str) -> str:
+    """A person's name, tidied: "akhil", "AKHIL" and "Akhil" all become
+    "Akhil", so the same person can't appear three ways in a list. Only
+    fully-capitalised words are folded, so "Mohammed A K" keeps its
+    initials."""
+    out = []
+    for w in " ".join((s or "").split()).split(" "):
+        if not w:
+            continue
+        if len(w) > 1 and w == w.upper() and any(c.isalpha() for c in w):
+            w = w.lower()
+        out.append(w[0].upper() + w[1:])
+    return " ".join(out)
+
+
 def _proper_name(s: str) -> str:
     """First letter of each word up, the rest untouched, so "cushions"
     becomes "Cushions" while "cement OPC 42.5" keeps OPC as OPC. The
@@ -1799,7 +1814,7 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     # Validate on the server, not just in the browser - a blank code or
     # name creates an item that can't be identified in any report.
     code = (payload.code or "").strip()
-    name = (payload.name or "").strip()
+    name = _proper_name((payload.name or "").strip())
     if not code:
         code = _next_item_code(db)
     if not name:
@@ -1928,8 +1943,10 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
                 detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at {where}.")
 
     m = models.StoreMovement(**payload.dict(), created_by=user.id)
-    # An arrival names a supplier; record it once, tidily, so the name
-    # is offered back with its phone number the next time.
+    # Names are tidied wherever they enter the system, not only on the
+    # screen that happened to be used - people type AKHIL, akhil and
+    # Akhil, and all three are the same man.
+    m.incharge = _person_name(getattr(m, "incharge", "") or "")
     if payload.kind == "in" and (payload.supplier or "").strip():
         sup = _find_or_create_supplier(db, payload.supplier)
         if sup:
@@ -2230,7 +2247,8 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
             return out
 
     mr = models.MaterialRequest(
-        ref=_next_mr_ref(db), site=payload.site, requested_by=payload.requested_by,
+        ref=_next_mr_ref(db), site=payload.site,
+        requested_by=_person_name(payload.requested_by),
         needed_by=payload.needed_by, urgency=payload.urgency, notes=payload.notes,
         requested_on=payload.requested_on or date.today(), created_by=user.id,
     )
@@ -2258,7 +2276,8 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
                 item_id = it.id
                 created.append(f"{it.code} - {it.name}")
         db.add(models.MaterialRequestLine(request_id=mr.id, item_id=item_id,
-                                           description=l.description, qty_requested=l.qty_requested,
+                                           description=_proper_name(l.description),
+                                           qty_requested=l.qty_requested,
                                            qty_approved=l.qty_approved or 0, unit=unit,
                                            est_cost=l.est_cost or 0, notes=l.notes,
                                            purpose=l.purpose))
@@ -2635,9 +2654,12 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
             name = line.item.name if line.item else line.description
             errors.append(f"{name}: only {round(outstanding, 2)} {line.unit} still due.")
             continue
+        # If the counter left the supplier blank, the line already knows
+        # who it was ordered from - no reason to make anyone retype it.
+        line_sup = sup_name or (line.supplier.name if line.supplier else "")
         db.add(models.StoreMovement(
             item_id=line.item_id, kind="in", qty=w.qty, location="",
-            supplier=sup_name, reference=payload.reference or mr.ref,
+            supplier=line_sup, reference=payload.reference or mr.ref,
             notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
         line.qty_received = (line.qty_received or 0) + w.qty
         # The trader on the delivery note is who this line was bought

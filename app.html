@@ -630,6 +630,16 @@
               change any that arrived short, and clear the ones that didn't come at all.
             </p>
             <div class="form-row">
+              <div id="recv-who-box" style="display:none; margin-bottom:14px;">
+                <div class="field" style="max-width:340px;">
+                  <label>This delivery is from</label>
+                  <select id="recv-who" onchange="pickRecvSupplier()"></select>
+                </div>
+                <p style="font-size:12px; color:#888; margin:6px 0 0;">
+                  This request was split between traders. Pick who turned up and only their
+                  materials are filled in.
+                </p>
+              </div>
               <div class="field-grid" style="margin-bottom:0; width:100%; max-width:none;
                      grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
                 <div class="field"><label>Supplier</label>
@@ -4340,10 +4350,24 @@ async function openReceive(id) {
   // Prefill from the supplier of the lines still due. On a split
   // request the request-level supplier is empty by design, but if
   // everything still owed comes from one trader, that name is known.
+  // The office already recorded who this was ordered from, so nobody
+  // should have to type it again at the counter. One trader fills the
+  // fields outright; a split request offers a chooser, and picking a
+  // trader fills their details and their lines only.
   const dueSups = [...new Map((r.lines || [])
     .filter(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0 && l.supplier)
     .map(l => [l.supplier.id, l.supplier])).values()];
-  const sup = dueSups.length === 1 ? dueSups[0] : (r.supplier || null);
+  const whoBox = document.getElementById("recv-who-box");
+  const whoSel = document.getElementById("recv-who");
+  if (dueSups.length > 1) {
+    whoBox.style.display = "";
+    whoSel.innerHTML = dueSups.map(s => `<option value="${s.id}">${s.name}</option>`).join("") +
+      '<option value="">Everything on this request</option>';
+  } else {
+    whoBox.style.display = "none";
+    whoSel.innerHTML = "";
+  }
+  const sup = dueSups.length ? dueSups[0] : (r.supplier || null);
   document.getElementById("recv-supplier").value = sup ? sup.name : "";
   document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
   document.getElementById("recv-phone").value = sup ? (sup.phone || "") : "";
@@ -4377,6 +4401,9 @@ async function openReceive(id) {
     </tr>`;
   }).join("");
   document.getElementById("recv-modal-overlay").style.display = "flex";
+  // A split request opens focused on the first trader, so the keeper
+  // sees exactly their materials rather than the whole order.
+  if (dueSups.length > 1) pickRecvSupplier();
 }
 
 function closeReceive() {
