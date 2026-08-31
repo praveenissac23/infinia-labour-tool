@@ -2390,6 +2390,19 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
     if payload.status not in allowed:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed)}")
     mr.status = payload.status
+    # Approving or rejecting the request settles every material that is
+    # still waiting - otherwise the request reads "approved" while its
+    # materials are all still pending, and the screen keeps asking to
+    # approve something it already approved.
+    if payload.status == "approved":
+        for l in mr.lines:
+            if (l.status or "pending") == "pending":
+                l.status = "approved"
+    elif payload.status == "rejected":
+        for l in mr.lines:
+            if (l.status or "pending") == "pending" and not (l.qty_received or 0):
+                l.status = "rejected"
+                l.reject_reason = (payload.office_remark or "").strip()
     if payload.office_remark:
         mr.office_remark = payload.office_remark
     # Ordering is when the supplier becomes known. Capturing it here

@@ -21,7 +21,13 @@ const dom = new JSDOM(fs.readFileSync("app.html","utf8"), { runScripts:"dangerou
     w.fetch = async (u,o) => ({ ok:true, status:200, json: async () => {
       const s=String(u), m=(o&&o.method)||"GET";
       if (s.includes("/decision")) return REQS[0];
-      if (s.includes("/status")) return {ok:true,status:"ordered"};
+      if (s.includes("/status")) {
+        // Approving in the app must be reflected here, or the row can
+        // never reach the ordering step.
+        // Mirrors the server: approving settles every waiting material.
+        if (m === "POST") { REQS[0].status = "approved"; REQS[0].lines.forEach(l => { if (l.status === "pending") l.status = "approved"; }); }
+        return {ok:true,status:"approved"};
+      }
       if (s.includes("/receive-bulk")) return {ok:true,status:"partial"};
       if (s.includes("/store/requests") && m==="POST") return {id:99,ref:"MR-TEST",lines:[{id:1,item_id:1}],new_items:[]};
       if (s.includes("/store/requests") && m==="DELETE") return {ok:true};
@@ -48,8 +54,19 @@ setTimeout(async()=>{
   let n = errs.length;
   ok("approvals renders 3 rows", d.querySelectorAll("#mreq-list tbody tr[onclick]").length===3);
   const find = (txt) => [...d.querySelectorAll("#mreq-list button")].find(b=>b.textContent.trim()===txt);
-  // Mark as ordered (single)
-  click(find("Mark as ordered")); await wait(150);
+  // Approve the pending materials first - ordering is only offered once
+  // something is approved, which is the real workflow.
+  const approveBtn = find("Approve all") || find("Approve");
+  ok("pending request offers Approve first", !!approveBtn);
+  click(approveBtn); await wait(300);
+  d.getElementById("mreq-filter").value = "all"; await w.loadRequests(); await wait(200);
+  // Only the row for MR-0009, not buttons from other rows or the bulk bar.
+  const row9 = [...d.querySelectorAll("#mreq-list tbody tr[onclick]")]
+    .find(tr => tr.textContent.includes("MR-0009"));
+  const orderBtn = [...row9.querySelectorAll("button")]
+    .find(b => b.textContent.trim().startsWith("Mark as ordered"));
+  ok("approved request offers Mark as ordered", !!orderBtn, row9.textContent.replace(/\s+/g, " ").slice(0, 60));
+  click(orderBtn); await wait(300);
   ok("Mark as ordered opens modal", d.getElementById("order-modal-overlay").style.display==="flex" && errsSince(n).length===0);
   ok("picker shows 3 lines, rejected one unticked & unclickable", d.querySelectorAll("#order-lines tr").length===3 && d.querySelectorAll("#order-lines .ol-pick").length===2);
   d.getElementById("order-supplier").value="Al Raha"; await w.saveOrderModal(); await wait(300);

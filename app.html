@@ -4656,16 +4656,28 @@ async function loadRequests() {
           </tr></thead>
           <tbody>${list.map(r => {
             const late = isLate(r);
-            const many = (r.lines || []).length > 1;
-            const actions = (MR_NEXT[r.status] || []).map(([s, label]) =>
-              [s, s === "approved" && many ? "Approve all" : label]).map(([s, label]) =>
-              `<button class="btn ${s === "rejected" ? "btn-danger" : "btn-primary"}"
-                       onclick="event.stopPropagation(); setRequestStatus(${r.id},'${s}')">${label}</button>`).join(" ");
-            // Recording a delivery belongs to material that has actually
-            // been ordered. An approved request's next step is ordering,
-            // so it shows that one button and no other.
-            const canReceive = !["delivered","closed","rejected","pending","approved"].includes(r.status)
-              || (r.lines || []).some(l => l.supplier && (l.qty_requested || 0) - (l.qty_received || 0) > 0);
+            // The button follows what is actually outstanding on the
+            // materials, not the request's headline status. A request
+            // can read "ordered" while one material has never been
+            // ordered at all - it still needs a way to order it.
+            const live = (r.lines || []).filter(l => (l.status || "pending") !== "rejected");
+            const due = l => (l.qty_requested || 0) - (l.qty_received || 0) > 0;
+            const toDecide = live.filter(l => (l.status || "pending") === "pending").length;
+            const toOrder = live.filter(l => l.status === "approved" && !l.supplier && due(l)).length;
+            const toReceive = live.filter(l => l.supplier && due(l)).length;
+            const finished = ["delivered", "received", "closed", "rejected"].includes(r.status);
+            let actions = "";
+            if (!finished) {
+              if (toDecide) {
+                actions = `<button class="btn btn-primary" onclick="event.stopPropagation(); setRequestStatus(${r.id},'approved')">${
+                  live.length > 1 ? "Approve all" : "Approve"}</button>`;
+              } else if (toOrder) {
+                actions = `<button class="btn btn-primary" onclick="event.stopPropagation(); openOrderModal([${r.id}])">Mark as ordered${
+                  toReceive ? ` (${num(toOrder)} left)` : ""}</button>`;
+              }
+            }
+            // Recording a delivery belongs to material actually on order.
+            const canReceive = !finished && toReceive > 0 && !toDecide && !toOrder;
             // A short preview of what was asked for, so nobody has to
             // open every row just to find "the cement one".
             const names = r.lines.map(l => l.item_name || l.description).filter(Boolean);
