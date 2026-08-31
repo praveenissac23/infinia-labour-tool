@@ -3178,7 +3178,7 @@ async function loadArrivePanel() {
           <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>
           <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
         </div>
-        <button class="btn btn-primary" onclick="openReceive(${r.id})">Record delivery</button>
+        ${receiveButtonsHtml(r)}
       </div>`;
     }).join("");
   } catch (e) {
@@ -4156,6 +4156,7 @@ function renderFollowUp() {
     const sup = l.supplier || r.supplier || null;
     const contact = sup ? ((suppliers || []).find(s => s.id === sup.id) || sup) : null;
     rows.push({
+      rid: r.id, supId: sup ? sup.id : 0,
       ref: r.ref, site: r.site || "", needed: r.needed_by || "", expected: r.expected_on || "",
       late: !!(r.needed_by && r.needed_by < today),
       name: l.item_name || l.description || "", code: l.item_code || "",
@@ -4193,7 +4194,7 @@ function renderFollowUp() {
         <th style="width:22%;">Material</th><th style="width:8%;">Still due</th><th style="width:7%;">For site</th>
         <th style="width:8%;">Request</th><th style="width:9%;">Needed by</th>
         <th style="width:13%;">Ordered from</th><th style="width:16%;">Who to call</th>
-        <th style="width:9%;">Expected</th><th style="width:8%;">Status</th>
+        <th style="width:9%;">Expected</th><th style="width:10%;">Status</th>
       </tr></thead>
       <tbody>${list.map(x => `
         <tr${x.late ? ' style="background:#FFF8F7;"' : ""}>
@@ -4207,7 +4208,9 @@ function renderFollowUp() {
             ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
             : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
           <td>${x.expected || "-"}</td>
-          <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span></td>
+          <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
+            ${x.sup && MY_SCREENS.includes("store")
+              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>` : ""}</td>
         </tr>`).join("")}</tbody>
     </table></div>
     <p style="font-size:12px; color:#888; margin:10px 2px 0;">${num(list.length)} material(s) &middot; late ones first, then by needed-by date.</p>`;
@@ -4387,7 +4390,7 @@ async function loadRequests() {
                 ${["delivered", "closed", "rejected"].includes(r.status)
                   ? '<span style="color:#B5B9BE; font-size:12px;">Finished &middot; click the row for details</span>'
                   : `${actions}
-                ${canReceive ? `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>` : ""}`}
+                ${canReceive ? receiveButtonsHtml(r) : ""}`}
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
                 <td colspan="9" style="text-align:left; padding:14px 18px;">
@@ -4459,17 +4462,48 @@ async function addLineToCatalogue(lineId) {
       body: JSON.stringify({ item_id: item.id }) });
     await loadStoreItems();
     showStatus("recv-status", "ok", `${item.code} - ${item.name} added. Enter how much arrived.`);
-    await openReceive(r.id);   // reopen so the line now offers a quantity box
+    await openReceive(r.id, recvSupplierId);   // reopen so the line now offers a quantity box
   } catch (e) { showStatus("recv-status", "err", errText(e)); }
 }
 
-async function openReceive(id) {
+// Which traders still owe material on a request. Drives one Record
+// delivery button per trader, because deliveries arrive one truck at a
+// time and each truck belongs to one supplier.
+function dueSuppliers(r) {
+  const seen = new Map();
+  (r.lines || []).forEach(l => {
+    const due = (l.qty_requested || 0) - (l.qty_received || 0);
+    if (due <= 0 || (l.status || "pending") === "rejected") return;
+    const s = l.supplier || r.supplier || null;
+    seen.set(s ? s.id : 0, s || { id: 0, name: "" });
+  });
+  return [...seen.values()];
+}
+
+// Buttons for the action cell: one per trader when the request was
+// split, a single button otherwise.
+function receiveButtonsHtml(r) {
+  const sups = dueSuppliers(r);
+  if (sups.length <= 1)
+    return `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id})">Record delivery</button>`;
+  return sups.map(s =>
+    `<button class="btn btn-primary" onclick="event.stopPropagation(); openReceive(${r.id}, ${s.id})">Delivery from ${s.name || "unassigned"}</button>`
+  ).join(" ");
+}
+
+let recvSupplierId = null;   // the trader this delivery is from, when the request was split
+
+async function openReceive(id, supplierId) {
   const all = await apiCall("/store/requests");
   const r = all.find(x => x.id === id);
   if (!r) return;
   recvRequest = r;
+  recvSupplierId = (supplierId === undefined || supplierId === null) ? null : supplierId;
+  const chosen = recvSupplierId === null ? null
+    : (dueSuppliers(r).find(s => s.id === recvSupplierId) || null);
   document.getElementById("recv-ref").textContent =
-    r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`;
+    (chosen && chosen.name ? `${chosen.name}'s delivery against ` : "") +
+    (r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`);
   document.getElementById("recv-date").value = isoLocal(new Date());
   // Prefill from the supplier of the lines still due. On a split
   // request the request-level supplier is empty by design, but if
@@ -4481,7 +4515,7 @@ async function openReceive(id) {
   const dueSups = [...new Map((r.lines || [])
     .filter(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0 && l.supplier)
     .map(l => [l.supplier.id, l.supplier])).values()];
-  const sup = dueSups.length ? dueSups[0] : (r.supplier || null);
+  const sup = chosen && chosen.name ? chosen : (dueSups.length ? dueSups[0] : (r.supplier || null));
   document.getElementById("recv-supplier").value = sup ? sup.name : "";
   document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
   document.getElementById("recv-phone").value = sup ? (sup.phone || "") : "";
@@ -4489,7 +4523,14 @@ async function openReceive(id) {
   document.getElementById("recv-notes").value = "";
   showStatus("recv-status", null);
 
-  document.getElementById("recv-lines").innerHTML = r.lines.map(l => {
+  // When the delivery is from one trader, only their materials are
+  // listed - the other trader's lines are not on this truck, so they
+  // are not on this screen, and cannot be ticked off by mistake.
+  const shownLines = recvSupplierId === null ? r.lines : r.lines.filter(l => {
+    const s = l.supplier || r.supplier || null;
+    return (s ? s.id : 0) === recvSupplierId;
+  });
+  document.getElementById("recv-lines").innerHTML = shownLines.map(l => {
     const due = (l.qty_requested || 0) - (l.qty_received || 0);
     const rejected = (l.status || "pending") === "rejected";
     const name = (l.item_code ? `<strong>${l.item_code}</strong> ` : "") + (l.item_name || l.description);
