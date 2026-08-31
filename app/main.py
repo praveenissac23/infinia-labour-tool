@@ -1323,14 +1323,36 @@ def _row_to_dict(obj):
 
 
 def build_backup_data(db: Session) -> dict:
+    """Everything the company would need to rebuild this system.
+
+    The store was added long after this function and never joined it,
+    so a backup held the payroll side while thousands of materials,
+    every stock movement, every request and every supplier existed only
+    on the live server. A backup that restores half the business is not
+    a backup.
+
+    Left out on purpose: the audit log (a record of who clicked what,
+    not company data), and previous backups (a backup of backups).
+    Staff logins are included so people can sign in after a restore -
+    passwords are stored hashed, never in the clear.
+    """
     return {
         "generated_at": datetime.utcnow().isoformat(),
+        "format": 2,
+        # ---- People and attendance ----
+        "users": [_row_to_dict(u) for u in db.query(models.User).all()],
         "employees": [_row_to_dict(e) for e in db.query(models.Employee).all()],
         "sites": [_row_to_dict(s) for s in db.query(models.Site).all()],
         "engineers": [_row_to_dict(e) for e in db.query(models.Engineer).all()],
         "daily_rows": [_row_to_dict(r) for r in db.query(models.DailyRow).all()],
         "summaries": [_row_to_dict(s) for s in db.query(models.EmployeeSummary).all()],
         "adjustments": [_row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
+        # ---- Store and materials ----
+        "suppliers": [_row_to_dict(s) for s in db.query(models.Supplier).all()],
+        "store_items": [_row_to_dict(i) for i in db.query(models.StoreItem).all()],
+        "store_movements": [_row_to_dict(m) for m in db.query(models.StoreMovement).all()],
+        "material_requests": [_row_to_dict(r) for r in db.query(models.MaterialRequest).all()],
+        "material_request_lines": [_row_to_dict(l) for l in db.query(models.MaterialRequestLine).all()],
     }
 
 
@@ -1452,15 +1474,29 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
 def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
     Admin only, unlike taking a backup - this overwrites current data,
-    so it stays behind the higher bar. Replaces employees, sites,
-    engineers, daily rows, summaries, and adjustments with exactly
-    what's in the chosen snapshot.
+    so it stays behind the higher bar. Replaces attendance and the
+    store - employees, sites, engineers, daily rows, summaries,
+    adjustments, suppliers, materials, movements and requests - with
+    exactly what is in the chosen snapshot. Staff logins missing from
+    the live system are put back; existing ones are left alone so the
+    admin doing the restore cannot lock themselves out.
     """
     b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
     if not b:
         raise HTTPException(status_code=404, detail="Backup not found.")
     data = json.loads(b.data)
 
+    # Cleared child-first so nothing is left pointing at a deleted row.
+    # Store tables are only cleared when the snapshot actually carries
+    # them, so restoring an older backup cannot wipe the inventory it
+    # never knew about.
+    has_store = any(k in data for k in ("store_items", "store_movements", "material_requests"))
+    if has_store:
+        db.query(models.MaterialRequestLine).delete()
+        db.query(models.MaterialRequest).delete()
+        db.query(models.StoreMovement).delete()
+        db.query(models.StoreItem).delete()
+        db.query(models.Supplier).delete()
     db.query(models.SalaryAdjustment).delete()
     db.query(models.DailyRow).delete()
     db.query(models.EmployeeSummary).delete()
@@ -1492,6 +1528,35 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
         if a.get("created_at"):
             a["created_at"] = datetime.fromisoformat(a["created_at"])
         db.add(models.SalaryAdjustment(**a))
+    db.commit()
+
+    # ---- Store: suppliers and materials before the records that point
+    # at them, so every link survives the restore.
+    if has_store:
+        restore_rows(models.Supplier, data.get("suppliers", []), datetime_fields=("created_at",))
+        restore_rows(models.StoreItem, data.get("store_items", []),
+                     date_fields=("rental_start", "rental_due"), datetime_fields=("created_at", "updated_at"))
+        db.commit()
+        restore_rows(models.StoreMovement, data.get("store_movements", []),
+                     date_fields=("moved_on",), datetime_fields=("created_at",))
+        restore_rows(models.MaterialRequest, data.get("material_requests", []),
+                     date_fields=("needed_by", "requested_on", "closed_on", "expected_on"),
+                     datetime_fields=("created_at", "updated_at"))
+        db.commit()
+        restore_rows(models.MaterialRequestLine, data.get("material_request_lines", []))
+        db.commit()
+
+    # Staff logins last: an admin restoring a snapshot must not delete
+    # the account they are signed in with, so existing logins are kept
+    # and only missing ones are put back.
+    have = {u.username for u in db.query(models.User).all()}
+    for u in data.get("users", []):
+        if u.get("username") not in have:
+            u = dict(u)
+            for f in ("created_at", "last_login"):
+                if u.get(f):
+                    u[f] = datetime.fromisoformat(u[f])
+            db.add(models.User(**u))
     db.commit()
 
     log_action(db, user.id, "restore_backup", f"restored from backup #{backup_id}")
