@@ -525,6 +525,8 @@
                 <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
                 <button class="btn btn-dark" onclick="selectAll()">Select All</button>
                 <button class="btn btn-dark" onclick="selectNone()">Select None</button>
+              <button class="btn btn-dark" id="unfilled-btn" onclick="toggleUnfilled()">Unfilled Emp</button>
+              <span id="unfilled-note" style="display:none; font-size:12px; color:#B26A00; margin-left:4px;"></span>
                 <button class="btn btn-danger" onclick="openClearDayModal()">Clear Day</button>
               </div>
             </div>
@@ -2018,11 +2020,39 @@ function clearDraft(dateStr) {
   try { localStorage.removeItem(draftKey(dateStr)); } catch (e) {}
 }
 
+// What the save will refuse: the same rules, checked here so the day
+// can be finished before anyone tries to save it.
+function rowProblems(d) {
+  const out = [];
+  const am = (d.am || "").trim(), pm = (d.pm || "").trim();
+  if (!am || !pm) out.push("A.M and P.M not both set");
+  const present = am.toLowerCase() === "present" || pm.toLowerCase() === "present";
+  if (present && (!String(d.site || "").trim() || !String(d.engineer || "").trim()))
+    out.push("Present needs a site and engineer");
+  const bh = parseFloat(d.bh);
+  if (!isNaN(bh) && bh > 2 && !String(d.comments || "").trim())
+    out.push("BH over 2 hours needs a comment");
+  return out;
+}
+
+let showUnfilledOnly = false;
+
+// Show only the workers whose card is not finished, so the last few
+// gaps can be found without scrolling seventy-odd rows.
+function toggleUnfilled() {
+  showUnfilledOnly = !showUnfilledOnly;
+  const btn = document.getElementById("unfilled-btn");
+  btn.textContent = showUnfilledOnly ? "Show everyone" : "Unfilled Emp";
+  btn.className = showUnfilledOnly ? "btn btn-primary" : "btn btn-dark";
+  renderRows();
+}
+
 function renderRows() {
   const search = document.getElementById("search-box").value.trim().toLowerCase();
   const terms = search.split(",").map(t => t.trim()).filter(Boolean);
   const tbody = document.getElementById("grid-body");
   tbody.innerHTML = "";
+  let unfilled = 0, shown = 0;
 
   employees.forEach(emp => {
     if (terms.length) {
@@ -2030,6 +2060,10 @@ function renderRows() {
       if (!match) return;
     }
     const d = rowData[emp.emp_no];
+    const problems = rowProblems(d);
+    if (problems.length) unfilled++;
+    if (showUnfilledOnly && !problems.length) return;
+    shown++;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><input type="checkbox" ${ticked.has(emp.emp_no) ? "checked" : ""} onchange="onTick('${emp.emp_no}', this.checked)"></td>
@@ -2043,8 +2077,30 @@ function renderRows() {
       <td><input class="cell-input narrow" value="${d.bh}" onchange="onField('${emp.emp_no}','bh',this.value)"></td>
       <td><input class="cell-input comments" value="${escapeAttr(d.comments)}" onchange="onField('${emp.emp_no}','comments',this.value)"></td>
     `;
+    // A card with something missing carries a quiet marker, so the gaps
+    // are visible while scrolling the full list too, not only after
+    // filtering. The title says exactly what is missing.
+    if (problems.length) {
+      tr.style.background = "#FFF8F7";
+      tr.title = "Not finished: " + problems.join("; ");
+    }
     tbody.appendChild(tr);
   });
+
+  const btn = document.getElementById("unfilled-btn");
+  if (btn) btn.textContent = showUnfilledOnly
+    ? "Show everyone" : (unfilled ? `Unfilled Emp (${num(unfilled)})` : "Unfilled Emp");
+  const note = document.getElementById("unfilled-note");
+  if (note) {
+    note.textContent = showUnfilledOnly
+      ? (shown ? `Showing ${num(shown)} worker(s) whose card is not finished.`
+               : "Every card is finished for this day.")
+      : "";
+    note.style.display = showUnfilledOnly ? "" : "none";
+  }
+  if (showUnfilledOnly && !shown) {
+    tbody.innerHTML = '<tr><td colspan="12" class="empty-note">Every card is finished for this day.</td></tr>';
+  }
 }
 
 function selectHtml(empNo, field, values, current) {
