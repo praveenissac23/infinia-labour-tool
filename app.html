@@ -1741,6 +1741,9 @@ async function initApp() {
   safely("notifications", () => loadNotifications());
   setInterval(() => safely("notifications", () => loadNotifications()), 120000);
   safely("report columns", () => initReportColumnPicker());
+  // A minute after login, so it never competes with the screen loading.
+  setTimeout(() => safely("daily backup", () => dailyBackupToThisComputer()), 60000);
+  setInterval(() => safely("daily backup", () => dailyBackupToThisComputer()), 3600000);
   safely("live card list", () => renderLiveCardWorkerList());
   // Open on today's actual calendar month, not the payroll cycle - on
   // 27 Aug the cycle is "September 2026", so the calendar said September
@@ -6219,6 +6222,44 @@ async function confirmDeleteBackup() {
     await loadBackupList();
   } catch (e) {
     showStatus("settings-status", "err", "Could not delete backup: " + errText(e));
+  }
+}
+
+// ---- Daily copy onto whatever computer is being used ------------------
+// One server holding everything is a single point of failure. Once a
+// day, the machine someone is working on quietly takes a full copy, so
+// the company's data lives in several places without anyone
+// remembering to do it.
+async function dailyBackupToThisComputer() {
+  try {
+    if (localStorage.getItem("autoBackupOff") === "1") return;
+    const today = isoLocal(new Date());
+    if (localStorage.getItem("autoBackupDate") === today) return;
+    if (new Date().getHours() < 9) return;        // from 9am, as asked
+    if (!cachedDownloadToken) { await refreshDownloadToken(); }
+    if (!cachedDownloadToken) return;
+
+    // Fetched rather than opened in a tab, so it saves without a window
+    // flashing up while someone is working.
+    const res = await fetch(`${API}/backup/latest/download?token=${encodeURIComponent(cachedDownloadToken)}`);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    // A backup that is suspiciously small is not saved - better no file
+    // than a broken one people trust.
+    if (blob.size < 200) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Infinia_Full_Backup_${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    localStorage.setItem("autoBackupDate", today);
+    localStorage.setItem("autoBackupSize", String(blob.size));
+    console.info(`Daily backup saved to this computer (${Math.round(blob.size / 1024)} KB).`);
+  } catch (e) {
+    console.error("daily backup:", e);   // never interrupt the day's work
   }
 }
 

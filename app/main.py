@@ -1455,6 +1455,43 @@ def list_backups(db: Session = Depends(get_db), user: models.User = Depends(auth
     ]
 
 
+@app.get("/backup/latest/download")
+def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
+    """A complete copy of the system for whoever is signed in.
+
+    The point is that the company's data ends up on several machines
+    rather than only the one server, so anyone using the app can hold a
+    copy. Every table is included, so any of these files can rebuild the
+    business.
+
+    Password hashes are the one thing removed. They are of no use in a
+    restore - existing logins are kept and missing ones come back with
+    their names, roles and permissions, needing a fresh password - and
+    a file sitting in a Downloads folder should not carry them.
+    """
+    user = auth.get_download_user_from_token(token, db)
+    data = build_backup_data(db)
+    data["users"] = [{**u, "hashed_password": ""} for u in data.get("users", [])]
+    data["downloaded_by"] = user.username
+    body = json.dumps(data, default=str)
+    # Keep one snapshot a day on the server as well, so the two copies
+    # match and the list does not fill with one row per person per day.
+    today = date.today()
+    existing = (db.query(models.Backup)
+                  .filter(models.Backup.trigger == "daily")
+                  .order_by(models.Backup.id.desc()).first())
+    if not existing or existing.created_at.date() != today:
+        db.add(models.Backup(created_by=user.id, trigger="daily",
+                             data=json.dumps(build_backup_data(db), default=str)))
+        db.commit()
+    buf = io.BytesIO(body.encode("utf-8"))
+    return StreamingResponse(
+        buf, media_type="application/json",
+        headers={"Content-Disposition":
+                 f'attachment; filename=Infinia_Full_Backup_{today.isoformat()}.json'},
+    )
+
+
 @app.get("/backup/{backup_id}/download")
 def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
@@ -1471,7 +1508,8 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/backup/{backup_id}/restore")
-def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def restore_backup(backup_id: int, db: Session = Depends(get_db),
+                    user: models.User = Depends(auth.require_admin)):
     """
     Admin only, unlike taking a backup - this overwrites current data,
     so it stays behind the higher bar. Replaces attendance and the
@@ -1550,7 +1588,6 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
     # the account they are signed in with, so existing logins are kept
     # and only missing ones are put back.
     have = {u.username for u in db.query(models.User).all()}
-    taken = {u.id for u in db.query(models.User).all()}
     for u in data.get("users", []):
         if u.get("username") in have:
             continue
@@ -1562,11 +1599,13 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
         # snapshot also claims. The login matters, the number does not -
         # let the database allocate a free one rather than failing the
         # whole restore.
-        if u.get("id") in taken:
-            u.pop("id", None)
-        else:
-            taken.add(u.get("id"))
+        # Ids are not worth preserving here and cause collisions both
+        # with logins already on the server and with each other once one
+        # has been reassigned. The login, role and permissions are what
+        # matter; let the database number them.
+        u.pop("id", None)
         db.add(models.User(**u))
+        db.flush()
     db.commit()
 
     log_action(db, user.id, "restore_backup", f"restored from backup #{backup_id}")
@@ -1575,7 +1614,7 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), user: models.U
 
 @app.delete("/backup/{backup_id}")
 def delete_backup(backup_id: int, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.get_current_user)):
+                   user: models.User = Depends(auth.require_admin)):
     """
     Remove a single backup. Useful for clearing out snapshots taken
     before a known-bad state, so nobody restores one by mistake later -
