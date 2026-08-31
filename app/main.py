@@ -1645,6 +1645,41 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
             "phone": sup.phone}
 
 
+@app.post("/store/request-lines/{line_id}/decision")
+def decide_request_line(line_id: int, payload: schemas.LineDecisionIn,
+                         db: Session = Depends(get_db),
+                         user: models.User = Depends(require_any_screen("requests", "approvals"))):
+    """Approve or reject one material without touching the rest.
+
+    The office often wants nine of ten materials and not the tenth. The
+    request itself then follows its lines: rejected outright only when
+    every material is turned down, approved once anything is approved,
+    and left waiting while decisions are still outstanding."""
+    if payload.decision not in ("approved", "rejected", "pending"):
+        raise HTTPException(status_code=400, detail="Decision must be approved, rejected or pending.")
+    line = db.query(models.MaterialRequestLine).filter(
+        models.MaterialRequestLine.id == line_id).first()
+    if not line:
+        raise HTTPException(status_code=404, detail="Request line not found.")
+    if (line.qty_received or 0) > 0 and payload.decision == "rejected":
+        raise HTTPException(status_code=400,
+            detail="Some of this has already arrived, so it can't be rejected now.")
+    line.status = payload.decision
+    line.reject_reason = (payload.reason or "").strip() if payload.decision == "rejected" else ""
+
+    mr = line.request
+    states = [l.status or "pending" for l in mr.lines]
+    if all(s == "rejected" for s in states):
+        mr.status = "rejected"
+    elif mr.status in ("pending", "approved", "rejected"):
+        # Anything approved moves the request forward; otherwise it waits.
+        mr.status = "approved" if any(s == "approved" for s in states) else "pending"
+    db.commit()
+    log_action(db, user.id, "request_line_decision",
+               f"{mr.ref} line {line_id} {payload.decision}")
+    return _mr_out(mr)
+
+
 @app.post("/store/request-lines/{line_id}/link-item")
 def link_line_item(line_id: int, payload: schemas.LinkLineItemIn,
                     db: Session = Depends(get_db),
@@ -2184,6 +2219,8 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
         d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
         d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
         ls = ln.supplier
+        d["lines"][i]["status"] = ln.status or "pending"
+        d["lines"][i]["reject_reason"] = ln.reject_reason or ""
         d["lines"][i]["supplier"] = ({"id": ls.id, "name": ls.name,
                                        "contact_person": ls.contact_person or "",
                                        "phone": ls.phone or ""} if ls else None)
@@ -2322,7 +2359,9 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
             # does. The request-level supplier is kept as a shortcut only
             # while every line agrees.
             line_ids = getattr(payload, "line_ids", None) or []
-            targets = [l for l in mr.lines if (not line_ids or l.id in line_ids)]
+            targets = [l for l in mr.lines
+                       if (not line_ids or l.id in line_ids)
+                       and (l.status or "pending") != "rejected"]
             for l in targets:
                 l.supplier_id = sup.id
             sup_ids = {l.supplier_id for l in mr.lines}
@@ -2691,6 +2730,10 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
             errors.append(f"Line {w.line_id} is not on this request."); continue
         if not line.item_id:
             errors.append(f"'{line.description}' isn't a store item yet, so it can't be received into stock.")
+            continue
+        if (line.status or "pending") == "rejected":
+            name = line.item.name if line.item else line.description
+            errors.append(f"{name}: the office rejected this material.")
             continue
         outstanding = (line.qty_requested or 0) - (line.qty_received or 0)
         if w.qty > outstanding + 1e-9:

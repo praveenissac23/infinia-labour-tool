@@ -370,3 +370,8 @@ class SupplierIn(BaseModel):
     contact_person: str = ""
     phone: str = ""
     notes: str = ""
+
+
+class LineDecisionIn(BaseModel):
+    decision: str            # approved | rejected | pending
+    reason: str = ""

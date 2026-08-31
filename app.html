@@ -4152,7 +4152,7 @@ function renderFollowUp() {
   const rows = [];
   (mrCache || []).filter(open).forEach(r => (r.lines || []).forEach(l => {
     const due = (l.qty_requested || 0) - (l.qty_received || 0);
-    if (due <= 0) return;
+    if (due <= 0 || (l.status || "pending") === "rejected") return;   // rejected is not coming
     const sup = l.supplier || r.supplier || null;
     const contact = sup ? ((suppliers || []).find(s => s.id === sup.id) || sup) : null;
     rows.push({
@@ -4211,6 +4211,54 @@ function renderFollowUp() {
         </tr>`).join("")}</tbody>
     </table></div>
     <p style="font-size:12px; color:#888; margin:10px 2px 0;">${num(list.length)} material(s) &middot; late ones first, then by needed-by date.</p>`;
+}
+
+// One material's decision. The office often wants nine of ten things
+// and not the tenth, so each line can be approved or turned down on its
+// own; a rejected material can be put back if it was a mistake.
+function lineDecisionHtml(l, r) {
+  const st = l.status || "pending";
+  const settled = ["delivered", "received", "closed"].includes(r.status);
+  if ((l.qty_received || 0) > 0 || settled) {
+    return st === "rejected" ? '<span style="color:#C0392B; font-size:11.5px;">Rejected</span>'
+                             : '<span style="color:#999; font-size:11.5px;">-</span>';
+  }
+  if (st === "rejected") {
+    return `<div style="font-size:11.5px; color:#C0392B; font-weight:600;">Rejected</div>
+      ${l.reject_reason ? `<div style="font-size:11px; color:#999;">${l.reject_reason}</div>` : ""}
+      <button class="btn btn-dark" style="margin-top:4px;"
+        onclick="event.stopPropagation(); decideLine(${l.id}, 'pending')">Undo</button>`;
+  }
+  if (st === "approved") {
+    return `<div style="font-size:11.5px; color:#2E7D32; font-weight:600;">Approved</div>
+      <button class="btn btn-danger" style="margin-top:4px;"
+        onclick="event.stopPropagation(); decideLine(${l.id}, 'rejected')">Reject this</button>`;
+  }
+  return `<button class="btn btn-primary" onclick="event.stopPropagation(); decideLine(${l.id}, 'approved')">Approve</button>
+          <button class="btn btn-danger" onclick="event.stopPropagation(); decideLine(${l.id}, 'rejected')">Reject</button>`;
+}
+
+async function decideLine(lineId, decision) {
+  let reason = "";
+  if (decision === "rejected") {
+    reason = (prompt("Why is this material turned down? (optional - the site will see it)") || "").trim();
+  }
+  try {
+    const r = await apiCall(`/store/request-lines/${lineId}/decision`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, reason }) });
+    const approved = (r.lines || []).filter(l => (l.status || "pending") === "approved").length;
+    const rejected = (r.lines || []).filter(l => l.status === "rejected").length;
+    mreqStatus("ok", decision === "pending"
+      ? "Put back for a decision."
+      : `Material ${decision}. ${r.ref}: ${approved} approved, ${rejected} rejected` +
+        `, ${(r.lines || []).length - approved - rejected} still to decide.`);
+    // Keep the request open so the office can carry on down the list.
+    const openIds = [...document.querySelectorAll('[id^="mr-detail-"]')]
+      .filter(el => el.style.display !== "none").map(el => el.id);
+    await loadRequests();
+    openIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ""; });
+  } catch (e) { mreqStatus("err", errText(e)); }
 }
 
 async function loadRequests() {
@@ -4346,10 +4394,12 @@ async function loadRequests() {
                   <div style="margin-bottom:10px;">${statusTrail(r.status)}</div>
                   <table style="font-size:12.5px; background:white;">
                     <thead><tr><th style="width:4%;">#</th><th>Material</th><th>Qty</th><th>Unit</th>
-                      <th>What it is for</th><th>Arrived</th><th>Still to come</th><th>Ordered from</th></tr></thead>
+                      <th>What it is for</th><th>Arrived</th><th>Still to come</th><th>Ordered from</th>
+                      <th style="width:16%;">This material</th></tr></thead>
                     <tbody>${r.lines.map((l, i) => {
                       const out = (l.qty_requested || 0) - (l.qty_received || 0);
-                      return `<tr>
+                      const rej = (l.status || "pending") === "rejected";
+                      return `<tr style="${rej ? "opacity:.55; text-decoration:line-through;" : ""}">
                         <td>${i + 1}</td>
                         <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
                         <td>${num(l.qty_requested)}</td><td>${l.unit}</td>
@@ -4359,6 +4409,7 @@ async function loadRequests() {
                         <td style="font-size:11.5px;">${l.supplier
                           ? `${l.supplier.name}${l.supplier.phone ? `<div><a href="tel:${l.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${l.supplier.phone}</a>${l.supplier.contact_person ? ` (${l.supplier.contact_person})` : ""}</div>` : ""}`
                           : '<span style="color:#999;">not ordered yet</span>'}</td>
+                        <td>${lineDecisionHtml(l, r)}</td>
                       </tr>`;
                     }).join("")}</tbody>
                   </table>
@@ -4440,8 +4491,9 @@ async function openReceive(id) {
 
   document.getElementById("recv-lines").innerHTML = r.lines.map(l => {
     const due = (l.qty_requested || 0) - (l.qty_received || 0);
+    const rejected = (l.status || "pending") === "rejected";
     const name = (l.item_code ? `<strong>${l.item_code}</strong> ` : "") + (l.item_name || l.description);
-    const canReceive = l.item_id && due > 0;
+    const canReceive = l.item_id && due > 0 && !rejected;
     // Stock is counted in the store list's unit. If the request was
     // raised in another one, say so here - entering 25 against a "pcs"
     // item when 25 tonne arrived would silently corrupt the balance.
@@ -4453,7 +4505,7 @@ async function openReceive(id) {
         ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
           Asked in ${l.unit}, but the store counts this in ${item.unit} - enter the quantity in ${item.unit}.</div>` : ""}</td>
-      <td>${num(l.qty_requested)} ${l.unit}</td>
+      <td>${num(l.qty_requested)} ${l.unit}${rejected ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">REJECTED</div>' : ""}</td>
       <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
       <td><strong>${due > 0 ? num(due) : "complete"}</strong></td>
       <td>${canReceive
@@ -4903,7 +4955,7 @@ function openOrderModal(ids) {
         <td><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}
                    onclick="event.stopPropagation();"></td>
         <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
-        <td>${num(l.qty_requested)} ${l.unit}</td>
+        <td>${num(l.qty_requested)} ${l.unit}${rejected ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">REJECTED</div>' : ""}</td>
         <td style="font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
           ${l.supplier ? `already: ${l.supplier.name}` : "not ordered yet"}</td>
       </tr>`).join("");

@@ -364,6 +364,11 @@ class MaterialRequestLine(Base):
     # on the line, and the request-level supplier is just a shortcut for
     # the common case where every line went to the same place.
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    # The office prices a request line by line and may turn down one
+    # material while approving the rest - so a decision belongs on the
+    # line, not only on the request.
+    status = Column(String, default="pending")   # pending | approved | rejected
+    reject_reason = Column(String, default="")
     notes = Column(Text, default="")
     # What the material is actually for - the office needs this to judge
     # whether to order, and it stops "200 bags of cement" arriving with
