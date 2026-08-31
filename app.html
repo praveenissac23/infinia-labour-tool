@@ -454,6 +454,32 @@
             </div>
             <div id="dash-calendar" class="dash-calendar"></div>
           </div>
+
+          <!-- The store is daily work for several people, so it gets its
+               own doors on the dashboard rather than only a sidebar
+               link. Each hides itself if the person cannot open it. -->
+          <div class="card" id="dash-store-card">
+            <h2 style="margin-bottom:4px;">Store &amp; Materials</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 12px;">Stock, requests and what is still to arrive.</p>
+            <div class="dash-tiles">
+              <div class="dash-tile" data-screen="store" onclick="switchScreen('store')">
+                <div class="dash-tile-title">Store / Inventory</div>
+                <div class="dash-tile-sub">What is held, given out and returned</div>
+              </div>
+              <div class="dash-tile" data-screen="requests" onclick="switchScreen('requests')">
+                <div class="dash-tile-title">Material Requests</div>
+                <div class="dash-tile-sub">Ask the office for material</div>
+              </div>
+              <div class="dash-tile" data-screen="approvals" onclick="switchScreen('approvals')">
+                <div class="dash-tile-title">Material Approvals</div>
+                <div class="dash-tile-sub">Approve, order and record deliveries</div>
+              </div>
+              <div class="dash-tile" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">
+                <div class="dash-tile-title">Order Follow-up</div>
+                <div class="dash-tile-sub">What is coming, and who to call</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="screen" id="screen-attendance">
@@ -5877,6 +5903,13 @@ async function applyScreenPermissions() {
     // The dashboard's clock-and-calendar is an attendance tool. A user
     // who can't open attendance shouldn't stare at its completeness
     // colours - and if their whole job is the store, land them there.
+    // A section with nothing left in it is clutter - hide the whole card
+    // when the person cannot open any of its doors.
+    const storeCard = document.getElementById("dash-store-card");
+    if (storeCard) {
+      const anyStore = ["store", "requests", "approvals"].some(s => MY_SCREENS.includes(s));
+      storeCard.style.display = anyStore ? "" : "none";
+    }
     const hasAttendance = MY_SCREENS.includes("attendance");
     const cal = document.getElementById("dash-calendar");
     if (!hasAttendance && cal) { const card = cal.closest(".card"); if (card) card.style.display = "none"; }
