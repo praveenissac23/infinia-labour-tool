@@ -2989,6 +2989,9 @@ async function loadNotifications() {
   renderBell();
 }
 
+const NOTIF_ICON = { request: "\u{1F4E5}", late: "\u23F0", status: "\u{1F4E6}", low: "\u{1F4C9}",
+                     rental: "\u{1F501}", attendance: "\u{1F4CB}" };
+
 function renderBell() {
   const wrap = document.getElementById("bell-wrap");
   if (!wrap) return;
@@ -3003,31 +3006,64 @@ function renderBell() {
     badge.style.display = "none";
   }
   const list = document.getElementById("bell-list");
+  const today = isoLocal(new Date());
+  const yday = isoLocal(new Date(Date.now() - 86400000));
+  const when = d => d === today ? "Today" : d === yday ? "Yesterday" : d;
   list.innerHTML = notifications.length ? notifications.map(n => {
     const isNew = !read.has(n.id);
-    const colour = n.level === "warn" ? "#C0392B" : "#2E7D32";
-    return `<div onclick="openNotification('${n.id}','${n.screen}')"
-      style="padding:10px 14px; border-bottom:1px solid #f2f2f2; cursor:pointer;
+    const colour = n.level === "warn" ? "#C0392B" : n.level === "ok" ? "#2E7D32" : "#1F2429";
+    return `<div onclick="openNotification('${n.id}','${n.screen}','${n.target || ""}')"
+      style="display:flex; gap:10px; padding:10px 14px; border-bottom:1px solid #f2f2f2; cursor:pointer;
              background:${isNew ? '#FFF8F7' : 'white'};">
-      <div style="font-size:13px; font-weight:${isNew ? '600' : '400'}; color:${colour};">
-        ${isNew ? '<span style="color:var(--red);">\u25CF</span> ' : ''}${n.title}
+      <div style="font-size:18px; line-height:1; padding-top:2px;">${NOTIF_ICON[n.kind] || "\u2022"}</div>
+      <div style="min-width:0; flex:1;">
+        <div style="display:flex; justify-content:space-between; gap:8px;">
+          <span style="font-size:13px; font-weight:${isNew ? '700' : '500'}; color:${colour};">${n.title}</span>
+          <span style="font-size:11px; color:#aaa; white-space:nowrap;">${when(n.when)}</span>
+        </div>
+        <div style="font-size:11.5px; color:#777; margin-top:2px;">${n.detail}</div>
       </div>
-      <div style="font-size:11.5px; color:#888; margin-top:2px;">${n.detail}</div>
     </div>`;
   }).join("") : '<div style="padding:18px; text-align:center; color:#999; font-size:12.5px;">Nothing needs attention.</div>';
 }
 
 function toggleBell() {
   const p = document.getElementById("bell-panel");
-  p.style.display = p.style.display === "none" ? "block" : "none";
+  const opening = p.style.display === "none";
+  p.style.display = opening ? "block" : "none";
+  if (opening) loadNotifications();   // always fresh when opened
 }
 
-function openNotification(id, screen) {
+// A notification is a link to the thing itself, not just to a screen:
+// a new request opens Material Approvals filtered to that request; a
+// status change opens Order Follow-up on it; low stock opens the
+// store searched to the material.
+function openNotification(id, screen, target) {
   const read = readIds(); read.add(id); saveReadIds(read);
   document.getElementById("bell-panel").style.display = "none";
   renderBell();
-  if (screen) switchScreen(screen);
+  if (!screen) return;
+  switchScreen(screen);
+  if (!target) return;
+  setTimeout(() => {
+    if (screen === "approvals") {
+      const f = document.getElementById("mreq-filter"); if (f) f.value = "all";
+      const s = document.getElementById("mreq-search"); if (s) s.value = target;
+      loadRequests();
+    } else if (screen === "followup") {
+      const s = document.getElementById("fu-search"); if (s) { s.value = target; renderFollowUp(); }
+    } else if (screen === "store") {
+      const s = document.getElementById("home-stock-search");
+      if (s) { storeGo("home"); s.value = target; filterHomeStock(); }
+    }
+  }, 350);
 }
+
+document.addEventListener("click", e => {
+  const wrap = document.getElementById("bell-wrap");
+  const p = document.getElementById("bell-panel");
+  if (wrap && p && p.style.display !== "none" && !wrap.contains(e.target)) p.style.display = "none";
+});
 
 function markAllRead() {
   const read = readIds();

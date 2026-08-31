@@ -2531,56 +2531,96 @@ def set_permissions(user_id: int, payload: schemas.PermissionsIn,
 def get_notifications(db: Session = Depends(get_db),
                        user: models.User = Depends(auth.get_current_user)):
     """
-    Things that need someone's attention right now, gathered from the
-    live data rather than stored as messages - so a notification can
-    never go stale or contradict what the screens show. Each carries a
-    stable id so the browser can remember what has been read.
+    Notifications the way people expect them: each event goes to the
+    role that has to act on it, and clicking one lands on the exact
+    item. Derived from live data, so nothing can go stale.
+
+      office (approvals)  <- a new request arrives; a request is late
+      site (requests)     <- their request was approved, ordered,
+                             delivered or rejected
+      keeper (store)      <- stock is low; a rental is overdue back
+      attendance          <- yesterday's sheet is missing or incomplete
     """
     today = date.today()
     allowed = effective_permissions(user)
     out = []
+    recent_cutoff = today - timedelta(days=7)
 
+    def _mr_lines(m):
+        n = len(m.lines)
+        return f"{n} material{'s' if n != 1 else ''}"
+
+    reqs = db.query(models.MaterialRequest).all() if ("approvals" in allowed or "requests" in allowed) else []
+
+    # ---- Office: things to act on -----------------------------------
+    if "approvals" in allowed:
+        for m in reqs:
+            if m.status == "pending":
+                out.append({"id": f"new-req-{m.id}", "kind": "request",
+                             "title": f"New material request {m.ref}",
+                             "detail": f"{_person_name(m.requested_by) or 'Someone'} asked for {_mr_lines(m)}"
+                                       + (f" for site {m.site}" if m.site else " for the central store")
+                                       + (f", needed by {m.needed_by.isoformat()}" if m.needed_by else ""),
+                             "screen": "approvals", "target": m.ref,
+                             "when": m.requested_on.isoformat(), "level": "info"})
+            if (m.needed_by and m.needed_by < today
+                    and m.status not in ("delivered", "received", "closed", "rejected")):
+                out.append({"id": f"late-{m.id}-{m.needed_by}", "kind": "late",
+                             "title": f"{m.ref} is late",
+                             "detail": f"Needed by {m.needed_by.isoformat()}, still "
+                                       f"{MR_STATUS_WORDS.get(m.status, m.status)}",
+                             "screen": "approvals", "target": m.ref,
+                             "when": m.needed_by.isoformat(), "level": "warn"})
+
+    # ---- Site staff: what happened to their requests -----------------
+    if "requests" in allowed:
+        for m in reqs:
+            upd = m.updated_at.date() if m.updated_at else None
+            if not upd or upd < recent_cutoff:
+                continue
+            if m.status == "approved":
+                title, detail, lvl = f"{m.ref} approved", "The office has approved it and will order", "ok"
+            elif m.status in ("ordered", "arranging", "lpo_sent"):
+                sups = sorted({l.supplier.name for l in m.lines if l.supplier})
+                title = f"{m.ref} ordered"
+                detail = ("From " + ", ".join(sups) if sups else "Ordered by the office") \
+                         + (f", expected {m.expected_on.isoformat()}" if m.expected_on else "")
+                lvl = "ok"
+            elif m.status == "partial":
+                got = sum(l.qty_received or 0 for l in m.lines)
+                asked = sum(l.qty_requested or 0 for l in m.lines)
+                title, detail, lvl = f"{m.ref} partly delivered", f"{got:g} of {asked:g} arrived so far", "info"
+            elif m.status in ("delivered", "received"):
+                title, detail, lvl = f"{m.ref} delivered", "Everything has arrived at the store", "ok"
+            elif m.status == "rejected":
+                title, detail, lvl = f"{m.ref} rejected", (m.office_remark or "The office turned it down"), "warn"
+            else:
+                continue
+            out.append({"id": f"status-{m.id}-{m.status}-{upd}", "kind": "status",
+                         "title": title, "detail": detail,
+                         "screen": "followup" if m.status not in ("delivered", "received", "rejected") else "requests",
+                         "target": m.ref, "when": upd.isoformat(), "level": lvl})
+
+    # ---- Keeper: the store itself ------------------------------------
     if "store" in allowed:
         items = {i.id: i for i in db.query(models.StoreItem).filter(models.StoreItem.active == True).all()}  # noqa: E712
         stock = _stock_map(db)
-
-        low = []
-        for i in items.values():
-            if not i.reorder_level:
-                continue
-            have = stock.get((i.id, CENTRAL), 0)
-            if have <= i.reorder_level:
-                low.append((i, have))
+        low = [(i, stock.get((i.id, CENTRAL), 0)) for i in items.values()
+               if i.reorder_level and stock.get((i.id, CENTRAL), 0) <= i.reorder_level]
         for i, have in low[:20]:
             out.append({"id": f"low-{i.id}-{have}", "kind": "low",
                          "title": f"{i.name} is running low",
-                         "detail": f"{round(have, 2)} {i.unit} left, warn level is {round(i.reorder_level, 2)}",
-                         "screen": "store", "when": today.isoformat(), "level": "warn"})
-
-        reqs = db.query(models.MaterialRequest).all()
-        for m in reqs:
-            if m.status == "pending":
-                out.append({"id": f"req-pending-{m.id}", "kind": "request",
-                             "title": f"{m.ref} is waiting on the office",
-                             "detail": f"{len(m.lines)} material(s)" + (f" for site {m.site}" if m.site else ""),
-                             "screen": "store", "when": m.requested_on.isoformat(), "level": "info"})
-            if (m.needed_by and m.needed_by < today
-                    and m.status not in ("delivered", "received", "closed", "rejected")):
-                out.append({"id": f"req-late-{m.id}-{m.needed_by}", "kind": "late",
-                             "title": f"{m.ref} is late",
-                             "detail": f"Was needed by {m.needed_by.isoformat()}",
-                             "screen": "store", "when": m.needed_by.isoformat(), "level": "warn"})
-
+                         "detail": f"{have:g} {i.unit} left, warn level is {i.reorder_level:g}",
+                         "screen": "store", "target": i.code, "when": today.isoformat(), "level": "warn"})
         for i in items.values():
             if i.item_type == "rental" and i.rental_due and i.rental_due < today:
                 out.append({"id": f"rent-{i.id}-{i.rental_due}", "kind": "rental",
                              "title": f"{i.name} is overdue back to {i.rental_supplier or 'the supplier'}",
                              "detail": f"Was due {i.rental_due.isoformat()}",
-                             "screen": "store", "when": i.rental_due.isoformat(), "level": "warn"})
+                             "screen": "store", "target": i.code, "when": i.rental_due.isoformat(), "level": "warn"})
 
+    # ---- Attendance -------------------------------------------------
     if "attendance" in allowed:
-        # Yesterday with nothing entered is worth a nudge; today is still
-        # in progress so it isn't flagged.
         y = today - timedelta(days=1)
         marked = (db.query(models.DailyRow)
                     .filter(models.DailyRow.full_date == y,
@@ -2598,9 +2638,12 @@ def get_notifications(db: Session = Depends(get_db),
                          "detail": f"{marked} of {active} workers marked",
                          "screen": "attendance", "when": y.isoformat(), "level": "info"})
 
-    order = {"warn": 0, "info": 1}
-    out.sort(key=lambda n: (order.get(n["level"], 2), n["when"]))
-    return {"notifications": out[:50], "count": len(out)}
+    # Newest first within each urgency band
+    order = {"warn": 0, "info": 1, "ok": 2}
+    out.sort(key=lambda n: (order.get(n["level"], 3), n["when"]), reverse=False)
+    out.sort(key=lambda n: n["when"], reverse=True)
+    out.sort(key=lambda n: order.get(n["level"], 3))
+    return {"notifications": out[:60], "count": len(out)}
 
 
 @app.post("/store/requests/{req_id}/receive-bulk")
