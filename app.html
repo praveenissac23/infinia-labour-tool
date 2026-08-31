@@ -272,12 +272,7 @@
   .step-n { width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: white;
             display: inline-flex; align-items: center; justify-content: center;
             font-size: 11.5px; font-weight: 700; flex: 0 0 auto; }
-  .mymr-row { border: 1px solid #EDE9E2; border-radius: 8px; padding: 10px 14px;
-              margin-bottom: 8px; cursor: pointer; background: white;
-              transition: border-color .12s ease, box-shadow .12s ease; }
-  .mymr-row:hover { border-color: #D9B6B0; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
-  .mymr-bar { height: 5px; border-radius: 3px; background: #EFECE5; overflow: hidden; margin-top: 8px; }
-  .mymr-fill { height: 100%; border-radius: 3px; background: #2E7D32; transition: width .3s ease; }
+
   .grid-wrap::-webkit-scrollbar { height: 8px; width: 8px; }
   .grid-wrap::-webkit-scrollbar-thumb { background: #D8D8D8; border-radius: 8px; }
   .grid-wrap::-webkit-scrollbar-thumb:hover { background: #BFBFBF; }
@@ -383,6 +378,7 @@
       <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
       <div class="nav-item" data-screen="requests" onclick="switchScreen('requests')">Material Requests</div>
       <div class="nav-item" data-screen="approvals" onclick="switchScreen('approvals')">Material Approvals</div>
+      <div class="nav-item" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">Order Follow-up</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -630,16 +626,6 @@
               change any that arrived short, and clear the ones that didn't come at all.
             </p>
             <div class="form-row">
-              <div id="recv-who-box" style="display:none; margin-bottom:14px;">
-                <div class="field" style="max-width:340px;">
-                  <label>This delivery is from</label>
-                  <select id="recv-who" onchange="pickRecvSupplier()"></select>
-                </div>
-                <p style="font-size:12px; color:#888; margin:6px 0 0;">
-                  This request was split between traders. Pick who turned up and only their
-                  materials are filled in.
-                </p>
-              </div>
               <div class="field-grid" style="margin-bottom:0; width:100%; max-width:none;
                      grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
                 <div class="field"><label>Supplier</label>
@@ -948,20 +934,6 @@
             </div>
           </div>
 
-          <!-- The requester's own view of where things have got to:
-               status, delivery progress, late flags - read-only, so the
-               office's buttons never appear here. -->
-          <div class="card" id="my-requests-card" style="display:none;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-              <div>
-                <h2 style="margin-bottom:2px;">Your requests</h2>
-                <p style="font-size:12px; color:#888; margin:0;">Where each one has got to. Click a request to see its materials.</p>
-              </div>
-              <select id="mymr-who" onchange="renderMyRequests()" style="width:200px;"></select>
-            </div>
-            <div id="my-requests" style="margin-top:12px;"></div>
-          </div>
-
           <div class="card" id="direct-purchase" style="display:none;">
             <h2>Direct purchase</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">
@@ -1023,6 +995,29 @@
           </div>
         </div>
 
+        <!-- ============ ORDER FOLLOW-UP ============
+             One row per material still to arrive, across every open
+             request: what, how much, for which site, who is supplying
+             it and their number. The chase list, on one screen. -->
+        <div class="screen" id="screen-followup">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h2 style="margin-bottom:4px;">Order follow-up</h2>
+                <p style="font-size:12px; color:#888; margin:0;">Every material still to arrive, with who is supplying it
+                  and who to call. Late ones first. Tap a number to ring.</p>
+              </div>
+              <div class="form-row" style="margin:0;">
+                <select id="fu-site" onchange="renderFollowUp()" style="width:170px;"></select>
+                <input type="text" id="fu-search" placeholder="Search material, supplier, request" style="width:250px;" oninput="renderFollowUp()">
+                <button class="btn btn-dark" onclick="loadFollowUp()">Refresh</button>
+              </div>
+            </div>
+            <div id="fu-pills" style="display:flex; gap:6px; flex-wrap:wrap; margin:12px 0 10px;"></div>
+            <div id="fu-list"></div>
+          </div>
+        </div>
+
         <!-- ============ STORE / INVENTORY ============
              Opens on its own dashboard: four cards showing the numbers
              that matter, then a menu of tasks. Each task opens its own
@@ -1046,7 +1041,11 @@
                 </div>
                 <div class="store-tile" onclick="switchScreen('requests')">
                   <div class="store-tile-t">Material Requests</div>
-                  <div class="store-tile-s">Ask the office and track what is coming</div>
+                  <div class="store-tile-s">Ask the office for material</div>
+                </div>
+                <div class="store-tile" onclick="switchScreen('followup')">
+                  <div class="store-tile-t">Order Follow-up</div>
+                  <div class="store-tile-s">What is coming, from whom, and who to call</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('other')">
                   <div class="store-tile-t">Returns &amp; Corrections</div>
@@ -1530,12 +1529,14 @@ const SCREEN_TITLES = {
   store: "Store / Inventory",
   requests: "Material Requests",
   approvals: "Material Approvals",
+  followup: "Order Follow-up",
 };
 
 function switchScreen(name) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
   document.getElementById("screen-" + name).classList.add("active");
-  document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.screen === name));
+  document.querySelectorAll(".nav-item").forEach(el =>
+    el.classList.toggle("active", (el.dataset.target || el.dataset.screen) === name));
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
@@ -1570,6 +1571,8 @@ function switchScreen(name) {
       loadRequests();
     });
   }
+
+  if (name === "followup") loadFollowUp();
 
   if (name === "approvals") {
     loadStoreItems().then(() => {
@@ -4079,64 +4082,99 @@ function toggleRequest(id) {
 // already on order without another server round-trip per keystroke.
 let mrCache = [];
 
-// The requester's tracker: their requests, newest first, with a status
-// trail and a delivery progress bar - the answer to "where has it got
-// to" without ringing the office.
-function renderMyRequests() {
-  const card = document.getElementById("my-requests-card");
-  const box = document.getElementById("my-requests");
-  if (!card || !box) return;
-  const all = mrCache || [];
-  if (!all.length) { card.style.display = "none"; return; }
-  card.style.display = "";
+// ---- Order follow-up --------------------------------------------------
+// The chase list. Flattens every open request into one row per material
+// still to arrive, so site staff can see at a glance what is coming,
+// from whom, and who to ring - without opening requests one by one.
+async function loadFollowUp() {
+  const box = document.getElementById("fu-list");
+  box.innerHTML = '<div class="empty-note">Loading...</div>';
+  try {
+    const [reqs, sups] = await Promise.all([apiCall("/store/requests"), apiCall("/store/suppliers").catch(() => [])]);
+    mrCache = reqs;
+    suppliers = sups;
+    // Site filter built from the requests themselves
+    const sel = document.getElementById("fu-site");
+    const sites = [...new Set(reqs.map(r => r.site || ""))].sort();
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">All sites</option>' +
+      sites.map(s => `<option value="${s}">${s ? "Site " + s : "Central store"}</option>`).join("");
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+    renderFollowUp();
+  } catch (e) { box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`; }
+}
 
-  // Filter by requester, defaulting to whoever the form remembers.
-  const who = document.getElementById("mymr-who");
-  const names = [...new Set(all.map(r => personName(r.requested_by || "")).filter(Boolean))].sort();
-  let saved = "";
-  try { saved = personName(localStorage.getItem("mrName") || ""); } catch (e) {}
-  if (who && !who.dataset.built) {
-    who.innerHTML = '<option value="">Everyone</option>' +
-      names.map(n => `<option value="${n}"${n === saved ? " selected" : ""}>${n}</option>`).join("");
-    who.dataset.built = "1";
-  }
-  const pick = who ? who.value : "";
+function renderFollowUp() {
+  const box = document.getElementById("fu-list");
+  if (!box) return;
+  const site = document.getElementById("fu-site").value;
+  const q = (document.getElementById("fu-search").value || "").trim().toLowerCase();
   const today = isoLocal(new Date());
-  const list = all
-    .filter(r => !pick || personName(r.requested_by || "") === pick)
-    .sort((a, b) => (b.requested_on || "").localeCompare(a.requested_on || ""))
-    .slice(0, 8);
+  const open = r => !["delivered", "received", "closed", "rejected"].includes(r.status);
+
+  // One row per material still due
+  const rows = [];
+  (mrCache || []).filter(open).forEach(r => (r.lines || []).forEach(l => {
+    const due = (l.qty_requested || 0) - (l.qty_received || 0);
+    if (due <= 0) return;
+    const sup = l.supplier || r.supplier || null;
+    const contact = sup ? ((suppliers || []).find(s => s.id === sup.id) || sup) : null;
+    rows.push({
+      ref: r.ref, site: r.site || "", needed: r.needed_by || "", expected: r.expected_on || "",
+      late: !!(r.needed_by && r.needed_by < today),
+      name: l.item_name || l.description || "", code: l.item_code || "",
+      due, unit: l.unit || "", received: l.qty_received || 0, asked: l.qty_requested || 0,
+      status: r.status, sup: contact, purpose: l.purpose || "",
+    });
+  }));
+
+  // Pills before filtering, so the picture is the whole store's
+  const pills = document.getElementById("fu-pills");
+  const late = rows.filter(x => x.late).length;
+  const unordered = rows.filter(x => !x.sup).length;
+  const ordered = rows.length - unordered;
+  pills.innerHTML = [
+    [`${num(rows.length)} material(s) to arrive`, "#5B6167"],
+    late ? [`${num(late)} late`, "#C0392B"] : null,
+    unordered ? [`${num(unordered)} not ordered yet`, "#B26A00"] : null,
+    ordered ? [`${num(ordered)} on order`, "#1565C0"] : null,
+  ].filter(Boolean).map(([t, c]) =>
+    `<span class="stat-chip" style="border-color:${c}; color:${c}; background:${c}12;">${t}</span>`).join("");
+
+  const list = rows
+    .filter(x => !site || x.site === site)
+    .filter(x => !q || `${x.name} ${x.code} ${x.ref} ${x.sup ? x.sup.name + " " + (x.sup.contact_person || "") : ""}`.toLowerCase().includes(q))
+    .sort((a, b) => (b.late - a.late) || (a.needed || "9").localeCompare(b.needed || "9") || a.ref.localeCompare(b.ref));
+
   if (!list.length) {
-    box.innerHTML = '<div class="empty-note">No requests from this person yet.</div>'; return;
+    box.innerHTML = `<div class="empty-note">${rows.length ? "Nothing matches that filter." : "Nothing is waiting to arrive. Every open request has been delivered."}</div>`;
+    return;
   }
-  box.innerHTML = list.map(r => {
-    const lines = r.lines || [];
-    const asked = lines.reduce((a, l) => a + (l.qty_requested || 0), 0);
-    const got = lines.reduce((a, l) => a + (l.qty_received || 0), 0);
-    const pct = asked ? Math.min(100, Math.round(got / asked * 100)) : 0;
-    const open = !["delivered", "received", "closed", "rejected"].includes(r.status);
-    const late = r.needed_by && r.needed_by < today && open;
-    const preview = lines.slice(0, 3).map(l => l.item_name || l.description).join(", ") +
-      (lines.length > 3 ? ` +${lines.length - 3} more` : "");
-    return `<div class="mymr-row" onclick="this.querySelector('.mymr-detail').style.display =
-              this.querySelector('.mymr-detail').style.display === 'none' ? '' : 'none'">
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:baseline;">
-        <div><strong>${r.ref}</strong>
-          <span style="color:#999; font-size:12px;"> &middot; ${r.site ? "site " + r.site : "central store"} &middot; needed ${r.needed_by || "-"}</span>
-          ${late ? '<span style="color:#C0392B; font-size:11px; font-weight:700;"> LATE</span>' : ""}</div>
-        <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600; font-size:12.5px;">${MR_LABEL[r.status] || r.status}</span>
-      </div>
-      <div style="font-size:12px; color:#777; margin-top:4px;">${preview}</div>
-      ${asked ? `<div class="mymr-bar"><div class="mymr-fill" style="width:${pct}%;"></div></div>
-      <div style="font-size:11px; color:#999; margin-top:3px;">${num(got)} of ${num(asked)} arrived</div>` : ""}
-      <div class="mymr-detail" style="display:none; margin-top:10px; border-top:1px solid #F0EDE7; padding-top:8px;">
-        ${lines.map(l => `<div style="display:flex; justify-content:space-between; font-size:12px; padding:3px 0;">
-          <span>${l.item_name || l.description}${l.purpose ? ` <span style="color:#aaa;">- ${l.purpose}</span>` : ""}</span>
-          <span class="num-col">${num(l.qty_received || 0)} / ${num(l.qty_requested || 0)} ${l.unit}</span>
-        </div>`).join("")}
-      </div>
-    </div>`;
-  }).join("");
+
+  box.innerHTML = `<div class="grid-wrap" style="max-height:70vh;">
+    <table>
+      <thead><tr>
+        <th style="width:22%;">Material</th><th style="width:8%;">Still due</th><th style="width:7%;">For site</th>
+        <th style="width:8%;">Request</th><th style="width:9%;">Needed by</th>
+        <th style="width:13%;">Ordered from</th><th style="width:16%;">Who to call</th>
+        <th style="width:9%;">Expected</th><th style="width:8%;">Status</th>
+      </tr></thead>
+      <tbody>${list.map(x => `
+        <tr${x.late ? ' style="background:#FFF8F7;"' : ""}>
+          <td>${x.code ? `<strong>${x.code}</strong> ` : ""}${x.name}${x.purpose ? `<div style="font-size:11px; color:#999;">${x.purpose}</div>` : ""}</td>
+          <td class="num-col" style="font-weight:700;">${num(x.due)} ${x.unit}${x.received ? `<div style="font-size:11px; color:#999; font-weight:400;">${num(x.received)} of ${num(x.asked)} in</div>` : ""}</td>
+          <td>${x.site || '<span style="color:#999;">store</span>'}</td>
+          <td><strong>${x.ref}</strong></td>
+          <td>${x.needed || "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
+          <td>${x.sup ? x.sup.name : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
+          <td>${x.sup && (x.sup.phone || x.sup.contact_person)
+            ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
+            : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
+          <td>${x.expected || "-"}</td>
+          <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span></td>
+        </tr>`).join("")}</tbody>
+    </table></div>
+    <p style="font-size:12px; color:#888; margin:10px 2px 0;">${num(list.length)} material(s) &middot; late ones first, then by needed-by date.</p>`;
 }
 
 async function loadRequests() {
@@ -4145,7 +4183,6 @@ async function loadRequests() {
   // refresh the cache that feeds the tracker below the form.
   if (!box) {
     try { mrCache = await apiCall("/store/requests"); } catch (e) {}
-    renderMyRequests();
     return;
   }
   box.innerHTML = '<div class="empty-note">Loading...</div>';
@@ -4317,27 +4354,6 @@ let recvRequest = null;
 // catalogue to count a delivery against. Rather than leaving the keeper
 // stuck at the modal, add it to the item list here, link the line to
 // it, and reopen ready to receive.
-// Picking who turned up fills their materials and clears the others,
-// so one trader's part delivery can't be recorded against another.
-function pickRecvSupplier() {
-  const sel = document.getElementById("recv-who");
-  if (!sel) return;
-  const id = sel.value;
-  const hit = (suppliers || []).find(s => String(s.id) === String(id));
-  if (hit) {
-    document.getElementById("recv-supplier").value = hit.name;
-    document.getElementById("recv-contact").value = hit.contact_person || "";
-    document.getElementById("recv-phone").value = hit.phone || "";
-  }
-  document.querySelectorAll("#recv-lines tr").forEach(tr => {
-    const box = tr.querySelector(".recv-qty");
-    if (!box) return;
-    const mine = !id || String(tr.dataset.sup) === String(id);
-    box.value = mine ? (box.getAttribute("max") || "") : "";
-    tr.style.opacity = mine ? "" : "0.4";
-  });
-}
-
 async function addLineToCatalogue(lineId) {
   const r = recvRequest;
   const line = r && (r.lines || []).find(l => l.id === lineId);
@@ -4378,16 +4394,6 @@ async function openReceive(id) {
   const dueSups = [...new Map((r.lines || [])
     .filter(l => (l.qty_requested || 0) - (l.qty_received || 0) > 0 && l.supplier)
     .map(l => [l.supplier.id, l.supplier])).values()];
-  const whoBox = document.getElementById("recv-who-box");
-  const whoSel = document.getElementById("recv-who");
-  if (dueSups.length > 1) {
-    whoBox.style.display = "";
-    whoSel.innerHTML = dueSups.map(s => `<option value="${s.id}">${s.name}</option>`).join("") +
-      '<option value="">Everything on this request</option>';
-  } else {
-    whoBox.style.display = "none";
-    whoSel.innerHTML = "";
-  }
   const sup = dueSups.length ? dueSups[0] : (r.supplier || null);
   document.getElementById("recv-supplier").value = sup ? sup.name : "";
   document.getElementById("recv-contact").value = sup ? (sup.contact_person || "") : "";
@@ -4406,7 +4412,7 @@ async function openReceive(id) {
     const item = (storeItems || []).find(i => i.id === l.item_id);
     const clash = item && l.unit && item.unit &&
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
-    return `<tr data-line="${l.id}" data-sup="${l.supplier ? l.supplier.id : ""}">
+    return `<tr data-line="${l.id}">
       <td>${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
         ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
@@ -4422,9 +4428,6 @@ async function openReceive(id) {
     </tr>`;
   }).join("");
   document.getElementById("recv-modal-overlay").style.display = "flex";
-  // A split request opens focused on the first trader, so the keeper
-  // sees exactly their materials rather than the whole order.
-  if (dueSups.length > 1) pickRecvSupplier();
 }
 
 function closeReceive() {
