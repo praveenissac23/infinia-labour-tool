@@ -2481,7 +2481,70 @@ function reportFormatValue(key, v) {
   return v;
 }
 
-// ---- Column dragging -------------------------------------------------
+// ---- Column order, shared by every report -----------------------------
+// Any table can let its columns be dragged into the order that suits the
+// person reading it, and remember that order per report on their own
+// machine. The custom report builder adds click-order on top of this.
+function savedColOrder(view) {
+  try { return JSON.parse(localStorage.getItem("colOrder:" + view) || "[]"); } catch (e) { return []; }
+}
+
+function saveColOrder(view, keys) {
+  try { localStorage.setItem("colOrder:" + view, JSON.stringify(keys)); } catch (e) {}
+}
+
+// Put keys in the reader's saved order; anything new to them keeps its
+// natural position at the front, so a new column never hides.
+function orderColumns(view, keys) {
+  const saved = savedColOrder(view).filter(k => keys.includes(k));
+  const rest = keys.filter(k => !saved.includes(k));
+  return [...rest, ...saved];
+}
+
+// Make a header cell draggable. `onDone(newKeys)` re-renders the table.
+function dragAttrs(view, key) {
+  return `draggable="true" data-key="${key}" data-view="${view}"
+          ondragstart="tblDragStart(event)" ondragover="tblDragOver(event)"
+          ondragleave="this.style.borderLeft=''" ondrop="tblDrop(event)"
+          ondragend="tblDragEnd()" title="Drag to move this column"`;
+}
+
+let tblDragKey = null, tblDragView = null;
+function tblDragStart(e) {
+  tblDragKey = e.currentTarget.dataset.key;
+  tblDragView = e.currentTarget.dataset.view;
+  e.dataTransfer.effectAllowed = "move";
+  try { e.dataTransfer.setData("text/plain", tblDragKey); } catch (err) {}
+}
+function tblDragOver(e) {
+  if (!tblDragKey) return;
+  e.preventDefault();
+  e.currentTarget.style.borderLeft = "3px solid var(--red)";
+}
+function tblDrop(e) {
+  e.preventDefault(); e.stopPropagation();
+  e.currentTarget.style.borderLeft = "";
+  const target = e.currentTarget.dataset.key;
+  if (!tblDragKey || tblDragKey === target) return;
+  const row = e.currentTarget.parentElement;
+  const keys = [...row.querySelectorAll("th[data-key]")].map(th => th.dataset.key);
+  const order = keys.filter(k => k !== tblDragKey);
+  order.splice(order.indexOf(target), 0, tblDragKey);
+  saveColOrder(tblDragView, order);
+  const view = tblDragView;
+  tblDragKey = null; tblDragView = null;
+  if (typeof window["redraw_" + view] === "function") window["redraw_" + view]();
+  else if (typeof loadStore === "function") loadStore();
+}
+window["redraw_home-stock"] = () => loadStoreHome();
+["open", "outstanding", "overdue", "history"].forEach(v => { window["redraw_mr-" + v] = () => loadStore(); });
+
+function tblDragEnd() {
+  tblDragKey = null; tblDragView = null;
+  document.querySelectorAll("th").forEach(th => th.style.borderLeft = "");
+}
+
+// ---- Column dragging (custom report builder) --------------------------
 let colDragKey = null;
 
 function colDragStart(e, key) {
@@ -3317,23 +3380,28 @@ async function loadStoreHome() {
         : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
-    head.innerHTML = [
-      { t: "Code", w: "8%" }, { t: "Material", w: "" }, { t: "Unit", w: "8%" },
-      { t: "Type", w: "11%" },
-      { t: '<span style="color:#2E86C1;">&#9679;</span>&nbsp;In central store', w: "13%" },
-      { t: '<span style="color:#D9930D;">&#9679;</span>&nbsp;Out at sites', w: "12%" },
-      { t: "Total held", w: "11%" }, { t: "", w: "11%" },
-    ].map(h => `<th style="width:${h.w}">${h.t}</th>`).join("");
+    // Columns are described once, so the header and the cells stay in
+    // step however the reader has arranged them.
+    const COLS = {
+      code:     { t: "Code", w: "8%", cell: r => `<td style="color:#999; font-size:12px;">${r.code}</td>` },
+      name:     { t: "Material", w: "", cell: r => `<td style="font-weight:500;">${r.name}</td>` },
+      unit:     { t: "Unit", w: "8%", cell: r => `<td>${r.unit}</td>` },
+      item_type:{ t: "Type", w: "11%", cell: r => `<td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>` },
+      in_store: { t: '<span style="color:#2E86C1;">&#9679;</span>&nbsp;In central store', w: "13%",
+                  cell: r => `<td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>` },
+      at_sites: { t: '<span style="color:#D9930D;">&#9679;</span>&nbsp;Out at sites', w: "12%",
+                  cell: r => `<td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>` },
+      total:    { t: "Total held", w: "11%",
+                  cell: r => `<td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>` },
+      flag:     { t: "", w: "11%",
+                  cell: r => `<td>${r.low ? '<span style="color:#C0392B; font-size:11.5px; font-weight:600;">low</span>' : ""}</td>` },
+    };
+    const homeKeys = orderColumns("home-stock", Object.keys(COLS));
+    head.innerHTML = homeKeys.map(k =>
+      `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
         style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
-      <td style="color:#999; font-size:12px;">${r.code}</td>
-      <td style="font-weight:500;">${r.name}</td>
-      <td>${r.unit}</td>
-      <td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>
-      <td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>
-      <td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>
-      <td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>
-      <td>${r.low ? '<span style="color:#C0392B; font-size:11.5px; font-weight:600;">low</span>' : ""}</td>
+      ${homeKeys.map(k => COLS[k].cell(r)).join("")}
       </tr>
       <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
         <td colspan="8" style="text-align:left; padding:0;">
@@ -5434,8 +5502,10 @@ async function loadStore() {
       document.getElementById("store-table-title").textContent = {
         mr_open: "Requests waiting on the office", mr_overdue: "Requests that are late",
         mr_outstanding: "Materials still to arrive", mr_history: "All past requests"}[view];
-      head.innerHTML = ["Request No","Site","Asked on","Needed by","Urgency","Status","Materials"]
-        .map(h => `<th>${h}</th>`).join("");
+      const MRC = { ref: "Request No", site: "Site", requested_on: "Asked on",
+                    needed_by: "Needed by", urgency: "Urgency", status: "Status", materials: "Materials" };
+      const mrKeys = orderColumns("mr-" + view, Object.keys(MRC));
+      head.innerHTML = mrKeys.map(k => `<th ${dragAttrs("mr-" + view, k)}>${MRC[k]}</th>`).join("");
       body.innerHTML = list.length ? list.map(r => {
         const late = r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status);
         const items = r.lines.map(l => {
@@ -5443,13 +5513,20 @@ async function loadStore() {
           return `${l.item_code || l.description}: ${num(l.qty_requested)} ${l.unit}` +
                  (l.qty_received ? ` (${num(l.qty_received)} arrived, ${num(out)} still to come)` : "");
         }).join("<br>");
+        // Cells follow the reader's column arrangement, and the header
+        // had no eighth column for that stray Print button - the report
+        // is for reading and exporting.
+        const CELL = {
+          ref: `<td><strong>${r.ref}</strong></td>`,
+          site: `<td>${r.site || "-"}</td>`,
+          requested_on: `<td>${r.requested_on}</td>`,
+          needed_by: `<td>${r.needed_by || "-"}</td>`,
+          urgency: `<td>${r.urgency}</td>`,
+          status: `<td>${MR_LABEL[r.status] || r.status}</td>`,
+          materials: `<td style="font-size:12px;">${items}</td>`,
+        };
         return `<tr${late ? ' style="background:#FFE9E6;"' : ''}>
-          <td><strong>${r.ref}</strong></td><td>${r.site || "-"}</td><td>${r.requested_on}</td>
-          <td>${r.needed_by || "-"}</td><td>${r.urgency}</td><td>${r.status}</td>
-          <td style="font-size:12px;">${items}</td>
-          <td>
-            <button class="btn btn-dark" onclick="downloadRequestPdf(${r.id})">Print</button>
-          </td></tr>`;
+          ${mrKeys.map(k => CELL[k]).join("")}</tr>`;
       }).join("") : `<tr><td class="empty-note">Nothing here.</td></tr>`;
       const lateN = list.filter(r => r.needed_by && r.needed_by < isoLocal(new Date()) &&
                                      !["received","closed","rejected"].includes(r.status)).length;
@@ -5516,15 +5593,15 @@ async function loadStore() {
     // into one cell made it unreadable. Hide it from the columns and
     // give the row an expandable breakdown instead.
     const expandable = ["stock", "hired"].includes(view) && "by_site" in d.rows[0];
-    const keys = Object.keys(d.rows[0])
-      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site"));
+    const keys = orderColumns(view, Object.keys(d.rows[0])
+      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site")));
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
                    written_off: "Written off", qty: "Qty", name: "Material", code: "Code" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
-      keys.map(k => `<th>${label(k)}</th>`).join("");
+      keys.map(k => `<th ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
     body.innerHTML = d.rows.map((r, idx) => {
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       // A caret only where there is something to open - material sitting
