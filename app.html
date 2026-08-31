@@ -580,10 +580,11 @@
              One supplier, however many requests. Ten requests going to
              the same trader are one form, not ten prompts. -->
         <div id="order-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
-          <div style="background:white; border-radius:10px; padding:24px 28px; width:620px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+          <div style="background:white; border-radius:12px; padding:28px 32px; width:820px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">Mark as ordered</h2>
             <p style="font-size:12.5px; color:#888; margin:0 0 16px;" id="order-modal-sub"></p>
-            <div class="field-grid" style="margin-bottom:14px;">
+            <div class="field-grid" style="margin-bottom:18px; max-width:none;
+                 grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
               <div class="field"><label>Supplier</label>
                 <input type="text" id="order-supplier" list="supplier-list" placeholder="Who it was ordered from"
                        oninput="onSupplierTyped(this, 'order')"></div>
@@ -602,7 +603,13 @@
                 All ticked by default. Untick the ones going elsewhere and order them separately -
                 the request stays one request, each material remembers its own supplier.
               </p>
-              <div class="grid-wrap" style="max-height:220px;"><table><tbody id="order-lines"></tbody></table></div>
+              <div class="grid-wrap" style="max-height:280px;">
+                <table>
+                  <thead><tr><th style="width:8%;"></th><th>Material</th>
+                    <th style="width:20%;">How many</th><th style="width:26%;">Supplier</th></tr></thead>
+                  <tbody id="order-lines"></tbody>
+                </table>
+              </div>
             </div>
             <p style="font-size:12px; color:#999; margin:0 0 14px;">
               Known suppliers fill in their own contact details as you type the name.
@@ -616,14 +623,15 @@
         </div>
 
         <div id="recv-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center;">
-          <div style="background:white; border-radius:10px; padding:24px 28px; width:760px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+          <div style="background:white; border-radius:12px; padding:28px 32px; width:820px; max-width:94vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">Record what arrived</h2>
             <p style="font-size:12.5px; color:#888; margin:0 0 16px;">
               Delivery against <strong id="recv-ref"></strong>. The quantities are already filled in -
               change any that arrived short, and clear the ones that didn't come at all.
             </p>
             <div class="form-row">
-              <div class="field-grid" style="margin-bottom:0; width:100%;">
+              <div class="field-grid" style="margin-bottom:0; width:100%; max-width:none;
+                     grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));">
                 <div class="field"><label>Supplier</label>
                   <input type="text" id="recv-supplier" list="supplier-list" placeholder="Who delivered it"
                          oninput="onSupplierTyped(this, 'recv')"></div>
@@ -4804,12 +4812,13 @@ function openOrderModal(ids) {
   if (single && (single.lines || []).length > 1) {
     box.style.display = "";
     document.getElementById("order-lines").innerHTML = single.lines.map(l => `
-      <tr>
-        <td style="width:6%;"><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}></td>
+      <tr onclick="const c=this.querySelector('.ol-pick'); if(event.target!==c) c.checked=!c.checked;" style="cursor:pointer;">
+        <td><input type="checkbox" class="ol-pick" value="${l.id}" ${l.supplier ? "" : "checked"}
+                   onclick="event.stopPropagation();"></td>
         <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
-        <td style="width:18%;">${num(l.qty_requested)} ${l.unit}</td>
-        <td style="width:28%; font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
-          ${l.supplier ? `already: ${l.supplier.name}` : "no supplier yet"}</td>
+        <td>${num(l.qty_requested)} ${l.unit}</td>
+        <td style="font-size:11.5px; color:${l.supplier ? "#2E7D32" : "#999"};">
+          ${l.supplier ? `already: ${l.supplier.name}` : "not ordered yet"}</td>
       </tr>`).join("");
   } else {
     box.style.display = "none";
