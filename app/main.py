@@ -2143,7 +2143,20 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
 
     if kind == "hired":
         # Everything currently on hire: what, from whom, where it is, and
-        # anything already lost or damaged that the supplier will charge for.
+        # anything already lost or damaged that the supplier will charge
+        # for. Who it came from and when are read from the deliveries
+        # themselves - the item's own rental fields are only filled in if
+        # someone typed them, so relying on them left the columns empty
+        # even though the store knew the answer.
+        arrivals = (db.query(models.StoreMovement)
+                      .filter(models.StoreMovement.kind == "in")
+                      .order_by(models.StoreMovement.moved_on.asc()).all())
+        first_in, last_supplier = {}, {}
+        for m in arrivals:
+            if m.item_id not in first_in and m.moved_on:
+                first_in[m.item_id] = m.moved_on
+            if (m.supplier or "").strip():
+                last_supplier[m.item_id] = m.supplier.strip()
         rows = []
         for i in items.values():
             if not i.active or i.item_type != "rental": continue
@@ -2151,15 +2164,16 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             lost = _lost_by_item(i.id)
             on_hire = round(sum(at.values()), 2)
             if on_hire <= 0 and not lost: continue
+            since = i.rental_start or first_in.get(i.id)
             rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                          "hired_from": i.rental_supplier or "-",
+                          "hired_from": i.rental_supplier or last_supplier.get(i.id) or "not recorded",
                           "on_hire": on_hire,
                           "in_store": round(at.get("", 0), 2),
-                          "at_sites": ", ".join(f"{loc}: {q:g}"
-                                                 for loc, q in sorted(at.items()) if loc) or "-",
+                          "by_site": {loc: round(q, 2) for loc, q in at.items() if loc},
                           "lost_damaged": round(lost, 2) if lost else 0,
-                          "since": i.rental_start.isoformat() if i.rental_start else "",
-                          "due_back": i.rental_due.isoformat() if i.rental_due else ""})
+                          "since": since.isoformat() if since else "-",
+                          "due_back": i.rental_due.isoformat() if i.rental_due else "no date set",
+                          "days_out": (date.today() - since).days if since else ""})
         return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
 
     if kind == "lost":
@@ -2170,11 +2184,19 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         for m in q.order_by(models.StoreMovement.moved_on.desc()).all():
             i = items.get(m.item_id)
             if not i: continue
+            sup = ""
+            if i.item_type == "rental":
+                sup = i.rental_supplier or (db.query(models.StoreMovement)
+                        .filter(models.StoreMovement.item_id == i.id,
+                                models.StoreMovement.kind == "in",
+                                models.StoreMovement.supplier != "")
+                        .order_by(models.StoreMovement.moved_on.desc())
+                        .with_entities(models.StoreMovement.supplier).scalar() or "")
             rows.append({"date": m.moved_on.isoformat(), "code": i.code, "name": i.name,
                           "type": i.item_type, "qty": round(m.qty, 2), "unit": i.unit,
                           "where": m.from_location or "central store",
-                          "hired_from": i.rental_supplier if i.item_type == "rental" else "-",
-                          "reason": m.notes or "-"})
+                          "hired_from": sup or ("not recorded" if i.item_type == "rental" else "owned"),
+                          "reason": m.notes or "not given"})
         return {"title": "Lost and damaged", "rows": rows}
 
     # default: full stock position
