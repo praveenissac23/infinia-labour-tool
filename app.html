@@ -4317,6 +4317,27 @@ let recvRequest = null;
 // catalogue to count a delivery against. Rather than leaving the keeper
 // stuck at the modal, add it to the item list here, link the line to
 // it, and reopen ready to receive.
+// Picking who turned up fills their materials and clears the others,
+// so one trader's part delivery can't be recorded against another.
+function pickRecvSupplier() {
+  const sel = document.getElementById("recv-who");
+  if (!sel) return;
+  const id = sel.value;
+  const hit = (suppliers || []).find(s => String(s.id) === String(id));
+  if (hit) {
+    document.getElementById("recv-supplier").value = hit.name;
+    document.getElementById("recv-contact").value = hit.contact_person || "";
+    document.getElementById("recv-phone").value = hit.phone || "";
+  }
+  document.querySelectorAll("#recv-lines tr").forEach(tr => {
+    const box = tr.querySelector(".recv-qty");
+    if (!box) return;
+    const mine = !id || String(tr.dataset.sup) === String(id);
+    box.value = mine ? (box.getAttribute("max") || "") : "";
+    tr.style.opacity = mine ? "" : "0.4";
+  });
+}
+
 async function addLineToCatalogue(lineId) {
   const r = recvRequest;
   const line = r && (r.lines || []).find(l => l.id === lineId);
@@ -4385,7 +4406,7 @@ async function openReceive(id) {
     const item = (storeItems || []).find(i => i.id === l.item_id);
     const clash = item && l.unit && item.unit &&
                   l.unit.toLowerCase().trim() !== item.unit.toLowerCase().trim();
-    return `<tr data-line="${l.id}">
+    return `<tr data-line="${l.id}" data-sup="${l.supplier ? l.supplier.id : ""}">
       <td>${name}${l.item_id ? "" : ' <span style="color:#C0392B; font-size:11px;">(not in the item list yet)</span>'}
         ${l.supplier ? `<div style="color:#999; font-size:11px; margin-top:3px;">from ${l.supplier.name}</div>` : ""}
         ${clash ? `<div style="color:#C0392B; font-size:11px; margin-top:3px;">
