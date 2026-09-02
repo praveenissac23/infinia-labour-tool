@@ -1597,6 +1597,12 @@ function natCompare(a, b) {
 async function apiCall(path, options = {}) {
   const headers = options.headers || {};
   if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+  // A JSON body needs to say so, or the server sees a string where it
+  // expects an object and refuses the request. Callers that set their
+  // own type (a file upload, a form post) are left alone.
+  if (typeof options.body === "string" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   const res = await fetch(API + path, { ...options, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -1904,7 +1910,17 @@ function num(v) {
 // "[object Object]" the user saw instead of the real problem.
 function errText(e) {
   const d = e && e.body ? e.body.detail : null;
-  if (!d) return "Unknown error";
+  if (!d) {
+    // "Unknown error" tells nobody anything. The status code at least
+    // says whether it was refused, missing, or the server falling over.
+    const s = e && e.status;
+    if (s === 401 || s === 403) return "You do not have permission for that (403).";
+    if (s === 404) return "That is not available on the server yet - it may need a restart after the last update (404).";
+    if (s === 422) return "The server could not read that request (422).";
+    if (s >= 500) return `Something went wrong on the server (${s}). Check the service log.`;
+    if (s) return `Request failed (${s}).`;
+    return "Could not reach the server - check the connection.";
+  }
   if (typeof d === "string") return d;
   if (Array.isArray(d)) {
     return d.map(item => {
