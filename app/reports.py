@@ -731,7 +731,12 @@ BUILDER_SUMMARY_MEASURES = {
     "medical_days": "Medical Days", "holiday_days": "Holiday Days", "leave_days": "Leave Days",
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
     "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Total Salary (AED)",
-    "deduction": "Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
+    "deduction": "Absence Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
+    # Adjustments entered by hand on the Salary Adjustments screen, split
+    # the way payroll is actually discussed: what was added, what was
+    # taken off, and the two together.
+    "additions": "Additions (AED)", "deductions": "Deductions (AED)",
+    "net_adjustment": "Net Adjustment (AED)",
     "final_salary": "Final Salary (AED)", "adjusted_final_salary": "Adjusted Final Salary (AED)",
     "worker_count": "Headcount",
 }
@@ -915,6 +920,13 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                 return 0  # handled via emp_nos set below, not summed here
             if measure_key == "adjusted_final_salary":
                 return s.adjusted_final_salary()
+            # Bonuses and allowances added; advances and fines taken off.
+            if measure_key == "additions":
+                return sum(a.amount for a in s.adjustments if not a.is_deduction)
+            if measure_key == "deductions":
+                return sum(a.amount for a in s.adjustments if a.is_deduction)
+            if measure_key == "net_adjustment":
+                return sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
             return getattr(s, measure_key, 0) or 0
 
     for item in source_items:

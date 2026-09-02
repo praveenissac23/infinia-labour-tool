@@ -838,6 +838,24 @@
             <h2>Columns to include</h2>
             <div id="report-column-picker-id" class="report-col-picker"></div>
             <hr style="border:none; border-top:1px solid #eee; margin:10px 0;">
+
+            <!-- The money questions people actually ask, each one click.
+                 A choice here ticks the matching columns below, which
+                 stay editable - the radio is a shortcut, not a cage. -->
+            <div class="form-row" style="margin:0 0 10px; gap:16px; flex-wrap:wrap;">
+              <span style="font-size:12px; font-weight:700; letter-spacing:.4px;
+                           text-transform:uppercase; color:#6B7075;">Pay view:</span>
+              <label style="font-size:13px;"><input type="radio" name="payview" value="none" checked
+                onchange="applyPayView('none')"> Attendance only</label>
+              <label style="font-size:13px;"><input type="radio" name="payview" value="absence"
+                onchange="applyPayView('absence')"> Absence deduction</label>
+              <label style="font-size:13px;"><input type="radio" name="payview" value="additions"
+                onchange="applyPayView('additions')"> Additions</label>
+              <label style="font-size:13px;"><input type="radio" name="payview" value="deductions"
+                onchange="applyPayView('deductions')"> Deductions</label>
+              <label style="font-size:13px;"><input type="radio" name="payview" value="full"
+                onchange="applyPayView('full')"> Full pay breakdown</label>
+            </div>
             <div id="report-column-picker-measure" class="report-col-picker"></div>
           </div>
 
@@ -2576,10 +2594,35 @@ let reportSortDir = 1;
 // arranged, which survives ticking and unticking.
 let reportColOrder = [];
 
-function noteColumnPick(box, key) {
+// The pay views, in the order payroll is usually discussed. Each one
+// ticks its columns and unticks the money columns it does not need,
+// leaving attendance columns alone - someone grouping by site still
+// wants their days-present column after switching view.
+const PAY_VIEWS = {
+  none:       [],
+  absence:    ["total_salary_component", "deduction", "final_salary"],
+  additions:  ["additions", "adjusted_final_salary"],
+  deductions: ["deductions", "adjusted_final_salary"],
+  full:       ["total_salary_component", "deduction", "ot_amount", "bh_amount",
+               "final_salary", "additions", "deductions", "adjusted_final_salary"],
+};
+const PAY_KEYS = [...new Set(Object.values(PAY_VIEWS).flat())];
+
+function applyPayView(view) {
+  const want = new Set(PAY_VIEWS[view] || []);
+  document.querySelectorAll('#report-column-picker-measure input[data-measure]').forEach(box => {
+    const k = box.dataset.measure;
+    if (!PAY_KEYS.includes(k)) return;          // attendance columns untouched
+    const on = want.has(k);
+    if (box.checked !== on) { box.checked = on; noteColumnPick(box, k, true); }
+  });
+  loadReports();
+}
+
+function noteColumnPick(box, key, quiet) {
   if (box.checked) { if (!reportColOrder.includes(key)) reportColOrder.push(key); }
   else reportColOrder = reportColOrder.filter(k => k !== key);
-  loadReports();
+  if (!quiet) loadReports();
 }
 
 // Sort selected keys by the user's arrangement; anything not yet placed
