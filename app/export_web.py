@@ -274,7 +274,29 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     ws.merge_cells(start_row=block_start + 1, start_column=7, end_row=block_start + 1, end_column=8)
     ws.cell(row=block_start + 1, column=8).border = box_border
 
-    return max(total_days_end, summary_end, block_start + 2)
+    card_end = max(total_days_end, summary_end, block_start + 2)
+
+    # A card gets signed and handed over, so it needs somewhere to write
+    # who checked it, the worker's signature, and anything said about it.
+    # Printed boxes with room to write in, not data fields.
+    sign_row = card_end + 1
+    for col, label, width in ((1, "VERIFIED BY", 3), (4, "EMPLOYEE SIGNATURE", 2), (6, "REMARKS", 3)):
+        head = ws.cell(row=sign_row, column=col, value=label)
+        head.font = Font(bold=True, size=7.5, color="5B6167")
+        head.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.merge_cells(start_row=sign_row, start_column=col,
+                       end_row=sign_row, end_column=col + width - 1)
+        # A tall empty box underneath, ruled on all sides so it reads as
+        # somewhere to sign rather than a gap in the sheet.
+        for c in range(col, col + width):
+            ws.cell(row=sign_row, column=c).border = box_border
+            ws.cell(row=sign_row + 1, column=c).border = box_border
+        ws.merge_cells(start_row=sign_row + 1, start_column=col,
+                       end_row=sign_row + 1, end_column=col + width - 1)
+    ws.row_dimensions[sign_row].height = 14
+    ws.row_dimensions[sign_row + 1].height = 34
+
+    return sign_row + 1
 
 
 def build_combined_excel(summaries_with_rows):
@@ -490,6 +512,28 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
     ]))
     elements.append(side_by_side)
+
+    # Somewhere to sign. A printed card is checked by someone, signed by
+    # the worker, and often carries a note - without ruled boxes those
+    # end up scrawled across the figures.
+    label = ParagraphStyle("signlabel", parent=styles["Normal"], fontSize=6.5,
+                            textColor=colors.HexColor("#5B6167"), spaceAfter=0, leading=8)
+    sign_tbl = Table(
+        [[Paragraph("VERIFIED BY", label), Paragraph("EMPLOYEE SIGNATURE", label),
+          Paragraph("REMARKS", label)],
+         ["", "", ""]],
+        colWidths=[doc_width * 0.28, doc_width * 0.28, doc_width * 0.44],
+        rowHeights=[10, 34])
+    sign_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (0, 1), 0.5, grid_color),
+        ("BOX", (1, 0), (1, 1), 0.5, grid_color),
+        ("BOX", (2, 0), (2, 1), 0.5, grid_color),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("TOPPADDING", (0, 0), (-1, 0), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(Spacer(1, 8))
+    elements.append(sign_tbl)
     return elements
 
 
