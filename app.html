@@ -6100,25 +6100,27 @@ async function loadErrorCheck() {
         ${w.issues.map(x => {
           const t = TAG[x.severity];
           const detail = x.detail || {};
-          return `<div style="margin-bottom:12px;">
+          return `<div style="padding:12px 0; ${x !== w.issues[0] ? "border-top:1px solid #EAEAEA;" : "padding-top:2px;"}">
             <div style="font-size:13px; font-weight:600; color:${t ? t[1] : "#1F2429"};">
               ${t ? `<span style="font-size:10px; letter-spacing:.4px;">${t[0]} &middot; </span>` : ""}${x.issue}
               ${x.date && x.date !== "-" ? `<span style="color:#999; font-weight:400;"> (${x.date}${x.site && x.site !== "-" ? ", site " + x.site : ""})</span>` : ""}
             </div>
             ${Object.keys(detail).length ? `
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
-                        gap:0 28px; margin-top:6px; max-width:1000px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr));
+                        gap:12px 24px; margin-top:8px; max-width:1000px;">
               ${Object.entries(detail).map(([k, v]) => {
-                // A long value - a list of dates, or a sentence - needs the
-                // full width. Squeezed into a narrow column it wraps into a
-                // tall ragged block and drags the whole row down with it.
-                const long = String(v).length > 24;
+                // Label above value, never beside it. A label and a value on
+                // one line only stay tidy while both are short - the moment
+                // one is long it wraps and the pair falls out of alignment
+                // with its neighbours. Stacked, every block lines up
+                // whatever the wording.
+                const long = String(v).length > 30;
                 return `
-                <div style="${long ? "grid-column:1/-1;" : ""} display:flex; gap:14px;
-                            font-size:12.5px; border-bottom:1px solid #EFEFEF; padding:5px 0;
-                            align-items:baseline;">
-                  <span style="color:#777; flex:0 0 150px;">${k}</span>
-                  <strong style="flex:1; text-align:${long ? "left" : "right"}; font-weight:600;">${v}</strong>
+                <div style="${long ? "grid-column:1/-1;" : ""} min-width:0;">
+                  <div style="font-size:10px; font-weight:700; letter-spacing:.4px;
+                              text-transform:uppercase; color:#8A9099;">${k}</div>
+                  <div style="font-size:13.5px; font-weight:600; color:#1F2429; margin-top:2px;
+                              line-height:1.45;">${v}</div>
                 </div>`;
               }).join("")}
             </div>` : ""}
