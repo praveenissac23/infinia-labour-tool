@@ -1,3 +1,4 @@
 __pycache__/
 *.pyc
 node_modules/
+before_fresh_start_*.json
