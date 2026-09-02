@@ -3336,6 +3336,18 @@ async function selectLiveCardWorker(empNo) {
         <div style="background:#C6EFCE; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${money(adjustedTotal)}</div>
       </div>
     </div>
+
+    <!-- The same three boxes the printed card carries, so what is on
+         screen matches what gets signed. Blank on purpose: these are
+         filled in on paper, after printing. -->
+    <div style="display:flex; gap:12px; margin-top:14px; flex-wrap:wrap;">
+      ${[["Verified by", 1], ["Employee signature", 1], ["Remarks", 2]].map(([label, grow]) => `
+        <div style="flex:${grow} 1 160px;">
+          <div style="font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+                      color:#6B7075; margin-bottom:4px;">${label}</div>
+          <div style="height:44px; border:1px solid #D5D9DE; border-radius:6px; background:white;"></div>
+        </div>`).join("")}
+    </div>
   `;
 }
 const BRAND_BLACK_HEX = "#2E3238";
