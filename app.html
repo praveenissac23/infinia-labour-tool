@@ -6106,11 +6106,21 @@ async function loadErrorCheck() {
               ${x.date && x.date !== "-" ? `<span style="color:#999; font-weight:400;"> (${x.date}${x.site && x.site !== "-" ? ", site " + x.site : ""})</span>` : ""}
             </div>
             ${Object.keys(detail).length ? `
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:2px 20px; margin-top:5px; max-width:900px;">
-              ${Object.entries(detail).map(([k, v]) => `
-                <div style="display:flex; justify-content:space-between; gap:12px; font-size:12.5px;
-                            border-bottom:1px solid #EFEFEF; padding:3px 0;">
-                  <span style="color:#777;">${k}</span><strong>${v}</strong></div>`).join("")}
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+                        gap:0 28px; margin-top:6px; max-width:1000px;">
+              ${Object.entries(detail).map(([k, v]) => {
+                // A long value - a list of dates, or a sentence - needs the
+                // full width. Squeezed into a narrow column it wraps into a
+                // tall ragged block and drags the whole row down with it.
+                const long = String(v).length > 24;
+                return `
+                <div style="${long ? "grid-column:1/-1;" : ""} display:flex; gap:14px;
+                            font-size:12.5px; border-bottom:1px solid #EFEFEF; padding:5px 0;
+                            align-items:baseline;">
+                  <span style="color:#777; flex:0 0 150px;">${k}</span>
+                  <strong style="flex:1; text-align:${long ? "left" : "right"}; font-weight:600;">${v}</strong>
+                </div>`;
+              }).join("")}
             </div>` : ""}
           </div>`;
         }).join("")}
