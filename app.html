@@ -1669,7 +1669,12 @@ function switchScreen(name) {
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "settings") {
     loadBackupList();
-    loadUsers().catch(e => showStatus("settings-status", "err", "Could not load the staff list: " + errText(e)));
+    // The staff list is admin business and its card is hidden for
+    // everyone else, so there is nothing to fetch - asking anyway only
+    // produced a refusal to apologise for.
+    if (CURRENT_ROLE === "admin") {
+      loadUsers().catch(e => showStatus("settings-status", "err", "Could not load the staff list: " + errText(e)));
+    }
   }
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
