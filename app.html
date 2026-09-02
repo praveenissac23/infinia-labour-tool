@@ -815,6 +815,13 @@
             </select>
             <span id="report-cycle-wrap">
               <select id="report-cycle" onchange="loadReports()"></select>
+              <label style="font-size:13px;">Company:</label>
+              <select id="report-company" onchange="loadReports()" style="width:180px;"
+                      title="Report on one company, or both together">
+                <option value="">Both companies</option>
+                <option value="Infinia">Infinia</option>
+                <option value="Prime Infinia">Prime Infinia</option>
+              </select>
             </span>
             <span id="report-range-wrap" style="display:none;">
               <input type="date" id="report-date-from" onchange="loadReports()">
@@ -2817,7 +2824,9 @@ function exportReportTable(fmt) {
   }
   // Export must cover the SAME period as the preview - previously it
   // always exported the whole cycle, silently ignoring a date range.
+  const company = (document.getElementById("report-company") || {}).value || "";
   let url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
+  if (company) url += `&company=${encodeURIComponent(company)}`;
   let periodText = cycleLabel(cycle);
   if (reportMode() === "range") {
     const f = document.getElementById("report-date-from").value;
@@ -2896,7 +2905,9 @@ async function loadReports() {
     showStatus("report-status", "ok", `Showing ${dateFrom} to ${dateTo} - every day in this range, across whichever cycles it covers.`);
   }
 
+  const company = (document.getElementById("report-company") || {}).value || "";
   let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
+  if (company) url += `&company=${encodeURIComponent(company)}`;
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
 

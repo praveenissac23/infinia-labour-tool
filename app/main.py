@@ -998,7 +998,7 @@ def _report_source_rows(db: Session, month_year: str, date_from: str, date_to: s
 
 @app.get("/reports/custom")
 def custom_report(month_year: str, data_source: str = "daily", dimensions: str = "", measures: str = "",
-                   date_from: str = None, date_to: str = None,
+                   date_from: str = None, date_to: str = None, company: str = "",
                    db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
     The Report Builder's own aggregation engine (reports.build_custom_report,
@@ -1020,8 +1020,15 @@ def custom_report(month_year: str, data_source: str = "daily", dimensions: str =
     meas = [m for m in measures.split(",") if m]
     daily_rows, summaries2, filters = _report_source_rows(db, month_year, date_from, date_to)
     source = data_source if data_source in ("daily", "summary") else "daily"
-    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
-    return {"title": result.title, "note": result.note,
+    company_by_emp = {e.emp_no: (e.company or "Infinia") for e in db.query(models.Employee).all()}
+    # Asking for one company narrows the report to that company's
+    # workers, so Infinia and Prime Infinia can be reported separately.
+    if company:
+        keep = {n for n, c in company_by_emp.items() if c == company}
+        daily_rows = [r for r in daily_rows if r.emp_no in keep]
+        summaries2 = [s for s in summaries2 if s.emp_no in keep]
+    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2, company_by_emp)
+    return {"title": result.title + (f" - {company}" if company else ""), "note": result.note,
             "columns": [{"key": k, "label": label} for k, label in result.columns],
             "rows": result.rows, "totals": result.totals}
 
@@ -1030,13 +1037,19 @@ def custom_report(month_year: str, data_source: str = "daily", dimensions: str =
 def export_custom_report(month_year: str, token: str, data_source: str = "daily",
                           dimensions: str = "", measures: str = "",
                           date_from: str = None, date_to: str = None, format: str = "excel",
-                          db: Session = Depends(get_db)):
+                          company: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
     daily_rows, summaries2, filters = _report_source_rows(db, month_year, date_from, date_to)
     source = data_source if data_source in ("daily", "summary") else "daily"
-    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2)
+    # The download must match what was on screen, company filter and all.
+    company_by_emp = {e.emp_no: (e.company or "Infinia") for e in db.query(models.Employee).all()}
+    if company:
+        keep = {n for n, c in company_by_emp.items() if c == company}
+        daily_rows = [r for r in daily_rows if r.emp_no in keep]
+        summaries2 = [s for s in summaries2 if s.emp_no in keep]
+    result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2, company_by_emp)
     result_dict = {"columns": [{"key": k, "label": label} for k, label in result.columns],
                     "rows": result.rows, "totals": result.totals}
     if not result.columns:

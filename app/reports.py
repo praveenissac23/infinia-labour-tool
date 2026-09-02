@@ -693,6 +693,7 @@ SITE_AGGREGATE_EXTRA_FIELDS = {
 
 BUILDER_DAILY_DIMENSIONS = {
     "emp_no": "Employee No", "name": "Employee Name", "trade": "Trade",
+    "company": "Company",
     "site": "Site", "engineer": "Engineer", "date": "Date", "month": "Month",
 }
 
@@ -722,7 +723,7 @@ BUILDER_DAILY_MEASURES = {
 
 BUILDER_SUMMARY_DIMENSIONS = {
     "emp_no": "Employee No", "name": "Employee Name", "trade": "Trade", "month_year": "Month",
-    "site": "Site",
+    "company": "Company", "site": "Site",
 }
 
 BUILDER_SUMMARY_MEASURES = {
@@ -736,7 +737,19 @@ BUILDER_SUMMARY_MEASURES = {
 }
 
 
+# Which company employs each worker, by employee number. Filled in by
+# build_custom_report before grouping starts, because neither a daily
+# row nor a summary carries the company itself.
+COMPANY_BY_EMP = {}
+
+
+def _company_of(emp_no):
+    return COMPANY_BY_EMP.get(emp_no) or "Infinia"
+
+
 def _builder_daily_dim_value(r, dim_key):
+    if dim_key == "company":
+        return _company_of(r.emp_no)
     if dim_key == "emp_no":
         return r.emp_no
     if dim_key == "name":
@@ -847,7 +860,8 @@ def _builder_summary_dim_value(s, dim_key, site_lookup=None):
     return ""
 
 
-def build_custom_report(data_source, dimensions, measures, filters, daily_rows, summaries):
+def build_custom_report(data_source, dimensions, measures, filters, daily_rows, summaries,
+                        company_by_emp=None):
     """
     The Report Builder's aggregation engine - groups by whichever
     dimensions were picked, computes whichever measures were picked, for
@@ -859,6 +873,9 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
     if not dimensions and not measures:
         return ReportResult("Custom Report", [("note", "Note")],
                              [{"note": "Pick at least one dimension or measure to see results."}])
+
+    global COMPANY_BY_EMP
+    COMPANY_BY_EMP = company_by_emp or {}
 
     groups = {}   # dimension-value tuple -> {"emp_nos": set(), measure_key: running_total, ...}
     order = []    # preserves first-seen order of group keys
