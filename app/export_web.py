@@ -26,6 +26,16 @@ import payroll_cycle as pcyc
 BRAND_RED = "C0392B"
 BRAND_BLACK = "2E3238"
 GREEN_FILL = "C6EFCE"
+
+# A colour per attendance status. Pale enough to print legibly and to
+# read black text on: green means the day was worked, red means it cost
+# the worker money, the rest are calm - sick and medical are not faults
+# and a rest day is normal.
+STATUS_FILLS = {
+    "Present": "E3F4E4", "Absent": "FBE0DE", "Sick": "FFF2D6",
+    "Medical": "FDE8D7", "Sunday": "E4EDFA", "Friday": "E4EDFA",
+    "Holiday": "E9E4F7", "Leave": "EFEFEF",
+}
 GREY_FILL = "D8D8D8"
 
 DAILY_HEADERS = ["Date", "A.M", "P.M", "Site", "Engineer", "OT", "BH", "Comments"]
@@ -201,7 +211,10 @@ def _write_worker_card(ws, summary, rows, border, start_row):
             c = ws.cell(row=r, column=i, value=v)
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
-            c.fill = PatternFill("solid", fgColor=stripe)
+            # A.M and P.M carry their status colour; the rest of the row
+            # keeps the plain stripe so the colour draws the eye.
+            fill = STATUS_FILLS.get(v) if i in (2, 3) else None
+            c.fill = PatternFill("solid", fgColor=fill or stripe)
             c.font = Font(size=11.5)
             if i == 4:  # Site column - values like "704" look numeric but
                 c.number_format = "@"  # aren't; "@" stops Excel's green
@@ -225,14 +238,15 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     # than one continuous, cluttered table.
     for label, attr in _total_days_fields(summary):
         ws.row_dimensions[r].height = 13
+        status_fill = STATUS_FILLS.get(label)
         val = getattr(summary, attr, 0) or 0
         lbl = ws.cell(row=r, column=1, value=label)
         lbl.font = Font(bold=True, size=11)
-        lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
+        lbl.fill = PatternFill("solid", fgColor=status_fill or GREY_FILL)
         lbl.border = box_border
         lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
         vcell = ws.cell(row=r, column=2, value=round(val, 2) if val else 0)
-        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.fill = PatternFill("solid", fgColor=status_fill or GREY_FILL)
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="center", vertical="center")
         vcell.font = Font(size=11)
@@ -434,6 +448,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     by_date = _rows_by_date(rows)
     cycle_dates = _cycle_dates(summary.month_year)
     data = [[Paragraph(h, head_style) for h in headers]]
+    status_cells = []
     for d in cycle_dates:
         row = by_date.get(d)
         label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
@@ -442,10 +457,19 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         else:
             vals = [label, "", "", "", "", "", "", ""]
         data.append([Paragraph(v or "", cell_style) for v in vals])
+        # Remember which status each half-day carried, so the A.M and
+        # P.M cells can be tinted once the table is built.
+        status_cells.append((len(data) - 1, vals[1], vals[2]))
 
     col_widths = [doc_width * w for w in (0.10, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.34)]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     row_bg_cmds = [("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F7F7F7")) for i in range(2, len(data), 2)]
+    # Status colours go on after the stripes so they win.
+    for ri, am, pm in status_cells:
+        if STATUS_FILLS.get(am):
+            row_bg_cmds.append(("BACKGROUND", (1, ri), (1, ri), colors.HexColor("#" + STATUS_FILLS[am])))
+        if STATUS_FILLS.get(pm):
+            row_bg_cmds.append(("BACKGROUND", (2, ri), (2, ri), colors.HexColor("#" + STATUS_FILLS[pm])))
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -470,11 +494,16 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(Spacer(1, 6))
 
     value_right_style = ParagraphStyle("ValueRight", parent=styles["Normal"], fontSize=10.5, alignment=TA_RIGHT)
+    day_fields = _total_days_fields(summary)
     days_data = [[Paragraph(label, label_style), Paragraph(f"{(getattr(summary, attr, 0) or 0):g}", value_right_style)]
-                 for label, attr in _total_days_fields(summary)]
+                 for label, attr in day_fields]
     days_tbl = Table(days_data, colWidths=[doc_width * 0.16, doc_width * 0.09])
     days_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
+        # Each day-status row takes its own colour, matching the grid
+        # above and the app on screen.
+        *[("BACKGROUND", (0, i), (-1, i), colors.HexColor("#" + STATUS_FILLS[label]))
+          for i, (label, _) in enumerate(day_fields) if label in STATUS_FILLS],
         ("GRID", (0, 0), (-1, -1), 0.5, grid_color),
         ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),

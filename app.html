@@ -1541,6 +1541,21 @@ const API = window.location.hostname.endsWith("onrender.com")
 // still calculate and print correctly - the figure simply stops
 // growing.
 const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Sunday", "Holiday", "Leave"];
+
+// A colour per status, pale enough to read black text on and to survive
+// a black-and-white printer as distinct shades. Green means the day was
+// worked, red means it cost the worker money, and the rest are calm -
+// sick and medical are not faults, and a rest day is normal.
+const STATUS_COLOURS = {
+  Present: "#E3F4E4", Absent:  "#FBE0DE", Sick:    "#FFF2D6",
+  Medical: "#FDE8D7", Sunday:  "#E4EDFA", Holiday: "#E9E4F7",
+  Leave:   "#EFEFEF", Friday:  "#E4EDFA",
+};
+
+function statusCell(v) {
+  const c = STATUS_COLOURS[v];
+  return c ? ` style="background:${c};"` : "";
+}
 let TOKEN = null;
 let CURRENT_ROLE = null;
 let employees = [];
@@ -2144,7 +2159,15 @@ function selectHtml(empNo, field, values, current) {
   const opts = ['<option value="">-</option>'].concat(
     values.map(v => `<option value="${v}" ${v === current ? "selected" : ""}>${v}</option>`)
   );
-  return `<select onchange="onField('${empNo}','${field}',this.value)">${opts.join("")}</select>`;
+  // A.M and P.M carry the status colour; site and engineer stay plain.
+  const tint = (field === "am" || field === "pm") && STATUS_COLOURS[current]
+    ? ` style="background:${STATUS_COLOURS[current]};"` : "";
+  return `<select${tint} onchange="onField('${empNo}','${field}',this.value); tintStatusSelect(this)">${opts.join("")}</select>`;
+}
+
+// Recolour the moment a status is picked, without redrawing the grid.
+function tintStatusSelect(sel) {
+  sel.style.background = STATUS_COLOURS[sel.value] || "";
 }
 
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
@@ -3294,7 +3317,7 @@ async function selectLiveCardWorker(empNo) {
       const r = days[iso];
       const label = cur.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
       gridRows += `<tr>
-        <td>${label}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
+        <td>${label}</td><td${statusCell(r && r.am)}>${r ? r.am || "" : ""}</td><td${statusCell(r && r.pm)}>${r ? r.pm || "" : ""}</td>
         <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
         <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
       </tr>`;
@@ -3304,7 +3327,7 @@ async function selectLiveCardWorker(empNo) {
     for (let day = 1; day <= 31; day++) {
       const r = days[String(day)];
       gridRows += `<tr>
-        <td>${day}</td><td>${r ? r.am || "" : ""}</td><td>${r ? r.pm || "" : ""}</td>
+        <td>${day}</td><td${statusCell(r && r.am)}>${r ? r.am || "" : ""}</td><td${statusCell(r && r.pm)}>${r ? r.pm || "" : ""}</td>
         <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
         <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
       </tr>`;
@@ -3319,7 +3342,13 @@ async function selectLiveCardWorker(empNo) {
     ...(s.friday_days ? [["Friday", s.friday_days]] : []),
     ["Sunday", s.sunday_days], ["Holiday", s.holiday_days],
     ["Leave", s.leave_days], ["OT", s.ot_hours], ["BH", s.bh_hours],
-  ].map(([label, val]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${num(val)}</span></div>`).join("");
+  ].map(([label, val]) => {
+    // The totals panel carries the same colours as the grid above it,
+    // so a glance down the card reads consistently. OT and BH are hours
+    // rather than day statuses, so they stay plain.
+    const bg = STATUS_COLOURS[label] ? `background:${STATUS_COLOURS[label]};` : "";
+    return `<div class="side-row" style="display:flex; justify-content:space-between; ${bg}"><strong>${label}</strong><span>${num(val)}</span></div>`;
+  }).join("");
 
   const summaryRows = [
     ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
