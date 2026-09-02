@@ -62,6 +62,7 @@ def seed_on_startup():
 
     db = SessionLocal()
     try:
+        _retire_staff_role(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
         db.close()
@@ -94,14 +95,38 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
+# Three roles, which is what the company actually has. "staff" was a
+# catch-all that gave nearly everything away by default; anyone who
+# needs an unusual mix gets it through their own permissions instead.
 ROLE_DEFAULTS = {
     "admin": ALL_SCREENS,
-    "staff": [s for s in ALL_SCREENS if s != "activity"],
     # The office approves and orders; a site raises requests and does
     # not approve its own.
     "office": ["dashboard", "store", "requests", "approvals", "reports"],
     "site": ["dashboard", "attendance", "store", "requests"],
 }
+ROLES = list(ROLE_DEFAULTS)
+
+
+def _retire_staff_role(db):
+    """Move anyone left on the old catch-all role onto 'office'.
+
+    Their access must not change in the process: a staff account with no
+    permissions of its own was relying on the old default, so that list
+    is written into their permissions first. Someone who already had
+    explicit permissions - the store keeper, for instance - keeps
+    exactly those.
+    """
+    old_default = [s for s in ALL_SCREENS if s != "activity"]
+    moved = 0
+    for u in db.query(models.User).filter(models.User.role == "staff").all():
+        if not (u.permissions or "").strip():
+            u.permissions = ",".join(old_default)
+        u.role = "office"
+        moved += 1
+    if moved:
+        db.commit()
+        print(f"Moved {moved} account(s) off the retired 'staff' role, access unchanged")
 
 
 def effective_permissions(user: models.User) -> list:
@@ -110,7 +135,10 @@ def effective_permissions(user: models.User) -> list:
     raw = (user.permissions or "").strip()
     if raw:
         return [s for s in raw.split(",") if s in ALL_SCREENS]
-    return list(ROLE_DEFAULTS.get(user.role, ROLE_DEFAULTS["staff"]))
+    # An unrecognised role - an old account, or one from a future version
+    # - gets the narrowest access rather than the widest. Failing closed
+    # is the only safe direction here.
+    return list(ROLE_DEFAULTS.get(user.role, ROLE_DEFAULTS["site"]))
 
 
 def require_screen(screen: str):
@@ -206,10 +234,10 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
     # admin - otherwise any staff login could promote itself (or a new
     # account) to admin, which would make every admin-only restriction
     # meaningless, including the Activity Monitor.
-    # staff / office / site are all non-privileged; only an admin can
-    # mint another admin, otherwise any login could promote itself.
-    if payload.role not in ("staff", "office", "site", "admin"):
-        raise HTTPException(status_code=400, detail="Role must be staff, office, site or admin.")
+    # office and site are both non-privileged; only an admin can mint
+    # another admin, otherwise any login could promote itself.
+    if payload.role not in ROLES:
+        raise HTTPException(status_code=400, detail="Role must be office, site or admin.")
     if payload.role == "admin" and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can create an admin account.")
     existing = db.query(models.User).filter(models.User.username == payload.username).first()
