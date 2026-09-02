@@ -102,8 +102,12 @@ ROLE_DEFAULTS = {
     "admin": ALL_SCREENS,
     # The office approves and orders; a site raises requests and does
     # not approve its own.
-    "office": ["dashboard", "store", "requests", "approvals", "reports"],
-    "site": ["dashboard", "attendance", "store", "requests"],
+    # Settings is on every role: it is where anyone changes their own
+    # password and takes a backup. What sits inside it - staff logins,
+    # restoring, clearing - is guarded on its own, not by hiding the
+    # screen.
+    "office": ["dashboard", "store", "requests", "approvals", "reports", "settings"],
+    "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
 
@@ -221,7 +225,7 @@ def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depend
 # ---------------------------------------------------------------------
 @app.get("/users", response_model=list[schemas.UserOut])
 def list_users(db: Session = Depends(get_db),
-                user: models.User = Depends(require_screen("settings"))):
+                user: models.User = Depends(auth.require_admin)):
     """Who can log in, and what each may open, is administration - not
     something a store keeper or site engineer needs to read."""
     return db.query(models.User).order_by(models.User.username).all()
@@ -229,7 +233,7 @@ def list_users(db: Session = Depends(get_db),
 
 @app.post("/users", response_model=schemas.UserOut)
 def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.get_current_user)):
+                 user: models.User = Depends(auth.require_admin)):
     # Staff can add fellow staff, but only an admin can mint another
     # admin - otherwise any staff login could promote itself (or a new
     # account) to admin, which would make every admin-only restriction
@@ -261,7 +265,7 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
 
 @app.delete("/users/{user_id}")
 def deactivate_user(user_id: int, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.get_current_user)):
+                     user: models.User = Depends(auth.require_admin)):
     target = db.query(models.User).filter(models.User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -280,7 +284,7 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db),
 @app.post("/users/{user_id}/reset-password")
 def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
                          db: Session = Depends(get_db),
-                         user: models.User = Depends(auth.get_current_user)):
+                         user: models.User = Depends(auth.require_admin)):
     """
     Set another user's password without knowing their current one - for
     when someone forgets theirs. Anyone can reset a staff account (staff

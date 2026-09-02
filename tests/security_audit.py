@@ -71,6 +71,27 @@ ck('site cannot delete a request', c.delete(f"/store/requests/{mr['id']}", heade
 ck('office can approve',
    c.post(f"/store/requests/{mr['id']}/status", json={'status': 'approved'}, headers=OF).status_code == 200)
 
+# Settings is open to everyone, but only for your own password and a
+# backup. Everything else on that screen is administration.
+db4 = database.SessionLocal()
+db4.add(models.User(username='office2', hashed_password=auth.hash_password('p'), full_name='O2', role='office'))
+db4.commit(); db4.close()
+O2 = H('office2')
+ck('a non-admin can reach Settings',
+   'settings' in main.effective_permissions(
+       database.SessionLocal().query(models.User).filter(models.User.username == 'office2').first()))
+ck('a non-admin can change their own password',
+   c.post('/auth/change-password', json={'current_password': 'p', 'new_password': 'newpass123'}, headers=O2).status_code == 200)
+ck('a non-admin can take a backup', c.post('/backup/create', headers=O2).status_code == 200)
+ck('a non-admin cannot restore', c.post('/backup/1/restore', headers=O2).status_code == 403)
+ck('a non-admin cannot delete a backup', c.delete('/backup/1', headers=O2).status_code == 403)
+ck('a non-admin cannot create a login',
+   c.post('/users', json={'username': 'zz', 'password': 'pw123456', 'full_name': 'Z', 'role': 'site'}, headers=O2).status_code == 403)
+ck('a non-admin cannot reset another password',
+   c.post('/users/1/reset-password', json={'new_password': 'hacked123'}, headers=O2).status_code == 403)
+ck('a non-admin cannot clear the data',
+   c.post('/backup/fresh-start', json={'confirm': 'CLEAR EVERYTHING'}, headers=O2).status_code == 403)
+
 # Nothing without a login
 for p in ['/store/requests', '/store/items', '/notifications', '/store/suppliers', '/employees', '/users']:
     ck(f'no login refused: {p}', c.get(p).status_code in (401, 403), str(c.get(p).status_code))

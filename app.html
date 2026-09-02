@@ -1785,10 +1785,13 @@ async function initApp() {
   // Staff Logins is available to everyone now - staff can add fellow
   // staff - but only an admin gets the "Admin" role option in the
   // dropdown, matching the same rule the backend enforces.
-  document.getElementById("user-mgmt-card").style.display = "block";
-  // Start Fresh empties the company's records, so only an admin sees it.
+  // Everyone reaches Settings, to change their own password and take a
+  // backup. Staff logins and Start Fresh are administration, and the
+  // server refuses them for anyone else regardless of what is shown.
+  const isAdmin = CURRENT_ROLE === "admin";
+  document.getElementById("user-mgmt-card").style.display = isAdmin ? "block" : "none";
   const freshCard = document.getElementById("fresh-start-card");
-  if (freshCard) freshCard.style.display = CURRENT_ROLE === "admin" ? "block" : "none";
+  if (freshCard) freshCard.style.display = isAdmin ? "block" : "none";
   if (CURRENT_ROLE !== "admin") {
     const roleSel = document.getElementById("new-user-role");
     const adminOpt = roleSel.querySelector('option[value="admin"]');
@@ -6480,8 +6483,13 @@ async function loadBackupList() {
       const when = new Date(b.created_at).toLocaleString(undefined, {
         year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
       });
-      const restoreBtn = `<button class="btn btn-gray" onclick="restoreBackupById(${b.id})">Restore</button>`;
-      const deleteBtn = `<button class="btn btn-danger" onclick="deleteBackupById(${b.id}, '${when.replace(/'/g, "")}')">Delete</button>`;
+      // Restoring replaces the whole database and deleting throws away a
+      // safety net - both are refused by the server for anyone but an
+      // admin, so they are not offered either. A button that always
+      // fails is worse than no button.
+      const admin = CURRENT_ROLE === "admin";
+      const restoreBtn = admin ? `<button class="btn btn-gray" onclick="restoreBackupById(${b.id})">Restore</button>` : "";
+      const deleteBtn = admin ? `<button class="btn btn-danger" onclick="deleteBackupById(${b.id}, '${when.replace(/'/g, "")}')">Delete</button>` : "";
       return `<tr>
         <td>${when}</td><td>${b.trigger}</td><td>${b.created_by}</td>
         <td><button class="btn btn-dark" onclick="downloadBackupById(${b.id})">Download</button> ${restoreBtn} ${deleteBtn}</td>
