@@ -12,7 +12,7 @@ import re
 import io
 import json
 
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
@@ -1600,6 +1600,60 @@ def maybe_create_auto_backup(db: Session):
         for b in old_auto:
             db.delete(b)
         db.commit()
+
+
+@app.post("/admin/fresh-start")
+def fresh_start(payload: dict = Body(...), db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.require_admin)):
+    """Clear the test data before going live, keeping the master lists.
+
+    Kept: workers with their company, sites, engineers, the material
+    list and every staff login. Cleared: attendance, payroll summaries,
+    salary adjustments, stock movements, requests, suppliers and the
+    activity log.
+
+    Admin only, and the exact words must be typed - this empties the
+    company's records and there is no undo beyond the backup it takes
+    first. That backup is kept on the server so it can be restored from
+    the list below, whatever else happens.
+    """
+    if (payload or {}).get("confirm") != "CLEAR EVERYTHING":
+        raise HTTPException(status_code=400,
+            detail='Type CLEAR EVERYTHING exactly to confirm.')
+
+    # A copy of everything first, kept as a normal backup so it can be
+    # restored from Settings if today's figures turn out to be needed.
+    db.add(models.Backup(created_by=user.id, trigger="before-fresh-start",
+                         data=json.dumps(build_backup_data(db), default=str)))
+    db.commit()
+
+    cleared = {}
+    # Child-first, so nothing is left pointing at a deleted row.
+    for label, model in (("request lines", models.MaterialRequestLine),
+                         ("material requests", models.MaterialRequest),
+                         ("stock movements", models.StoreMovement),
+                         ("suppliers", models.Supplier),
+                         ("salary adjustments", models.SalaryAdjustment),
+                         ("payroll summaries", models.EmployeeSummary),
+                         ("attendance days", models.DailyRow)):
+        cleared[label] = db.query(model).delete(synchronize_session=False)
+    db.commit()
+    # The activity log goes last, so this clearance is itself recorded.
+    db.query(models.AuditLog).delete(synchronize_session=False)
+    db.commit()
+    log_action(db, user.id, "fresh_start",
+               ", ".join(f"{n} {k}" for k, n in cleared.items() if n))
+
+    kept = {
+        "workers": db.query(models.Employee).count(),
+        "sites": db.query(models.Site).count(),
+        "engineers": db.query(models.Engineer).count(),
+        "materials": db.query(models.StoreItem).count(),
+        "staff logins": db.query(models.User).count(),
+    }
+    return {"ok": True, "cleared": cleared, "kept": kept,
+            "detail": "Cleared. A backup of what was removed is at the top of the "
+                      "backup list, and request numbering starts again at MR-0001."}
 
 
 @app.post("/backup/create")

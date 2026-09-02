@@ -1469,6 +1469,23 @@
               <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
             </div>
           </div>
+          <div class="card" id="fresh-start-card" style="display:none; border:1px solid #E7CEC9;">
+            <h2 style="color:#C0392B;">Start Fresh</h2>
+            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
+              Clears everything entered while testing and leaves the master lists ready for
+              real data. <strong>Kept:</strong> workers with their company, sites, engineers,
+              the material list and all staff logins.
+              <strong>Cleared:</strong> attendance, payroll summaries, salary adjustments,
+              stock movements, material requests and suppliers.
+              A backup is taken first and appears at the top of the backup list, so today's
+              figures can be restored if they turn out to be needed.
+            </p>
+            <div class="form-row">
+              <input type="text" id="fresh-confirm" placeholder="Type CLEAR EVERYTHING" style="width:230px;">
+              <button class="btn btn-danger" onclick="runFreshStart()">Clear test data</button>
+            </div>
+          </div>
+
           <div class="card" id="user-mgmt-card" style="display:none;">
             <h2>Staff Logins</h2>
             <div class="form-row">
@@ -1764,6 +1781,9 @@ async function initApp() {
   // staff - but only an admin gets the "Admin" role option in the
   // dropdown, matching the same rule the backend enforces.
   document.getElementById("user-mgmt-card").style.display = "block";
+  // Start Fresh empties the company's records, so only an admin sees it.
+  const freshCard = document.getElementById("fresh-start-card");
+  if (freshCard) freshCard.style.display = CURRENT_ROLE === "admin" ? "block" : "none";
   if (CURRENT_ROLE !== "admin") {
     const roleSel = document.getElementById("new-user-role");
     const adminOpt = roleSel.querySelector('option[value="admin"]');
@@ -6289,6 +6309,33 @@ async function applyScreenPermissions() {
   } catch (e) { /* leave the menu as-is if this fails */ }
 }
 let MY_SCREENS = [];
+
+// Emptying the company's records is an admin decision, taken once,
+// with the words typed out - not something to be clicked past.
+async function runFreshStart() {
+  const box = document.getElementById("fresh-confirm");
+  const phrase = (box.value || "").trim();
+  if (phrase !== "CLEAR EVERYTHING") {
+    showStatus("settings-status", "warn", 'Type CLEAR EVERYTHING exactly, then press the button.');
+    return;
+  }
+  if (!confirm("This clears all attendance, payroll, stock and requests.\n\n" +
+               "Workers, sites, engineers, the material list and staff logins are kept.\n" +
+               "A backup is taken first.\n\nGo ahead?")) return;
+  try {
+    const r = await apiCall("/admin/fresh-start", {
+      method: "POST", body: JSON.stringify({ confirm: phrase }),
+    });
+    const gone = Object.entries(r.cleared).filter(([, n]) => n)
+      .map(([k, n]) => `${num(n)} ${k}`).join(", ") || "nothing to clear";
+    const kept = Object.entries(r.kept).map(([k, n]) => `${num(n)} ${k}`).join(", ");
+    showStatus("settings-status", "ok", `Cleared ${gone}. Kept ${kept}. ${r.detail}`);
+    box.value = "";
+    await loadBackupList();
+  } catch (e) {
+    showStatus("settings-status", "err", errText(e));
+  }
+}
 
 async function loadUsers() {
   const users = await apiCall("/users");
