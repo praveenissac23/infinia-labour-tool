@@ -1602,7 +1602,12 @@ def maybe_create_auto_backup(db: Session):
         db.commit()
 
 
-@app.post("/admin/fresh-start")
+# Deliberately under /backup/ rather than a new /admin/ prefix: nginx
+# only forwards the API paths listed in its rule, and anything else
+# falls through to the frontend, where a POST comes back 405. Reusing a
+# prefix that already works means no server config change to deploy
+# this - and it belongs with the backups anyway, since it takes one.
+@app.post("/backup/fresh-start")
 def fresh_start(payload: dict = Body(...), db: Session = Depends(get_db),
                  user: models.User = Depends(auth.require_admin)):
     """Clear the test data before going live, keeping the master lists.

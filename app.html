@@ -6339,7 +6339,7 @@ async function runFreshStart() {
                "Workers, sites, engineers, the material list and staff logins are kept.\n" +
                "A backup is taken first.\n\nGo ahead?")) return;
   try {
-    const r = await apiCall("/admin/fresh-start", {
+    const r = await apiCall("/backup/fresh-start", {
       method: "POST", body: JSON.stringify({ confirm: phrase }),
     });
     const gone = Object.entries(r.cleared).filter(([, n]) => n)
