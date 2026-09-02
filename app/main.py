@@ -342,15 +342,56 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
 
 
 @app.delete("/employees/{emp_no}")
-def deactivate_employee(emp_no: str, db: Session = Depends(get_db),
-                         user: models.User = Depends(auth.get_current_user)):
+def remove_employee(emp_no: str, purge: bool = False, db: Session = Depends(get_db),
+                     user: models.User = Depends(require_screen("masterdata"))):
+    """Remove a worker, in the way that suits what has happened to them.
+
+    Someone who has worked has attendance and salary behind them, and
+    deleting the record would tear a hole in months of payroll. That
+    person is marked inactive instead: they leave the daily list and
+    every report still adds up.
+
+    A record created by mistake - a typo, a duplicate, someone who never
+    started - has nothing behind it, and is genuinely deleted.
+
+    purge=true forces a real delete along with that person's history,
+    for a duplicate that was already marked and paid against. It says
+    what it is destroying before it does it.
+    """
     emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    emp.active = False
+
+    rows = db.query(models.DailyRow).filter(models.DailyRow.emp_no == emp_no).count()
+    sums = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == emp_no).count()
+    sum_ids = [s.id for s in db.query(models.EmployeeSummary)
+                                .filter(models.EmployeeSummary.emp_no == emp_no).all()]
+    adjs = (db.query(models.SalaryAdjustment)
+              .filter(models.SalaryAdjustment.summary_id.in_(sum_ids)).count() if sum_ids else 0)
+    history = rows + sums + adjs
+
+    if history and not purge:
+        emp.active = False
+        db.commit()
+        log_action(db, user.id, "deactivate_employee", f"{emp_no} ({rows} attendance day(s))")
+        return {"ok": True, "action": "deactivated", "attendance_days": rows,
+                "adjustments": adjs,
+                "detail": f"{emp.name} has {rows} day(s) of attendance behind them, so the record is "
+                          f"kept and marked inactive. They no longer appear in the daily list."}
+
+    if purge and history:
+        db.query(models.DailyRow).filter(models.DailyRow.emp_no == emp_no).delete(synchronize_session=False)
+        if sum_ids:
+            (db.query(models.SalaryAdjustment)
+               .filter(models.SalaryAdjustment.summary_id.in_(sum_ids))
+               .delete(synchronize_session=False))
+        (db.query(models.EmployeeSummary)
+           .filter(models.EmployeeSummary.emp_no == emp_no).delete(synchronize_session=False))
+    db.delete(emp)
     db.commit()
-    log_action(db, user.id, "deactivate_employee", emp_no)
-    return {"ok": True}
+    log_action(db, user.id, "delete_employee", f"{emp_no} ({history} record(s) removed)")
+    return {"ok": True, "action": "deleted", "removed_history": history,
+            "detail": f"{emp.name} removed." + (f" {history} record(s) went with them." if history else "")}
 
 
 EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Total Salary", "Basic Salary"]

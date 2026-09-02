@@ -2279,7 +2279,8 @@ function renderMasterDataLists() {
     <tr>
       <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
-      <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button></td>
+      <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
+          <button class="btn btn-danger" onclick="removeEmployee('${e.emp_no}', '${(e.name || "").replace(/'/g, "\\'")}')">Remove</button></td>
     </tr>
   `).join("");
 
@@ -2304,6 +2305,26 @@ function renderMasterDataLists() {
         chip(e.name, `editEngineer(${e.id}, '${esc(e.name)}')`, `removeEngineer(${e.id}, '${esc(e.name)}')`)
       ).join("")}</div><div class="md-chip-count">${engineers.length} engineer${engineers.length === 1 ? "" : "s"}</div>`
     : '<div class="empty-note">No engineers yet.</div>';
+}
+
+// Removing a worker means two different things. Someone who has worked
+// carries months of attendance and pay; deleting that record would tear
+// a hole in the payroll, so they are marked inactive and drop out of
+// the daily list. A record created by mistake has nothing behind it and
+// is genuinely deleted. The server decides which, and says which
+// happened.
+async function removeEmployee(empNo, name) {
+  if (!confirm(`Remove ${name} (${empNo}) from the worker list?\n\n` +
+               `If they have attendance behind them the record is kept and marked ` +
+               `inactive, so past payroll still adds up. If nothing is recorded ` +
+               `against them, the record is deleted.`)) return;
+  try {
+    const r = await apiCall(`/employees/${encodeURIComponent(empNo)}`, { method: "DELETE" });
+    showStatus("md-status", r.action === "deleted" ? "ok" : "warn", r.detail || "Done.");
+    employees = await apiCall("/employees?active_only=true");
+    employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
+    renderMasterDataLists();
+  } catch (e) { showStatus("md-status", "err", errText(e)); }
 }
 
 function editEmployee(empNo) {
