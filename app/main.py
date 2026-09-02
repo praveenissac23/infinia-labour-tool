@@ -2810,6 +2810,17 @@ def set_permissions(user_id: int, payload: schemas.PermissionsIn,
 # ---------------------------------------------------------------------
 # NOTIFICATIONS
 # ---------------------------------------------------------------------
+# Plain words for a status, used when telling someone a request is late.
+MR_STATUS_WORDS = {
+    "pending": "waiting on the office",
+    "approved": "approved, not yet ordered",
+    "ordered": "on order",
+    "arranging": "on order",
+    "lpo_sent": "on order",
+    "partial": "partly delivered",
+}
+
+
 @app.get("/notifications")
 def get_notifications(db: Session = Depends(get_db),
                        user: models.User = Depends(auth.get_current_user)):
