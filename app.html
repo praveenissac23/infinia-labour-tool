@@ -1451,7 +1451,7 @@
             <p style="font-size:12px; color:#888; margin-top:0;" id="errcheck-note"></p>
             <div class="grid-wrap" style="max-height: 60vh;">
               <table>
-                <thead><tr><th style="width:3%;"></th><th style="width:9%;">Emp No</th><th style="width:11%;">Date</th><th style="width:8%;">Site</th><th>Issue</th></tr></thead>
+                <thead><tr><th style="width:3%;"></th><th style="width:11%;">Emp No</th><th style="width:24%; text-align:left;">Name</th><th style="width:12%;"></th><th style="text-align:left;">What is wrong</th></tr></thead>
                 <tbody id="errcheck-body"></tbody>
               </table>
             </div>
@@ -6060,41 +6060,61 @@ async function loadErrorCheck() {
   }
   // Rows open to show the figures behind the issue - a pay warning is
   // no use without the numbers that caused it.
-  // One heading per worker, their issues beneath it - so a man with a
-  // pay breach, a contradiction and missing days is dealt with once
-  // rather than found three times in three places.
-  let lastEmp = null;
-  body.innerHTML = result.rows.map((r, i) => {
-    const legal = r.severity === "legal";
-    let header = "";
-    if (r.emp_no !== lastEmp) {
-      lastEmp = r.emp_no;
-      const n = r.issue_count || 1;
-      header = `<tr style="background:#F1EFEA;">
-        <td colspan="5" style="padding:8px 14px; font-weight:700; font-size:12.5px;">
-          ${r.emp_no} &middot; ${r.name}
-          <span style="font-weight:400; color:#777;"> &mdash; ${n} issue${n === 1 ? "" : "s"}</span>
-        </td></tr>`;
+  // One row per worker. The row says who and how many; opening it shows
+  // every issue with the figures behind each. Seventy workers with two
+  // problems each is seventy lines to scan, not a hundred and forty.
+  const byWorker = [];
+  const seen = {};
+  result.rows.forEach(r => {
+    if (!(r.emp_no in seen)) {
+      seen[r.emp_no] = byWorker.length;
+      byWorker.push({ emp_no: r.emp_no, name: r.name, issues: [] });
     }
-    const detail = r.detail || {};
-    const hasDetail = Object.keys(detail).length > 0;
-    return header + `
-    <tr onclick="toggleErrorRow(${i})" style="cursor:${hasDetail ? "pointer" : "default"};${legal ? " background:#FFF3F2;" : ""}">
-      <td>${hasDetail ? '<span style="color:#B26A00;">&#9656;</span>' : ""}</td>
-      <td style="color:#999;">${r.emp_no}</td><td>${r.date}</td><td>${r.site || "-"}</td>
-      <td style="${legal ? "color:#C0392B; font-weight:600;" : ""}">
-        ${legal ? '<span style="font-size:10px; letter-spacing:.4px;">UAE PAY RULE &middot; </span>' : ""}${
-          r.severity === "contradiction" ? '<span style="font-size:10px; letter-spacing:.4px; color:#B26A00;">CHECK THIS &middot; </span>' : ""}${r.issue}</td>
+    byWorker[seen[r.emp_no]].issues.push(r);
+  });
+
+  const TAG = {
+    legal:         ['UAE PAY RULE', '#C0392B', '#FDECEA'],
+    contradiction: ['CHECK THIS',   '#B26A00', '#FFF6E5'],
+  };
+
+  body.innerHTML = byWorker.map((w, i) => {
+    const worst = w.issues.find(x => x.severity === "legal")
+               || w.issues.find(x => x.severity === "contradiction");
+    const tag = worst && TAG[worst.severity];
+    const n = w.issues.length;
+    // The kinds of problem, so the closed row says what is wrong
+    // without spelling out every figure.
+    const kinds = [...new Set(w.issues.map(x => x.kind || "Issue"))].join(" \u00b7 ");
+    return `
+    <tr onclick="toggleErrorRow(${i})" style="cursor:pointer;${tag ? ` background:${tag[2]};` : ""}">
+      <td style="width:3%;"><span style="color:#B26A00;">&#9656;</span></td>
+      <td style="width:11%;">${w.emp_no}</td>
+      <td style="width:24%; text-align:left; font-weight:500;">${w.name}</td>
+      <td style="width:12%;">${tag ? `<span style="color:${tag[1]}; font-weight:700; font-size:10px; letter-spacing:.4px;">${tag[0]}</span>` : ""}</td>
+      <td style="text-align:left; color:#555;">${kinds}
+        <span style="color:#999;">&nbsp;&mdash; ${n} issue${n === 1 ? "" : "s"}</span></td>
     </tr>
-    ${hasDetail ? `<tr id="ec-${i}" style="display:none; background:#FAFAFA;">
-      <td colspan="5" style="padding:12px 18px;">
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:6px 20px; max-width:900px;">
-          ${Object.entries(detail).map(([k, v]) => `
-            <div style="display:flex; justify-content:space-between; gap:12px; font-size:12.5px;
-                        border-bottom:1px solid #EFEFEF; padding:3px 0;">
-              <span style="color:#777;">${k}</span><strong>${v}</strong></div>`).join("")}
-        </div>
-      </td></tr>` : ""}`;
+    <tr id="ec-${i}" style="display:none; background:#FAFAFA;">
+      <td colspan="5" style="padding:12px 20px; text-align:left;">
+        ${w.issues.map(x => {
+          const t = TAG[x.severity];
+          const detail = x.detail || {};
+          return `<div style="margin-bottom:12px;">
+            <div style="font-size:13px; font-weight:600; color:${t ? t[1] : "#1F2429"};">
+              ${t ? `<span style="font-size:10px; letter-spacing:.4px;">${t[0]} &middot; </span>` : ""}${x.issue}
+              ${x.date && x.date !== "-" ? `<span style="color:#999; font-weight:400;"> (${x.date}${x.site && x.site !== "-" ? ", site " + x.site : ""})</span>` : ""}
+            </div>
+            ${Object.keys(detail).length ? `
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:2px 20px; margin-top:5px; max-width:900px;">
+              ${Object.entries(detail).map(([k, v]) => `
+                <div style="display:flex; justify-content:space-between; gap:12px; font-size:12.5px;
+                            border-bottom:1px solid #EFEFEF; padding:3px 0;">
+                  <span style="color:#777;">${k}</span><strong>${v}</strong></div>`).join("")}
+            </div>` : ""}
+          </div>`;
+        }).join("")}
+      </td></tr>`;
   }).join("");
 }
 

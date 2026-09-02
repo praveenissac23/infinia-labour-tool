@@ -1190,6 +1190,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         if not entered:
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"No attendance entered at all for {month_year}.",
+                        "kind": "Nothing entered",
                         "detail": {"Cycle": f"{cycle_start} to {cycle_end}",
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": "0", "Trade": emp.trade or "-"}})
@@ -1198,6 +1199,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             more = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"{len(missing)} day(s) missing: {preview}{more}",
+                        "kind": f"{len(missing)} day(s) missing",
                         "detail": {"Trade": emp.trade or "-",
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": str(len(entered)),
@@ -1222,6 +1224,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             out.append({
                 "emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site or "-",
                 "issue": f"{' and '.join(hours)} hour(s) recorded on a day marked {marked}.",
+                "kind": f"Hours on an {marked.lower()} day" if marked == "Absent" else f"Hours on a {marked.lower()} day",
                 "severity": "contradiction",
                 "detail": {
                     "Date": str(r.full_date),
@@ -1238,6 +1241,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         if r.ot and r.ot > 12:
             out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
                         "issue": f"OT of {r.ot} hours in one day looks unusually high.",
+                        "kind": "High OT",
                         "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
                                    "Site": r.site or "-", "Engineer": r.engineer or "-",
                                    "OT hours": f"{r.ot:g}", "BH hours": f"{r.bh or 0:g}",
@@ -1245,6 +1249,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         if r.bh and r.bh > 8:
             out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
                         "issue": f"BH of {r.bh} hours in one day looks unusually high.",
+                        "kind": "High BH",
                         "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
                                    "Site": r.site or "-", "Engineer": r.engineer or "-",
                                    "OT hours": f"{r.ot or 0:g}", "BH hours": f"{r.bh:g}",
@@ -1270,6 +1275,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                 "issue": f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
                          f"AED {total:,.0f} total - below the 40% minimum "
                          f"(AED {floor:,.0f}).",
+                "kind": "Pay below 40%",
                 "severity": "legal",
                 "detail": {
                     "Total salary": f"AED {total:,.2f}",
