@@ -187,7 +187,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token = auth.create_access_token({"sub": user.username})
     log_action(db, user.id, "login")
     maybe_create_auto_backup(db)
-    return schemas.TokenResponse(access_token=token, role=user.role, full_name=user.full_name)
+    return schemas.TokenResponse(access_token=token, username=user.username,
+                                  role=user.role, full_name=user.full_name)
 
 
 @app.get("/auth/me")
@@ -264,21 +265,44 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
 
 
 @app.delete("/users/{user_id}")
-def deactivate_user(user_id: int, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.require_admin)):
+def delete_user(user_id: int, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.require_admin)):
+    """Remove a login for good. Admin only.
+
+    Two things this must not allow: deleting your own account, which
+    would sign you out of a system you administer, and removing the last
+    admin, which would leave nobody able to restore a backup or add a
+    login again.
+
+    Backups, activity entries and adjustments record who made them. The
+    login goes, but that history stays and simply no longer names a
+    live account - deleting a person should not quietly rewrite what
+    was done last month.
+    """
     target = db.query(models.User).filter(models.User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id:
-        raise HTTPException(status_code=400, detail="You can't deactivate your own account.")
-    # Same reasoning as create_user - staff must not be able to lock the
-    # real admin out of the system by deactivating the admin account.
-    if target.role == "admin" and user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only an admin can deactivate an admin account.")
-    target.active = False
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    if target.role == "admin":
+        others = (db.query(models.User)
+                    .filter(models.User.role == "admin", models.User.id != target.id).count())
+        if others == 0:
+            raise HTTPException(status_code=400,
+                detail="This is the only admin account. Make someone else an admin first.")
+
+    username = target.username
+    # Detach the history before removing the row, or the database
+    # refuses the delete for the sake of those references.
+    for model, column in ((models.Backup, "created_by"),
+                          (models.AuditLog, "user_id"),
+                          (models.SalaryAdjustment, "created_by")):
+        db.query(model).filter(getattr(model, column) == target.id) \
+                       .update({column: None}, synchronize_session=False)
+    db.delete(target)
     db.commit()
-    log_action(db, user.id, "deactivate_user", target.username)
-    return {"ok": True}
+    log_action(db, user.id, "delete_user", username)
+    return {"ok": True, "detail": f"{username} removed."}
 
 
 @app.post("/users/{user_id}/reset-password")

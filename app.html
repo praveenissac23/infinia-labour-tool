@@ -1574,6 +1574,9 @@ function statusCell(v) {
 }
 let TOKEN = null;
 let CURRENT_ROLE = null;
+// Who is signed in, so the screen never offers to delete their own
+// login out from under them.
+let CURRENT_USERNAME = null;
 let employees = [];
 let sites = [];
 let engineers = [];
@@ -1625,6 +1628,7 @@ async function doLogin() {
     const data = await res.json();
     TOKEN = data.access_token;
     CURRENT_ROLE = data.role;
+    CURRENT_USERNAME = data.username || "";
     sessionStorage.setItem("infinia_token", TOKEN);
     document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
     document.getElementById("login-screen").style.display = "none";
@@ -6369,13 +6373,13 @@ async function loadUsers() {
     // Staff can manage fellow staff but not an admin account - same rule
     // the backend enforces, hidden here so it isn't offered then rejected.
     const canManage = CURRENT_ROLE === "admin" || u.role !== "admin";
-    let action = "Inactive";
-    if (u.active) {
-      action = canManage
-        ? `<button class="btn btn-dark" onclick="resetUserPassword(${u.id}, '${u.username}')">Reset Password</button>
-           <button class="btn btn-gray" onclick="removeUser(${u.id})">Deactivate</button>`
-        : "";
-    }
+    // Deleting your own login would sign you out of the system you
+    // administer, so it is not offered.
+    const action = canManage
+      ? `<button class="btn btn-dark" onclick="resetUserPassword(${u.id}, '${u.username}')">Reset Password</button>
+         ${u.username === CURRENT_USERNAME ? ""
+           : `<button class="btn btn-danger" onclick="removeUser(${u.id}, '${u.username}')">Delete</button>`}`
+      : "";
     const perms = u.role === "admin"
       ? '<span style="color:#888;">Everything</span>'
       : `<button class="btn btn-gray" onclick="openPerms(${u.id}, '${u.username}')">Choose screens</button>`;
@@ -6451,17 +6455,16 @@ async function createUser() {
   }
 }
 
-async function removeUser(userId) {
+async function removeUser(userId, username) {
+  if (!confirm(`Delete the login "${username}"?\n\n` +
+               `They will not be able to sign in again. Backups and activity ` +
+               `they recorded are kept.`)) return;
   try {
-    await apiCall(`/users/${userId}`, { method: "DELETE" });
-    showStatus("settings-status", "ok", "Login deactivated.");
-    // Only someone who can open Settings may read the staff list. This
-  // used to run for everyone and, once the endpoint was locked down,
-  // its failure stopped the clock, the calendar and everything else
-  // that starts after it.
-  try { if (MY_SCREENS.includes("settings")) await loadUsers(); } catch (e) { console.error("staff list:", e); }
+    const r = await apiCall(`/users/${userId}`, { method: "DELETE" });
+    showStatus("settings-status", "ok", r.detail || "Login deleted.");
+    await loadUsers();
   } catch (e) {
-    showStatus("settings-status", "err", "Failed: " + errText(e));
+    showStatus("settings-status", "err", errText(e));
   }
 }
 
@@ -6604,6 +6607,7 @@ async function restoreBackupById(id) {
     TOKEN = saved;
     apiCall("/auth/me").then(me => {
       CURRENT_ROLE = me.role;
+      CURRENT_USERNAME = me.username || "";
       document.getElementById("who-label").textContent = `${me.full_name} (${me.role})`;
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "block";
