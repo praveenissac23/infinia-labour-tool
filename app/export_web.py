@@ -32,7 +32,8 @@ DAILY_HEADERS = ["Date", "A.M", "P.M", "Site", "Engineer", "OT", "BH", "Comments
 
 TOTAL_DAYS_FIELDS = [
     ("Present", "present_days"), ("Absent", "absent_days"), ("Sick", "sick_days"),
-    ("Medical", "medical_days"), ("Friday", "friday_days"), ("Holiday", "holiday_days"),
+    ("Medical", "medical_days"), ("Friday", "friday_days"), ("Sunday", "sunday_days"),
+    ("Holiday", "holiday_days"),
     ("Leave", "leave_days"), ("OT", "ot_hours"), ("BH", "bh_hours"),
 ]
 
@@ -589,7 +590,8 @@ REPORT_COLUMNS_META = {
     "emp_no": ("Emp No", "text"), "emp_name": ("Name", "text"), "trade": ("Trade", "text"),
     "sites": ("Site", "text"), "total_salary": ("Total Salary", "money"),
     "present_days": ("Present", "num"), "absent_days": ("Absent", "num"), "sick_days": ("Sick", "num"),
-    "medical_days": ("Medical", "num"), "friday_days": ("Friday", "num"), "holiday_days": ("Holiday", "num"),
+    "medical_days": ("Medical", "num"), "friday_days": ("Friday", "num"),
+    "sunday_days": ("Sunday", "num"), "holiday_days": ("Holiday", "num"),
     "leave_days": ("Leave", "num"), "ot_hours": ("OT Hours", "num"), "bh_hours": ("BH Hours", "num"),
     "basic_pay_input": ("Basic Pay", "money"), "deduction": ("Absence/Leave Deduction", "money"),
     "ot_amount": ("OT Amount", "money"), "bh_amount": ("BH Amount", "money"),

@@ -131,6 +131,9 @@ class EmployeeSummary(Base):
     sick_days = Column(Float, default=0.0)
     medical_days = Column(Float, default=0.0)
     friday_days = Column(Float, default=0.0)
+    # A paid rest day, treated exactly as Friday is: it counts toward
+    # the salary component and is never deducted.
+    sunday_days = Column(Float, default=0.0)
     holiday_days = Column(Float, default=0.0)
     leave_days = Column(Float, default=0.0)
     ot_hours = Column(Float, default=0.0)

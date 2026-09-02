@@ -171,6 +171,7 @@ class EmployeeSummaryOut(BaseModel):
     sick_days: float
     medical_days: float
     friday_days: float
+    sunday_days: float = 0.0
     holiday_days: float
     leave_days: float
     ot_hours: float

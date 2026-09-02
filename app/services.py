@@ -102,6 +102,7 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
     summary.sick_days = computed["sick_days"]
     summary.medical_days = computed["medical_days"]
     summary.friday_days = computed["friday_days"]
+    summary.sunday_days = computed["sunday_days"]
     summary.holiday_days = computed["holiday_days"]
     summary.leave_days = computed["leave_days"]
     summary.ot_hours = computed["ot_hours"]

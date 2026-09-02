@@ -606,6 +606,7 @@ SUMMARY_EXTRA_FIELDS = {
     "sick_days": ("Sick Days", lambda s: s.sick_days),
     "medical_days": ("Medical Days", lambda s: s.medical_days),
     "friday_days": ("Friday Days", lambda s: s.friday_days),
+    "sunday_days": ("Sunday Days", lambda s: s.sunday_days),
     "holiday_days": ("Holiday Days", lambda s: s.holiday_days),
     "leave_days": ("Leave Days", lambda s: s.leave_days),
     "ot_hours": ("OT Hours", lambda s: s.ot_hours),
@@ -699,7 +700,8 @@ BUILDER_DAILY_DIMENSIONS = {
 
 BUILDER_DAILY_MEASURES = {
     "days_present": "Days Present", "days_absent": "Days Absent", "days_sick": "Days Sick",
-    "days_medical": "Days Medical", "days_holiday": "Days Holiday", "days_leave": "Days Leave",
+    "days_medical": "Days Medical", "days_friday": "Days Friday", "days_sunday": "Days Sunday",
+    "days_holiday": "Days Holiday", "days_leave": "Days Leave",
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
     "worker_count": "Headcount", "record_count": "Man-Days",
     # Final Salary Cost needs each row's OWN worker's monthly summary to
@@ -728,7 +730,8 @@ BUILDER_SUMMARY_DIMENSIONS = {
 
 BUILDER_SUMMARY_MEASURES = {
     "present_days": "Present Days", "absent_days": "Absent Days", "sick_days": "Sick Days",
-    "medical_days": "Medical Days", "holiday_days": "Holiday Days", "leave_days": "Leave Days",
+    "medical_days": "Medical Days", "friday_days": "Friday Days", "sunday_days": "Sunday Days",
+    "holiday_days": "Holiday Days", "leave_days": "Leave Days",
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
     "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Total Salary (AED)",
     "deduction": "Absence Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
@@ -818,8 +821,9 @@ def _builder_daily_measure_contribution(r, measure_key, matched_summary=None):
             return 0
         paid_days_total = (getattr(matched_summary, "present_days", 0) or 0)
         paid_days_total += (matched_summary.sick_days + matched_summary.medical_days
-                             + matched_summary.friday_days + matched_summary.holiday_days)
-        paid = {"present", "sick", "medical", "friday", "holiday"}
+                             + matched_summary.friday_days + matched_summary.sunday_days
+                             + matched_summary.holiday_days)
+        paid = {"present", "sick", "medical", "friday", "sunday", "holiday"}
 
         if paid_days_total:
             half = (0.5 if am in paid else 0) + (0.5 if pm in paid else 0)
@@ -839,7 +843,8 @@ def _builder_daily_measure_contribution(r, measure_key, matched_summary=None):
         half = (0.5 if am in unpaid else 0) + (0.5 if pm in unpaid else 0)
         return (half / unpaid_days_total) * matched_summary.adjusted_final_salary()
     status_map = {"days_present": "present", "days_absent": "absent", "days_sick": "sick",
-                  "days_medical": "medical", "days_holiday": "holiday", "days_leave": "leave"}
+                  "days_medical": "medical", "days_friday": "friday", "days_sunday": "sunday",
+                  "days_holiday": "holiday", "days_leave": "leave"}
     target = status_map.get(measure_key)
     if target is None:
         return 0

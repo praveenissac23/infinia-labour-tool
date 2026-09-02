@@ -9,10 +9,10 @@ INDEPENDENTLY RECALCULATED here from the raw daily attendance grid, using
 the exact same formulas as the source card:
 
     Present = (COUNTIF(AM,"Present") + COUNTIF(PM,"Present")) / 2   [same for
-               Absent/Sick/Medical/Friday/Holiday/Leave]
+               Absent/Sick/Medical/Friday/Sunday/Holiday/Leave]
     OT hours   = SUM(OT column)
     BH hours   = SUM(BH column)
-    Total Salary (pay component) = (Present+Sick+Medical+Friday+Holiday) * (Salary/30)
+    Total Salary (pay component) = (Present+Sick+Medical+Friday+Sunday+Holiday) * (Salary/30)
     Deduction                    = (Salary/30) * Absent
     OT Amount                    = (Salary/30/8) * OT hours
     BH Amount                    = (Salary/30/8) * BH hours
@@ -51,7 +51,7 @@ CELL_ALLOWANCES = "F47"
 CELL_OTHER_DEDUCTION = "F48"
 CELL_CACHED_FINAL_SALARY = "H44"
 
-STATUS_KEYS = ["Present", "Absent", "Sick", "Medical", "Friday", "Holiday", "Leave"]
+STATUS_KEYS = ["Present", "Absent", "Sick", "Medical", "Friday", "Sunday", "Holiday", "Leave"]
 
 _CELL_REF_RE_DE = re.compile(r'(\$?)([A-Z]{1,3})(\$?)(\d+)')
 
@@ -169,6 +169,7 @@ class EmployeeSummary:
     sick_days: float = 0
     medical_days: float = 0
     friday_days: float = 0
+    sunday_days: float = 0
     holiday_days: float = 0
     leave_days: float = 0
     ot_hours: float = 0
@@ -342,7 +343,7 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
 
     total_salary_component = (
         status_counts["Present"] + status_counts["Sick"] + status_counts["Medical"]
-        + status_counts["Friday"] + status_counts["Holiday"]
+        + status_counts["Friday"] + status_counts["Sunday"] + status_counts["Holiday"]
     ) * daily_rate
     deduction = daily_rate * status_counts["Absent"]
     ot_amount = (daily_rate / 8.0) * ot_total if daily_rate else 0.0
@@ -373,7 +374,8 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
     return {
         "present_days": status_counts["Present"], "absent_days": status_counts["Absent"],
         "sick_days": status_counts["Sick"], "medical_days": status_counts["Medical"],
-        "friday_days": status_counts["Friday"], "holiday_days": status_counts["Holiday"],
+        "friday_days": status_counts["Friday"], "sunday_days": status_counts["Sunday"],
+        "holiday_days": status_counts["Holiday"],
         "leave_days": status_counts["Leave"], "ot_hours": ot_total, "bh_hours": bh_total,
         "basic_pay_input": basic_pay_input, "total_salary_component": total_salary_component,
         "deduction": deduction, "ot_amount": ot_amount, "bh_amount": bh_amount,
