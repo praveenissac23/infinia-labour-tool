@@ -6058,9 +6058,38 @@ async function loadErrorCheck() {
     body.innerHTML = `<tr><td colspan="5" class="empty-note">No issues found for this cycle.</td></tr>`;
     return;
   }
-  body.innerHTML = result.rows.map(r => `
-    <tr><td>${r.emp_no}</td><td>${r.name}</td><td>${r.date}</td><td>${r.site || "-"}</td><td>${r.issue}</td></tr>
-  `).join("");
+  // Rows open to show the figures behind the issue - a pay warning is
+  // no use without the numbers that caused it.
+  body.innerHTML = result.rows.map((r, i) => {
+    const legal = r.severity === "legal";
+    const detail = r.detail || {};
+    const hasDetail = Object.keys(detail).length > 0;
+    return `
+    <tr onclick="toggleErrorRow(${i})" style="cursor:${hasDetail ? "pointer" : "default"};${legal ? " background:#FFF3F2;" : ""}">
+      <td>${hasDetail ? '<span style="color:#B26A00;">&#9656;</span> ' : ""}${r.emp_no}</td>
+      <td>${r.name}</td><td>${r.date}</td><td>${r.site || "-"}</td>
+      <td style="${legal ? "color:#C0392B; font-weight:600;" : ""}">
+        ${legal ? '<span style="font-size:10px; letter-spacing:.4px;">UAE PAY RULE &middot; </span>' : ""}${r.issue}</td>
+    </tr>
+    ${hasDetail ? `<tr id="ec-${i}" style="display:none; background:#FAFAFA;">
+      <td colspan="5" style="padding:12px 18px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:6px 20px; max-width:900px;">
+          ${Object.entries(detail).map(([k, v]) => `
+            <div style="display:flex; justify-content:space-between; gap:12px; font-size:12.5px;
+                        border-bottom:1px solid #EFEFEF; padding:3px 0;">
+              <span style="color:#777;">${k}</span><strong>${v}</strong></div>`).join("")}
+        </div>
+      </td></tr>` : ""}`;
+  }).join("");
+}
+
+function toggleErrorRow(i) {
+  const row = document.getElementById("ec-" + i);
+  if (!row) return;
+  const open = row.style.display === "none";
+  row.style.display = open ? "" : "none";
+  const caret = row.previousElementSibling.querySelector("span");
+  if (caret) caret.innerHTML = open ? "&#9662;" : "&#9656;";
 }
 
 // ============ EXPORTS ============

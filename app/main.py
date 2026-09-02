@@ -1189,25 +1189,78 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         missing = [d for d in all_dates if d not in entered]
         if not entered:
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
-                        "issue": f"No attendance entered at all for {month_year}."})
+                        "issue": f"No attendance entered at all for {month_year}.",
+                        "detail": {"Cycle": f"{cycle_start} to {cycle_end}",
+                                   "Days in cycle": str(len(all_dates)),
+                                   "Days entered": "0", "Trade": emp.trade or "-"}})
         elif missing:
             preview = ", ".join(d.strftime("%d %b") for d in missing[:5])
             more = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
-                        "issue": f"{len(missing)} day(s) missing: {preview}{more}"})
+                        "issue": f"{len(missing)} day(s) missing: {preview}{more}",
+                        "detail": {"Trade": emp.trade or "-",
+                                   "Days in cycle": str(len(all_dates)),
+                                   "Days entered": str(len(entered)),
+                                   "Every missing day":
+                                       ", ".join(d.strftime("%d %b") for d in missing)}})
 
     for r in rows:
         if r.ot and r.ot > 12:
             out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
-                        "issue": f"OT of {r.ot} hours in one day looks unusually high."})
+                        "issue": f"OT of {r.ot} hours in one day looks unusually high.",
+                        "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
+                                   "Site": r.site or "-", "Engineer": r.engineer or "-",
+                                   "OT hours": f"{r.ot:g}", "BH hours": f"{r.bh or 0:g}",
+                                   "Comment": r.comments or "none"}})
         if r.bh and r.bh > 8:
             out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
-                        "issue": f"BH of {r.bh} hours in one day looks unusually high."})
+                        "issue": f"BH of {r.bh} hours in one day looks unusually high.",
+                        "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
+                                   "Site": r.site or "-", "Engineer": r.engineer or "-",
+                                   "OT hours": f"{r.ot or 0:g}", "BH hours": f"{r.bh:g}",
+                                   "Comment": r.comments or "none"}})
 
-    out.sort(key=lambda x: (x["emp_no"], str(x["date"])))
+    # UAE rule: a worker must take home at least 40% of their total
+    # salary. Deductions and absences can eat past that without anyone
+    # noticing until the pay run, so it is flagged here while there is
+    # still time to look at it.
+    summaries = (db.query(models.EmployeeSummary)
+                   .filter(models.EmployeeSummary.month_year == month_year).all())
+    for s in summaries:
+        total = s.total_salary or 0
+        if total <= 0:
+            continue
+        take_home = s.adjusted_final_salary()
+        floor = total * 0.40
+        if take_home < floor:
+            pct = (take_home / total * 100) if total else 0
+            adj = sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
+            out.append({
+                "emp_no": s.emp_no, "name": s.emp_name, "date": "-", "site": "-",
+                "issue": f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
+                         f"AED {total:,.0f} total - below the 40% minimum "
+                         f"(AED {floor:,.0f}).",
+                "severity": "legal",
+                "detail": {
+                    "Total salary": f"AED {total:,.2f}",
+                    "Minimum payable (40%)": f"AED {floor:,.2f}",
+                    "Final salary now": f"AED {take_home:,.2f}",
+                    "Short by": f"AED {floor - take_home:,.2f}",
+                    "Days absent": f"{s.absent_days:g}",
+                    "Absence deduction": f"AED {s.deduction:,.2f}",
+                    "Adjustments": (f"AED {adj:,.2f}" if s.adjustments else "none"),
+                    "What the adjustments were":
+                        ", ".join(f"{a.description} {'-' if a.is_deduction else '+'}{a.amount:,.0f}"
+                                  for a in s.adjustments) or "-",
+                },
+            })
+
+    out.sort(key=lambda x: (0 if x.get("severity") == "legal" else 1,
+                            x["emp_no"], str(x["date"])))
     return {
         "title": "Check for Errors",
-        "note": "Missing days in this cycle for active workers, plus unusually high single-day OT/BH values.",
+        "note": "Workers paid below the 40% minimum, missing days in this cycle, "
+                "and unusually high single-day OT/BH values.",
         "rows": out,
     }
 
