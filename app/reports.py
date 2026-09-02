@@ -735,7 +735,8 @@ BUILDER_SUMMARY_MEASURES = {
     # Adjustments entered by hand on the Salary Adjustments screen, split
     # the way payroll is actually discussed: what was added, what was
     # taken off, and the two together.
-    "additions": "Additions (AED)", "deductions": "Deductions (AED)",
+    "additions": "Additions (AED)", "addition_reasons": "What the additions were for",
+    "deductions": "Deductions (AED)", "deduction_reasons": "What the deductions were for",
     "net_adjustment": "Net Adjustment (AED)",
     "final_salary": "Final Salary (AED)", "adjusted_final_salary": "Adjusted Final Salary (AED)",
     "worker_count": "Headcount",
@@ -746,6 +747,10 @@ BUILDER_SUMMARY_MEASURES = {
 # build_custom_report before grouping starts, because neither a daily
 # row nor a summary carries the company itself.
 COMPANY_BY_EMP = {}
+
+# Measures that read as words rather than numbers, so they are gathered
+# and joined instead of added up, and never totalled at the foot.
+TEXT_MEASURES = {"addition_reasons", "deduction_reasons"}
 
 
 def _company_of(emp_no):
@@ -842,6 +847,8 @@ def _builder_daily_measure_contribution(r, measure_key, matched_summary=None):
 
 
 def _builder_summary_dim_value(s, dim_key, site_lookup=None):
+    if dim_key == "company":
+        return _company_of(s.emp_no)
     if dim_key == "emp_no":
         return s.emp_no
     if dim_key == "name":
@@ -927,6 +934,13 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                 return sum(a.amount for a in s.adjustments if a.is_deduction)
             if measure_key == "net_adjustment":
                 return sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
+            # Why the money moved, in the words whoever entered it used.
+            # Collected as text rather than summed - "Site bonus 300,
+            # Food allowance 200" tells the story a bare 500 does not.
+            if measure_key in ("addition_reasons", "deduction_reasons"):
+                want_ded = measure_key == "deduction_reasons"
+                return [f"{a.description} {a.amount:,.0f}"
+                        for a in s.adjustments if bool(a.is_deduction) == want_ded]
             return getattr(s, measure_key, 0) or 0
 
     for item in source_items:
@@ -939,7 +953,12 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
         for m in measures:
             if m == "worker_count":
                 continue
-            g[m] = g.get(m, 0) + measure_fn(item, m)
+            v = measure_fn(item, m)
+            if isinstance(v, list):          # a text measure, such as a reason
+                g.setdefault(m, [])
+                g[m].extend(v)
+            else:
+                g[m] = g.get(m, 0) + v
 
     out = []
     for key in order:
@@ -948,7 +967,17 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
         for i, d in enumerate(dimensions):
             row[f"dim_{i}"] = key[i]
         for m in measures:
-            row[m] = len(g["emp_nos"]) if m == "worker_count" else round(g.get(m, 0), 2)
+            if m == "worker_count":
+                row[m] = len(g["emp_nos"])
+            elif m in TEXT_MEASURES:
+                # Same reason twice in one group is worth seeing once.
+                seen, uniq = set(), []
+                for t in g.get(m, []):
+                    if t not in seen:
+                        seen.add(t); uniq.append(t)
+                row[m] = ", ".join(uniq) or "-"
+            else:
+                row[m] = round(g.get(m, 0), 2)
         out.append(row)
 
     if dimensions:

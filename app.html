@@ -2601,14 +2601,33 @@ let reportColOrder = [];
 const PAY_VIEWS = {
   none:       [],
   absence:    ["total_salary_component", "deduction", "final_salary"],
-  additions:  ["additions", "adjusted_final_salary"],
-  deductions: ["deductions", "adjusted_final_salary"],
+  additions:  ["additions", "addition_reasons", "adjusted_final_salary"],
+  deductions: ["deductions", "deduction_reasons", "adjusted_final_salary"],
   full:       ["total_salary_component", "deduction", "ot_amount", "bh_amount",
-               "final_salary", "additions", "deductions", "adjusted_final_salary"],
+               "additions", "addition_reasons", "deductions", "deduction_reasons",
+               "final_salary", "adjusted_final_salary"],
 };
+
+// Bonuses and advances belong to a whole payroll cycle, not to one day,
+// so they only exist on the summary figures. Asking for a pay view
+// switches the report to that source - otherwise the columns simply are
+// not there and the choice appears to do nothing.
+let reportSource = "daily";
 const PAY_KEYS = [...new Set(Object.values(PAY_VIEWS).flat())];
 
-function applyPayView(view) {
+async function applyPayView(view) {
+  const needSummary = view !== "none";
+  if ((reportSource === "summary") !== needSummary) {
+    reportSource = needSummary ? "summary" : "daily";
+    // The two sources offer different columns, so the picker is rebuilt
+    // before anything is ticked.
+    const keep = [...document.querySelectorAll('#report-column-picker-id input:checked')].map(b => b.dataset.dim);
+    await initReportColumnPicker(true);
+    keep.forEach(k => {
+      const b = document.querySelector(`#report-column-picker-id input[data-dim="${k}"]`);
+      if (b) { b.checked = true; noteColumnPick(b, k, true); }
+    });
+  }
   const want = new Set(PAY_VIEWS[view] || []);
   document.querySelectorAll('#report-column-picker-measure input[data-measure]').forEach(box => {
     const k = box.dataset.measure;
@@ -2638,12 +2657,12 @@ const REPORT_MONEY_KEYS = new Set([
   "final_salary_cost",
 ]);
 
-async function initReportColumnPicker() {
+async function initReportColumnPicker(force) {
   const idEl = document.getElementById("report-column-picker-id");
-  if (idEl.dataset.built) return;
+  if (idEl.dataset.built && !force) return;
   try {
     const catalog = await apiCall("/reports/builder-catalog");
-    reportCatalog = (catalog && catalog.daily) || null;
+    reportCatalog = (catalog && catalog[reportSource]) || null;
     if (!reportCatalog || !reportCatalog.dimensions) {
       showStatus("report-status", "warn", "Report options are not available yet - try again in a minute.");
       return;
@@ -2868,7 +2887,7 @@ function exportReportTable(fmt) {
   // Export must cover the SAME period as the preview - previously it
   // always exported the whole cycle, silently ignoring a date range.
   const company = (document.getElementById("report-company") || {}).value || "";
-  let url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
+  let url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
   let periodText = cycleLabel(cycle);
   if (reportMode() === "range") {
@@ -2949,7 +2968,7 @@ async function loadReports() {
   }
 
   const company = (document.getElementById("report-company") || {}).value || "";
-  let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=daily&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
+  let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
