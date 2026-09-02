@@ -1285,8 +1285,20 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                 },
             })
 
+    # Everything about one worker belongs together - chasing a man's
+    # problems across three separate parts of the list is how one gets
+    # missed. Workers with the most serious issue come first, and within
+    # a worker the serious ones lead.
     rank = {"legal": 0, "contradiction": 1}
-    out.sort(key=lambda x: (rank.get(x.get("severity"), 2), x["emp_no"], str(x["date"])))
+    worst_by_emp, count_by_emp = {}, {}
+    for x in out:
+        r = rank.get(x.get("severity"), 2)
+        worst_by_emp[x["emp_no"]] = min(worst_by_emp.get(x["emp_no"], 9), r)
+        count_by_emp[x["emp_no"]] = count_by_emp.get(x["emp_no"], 0) + 1
+    out.sort(key=lambda x: (worst_by_emp[x["emp_no"]], x["emp_no"],
+                            rank.get(x.get("severity"), 2), str(x["date"])))
+    for x in out:
+        x["issue_count"] = count_by_emp[x["emp_no"]]
     return {
         "title": "Check for Errors",
         "note": "Workers paid below the 40% minimum, hours recorded on absent or holiday "

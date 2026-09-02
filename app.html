@@ -1451,7 +1451,7 @@
             <p style="font-size:12px; color:#888; margin-top:0;" id="errcheck-note"></p>
             <div class="grid-wrap" style="max-height: 60vh;">
               <table>
-                <thead><tr><th>Emp No</th><th>Name</th><th>Date</th><th>Site</th><th>Issue</th></tr></thead>
+                <thead><tr><th style="width:3%;"></th><th style="width:9%;">Emp No</th><th style="width:11%;">Date</th><th style="width:8%;">Site</th><th>Issue</th></tr></thead>
                 <tbody id="errcheck-body"></tbody>
               </table>
             </div>
@@ -6060,14 +6060,28 @@ async function loadErrorCheck() {
   }
   // Rows open to show the figures behind the issue - a pay warning is
   // no use without the numbers that caused it.
+  // One heading per worker, their issues beneath it - so a man with a
+  // pay breach, a contradiction and missing days is dealt with once
+  // rather than found three times in three places.
+  let lastEmp = null;
   body.innerHTML = result.rows.map((r, i) => {
     const legal = r.severity === "legal";
+    let header = "";
+    if (r.emp_no !== lastEmp) {
+      lastEmp = r.emp_no;
+      const n = r.issue_count || 1;
+      header = `<tr style="background:#F1EFEA;">
+        <td colspan="5" style="padding:8px 14px; font-weight:700; font-size:12.5px;">
+          ${r.emp_no} &middot; ${r.name}
+          <span style="font-weight:400; color:#777;"> &mdash; ${n} issue${n === 1 ? "" : "s"}</span>
+        </td></tr>`;
+    }
     const detail = r.detail || {};
     const hasDetail = Object.keys(detail).length > 0;
-    return `
+    return header + `
     <tr onclick="toggleErrorRow(${i})" style="cursor:${hasDetail ? "pointer" : "default"};${legal ? " background:#FFF3F2;" : ""}">
-      <td>${hasDetail ? '<span style="color:#B26A00;">&#9656;</span> ' : ""}${r.emp_no}</td>
-      <td>${r.name}</td><td>${r.date}</td><td>${r.site || "-"}</td>
+      <td>${hasDetail ? '<span style="color:#B26A00;">&#9656;</span>' : ""}</td>
+      <td style="color:#999;">${r.emp_no}</td><td>${r.date}</td><td>${r.site || "-"}</td>
       <td style="${legal ? "color:#C0392B; font-weight:600;" : ""}">
         ${legal ? '<span style="font-size:10px; letter-spacing:.4px;">UAE PAY RULE &middot; </span>' : ""}${
           r.severity === "contradiction" ? '<span style="font-size:10px; letter-spacing:.4px; color:#B26A00;">CHECK THIS &middot; </span>' : ""}${r.issue}</td>
