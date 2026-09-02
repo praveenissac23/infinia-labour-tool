@@ -1535,9 +1535,12 @@
 const API = window.location.hostname.endsWith("onrender.com")
   ? "https://infinia-labour-tool-api.onrender.com"
   : window.location.origin;
-// Friday and Sunday are paid rest days: they count toward salary the
-// same way a present day does, and are never deducted.
-const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Friday", "Sunday", "Holiday", "Leave"];
+// Sunday is the paid rest day: it counts toward salary the same way a
+// present day does, and is never deducted. Friday was the rest day
+// before and is no longer offered, but cycles already recorded with it
+// still calculate and print correctly - the figure simply stops
+// growing.
+const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Sunday", "Holiday", "Leave"];
 let TOKEN = null;
 let CURRENT_ROLE = null;
 let employees = [];
@@ -3310,7 +3313,11 @@ async function selectLiveCardWorker(empNo) {
 
   const totalDaysRows = [
     ["Present", s.present_days], ["Absent", s.absent_days], ["Sick", s.sick_days],
-    ["Medical", s.medical_days], ["Friday", s.friday_days], ["Sunday", s.sunday_days], ["Holiday", s.holiday_days],
+    ["Medical", s.medical_days],
+    // Older cycles were marked with Friday as the rest day; show that
+    // line only when there is something on it.
+    ...(s.friday_days ? [["Friday", s.friday_days]] : []),
+    ["Sunday", s.sunday_days], ["Holiday", s.holiday_days],
     ["Leave", s.leave_days], ["OT", s.ot_hours], ["BH", s.bh_hours],
   ].map(([label, val]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${num(val)}</span></div>`).join("");
 

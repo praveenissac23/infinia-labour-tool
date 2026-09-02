@@ -37,6 +37,17 @@ TOTAL_DAYS_FIELDS = [
     ("Leave", "leave_days"), ("OT", "ot_hours"), ("BH", "bh_hours"),
 ]
 
+
+def _total_days_fields(summary):
+    """The day rows worth printing for this worker.
+
+    Friday was the paid rest day before Sunday replaced it. Cycles
+    recorded back then still hold Friday days and must still print them,
+    but a card for a recent cycle should not carry a Friday row that
+    will always read zero."""
+    return [(label, attr) for label, attr in TOTAL_DAYS_FIELDS
+            if attr != "friday_days" or (getattr(summary, attr, 0) or 0)]
+
 SUMMARY_FIELDS = [
     ("Basic Pay", "basic_pay_input", None),
     ("Total Salary", "total_salary_component", None),
@@ -212,7 +223,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     # Salary box (columns G-H) - C and F are left as narrow, unbordered
     # spacer columns so the three blocks read as distinct panels rather
     # than one continuous, cluttered table.
-    for label, attr in TOTAL_DAYS_FIELDS:
+    for label, attr in _total_days_fields(summary):
         ws.row_dimensions[r].height = 13
         val = getattr(summary, attr, 0) or 0
         lbl = ws.cell(row=r, column=1, value=label)
@@ -460,7 +471,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
 
     value_right_style = ParagraphStyle("ValueRight", parent=styles["Normal"], fontSize=10.5, alignment=TA_RIGHT)
     days_data = [[Paragraph(label, label_style), Paragraph(f"{(getattr(summary, attr, 0) or 0):g}", value_right_style)]
-                 for label, attr in TOTAL_DAYS_FIELDS]
+                 for label, attr in _total_days_fields(summary)]
     days_tbl = Table(days_data, colWidths=[doc_width * 0.16, doc_width * 0.09])
     days_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
