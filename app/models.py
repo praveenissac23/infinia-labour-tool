@@ -44,6 +44,10 @@ class Employee(Base):
     emp_no = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
     trade = Column(String, default="")
+    # Workers are employed by one of two companies. Everyone already on
+    # the books is Infinia, which is why that is the default - nobody
+    # has to go back and set it on hundreds of existing records.
+    company = Column(String, default="Infinia")
     total_salary = Column(Float, default=0.0)
     basic_salary = Column(Float, default=0.0)
     active = Column(Boolean, default=True)

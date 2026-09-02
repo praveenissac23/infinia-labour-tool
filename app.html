@@ -750,6 +750,10 @@
               <input type="text" id="md-emp-no" placeholder="Employee No">
               <input type="text" id="md-emp-name" placeholder="Name">
               <input type="text" id="md-emp-trade" placeholder="Trade">
+              <select id="md-emp-company" style="width:170px;" title="Which company employs this worker">
+                <option value="Infinia">Infinia</option>
+                <option value="Prime Infinia">Prime Infinia</option>
+              </select>
               <input type="number" id="md-emp-total" placeholder="Total Salary">
               <input type="number" id="md-emp-basic" placeholder="Basic Salary">
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
@@ -772,6 +776,7 @@
                   <th class="sortable" onclick="sortMasterData('emp_no')">Emp No <span id="md-sort-emp_no"></span></th>
                   <th class="sortable" onclick="sortMasterData('name')">Name <span id="md-sort-name"></span></th>
                   <th class="sortable" onclick="sortMasterData('trade')">Trade <span id="md-sort-trade"></span></th>
+                  <th class="sortable" onclick="sortMasterData('company')">Company <span id="md-sort-company"></span></th>
                   <th class="sortable" onclick="sortMasterData('total_salary')">Total Salary <span id="md-sort-total_salary"></span></th>
                   <th class="sortable" onclick="sortMasterData('basic_salary')">Basic Salary <span id="md-sort-basic_salary"></span></th>
                   <th></th>
@@ -2278,6 +2283,9 @@ function renderMasterDataLists() {
   empBody.innerHTML = sorted.map(e => `
     <tr>
       <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade}</td>
+      <td>${(e.company || "Infinia") === "Prime Infinia"
+             ? '<span class="pill" style="background:#EDE7F6; color:#5E35B1;">Prime Infinia</span>'
+             : '<span class="pill" style="background:#E8F0FE; color:#1565C0;">Infinia</span>'}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
           <button class="btn btn-danger" onclick="removeEmployee('${e.emp_no}', '${(e.name || "").replace(/'/g, "\\'")}')">Remove</button></td>
@@ -2333,6 +2341,7 @@ function editEmployee(empNo) {
   document.getElementById("md-emp-no").value = emp.emp_no;
   document.getElementById("md-emp-name").value = emp.name;
   document.getElementById("md-emp-trade").value = emp.trade;
+  document.getElementById("md-emp-company").value = emp.company || "Infinia";
   document.getElementById("md-emp-total").value = emp.total_salary;
   document.getElementById("md-emp-basic").value = emp.basic_salary;
 }
@@ -2351,6 +2360,7 @@ async function saveEmployee() {
       body: JSON.stringify({
         emp_no, name,
         trade: document.getElementById("md-emp-trade").value.trim(),
+        company: document.getElementById("md-emp-company").value || "Infinia",
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
         active: true,
@@ -2358,6 +2368,7 @@ async function saveEmployee() {
     });
     showStatus("md-status", "ok", `Saved ${emp_no}.`);
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("md-emp-company").value = "Infinia";
     employees = await apiCall("/employees?active_only=true");
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();

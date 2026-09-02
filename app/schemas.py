@@ -63,6 +63,7 @@ class EmployeeIn(BaseModel):
     emp_no: str
     name: str
     trade: str = ""
+    company: str = "Infinia"
     total_salary: float = 0.0
     basic_salary: float = 0.0
     active: bool = True

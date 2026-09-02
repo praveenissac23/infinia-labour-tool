@@ -394,7 +394,7 @@ def remove_employee(emp_no: str, purge: bool = False, db: Session = Depends(get_
             "detail": f"{emp.name} removed." + (f" {history} record(s) went with them." if history else "")}
 
 
-EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Total Salary", "Basic Salary"]
+EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Company", "Total Salary", "Basic Salary"]
 
 
 @app.get("/employees/template")
@@ -410,7 +410,7 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="C0392B")
         ws.column_dimensions[get_column_letter(i)].width = 18
-    ws.append(["D-99", "SAMPLE WORKER", "DRIVER", 2000, 900])
+    ws.append(["D-99", "SAMPLE WORKER", "DRIVER", "Infinia", 2000, 900])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -514,6 +514,10 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
             errors.append(f"Row {row_idx} ({emp_no}): Total/Basic Salary must be numbers, skipped.")
             continue
         trade = str(get("trade", "")).strip()
+        # A blank or unrecognised company means Infinia, so an older
+        # spreadsheet without the column still imports cleanly.
+        company = str(get("company", "") or "").strip()
+        company = "Prime Infinia" if company.lower().replace("-", " ") in ("prime infinia", "prime") else "Infinia"
         file_emp_nos.add(emp_no)
 
         existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
@@ -522,17 +526,18 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
                 skipped += 1
             elif duplicate_handling == "add_new":
                 new_emp_no = unique_suffixed_emp_no(emp_no)
-                db.add(models.Employee(emp_no=new_emp_no, name=name, trade=trade,
+                db.add(models.Employee(emp_no=new_emp_no, name=name, trade=trade, company=company,
                                         total_salary=total_salary, basic_salary=basic_salary, active=True))
                 added_as_new += 1
             else:  # update
                 existing.name, existing.trade = name, trade
+                existing.company = company
                 existing.total_salary, existing.basic_salary = total_salary, basic_salary
                 existing.active = True
                 updated += 1
                 updated_emp_nos.add(emp_no)
         else:
-            db.add(models.Employee(emp_no=emp_no, name=name, trade=trade,
+            db.add(models.Employee(emp_no=emp_no, name=name, trade=trade, company=company,
                                     total_salary=total_salary, basic_salary=basic_salary, active=True))
             created += 1
 
@@ -1423,6 +1428,18 @@ def _add_missing_columns():
                 try:
                     conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {t}'))
                     print(f"Added column {table.name}.{col.name}")
+                    # A new column arrives empty on every existing row.
+                    # Where the model declares a plain default, apply it
+                    # to what is already there - otherwise hundreds of
+                    # records sit with nothing in a field the app now
+                    # expects to be filled.
+                    d = getattr(col.default, "arg", None) if col.default is not None else None
+                    if isinstance(d, (str, int, float, bool)):
+                        val = f"'{d}'" if isinstance(d, str) else (
+                            "TRUE" if d is True else "FALSE" if d is False else str(d))
+                        conn.execute(text(
+                            f'UPDATE {table.name} SET {col.name} = {val} WHERE {col.name} IS NULL'))
+                        print(f"  backfilled {table.name}.{col.name} = {d}")
                 except Exception as e:
                     print(f"Could not add {table.name}.{col.name}: {e}")
 
