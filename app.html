@@ -6069,7 +6069,8 @@ async function loadErrorCheck() {
       <td>${hasDetail ? '<span style="color:#B26A00;">&#9656;</span> ' : ""}${r.emp_no}</td>
       <td>${r.name}</td><td>${r.date}</td><td>${r.site || "-"}</td>
       <td style="${legal ? "color:#C0392B; font-weight:600;" : ""}">
-        ${legal ? '<span style="font-size:10px; letter-spacing:.4px;">UAE PAY RULE &middot; </span>' : ""}${r.issue}</td>
+        ${legal ? '<span style="font-size:10px; letter-spacing:.4px;">UAE PAY RULE &middot; </span>' : ""}${
+          r.severity === "contradiction" ? '<span style="font-size:10px; letter-spacing:.4px; color:#B26A00;">CHECK THIS &middot; </span>' : ""}${r.issue}</td>
     </tr>
     ${hasDetail ? `<tr id="ec-${i}" style="display:none; background:#FAFAFA;">
       <td colspan="5" style="padding:12px 18px;">

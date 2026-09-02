@@ -1204,6 +1204,36 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                                    "Every missing day":
                                        ", ".join(d.strftime("%d %b") for d in missing)}})
 
+    # Hours worked on a day nobody worked. Absent means the worker was
+    # not there, so OT or BH against it is a contradiction - usually a
+    # status picked in the wrong row, or hours typed on the wrong line.
+    # Holiday is flagged too: a worker who genuinely worked a holiday
+    # should be marked Present, not Holiday.
+    for r in rows:
+        flagged_statuses = {s for s in ((r.am or "").strip(), (r.pm or "").strip())
+                            if s in ("Absent", "Holiday")}
+        hours = []
+        if r.ot and r.ot > 0:
+            hours.append(f"{r.ot:g} OT")
+        if r.bh and r.bh > 0:
+            hours.append(f"{r.bh:g} BH")
+        if flagged_statuses and hours:
+            marked = " and ".join(sorted(flagged_statuses))
+            out.append({
+                "emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site or "-",
+                "issue": f"{' and '.join(hours)} hour(s) recorded on a day marked {marked}.",
+                "severity": "contradiction",
+                "detail": {
+                    "Date": str(r.full_date),
+                    "A.M": r.am or "-", "P.M": r.pm or "-",
+                    "OT hours": f"{r.ot or 0:g}", "BH hours": f"{r.bh or 0:g}",
+                    "Site": r.site or "-", "Engineer": r.engineer or "-",
+                    "Comment": r.comments or "none",
+                    "What to check": "Either the status is wrong, or the hours belong to another day "
+                                     "or another worker. A worker who did work should be marked Present.",
+                },
+            })
+
     for r in rows:
         if r.ot and r.ot > 12:
             out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
@@ -1255,12 +1285,12 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                 },
             })
 
-    out.sort(key=lambda x: (0 if x.get("severity") == "legal" else 1,
-                            x["emp_no"], str(x["date"])))
+    rank = {"legal": 0, "contradiction": 1}
+    out.sort(key=lambda x: (rank.get(x.get("severity"), 2), x["emp_no"], str(x["date"])))
     return {
         "title": "Check for Errors",
-        "note": "Workers paid below the 40% minimum, missing days in this cycle, "
-                "and unusually high single-day OT/BH values.",
+        "note": "Workers paid below the 40% minimum, hours recorded on absent or holiday "
+                "days, missing days in this cycle, and unusually high single-day OT/BH values.",
         "rows": out,
     }
 
