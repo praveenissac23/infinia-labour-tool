@@ -386,10 +386,11 @@ def list_employees(active_only: bool = False, db: Session = Depends(get_db),
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("masterdata"))):
-    # Names arrive typed every which way. Tidied here, at the one place
-    # they are written, so the list never shows the same man twice.
-    emp.name = _person_name(emp.name.strip())
-    emp.trade = _proper_name((emp.trade or "").strip())
+    # Worker names and trades are kept exactly as typed. The office
+    # enters them in capitals on purpose, so they print large and clear
+    # on the cards - only stray spaces are trimmed.
+    emp.name = (emp.name or "").strip()
+    emp.trade = (emp.trade or "").strip()
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
     if existing:
         for field, value in emp.dict().items():

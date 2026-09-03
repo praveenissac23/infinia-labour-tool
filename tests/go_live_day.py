@@ -310,10 +310,14 @@ ck('a new login can only be office/site/admin', c.post('/users', json={'username
 
 # -------------------------------------------------- 13. Master data
 section("13. Master data changes during the day")
-r = c.post('/employees', json={'emp_no': 'F-003', 'name': 'new joiner', 'trade': 'helper', 'company': 'Prime Infinia', 'total_salary': 1400, 'basic_salary': 800, 'active': True}, headers=A)
+# Names are kept exactly as the office types them - capitals on
+# purpose, so they print large and clear on the cards. Nothing here
+# corrects, recases or tidies a worker's name.
+r = c.post('/employees', json={'emp_no': 'F-003', 'name': 'RAJESH VERMA', 'trade': 'HELPER', 'company': 'Prime Infinia', 'total_salary': 1400, 'basic_salary': 800, 'active': True}, headers=A)
 ck('new worker added', r.status_code == 200, r.text[:100])
 e = [x for x in c.get('/employees', headers=A).json() if x['emp_no'] == 'F-003'][0]
-ck('name cased properly', e['name'] == 'New Joiner', e['name'])
+ck('name kept exactly as typed, in caps', e['name'] == 'RAJESH VERMA', e['name'])
+ck('trade kept exactly as typed too', e['trade'] == 'HELPER', e['trade'])
 ck('company stored', e['company'] == 'Prime Infinia')
 r = c.delete('/employees/F-003', headers=A).json()
 ck('a worker with no history is deleted outright', r['action'] == 'deleted', r)
