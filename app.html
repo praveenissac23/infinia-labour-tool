@@ -1851,13 +1851,22 @@ async function initApp() {
   if (MY_SCREENS.includes("attendance"))
     safely("calendar", () => loadDashboardCalendar(calendarMonthFor(new Date())));
 
-  // Resume the screen the user was last on, same as reopening the
-  // desktop app to where you left it - Dashboard stays the default
-  // for a brand-new session.
-  const lastScreen = localStorage.getItem("infinia_last_screen");
-  if (lastScreen && SCREEN_TITLES[lastScreen] && (lastScreen !== "activity" || CURRENT_ROLE === "admin")) {
-    switchScreen(lastScreen);
+  // Everyone lands on the first tab they can see in the left pane.
+  // One rule, the same for every role, and the screen a person opens
+  // to is the screen at the top of their own menu.
+  switchScreen(firstScreenFor());
+}
+
+function firstScreenFor() {
+  const items = [...document.querySelectorAll(".sidebar .nav-item[data-screen], .nav-item[data-screen]")];
+  for (const n of items) {
+    const s = n.getAttribute("data-screen");
+    if (s && MY_SCREENS.includes(s) && n.style.display !== "none") {
+      const target = n.getAttribute("data-target") || s;
+      return target;
+    }
   }
+  return "dashboard";
 }
 
 // Builds the list of cycles offered in every cycle dropdown: the
@@ -6342,7 +6351,7 @@ async function applyScreenPermissions() {
     const hasAttendance = MY_SCREENS.includes("attendance");
     const cal = document.getElementById("dash-calendar");
     if (!hasAttendance && cal) { const card = cal.closest(".card"); if (card) card.style.display = "none"; }
-    if (!hasAttendance && MY_SCREENS.includes("store")) switchScreen("store");
+    // Where a person lands is decided in one place: firstScreenFor().
     // A heading with nothing under it is just clutter, so hide any
     // group whose items are all hidden.
     const groups = {
