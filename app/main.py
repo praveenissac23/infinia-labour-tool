@@ -512,7 +512,8 @@ def export_employees(token: str, db: Session = Depends(get_db)):
         c.fill = PatternFill("solid", fgColor="C0392B")
         ws.column_dimensions[get_column_letter(i)].width = 18
     for emp in employees:
-        ws.append([emp.emp_no, emp.name, emp.trade, emp.total_salary, emp.basic_salary])
+        ws.append([emp.emp_no, emp.name, emp.trade, emp.company or "Infinia",
+                  emp.total_salary, emp.basic_salary])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
