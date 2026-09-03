@@ -342,6 +342,7 @@
   .dash-cal-day.today { outline: 2px solid #F9A825; outline-offset: -2px; }
   .dash-cal-day:hover { opacity: 0.85; }
   .dash-cal-empty { visibility: hidden; }
+  .dash-cal-day.future { background: #EDEDED; color: #9A9A9A; cursor: default; }
   .report-col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
   .report-col-picker label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 </style>
@@ -3270,7 +3271,12 @@ async function loadDashboardCalendar(cycle, containerId = "dash-calendar") {
   result.days.forEach(day => {
     const dateObj = new Date(day.date + "T00:00:00");
     const isToday = day.date === todayStr;
-    const cls = ["dash-cal-day", day.complete ? "complete" : "incomplete", isToday ? "today" : ""].join(" ").trim();
+    // A day still to come is neither complete nor incomplete - it is
+    // simply not here yet. Painting it red made a fresh month look
+    // like thirty days of neglect.
+    const future = day.date > todayStr;
+    const state = future ? "future" : (day.complete ? "complete" : "incomplete");
+    const cls = ["dash-cal-day", state, isToday ? "today" : ""].join(" ").trim();
     html += `<div class="${cls}" onclick="goToAttendanceDate('${day.date}')" title="${day.entered}/${day.total} entered">${dateObj.getDate()}</div>`;
   });
   cal.innerHTML = html;
@@ -3418,7 +3424,8 @@ async function selectLiveCardWorker(empNo) {
       <div style="min-width:180px;"><h2 style="font-size:12px; margin-bottom:2px;">Salary Summary</h2>${summaryRows}${adjRows}</div>
       <div style="min-width:160px;">
         <div style="background:${BRAND_BLACK_HEX}; color:white; text-align:center; padding:6px; border-radius:6px 6px 0 0; font-size:11px; font-weight:bold;">FINAL SALARY TO PROCESS</div>
-        <div style="background:#C6EFCE; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${money(adjustedTotal)}</div>
+        <div style="background:${adjustedTotal < 0 ? "#FBE0DE" : "#C6EFCE"}; color:${adjustedTotal < 0 ? "#C0392B" : "inherit"}; text-align:center; padding:8px; border-radius:0 0 6px 6px; font-size:14px; font-weight:bold;">AED ${money(adjustedTotal)}</div>
+        ${adjustedTotal < 0 ? '<div style="font-size:11px; color:#C0392B; text-align:center; margin-top:4px;">Deductions exceed pay this cycle</div>' : ""}
       </div>
     </div>
 
@@ -6544,7 +6551,7 @@ async function dailyBackupToThisComputer() {
     if (localStorage.getItem("autoBackupOff") === "1") return;
     // Only the machines allowed to see pay keep a copy - a full backup
     // carries every salary.
-    if (!MY_SCREENS.some(s => ["approvals", "settings", "masterdata", "adjustments"].includes(s))) return;
+    if (!MY_SCREENS.some(s => ["approvals", "masterdata", "adjustments", "reports", "livecard"].includes(s))) return;
     const today = isoLocal(new Date());
     if (localStorage.getItem("autoBackupDate") === today) return;
     if (new Date().getHours() < 9) return;        // from 9am, as asked

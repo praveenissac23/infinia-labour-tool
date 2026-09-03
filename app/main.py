@@ -95,6 +95,19 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
+def _dubai_today() -> date:
+    """Today in Dubai, whatever clock the server keeps.
+
+    The VPS runs on UTC, four hours behind. Between midnight and four in
+    the morning Dubai time, date.today() on the server is still
+    yesterday - so a foreman marking the day's attendance early would be
+    told it is in the future, and a check for missing days would not
+    yet count today. Every 'what day is it' in this file goes through
+    here.
+    """
+    return (datetime.now(timezone.utc) + timedelta(hours=4)).date()
+
+
 # Three roles, which is what the company actually has. "staff" was a
 # catch-all that gave nearly everything away by default; anyone who
 # needs an unusual mix gets it through their own permissions instead.
@@ -106,7 +119,7 @@ ROLE_DEFAULTS = {
     # password and takes a backup. What sits inside it - staff logins,
     # restoring, clearing - is guarded on its own, not by hiding the
     # screen.
-    "office": ["dashboard", "store", "requests", "approvals", "reports", "settings"],
+    "office": ["dashboard", "store", "requests", "approvals", "reports", "errorcheck", "settings"],
     "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
@@ -372,7 +385,11 @@ def list_employees(active_only: bool = False, db: Session = Depends(get_db),
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.get_current_user)):
+                     user: models.User = Depends(require_screen("masterdata"))):
+    # Names arrive typed every which way. Tidied here, at the one place
+    # they are written, so the list never shows the same man twice.
+    emp.name = _person_name(emp.name.strip())
+    emp.trade = _proper_name((emp.trade or "").strip())
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
     if existing:
         for field, value in emp.dict().items():
@@ -824,7 +841,7 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     blocked = []
     to_process = []
 
-    today = date.today()
+    today = _dubai_today()
     for row_in in payload.rows:
         # Attendance can't be recorded for a day that hasn't happened yet.
         # Without this the app accepted any date at all - a save for
@@ -1129,7 +1146,11 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
 
 @app.get("/live-card/{emp_no}/{month_year}")
 def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.get_current_user)):
+                   user: models.User = Depends(require_screen("livecard"))):
+    # A live card is a worker's full pay picture. The screen was hidden
+    # from roles that must not see salaries, but the endpoint answered
+    # anyone signed in - so a site engineer could read every wage by
+    # calling it directly. Guarded like the screen now.
     """
     Everything needed to render one worker's card on screen: their
     summary totals for the cycle plus every daily row, keyed by actual
@@ -1174,7 +1195,7 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
 
 @app.post("/summaries/{summary_id}/adjustments", response_model=schemas.SalaryAdjustmentOut)
 def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session = Depends(get_db),
-                    user: models.User = Depends(auth.get_current_user)):
+                    user: models.User = Depends(require_screen("adjustments"))):
     summary = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.id == summary_id).first()
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
@@ -1209,7 +1230,7 @@ def root():
 
 @app.get("/error-check/{month_year}")
 def error_check(month_year: str, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.get_current_user)):
+                 user: models.User = Depends(require_screen("errorcheck"))):
     """
     The desktop app's original three checks (missing AM/P.M, Present
     without Site/Engineer, BH without a comment) can never actually
@@ -1233,11 +1254,19 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
 
     from datetime import timedelta
+    # Only days that have already happened can be missing. On the third
+    # of the month the remaining twenty-two are not late, they are
+    # simply not here yet - listing them made every worker look
+    # twenty-nine days behind on day one.
+    today = _dubai_today()
+    last_day = min(cycle_end, today)
     all_dates = []
     d = cycle_start
-    while d <= cycle_end:
+    while d <= last_day:
         all_dates.append(d)
         d += timedelta(days=1)
+    cycle_days = (cycle_end - cycle_start).days + 1
+    elapsed_days = len(all_dates)
 
     out = []
     for emp in active_employees:
@@ -1317,24 +1346,40 @@ def error_check(month_year: str, db: Session = Depends(get_db),
     # still time to look at it.
     summaries = (db.query(models.EmployeeSummary)
                    .filter(models.EmployeeSummary.month_year == month_year).all())
+    entered_by_emp = {}
+    for r in rows:
+        entered_by_emp[r.emp_no] = entered_by_emp.get(r.emp_no, 0) + 1
     for s in summaries:
         total = s.total_salary or 0
-        if total <= 0:
+        entered = entered_by_emp.get(s.emp_no, 0)
+        if total <= 0 or entered <= 0:
             continue
         take_home = s.adjusted_final_salary()
-        floor = total * 0.40
-        if take_home < floor:
-            pct = (take_home / total * 100) if total else 0
+        # Measured against the days actually entered for this worker,
+        # not the days elapsed - a day nobody has marked yet is the
+        # missing-days flag's business, not this one's. Three days in,
+        # a man is judged on three days' pay; at the end of a full cycle
+        # this is his whole salary and the rule is exactly the legal one.
+        so_far = total * entered / cycle_days
+        floor = so_far * 0.40
+        if take_home < floor - 0.005:
+            pct = (take_home / so_far * 100) if so_far else 0
+            partial = entered < cycle_days
             adj = sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
             out.append({
                 "emp_no": s.emp_no, "name": s.emp_name, "date": "-", "site": "-",
-                "issue": f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
-                         f"AED {total:,.0f} total - below the 40% minimum "
-                         f"(AED {floor:,.0f}).",
+                "issue": (f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
+                          f"AED {so_far:,.0f} for the {entered} day(s) entered so far "
+                          f"- below the 40% minimum (AED {floor:,.0f})."
+                          if partial else
+                          f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
+                          f"AED {total:,.0f} total - below the 40% minimum "
+                          f"(AED {floor:,.0f})."),
                 "kind": "Pay below 40%",
                 "severity": "legal",
                 "detail": {
                     "Total salary": f"AED {total:,.2f}",
+                    **({"Pay for days entered": f"AED {so_far:,.2f} ({entered} of {cycle_days} days)"} if partial else {}),
                     "Minimum payable (40%)": f"AED {floor:,.2f}",
                     "Final salary now": f"AED {take_home:,.2f}",
                     "Short by": f"AED {floor - take_home:,.2f}",
@@ -1632,7 +1677,7 @@ def maybe_create_auto_backup(db: Session):
     snapshot someone deliberately took before a risky change is never
     silently deleted out from under them.
     """
-    today = date.today()
+    today = _dubai_today()
     existing = (
         db.query(models.Backup)
         .filter(models.Backup.trigger == "auto",
@@ -1766,10 +1811,12 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     # store keeper holding a copy would undo the salary privacy the rest
     # of the app enforces.
     perms = effective_permissions(user)
-    # Office and admin machines only: approvals marks the office, and
-    # the payroll screens mark an admin. A site engineer or store keeper
-    # is not given a file carrying every salary.
-    if not any(s in perms for s in ("approvals", "settings", "masterdata", "adjustments")):
+    # Only someone who can already see pay in the app gets a file that
+    # carries every salary. Approvals marks the office desk; the payroll
+    # screens mark an admin. A site engineer, or a store keeper whose
+    # login is office in name but store-only in permissions, is not
+    # handed one.
+    if not any(s in perms for s in ("approvals", "masterdata", "adjustments", "reports", "livecard")):
         raise HTTPException(status_code=403,
             detail="Only office and admin accounts can download a full backup.")
     data = build_backup_data(db)
@@ -1778,7 +1825,7 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     body = json.dumps(data, default=str)
     # Keep one snapshot a day on the server as well, so the two copies
     # match and the list does not fill with one row per person per day.
-    today = date.today()
+    today = _dubai_today()
     existing = (db.query(models.Backup)
                   .filter(models.Backup.trigger == "daily")
                   .order_by(models.Backup.id.desc()).first())
@@ -2395,6 +2442,14 @@ def list_store_movements(item_id: int = None, location: str = None, kind: str = 
 @app.post("/store/movements", response_model=schemas.StoreMovementOut)
 def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(get_db),
                         user: models.User = Depends(require_screen("store"))):
+    # Seeing stock and moving stock are different things. A site login
+    # can look at what the store holds so it knows what to ask for, but
+    # one central keeper records every receipt and issue - a site
+    # engineer issuing to himself is exactly the record nobody can
+    # later reconcile.
+    if user.role == "site":
+        raise HTTPException(status_code=403,
+            detail="Stock is received and issued by the store keeper. Raise a material request instead.")
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")
@@ -2546,7 +2601,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     if kind == "rentals":
         # Hired-in equipment: where it is, what it costs, and whether it
         # is overdue back to the supplier.
-        today = date.today()
+        today = _dubai_today()
         rows = []
         for i in items.values():
             if not i.active or i.item_type != "rental": continue
@@ -2926,7 +2981,7 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
                             user: models.User = Depends(auth.get_current_user)):
     # Also called directly by the export endpoint with user=None.
     """kind='open' | 'overdue' | 'outstanding' | 'history'"""
-    today = date.today()
+    today = _dubai_today()
     reqs = db.query(models.MaterialRequest).order_by(models.MaterialRequest.id.desc()).all()
 
     if kind == "overdue":
@@ -3081,7 +3136,7 @@ def get_notifications(db: Session = Depends(get_db),
       keeper (store)      <- stock is low; a rental is overdue back
       attendance          <- yesterday's sheet is missing or incomplete
     """
-    today = date.today()
+    today = _dubai_today()
     allowed = effective_permissions(user)
     out = []
     recent_cutoff = today - timedelta(days=7)
@@ -3271,8 +3326,13 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     if errors and not done:
         raise HTTPException(status_code=400, detail={"errors": errors})
 
-    all_done = all((l.qty_received or 0) >= (l.qty_requested or 0) - 1e-9 for l in mr.lines)
-    any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
+    # A rejected line is never coming, so it must not hold the request
+    # open. Judged on the lines that were actually wanted; otherwise a
+    # request with one line turned down sits on the chase list forever
+    # with nothing left to chase.
+    wanted = [l for l in mr.lines if (l.status or "pending") != "rejected"]
+    all_done = bool(wanted) and all((l.qty_received or 0) >= (l.qty_requested or 0) - 1e-9 for l in wanted)
+    any_done = any((l.qty_received or 0) > 0 for l in wanted)
     mr.status = "delivered" if all_done else ("partial" if any_done else mr.status)
     if all_done:
         mr.closed_on = when

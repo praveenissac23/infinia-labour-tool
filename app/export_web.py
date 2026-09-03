@@ -293,7 +293,9 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     ws.cell(row=block_start, column=8).border = box_border
 
     final_cell = ws.cell(row=block_start + 1, column=7, value=f"AED {_adjusted_final_salary(summary):,.2f}")
-    final_cell.fill = PatternFill("solid", fgColor=GREEN_FILL)
+    # Green means money going out. When deductions exceed pay the
+    # figure is negative, and that deserves the absent-red, not green.
+    final_cell.fill = PatternFill("solid", fgColor=STATUS_FILLS["Absent"] if _adjusted_final_salary(summary) < 0 else GREEN_FILL)
     final_cell.font = Font(bold=True, size=13)
     final_cell.border = box_border
     final_cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -540,7 +542,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     final_tbl = Table([[final_header], [final_value]], colWidths=[doc_width * 0.20])
     final_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(f"#{BRAND_BLACK}")),
-        ("BACKGROUND", (0, 1), (0, 1), colors.HexColor(f"#{GREEN_FILL}")),
+        ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#" + (STATUS_FILLS["Absent"] if _adjusted_final_salary(summary) < 0 else GREEN_FILL))),
         ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ("BOX", (0, 0), (-1, -1), 0.5, grid_color),
         ("LINEBELOW", (0, 0), (0, 0), 0.5, grid_color),
