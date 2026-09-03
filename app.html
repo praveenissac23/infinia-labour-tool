@@ -355,6 +355,8 @@
     <p>Sign in to continue</p>
     <input type="text" id="login-username" placeholder="Username" value="admin">
     <input type="password" id="login-password" placeholder="Password">
+    <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
+      <input type="checkbox" onchange="togglePassword('login-password', this)" style="width:auto; margin-right:5px;"> Show password</label>
     <button onclick="doLogin()">Sign In</button>
     <div id="login-error"></div>
   </div>
@@ -733,7 +735,9 @@
           <div style="background:white; border-radius:10px; padding:26px 30px; width:440px; max-width:92vw; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
             <h2 style="margin:0 0 4px;">Reset Password</h2>
             <p style="font-size:12.5px; color:#888; margin:0 0 16px;">Setting a new password for <strong id="resetpw-username"></strong>. It stays visible so you can read it back to them.</p>
-            <input type="text" id="resetpw-value" placeholder="New password (min 6 characters)" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:5px; font-size:13px; margin-bottom:6px;">
+            <input type="password" id="resetpw-value" placeholder="New password (min 6 characters)" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:5px; font-size:13px; margin-bottom:6px;">
+            <label style="display:block; font-size:12px; color:#666; cursor:pointer; margin-bottom:6px;">
+              <input type="checkbox" onchange="togglePassword('resetpw-value', this)" style="width:auto; margin-right:5px;"> Show password</label>
             <div class="status-msg" id="resetpw-status" style="margin-bottom:14px;"></div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
               <button class="btn btn-dark" onclick="closeResetPwModal()">Cancel</button>
@@ -1469,6 +1473,8 @@
               <input type="password" id="pw-new" placeholder="New password (min 6 characters)">
               <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
             </div>
+            <label style="font-size:12px; color:#666; cursor:pointer;">
+              <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
           <div class="card" id="fresh-start-card" style="display:none; border:1px solid #E7CEC9;">
             <h2 style="color:#C0392B;">Start Fresh</h2>
@@ -1491,7 +1497,9 @@
             <h2>Staff Logins</h2>
             <div class="form-row">
               <input type="text" id="new-user-username" placeholder="Username">
-              <input type="text" id="new-user-password" placeholder="Password">
+              <input type="password" id="new-user-password" placeholder="Password">
+              <label style="font-size:12px; color:#666; cursor:pointer; white-space:nowrap;">
+                <input type="checkbox" onchange="togglePassword('new-user-password', this)" style="width:auto; margin-right:4px;"> Show</label>
               <select id="new-user-role" style="width:150px;">
                 <option value="office">Office</option>
                 <option value="site">Site</option>
@@ -6182,6 +6190,13 @@ async function loadErrorCheck() {
         }).join("")}
       </td></tr>`;
   }).join("");
+}
+
+// Show or hide what is typed in a password box. Only the masking
+// changes; nothing about how the password is stored or sent does.
+function togglePassword(inputId, box) {
+  const el = document.getElementById(inputId);
+  if (el) el.type = box.checked ? "text" : "password";
 }
 
 function toggleErrorRow(i) {
