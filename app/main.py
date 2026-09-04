@@ -1211,10 +1211,16 @@ def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session
     return new_adj
 
 
-@app.delete("/adjustments/{adjustment_id}")
-def remove_adjustment(adjustment_id: int, db: Session = Depends(get_db),
-                       user: models.User = Depends(auth.get_current_user)):
-    adj = db.query(models.SalaryAdjustment).filter(models.SalaryAdjustment.id == adjustment_id).first()
+# Under /summaries/ rather than its own /adjustments/ prefix: nginx only
+# forwards the API path prefixes listed in its rule, and /adjustments/
+# was never one of them, so every delete fell through to the frontend
+# and came back 405. The add endpoint already lives under /summaries/
+# and works; this now does too, without touching server config.
+@app.delete("/summaries/{summary_id}/adjustments/{adjustment_id}")
+def remove_adjustment(summary_id: int, adjustment_id: int, db: Session = Depends(get_db),
+                       user: models.User = Depends(require_screen("adjustments"))):
+    adj = db.query(models.SalaryAdjustment).filter(models.SalaryAdjustment.id == adjustment_id,
+                                                     models.SalaryAdjustment.summary_id == summary_id).first()
     if not adj:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     summary = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.id == adj.summary_id).first()

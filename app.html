@@ -3204,7 +3204,7 @@ function renderAdjustmentRows(s) {
       <span>${a.description}</span>
       <span style="display:flex; gap:10px; align-items:center;">
         <strong style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"}AED ${money(a.amount)}</strong>
-        <button class="btn btn-gray" onclick="removeAdjustmentRow(${a.id})">Remove</button>
+        <button class="btn btn-gray" onclick="removeAdjustmentRow(${s.id}, ${a.id})">Remove</button>
       </span>
     </div>
   `).join("");
@@ -3233,9 +3233,9 @@ async function addAdjustmentRow() {
   }
 }
 
-async function removeAdjustmentRow(adjId) {
+async function removeAdjustmentRow(summaryId, adjId) {
   try {
-    await apiCall(`/adjustments/${adjId}`, { method: "DELETE" });
+    await apiCall(`/summaries/${summaryId}/adjustments/${adjId}`, { method: "DELETE" });
     showStatus("adj-status", "ok", "Adjustment removed.");
     await refreshCurrentCycleSummaries();
   } catch (e) {
