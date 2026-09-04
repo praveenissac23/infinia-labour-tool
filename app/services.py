@@ -196,19 +196,26 @@ def delete_daily_row_if_blank(db: Session, emp_no: str, full_date) -> bool:
 
 
 def get_previous_day_site_engineer(db: Session, emp_no: str, target_date):
-    """Same Holiday-specific rule as the desktop app: pulls Site/Engineer
-    from that SAME worker's saved entry the day before, returns None if
-    there isn't one (or it has no real site), so the caller can block
-    the save and ask staff to fill that day in first."""
+    """Pulls Site/Engineer for a Holiday from this worker's last day with
+    a real site on record - not necessarily yesterday.
+
+    A worker who was Absent or on Leave the day before a Holiday has no
+    site on that row, but he was still clearly at the same place before
+    that. Walking back a couple of weeks covers a run of days off; if
+    nothing turns up in that window the caller blocks the save and asks
+    staff to fill a day in, same as before."""
     from datetime import timedelta
-    prev_date = target_date - timedelta(days=1)
-    prev_row = (
+    row = (
         db.query(models.DailyRow)
-        .filter(and_(models.DailyRow.emp_no == emp_no, models.DailyRow.full_date == prev_date))
+        .filter(models.DailyRow.emp_no == emp_no,
+                models.DailyRow.full_date < target_date,
+                models.DailyRow.full_date >= target_date - timedelta(days=14),
+                models.DailyRow.site.isnot(None), models.DailyRow.site != "")
+        .order_by(models.DailyRow.full_date.desc())
         .first()
     )
-    if prev_row is not None and (prev_row.site or "").strip():
-        return prev_row.site, prev_row.engineer or ""
+    if row is not None:
+        return row.site, row.engineer or ""
     return None
 
 
