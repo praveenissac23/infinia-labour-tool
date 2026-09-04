@@ -879,18 +879,16 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
             continue
 
         site, engineer = row_in.site, row_in.engineer
-        if am == "Holiday" or pm == "Holiday":
+        # Holiday is paid whether or not a site is known, so a missing
+        # site is a convenience gap, not a reason to refuse the day off.
+        # A worker with no site anywhere on record - never worked, or
+        # every day so far was Absent - saves with Holiday and no site,
+        # exactly as marking him Absent or Leave already would.
+        if (am == "Holiday" or pm == "Holiday") and not (str(site).strip()):
             prev = services.get_previous_day_site_engineer(db, row_in.emp_no, row_in.full_date)
-            if prev is None:
-                # No site anywhere in the last two weeks - a run of
-                # Absent/Leave days back to yesterday alone would still
-                # find one, so this means nothing has been entered for
-                # this worker in a while.
-                blocked.append(f"{row_in.emp_no} ({employee.name}) - no site on record in the last "
-                                f"two weeks; enter a working day for him first")
-                continue
-            site, engineer = prev
-            row_in.site, row_in.engineer = site, engineer
+            if prev is not None:
+                site, engineer = prev
+                row_in.site, row_in.engineer = site, engineer
 
         problems = services.validate_row(am, pm, site, engineer, row_in.bh, row_in.comments, row_in.ot)
         if problems:
