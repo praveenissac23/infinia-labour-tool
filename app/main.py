@@ -589,10 +589,15 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
             errors.append(f"Row {row_idx} ({emp_no}): Total/Basic Salary must be numbers, skipped.")
             continue
         trade = str(get("trade", "")).strip()
-        # A blank or unrecognised company means Infinia, so an older
-        # spreadsheet without the column still imports cleanly.
-        company = str(get("company", "") or "").strip()
-        company = "Prime Infinia" if company.lower().replace("-", " ") in ("prime infinia", "prime") else "Infinia"
+        # A blank Company cell means "not stated", not "make this
+        # Infinia" - a sheet exported before this column existed, or
+        # one where nobody filled it in for every row, must not silently
+        # overwrite a Prime Infinia worker back to Infinia on re-import.
+        # A cell that DOES say something is treated as a deliberate
+        # choice and is honoured exactly.
+        company_cell = str(get("company", "") or "").strip()
+        company_stated = bool(company_cell)
+        company = "Prime Infinia" if company_cell.lower().replace("-", " ") in ("prime infinia", "prime") else "Infinia"
         file_emp_nos.add(emp_no)
 
         existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
@@ -606,7 +611,8 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
                 added_as_new += 1
             else:  # update
                 existing.name, existing.trade = name, trade
-                existing.company = company
+                if company_stated:
+                    existing.company = company
                 existing.total_salary, existing.basic_salary = total_salary, basic_salary
                 existing.active = True
                 updated += 1
