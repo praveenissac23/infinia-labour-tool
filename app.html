@@ -2039,15 +2039,44 @@ async function loadDate(dateStr, preserveStatus) {
   const byEmp = {};
   existing.forEach(r => byEmp[r.emp_no] = r);
 
+  // A Sunday is a rest day by default. For any worker who has nothing
+  // saved yet, the row starts as Sunday/Sunday with no OT or BH, and
+  // the site and engineer carried over from Saturday if that day is
+  // already filled in - so the day loads ready to save as-is for
+  // anyone who genuinely rested, and still fully editable for anyone
+  // who worked it. Nothing is written until Save Attendance is
+  // pressed; this is only what the screen shows first.
+  const isSunday = new Date(dateStr + "T00:00:00").getDay() === 0;
+  let satByEmp = {};
+  if (isSunday) {
+    const sat = new Date(dateStr + "T00:00:00");
+    sat.setDate(sat.getDate() - 1);
+    const satStr = isoLocal(sat);
+    try {
+      (await apiCall(`/attendance/${satStr}`)).forEach(r => satByEmp[r.emp_no] = r);
+    } catch (e) { /* Saturday not reachable - Sunday rows simply start blank */ }
+  }
+
   rowData = {};
   employees.forEach(emp => {
     const r = byEmp[emp.emp_no];
-    rowData[emp.emp_no] = {
-      am: r ? (r.am || "") : "", pm: r ? (r.pm || "") : "",
-      site: r ? (r.site || "") : "", engineer: r ? (r.engineer || "") : "",
-      ot: r && r.ot ? String(r.ot) : "", bh: r && r.bh ? String(r.bh) : "",
-      comments: r ? (r.comments || "") : "",
-    };
+    if (r) {
+      rowData[emp.emp_no] = {
+        am: r.am || "", pm: r.pm || "",
+        site: r.site || "", engineer: r.engineer || "",
+        ot: r.ot ? String(r.ot) : "", bh: r.bh ? String(r.bh) : "",
+        comments: r.comments || "",
+      };
+    } else if (isSunday) {
+      const sat = satByEmp[emp.emp_no];
+      rowData[emp.emp_no] = {
+        am: "Sunday", pm: "Sunday",
+        site: (sat && sat.site) || "", engineer: (sat && sat.engineer) || "",
+        ot: "", bh: "", comments: "",
+      };
+    } else {
+      rowData[emp.emp_no] = { am: "", pm: "", site: "", engineer: "", ot: "", bh: "", comments: "" };
+    }
   });
   ticked.clear();
   // Snapshot of exactly what the server had when this date was opened,
