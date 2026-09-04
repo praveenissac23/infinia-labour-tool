@@ -525,12 +525,6 @@
                 <input type="text" id="bulk-bh" placeholder="BH" style="width:50px;">
                 <input type="text" id="bulk-comments" placeholder="Comments" style="width:220px;">
               </div>
-              <div class="row" style="margin-top:6px; font-size:12px; color:#666; gap:14px;">
-                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
-                  <input type="radio" name="bulk-comment-mode" value="replace" checked style="width:auto;"> Replace comment</label>
-                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
-                  <input type="radio" name="bulk-comment-mode" value="append" style="width:auto;"> Add to existing comment</label>
-              </div>
               <div class="row" style="margin-top:8px;">
                 <button class="btn btn-primary" onclick="applyBulk()">Apply to Ticked</button>
                 <button class="btn btn-dark" onclick="selectAll()">Select All</button>
@@ -2273,11 +2267,6 @@ function applyBulk() {
   const ot = document.getElementById("bulk-ot").value;
   const bh = document.getElementById("bulk-bh").value;
   const comment = document.getElementById("bulk-comments").value.trim();
-  // Replace overwrites; append keeps what a worker already had and
-  // adds this after it - useful when some rows already carry their
-  // own note and a shared one (a team all doing the same job) still
-  // needs adding without losing that.
-  const appendMode = (document.querySelector('input[name="bulk-comment-mode"]:checked') || {}).value === "append";
   if (ticked.size === 0) {
     showStatus("att-status", "warn", "Tick the checkbox next to the workers you want to apply this to.");
     return;
@@ -2290,10 +2279,7 @@ function applyBulk() {
     if (engineer) d.engineer = engineer;
     if (ot) d.ot = ot;
     if (bh) d.bh = bh;
-    if (comment) {
-      const existing = (d.comments || "").trim();
-      d.comments = (appendMode && existing) ? `${existing}, ${comment}` : comment;
-    }
+    if (comment) d.comments = comment;
   });
   scheduleDraftSave();
   renderRows();
