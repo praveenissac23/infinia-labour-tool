@@ -43,6 +43,7 @@ def validate_row(am, pm, site, engineer, bh, comments, ot=None):
     if bh_val > 2 and not (comments or "").strip():
         problems.append("BH over 2 hours requires a comment.")
 
+    hours_by_label = {}
     for label, raw in (("OT", ot), ("BH", bh)):
         if raw in (None, ""):
             continue
@@ -55,6 +56,18 @@ def validate_row(am, pm, site, engineer, bh, comments, ot=None):
             problems.append(f"{label} cannot be negative.")
         elif val > 24:
             problems.append(f"{label} cannot be more than 24 hours in a day.")
+        else:
+            hours_by_label[label] = val
+
+    # A worker who was not there cannot have worked overtime or a bonus
+    # hour that day. Half days count too - Absent in the morning with OT
+    # against the afternoon is the same problem. This used to only
+    # surface later, in Error Check, after it had already thrown the
+    # pay off; stopped here instead, at the moment it would be typed in.
+    flagged_status = next((s for s in (am, pm) if s.lower() in ("absent", "holiday")), None)
+    if flagged_status and any(v > 0 for v in hours_by_label.values()):
+        worked = " and ".join(l for l, v in hours_by_label.items() if v > 0)
+        problems.append(f"{worked} cannot be entered on a day marked {flagged_status}.")
     return problems
 
 

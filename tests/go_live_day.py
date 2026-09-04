@@ -240,11 +240,26 @@ ck('D-01 flagged for the 40% rule', any(x.get('severity') == 'legal' for x in by
 ck('every worker shows missing days (only 2-3 entered)', all(any('missing' in x['kind'] for x in by.get(n, [])) for n, *_ in workers))
 ck('no contradiction flagged (no OT on absent days)', not any(x.get('severity') == 'contradiction' for x in ec))
 ck('site engineer cannot run error check', c.get(f'/error-check/{CYCLE}', headers=S).status_code == 403)
-# Now create a contradiction and confirm it is caught
-c.post('/attendance/save', json={'month_year': CYCLE, 'rows': [
+# Trying to save the contradiction through the normal screen is refused
+# outright now, at the moment it would be typed in - better than
+# catching it after the fact in Error Check.
+r = c.post('/attendance/save', json={'month_year': CYCLE, 'rows': [
     {'emp_no': 'P-001', 'full_date': '2026-09-01', 'am': 'Absent', 'pm': 'Absent', 'site': '', 'engineer': '', 'ot': 4, 'bh': 0, 'comments': ''}]}, headers=S)
+ck('OT on an absent day is refused at save time', r.status_code == 400, f'{r.status_code} {r.text[:100]}')
+ck('the refused row never landed', not any(x['emp_no'] == 'P-001' and x['full_date'] == '2026-09-01'
+   for x in c.get('/attendance/2026-09-01', headers=A).json()))
+
+# Error Check must still catch a contradiction already sitting in the
+# database from before this rule existed - an older cycle, or a row
+# brought in by import. Written directly, bypassing the save endpoint.
+d3 = database.SessionLocal()
+old_row = d3.query(models.Employee).filter(models.Employee.emp_no == 'P-001').first()
+d3.add(models.DailyRow(employee_id=old_row.id, emp_no='P-001', emp_name=old_row.name, trade=old_row.trade,
+                       month_year=CYCLE, full_date=date(2026, 9, 1), day=1,
+                       am='Absent', pm='Absent', site='', engineer='', ot=4, bh=0, comments=''))
+d3.commit(); d3.close()
 ec = c.get(f'/error-check/{CYCLE}', headers=O).json()['rows']
-ck('OT on an absent day is caught', any(x.get('severity') == 'contradiction' and x['emp_no'] == 'P-001' for x in ec))
+ck('an older bad row is still caught by Error Check', any(x.get('severity') == 'contradiction' and x['emp_no'] == 'P-001' for x in ec))
 
 # ---------------------------------------------------- 10. Reports
 section("10. Reports and exports")
