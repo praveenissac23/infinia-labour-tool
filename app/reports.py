@@ -770,9 +770,13 @@ def _builder_daily_dim_value(r, dim_key):
     if dim_key == "trade":
         return r.trade
     if dim_key == "site":
-        return (r.site or "").strip() or "(blank)"
+        # A paid day with no site - Sunday, Holiday, Sick, Medical -
+        # still costs money, and grouping by site has to put that
+        # somewhere. Named for what it is rather than left as "(blank)",
+        # which read like an error.
+        return (r.site or "").strip() or "No site (rest / sick days)"
     if dim_key == "engineer":
-        return (r.engineer or "").strip() or "(blank)"
+        return (r.engineer or "").strip() or "No engineer"
     if dim_key == "date":
         return r.full_date
     if dim_key == "month":
@@ -872,8 +876,8 @@ def _builder_summary_dim_value(s, dim_key, site_lookup=None):
         # recorded at all that cycle, same convention the daily-rows
         # "site" dimension already uses.
         if site_lookup is None:
-            return "(blank)"
-        return site_lookup.get((s.emp_no, s.month_year), "(blank)")
+            return "No site (rest / sick days)"
+        return site_lookup.get((s.emp_no, s.month_year), "No site (rest / sick days)")
     return ""
 
 
