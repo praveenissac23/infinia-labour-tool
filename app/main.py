@@ -1430,7 +1430,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
 
 
 @app.get("/export/{month_year}/excel")
-def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
+def export_excel(month_year: str, token: str, emp_no: str = "", db: Session = Depends(get_db)):
     # Auth comes ONLY via the ?token= query param here, not the standard
     # Authorization header - this endpoint is meant to be hit by a plain
     # browser navigation (window.open(url)), which can't set custom
@@ -1444,11 +1444,15 @@ def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
         .filter(models.EmployeeSummary.month_year == month_year)
-        .order_by(models.EmployeeSummary.emp_no)
-        .all()
     )
+    # One worker's card on its own - for handing to him, or emailing
+    # one man's payslip - rather than the whole company in a file.
+    if emp_no.strip():
+        summaries = summaries.filter(models.EmployeeSummary.emp_no == emp_no.strip())
+    summaries = summaries.order_by(models.EmployeeSummary.emp_no).all()
     if not summaries:
-        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+        raise HTTPException(status_code=404, detail=("No data found for this worker in this cycle."
+                                                     if emp_no.strip() else "No data found for this cycle."))
     pairs = []
     for s in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -1457,24 +1461,28 @@ def export_excel(month_year: str, token: str, db: Session = Depends(get_db)):
         pairs.append((s, rows))
     buf = export_web.build_combined_excel(pairs)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    fname = (f"Infinia_Card_{summaries[0].emp_no}_{safe_name}.xlsx" if emp_no.strip()
+             else f"Infinia_Cards_{safe_name}.xlsx")
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_{safe_name}.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
 
 
 @app.get("/export/{month_year}/pdf")
-def export_pdf(month_year: str, token: str, db: Session = Depends(get_db)):
+def export_pdf(month_year: str, token: str, emp_no: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
         .filter(models.EmployeeSummary.month_year == month_year)
-        .order_by(models.EmployeeSummary.emp_no)
-        .all()
     )
+    if emp_no.strip():
+        summaries = summaries.filter(models.EmployeeSummary.emp_no == emp_no.strip())
+    summaries = summaries.order_by(models.EmployeeSummary.emp_no).all()
     if not summaries:
-        raise HTTPException(status_code=404, detail="No data found for this cycle.")
+        raise HTTPException(status_code=404, detail=("No data found for this worker in this cycle."
+                                                     if emp_no.strip() else "No data found for this cycle."))
     pairs = []
     for s in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -1483,9 +1491,11 @@ def export_pdf(month_year: str, token: str, db: Session = Depends(get_db)):
         pairs.append((s, rows))
     buf = export_web.build_combined_pdf(pairs)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    fname = (f"Infinia_Card_{summaries[0].emp_no}_{safe_name}.pdf" if emp_no.strip()
+             else f"Infinia_Cards_{safe_name}.pdf")
     return StreamingResponse(
         buf, media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=Infinia_Cards_{safe_name}.pdf"},
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
 
 

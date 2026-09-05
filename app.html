@@ -899,6 +899,15 @@
               <button class="btn btn-gray" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel-separate')">Separate Excel Files</button>
               <button class="btn btn-gray" style="width:100%;" onclick="exportCombineCards('pdf-separate')">Separate PDF Files</button>
             </div>
+            <div class="card" style="flex:1; min-width:260px;">
+              <h2>One Worker</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">A single worker's card on its own - to hand over, or to send.</p>
+              <input type="text" id="combine-emp-search" placeholder="Type name or number" style="width:100%; margin-bottom:6px;"
+                     oninput="filterCombineWorkers()">
+              <select id="combine-emp" size="6" style="width:100%; margin-bottom:8px;"></select>
+              <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportOneWorker('excel')">This Worker to Excel</button>
+              <button class="btn btn-dark" style="width:100%;" onclick="exportOneWorker('pdf')">This Worker to PDF</button>
+            </div>
           </div>
         </div>
 
@@ -1681,6 +1690,7 @@ function switchScreen(name) {
   if (name === "activity") loadActivityLog();
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
+  if (name === "combine") filterCombineWorkers();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -6266,6 +6276,39 @@ function exportCombineCards(fmt) {
   const label = { "excel": "combined Excel", "pdf": "combined PDF",
                    "excel-separate": "separate Excel files (zip)", "pdf-separate": "separate PDF files (zip)" }[fmt] || fmt;
   showStatus("combine-status", "ok", `Opening ${label} for ${cycle} - check your downloads or the new tab.`);
+}
+
+// The One Worker picker on Combine. Filled from the employee list the
+// app already holds; typing narrows it so nobody scrolls seventy rows.
+function filterCombineWorkers() {
+  const sel = document.getElementById("combine-emp");
+  if (!sel) return;
+  const q = (document.getElementById("combine-emp-search").value || "").trim().toLowerCase();
+  const keep = sel.value;
+  const list = (employees || [])
+    .filter(e => !q || e.emp_no.toLowerCase().includes(q) || (e.name || "").toLowerCase().includes(q))
+    .slice()
+    .sort((a, b) => natCompare(a.emp_no, b.emp_no));
+  sel.innerHTML = list.map(e =>
+    `<option value="${e.emp_no}"${e.emp_no === keep ? " selected" : ""}>${e.emp_no} - ${e.name}</option>`).join("");
+  if (list.length === 1) sel.value = list[0].emp_no;
+}
+
+function exportOneWorker(fmt) {
+  const cycle = document.getElementById("combine-cycle").value.trim();
+  const sel = document.getElementById("combine-emp");
+  const empNo = sel ? sel.value : "";
+  if (!cycle) { showStatus("combine-status", "warn", "Enter a cycle first."); return; }
+  if (!empNo) { showStatus("combine-status", "warn", "Pick a worker from the list first."); return; }
+  if (!cachedDownloadToken) {
+    showStatus("combine-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
+  window.open(url, "_blank");
+  const who = (employees.find(e => e.emp_no === empNo) || {}).name || empNo;
+  showStatus("combine-status", "ok", `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who} - check your downloads or the new tab.`);
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============
