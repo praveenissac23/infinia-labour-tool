@@ -958,7 +958,12 @@
             <select id="livecard-cycle" onchange="onLiveCardCycleChange()"></select>
             <label>Search:</label>
             <input type="text" id="livecard-search" placeholder="Employee No or Name" oninput="renderLiveCardWorkerList()">
+            <span style="margin-left:auto; display:flex; gap:8px;">
+              <button class="btn btn-dark" onclick="exportLiveCard('excel')">Excel</button>
+              <button class="btn btn-dark" onclick="exportLiveCard('pdf')">PDF</button>
+            </span>
           </div>
+          <div class="status-msg" id="livecard-status"></div>
           <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">
             <div class="card" style="flex:1; min-width:260px; max-width:360px;">
               <h2>Workers <span id="lc-count" style="font-weight:normal; color:#888; font-size:12px;"></span></h2>
@@ -6305,6 +6310,24 @@ function resolveCombineWorker() {
       || (list.filter(e => e.emp_no.toLowerCase().startsWith(q) || (e.name || "").toLowerCase().includes(q)).length === 1
           ? list.filter(e => e.emp_no.toLowerCase().startsWith(q) || (e.name || "").toLowerCase().includes(q))[0]
           : null);
+}
+
+// The card on screen, as a file. Same single-worker export Combine
+// uses, for the worker and cycle already showing.
+function exportLiveCard(fmt) {
+  const cycle = document.getElementById("livecard-cycle").value.trim();
+  const empNo = selectedLiveCardEmpNo;
+  if (!empNo) { showStatus("livecard-status", "warn", "Pick a worker from the list first."); return; }
+  if (!cycle) { showStatus("livecard-status", "warn", "Pick a cycle first."); return; }
+  if (!cachedDownloadToken) {
+    showStatus("livecard-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
+  window.open(url, "_blank");
+  const who = (employees.find(e => e.emp_no === empNo) || {}).name || empNo;
+  showStatus("livecard-status", "ok", `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who} - check your downloads or the new tab.`);
 }
 
 function exportOneWorker(fmt) {
