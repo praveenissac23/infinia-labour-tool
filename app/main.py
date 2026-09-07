@@ -749,6 +749,34 @@ def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: model
 # ---------------------------------------------------------------------
 # DAILY ATTENDANCE
 # ---------------------------------------------------------------------
+@app.get("/attendance/last-sites/{target_date}")
+def last_sites_before(target_date: str, db: Session = Depends(get_db),
+                       user: models.User = Depends(require_screen("attendance"))):
+    """Each worker's site and engineer from his last day at a site before
+    the given date, looking back two weeks. The attendance screen uses
+    this to fill Sunday and Holiday rows the moment the status is
+    picked, from the last day actually worked - not just from
+    yesterday, which is blank when yesterday was Absent.
+
+    Declared before /attendance/{target_date}, or 'last-sites' would be
+    read as a date."""
+    try:
+        target = date.fromisoformat(target_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date.")
+    rows = (db.query(models.DailyRow)
+              .filter(models.DailyRow.full_date < target,
+                      models.DailyRow.full_date >= target - timedelta(days=14),
+                      models.DailyRow.site.isnot(None), models.DailyRow.site != "")
+              .order_by(models.DailyRow.emp_no, models.DailyRow.full_date.desc())
+              .all())
+    out = {}
+    for r in rows:
+        if r.emp_no not in out:          # first seen is the latest, by the ordering
+            out[r.emp_no] = {"site": r.site, "engineer": r.engineer or "", "on": r.full_date.isoformat()}
+    return out
+
+
 @app.get("/attendance/{target_date}", response_model=list[schemas.DailyRowOut])
 def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
                              user: models.User = Depends(auth.get_current_user)):
@@ -890,7 +918,7 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
         # A worker with no site anywhere on record - never worked, or
         # every day so far was Absent - saves with Holiday and no site,
         # exactly as marking him Absent or Leave already would.
-        if (am == "Holiday" or pm == "Holiday") and not (str(site).strip()):
+        if (am in ("Holiday", "Sunday") or pm in ("Holiday", "Sunday")) and not (str(site).strip()):
             prev = services.get_previous_day_site_engineer(db, row_in.emp_no, row_in.full_date)
             if prev is not None:
                 site, engineer = prev

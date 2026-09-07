@@ -2065,15 +2065,14 @@ async function loadDate(dateStr, preserveStatus) {
   // who worked it. Nothing is written until Save Attendance is
   // pressed; this is only what the screen shows first.
   const isSunday = new Date(dateStr + "T00:00:00").getDay() === 0;
-  let satByEmp = {};
-  if (isSunday) {
-    const sat = new Date(dateStr + "T00:00:00");
-    sat.setDate(sat.getDate() - 1);
-    const satStr = isoLocal(sat);
-    try {
-      (await apiCall(`/attendance/${satStr}`)).forEach(r => satByEmp[r.emp_no] = r);
-    } catch (e) { /* Saturday not reachable - Sunday rows simply start blank */ }
-  }
+  // Where each worker was last at a site before this date, looking back
+  // two weeks. Used to fill Sunday rows on load and Sunday/Holiday rows
+  // the moment the status is picked - from the last day actually
+  // worked, not just yesterday, which is blank when yesterday was
+  // Absent.
+  lastSiteByEmp = {};
+  try { lastSiteByEmp = await apiCall(`/attendance/last-sites/${dateStr}`) || {}; }
+  catch (e) { /* no lookup - rows simply start blank */ }
 
   rowData = {};
   employees.forEach(emp => {
@@ -2086,10 +2085,10 @@ async function loadDate(dateStr, preserveStatus) {
         comments: r.comments || "",
       };
     } else if (isSunday) {
-      const sat = satByEmp[emp.emp_no];
+      const last = lastSiteByEmp[emp.emp_no];
       rowData[emp.emp_no] = {
         am: "Sunday", pm: "Sunday",
-        site: (sat && sat.site) || "", engineer: (sat && sat.engineer) || "",
+        site: (last && last.site) || "", engineer: (last && last.engineer) || "",
         ot: "", bh: "", comments: "",
       };
     } else {
@@ -2284,7 +2283,27 @@ function tintStatusSelect(sel) {
 }
 
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
-function onField(empNo, field, value) { rowData[empNo][field] = value; scheduleDraftSave(); }
+let lastSiteByEmp = {};
+
+function onField(empNo, field, value) {
+  rowData[empNo][field] = value;
+  // Picking Sunday or Holiday fills site and engineer straight away,
+  // from the last day this worker was at a site - so it can be seen
+  // and changed before saving, rather than appearing only afterwards.
+  if ((field === "am" || field === "pm") && (value === "Sunday" || value === "Holiday")) {
+    const d = rowData[empNo];
+    const last = lastSiteByEmp[empNo];
+    if (last && !(d.site || "").trim()) {
+      d.site = last.site || "";
+      d.engineer = last.engineer || "";
+      const row = document.querySelector(`select[onchange*="onField('${empNo}','site'"]`);
+      const eng = document.querySelector(`select[onchange*="onField('${empNo}','engineer'"]`);
+      if (row) row.value = d.site;
+      if (eng) eng.value = d.engineer;
+    }
+  }
+  scheduleDraftSave();
+}
 function onTick(empNo, checked) { checked ? ticked.add(empNo) : ticked.delete(empNo); }
 // The workers currently VISIBLE in the grid - i.e. matching the search
 // box. Select All and the header checkbox act on these only: ticking
@@ -2324,6 +2343,12 @@ function applyBulk() {
     if (pm) d.pm = pm;
     if (site) d.site = site;
     if (engineer) d.engineer = engineer;
+    // Bulk-marking Sunday or Holiday with no site given: each man gets
+    // his own last site, not one site for all of them.
+    if (!site && ["Sunday", "Holiday"].includes(am || pm) && !(d.site || "").trim()) {
+      const last = lastSiteByEmp[empNo];
+      if (last) { d.site = last.site || ""; d.engineer = d.engineer || last.engineer || ""; }
+    }
     if (ot) d.ot = ot;
     if (bh) d.bh = bh;
     if (comment) d.comments = comment;
