@@ -941,6 +941,7 @@
                 <thead><tr>
                   <th class="sortable" onclick="sortAdjList('emp_no')">Emp No <span id="adj-sort-emp_no"></span></th>
                   <th class="sortable" onclick="sortAdjList('emp_name')">Name <span id="adj-sort-emp_name"></span></th>
+                  <th style="text-align:left;">Adjustments</th>
                   <th class="sortable" onclick="sortAdjList('final_salary')">Final Salary <span id="adj-sort-final_salary"></span></th>
                   <th class="sortable" onclick="sortAdjList('adjusted')">Adjusted Final Salary <span id="adj-sort-adjusted"></span></th>
                 </tr></thead>
@@ -3189,7 +3190,7 @@ function renderAdjustmentsWorkerList() {
   const body = document.getElementById("adj-worker-body");
   const totalRow = document.getElementById("adj-total-row");
   if (!currentSummaries.length) {
-    body.innerHTML = `<tr><td colspan="4" class="empty-note">No data for this cycle yet.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="empty-note">No data for this cycle yet.</td></tr>`;
     if (totalRow) totalRow.innerHTML = "";
     return;
   }
@@ -3207,15 +3208,24 @@ function renderAdjustmentsWorkerList() {
     return natCompare(av, bv) * adjSortDir;
   });
   if (!sorted.length) {
-    body.innerHTML = `<tr><td colspan="4" class="empty-note">No workers match "${search}".</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="empty-note">No workers match "${search}".</td></tr>`;
     if (totalRow) totalRow.innerHTML = "";
     return;
   }
   body.innerHTML = sorted.map(s => {
     const adjustedTotal = s.final_salary + s.adjustments.reduce((sum, a) => sum + (a.is_deduction ? -a.amount : a.amount), 0);
+    // Every adjustment with its comment and amount, so the whole
+    // cycle's additions and deductions can be read down the list
+    // without opening each worker.
+    const adjCell = s.adjustments.length
+      ? s.adjustments.map(a => `<div style="white-space:nowrap;">
+            <span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}; font-weight:600;">${a.is_deduction ? "-" : "+"}${money(a.amount)}</span>
+            <span style="color:#555;"> ${a.description}</span></div>`).join("")
+      : '<span style="color:#bbb;">-</span>';
     return `
     <tr class="clickable-row ${s.id === selectedSummaryId ? 'selected-row' : ''}" onclick="selectSummary(${s.id})">
       <td>${s.emp_no}</td><td>${s.emp_name}</td>
+      <td style="text-align:left; font-size:12px; line-height:1.5;">${adjCell}</td>
       <td>AED ${money(s.final_salary)}</td><td>AED ${money(adjustedTotal)}</td>
     </tr>`;
   }).join("");
@@ -3223,7 +3233,10 @@ function renderAdjustmentsWorkerList() {
   if (totalRow) {
     const finalSum = sorted.reduce((sum, s) => sum + s.final_salary, 0);
     const adjustedSum = sorted.reduce((sum, s) => sum + s.final_salary + s.adjustments.reduce((a, adj) => a + (adj.is_deduction ? -adj.amount : adj.amount), 0), 0);
-    totalRow.innerHTML = `<td>TOTAL</td><td></td><td>AED ${money(finalSum)}</td><td>AED ${money(adjustedSum)}</td>`;
+    const net = adjustedSum - finalSum;
+    totalRow.innerHTML = `<td>TOTAL</td><td></td>
+      <td style="text-align:left; color:${net < 0 ? '#C0392B' : '#2E7D32'};">${net >= 0 ? "+" : "-"}${money(Math.abs(net))} net</td>
+      <td>AED ${money(finalSum)}</td><td>AED ${money(adjustedSum)}</td>`;
   }
 }
 
