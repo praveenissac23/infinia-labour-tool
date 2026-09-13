@@ -516,6 +516,8 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
         ws.column_dimensions[get_column_letter(i)].width = 18
     ws.append(["D-99", "SAMPLE WORKER", "DRIVER", "Infinia", "Fixed", 2000, 900])
     buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        export_web._excel_logo_header(_ws)
     wb.save(buf)
     buf.seek(0)
     return StreamingResponse(
@@ -546,6 +548,8 @@ def export_employees(token: str, db: Session = Depends(get_db)):
                   "Fixed" if (emp.pay_type or "daily") == "fixed" else "Daily",
                   emp.total_salary, emp.basic_salary])
     buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        export_web._excel_logo_header(_ws)
     wb.save(buf)
     buf.seek(0)
     return StreamingResponse(

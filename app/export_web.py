@@ -10,6 +10,7 @@ Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
 import io
+import os
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -37,6 +38,97 @@ STATUS_FILLS = {
     "Holiday": "E9E4F7", "Leave": "EFEFEF",
 }
 GREY_FILL = "D8D8D8"
+
+# ---- The company logo, on every file that leaves the app --------------
+# One PNG beside this module; the same image the app shows top-left.
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+LOGO_W_MM, LOGO_H_MM = 42, 7.1          # 995x168 px, scaled to a neat header
+
+
+def _logo_image():
+    """A ReportLab Image of the logo at header size, or None if the file
+    is missing - a missing logo must never stop a payroll file."""
+    try:
+        from reportlab.platypus import Image as RLImage
+        if os.path.exists(LOGO_PATH):
+            return RLImage(LOGO_PATH, width=LOGO_W_MM * mm, height=LOGO_H_MM * mm)
+    except Exception:
+        pass
+    return None
+
+
+def _draw_logo_on_page(canvas, doc):
+    """Page callback for SimpleDocTemplate: the logo top-left of every
+    page, so a multi-page file carries it on each sheet, not only the
+    first. Column width is unaffected because it sits in the margin."""
+    try:
+        if not os.path.exists(LOGO_PATH):
+            return
+        w, h = LOGO_W_MM * mm, LOGO_H_MM * mm
+        x = doc.leftMargin
+        y = doc.pagesize[1] - h - 4 * mm
+        canvas.drawImage(LOGO_PATH, x, y, width=w, height=h, mask="auto")
+    except Exception:
+        pass
+
+
+def _excel_logo_header(ws, rows_to_reserve=4):
+    """Adds the logo above a sheet that has already been written.
+
+    Called last, after the builder has laid out its rows, so none of
+    the row arithmetic in a dozen builders has to change: the finished
+    content is pushed down and the picture goes in the space made."""
+    try:
+        from openpyxl.drawing.image import Image as XLImage
+        if not os.path.exists(LOGO_PATH):
+            return
+        # Merged ranges and frozen panes are anchored to row numbers;
+        # move them by hand, since insert_rows leaves them behind.
+        merges = [str(m) for m in list(ws.merged_cells.ranges)]
+        for m in merges:
+            ws.unmerge_cells(m)
+        ws.insert_rows(1, amount=rows_to_reserve)
+        from openpyxl.utils.cell import range_boundaries, get_column_letter
+        for m in merges:
+            c1, r1, c2, r2 = range_boundaries(m)
+            ws.merge_cells(start_row=r1 + rows_to_reserve, start_column=c1,
+                           end_row=r2 + rows_to_reserve, end_column=c2)
+        if ws.freeze_panes:
+            fp = ws.freeze_panes
+            col = "".join(ch for ch in fp if ch.isalpha()); row = int("".join(ch for ch in fp if ch.isdigit()))
+            ws.freeze_panes = f"{col}{row + rows_to_reserve}" if row > 1 else None
+        # Row heights were set for the old numbering; shift them too.
+        heights = {r: ws.row_dimensions[r].height for r in list(ws.row_dimensions.keys())
+                   if ws.row_dimensions[r].height}
+        for r in sorted(heights, reverse=True):
+            ws.row_dimensions[r + rows_to_reserve].height = heights[r]
+            ws.row_dimensions[r].height = None
+        img = XLImage(LOGO_PATH)
+        img.width, img.height = 200, 34
+        ws.add_image(img, "A1")
+        for r in range(1, rows_to_reserve + 1):
+            ws.row_dimensions[r].height = 13
+    except Exception:
+        pass
+
+
+def _excel_logo(ws, anchor="A1", rows_to_reserve=4):
+    """Puts the logo at the top-left of a worksheet and returns the first
+    free row beneath it. Rows are given a fixed height so the picture
+    never overlaps the table, whatever the caller writes next."""
+    try:
+        from openpyxl.drawing.image import Image as XLImage
+        if not os.path.exists(LOGO_PATH):
+            return 1
+        img = XLImage(LOGO_PATH)
+        img.width, img.height = 200, 34           # px, same aspect as the file
+        ws.add_image(img, anchor)
+        for r in range(1, rows_to_reserve):
+            ws.row_dimensions[r].height = 13
+        return rows_to_reserve + 1
+    except Exception:
+        return 1
+
 
 DAILY_HEADERS = ["Date", "A.M", "P.M", "Site", "Engineer", "OT", "BH", "Comments"]
 
@@ -377,6 +469,8 @@ def build_combined_excel(summaries_with_rows):
     ws.print_area = f"A1:H{last_row}"
 
     buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        _excel_logo_header(_ws)
     wb.save(buf)
     buf.seek(0)
     return buf
@@ -410,6 +504,8 @@ def build_separate_excel_files(summaries_with_rows):
         ws.print_options.verticalCentered = True
         _write_worker_card(ws, summary, rows, border, 1)
         buf = io.BytesIO()
+        for _ws in wb.worksheets:
+            _excel_logo_header(_ws)
         wb.save(buf)
         buf.seek(0)
         safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in str(summary.emp_no))
@@ -588,7 +684,7 @@ def build_combined_pdf(summaries_with_rows):
     """
     from reportlab.platypus import PageBreak
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=8 * mm, bottomMargin=8 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=8 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
     styles = getSampleStyleSheet()
     elements = []
@@ -596,7 +692,7 @@ def build_combined_pdf(summaries_with_rows):
         elements.extend(_build_pdf_card_elements(summary, rows, doc.width, styles))
         if idx < len(summaries_with_rows) - 1:
             elements.append(PageBreak())
-    doc.build(elements)
+    doc.build(elements, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
     buf.seek(0)
     return buf
 
@@ -607,10 +703,10 @@ def build_separate_pdf_files(summaries_with_rows):
     files = []
     for summary, rows in summaries_with_rows:
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=8 * mm, bottomMargin=8 * mm,
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=8 * mm,
                                  leftMargin=8 * mm, rightMargin=8 * mm)
         elements = _build_pdf_card_elements(summary, rows, doc.width, styles)
-        doc.build(elements)
+        doc.build(elements, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
         buf.seek(0)
         safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in str(summary.emp_no))
         files.append((f"{safe_name}.pdf", buf))
@@ -704,6 +800,8 @@ def build_report_table_excel(items, column_keys, cycle_label):
         c.border = border
 
     buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        _excel_logo_header(_ws)
     wb.save(buf)
     buf.seek(0)
     return buf
@@ -748,7 +846,7 @@ def build_report_table_pdf(items, column_keys, cycle_label):
     data.append(total_row)
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=10 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=22 * mm, bottomMargin=10 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
     col_width = doc.width / max(len(cols), 1)
     tbl = Table(data, colWidths=[col_width] * len(cols), repeatRows=1)
@@ -762,7 +860,7 @@ def build_report_table_pdf(items, column_keys, cycle_label):
 
     title = Paragraph(f"Report - {cycle_label}", ParagraphStyle(
         "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold", spaceAfter=8))
-    doc.build([title, tbl])
+    doc.build([title, tbl], onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
     buf.seek(0)
     return buf
 
@@ -822,6 +920,8 @@ def build_generic_result_excel(result_dict, cycle_label):
                 cell.number_format = MONEY_FMT if is_money(c["key"]) else COUNT_FMT
 
     buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        _excel_logo_header(_ws)
     wb.save(buf)
     buf.seek(0)
     return buf
@@ -864,7 +964,7 @@ def build_generic_result_pdf(result_dict, cycle_label):
         data.append(trow)
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=10 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=22 * mm, bottomMargin=10 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
     col_width = doc.width / max(len(cols), 1)
     tbl = Table(data, colWidths=[col_width] * len(cols), repeatRows=1)
@@ -879,7 +979,7 @@ def build_generic_result_pdf(result_dict, cycle_label):
 
     title = Paragraph(f"Report - {cycle_label}", ParagraphStyle(
         "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold", spaceAfter=8))
-    doc.build([title, tbl])
+    doc.build([title, tbl], onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
     buf.seek(0)
     return buf
 
@@ -917,7 +1017,10 @@ def build_store_report_excel(title, rows, subtitle=""):
     r = 5
     if not rows:
         ws.cell(row=r, column=1, value="Nothing to show.").font = Font(italic=True, color="999999")
-        buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+        buf = io.BytesIO()
+        for _ws in wb.worksheets:
+            _excel_logo_header(_ws)
+        wb.save(buf); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
     money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
@@ -981,12 +1084,15 @@ def build_store_report_excel(title, rows, subtitle=""):
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_options.horizontalCentered = True
 
-    buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+    buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        _excel_logo_header(_ws)
+    wb.save(buf); buf.seek(0); return buf
 
 
 def build_store_report_pdf(title, rows, subtitle=""):
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=10 * mm, bottomMargin=10 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=22 * mm, bottomMargin=10 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
     styles = getSampleStyleSheet()
     head = ParagraphStyle("H", parent=styles["Normal"], fontSize=8, leading=10,
@@ -1005,7 +1111,7 @@ def build_store_report_pdf(title, rows, subtitle=""):
 
     if not rows:
         el.append(Paragraph("Nothing to show.", cell))
-        doc.build(el); buf.seek(0); return buf
+        doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
     money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
@@ -1049,13 +1155,13 @@ def build_store_report_pdf(title, rows, subtitle=""):
         style.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#" + GREEN_FILL)))
     tbl.setStyle(TableStyle(style))
     el.append(tbl)
-    doc.build(el); buf.seek(0); return buf
+    doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
 
 def build_material_request_pdf(mr: dict):
     """The request itself as a document the store keeper can send to the office."""
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=14 * mm, bottomMargin=14 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=26 * mm, bottomMargin=14 * mm,
                              leftMargin=14 * mm, rightMargin=14 * mm)
     styles = getSampleStyleSheet()
     cen = lambda s, sz, b=False: Paragraph(
@@ -1123,4 +1229,4 @@ def build_material_request_pdf(mr: dict):
                  style=TableStyle([("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.HexColor("#999999")),
                                     ("TOPPADDING", (0, 0), (-1, -1), 6),
                                     ("ALIGN", (0, 0), (-1, -1), "CENTER")]))]
-    doc.build(el); buf.seek(0); return buf
+    doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
