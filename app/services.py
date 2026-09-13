@@ -104,10 +104,17 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
     # as the desktop app. rows are SQLAlchemy DailyRow objects, which
     # already expose .am/.pm/.ot/.bh directly, so no translation layer
     # is needed between the database and this calculation.
+    # The cycle's real length, for a fixed-salary worker's daily share.
+    from datetime import datetime as _dt
+    try:
+        _cs, _ce, _ = pcyc.cycle_bounds_for(_dt.strptime(f"25 {month_year}", "%d %B %Y").date())
+        cycle_days = (_ce - _cs).days + 1
+    except Exception:
+        cycle_days = 30
     computed = de.recalculate_from_daily_rows(
         rows, employee.total_salary, employee.basic_salary,
         summary.allowances or 0.0, summary.other_deduction or 0.0,
-        pay_type=(employee.pay_type or "daily"),
+        pay_type=(employee.pay_type or "daily"), cycle_days=cycle_days,
     )
 
     summary.total_salary = employee.total_salary
