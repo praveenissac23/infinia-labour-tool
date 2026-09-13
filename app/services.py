@@ -107,6 +107,7 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
     computed = de.recalculate_from_daily_rows(
         rows, employee.total_salary, employee.basic_salary,
         summary.allowances or 0.0, summary.other_deduction or 0.0,
+        pay_type=(employee.pay_type or "daily"),
     )
 
     summary.total_salary = employee.total_salary

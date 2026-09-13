@@ -48,6 +48,11 @@ class Employee(Base):
     # the books is Infinia, which is why that is the default - nobody
     # has to go back and set it on hundreds of existing records.
     company = Column(String, default="Infinia")
+    # How the man is paid. "daily": a labourer, paid per paid day, and
+    # an absence is both a day not earned and a day deducted. "fixed":
+    # a foreman or driver on a monthly figure, paid the whole salary
+    # less one day's rate per absence. Everyone starts daily.
+    pay_type = Column(String, default="daily")
     total_salary = Column(Float, default=0.0)
     basic_salary = Column(Float, default=0.0)
     active = Column(Boolean, default=True)

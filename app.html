@@ -760,6 +760,11 @@
                 <option value="Infinia">Infinia</option>
                 <option value="Prime Infinia">Prime Infinia</option>
               </select>
+              <select id="md-emp-paytype" style="width:150px;"
+                      title="Daily: paid per day worked, an absence costs the day and a day's deduction. Fixed: the whole month's salary, less one day per absence.">
+                <option value="daily">Daily wage</option>
+                <option value="fixed">Fixed monthly</option>
+              </select>
               <input type="number" id="md-emp-total" placeholder="Total Salary">
               <input type="number" id="md-emp-basic" placeholder="Basic Salary">
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
@@ -783,6 +788,7 @@
                   <th class="sortable" onclick="sortMasterData('name')">Name <span id="md-sort-name"></span></th>
                   <th class="sortable" onclick="sortMasterData('trade')">Trade <span id="md-sort-trade"></span></th>
                   <th class="sortable" onclick="sortMasterData('company')">Company <span id="md-sort-company"></span></th>
+                  <th class="sortable" onclick="sortMasterData('pay_type')">Pay Type <span id="md-sort-pay_type"></span></th>
                   <th class="sortable" onclick="sortMasterData('total_salary')">Total Salary <span id="md-sort-total_salary"></span></th>
                   <th class="sortable" onclick="sortMasterData('basic_salary')">Basic Salary <span id="md-sort-basic_salary"></span></th>
                   <th></th>
@@ -2480,6 +2486,9 @@ function renderMasterDataLists() {
       <td>${(e.company || "Infinia") === "Prime Infinia"
              ? '<span class="pill" style="background:#EDE7F6; color:#5E35B1;">Prime Infinia</span>'
              : '<span class="pill" style="background:#E8F0FE; color:#1565C0;">Infinia</span>'}</td>
+      <td>${(e.pay_type || "daily") === "fixed"
+             ? '<span class="pill" style="background:#FFF3E0; color:#B26A00;">Fixed monthly</span>'
+             : '<span class="pill" style="background:#EFEFEF; color:#555;">Daily wage</span>'}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
           <button class="btn btn-danger" onclick="removeEmployee('${e.emp_no}', '${(e.name || "").replace(/'/g, "\\'")}')">Remove</button></td>
@@ -2536,6 +2545,7 @@ function editEmployee(empNo) {
   document.getElementById("md-emp-name").value = emp.name;
   document.getElementById("md-emp-trade").value = emp.trade;
   document.getElementById("md-emp-company").value = emp.company || "Infinia";
+  document.getElementById("md-emp-paytype").value = emp.pay_type || "daily";
   document.getElementById("md-emp-total").value = emp.total_salary;
   document.getElementById("md-emp-basic").value = emp.basic_salary;
 }
@@ -2555,6 +2565,7 @@ async function saveEmployee() {
         emp_no, name,
         trade: document.getElementById("md-emp-trade").value.trim(),
         company: document.getElementById("md-emp-company").value || "Infinia",
+        pay_type: document.getElementById("md-emp-paytype").value || "daily",
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
         active: true,
@@ -2563,6 +2574,7 @@ async function saveEmployee() {
     showStatus("md-status", "ok", `Saved ${emp_no}.`);
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("md-emp-company").value = "Infinia";
+    document.getElementById("md-emp-paytype").value = "daily";
     employees = await apiCall("/employees?active_only=true");
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();

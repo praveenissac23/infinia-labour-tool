@@ -304,7 +304,7 @@ def _days_in_month(year, month):
 
 
 def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
-                                 allowances=0.0, other_deduction=0.0):
+                                 allowances=0.0, other_deduction=0.0, pay_type="daily"):
     """
     THE single source of truth for turning a set of daily attendance rows
     into payroll figures - present/absent/etc day-counts, OT/BH hours and
@@ -341,10 +341,17 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
 
     daily_rate = total_salary / 30.0 if total_salary else 0.0
 
-    total_salary_component = (
-        status_counts["Present"] + status_counts["Sick"] + status_counts["Medical"]
-        + status_counts["Friday"] + status_counts["Sunday"] + status_counts["Holiday"]
-    ) * daily_rate
+    if pay_type == "fixed":
+        # A foreman or driver on a monthly figure: the whole salary is
+        # his whatever the cycle's length or how the days were marked,
+        # and only an absence takes anything off - one day's rate per
+        # absent day, half for a half day. OT and BH still add on top.
+        total_salary_component = total_salary
+    else:
+        total_salary_component = (
+            status_counts["Present"] + status_counts["Sick"] + status_counts["Medical"]
+            + status_counts["Friday"] + status_counts["Sunday"] + status_counts["Holiday"]
+        ) * daily_rate
     deduction = daily_rate * status_counts["Absent"]
     ot_amount = (daily_rate / 8.0) * ot_total if daily_rate else 0.0
     bh_amount = (daily_rate / 8.0) * bh_total if daily_rate else 0.0

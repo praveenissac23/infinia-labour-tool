@@ -391,6 +391,7 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     # on the cards - only stray spaces are trimmed.
     emp.name = (emp.name or "").strip()
     emp.trade = (emp.trade or "").strip()
+    emp.pay_type = "fixed" if (emp.pay_type or "").strip().lower() == "fixed" else "daily"
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
     if existing:
         for field, value in emp.dict().items():
@@ -468,7 +469,7 @@ def remove_employee(emp_no: str, purge: bool = False, db: Session = Depends(get_
             "detail": f"{emp.name} removed." + (f" {history} record(s) went with them." if history else "")}
 
 
-EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Company", "Total Salary", "Basic Salary"]
+EMPLOYEE_TEMPLATE_HEADERS = ["Emp No", "Name", "Trade", "Company", "Pay Type", "Total Salary", "Basic Salary"]
 
 
 @app.get("/employees/template")
@@ -484,7 +485,7 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="C0392B")
         ws.column_dimensions[get_column_letter(i)].width = 18
-    ws.append(["D-99", "SAMPLE WORKER", "DRIVER", "Infinia", 2000, 900])
+    ws.append(["D-99", "SAMPLE WORKER", "DRIVER", "Infinia", "Fixed", 2000, 900])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -513,6 +514,7 @@ def export_employees(token: str, db: Session = Depends(get_db)):
         ws.column_dimensions[get_column_letter(i)].width = 18
     for emp in employees:
         ws.append([emp.emp_no, emp.name, emp.trade, emp.company or "Infinia",
+                  "Fixed" if (emp.pay_type or "daily") == "fixed" else "Daily",
                   emp.total_salary, emp.basic_salary])
     buf = io.BytesIO()
     wb.save(buf)
@@ -598,6 +600,12 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
         company_cell = str(get("company", "") or "").strip()
         company_stated = bool(company_cell)
         company = "Prime Infinia" if company_cell.lower().replace("-", " ") in ("prime infinia", "prime") else "Infinia"
+        # Pay Type follows the same rule: blank means not stated, so a
+        # sheet without the column cannot turn a foreman back into a
+        # day labourer on re-import.
+        pay_cell = str(get("pay type", "") or "").strip()
+        pay_stated = bool(pay_cell)
+        pay_type = "fixed" if pay_cell.lower() in ("fixed", "fixed monthly", "monthly") else "daily"
         file_emp_nos.add(emp_no)
 
         existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
@@ -606,19 +614,21 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
                 skipped += 1
             elif duplicate_handling == "add_new":
                 new_emp_no = unique_suffixed_emp_no(emp_no)
-                db.add(models.Employee(emp_no=new_emp_no, name=name, trade=trade, company=company,
+                db.add(models.Employee(emp_no=new_emp_no, name=name, trade=trade, company=company, pay_type=pay_type,
                                         total_salary=total_salary, basic_salary=basic_salary, active=True))
                 added_as_new += 1
             else:  # update
                 existing.name, existing.trade = name, trade
                 if company_stated:
                     existing.company = company
+                if pay_stated:
+                    existing.pay_type = pay_type
                 existing.total_salary, existing.basic_salary = total_salary, basic_salary
                 existing.active = True
                 updated += 1
                 updated_emp_nos.add(emp_no)
         else:
-            db.add(models.Employee(emp_no=emp_no, name=name, trade=trade, company=company,
+            db.add(models.Employee(emp_no=emp_no, name=name, trade=trade, company=company, pay_type=pay_type,
                                     total_salary=total_salary, basic_salary=basic_salary, active=True))
             created += 1
 
