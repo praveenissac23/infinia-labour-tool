@@ -63,6 +63,7 @@ def seed_on_startup():
     db = SessionLocal()
     try:
         _retire_staff_role(db)
+        _recalculate_all_summaries(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
         db.close()
@@ -123,6 +124,34 @@ ROLE_DEFAULTS = {
     "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
+
+
+def _recalculate_all_summaries(db):
+    """Recompute every stored payroll summary from its daily rows.
+
+    Summaries are stored figures, recomputed only when attendance is
+    saved or a worker is edited. When the pay rule itself changes - a
+    new pay type, a corrected formula - every card would keep showing
+    the old arithmetic until someone happened to touch it. Running this
+    at startup means a restart alone brings every card, total and
+    report into line with the current rule. Deterministic, so running
+    it on every restart is harmless; a few seconds for 74 workers."""
+    pairs = (db.query(models.EmployeeSummary.emp_no, models.EmployeeSummary.month_year)
+               .distinct().all())
+    by_no = {e.emp_no: e for e in db.query(models.Employee).all()}
+    done = 0
+    for emp_no, month_year in pairs:
+        emp = by_no.get(emp_no)
+        if emp is None:
+            continue
+        try:
+            services.recalculate_summary(db, emp, month_year)
+            done += 1
+        except Exception as e:
+            print(f"Could not recalculate {emp_no} {month_year}: {e}")
+    if done:
+        db.commit()
+        print(f"Recalculated {done} payroll summaries against the current pay rules")
 
 
 def _retire_staff_role(db):
