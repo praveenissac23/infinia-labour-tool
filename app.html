@@ -7030,7 +7030,12 @@ async function lpoFromTicked() {
   const ids = [...document.querySelectorAll(".lpo-pick:checked")].map(b => Number(b.value));
   if (!ids.length) { showStatus("lpo-status", "warn", "Tick the materials going to this supplier first."); return; }
   const picked = lpoPending.filter(p => ids.includes(p.line_id));
+  // Wait for the blank form to be fully set up before filling it. It
+  // fetches the next number, so anything written during that wait was
+  // wiped when the fetch came back and reset the line list - which is
+  // why the materials vanished and saving said there were none.
   await newLpo();
+  await new Promise(r => setTimeout(r, 0));
   lpoRequestLineIds = ids;
   // Site, job and the request they came from are already known.
   const sites = [...new Set(picked.map(p => p.site).filter(Boolean))];
@@ -7145,10 +7150,19 @@ async function exportLpoReport(fmt) {
 
 
 // Opening an order shows it in a new tab, with the downloads on it.
-async function openLpo(id) {
+async function openLpo(id, tab) {
   if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
-  if (!cachedDownloadToken) { showStatus("lpr-status", "err", "Could not open it - check the connection."); return; }
-  window.open(`${API}/view/purchase/${id}?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+  if (!cachedDownloadToken) {
+    if (tab) tab.close();
+    showStatus("lpr-status", "err", "Could not open it - check the connection.");
+    return;
+  }
+  const url = `${API}/view/purchase/${id}?token=${encodeURIComponent(cachedDownloadToken)}`;
+  // A tab opened after an await is a pop-up as far as the browser is
+  // concerned and gets blocked, so a caller that already has one hands
+  // it over and we just point it at the order.
+  if (tab) { tab.location.href = url; return; }
+  window.open(url, "_blank");
 }
 
 async function downloadLpo(id, fmt) {
@@ -7177,6 +7191,7 @@ async function newLpo() {
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-termsset").value = "default";
   document.getElementById("lpo-termstext").value = n.terms_default || "";
+  lpoFormRun += 1;
   lpoLines = [];
   lpoRequestLineIds = [];
   addLpoLine();
@@ -7246,9 +7261,14 @@ function onLpoLineField(i, field, value) {
 // meant that bringing several materials in from the queue cancelled
 // every lookup but the last, so every line but one read "first time".
 const lpoRateTimers = {};
+// Bumped whenever a fresh form is started, so a lookup still in flight
+// from the previous one cannot write its answer into the new lines.
+let lpoFormRun = 0;
 function lookupLpoRate(i) {
   clearTimeout(lpoRateTimers[i]);
+  const run = lpoFormRun;
   lpoRateTimers[i] = setTimeout(async () => {
+    if (run !== lpoFormRun) return;
     const d = (lpoLines[i] || {}).description || "";
     if (!d.trim()) { lpoLines[i].last = null; renderLpoLines(); return; }
     try {
@@ -7257,7 +7277,7 @@ function lookupLpoRate(i) {
       // been bought either way before.
       const q = (item ? `item_id=${item.id}&` : "") + `description=${encodeURIComponent(d.trim())}`;
       const r = await apiCall(`/store/purchase/rate-history?${q}`);
-      if (lpoLines[i]) {
+      if (run === lpoFormRun && lpoLines[i]) {
         lpoLines[i].item_id = item ? item.id : null;
         lpoLines[i].last = r.last || null;
         lpoLines[i].times = r.count || 0;
@@ -7318,15 +7338,22 @@ function renderLpoTotals() {
 }
 
 async function saveLpo() {
+  // Claim the tab now, while this is still a click. Pointed at the
+  // order as soon as it has a number.
+  const tab = window.open("", "_blank");
   const lines = lpoLines
     .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
                  tax_pct: parseFloat(l.tax_pct) || 0 }));
   if (!document.getElementById("lpo-supplier").value.trim()) {
+    if (tab) tab.close();
     showStatus("lpo-status", "warn", "Enter the supplier."); return;
   }
-  if (!lines.length) { showStatus("lpo-status", "warn", "Add at least one material with a quantity."); return; }
+  if (!lines.length) {
+    if (tab) tab.close();
+    showStatus("lpo-status", "warn", "Add at least one material with a quantity."); return;
+  }
   const body = {
     order_date: document.getElementById("lpo-date").value || null,
     terms: document.getElementById("lpo-terms").value,
@@ -7352,7 +7379,7 @@ async function saveLpo() {
       `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
     closeLpoForm();
     await loadPurchase();
-    await openLpo(r.id);
+    await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
   }

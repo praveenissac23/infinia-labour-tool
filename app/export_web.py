@@ -1158,7 +1158,28 @@ def build_store_report_pdf(title, rows, subtitle=""):
     doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
 
-SIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signature.png")
+# The signature lives outside the code folder, in a data directory
+# beside it. Kept inside the repo it would be wiped by the next git
+# pull - a deploy would silently start printing orders unsigned.
+# INFINIA_DATA_DIR overrides it where the deployment prefers elsewhere.
+DATA_DIR = os.environ.get(
+    "INFINIA_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+SIG_PATH = os.path.join(DATA_DIR, "signature.png")
+
+# A signature uploaded before this moved is still in the old place;
+# carry it across once rather than making somebody upload it again.
+_OLD_SIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signature.png")
+try:
+    if os.path.exists(_OLD_SIG) and not os.path.exists(SIG_PATH):
+        import shutil
+        shutil.move(_OLD_SIG, SIG_PATH)
+except Exception:
+    pass
 
 
 def build_lpo_pdf(po: dict):
