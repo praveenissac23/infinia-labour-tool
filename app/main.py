@@ -3832,11 +3832,16 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     """The order on screen, in its own tab, with the two downloads above
     it - so opening an LPO shows it rather than dropping a file in
     Downloads every time somebody checks a number."""
-    auth.get_download_user_from_token(token, db)
+    user = auth.get_download_user_from_token(token, db)
     o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="Purchase order not found.")
-    t = quote(token, safe="")
+    # A download token lasts a minute - long enough to fetch a file, far
+    # too short for links on a page somebody is reading. The buttons
+    # therefore go through /download, which checks this page's own token
+    # and mints a fresh one, so they work for as long as the tab is
+    # useful instead of dying sixty seconds after it opened.
+    t = quote(auth.create_view_token(user.username), safe="")
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">

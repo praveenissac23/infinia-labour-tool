@@ -60,6 +60,22 @@ def create_download_token(username: str) -> str:
     return jwt.encode({"sub": username, "scope": "download", "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def create_view_token(username: str) -> str:
+    """A longer-lived download token, for the buttons on a page somebody
+    is reading.
+
+    A download token lasts a minute, which is right for a link clicked
+    the instant it is made. The buttons on an order's own page are not
+    that: the tab sits open while the order is read, and a minute later
+    every button on it is dead. This is the same download scope, good
+    for four hours - long enough to be useful, short enough that a
+    pasted URL stops working the same day.
+    """
+    expire = datetime.utcnow() + timedelta(hours=4)
+    return jwt.encode({"sub": username, "scope": "download", "exp": expire},
+                      SECRET_KEY, algorithm=ALGORITHM)
+
+
 def get_download_user_from_token(token: str, db: Session) -> models.User:
     """Validates a create_download_token() token specifically - rejects
     a normal login token even if it's otherwise valid, so a leaked
