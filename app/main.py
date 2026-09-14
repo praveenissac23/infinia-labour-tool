@@ -3824,7 +3824,11 @@ def _lpo_for_print(o):
     return d
 
 
-@app.get("/view/purchase/{order_id}")
+# Under /export/, a prefix nginx already forwards. A new /view/ prefix
+# fell through to the frontend, so clicking an order number loaded the
+# app again instead of the order - the fourth time an invented prefix
+# has cost a round trip.
+@app.get("/export/purchase/{order_id}/view")
 def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)):
     """The order on screen, in its own tab, with the two downloads above
     it - so opening an LPO shows it rather than dropping a file in

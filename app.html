@@ -7121,7 +7121,10 @@ async function loadLpoReport() {
       }
       r.measures.forEach(m => cells.push(
         `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(row[m.key]) : money(row[m.key])}</td>`));
-      const open = r.group_by === "order" ? ` onclick="openLpo(${row.id})" style="cursor:pointer;" title="Open the order"` : "";
+      // The tab is claimed in the click itself - asking for it after the
+      // token fetch makes it a pop-up, which the browser blocks.
+      const open = r.group_by === "order"
+        ? ` onclick="openLpo(${row.id}, window.open('', '_blank'))" style="cursor:pointer;" title="Open the order"` : "";
       return `<tr${open}>${cells.join("")}</tr>`;
     }).join("");
 
@@ -7157,7 +7160,7 @@ async function openLpo(id, tab) {
     showStatus("lpr-status", "err", "Could not open it - check the connection.");
     return;
   }
-  const url = `${API}/view/purchase/${id}?token=${encodeURIComponent(cachedDownloadToken)}`;
+  const url = `${API}/export/purchase/${id}/view?token=${encodeURIComponent(cachedDownloadToken)}`;
   // A tab opened after an await is a pop-up as far as the browser is
   // concerned and gets blocked, so a caller that already has one hands
   // it over and we just point it at the order.
