@@ -63,14 +63,18 @@ setTimeout(async()=>{
   // Only the row for MR-0009, not buttons from other rows or the bulk bar.
   const row9 = [...d.querySelectorAll("#mreq-list tbody tr[onclick]")]
     .find(tr => tr.textContent.includes("MR-0009"));
+  // Approved material is ordered by raising its purchase order, so this
+  // screen points there rather than marking it ordered itself - that
+  // left a request reading "ordered" with no LPO behind it.
   const orderBtn = [...row9.querySelectorAll("button")]
-    .find(b => b.textContent.trim().startsWith("Mark as ordered"));
-  ok("approved request offers Mark as ordered", !!orderBtn, row9.textContent.replace(/\s+/g, " ").slice(0, 60));
-  click(orderBtn); await wait(300);
-  ok("Mark as ordered opens modal", d.getElementById("order-modal-overlay").style.display==="flex" && errsSince(n).length===0);
-  ok("picker shows 3 lines, rejected one unticked & unclickable", d.querySelectorAll("#order-lines tr").length===3 && d.querySelectorAll("#order-lines .ol-pick").length===2);
-  d.getElementById("order-supplier").value="Al Raha"; await w.saveOrderModal(); await wait(300);
-  ok("order saved with message", /ordered from Al Raha/.test(d.getElementById("appr-status").textContent) && errsSince(n).length===0);
+    .find(b => b.textContent.trim().startsWith("Raise LPO"));
+  ok("approved request sends you to raise the LPO", !!orderBtn, row9.textContent.replace(/\s+/g, " ").slice(0, 60));
+  ok("it no longer offers to mark it ordered here",
+     ![...row9.querySelectorAll("button")].some(b => b.textContent.includes("Mark as ordered")));
+  click(orderBtn); await wait(400);
+  const active = [...d.querySelectorAll(".screen")].find(s => s.classList.contains("active"));
+  ok("pressing it opens Purchase Orders", active && active.id === "screen-purchase" && errsSince(n).length===0,
+     active && active.id);
   // Approve / Reject request-level (reset filter: saving an order moves it to Ordered)
   d.getElementById("mreq-filter").value="all"; await w.loadRequests(); await wait(200);
   n=errs.length; click(find("Approve")); await wait(200); ok("Approve click no error", errsSince(n).length===0);
