@@ -807,16 +807,36 @@ def last_sites_before(target_date: str, db: Session = Depends(get_db),
         target = date.fromisoformat(target_date)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date.")
-    rows = (db.query(models.DailyRow)
-              .filter(models.DailyRow.full_date < target,
-                      models.DailyRow.full_date >= target - timedelta(days=14),
-                      models.DailyRow.site.isnot(None), models.DailyRow.site != "")
-              .order_by(models.DailyRow.emp_no, models.DailyRow.full_date.desc())
-              .all())
+    # Last day at a site, for filling site and engineer.
+    sited = (db.query(models.DailyRow)
+               .filter(models.DailyRow.full_date < target,
+                       models.DailyRow.full_date >= target - timedelta(days=14),
+                       models.DailyRow.site.isnot(None), models.DailyRow.site != "")
+               .order_by(models.DailyRow.emp_no, models.DailyRow.full_date.desc())
+               .all())
     out = {}
-    for r in rows:
+    for r in sited:
         if r.emp_no not in out:          # first seen is the latest, by the ordering
             out[r.emp_no] = {"site": r.site, "engineer": r.engineer or "", "on": r.full_date.isoformat()}
+
+    # The most recent day marked at all, whatever the status. A man on
+    # Leave stays on Leave until somebody marks him back - he is away,
+    # and every day of his absence has to be recorded, not left blank
+    # for the office to chase.
+    latest = (db.query(models.DailyRow)
+                .filter(models.DailyRow.full_date < target,
+                        models.DailyRow.full_date >= target - timedelta(days=30))
+                .order_by(models.DailyRow.emp_no, models.DailyRow.full_date.desc())
+                .all())
+    seen = set()
+    for r in latest:
+        if r.emp_no in seen:
+            continue
+        seen.add(r.emp_no)
+        entry = out.setdefault(r.emp_no, {"site": "", "engineer": "", "on": r.full_date.isoformat()})
+        entry["last_am"] = r.am or ""
+        entry["last_pm"] = r.pm or ""
+        entry["last_on"] = r.full_date.isoformat()
     return out
 
 

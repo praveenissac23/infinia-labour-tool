@@ -2099,15 +2099,28 @@ async function loadDate(dateStr, preserveStatus) {
         ot: r.ot ? String(r.ot) : "", bh: r.bh ? String(r.bh) : "",
         comments: r.comments || "",
       };
-    } else if (isSunday) {
-      const last = lastSiteByEmp[emp.emp_no];
-      rowData[emp.emp_no] = {
-        am: "Sunday", pm: "Sunday",
-        site: (last && last.site) || "", engineer: (last && last.engineer) || "",
-        ot: "", bh: "", comments: "",
-      };
     } else {
-      rowData[emp.emp_no] = { am: "", pm: "", site: "", engineer: "", ot: "", bh: "", comments: "" };
+      const last = lastSiteByEmp[emp.emp_no];
+      // A man on Leave is still on Leave until somebody marks him back.
+      // He is away, and every day away has to be recorded - leaving the
+      // row blank makes his card read as unfilled and puts him on the
+      // chase list while he is on a plane. Ahead of the Sunday rule: a
+      // Sunday during his leave is still leave.
+      const onLeave = last && last.last_am === "Leave" && last.last_pm === "Leave";
+      if (onLeave) {
+        rowData[emp.emp_no] = {
+          am: "Leave", pm: "Leave", site: "", engineer: "",
+          ot: "", bh: "", comments: "",
+        };
+      } else if (isSunday) {
+        rowData[emp.emp_no] = {
+          am: "Sunday", pm: "Sunday",
+          site: (last && last.site) || "", engineer: (last && last.engineer) || "",
+          ot: "", bh: "", comments: "",
+        };
+      } else {
+        rowData[emp.emp_no] = { am: "", pm: "", site: "", engineer: "", ot: "", bh: "", comments: "" };
+      }
     }
   });
   ticked.clear();
@@ -2117,10 +2130,14 @@ async function loadDate(dateStr, preserveStatus) {
   savedSnapshot = JSON.parse(JSON.stringify(rowData));
   // Pre-filled is not saved. Say so, or a screen full of Sunday rows
   // reads as a day already done and nobody presses Save.
-  if (isSunday) {
-    const prefilled = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
-    if (prefilled) showStatus("att-status", "warn",
-      `Sunday pre-filled for ${prefilled} worker(s) - not saved yet. Check it, then press Save Attendance.`);
+  const preSun = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
+  const preLeave = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Leave").length;
+  if (preSun || preLeave) {
+    const parts = [];
+    if (preSun) parts.push(`Sunday pre-filled for ${preSun} worker(s)`);
+    if (preLeave) parts.push(`${preLeave} still on leave`);
+    showStatus("att-status", "warn",
+      `${parts.join(", ")} - not saved yet. Check it, then press Save Attendance.`);
   }
 
   // Restore any unsaved draft for this date - same idea as the desktop
