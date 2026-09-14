@@ -3914,10 +3914,21 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   var PDF_URL = "/export/purchase/{o.id}?token={t}&format=pdf";
   var FILE_NAME = "{safe}.pdf";
   var hint = document.getElementById("wa-hint");
-  var canShareFiles = !!(navigator.canShare && navigator.share);
+  // Ask the browser properly: does it take FILES? Desktop Chrome has
+  // navigator.canShare but refuses files, so checking only that the
+  // function exists sent it down the sharing path, where it threw and
+  // the fallback tab was pop-up blocked - the button did nothing at
+  // all. Tested here with a real file, before anything is clicked.
+  var canShareFiles = false;
+  try {{
+    var probe = new File([new Blob(["x"], {{ type: "application/pdf" }})],
+                         "probe.pdf", {{ type: "application/pdf" }});
+    canShareFiles = !!(navigator.canShare && navigator.share
+                       && navigator.canShare({{ files: [probe] }}));
+  }} catch (e) {{ canShareFiles = false; }}
   hint.textContent = canShareFiles
-    ? ""
-    : "This browser cannot hand a file to WhatsApp. The button downloads the order and opens WhatsApp - attach it there.";
+    ? "Opens your share sheet - choose WhatsApp, then the person to send it to."
+    : "Opens WhatsApp Web and downloads the order - pick the chat there and attach it.";
 
   document.getElementById("wa-share").addEventListener("click", async function (ev) {{
     var btn = this;
