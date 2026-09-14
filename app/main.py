@@ -3126,6 +3126,60 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
     return {"title": "Open material requests", "rows": rows}
 
 
+@app.get("/export/{month_year}/attendance-needed")
+def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
+                              format: str = "pdf", note: str = "",
+                              db: Session = Depends(get_db)):
+    """A reminder sheet listing the workers whose cards are unfinished.
+
+    Built from the same missing-day check the Error Check screen shows,
+    narrowed to whichever workers were ticked, so a foreman gets one
+    page naming only his men and the exact days each is short.
+
+    Under /export/, a prefix nginx already forwards.
+    """
+    auth.get_download_user_from_token(token, db)
+    wanted = {n.strip() for n in emp_nos.split(",") if n.strip()}
+
+    cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(
+        datetime.strptime(f"25 {month_year}", "%d %B %Y").date())
+    last_day = min(cycle_end, _dubai_today() - timedelta(days=1))
+    all_dates = []
+    d = cycle_start
+    while d <= last_day:
+        all_dates.append(d)
+        d += timedelta(days=1)
+
+    rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    dates_by_emp = {}
+    for r in rows:
+        dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
+
+    employees = db.query(models.Employee).filter(models.Employee.active == True).all()
+    workers = []
+    for emp in sorted(employees, key=lambda e: e.emp_no):
+        if wanted and emp.emp_no not in wanted:
+            continue
+        missing = [d for d in all_dates if d not in dates_by_emp.get(emp.emp_no, set())]
+        if not missing:
+            continue
+        workers.append({"emp_no": emp.emp_no, "name": emp.name, "trade": emp.trade or "",
+                        "days": ", ".join(d.strftime("%d %b") for d in missing)})
+    if not workers:
+        raise HTTPException(status_code=404, detail="Nothing missing for those workers.")
+
+    cycle_label = f"{cycle_start.strftime('%d %b')} - {cycle_end.strftime('%d %b %Y')}"
+    safe = "".join(c if c.isalnum() else "_" for c in month_year)
+    if format == "excel":
+        buf = export_web.build_error_check_excel(cycle_label, workers, note)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Attendance_Needed_{safe}.xlsx"})
+    buf = export_web.build_error_check_pdf(cycle_label, workers, note)
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Attendance_Needed_{safe}.pdf"})
+
+
 @app.get("/export/store/report")
 def export_store_report(kind: str = "stock", format: str = "excel",
                          date_from: str = None, date_to: str = None,

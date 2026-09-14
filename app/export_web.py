@@ -1158,6 +1158,116 @@ def build_store_report_pdf(title, rows, subtitle=""):
     doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
 
+def build_error_check_pdf(cycle_label, workers, note=""):
+    """A reminder sheet for a site: the workers whose cards are not
+    finished, with the exact days each one is short.
+
+    Written to be handed to a foreman and worked through - one line per
+    worker, the dates spelled out, and a column for him to write what
+    the man actually did."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=22 * mm, bottomMargin=12 * mm,
+                             leftMargin=10 * mm, rightMargin=10 * mm)
+    styles = getSampleStyleSheet()
+    head = ParagraphStyle("H", parent=styles["Normal"], fontSize=8.5, leading=11,
+                           textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
+    cell = ParagraphStyle("C", parent=styles["Normal"], fontSize=9, leading=12, alignment=TA_LEFT)
+    ctr = ParagraphStyle("CC", parent=styles["Normal"], fontSize=9, leading=12, alignment=TA_CENTER)
+
+    el = [Paragraph("<b>INFINIA CONTRACTING LLC</b>",
+                     ParagraphStyle("T", parent=styles["Normal"], fontSize=13, alignment=TA_CENTER)),
+          Spacer(1, 3),
+          Paragraph("<b>Attendance still needed</b>",
+                     ParagraphStyle("S", parent=styles["Normal"], fontSize=11, alignment=TA_CENTER)),
+          Spacer(1, 2),
+          Paragraph(cycle_label,
+                     ParagraphStyle("D", parent=styles["Normal"], fontSize=9,
+                                    textColor=colors.HexColor("#666666"), alignment=TA_CENTER)),
+          Spacer(1, 9)]
+    if note:
+        el.append(Paragraph(note, ParagraphStyle("N", parent=styles["Normal"], fontSize=9,
+                                                  textColor=colors.HexColor("#444444"))))
+        el.append(Spacer(1, 8))
+
+    data = [[Paragraph("Emp No", head), Paragraph("Name", head), Paragraph("Trade", head),
+             Paragraph("Days needed", head), Paragraph("What he did on those days", head)]]
+    for w in workers:
+        data.append([Paragraph(w.get("emp_no", ""), ctr),
+                     Paragraph(w.get("name", ""), cell),
+                     Paragraph(w.get("trade", "") or "-", cell),
+                     Paragraph(w.get("days", "") or "-", cell),
+                     Paragraph("", cell)])
+
+    tbl = Table(data, colWidths=[doc.width * x for x in (0.11, 0.24, 0.15, 0.24, 0.26)], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#B23A2E")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#B0B0B0")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 1), (-1, -1), 7), ("BOTTOMPADDING", (0, 1), (-1, -1), 7),
+        *[("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F7F7F7"))
+          for i in range(2, len(data), 2)],
+    ]))
+    el.append(tbl)
+    el.append(Spacer(1, 14))
+    el.append(Paragraph("Filled in by ____________________          Date ____________________",
+                        ParagraphStyle("F", parent=styles["Normal"], fontSize=9,
+                                       textColor=colors.HexColor("#555555"))))
+    doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
+    buf.seek(0)
+    return buf
+
+
+def build_error_check_excel(cycle_label, workers, note=""):
+    """The same reminder as a spreadsheet, for sending on."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Attendance needed"
+    widths = [12, 26, 16, 34, 30]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    thin = Side(style="thin", color="B0B0B0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
+    t = ws.cell(row=1, column=1, value="Attendance still needed")
+    t.font = Font(bold=True, size=13)
+    t.alignment = Alignment(horizontal="center")
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=5)
+    s = ws.cell(row=2, column=1, value=cycle_label)
+    s.font = Font(size=10, color="666666")
+    s.alignment = Alignment(horizontal="center")
+    r = 4
+    if note:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        n = ws.cell(row=r, column=1, value=note)
+        n.font = Font(size=10, color="444444")
+        r += 2
+    for i, label in enumerate(["Emp No", "Name", "Trade", "Days needed",
+                               "What he did on those days"], start=1):
+        c = ws.cell(row=r, column=i, value=label)
+        c.font = Font(bold=True, color="FFFFFF", size=10)
+        c.fill = PatternFill("solid", fgColor="B23A2E")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = border
+    ws.row_dimensions[r].height = 22
+    r += 1
+    for w in workers:
+        for i, v in enumerate([w.get("emp_no", ""), w.get("name", ""), w.get("trade", "") or "-",
+                               w.get("days", "") or "-", ""], start=1):
+            c = ws.cell(row=r, column=i, value=v)
+            c.border = border
+            c.alignment = Alignment(vertical="center", wrap_text=(i in (4, 5)),
+                                    horizontal="center" if i == 1 else "left")
+        ws.row_dimensions[r].height = 20
+        r += 1
+    buf = io.BytesIO()
+    for _ws in wb.worksheets:
+        _excel_logo_header(_ws)
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def build_material_request_pdf(mr: dict):
     """The request itself as a document the store keeper can send to the office."""
     buf = io.BytesIO()

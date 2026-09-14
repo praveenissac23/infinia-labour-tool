@@ -1479,6 +1479,14 @@
           </div>
           <div class="card">
             <p style="font-size:12px; color:#888; margin-top:0;" id="errcheck-note"></p>
+            <div class="status-msg" id="errcheck-status"></div>
+            <div id="errcheck-send" class="form-row" style="display:none; align-items:center; gap:10px; margin-bottom:10px;">
+              <button class="btn btn-gray" onclick="tickAllUnfilled(true)">Tick all unfilled</button>
+              <button class="btn btn-gray" onclick="tickAllUnfilled(false)">Untick all</button>
+              <input type="text" id="errcheck-msg" placeholder="Note for the site (optional)" style="flex:1; min-width:200px; max-width:360px;">
+              <button class="btn btn-dark" onclick="sendAttendanceNeeded('pdf')">Reminder PDF</button>
+              <button class="btn btn-dark" onclick="sendAttendanceNeeded('excel')">Reminder Excel</button>
+            </div>
             <div class="grid-wrap" style="max-height: 60vh;">
               <table>
                 <thead><tr><th style="width:3%;"></th><th style="width:11%;">Emp No</th><th style="width:24%; text-align:left;">Name</th><th style="width:12%;"></th><th style="text-align:left;">What is wrong</th></tr></thead>
@@ -6256,6 +6264,10 @@ async function loadErrorCheck() {
     contradiction: ['CHECK THIS',   '#B26A00', '#FFF6E5'],
   };
 
+  const anyUnfilled = byWorker.some(w => w.issues.some(x => (x.kind || "").includes("missing") || x.kind === "Nothing entered"));
+  const sendBar = document.getElementById("errcheck-send");
+  if (sendBar) sendBar.style.display = anyUnfilled ? "" : "none";
+
   body.innerHTML = byWorker.map((w, i) => {
     const worst = w.issues.find(x => x.severity === "legal")
                || w.issues.find(x => x.severity === "contradiction");
@@ -6266,7 +6278,10 @@ async function loadErrorCheck() {
     const kinds = [...new Set(w.issues.map(x => x.kind || "Issue"))].join(" \u00b7 ");
     return `
     <tr onclick="toggleErrorRow(${i})" style="cursor:pointer;${tag ? ` background:${tag[2]};` : ""}">
-      <td style="width:3%;"><span style="color:#B26A00;">&#9656;</span></td>
+      <td style="width:3%; white-space:nowrap;">
+        ${w.issues.some(x => (x.kind || "").includes("missing") || x.kind === "Nothing entered")
+          ? `<input type="checkbox" class="ec-pick" value="${w.emp_no}" onclick="event.stopPropagation();" style="width:auto; margin-right:4px;" title="Include in the reminder">` : ""}
+        <span style="color:#B26A00;">&#9656;</span></td>
       <td style="width:11%;">${w.emp_no}</td>
       <td style="width:24%; text-align:left; font-weight:500;">${w.name}</td>
       <td style="width:12%;">${tag ? `<span style="color:${tag[1]}; font-weight:700; font-size:10px; letter-spacing:.4px;">${tag[0]}</span>` : ""}</td>
@@ -6313,6 +6328,34 @@ async function loadErrorCheck() {
 function togglePassword(inputId, box) {
   const el = document.getElementById(inputId);
   if (el) el.type = box.checked ? "text" : "password";
+}
+
+// The reminder sheet: whichever unfinished cards were ticked, as one
+// page a foreman can be handed and work through.
+function tickAllUnfilled(on) {
+  document.querySelectorAll(".ec-pick").forEach(b => { b.checked = on; });
+}
+
+function sendAttendanceNeeded(fmt) {
+  const cycle = document.getElementById("errcheck-cycle").value.trim();
+  const picked = [...document.querySelectorAll(".ec-pick:checked")].map(b => b.value);
+  if (!picked.length) {
+    showStatus("errcheck-status", "warn", "Tick the workers whose cards you want the site to fill in.");
+    return;
+  }
+  if (!cachedDownloadToken) {
+    showStatus("errcheck-status", "err", "Still preparing - try again in a moment.");
+    refreshDownloadToken();
+    return;
+  }
+  const note = (document.getElementById("errcheck-msg").value || "").trim();
+  const url = `${API}/export/${encodeURIComponent(cycle)}/attendance-needed`
+    + `?token=${encodeURIComponent(cachedDownloadToken)}`
+    + `&emp_nos=${encodeURIComponent(picked.join(","))}`
+    + `&format=${fmt}${note ? "&note=" + encodeURIComponent(note) : ""}`;
+  window.open(url, "_blank");
+  showStatus("errcheck-status", "ok",
+    `Reminder for ${picked.length} worker(s) - check your downloads or the new tab.`);
 }
 
 function toggleErrorRow(i) {
