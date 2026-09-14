@@ -1127,9 +1127,49 @@
             <button class="btn btn-primary" onclick="newLpo()">New Purchase Order</button>
             <label>Search:</label>
             <input type="text" id="lpo-search" placeholder="LPO no, supplier, site or material" style="width:280px;" oninput="renderLpoRegister()">
+            <button class="btn btn-gray" onclick="toggleSuppliers()">Suppliers</button>
             <span id="lpo-signature-note" style="margin-left:auto; font-size:12px; color:#888;"></span>
           </div>
           <div class="status-msg" id="lpo-status"></div>
+
+          <!-- Supplier master -->
+          <div class="card" id="supplier-card" style="display:none;">
+            <h2>Suppliers</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">
+              Everything a purchase order prints. Filled in once here, fetched every time after.</p>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap;">
+              <input type="text" id="sup-name" placeholder="Supplier name" style="width:230px;">
+              <input type="text" id="sup-contact" placeholder="Contact person" style="width:150px;">
+              <input type="text" id="sup-phone" placeholder="Phone" style="width:140px;">
+              <input type="text" id="sup-trn" placeholder="TRN" style="width:170px;">
+            </div>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px;">
+              <input type="text" id="sup-address" placeholder="Address" style="flex:1; min-width:250px;">
+              <input type="text" id="sup-email" placeholder="Email" style="width:190px;">
+              <select id="sup-terms" style="width:150px;">
+                <option value="">Payment terms</option>
+                <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
+              </select>
+              <button class="btn btn-primary" onclick="saveSupplier()">Save supplier</button>
+            </div>
+            <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
+              <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
+              <input type="file" id="sup-import-file" accept=".xlsx" style="width:230px;">
+              <button class="btn btn-gray" onclick="importSuppliers()">Import from Excel</button>
+              <span style="font-size:12px; color:#888;">Matched on the name - importing twice updates rather than duplicates.</span>
+            </div>
+            <div class="grid-wrap" style="max-height:34vh; margin-top:10px;">
+              <table>
+                <thead><tr>
+                  <th style="width:22%; text-align:left;">Name</th><th style="width:13%;">Contact</th>
+                  <th style="width:12%;">Phone</th><th style="width:16%;">TRN</th>
+                  <th style="width:22%; text-align:left;">Address</th><th style="width:10%;">Terms</th>
+                  <th style="width:5%;"></th>
+                </tr></thead>
+                <tbody id="supplier-list"></tbody>
+              </table>
+            </div>
+          </div>
 
           <!-- What the office has approved and nobody has ordered -->
           <div class="card" id="lpo-pending-card">
@@ -1198,7 +1238,7 @@
                 <thead><tr>
                   <th style="width:3%;">#</th>
                   <th style="width:26%;">Material</th>
-                  <th style="width:12%;">Second line</th>
+                  <th style="width:12%;">Note under name</th>
                   <th style="width:8%;">Qty</th>
                   <th style="width:8%;">Unit</th>
                   <th style="width:9%;">Rate</th>
@@ -6735,6 +6775,86 @@ async function loadPurchase() {
   }
 }
 
+function toggleSuppliers() {
+  const card = document.getElementById("supplier-card");
+  const showing = card.style.display !== "none";
+  card.style.display = showing ? "none" : "block";
+  if (!showing) renderSuppliers();
+}
+
+function renderSuppliers() {
+  const body = document.getElementById("supplier-list");
+  if (!suppliers || !suppliers.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">No suppliers yet - add one above, or import a list.</td></tr>`;
+    return;
+  }
+  body.innerHTML = suppliers.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => `
+    <tr>
+      <td style="text-align:left;"><strong>${s.name}</strong></td>
+      <td>${s.contact_person || "-"}</td><td>${s.phone || "-"}</td>
+      <td>${s.trn || '<span style="color:#C0392B;">missing</span>'}</td>
+      <td style="text-align:left;">${s.address || "-"}</td>
+      <td>${s.payment_terms || "-"}</td>
+      <td><button class="btn btn-gray" onclick="editSupplier('${(s.name || "").replace(/'/g, "\\'")}')">Edit</button></td>
+    </tr>`).join("");
+}
+
+function editSupplier(name) {
+  const s = (suppliers || []).find(x => x.name === name);
+  if (!s) return;
+  document.getElementById("sup-name").value = s.name || "";
+  document.getElementById("sup-contact").value = s.contact_person || "";
+  document.getElementById("sup-phone").value = s.phone || "";
+  document.getElementById("sup-trn").value = s.trn || "";
+  document.getElementById("sup-address").value = s.address || "";
+  document.getElementById("sup-email").value = s.email || "";
+  document.getElementById("sup-terms").value = s.payment_terms || "";
+  window.scrollTo(0, 0);
+}
+
+async function saveSupplier() {
+  const name = document.getElementById("sup-name").value.trim();
+  if (!name) { showStatus("lpo-status", "warn", "Enter the supplier's name."); return; }
+  try {
+    await apiCall("/store/suppliers", { method: "POST", body: JSON.stringify({
+      name,
+      contact_person: document.getElementById("sup-contact").value.trim(),
+      phone: document.getElementById("sup-phone").value.trim(),
+      trn: document.getElementById("sup-trn").value.trim(),
+      address: document.getElementById("sup-address").value.trim(),
+      email: document.getElementById("sup-email").value.trim(),
+      payment_terms: document.getElementById("sup-terms").value,
+    })});
+    suppliers = await apiCall("/store/suppliers");
+    renderSuppliers();
+    ["sup-name", "sup-contact", "sup-phone", "sup-trn", "sup-address", "sup-email"]
+      .forEach(id => document.getElementById(id).value = "");
+    document.getElementById("sup-terms").value = "";
+    showStatus("lpo-status", "ok", `${name} saved.`);
+    const dl = document.getElementById("lpo-supplier-list");
+    if (dl) dl.innerHTML = suppliers.map(s => `<option value="${s.name}"></option>`).join("");
+  } catch (e) { showStatus("lpo-status", "err", errText(e)); }
+}
+
+async function exportSuppliers() {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("lpo-status", "err", "Could not prepare the download."); return; }
+  window.open(`${API}/export/store/suppliers?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
+
+async function importSuppliers() {
+  const f = document.getElementById("sup-import-file").files[0];
+  if (!f) { showStatus("lpo-status", "warn", "Choose the spreadsheet first."); return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await apiCall("/store/suppliers/import", { method: "POST", body: fd });
+    suppliers = await apiCall("/store/suppliers");
+    renderSuppliers();
+    showStatus("lpo-status", "ok", r.detail || "Imported.");
+  } catch (e) { showStatus("lpo-status", "err", errText(e)); }
+}
+
 function renderLpoPending() {
   const body = document.getElementById("lpo-pending");
   if (!lpoPending.length) {
@@ -6913,7 +7033,9 @@ function lookupLpoRate(i) {
     if (!d.trim()) { lpoLines[i].last = null; renderLpoLines(); return; }
     try {
       const item = (storeItems || []).find(x => (x.name || "").toLowerCase() === d.trim().toLowerCase());
-      const q = item ? `item_id=${item.id}` : `description=${encodeURIComponent(d.trim())}`;
+      // Ask on both the item and the name - the same material may have
+      // been bought either way before.
+      const q = (item ? `item_id=${item.id}&` : "") + `description=${encodeURIComponent(d.trim())}`;
       const r = await apiCall(`/store/purchase/rate-history?${q}`);
       if (lpoLines[i]) {
         lpoLines[i].item_id = item ? item.id : null;
@@ -6946,7 +7068,7 @@ function renderLpoLines() {
       <td>${i + 1}</td>
       <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
             oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"></td>
-      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="price/week"
+      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="Extra note under the name, e.g. price/week"
             oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
       <td><input type="text" value="${l.qty}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${l.unit}" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>

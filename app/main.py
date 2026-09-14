@@ -3352,6 +3352,99 @@ def _next_lpo_no(db):
     return max(int(last or 0) + 1, LPO_START_NO)
 
 
+SUPPLIER_HEADERS = ["Name", "Contact Person", "Phone", "TRN", "Address", "Email", "Payment Terms", "Notes"]
+
+
+@app.get("/export/store/suppliers")
+def export_suppliers(token: str, db: Session = Depends(get_db)):
+    """The supplier list as a spreadsheet - the same columns the import
+    expects, so it can be edited and brought back."""
+    auth.get_download_user_from_token(token, db)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font as F, PatternFill as PF, Alignment as A
+    wb = Workbook(); ws = wb.active; ws.title = "Suppliers"
+    for i, head in enumerate(SUPPLIER_HEADERS, start=1):
+        c = ws.cell(row=1, column=i, value=head)
+        c.font = F(bold=True, color="FFFFFF"); c.fill = PF("solid", fgColor="7B1F1A")
+        c.alignment = A(horizontal="center")
+        ws.column_dimensions[chr(64 + i)].width = 30 if head in ("Name", "Address") else 18
+    for s in db.query(models.Supplier).order_by(models.Supplier.name).all():
+        ws.append([s.name, s.contact_person or "", s.phone or "", s.trn or "",
+                   s.address or "", s.email or "", s.payment_terms or "", s.notes or ""])
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    # No logo header here: it inserts rows at the top, which pushes the
+    # column headings down - and this sheet is meant to be edited and
+    # imported straight back, so the first row has to be the headings.
+    wb.save(buf); buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Suppliers.xlsx"})
+
+
+@app.post("/store/suppliers/import")
+async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(get_db),
+                            user: models.User = Depends(require_screen("approvals"))):
+    """Bring a supplier list in from a spreadsheet.
+
+    Matched on the name, so running it twice updates rather than
+    duplicates. A blank cell leaves what is on record alone - the same
+    rule as the worker import, so a partly-filled sheet cannot wipe a
+    TRN somebody typed."""
+    from openpyxl import load_workbook
+    data = await file.read()
+    try:
+        ws = load_workbook(io.BytesIO(data), data_only=True).active
+    except Exception:
+        raise HTTPException(status_code=400, detail="That file could not be read as a spreadsheet.")
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="The sheet is empty.")
+    # Find the heading row rather than assuming it is the first: a sheet
+    # that has been through Excel may carry a title or a logo above it.
+    head_i = 0
+    for i, row in enumerate(rows[:10]):
+        if any(str(c or "").strip().lower() == "name" for c in row):
+            head_i = i
+            break
+    header = [str(c or "").strip().lower() for c in rows[head_i]]
+    def col(name):
+        try:
+            return header.index(name.lower())
+        except ValueError:
+            return None
+    idx = {k: col(k) for k in ("name", "contact person", "phone", "trn", "address", "email", "payment terms", "notes")}
+    if idx["name"] is None:
+        raise HTTPException(status_code=400, detail="The sheet needs a Name column.")
+    created = updated = skipped = 0
+    for r in rows[head_i + 1:]:
+        def get(k):
+            i = idx.get(k)
+            return str(r[i]).strip() if i is not None and i < len(r) and r[i] not in (None, "") else ""
+        name = get("name")
+        if not name:
+            skipped += 1
+            continue
+        sup = _find_or_create_supplier(db, name, get("contact person"), get("phone"))
+        if not sup:
+            skipped += 1
+            continue
+        was_new = sup.id is None
+        for field, key in (("trn", "trn"), ("address", "address"), ("email", "email"),
+                           ("payment_terms", "payment terms"), ("notes", "notes"),
+                           ("contact_person", "contact person"), ("phone", "phone")):
+            v = get(key)
+            if v:
+                setattr(sup, field, v)
+        created += 1 if was_new else 0
+        updated += 0 if was_new else 1
+    db.commit()
+    log_action(db, user.id, "import_suppliers", f"{created} created, {updated} updated, {skipped} skipped")
+    return {"ok": True, "created": created, "updated": updated, "skipped": skipped,
+            "detail": f"{created} added, {updated} updated"
+                      + (f", {skipped} row(s) skipped" if skipped else "") + "."}
+
+
 @app.get("/store/purchase/pending")
 def lpo_pending_lines(db: Session = Depends(get_db),
                        user: models.User = Depends(require_screen("approvals"))):
@@ -3410,12 +3503,20 @@ def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
     q = (db.query(models.PurchaseOrderLine, models.PurchaseOrder)
            .join(models.PurchaseOrder, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
            .filter(models.PurchaseOrder.status != "cancelled"))
+    # Match on the catalogue item OR the printed name, not one or the
+    # other: the same material gets ordered once as a catalogue item and
+    # once as free text, and either way it is the same thing being
+    # bought. Matching on only one meant a material plainly ordered
+    # before came back as "first time".
+    conds = []
     if item_id:
-        q = q.filter(models.PurchaseOrderLine.item_id == item_id)
-    elif description.strip():
-        q = q.filter(func.lower(models.PurchaseOrderLine.description) == description.strip().lower())
-    else:
+        conds.append(models.PurchaseOrderLine.item_id == item_id)
+    if description.strip():
+        conds.append(func.lower(func.trim(models.PurchaseOrderLine.description))
+                     == description.strip().lower())
+    if not conds:
         return {"count": 0, "last": None, "history": []}
+    q = q.filter(or_(*conds))
     rows = q.order_by(models.PurchaseOrder.order_date.desc(),
                       models.PurchaseOrder.po_no.desc()).all()
     history = [{"ref": o.ref, "date": o.order_date.isoformat(), "supplier": o.supplier_name,
