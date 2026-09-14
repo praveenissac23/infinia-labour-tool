@@ -2318,8 +2318,8 @@ def list_suppliers(db: Session = Depends(get_db),
     # them again.
     return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
              "phone": s.phone or "", "notes": s.notes or "",
-             "trn": s.trn or "", "address": s.address or "",
-             "email": s.email or "", "payment_terms": s.payment_terms or ""}
+             "trn": s.trn or "", "email": s.email or "",
+             "payment_terms": s.payment_terms or ""}
             for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
                        .order_by(models.Supplier.name).all()]
 
@@ -3353,7 +3353,7 @@ def _next_lpo_no(db):
     return max(int(last or 0) + 1, LPO_START_NO)
 
 
-SUPPLIER_HEADERS = ["Name", "Contact Person", "Phone", "TRN", "Address", "Email", "Payment Terms", "Notes"]
+SUPPLIER_HEADERS = ["Name", "Contact Person", "Phone", "TRN", "Email", "Payment Terms", "Notes"]
 
 
 @app.get("/export/store/suppliers")
@@ -3371,7 +3371,7 @@ def export_suppliers(token: str, db: Session = Depends(get_db)):
         ws.column_dimensions[chr(64 + i)].width = 30 if head in ("Name", "Address") else 18
     for s in db.query(models.Supplier).order_by(models.Supplier.name).all():
         ws.append([s.name, s.contact_person or "", s.phone or "", s.trn or "",
-                   s.address or "", s.email or "", s.payment_terms or "", s.notes or ""])
+                   s.email or "", s.payment_terms or "", s.notes or ""])
     ws.freeze_panes = "A2"
     buf = io.BytesIO()
     # No logo header here: it inserts rows at the top, which pushes the
@@ -3414,7 +3414,7 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
             return header.index(name.lower())
         except ValueError:
             return None
-    idx = {k: col(k) for k in ("name", "contact person", "phone", "trn", "address", "email", "payment terms", "notes")}
+    idx = {k: col(k) for k in ("name", "contact person", "phone", "trn", "email", "payment terms", "notes")}
     if idx["name"] is None:
         raise HTTPException(status_code=400, detail="The sheet needs a Name column.")
     created = updated = skipped = 0
@@ -3431,7 +3431,7 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
             skipped += 1
             continue
         was_new = sup.id is None
-        for field, key in (("trn", "trn"), ("address", "address"), ("email", "email"),
+        for field, key in (("trn", "trn"), ("email", "email"),
                            ("payment_terms", "payment terms"), ("notes", "notes"),
                            ("contact_person", "contact person"), ("phone", "phone")):
             v = get(key)
@@ -3743,8 +3743,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
     if supplier:
-        for field, value in (("trn", payload.supplier_trn), ("address", payload.supplier_address),
-                             ("payment_terms", payload.terms)):
+        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms)):
             if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
                 setattr(supplier, field, value.strip())
     n = _next_lpo_no(db)
@@ -3948,7 +3947,7 @@ def _lpo_html(o):
                      pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
                      pair("Email ID", o.email), pair("Job Scope", o.job_scope),
                      pair("Project Location Name", o.project_location)])
-    addr = "".join(f"<div>{esc(x)}</div>" for x in (o.supplier_address or "").splitlines() if x.strip())
+    addr = ""          # the address is no longer printed on an order
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
     notes = ("".join(f"<div>{esc(x)}</div>" for x in (o.notes or "").splitlines() if x.strip()))
 

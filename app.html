@@ -407,6 +407,7 @@
       <div class="nav-item" data-screen="approvals" data-target="purchase" onclick="switchScreen('purchase')">Purchase Orders</div>
       <div class="nav-item" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">Order Follow-up</div>
       <div class="nav-item" data-screen="approvals" data-target="lporegister" onclick="switchScreen('lporegister')">LPO Register</div>
+      <div class="nav-item" data-screen="approvals" data-target="suppliers" onclick="switchScreen('suppliers')">Suppliers</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -1149,49 +1150,9 @@
         <div class="screen" id="screen-purchase">
           <div class="toolbar">
             <button class="btn btn-primary" onclick="newLpo()">New Purchase Order</button>
-            <button class="btn btn-gray" onclick="toggleSuppliers()">Suppliers</button>
             <span id="lpo-signature-note" style="margin-left:auto; font-size:12px; color:#888;"></span>
           </div>
           <div class="status-msg" id="lpo-status"></div>
-
-          <!-- Supplier master -->
-          <div class="card" id="supplier-card" style="display:none;">
-            <h2>Suppliers</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">
-              Everything a purchase order prints. Filled in once here, fetched every time after.</p>
-            <div class="form-row" style="gap:8px; flex-wrap:wrap;">
-              <input type="text" id="sup-name" placeholder="Supplier name" style="width:230px;">
-              <input type="text" id="sup-contact" placeholder="Contact person" style="width:150px;">
-              <input type="text" id="sup-phone" placeholder="Phone" style="width:140px;">
-              <input type="text" id="sup-trn" placeholder="TRN" style="width:170px;">
-            </div>
-            <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px;">
-              <input type="text" id="sup-address" placeholder="Address" style="flex:1; min-width:250px;">
-              <input type="text" id="sup-email" placeholder="Email" style="width:190px;">
-              <select id="sup-terms" style="width:150px;">
-                <option value="">Payment terms</option>
-                <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
-              </select>
-              <button class="btn btn-primary" onclick="saveSupplier()">Save supplier</button>
-            </div>
-            <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
-              <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
-              <input type="file" id="sup-import-file" accept=".xlsx" style="width:230px;">
-              <button class="btn btn-gray" onclick="importSuppliers()">Import from Excel</button>
-              <span style="font-size:12px; color:#888;">Matched on the name - importing twice updates rather than duplicates.</span>
-            </div>
-            <div class="grid-wrap" style="max-height:34vh; margin-top:10px;">
-              <table>
-                <thead><tr>
-                  <th style="width:22%; text-align:left;">Name</th><th style="width:13%;">Contact</th>
-                  <th style="width:12%;">Phone</th><th style="width:16%;">TRN</th>
-                  <th style="width:22%; text-align:left;">Address</th><th style="width:10%;">Terms</th>
-                  <th style="width:5%;"></th>
-                </tr></thead>
-                <tbody id="supplier-list"></tbody>
-              </table>
-            </div>
-          </div>
 
           <!-- What the office has approved and nobody has ordered -->
           <div class="card" id="lpo-pending-card">
@@ -1240,8 +1201,7 @@
                 <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:250px;" oninput="onLpoSupplier()">
                 <datalist id="lpo-supplier-list"></datalist></div>
               <div class="field"><label>Supplier TRN</label><input type="text" id="lpo-trn" style="width:170px;"></div>
-              <div class="field" style="flex:1; min-width:240px;"><label>Supplier address</label>
-                <input type="text" id="lpo-supaddr" placeholder="Optional - printed under the name" style="width:100%;"></div>
+
             </div>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
@@ -1297,6 +1257,48 @@
 
         </div>
 
+        <div class="screen" id="screen-suppliers">
+          <!-- Supplier master -->
+          <div class="card" id="supplier-card">
+            <h2>Suppliers</h2>
+            <div class="status-msg" id="sup-status"></div>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">
+              Everything a purchase order prints. Filled in once here, fetched every time after.</p>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap;">
+              <input type="text" id="sup-name" placeholder="Supplier name" style="width:230px;">
+              <input type="text" id="sup-contact" placeholder="Contact person" style="width:150px;">
+              <input type="text" id="sup-phone" placeholder="Phone" style="width:140px;">
+              <input type="text" id="sup-trn" placeholder="TRN" style="width:170px;">
+            </div>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px;">
+              <input type="text" id="sup-email" placeholder="Email" style="width:190px;">
+              <select id="sup-terms" style="width:150px;">
+                <option value="">Payment terms</option>
+                <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
+              </select>
+              <button class="btn btn-primary" onclick="saveSupplier()">Save supplier</button>
+            </div>
+            <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
+              <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
+              <input type="file" id="sup-import-file" accept=".xlsx" style="width:230px;">
+              <button class="btn btn-gray" onclick="importSuppliers()">Import from Excel</button>
+              <span style="font-size:12px; color:#888;">Matched on the name - importing twice updates rather than duplicates.</span>
+            </div>
+            <div class="grid-wrap" style="max-height:34vh; margin-top:10px;">
+              <table>
+                <thead><tr>
+                  <th style="width:26%; text-align:left;">Name</th><th style="width:15%;">Contact</th>
+                  <th style="width:13%;">Phone</th><th style="width:19%;">TRN</th>
+                  <th style="width:15%;">Email</th><th style="width:12%;">Terms</th>
+                  <th style="width:5%;"></th>
+                </tr></thead>
+                <tbody id="supplier-list"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
         <div class="screen" id="screen-lporegister">
           <div class="toolbar">
             <label>Show:</label>
@@ -1313,7 +1315,10 @@
           </div>
           <div class="card">
             <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-              <div class="field"><label>Supplier</label><input type="text" id="lpr-supplier" placeholder="Any" oninput="debouncedLpoReport()" style="width:190px;"></div>
+              <div class="field"><label>Supplier</label>
+                <input type="text" id="lpr-supplier" list="lpr-supplier-list" placeholder="Any - start typing"
+                       oninput="debouncedLpoReport()" autocomplete="off" style="width:210px;">
+                <datalist id="lpr-supplier-list"></datalist></div>
               <div class="field"><label>Project location</label><input type="text" id="lpr-site" placeholder="Any" oninput="debouncedLpoReport()" style="width:170px;"></div>
               <div class="field"><label>Material</label><input type="text" id="lpr-material" placeholder="Any" oninput="debouncedLpoReport()" style="width:190px;"></div>
               <div class="field" style="flex:1; min-width:230px;"><label>Columns</label>
@@ -1952,6 +1957,7 @@ function switchScreen(name) {
   if (name === "combine") filterCombineWorkers();
   if (name === "purchase") loadPurchase();
   if (name === "lporegister") loadLpoReport();
+  if (name === "suppliers") loadSuppliersScreen();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -6914,11 +6920,9 @@ async function loadPurchase() {
   }
 }
 
-function toggleSuppliers() {
-  const card = document.getElementById("supplier-card");
-  const showing = card.style.display !== "none";
-  card.style.display = showing ? "none" : "block";
-  if (!showing) renderSuppliers();
+async function loadSuppliersScreen() {
+  try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { suppliers = suppliers || []; }
+  renderSuppliers();
 }
 
 function renderSuppliers() {
@@ -6932,7 +6936,7 @@ function renderSuppliers() {
       <td style="text-align:left;"><strong>${s.name}</strong></td>
       <td>${s.contact_person || "-"}</td><td>${s.phone || "-"}</td>
       <td>${s.trn || '<span style="color:#C0392B;">missing</span>'}</td>
-      <td style="text-align:left;">${s.address || "-"}</td>
+      <td>${s.email || "-"}</td>
       <td>${s.payment_terms || "-"}</td>
       <td><button class="btn btn-gray" onclick="editSupplier('${(s.name || "").replace(/'/g, "\\'")}')">Edit</button></td>
     </tr>`).join("");
@@ -6945,7 +6949,6 @@ function editSupplier(name) {
   document.getElementById("sup-contact").value = s.contact_person || "";
   document.getElementById("sup-phone").value = s.phone || "";
   document.getElementById("sup-trn").value = s.trn || "";
-  document.getElementById("sup-address").value = s.address || "";
   document.getElementById("sup-email").value = s.email || "";
   document.getElementById("sup-terms").value = s.payment_terms || "";
   window.scrollTo(0, 0);
@@ -6953,23 +6956,22 @@ function editSupplier(name) {
 
 async function saveSupplier() {
   const name = document.getElementById("sup-name").value.trim();
-  if (!name) { showStatus("lpo-status", "warn", "Enter the supplier's name."); return; }
+  if (!name) { showStatus("sup-status", "warn", "Enter the supplier's name."); return; }
   try {
     await apiCall("/store/suppliers", { method: "POST", body: JSON.stringify({
       name,
       contact_person: document.getElementById("sup-contact").value.trim(),
       phone: document.getElementById("sup-phone").value.trim(),
       trn: document.getElementById("sup-trn").value.trim(),
-      address: document.getElementById("sup-address").value.trim(),
       email: document.getElementById("sup-email").value.trim(),
       payment_terms: document.getElementById("sup-terms").value,
     })});
     suppliers = await apiCall("/store/suppliers");
     renderSuppliers();
-    ["sup-name", "sup-contact", "sup-phone", "sup-trn", "sup-address", "sup-email"]
+    ["sup-name", "sup-contact", "sup-phone", "sup-trn", "sup-email"]
       .forEach(id => document.getElementById(id).value = "");
     document.getElementById("sup-terms").value = "";
-    showStatus("lpo-status", "ok", `${name} saved.`);
+    showStatus("sup-status", "ok", `${name} saved.`);
     const dl = document.getElementById("lpo-supplier-list");
     if (dl) dl.innerHTML = suppliers.map(s => `<option value="${s.name}"></option>`).join("");
   } catch (e) { showStatus("lpo-status", "err", errText(e)); }
@@ -6983,14 +6985,14 @@ async function exportSuppliers() {
 
 async function importSuppliers() {
   const f = document.getElementById("sup-import-file").files[0];
-  if (!f) { showStatus("lpo-status", "warn", "Choose the spreadsheet first."); return; }
+  if (!f) { showStatus("sup-status", "warn", "Choose the spreadsheet first."); return; }
   const fd = new FormData();
   fd.append("file", f);
   try {
     const r = await apiCall("/store/suppliers/import", { method: "POST", body: fd });
     suppliers = await apiCall("/store/suppliers");
     renderSuppliers();
-    showStatus("lpo-status", "ok", r.detail || "Imported.");
+    showStatus("sup-status", "ok", r.detail || "Imported.");
   } catch (e) { showStatus("lpo-status", "err", errText(e)); }
 }
 
@@ -7081,6 +7083,7 @@ async function loadLpoReport() {
   try {
     const r = await apiCall(`/store/purchase/report?${lprParams()}`);
     lprCatalog = r.catalog;
+    fillLprSupplierList();
     // Build the pickers once the catalogue is known.
     const gsel = document.getElementById("lpr-group");
     if (!gsel.options.length) {
@@ -7139,6 +7142,22 @@ async function loadLpoReport() {
   }
 }
 
+// The suppliers actually on the register, offered as you type. Built
+// once from a supplier-grouped read, so it is the traders bought from
+// rather than every name on file.
+let lprSupplierNames = null;
+async function fillLprSupplierList() {
+  const dl = document.getElementById("lpr-supplier-list");
+  if (!dl || lprSupplierNames) return;
+  try {
+    const all = await apiCall("/store/purchase/report?group_by=supplier&measures=orders&status=all");
+    lprSupplierNames = (all.rows || []).map(r => r.label).filter(Boolean);
+  } catch (e) {
+    lprSupplierNames = (suppliers || []).map(s => s.name);
+  }
+  dl.innerHTML = lprSupplierNames.map(n => `<option value="${n}"></option>`).join("");
+}
+
 function onLprMeasure() {
   lprMeasures = [...document.querySelectorAll("#lpr-measures input:checked")].map(b => b.dataset.m);
   if (!lprMeasures.length) lprMeasures = ["total"];
@@ -7189,7 +7208,7 @@ async function newLpo() {
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
-  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-supaddr", "lpo-plot", "lpo-contact",
+  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-plot", "lpo-contact",
    "lpo-mobile", "lpo-scope", "lpo-location", "lpo-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-termsset").value = "default";
@@ -7222,7 +7241,6 @@ function onLpoSupplier() {
   fill("lpo-contact", s.contact_person);
   fill("lpo-mobile", s.phone);
   fill("lpo-trn", s.trn);
-  fill("lpo-supaddr", s.address);
   if (s.payment_terms) {
     const sel = document.getElementById("lpo-terms");
     if ([...sel.options].some(o => o.value === s.payment_terms)) sel.value = s.payment_terms;
@@ -7364,7 +7382,6 @@ async function saveLpo() {
     supplier_ref: document.getElementById("lpo-supref").value.trim(),
     supplier_name: document.getElementById("lpo-supplier").value.trim(),
     supplier_trn: document.getElementById("lpo-trn").value.trim(),
-    supplier_address: document.getElementById("lpo-supaddr").value.trim(),
     plot_no: document.getElementById("lpo-plot").value.trim(),
     contact_person: document.getElementById("lpo-contact").value.trim(),
     mobile: document.getElementById("lpo-mobile").value.trim(),

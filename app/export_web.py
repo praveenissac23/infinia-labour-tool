@@ -1265,10 +1265,10 @@ def build_lpo_pdf(po: dict):
                             ("LEFTPADDING", (0, 0), (-1, -1), 5),
                             ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
     el.append(vt)
+    # Name and TRN only. The address was never used by anyone reading
+    # the order - the supplier knows where he is - and it made the block
+    # taller than it needed to be.
     vlines = [P(po.get("supplier_name", ""), 9.5, bold=True)]
-    for ln in (po.get("supplier_address", "") or "").splitlines():
-        if ln.strip():
-            vlines.append(P(ln.strip(), 8))
     if po.get("supplier_trn"):
         vlines.append(P(f"TRN {po['supplier_trn']}", 8))
     vb = Table([[vlines]], colWidths=[W])
@@ -1437,8 +1437,7 @@ def build_lpo_excel(po: dict):
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
     for col in range(1, 8):
         ws.cell(row=r, column=col).border = box
-    for ln in [x for x in (po.get("supplier_address", "") or "").splitlines() if x.strip()] + \
-              ([f"TRN {po['supplier_trn']}"] if po.get("supplier_trn") else []):
+    for ln in ([f"TRN {po['supplier_trn']}"] if po.get("supplier_trn") else []):
         r += 1
         ws.cell(row=r, column=1, value=ln).font = Font(size=9)
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
