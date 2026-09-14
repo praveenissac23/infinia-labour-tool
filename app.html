@@ -6996,7 +6996,7 @@ async function loadLpoReport() {
       }
       r.measures.forEach(m => cells.push(
         `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(row[m.key]) : money(row[m.key])}</td>`));
-      const open = r.group_by === "order" ? ` onclick="downloadLpo(${row.id}, 'pdf')" style="cursor:pointer;" title="Open the order"` : "";
+      const open = r.group_by === "order" ? ` onclick="openLpo(${row.id})" style="cursor:pointer;" title="Open the order"` : "";
       return `<tr${open}>${cells.join("")}</tr>`;
     }).join("");
 
@@ -7023,6 +7023,13 @@ async function exportLpoReport(fmt) {
   window.open(`${API}/export/store/purchase-report?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}&${lprParams()}`, "_blank");
 }
 
+
+// Opening an order shows it in a new tab, with the downloads on it.
+async function openLpo(id) {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("lpr-status", "err", "Could not open it - check the connection."); return; }
+  window.open(`${API}/view/purchase/${id}?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
 
 async function downloadLpo(id, fmt) {
   // Fetch a token if there isn't one rather than telling the person to
@@ -7222,10 +7229,10 @@ async function saveLpo() {
   try {
     const r = await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
     showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening the PDF.`);
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
     closeLpoForm();
     await loadPurchase();
-    await downloadLpo(r.id, "pdf");
+    await openLpo(r.id);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
   }

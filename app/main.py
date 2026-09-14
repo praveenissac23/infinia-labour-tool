@@ -12,11 +12,12 @@ import os
 import re
 import io
 import json
+from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from openpyxl import Workbook, load_workbook
@@ -3823,9 +3824,160 @@ def _lpo_for_print(o):
     return d
 
 
+@app.get("/view/purchase/{order_id}")
+def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)):
+    """The order on screen, in its own tab, with the two downloads above
+    it - so opening an LPO shows it rather than dropping a file in
+    Downloads every time somebody checks a number."""
+    auth.get_download_user_from_token(token, db)
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    t = quote(token, safe="")
+    page = f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{o.ref}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         background:#F1EFEA; color:#1F2429; }}
+  .bar {{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; }}
+  .bar h1 {{ font-size:16px; margin:0 12px 0 0; }}
+  .bar .who {{ font-size:13px; color:#666; }}
+  a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
+           padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
+           background:#FDF4F3; color:#8C2F26; }}
+  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  .cancelled {{ background:#FBE0DE; color:#C0392B; font-size:12px; font-weight:700;
+                padding:3px 8px; border-radius:4px; }}
+  .sheet {{ max-width:820px; margin:18px auto 40px; background:white; padding:22px 26px;
+            border:1px solid #DDD; border-radius:6px; font-size:12.5px; }}
+  .head {{ display:flex; justify-content:space-between; align-items:flex-start;
+           border-bottom:1px solid #999; padding-bottom:10px; }}
+  .co strong {{ font-size:15px; }} .co div {{ color:#444; font-size:11.5px; }}
+  .po {{ font-size:21px; letter-spacing:.5px; }}
+  .two {{ display:flex; gap:0; border:1px solid #999; border-top:0; }}
+  .two table {{ flex:1; border-collapse:collapse; }}
+  .two table:first-child {{ border-right:1px solid #999; }}
+  .pairs td {{ padding:3px 8px; vertical-align:top; }}
+  .pairs .k {{ color:#444; width:44%; }} .pairs .v {{ font-weight:600; }}
+  .vlabel {{ background:#F0F0F0; border:1px solid #999; border-top:0; padding:4px 8px; color:#444; }}
+  .vendor {{ border:1px solid #999; border-top:0; padding:8px; }}
+  .vendor div {{ color:#444; font-size:11.5px; }}
+  table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; }}
+  table.lines th {{ background:#7B1F1A; color:white; padding:6px; font-size:11.5px; }}
+  table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
+  table.lines th.r, td.r {{ text-align:right; }} th.c, td.c {{ text-align:center; }}
+  .sub {{ color:#666; font-size:11px; }}
+  .foot {{ display:flex; gap:26px; margin-top:14px; }}
+  .terms {{ flex:1.2; color:#333; font-size:11.5px; line-height:1.5; }}
+  .lbl {{ color:#555; font-size:11px; margin-top:8px; }}
+  table.money {{ width:100%; border-collapse:collapse; }}
+  table.money td {{ padding:4px 6px; }}
+  table.money .tot td {{ border-top:1px solid #999; font-size:14px; font-weight:700; }}
+  .sig {{ border:1px solid #999; margin-top:10px; padding:8px; text-align:center;
+          font-size:11.5px; color:#333; }}
+  .sigbox {{ height:52px; }}
+  @media print {{ .bar {{ display:none; }} .sheet {{ border:0; margin:0; max-width:none; }} }}
+</style></head><body>
+  <div class="bar">
+    <h1>{o.ref}</h1>
+    {'<span class="cancelled">CANCELLED</span>' if o.status == "cancelled" else ''}
+    <span class="who">{o.supplier_name or ''}{' &middot; ' + o.project_location if o.project_location else ''}
+      {' &middot; ' + o.order_date.strftime('%d %b %Y') if o.order_date else ''}</span>
+    <span style="margin-left:auto;"></span>
+    <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
+    <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
+  </div>
+  <div class="sheet">{_lpo_html(o)}</div>
+</body></html>"""
+    return HTMLResponse(page)
+
+
+def _lpo_html(o):
+    """The order drawn as a page, not an embedded PDF.
+
+    A browser that has no PDF viewer - and a phone is often one - shows
+    an empty grey frame instead of the order. Drawing it here means it
+    is readable anywhere, and the two buttons above still give the real
+    files.
+    """
+    def esc(v):
+        return (str(v or "")
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    rows, sub, vat = [], 0.0, 0.0
+    for i, l in enumerate(o.lines, start=1):
+        amount = (l.qty or 0) * (l.rate or 0)
+        tax = amount * (l.tax_pct or 0) / 100.0
+        sub += amount
+        vat += tax
+        second = f'<div class="sub">{esc(l.description2)}</div>' if (l.description2 or "").strip() else ""
+        rows.append(
+            f'<tr><td class="c">{i}</td><td>{esc(l.description)}{second}</td>'
+            f'<td class="r">{l.qty:,.2f}</td><td class="r">{l.rate:,.2f}</td>'
+            f'<td class="r">{(l.tax_pct or 0):,.2f}</td><td class="r">{tax:,.2f}</td>'
+            f'<td class="r">{amount:,.2f}</td></tr>')
+    discount = sub * (o.discount_pct or 0) / 100.0
+    net = sub - discount
+    if o.discount_pct:
+        vat = net * (o.tax_pct or 5) / 100.0
+    total = net + vat
+
+    money = [f'<tr><td>Sub Total</td><td class="r">{sub:,.2f}</td></tr>']
+    if o.discount_pct:
+        money.append(f'<tr><td>Discount({o.discount_pct:,.2f}%)</td>'
+                     f'<td class="r">(-) {discount:,.2f}</td></tr>')
+    money.append(f'<tr><td>Standard Rate ({(o.tax_pct or 5):g}%)</td><td class="r">{vat:,.2f}</td></tr>')
+    money.append(f'<tr class="tot"><td>Total</td><td class="r">AED {total:,.2f}</td></tr>')
+
+    def pair(k, v):
+        return f'<tr><td class="k">{k}</td><td class="v">: {esc(v)}</td></tr>'
+
+    left = "".join([pair("Purchase Order No", o.ref),
+                    pair("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
+                    pair("Terms", o.terms),
+                    pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
+                    pair("Ref#", o.supplier_ref)])
+    right = "".join([pair("Plot No", o.plot_no), pair("Contact Person", o.contact_person),
+                     pair("Mobile No", o.mobile),
+                     pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
+                     pair("Email ID", o.email), pair("Job Scope", o.job_scope),
+                     pair("Project Location Name", o.project_location)])
+    addr = "".join(f"<div>{esc(x)}</div>" for x in (o.supplier_address or "").splitlines() if x.strip())
+    terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
+    notes = ("".join(f"<div>{esc(x)}</div>" for x in (o.notes or "").splitlines() if x.strip()))
+
+    return f"""
+      <div class="head">
+        <div class="co"><strong>INFINIA CONTRACTING LLC</strong>
+          <div>M09 Bin Bishr Building</div><div>Abu Hail,  Dubai , United Arab Emirates</div>
+          <div>TRN 100602393900003</div></div>
+        <div class="po">PURCHASE ORDER</div>
+      </div>
+      <div class="two"><table class="pairs">{left}</table><table class="pairs">{right}</table></div>
+      <div class="vlabel">Vendor Address</div>
+      <div class="vendor"><strong>{esc(o.supplier_name)}</strong>{addr}
+        {f'<div>TRN {esc(o.supplier_trn)}</div>' if o.supplier_trn else ''}</div>
+      <table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
+        <th class="r">Qty</th><th class="r">Rate</th><th class="r">Tax %</th>
+        <th class="r">Tax</th><th class="r">Amount</th></tr></thead>
+        <tbody>{''.join(rows)}</tbody></table>
+      <div class="foot">
+        <div class="terms">
+          {f'<div class="lbl">Notes</div>{notes}' if notes else ''}
+          <div class="lbl">Terms &amp; Conditions</div>{terms}
+        </div>
+        <div>
+          <table class="money">{''.join(money)}</table>
+          <div class="sig">For Infinia Contracting LLC<div class="sigbox"></div>Authorized Signature</div>
+        </div>
+      </div>"""
+
+
 @app.get("/export/purchase/{order_id}")
 def export_purchase_order(order_id: int, token: str, format: str = "pdf",
-                           db: Session = Depends(get_db)):
+                           inline: bool = False, db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
     if not o:
@@ -3838,8 +3990,11 @@ def export_purchase_order(order_id: int, token: str, format: str = "pdf",
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={safe}.xlsx"})
     buf = export_web.build_lpo_pdf(d)
+    # inline shows it in the browser instead of dropping a file in
+    # Downloads - so an order can be read before deciding to keep it.
+    how = "inline" if inline else "attachment"
     return StreamingResponse(buf, media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={safe}.pdf"})
+        headers={"Content-Disposition": f"{how}; filename={safe}.pdf"})
 
 
 @app.post("/store/purchase/signature")
