@@ -2312,8 +2312,13 @@ def _find_or_create_supplier(db, name, contact_person="", phone=""):
 @app.get("/store/suppliers")
 def list_suppliers(db: Session = Depends(get_db),
                     user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
+    # Everything a purchase order prints, so choosing a supplier on the
+    # LPO screen fills the TRN, address and terms rather than asking for
+    # them again.
     return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
-             "phone": s.phone or "", "notes": s.notes or ""}
+             "phone": s.phone or "", "notes": s.notes or "",
+             "trn": s.trn or "", "address": s.address or "",
+             "email": s.email or "", "payment_terms": s.payment_terms or ""}
             for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
                        .order_by(models.Supplier.name).all()]
 
@@ -2326,6 +2331,12 @@ def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
     sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
     if payload.notes:
         sup.notes = payload.notes
+    # The details a purchase order needs, editable from the supplier
+    # screen as well as learned from the orders themselves.
+    for field in ("trn", "address", "email", "payment_terms"):
+        v = (getattr(payload, field, "") or "").strip()
+        if v:
+            setattr(sup, field, v)
     db.commit()
     return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person or "",
             "phone": sup.phone or ""}
@@ -3341,6 +3352,43 @@ def _next_lpo_no(db):
     return max(int(last or 0) + 1, LPO_START_NO)
 
 
+@app.get("/store/purchase/pending")
+def lpo_pending_lines(db: Session = Depends(get_db),
+                       user: models.User = Depends(require_screen("approvals"))):
+    """Everything the office has approved and nobody has ordered yet.
+
+    This is the purchase officer's queue: approved lines, still owed,
+    with the site and job that asked for them, so an order is raised by
+    ticking rather than by typing the whole thing again.
+    """
+    reqs = (db.query(models.MaterialRequest)
+              .options(joinedload(models.MaterialRequest.lines))
+              .filter(models.MaterialRequest.status.notin_(["rejected", "closed"]))
+              .order_by(models.MaterialRequest.needed_by.asc()).all())
+    items = {i.id: i for i in db.query(models.StoreItem).all()}
+    out = []
+    for mr in reqs:
+        for l in mr.lines:
+            if (l.status or "pending") != "approved":
+                continue
+            if l.supplier_id:                       # already placed with somebody
+                continue
+            outstanding = (l.qty_approved or l.qty_requested or 0) - (l.qty_received or 0)
+            if outstanding <= 0:
+                continue
+            it = items.get(l.item_id)
+            out.append({
+                "line_id": l.id, "request_id": mr.id, "ref": mr.ref,
+                "site": mr.site or "", "requested_by": mr.requested_by or "",
+                "needed_by": mr.needed_by.isoformat() if mr.needed_by else "",
+                "urgency": mr.urgency or "normal", "purpose": l.purpose or "",
+                "item_id": l.item_id,
+                "description": (it.name if it else "") or l.description or "",
+                "qty": outstanding, "unit": l.unit or (it.unit if it else ""),
+            })
+    return out
+
+
 @app.get("/store/purchase/next-no")
 def next_lpo_number(db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("approvals"))):
@@ -3441,6 +3489,13 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
 
     supplier = _find_or_create_supplier(db, payload.supplier_name,
                                         payload.contact_person, payload.mobile)
+    # Anything typed here that the supplier record did not have is kept,
+    # so the next order for the same trader needs none of it.
+    if supplier:
+        for field, value in (("trn", payload.supplier_trn), ("address", payload.supplier_address),
+                             ("payment_terms", payload.terms)):
+            if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
+                setattr(supplier, field, value.strip())
     n = _next_lpo_no(db)
     o = models.PurchaseOrder(
         po_no=n, ref=f"IC/LPO/{n}",
@@ -3470,10 +3525,30 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+    # Raising the order IS placing it. The request lines it came from are
+    # marked ordered against this supplier, so the request moves on and
+    # the keeper sees it on Order Follow-up - rather than the office
+    # having to say "ordered" a second time somewhere else.
+    placed = []
+    if payload.request_line_ids:
+        lines = (db.query(models.MaterialRequestLine)
+                   .filter(models.MaterialRequestLine.id.in_(payload.request_line_ids)).all())
+        for l in lines:
+            l.supplier_id = supplier.id if supplier else None
+            l.status = "approved"
+            placed.append(l)
+        for mr in {l.request for l in lines if l.request}:
+            if payload.delivery_date:
+                mr.expected_on = payload.delivery_date
+            if mr.status in ("pending", "approved"):
+                mr.status = "ordered"
+            sup_ids = {x.supplier_id for x in mr.lines if (x.status or "") != "rejected"}
+            mr.supplier_id = supplier.id if (supplier and sup_ids == {supplier.id}) else None
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
-               f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))")
+               f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
+               + (f", {len(placed)} request line(s) marked ordered" if placed else ""))
     return _lpo_dict(o)
 
 

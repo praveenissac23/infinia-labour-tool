@@ -245,6 +245,13 @@ class Supplier(Base):
     name_key = Column(String, unique=True, index=True, nullable=False)
     contact_person = Column(String, default="")
     phone = Column(String, default="")
+    # Everything a purchase order needs printed on it. Kept on the
+    # supplier so it is typed once and fetched every time after - the
+    # TRN especially, which nobody remembers and everybody mistypes.
+    trn = Column(String, default="")
+    address = Column(Text, default="")
+    email = Column(String, default="")
+    payment_terms = Column(String, default="")
     notes = Column(Text, default="")
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

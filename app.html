@@ -1131,6 +1131,33 @@
           </div>
           <div class="status-msg" id="lpo-status"></div>
 
+          <!-- What the office has approved and nobody has ordered -->
+          <div class="card" id="lpo-pending-card">
+            <h2>Waiting to be ordered</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 8px;">
+              Approved by the office and not yet placed with anyone. Tick what goes to one supplier
+              and press the button - the order is filled in for you.</p>
+            <div class="grid-wrap" style="max-height:38vh;">
+              <table>
+                <thead><tr>
+                  <th style="width:4%;"><input type="checkbox" onchange="tickAllPending(this.checked)"></th>
+                  <th style="width:11%;">Request</th>
+                  <th style="width:8%;">Site</th>
+                  <th style="width:26%; text-align:left;">Material</th>
+                  <th style="width:10%;">Qty</th>
+                  <th style="width:17%; text-align:left;">What for</th>
+                  <th style="width:12%;">Needed by</th>
+                  <th style="width:12%;">Asked by</th>
+                </tr></thead>
+                <tbody id="lpo-pending"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px; align-items:center; gap:10px;">
+              <button class="btn btn-primary" onclick="lpoFromTicked()">Generate LPO from ticked</button>
+              <span id="lpo-pending-note" style="font-size:12px; color:#888;"></span>
+            </div>
+          </div>
+
           <!-- Raise / view one order -->
           <div class="card" id="lpo-form-card" style="display:none;">
             <h2 id="lpo-form-title">New Purchase Order</h2>
@@ -6660,15 +6687,21 @@ function exportOneWorker(fmt) {
 // ============ PURCHASE ORDERS ============
 let lpoRegister = [];
 let lpoLines = [];
+let lpoRequestLineIds = [];
 let lpoDefaults = { terms_default: "", terms_rental: "" };
+
+let lpoPending = [];
 
 async function loadPurchase() {
   try {
-    const [reg, next, sig] = await Promise.all([
+    const [reg, next, sig, pending] = await Promise.all([
       apiCall("/store/purchase/orders"),
       apiCall("/store/purchase/next-no"),
       apiCall("/store/purchase/signature-status").catch(() => ({ present: false })),
+      apiCall("/store/purchase/pending").catch(() => []),
     ]);
+    lpoPending = pending || [];
+    renderLpoPending();
     lpoRegister = reg || [];
     lpoDefaults = next || lpoDefaults;
     document.getElementById("lpo-signature-note").textContent =
@@ -6688,6 +6721,61 @@ async function loadPurchase() {
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
   }
+}
+
+function renderLpoPending() {
+  const body = document.getElementById("lpo-pending");
+  if (!lpoPending.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty-note">Nothing waiting - every approved material has been ordered.</td></tr>`;
+    document.getElementById("lpo-pending-note").textContent = "";
+    return;
+  }
+  body.innerHTML = lpoPending.map(p => `
+    <tr${p.urgency === "urgent" ? ' style="background:#FFF6E5;"' : ""}>
+      <td><input type="checkbox" class="lpo-pick" value="${p.line_id}" onchange="notePendingPick()"></td>
+      <td>${p.ref}</td><td>${p.site || "-"}</td>
+      <td style="text-align:left;">${p.description}</td>
+      <td>${num(p.qty)} ${p.unit || ""}</td>
+      <td style="text-align:left;">${p.purpose || "-"}</td>
+      <td>${p.needed_by || "-"}${p.urgency === "urgent" ? ' <span class="pill" style="background:#FFE0B2; color:#B26A00;">urgent</span>' : ""}</td>
+      <td>${p.requested_by || "-"}</td>
+    </tr>`).join("");
+  notePendingPick();
+}
+
+function tickAllPending(on) {
+  document.querySelectorAll(".lpo-pick").forEach(b => { b.checked = on; });
+  notePendingPick();
+}
+
+function notePendingPick() {
+  const n = document.querySelectorAll(".lpo-pick:checked").length;
+  document.getElementById("lpo-pending-note").textContent =
+    n ? `${n} material(s) ticked` : "Tick the materials going to one supplier.";
+}
+
+// The whole point: the order arrives filled in from what was ticked.
+async function lpoFromTicked() {
+  const ids = [...document.querySelectorAll(".lpo-pick:checked")].map(b => Number(b.value));
+  if (!ids.length) { showStatus("lpo-status", "warn", "Tick the materials going to this supplier first."); return; }
+  const picked = lpoPending.filter(p => ids.includes(p.line_id));
+  await newLpo();
+  lpoRequestLineIds = ids;
+  // Site, job and the request they came from are already known.
+  const sites = [...new Set(picked.map(p => p.site).filter(Boolean))];
+  const jobs = [...new Set(picked.map(p => p.purpose).filter(Boolean))];
+  document.getElementById("lpo-location").value = sites.join(",");
+  document.getElementById("lpo-scope").value = jobs.join(" & ");
+  const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
+  if (needed) document.getElementById("lpo-delivery").value = needed;
+  lpoLines = [];
+  picked.forEach(p => lpoLines.push({ item_id: p.item_id, description: p.description, description2: "",
+                                      qty: String(p.qty), unit: p.unit || "", rate: "", tax_pct: 5,
+                                      last: null, times: 0 }));
+  renderLpoLines();
+  lpoLines.forEach((l, i) => lookupLpoRate(i));
+  showStatus("lpo-status", "ok",
+    `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`);
 }
 
 function renderLpoRegister() {
@@ -6741,6 +6829,7 @@ async function newLpo() {
   document.getElementById("lpo-termsset").value = "default";
   document.getElementById("lpo-termstext").value = n.terms_default || "";
   lpoLines = [];
+  lpoRequestLineIds = [];
   addLpoLine();
   window.scrollTo(0, 0);
 }
@@ -6759,9 +6848,17 @@ function onLpoTermsSet() {
 function onLpoSupplier() {
   const name = (document.getElementById("lpo-supplier").value || "").trim().toLowerCase();
   const s = (suppliers || []).find(x => (x.name || "").toLowerCase() === name);
-  if (s) {
-    if (!document.getElementById("lpo-contact").value) document.getElementById("lpo-contact").value = s.contact_person || "";
-    if (!document.getElementById("lpo-mobile").value) document.getElementById("lpo-mobile").value = s.phone || "";
+  if (!s) return;
+  // Everything the supplier master holds, so the purchase officer types
+  // the rates and nothing else. Anything already typed is left alone.
+  const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
+  fill("lpo-contact", s.contact_person);
+  fill("lpo-mobile", s.phone);
+  fill("lpo-trn", s.trn);
+  fill("lpo-supaddr", s.address);
+  if (s.payment_terms) {
+    const sel = document.getElementById("lpo-terms");
+    if ([...sel.options].some(o => o.value === s.payment_terms)) sel.value = s.payment_terms;
   }
 }
 
@@ -6892,11 +6989,13 @@ async function saveLpo() {
     discount_pct: parseFloat(document.getElementById("lpo-discount").value) || 0,
     notes: document.getElementById("lpo-notes").value.trim(),
     terms_text: document.getElementById("lpo-termstext").value,
+    request_line_ids: lpoRequestLineIds,
     lines,
   };
   try {
     const r = await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
-    showStatus("lpo-status", "ok", `${r.ref} raised. Opening the PDF - the Excel is on the register.`);
+    showStatus("lpo-status", "ok",
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening the PDF.`);
     closeLpoForm();
     await loadPurchase();
     await downloadLpo(r.id, "pdf");

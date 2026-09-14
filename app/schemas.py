@@ -380,6 +380,10 @@ class SupplierIn(BaseModel):
     contact_person: str = ""
     phone: str = ""
     notes: str = ""
+    trn: str = ""
+    address: str = ""
+    email: str = ""
+    payment_terms: str = ""
 
 
 class LineDecisionIn(BaseModel):
@@ -416,4 +420,5 @@ class PurchaseOrderIn(BaseModel):
     discount_pct: float = 0.0
     notes: str = ""
     terms_text: str = ""
+    request_line_ids: list[int] = []
     lines: list[PurchaseOrderLineIn] = []
