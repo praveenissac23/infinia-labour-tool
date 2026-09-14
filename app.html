@@ -520,9 +520,9 @@
                 <div class="store-tile-t">Material List</div>
                 <div class="store-tile-s">Add or change materials and tools</div>
               </div>
-              <div class="store-tile" data-screen="store" onclick="dashStoreGo('suppliers')">
+              <div class="store-tile" data-screen="approvals" onclick="switchScreen('suppliers')">
                 <div class="store-tile-t">Suppliers</div>
-                <div class="store-tile-s">Who we buy from, and how to reach them</div>
+                <div class="store-tile-s">Who we buy from, their TRN and terms</div>
               </div>
               <div class="store-tile" data-screen="store" onclick="dashStoreGo('reports')">
                 <div class="store-tile-t">Reports</div>
@@ -1189,9 +1189,7 @@
               <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" readonly style="width:150px; background:#F7F7F7;"></div>
               <div class="field"><label>Date</label><input type="date" id="lpo-date" style="width:150px;"></div>
               <div class="field"><label>Terms</label>
-                <select id="lpo-terms" style="width:150px;">
-                  <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
-                </select></div>
+                <input type="text" id="lpo-terms" list="terms-list" value="Due on Receipt" style="width:175px;"></div>
               <div class="field"><label>Delivery date</label><input type="date" id="lpo-delivery" style="width:150px;"></div>
               <div class="field"><label>Ref# (supplier quote)</label><input type="text" id="lpo-supref" style="width:170px;"></div>
             </div>
@@ -1199,7 +1197,8 @@
             <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
               <div class="field"><label>Supplier</label>
                 <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:250px;" oninput="onLpoSupplier()">
-                <datalist id="lpo-supplier-list"></datalist></div>
+                <datalist id="lpo-supplier-list"></datalist>
+                <div id="lpo-supplier-note" style="font-size:11.5px; color:#888; margin-top:3px;"></div></div>
               <div class="field"><label>Supplier TRN</label><input type="text" id="lpo-trn" style="width:170px;"></div>
 
             </div>
@@ -1263,19 +1262,22 @@
             <h2>Suppliers</h2>
             <div class="status-msg" id="sup-status"></div>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">
-              Everything a purchase order prints. Filled in once here, fetched every time after.</p>
+              Everything a purchase order prints. Filled in once here, fetched every time after.
+              Name, contact, phone and TRN are needed - an order cannot go out without them.</p>
             <div class="form-row" style="gap:8px; flex-wrap:wrap;">
-              <input type="text" id="sup-name" placeholder="Supplier name" style="width:230px;">
-              <input type="text" id="sup-contact" placeholder="Contact person" style="width:150px;">
-              <input type="text" id="sup-phone" placeholder="Phone" style="width:140px;">
-              <input type="text" id="sup-trn" placeholder="TRN" style="width:170px;">
+              <input type="text" id="sup-name" placeholder="Supplier name *" style="width:230px;">
+              <input type="text" id="sup-contact" placeholder="Contact person *" style="width:160px;">
+              <input type="text" id="sup-phone" placeholder="Phone *" style="width:150px;">
+              <input type="text" id="sup-trn" placeholder="TRN *" style="width:175px;">
             </div>
             <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px;">
               <input type="text" id="sup-email" placeholder="Email" style="width:190px;">
-              <select id="sup-terms" style="width:150px;">
-                <option value="">Payment terms</option>
-                <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
-              </select>
+              <input type="text" id="sup-terms" list="terms-list" placeholder="Payment terms" style="width:170px;">
+              <datalist id="terms-list">
+                <option>Due on Receipt</option><option>Net 30</option><option>Net 45</option>
+                <option>Net 60</option><option>Net 90</option><option>Advance payment</option>
+                <option>50% advance, 50% on delivery</option>
+              </datalist>
               <button class="btn btn-primary" onclick="saveSupplier()">Save supplier</button>
             </div>
             <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
@@ -6955,8 +6957,18 @@ function editSupplier(name) {
 }
 
 async function saveSupplier() {
-  const name = document.getElementById("sup-name").value.trim();
-  if (!name) { showStatus("sup-status", "warn", "Enter the supplier's name."); return; }
+  const val = id => document.getElementById(id).value.trim();
+  const name = val("sup-name");
+  // An order prints all four. Letting a supplier be saved without them
+  // only moves the problem to the moment somebody is trying to send a
+  // purchase order out.
+  const missing = [["sup-name", "the supplier's name"], ["sup-contact", "a contact person"],
+                   ["sup-phone", "a phone number"], ["sup-trn", "the TRN"]]
+    .filter(([id]) => !val(id)).map(([, label]) => label);
+  if (missing.length) {
+    showStatus("sup-status", "warn", `Still needed: ${missing.join(", ")}.`);
+    return;
+  }
   try {
     await apiCall("/store/suppliers", { method: "POST", body: JSON.stringify({
       name,
@@ -7208,6 +7220,7 @@ async function newLpo() {
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
+  const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
   ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-plot", "lpo-contact",
    "lpo-mobile", "lpo-scope", "lpo-location", "lpo-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("lpo-discount").value = "0";
@@ -7234,17 +7247,29 @@ function onLpoTermsSet() {
 function onLpoSupplier() {
   const name = (document.getElementById("lpo-supplier").value || "").trim().toLowerCase();
   const s = (suppliers || []).find(x => (x.name || "").toLowerCase() === name);
-  if (!s) return;
+  const note = document.getElementById("lpo-supplier-note");
+  if (!s) {
+    if (note) note.textContent = name ? "Not on the supplier list yet - he will be added when this order is saved." : "";
+    return;
+  }
+  // Say what the supplier record is missing, here rather than after the
+  // order has been sent with a blank TRN on it.
+  if (note) {
+    const gaps = [["contact_person", "contact"], ["phone", "phone"], ["trn", "TRN"]]
+      .filter(([k]) => !(s[k] || "").trim()).map(([, l]) => l);
+    note.textContent = gaps.length
+      ? `${s.name} has no ${gaps.join(", ")} on file - add it on the Suppliers screen.`
+      : "";
+    note.style.color = gaps.length ? "#B26A00" : "#888";
+  }
   // Everything the supplier master holds, so the purchase officer types
   // the rates and nothing else. Anything already typed is left alone.
   const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
   fill("lpo-contact", s.contact_person);
   fill("lpo-mobile", s.phone);
   fill("lpo-trn", s.trn);
-  if (s.payment_terms) {
-    const sel = document.getElementById("lpo-terms");
-    if ([...sel.options].some(o => o.value === s.payment_terms)) sel.value = s.payment_terms;
-  }
+  // Whatever terms are on the supplier, standard or not.
+  if (s.payment_terms) document.getElementById("lpo-terms").value = s.payment_terms;
 }
 
 function addLpoLine(line) {
