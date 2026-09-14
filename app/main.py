@@ -3553,6 +3553,155 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
     return out
 
 
+LPO_GROUPS = {
+    "order": "Each order", "supplier": "Supplier", "site": "Project location",
+    "material": "Material", "month": "Month", "job": "Job scope",
+}
+LPO_MEASURES = {
+    "orders": "Orders", "lines": "Materials", "qty": "Quantity",
+    "sub_total": "Sub Total (AED)", "vat": "VAT (AED)", "total": "Total (AED)",
+}
+
+
+@app.get("/store/purchase/report")
+def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,total",
+                date_from: str = "", date_to: str = "", supplier: str = "", site: str = "",
+                material: str = "", status: str = "issued",
+                db: Session = Depends(get_db),
+                user: models.User = Depends(require_screen("approvals"))):
+    """The purchase register, asked whatever question is put to it.
+
+    One order per row, or totalled by supplier, site, material, month or
+    job - with the same filters either way, so 'what did we spend with
+    Metrabar this month' and 'every order for cement' are the same
+    screen rather than two reports nobody built.
+    """
+    q = (db.query(models.PurchaseOrder)
+           .options(joinedload(models.PurchaseOrder.lines)))
+    if status and status != "all":
+        q = q.filter(models.PurchaseOrder.status == status)
+    try:
+        if date_from:
+            q = q.filter(models.PurchaseOrder.order_date >= date.fromisoformat(date_from))
+        if date_to:
+            q = q.filter(models.PurchaseOrder.order_date <= date.fromisoformat(date_to))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Check the dates.")
+    orders = q.order_by(models.PurchaseOrder.po_no.desc()).all()
+
+    sup_q, site_q, mat_q = supplier.strip().lower(), site.strip().lower(), material.strip().lower()
+    wanted = [m for m in measures.split(",") if m in LPO_MEASURES] or ["total"]
+    group_by = group_by if group_by in LPO_GROUPS else "order"
+
+    rows = {}
+    counted_orders = set()
+    for o in orders:
+        if sup_q and sup_q not in (o.supplier_name or "").lower():
+            continue
+        if site_q and site_q not in (o.project_location or "").lower():
+            continue
+        lines = o.lines
+        if mat_q:
+            lines = [l for l in lines if mat_q in (l.description or "").lower()]
+            if not lines:
+                continue
+        for l in lines:
+            counted_orders.add(o.po_no)
+            amount = (l.qty or 0) * (l.rate or 0)
+            vat = amount * (l.tax_pct or 0) / 100.0
+            if o.discount_pct:
+                amount *= (1 - o.discount_pct / 100.0)
+                vat = amount * (o.tax_pct or 5) / 100.0
+            key = {
+                "order": o.ref,
+                "supplier": o.supplier_name or "(not named)",
+                "site": o.project_location or "(none given)",
+                "material": l.description or "(none)",
+                "month": o.order_date.strftime("%B %Y") if o.order_date else "-",
+                "job": o.job_scope or "(none given)",
+            }[group_by]
+            r = rows.setdefault(key, {"label": key, "orders": set(), "lines": 0, "qty": 0.0,
+                                      "sub_total": 0.0, "vat": 0.0, "total": 0.0,
+                                      "date": o.order_date.isoformat() if o.order_date else "",
+                                      "supplier": o.supplier_name or "", "site": o.project_location or "",
+                                      "job": o.job_scope or "", "status": o.status, "id": o.id})
+            r["orders"].add(o.po_no)
+            r["lines"] += 1
+            r["qty"] += (l.qty or 0)
+            r["sub_total"] += amount
+            r["vat"] += vat
+            r["total"] += amount + vat
+
+    out = []
+    for r in rows.values():
+        r["orders"] = len(r["orders"])
+        for k in ("qty", "sub_total", "vat", "total"):
+            r[k] = round(r[k], 2)
+        out.append(r)
+    out.sort(key=lambda x: (-x["total"]) if group_by != "order" else x["label"], reverse=(group_by == "order"))
+
+    totals = {m: round(sum(r[m] for r in out), 2) for m in wanted}
+    if "orders" in totals:
+        # Count the orders actually behind the rows shown. Counting every
+        # order that passed the supplier filter ignored the rest of them,
+        # so a report filtered to one material claimed more orders than
+        # it listed.
+        totals["orders"] = len(counted_orders)
+    return {
+        "group_by": group_by, "group_label": LPO_GROUPS[group_by],
+        "measures": [{"key": m, "label": LPO_MEASURES[m]} for m in wanted],
+        "rows": out, "totals": totals,
+        "catalog": {"groups": [{"key": k, "label": v} for k, v in LPO_GROUPS.items()],
+                    "measures": [{"key": k, "label": v} for k, v in LPO_MEASURES.items()]},
+    }
+
+
+@app.get("/export/store/purchase-report")
+def export_lpo_report(token: str, format: str = "excel", group_by: str = "order",
+                       measures: str = "orders,sub_total,vat,total",
+                       date_from: str = "", date_to: str = "", supplier: str = "",
+                       site: str = "", material: str = "", status: str = "issued",
+                       db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    data = lpo_report(group_by=group_by, measures=measures, date_from=date_from, date_to=date_to,
+                      supplier=supplier, site=site, material=material, status=status,
+                      db=db, user=_SystemUser())
+    rows = []
+    for r in data["rows"]:
+        row = {data["group_label"]: r["label"]}
+        if group_by == "order":
+            row["Date"] = r["date"]
+            row["Supplier"] = r["supplier"]
+            row["Project location"] = r["site"]
+        for m in data["measures"]:
+            row[m["label"]] = r[m["key"]]
+        rows.append(row)
+    bits = []
+    if date_from or date_to:
+        bits.append(f"{date_from or 'the start'} to {date_to or 'today'}")
+    if supplier: bits.append(f"supplier: {supplier}")
+    if site: bits.append(f"site: {site}")
+    if material: bits.append(f"material: {material}")
+    subtitle = " · ".join(bits)
+    title = f"Purchase orders by {data['group_label'].lower()}"
+    if format == "pdf":
+        buf = export_web.build_store_report_pdf(title, rows, subtitle)
+        return StreamingResponse(buf, media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=Purchase_Report.pdf"})
+    buf = export_web.build_store_report_excel(title, rows, subtitle)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Purchase_Report.xlsx"})
+
+
+class _SystemUser:
+    """Stands in for the signed-in user when one endpoint calls another
+    that has already checked the caller's token."""
+    id = None
+    role = "admin"
+    permissions = ""
+
+
 @app.get("/store/purchase/orders/{order_id}")
 def get_purchase_order(order_id: int, db: Session = Depends(get_db),
                         user: models.User = Depends(require_screen("approvals"))):

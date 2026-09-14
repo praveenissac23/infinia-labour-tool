@@ -381,8 +381,9 @@
       <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
       <div class="nav-item" data-screen="requests" onclick="switchScreen('requests')">Material Requests</div>
       <div class="nav-item" data-screen="approvals" onclick="switchScreen('approvals')">Material Approvals</div>
-      <div class="nav-item" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">Order Follow-up</div>
       <div class="nav-item" data-screen="approvals" data-target="purchase" onclick="switchScreen('purchase')">Purchase Orders</div>
+      <div class="nav-item" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">Order Follow-up</div>
+      <div class="nav-item" data-screen="approvals" data-target="lporegister" onclick="switchScreen('lporegister')">LPO Register</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -1125,8 +1126,6 @@
         <div class="screen" id="screen-purchase">
           <div class="toolbar">
             <button class="btn btn-primary" onclick="newLpo()">New Purchase Order</button>
-            <label>Search:</label>
-            <input type="text" id="lpo-search" placeholder="LPO no, supplier, site or material" style="width:280px;" oninput="renderLpoRegister()">
             <button class="btn btn-gray" onclick="toggleSuppliers()">Suppliers</button>
             <span id="lpo-signature-note" style="margin-left:auto; font-size:12px; color:#888;"></span>
           </div>
@@ -1273,19 +1272,39 @@
             </div>
           </div>
 
-          <!-- The register -->
-          <div class="card" id="lpo-register-card">
-            <h2>Purchase Register</h2>
-            <div class="grid-wrap" style="max-height:60vh;">
+        </div>
+
+        <div class="screen" id="screen-lporegister">
+          <div class="toolbar">
+            <label>Show:</label>
+            <select id="lpr-group" onchange="loadLpoReport()" style="width:170px;"></select>
+            <label>From:</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:150px;">
+            <label>To:</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:150px;">
+            <select id="lpr-status" onchange="loadLpoReport()" style="width:130px;">
+              <option value="issued">Issued only</option>
+              <option value="all">Including cancelled</option>
+              <option value="cancelled">Cancelled only</option>
+            </select>
+            <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="exportLpoReport('pdf')">Export PDF</button>
+          </div>
+          <div class="card">
+            <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+              <div class="field"><label>Supplier</label><input type="text" id="lpr-supplier" placeholder="Any" oninput="debouncedLpoReport()" style="width:190px;"></div>
+              <div class="field"><label>Project location</label><input type="text" id="lpr-site" placeholder="Any" oninput="debouncedLpoReport()" style="width:170px;"></div>
+              <div class="field"><label>Material</label><input type="text" id="lpr-material" placeholder="Any" oninput="debouncedLpoReport()" style="width:190px;"></div>
+              <div class="field" style="flex:1; min-width:230px;"><label>Columns</label>
+                <div id="lpr-measures" class="report-col-picker" style="padding:4px 0;"></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2 id="lpr-title">Purchase register</h2>
+            <div class="status-msg" id="lpr-status"></div>
+            <div class="grid-wrap" style="max-height:62vh;">
               <table>
-                <thead><tr>
-                  <th style="width:14%;">LPO No</th><th style="width:10%;">Date</th>
-                  <th style="width:22%; text-align:left;">Supplier</th>
-                  <th style="width:16%; text-align:left;">Site</th>
-                  <th style="width:18%; text-align:left;">Job scope</th>
-                  <th style="width:10%;">Total</th><th style="width:10%;"></th>
-                </tr></thead>
-                <tbody id="lpo-register"></tbody>
+                <thead><tr id="lpr-head"></tr></thead>
+                <tbody id="lpr-body"></tbody>
+                <tfoot><tr id="lpr-total" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
               </table>
             </div>
           </div>
@@ -1909,6 +1928,7 @@ function switchScreen(name) {
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "combine") filterCombineWorkers();
   if (name === "purchase") loadPurchase();
+  if (name === "lporegister") loadLpoReport();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -6758,7 +6778,6 @@ async function loadPurchase() {
     lpoDefaults = next || lpoDefaults;
     document.getElementById("lpo-signature-note").textContent =
       sig && sig.present ? "" : "No signature uploaded - orders will print with an empty signature box.";
-    renderLpoRegister();
     // The screen may be opened before anything has loaded suppliers or
     // the item list, so fetch them here rather than hoping.
     if (!suppliers || !suppliers.length) {
@@ -6910,29 +6929,100 @@ async function lpoFromTicked() {
     `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`);
 }
 
-function renderLpoRegister() {
-  const body = document.getElementById("lpo-register");
-  const q = (document.getElementById("lpo-search").value || "").trim().toLowerCase();
-  const rows = lpoRegister.filter(o => !q ||
-    `${o.ref} ${o.supplier} ${o.site} ${o.job_scope}`.toLowerCase().includes(q));
-  if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty-note">${q ? "Nothing matches that." : "No purchase orders yet."}</td></tr>`;
-    return;
-  }
-  body.innerHTML = rows.map(o => `
-    <tr${o.status === "cancelled" ? ' style="opacity:.55;"' : ""}>
-      <td><strong>${o.ref}</strong>${o.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}</td>
-      <td>${o.date}</td>
-      <td style="text-align:left;">${o.supplier || "-"}</td>
-      <td style="text-align:left;">${o.site || "-"}</td>
-      <td style="text-align:left;">${o.job_scope || "-"}</td>
-      <td>AED ${money(o.total)}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-dark" onclick="downloadLpo(${o.id}, 'pdf')">PDF</button>
-        <button class="btn btn-gray" onclick="downloadLpo(${o.id}, 'excel')">Excel</button>
-      </td>
-    </tr>`).join("");
+// ---- LPO Register: the purchase register asked any way round -------
+let lprCatalog = null;
+let lprMeasures = ["orders", "sub_total", "vat", "total"];
+let lprTimer = null;
+
+function debouncedLpoReport() {
+  clearTimeout(lprTimer);
+  lprTimer = setTimeout(loadLpoReport, 350);
 }
+
+function lprParams() {
+  const v = id => (document.getElementById(id).value || "").trim();
+  return `group_by=${encodeURIComponent(document.getElementById("lpr-group").value || "order")}`
+       + `&measures=${encodeURIComponent(lprMeasures.join(","))}`
+       + `&date_from=${v("lpr-from")}&date_to=${v("lpr-to")}`
+       + `&supplier=${encodeURIComponent(v("lpr-supplier"))}`
+       + `&site=${encodeURIComponent(v("lpr-site"))}`
+       + `&material=${encodeURIComponent(v("lpr-material"))}`
+       + `&status=${document.getElementById("lpr-status").value}`;
+}
+
+async function loadLpoReport() {
+  const head = document.getElementById("lpr-head");
+  const body = document.getElementById("lpr-body");
+  try {
+    const r = await apiCall(`/store/purchase/report?${lprParams()}`);
+    lprCatalog = r.catalog;
+    // Build the pickers once the catalogue is known.
+    const gsel = document.getElementById("lpr-group");
+    if (!gsel.options.length) {
+      gsel.innerHTML = r.catalog.groups.map(g =>
+        `<option value="${g.key}"${g.key === r.group_by ? " selected" : ""}>${g.label}</option>`).join("");
+    }
+    const mbox = document.getElementById("lpr-measures");
+    if (!mbox.dataset.built) {
+      mbox.dataset.built = "1";
+      mbox.innerHTML = r.catalog.measures.map(m =>
+        `<label style="margin-right:12px;"><input type="checkbox" data-m="${m.key}"${
+          lprMeasures.includes(m.key) ? " checked" : ""} onchange="onLprMeasure()"> ${m.label}</label>`).join("");
+    }
+    document.getElementById("lpr-title").textContent =
+      `Purchase orders by ${r.group_label.toLowerCase()} - ${r.rows.length} row(s)`;
+
+    const cols = [r.group_label];
+    if (r.group_by === "order") cols.push("Date", "Supplier", "Project location");
+    r.measures.forEach(m => cols.push(m.label));
+    head.innerHTML = cols.map((c, i) =>
+      `<th style="${i === 0 || (r.group_by === "order" && i <= 3) ? "text-align:left;" : "text-align:right;"}">${c}</th>`).join("");
+
+    if (!r.rows.length) {
+      body.innerHTML = `<tr><td colspan="${cols.length}" class="empty-note">Nothing matches those filters.</td></tr>`;
+      document.getElementById("lpr-total").innerHTML = "";
+      return;
+    }
+    body.innerHTML = r.rows.map(row => {
+      const cells = [];
+      if (r.group_by === "order") {
+        cells.push(`<td style="text-align:left;"><strong>${row.label}</strong>${
+          row.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}</td>`);
+        cells.push(`<td style="text-align:left;">${row.date || "-"}</td>`);
+        cells.push(`<td style="text-align:left;">${row.supplier || "-"}</td>`);
+        cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
+      } else {
+        cells.push(`<td style="text-align:left;"><strong>${row.label}</strong></td>`);
+      }
+      r.measures.forEach(m => cells.push(
+        `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(row[m.key]) : money(row[m.key])}</td>`));
+      const open = r.group_by === "order" ? ` onclick="downloadLpo(${row.id}, 'pdf')" style="cursor:pointer;" title="Open the order"` : "";
+      return `<tr${open}>${cells.join("")}</tr>`;
+    }).join("");
+
+    const tcells = [`<td style="text-align:left;">TOTAL</td>`];
+    if (r.group_by === "order") tcells.push("<td></td>", "<td></td>", "<td></td>");
+    r.measures.forEach(m => tcells.push(
+      `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(r.totals[m.key]) : money(r.totals[m.key])}</td>`));
+    document.getElementById("lpr-total").innerHTML = tcells.join("");
+    showStatus("lpr-status", null);
+  } catch (e) {
+    showStatus("lpr-status", "err", errText(e));
+  }
+}
+
+function onLprMeasure() {
+  lprMeasures = [...document.querySelectorAll("#lpr-measures input:checked")].map(b => b.dataset.m);
+  if (!lprMeasures.length) lprMeasures = ["total"];
+  loadLpoReport();
+}
+
+async function exportLpoReport(fmt) {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("lpr-status", "err", "Could not prepare the download."); return; }
+  window.open(`${API}/export/store/purchase-report?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}&${lprParams()}`, "_blank");
+}
+
 
 async function downloadLpo(id, fmt) {
   // Fetch a token if there isn't one rather than telling the person to
