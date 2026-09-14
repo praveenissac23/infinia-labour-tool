@@ -342,6 +342,28 @@
   .dash-cal-day.today { outline: 2px solid #F9A825; outline-offset: -2px; }
   .dash-cal-day:hover { opacity: 0.85; }
   .dash-cal-empty { visibility: hidden; }
+
+  /* New notifications announce themselves, rather than waiting to be
+     noticed on the bell. Bottom right, out of the way of the work. */
+  #toast-wrap { position: fixed; right: 18px; bottom: 18px; z-index: 6000;
+                display: flex; flex-direction: column; gap: 10px; max-width: 380px; }
+  .toast { background: white; border: 1px solid #E2DEDA; border-left: 4px solid var(--red);
+           border-radius: 8px; box-shadow: 0 6px 22px rgba(0,0,0,.14); padding: 12px 14px;
+           animation: toast-in .22s ease-out; }
+  .toast.late { border-left-color: #C0392B; }
+  .toast.request { border-left-color: #1565C0; }
+  .toast.low, .toast.rental { border-left-color: #B26A00; }
+  .toast-top { display: flex; align-items: flex-start; gap: 9px; }
+  .toast-icon { font-size: 17px; line-height: 1.2; }
+  .toast-title { font-weight: 700; font-size: 13.5px; color: #1F2429; }
+  .toast-detail { font-size: 12.5px; color: #555; margin-top: 3px; line-height: 1.45; }
+  .toast-x { margin-left: auto; background: none; border: 0; color: #999; font-size: 17px;
+             cursor: pointer; line-height: 1; padding: 0 2px; }
+  .toast-x:hover { color: #444; }
+  .toast-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .toast-actions .btn { padding: 5px 12px; font-size: 12.5px; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 640px) { #toast-wrap { left: 12px; right: 12px; max-width: none; bottom: 12px; } }
   .dash-cal-day.future { background: #EDEDED; color: #9A9A9A; cursor: default; }
   .report-col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
   .report-col-picker label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
@@ -349,6 +371,7 @@
 </head>
 <body>
 
+<div id="toast-wrap"></div>
 <div id="login-screen">
   <div id="login-box">
     <h1>Infinia Labour Tool</h1>
@@ -3888,6 +3911,103 @@ async function loadNotifications() {
     notifications = [];
   }
   renderBell();
+
+  // Anything not seen before, and not already read, gets said out loud.
+  const seen = seenIds();
+  const read = readIds();
+  const fresh = notifications.filter(n => !seen.has(n.id) && !read.has(n.id));
+  if (!toastReady) {
+    // On the first load of a session, everything looks new. Record what
+    // is there without shouting, so only what arrives afterwards pops
+    // up - except anything genuinely urgent, which is worth saying at
+    // once.
+    toastReady = true;
+    const urgent = fresh.filter(n => n.kind === "late");
+    markSeen(fresh.filter(n => n.kind !== "late").map(n => n.id));
+    if (urgent.length) showToasts(urgent);
+    return;
+  }
+  if (fresh.length) showToasts(fresh);
+}
+
+// Which notifications have already been shown as a popup. Kept in the
+// browser so a refresh does not replay everything that arrived today -
+// only what is genuinely new since this person last looked.
+const SEEN_KEY = "infinia_seen_notifications";
+let toastReady = false;
+
+function seenIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); }
+  catch (e) { return new Set(); }
+}
+
+function markSeen(ids) {
+  const all = [...seenIds(), ...ids];
+  // Keep the last few hundred: enough that nothing repeats, small
+  // enough that it never becomes a problem.
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-400))); } catch (e) {}
+}
+
+// The label on the button, so it says where it goes rather than "Open".
+const NOTIF_ACTION = {
+  request: ["Open approvals", "approvals"],
+  late: ["Chase it", "followup"],
+  status: ["See the request", "requests"],
+  low: ["Open the store", "store"],
+  rental: ["Open the store", "store"],
+  attendance: ["Open attendance", "attendance"],
+};
+
+function showToasts(fresh) {
+  const wrap = document.getElementById("toast-wrap");
+  if (!wrap || !fresh.length) return;
+  // Three at a time. More than that and they are wallpaper, not news.
+  const batch = fresh.slice(0, 3);
+  const extra = fresh.length - batch.length;
+  batch.forEach(n => {
+    const [label, screen] = NOTIF_ACTION[n.kind] || ["Open", n.screen || "dashboard"];
+    const target = n.screen || screen;
+    const el = document.createElement("div");
+    el.className = `toast ${n.kind || ""}`;
+    el.innerHTML = `
+      <div class="toast-top">
+        <span class="toast-icon">${NOTIF_ICON[n.kind] || "\u{1F514}"}</span>
+        <div style="flex:1;">
+          <div class="toast-title">${n.title || "Notification"}</div>
+          ${n.detail ? `<div class="toast-detail">${n.detail}</div>` : ""}
+        </div>
+        <button class="toast-x" title="Dismiss">&times;</button>
+      </div>
+      <div class="toast-actions">
+        <button class="btn btn-primary">${label}</button>
+        <button class="btn btn-gray">Later</button>
+      </div>`;
+    const close = () => { el.style.opacity = "0"; setTimeout(() => el.remove(), 180); };
+    el.querySelector(".toast-x").onclick = close;
+    el.querySelectorAll(".btn")[1].onclick = close;
+    el.querySelectorAll(".btn")[0].onclick = () => {
+      // Going there counts as reading it, so the bell agrees with what
+      // was just acted on.
+      const read = readIds(); read.add(n.id); saveReadIds(read);
+      renderBell();
+      close();
+      if (MY_SCREENS.includes(target) || target === "dashboard") switchScreen(target);
+    };
+    wrap.appendChild(el);
+    // Left alone they pile up over a long shift, so they retire
+    // themselves - the bell still holds everything.
+    setTimeout(() => { if (el.isConnected) close(); }, 14000);
+  });
+  if (extra > 0) {
+    const more = document.createElement("div");
+    more.className = "toast";
+    more.innerHTML = `<div class="toast-top"><span class="toast-icon">\u{1F514}</span>
+      <div style="flex:1;"><div class="toast-title">${extra} more notification${extra === 1 ? "" : "s"}</div>
+      <div class="toast-detail">Open the bell to see them all.</div></div></div>`;
+    wrap.appendChild(more);
+    setTimeout(() => { if (more.isConnected) more.remove(); }, 14000);
+  }
+  markSeen(fresh.map(n => n.id));
 }
 
 const NOTIF_ICON = { request: "\u{1F4E5}", late: "\u23F0", status: "\u{1F4E6}", low: "\u{1F4C9}",
