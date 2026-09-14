@@ -456,6 +456,28 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     db.commit()
     db.refresh(existing)
 
+    # Setting a leaving date rewrites the days after it. Somebody marked
+    # Present for the whole month, then found to have left on the 8th,
+    # would otherwise keep being paid for a month he did not work - the
+    # figure only corrects itself if the days themselves do. Days up to
+    # and including his last day are left exactly as they were.
+    if existing.terminated_on:
+        after = (db.query(models.DailyRow)
+                   .filter(models.DailyRow.emp_no == existing.emp_no,
+                           models.DailyRow.full_date > existing.terminated_on)
+                   .all())
+        for r in after:
+            r.am = r.pm = "Terminated"
+            r.site = ""
+            r.engineer = ""
+            r.ot = 0
+            r.bh = 0
+        if after:
+            db.commit()
+            log_action(db, user.id, "terminate_employee",
+                       f"{existing.emp_no} left {existing.terminated_on}, "
+                       f"{len(after)} day(s) after it marked Terminated")
+
     # Salary figures live on the Employee record but are copied into every
     # EmployeeSummary when it's calculated, so editing Total/Basic Salary
     # has to recalculate this worker's existing summaries - otherwise the
