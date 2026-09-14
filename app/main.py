@@ -1505,6 +1505,14 @@ def error_check(month_year: str, db: Session = Depends(get_db),
     # problems across three separate parts of the list is how one gets
     # missed. Workers with the most serious issue come first, and within
     # a worker the serious ones lead.
+    # How many days each worker is short, whatever else is wrong with
+    # him - a pay warning is often just the consequence of days not
+    # entered yet, and the reminder sheet should still be offered.
+    missing_by_emp = {}
+    for emp in active_employees:
+        entered = dates_by_emp.get(emp.emp_no, set())
+        missing_by_emp[emp.emp_no] = len([d for d in all_dates if d not in entered])
+
     rank = {"legal": 0, "contradiction": 1}
     worst_by_emp, count_by_emp = {}, {}
     for x in out:
@@ -1515,6 +1523,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                             rank.get(x.get("severity"), 2), str(x["date"])))
     for x in out:
         x["issue_count"] = count_by_emp[x["emp_no"]]
+        x["days_missing"] = missing_by_emp.get(x["emp_no"], 0)
     return {
         "title": "Check for Errors",
         "note": "Workers paid below the 40% minimum, hours recorded on absent or holiday "

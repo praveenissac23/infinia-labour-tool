@@ -6281,7 +6281,13 @@ async function loadErrorCheck() {
     contradiction: ['CHECK THIS',   '#B26A00', '#FFF6E5'],
   };
 
-  const anyUnfilled = byWorker.some(w => w.issues.some(x => (x.kind || "").includes("missing") || x.kind === "Nothing entered"));
+  // A tick box wherever a reminder would actually say something - that
+  // is, wherever days are outstanding. Judged on the count the server
+  // sends, not on which issue happened to be raised: a man can be
+  // short of days AND below 40%, and the pay warning is often just the
+  // consequence of the days not being in yet.
+  const canRemind = w => (w.issues[0] || {}).days_missing > 0;
+  const anyUnfilled = byWorker.some(canRemind);
   const sendBar = document.getElementById("errcheck-send");
   if (sendBar) sendBar.style.display = anyUnfilled ? "" : "none";
 
@@ -6296,7 +6302,7 @@ async function loadErrorCheck() {
     return `
     <tr onclick="toggleErrorRow(${i})" style="cursor:pointer;${tag ? ` background:${tag[2]};` : ""}">
       <td style="width:3%; white-space:nowrap;">
-        ${w.issues.some(x => (x.kind || "").includes("missing") || x.kind === "Nothing entered")
+        ${canRemind(w)
           ? `<input type="checkbox" class="ec-pick" value="${w.emp_no}" onclick="event.stopPropagation();" style="width:auto; margin-right:4px;" title="Include in the reminder">` : ""}
         <span style="color:#B26A00;">&#9656;</span></td>
       <td style="width:11%;">${w.emp_no}</td>
