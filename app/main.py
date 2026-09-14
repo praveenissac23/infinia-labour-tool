@@ -3842,6 +3842,43 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     # and mints a fresh one, so they work for as long as the tab is
     # useful instead of dying sixty seconds after it opened.
     t = quote(auth.create_view_token(user.username), safe="")
+
+    # WhatsApp cannot be handed a file by a link - no web interface
+    # allows it. So the button does the two things it can: downloads the
+    # PDF, and opens a chat with the supplier with the order already
+    # written out, ready for him to attach the file he has just been
+    # given. Addressed to the supplier's own number when there is one.
+    total = 0.0
+    for l in o.lines:
+        amt = (l.qty or 0) * (l.rate or 0)
+        total += amt + amt * (l.tax_pct or 0) / 100.0
+    if o.discount_pct:
+        base = sum((l.qty or 0) * (l.rate or 0) for l in o.lines) * (1 - o.discount_pct / 100.0)
+        total = base * (1 + (o.tax_pct or 5) / 100.0)
+    lines_text = "\n".join(
+        f"- {l.description}: {l.qty:,.2f} {l.unit or ''} @ {l.rate:,.2f}".rstrip()
+        for l in o.lines[:12])
+    if len(o.lines) > 12:
+        lines_text += f"\n- and {len(o.lines) - 12} more"
+    msg = (f"*Purchase Order {o.ref}*\n"
+           f"Infinia Contracting LLC\n\n"
+           + (f"Date: {o.order_date.strftime('%d %b %Y')}\n" if o.order_date else "")
+           + (f"Delivery: {o.delivery_date.strftime('%d %b %Y')}\n" if o.delivery_date else "")
+           + (f"Site: {o.project_location}\n" if o.project_location else "")
+           + (f"Job: {o.job_scope}\n" if o.job_scope else "")
+           + (f"Terms: {o.terms}\n" if o.terms else "")
+           + f"\n{lines_text}\n\n"
+           + f"Total: AED {total:,.2f}\n\n"
+           + "The purchase order is attached.")
+    digits = "".join(ch for ch in (o.mobile or "") if ch.isdigit())
+    if digits.startswith("00"):
+        digits = digits[2:]
+    elif digits.startswith("0"):
+        digits = "971" + digits[1:]          # a local number, dialled from the UAE
+    elif digits and not digits.startswith("971") and len(digits) == 9:
+        digits = "971" + digits
+    wa_url = (f"https://wa.me/{digits}?text={quote(msg, safe='')}" if digits
+              else f"https://wa.me/?text={quote(msg, safe='')}")
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3856,6 +3893,9 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.wa {{ background:#25D366; border-color:#1DA851; color:#06331A; }}
+  .hint {{ font-size:11.5px; color:#888; padding:0 16px 8px; background:white;
+           border-bottom:1px solid #E2E0DC; }}
   .cancelled {{ background:#FBE0DE; color:#C0392B; font-size:12px; font-weight:700;
                 padding:3px 8px; border-radius:4px; }}
   .sheet {{ max-width:820px; margin:18px auto 40px; background:white; padding:22px 26px;
@@ -3896,8 +3936,21 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <span style="margin-left:auto;"></span>
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
+    <a class="btn wa" id="wa-share" href="{wa_url}" target="_blank" rel="noopener">Share on WhatsApp</a>
   </div>
+  <div class="hint">WhatsApp cannot attach a file from a link. The button downloads the
+    order and opens the chat with the details written out - attach the downloaded PDF there.</div>
   <div class="sheet">{_lpo_html(o)}</div>
+<script>
+  // Fetch the PDF as the chat opens, so the file is in Downloads and
+  // ready to attach rather than something to come back for.
+  document.getElementById("wa-share").addEventListener("click", function () {{
+    var a = document.createElement("a");
+    a.href = "/export/purchase/{o.id}?token={t}&format=pdf";
+    a.download = "";
+    document.body.appendChild(a); a.click(); a.remove();
+  }});
+</script>
 </body></html>"""
     return HTMLResponse(page)
 
