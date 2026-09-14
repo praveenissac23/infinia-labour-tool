@@ -1976,7 +1976,7 @@ async function initApp() {
   if (sigCard) {
     sigCard.style.display = isAdmin ? "block" : "none";
     if (isAdmin) {
-      apiCall("/purchase/signature-status")
+      apiCall("/store/purchase/signature-status")
         .then(s => { document.getElementById("sig-state").textContent =
                        s.present ? "A signature is on file." : "No signature uploaded yet."; })
         .catch(() => {});
@@ -6665,9 +6665,9 @@ let lpoDefaults = { terms_default: "", terms_rental: "" };
 async function loadPurchase() {
   try {
     const [reg, next, sig] = await Promise.all([
-      apiCall("/purchase/orders"),
-      apiCall("/purchase/next-no"),
-      apiCall("/purchase/signature-status").catch(() => ({ present: false })),
+      apiCall("/store/purchase/orders"),
+      apiCall("/store/purchase/next-no"),
+      apiCall("/store/purchase/signature-status").catch(() => ({ present: false })),
     ]);
     lpoRegister = reg || [];
     lpoDefaults = next || lpoDefaults;
@@ -6728,7 +6728,7 @@ async function downloadLpo(id, fmt) {
 }
 
 async function newLpo() {
-  const n = await apiCall("/purchase/next-no");
+  const n = await apiCall("/store/purchase/next-no");
   lpoDefaults = n;
   document.getElementById("lpo-form-card").style.display = "block";
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
@@ -6805,7 +6805,7 @@ function lookupLpoRate(i) {
     try {
       const item = (storeItems || []).find(x => (x.name || "").toLowerCase() === d.trim().toLowerCase());
       const q = item ? `item_id=${item.id}` : `description=${encodeURIComponent(d.trim())}`;
-      const r = await apiCall(`/purchase/rate-history?${q}`);
+      const r = await apiCall(`/store/purchase/rate-history?${q}`);
       if (lpoLines[i]) {
         lpoLines[i].item_id = item ? item.id : null;
         lpoLines[i].last = r.last || null;
@@ -6895,7 +6895,7 @@ async function saveLpo() {
     lines,
   };
   try {
-    const r = await apiCall("/purchase/orders", { method: "POST", body: JSON.stringify(body) });
+    const r = await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
     showStatus("lpo-status", "ok", `${r.ref} raised. Opening the PDF - the Excel is on the register.`);
     closeLpoForm();
     await loadPurchase();
@@ -7045,7 +7045,7 @@ async function uploadSignature() {
   const fd = new FormData();
   fd.append("file", f);
   try {
-    const r = await apiCall("/purchase/signature", { method: "POST", body: fd });
+    const r = await apiCall("/store/purchase/signature", { method: "POST", body: fd });
     showStatus("settings-status", "ok", r.detail || "Signature saved.");
     document.getElementById("sig-state").textContent = "A signature is on file.";
   } catch (e) {

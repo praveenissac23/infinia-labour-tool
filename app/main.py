@@ -8,6 +8,7 @@ pickled sessions/JSON files to a real multi-user database.
 """
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+import os
 import re
 import io
 import json
@@ -3340,7 +3341,7 @@ def _next_lpo_no(db):
     return max(int(last or 0) + 1, LPO_START_NO)
 
 
-@app.get("/purchase/next-no")
+@app.get("/store/purchase/next-no")
 def next_lpo_number(db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("approvals"))):
     n = _next_lpo_no(db)
@@ -3348,7 +3349,7 @@ def next_lpo_number(db: Session = Depends(get_db),
             "terms_rental": RENTAL_LPO_TERMS}
 
 
-@app.get("/purchase/rate-history")
+@app.get("/store/purchase/rate-history")
 def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
                       db: Session = Depends(get_db),
                       user: models.User = Depends(require_screen("approvals"))):
@@ -3375,7 +3376,7 @@ def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
     return {"count": len(rows), "last": history[0] if history else None, "history": history}
 
 
-@app.get("/purchase/orders")
+@app.get("/store/purchase/orders")
 def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(get_db),
                           user: models.User = Depends(require_screen("approvals"))):
     """The purchase register - every order raised, newest first."""
@@ -3403,7 +3404,7 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
     return out
 
 
-@app.get("/purchase/orders/{order_id}")
+@app.get("/store/purchase/orders/{order_id}")
 def get_purchase_order(order_id: int, db: Session = Depends(get_db),
                         user: models.User = Depends(require_screen("approvals"))):
     o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
@@ -3429,7 +3430,7 @@ def _lpo_dict(o):
     }
 
 
-@app.post("/purchase/orders")
+@app.post("/store/purchase/orders")
 def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):
     """Raise an order. From an approved request, or on its own."""
@@ -3476,7 +3477,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     return _lpo_dict(o)
 
 
-@app.post("/purchase/orders/{order_id}/cancel")
+@app.post("/store/purchase/orders/{order_id}/cancel")
 def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):
     """Cancelled, never deleted - the number stays used and the paper
@@ -3516,7 +3517,7 @@ def export_purchase_order(order_id: int, token: str, format: str = "pdf",
         headers={"Content-Disposition": f"attachment; filename={safe}.pdf"})
 
 
-@app.post("/purchase/signature")
+@app.post("/store/purchase/signature")
 async def upload_signature(file: UploadFile = File(...), db: Session = Depends(get_db),
                             user: models.User = Depends(auth.require_admin)):
     """The authorised signature, printed on every order. Uploaded once."""
@@ -3531,7 +3532,7 @@ async def upload_signature(file: UploadFile = File(...), db: Session = Depends(g
     return {"ok": True, "detail": "Signature saved - it prints on every purchase order."}
 
 
-@app.get("/purchase/signature-status")
+@app.get("/store/purchase/signature-status")
 def signature_status(user: models.User = Depends(require_screen("approvals"))):
     return {"present": os.path.exists(export_web.SIG_PATH)}
 
