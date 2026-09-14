@@ -3957,7 +3957,7 @@ function openNotification(id, screen, target) {
       const s = document.getElementById("home-stock-search");
       if (s) { storeGo("home"); s.value = target; filterHomeStock(); }
     }
-  }, 350);
+  }, 250);
 }
 
 document.addEventListener("click", e => {
@@ -7115,10 +7115,13 @@ function onLpoLineField(i, field, value) {
 }
 
 // What this material cost last time, fetched as the name is typed.
-let lpoRateTimer = null;
+// One timer per line, not one shared by all of them. A single timer
+// meant that bringing several materials in from the queue cancelled
+// every lookup but the last, so every line but one read "first time".
+const lpoRateTimers = {};
 function lookupLpoRate(i) {
-  clearTimeout(lpoRateTimer);
-  lpoRateTimer = setTimeout(async () => {
+  clearTimeout(lpoRateTimers[i]);
+  lpoRateTimers[i] = setTimeout(async () => {
     const d = (lpoLines[i] || {}).description || "";
     if (!d.trim()) { lpoLines[i].last = null; renderLpoLines(); return; }
     try {
