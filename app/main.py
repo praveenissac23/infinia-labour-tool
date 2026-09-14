@@ -3843,42 +3843,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     # useful instead of dying sixty seconds after it opened.
     t = quote(auth.create_view_token(user.username), safe="")
 
-    # WhatsApp cannot be handed a file by a link - no web interface
-    # allows it. So the button does the two things it can: downloads the
-    # PDF, and opens a chat with the supplier with the order already
-    # written out, ready for him to attach the file he has just been
-    # given. Addressed to the supplier's own number when there is one.
-    total = 0.0
-    for l in o.lines:
-        amt = (l.qty or 0) * (l.rate or 0)
-        total += amt + amt * (l.tax_pct or 0) / 100.0
-    if o.discount_pct:
-        base = sum((l.qty or 0) * (l.rate or 0) for l in o.lines) * (1 - o.discount_pct / 100.0)
-        total = base * (1 + (o.tax_pct or 5) / 100.0)
-    lines_text = "\n".join(
-        f"- {l.description}: {l.qty:,.2f} {l.unit or ''} @ {l.rate:,.2f}".rstrip()
-        for l in o.lines[:12])
-    if len(o.lines) > 12:
-        lines_text += f"\n- and {len(o.lines) - 12} more"
-    msg = (f"*Purchase Order {o.ref}*\n"
-           f"Infinia Contracting LLC\n\n"
-           + (f"Date: {o.order_date.strftime('%d %b %Y')}\n" if o.order_date else "")
-           + (f"Delivery: {o.delivery_date.strftime('%d %b %Y')}\n" if o.delivery_date else "")
-           + (f"Site: {o.project_location}\n" if o.project_location else "")
-           + (f"Job: {o.job_scope}\n" if o.job_scope else "")
-           + (f"Terms: {o.terms}\n" if o.terms else "")
-           + f"\n{lines_text}\n\n"
-           + f"Total: AED {total:,.2f}\n\n"
-           + "The purchase order is attached.")
-    digits = "".join(ch for ch in (o.mobile or "") if ch.isdigit())
-    if digits.startswith("00"):
-        digits = digits[2:]
-    elif digits.startswith("0"):
-        digits = "971" + digits[1:]          # a local number, dialled from the UAE
-    elif digits and not digits.startswith("971") and len(digits) == 9:
-        digits = "971" + digits
-    wa_url = (f"https://wa.me/{digits}?text={quote(msg, safe='')}" if digits
-              else f"https://wa.me/?text={quote(msg, safe='')}")
+    safe = o.ref.replace("/", "")
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3936,19 +3901,59 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <span style="margin-left:auto;"></span>
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
-    <a class="btn wa" id="wa-share" href="{wa_url}" target="_blank" rel="noopener">Share on WhatsApp</a>
+    <a class="btn wa" id="wa-share" href="https://web.whatsapp.com/" target="_blank" rel="noopener">Share on WhatsApp</a>
   </div>
-  <div class="hint">WhatsApp cannot attach a file from a link. The button downloads the
-    order and opens the chat with the details written out - attach the downloaded PDF there.</div>
+  <div class="hint" id="wa-hint"></div>
   <div class="sheet">{_lpo_html(o)}</div>
 <script>
-  // Fetch the PDF as the chat opens, so the file is in Downloads and
-  // ready to attach rather than something to come back for.
-  document.getElementById("wa-share").addEventListener("click", function () {{
-    var a = document.createElement("a");
-    a.href = "/export/purchase/{o.id}?token={t}&format=pdf";
-    a.download = "";
-    document.body.appendChild(a); a.click(); a.remove();
+  // Share the file itself. The browser's share sheet takes a PDF and
+  // hands it straight to WhatsApp - no message to delete, just the
+  // order as an attachment. Where the browser cannot do that, which
+  // is most desktops, the file is downloaded and WhatsApp opened, so
+  // there is one thing left to do rather than nothing working.
+  var PDF_URL = "/export/purchase/{o.id}?token={t}&format=pdf";
+  var FILE_NAME = "{safe}.pdf";
+  var hint = document.getElementById("wa-hint");
+  var canShareFiles = !!(navigator.canShare && navigator.share);
+  hint.textContent = canShareFiles
+    ? ""
+    : "This browser cannot hand a file to WhatsApp. The button downloads the order and opens WhatsApp - attach it there.";
+
+  document.getElementById("wa-share").addEventListener("click", async function (ev) {{
+    var btn = this;
+    // Where the browser can hand a file to another app - a phone, and
+    // desktop Safari - the share sheet takes the PDF itself and there
+    // is nothing to open. Everywhere else the link does its ordinary
+    // job of opening WhatsApp, and the file is downloaded to attach.
+    if (!canShareFiles) {{
+      var a = document.createElement("a");
+      a.href = PDF_URL; a.download = FILE_NAME;
+      document.body.appendChild(a); a.click(); a.remove();
+      return;                      // the link opens WhatsApp by itself
+    }}
+    ev.preventDefault();
+    var was = btn.textContent;
+    btn.textContent = "Preparing...";
+    try {{
+      var res = await fetch(PDF_URL);
+      if (!res.ok) throw new Error("could not fetch");
+      var blob = await res.blob();
+      var file = new File([blob], FILE_NAME, {{ type: "application/pdf" }});
+      if (navigator.canShare({{ files: [file] }})) {{
+        await navigator.share({{ files: [file] }});
+      }} else {{
+        throw new Error("no file sharing");
+      }}
+    }} catch (e) {{
+      if (!e || e.name !== "AbortError") {{
+        var a2 = document.createElement("a");
+        a2.href = PDF_URL; a2.download = FILE_NAME;
+        document.body.appendChild(a2); a2.click(); a2.remove();
+        window.open("https://web.whatsapp.com/", "_blank", "noopener");
+      }}
+    }} finally {{
+      btn.textContent = was;
+    }}
   }});
 </script>
 </body></html>"""
