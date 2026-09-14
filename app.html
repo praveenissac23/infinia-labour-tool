@@ -2107,6 +2107,13 @@ async function loadDate(dateStr, preserveStatus) {
   // so the save message can report what YOU changed rather than how
   // many workers happen to have attendance on the day.
   savedSnapshot = JSON.parse(JSON.stringify(rowData));
+  // Pre-filled is not saved. Say so, or a screen full of Sunday rows
+  // reads as a day already done and nobody presses Save.
+  if (isSunday) {
+    const prefilled = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
+    if (prefilled) showStatus("att-status", "warn",
+      `Sunday pre-filled for ${prefilled} worker(s) - not saved yet. Check it, then press Save Attendance.`);
+  }
 
   // Restore any unsaved draft for this date - same idea as the desktop
   // app resuming a session, so a refresh or an accidental navigation

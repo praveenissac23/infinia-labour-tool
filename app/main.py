@@ -1345,7 +1345,10 @@ def error_check(month_year: str, db: Session = Depends(get_db),
     # simply not here yet - listing them made every worker look
     # twenty-nine days behind on day one.
     today = _dubai_today()
-    last_day = min(cycle_end, today)
+    # Today is not missing - it is not over. Attendance is entered as
+    # the day goes on, so the check runs up to yesterday; otherwise
+    # every morning the whole workforce reads one day short.
+    last_day = min(cycle_end, today - timedelta(days=1))
     all_dates = []
     d = cycle_start
     while d <= last_day:
