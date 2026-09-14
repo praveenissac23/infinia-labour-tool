@@ -154,6 +154,17 @@ def _recalculate_all_summaries(db):
         print(f"Recalculated {done} payroll summaries against the current pay rules")
 
 
+def employed_during(emp, cycle_start, cycle_end):
+    """Was this man on the books at any point in that cycle?
+
+    He keeps his card for the cycle he left in - the days he worked
+    still have to be paid - and disappears from the next one. Every
+    past cycle still shows him, because what happened then did happen.
+    """
+    t = getattr(emp, "terminated_on", None)
+    return t is None or t >= cycle_start
+
+
 def _retire_staff_role(db):
     """Move anyone left on the old catch-all role onto 'office'.
 
@@ -394,7 +405,8 @@ def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
 # MASTER DATA - Employees
 # ---------------------------------------------------------------------
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
-def list_employees(active_only: bool = False, db: Session = Depends(get_db),
+def list_employees(active_only: bool = False, month_year: str = "", as_of: str = "",
+                    db: Session = Depends(get_db),
                     user: models.User = Depends(auth.get_current_user)):
     """Every logged-in user may read the worker list - the store needs
     names to record who took material. Pay is another matter: only
@@ -405,7 +417,20 @@ def list_employees(active_only: bool = False, db: Session = Depends(get_db),
     q = db.query(models.Employee)
     if active_only:
         q = q.filter(models.Employee.active == True)  # noqa: E712
+    # Asked for a cycle, or for a date, the list is the workforce as it
+    # stood then - a man who left in August is still on August's list
+    # and gone from September's.
+    bounds = None
+    try:
+        if month_year:
+            bounds = pcyc.cycle_bounds_for(datetime.strptime(f"25 {month_year}", "%d %B %Y").date())[:2]
+        elif as_of:
+            bounds = pcyc.cycle_bounds_for(date.fromisoformat(as_of))[:2]
+    except Exception:
+        bounds = None
     rows = q.order_by(models.Employee.emp_no).all()
+    if bounds:
+        rows = [e for e in rows if employed_during(e, bounds[0], bounds[1])]
     if may_see_pay:
         return rows
     return [{"id": e.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "",
@@ -1352,7 +1377,9 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="month_year must look like 'August 2026'.")
     cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
 
-    active_employees = db.query(models.Employee).filter(models.Employee.active == True).all()  # noqa: E712
+    active_employees = [e for e in db.query(models.Employee)
+                          .filter(models.Employee.active == True).all()   # noqa: E712
+                        if employed_during(e, cycle_start, cycle_end)]
     rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
 
     dates_by_emp = {}
@@ -1380,7 +1407,10 @@ def error_check(month_year: str, db: Session = Depends(get_db),
     out = []
     for emp in active_employees:
         entered = dates_by_emp.get(emp.emp_no, set())
-        missing = [d for d in all_dates if d not in entered]
+        # Nothing is owed for days after he left.
+        upto = [d for d in all_dates
+                if emp.terminated_on is None or d <= emp.terminated_on]
+        missing = [d for d in upto if d not in entered]
         if not entered:
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"No attendance entered at all for {month_year}.",
@@ -1511,7 +1541,9 @@ def error_check(month_year: str, db: Session = Depends(get_db),
     missing_by_emp = {}
     for emp in active_employees:
         entered = dates_by_emp.get(emp.emp_no, set())
-        missing_by_emp[emp.emp_no] = len([d for d in all_dates if d not in entered])
+        upto = [d for d in all_dates
+                if emp.terminated_on is None or d <= emp.terminated_on]
+        missing_by_emp[emp.emp_no] = len([d for d in upto if d not in entered])
 
     rank = {"legal": 0, "contradiction": 1}
     worst_by_emp, count_by_emp = {}, {}
@@ -3184,12 +3216,15 @@ def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
     for r in rows:
         dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
 
-    employees = db.query(models.Employee).filter(models.Employee.active == True).all()
+    employees = [e for e in db.query(models.Employee).filter(models.Employee.active == True).all()
+                 if employed_during(e, cycle_start, cycle_end)]
     workers = []
     for emp in sorted(employees, key=lambda e: e.emp_no):
         if wanted and emp.emp_no not in wanted:
             continue
-        missing = [d for d in all_dates if d not in dates_by_emp.get(emp.emp_no, set())]
+        entered_days = dates_by_emp.get(emp.emp_no, set())
+        missing = [d for d in all_dates
+                   if (emp.terminated_on is None or d <= emp.terminated_on) and d not in entered_days]
         if not missing:
             continue
         workers.append({"emp_no": emp.emp_no, "name": emp.name, "trade": emp.trade or "",

@@ -53,6 +53,11 @@ class Employee(Base):
     # a foreman or driver on a monthly figure, paid the whole salary
     # less one day's rate per absence. Everyone starts daily.
     pay_type = Column(String, default="daily")
+    # The day the man left. Empty for anyone still employed. He keeps
+    # his card for the cycle he left in - the days he worked still have
+    # to be paid - and drops off from the next cycle onwards, while
+    # every past cycle still shows him exactly as he was.
+    terminated_on = Column(Date, nullable=True)
     total_salary = Column(Float, default=0.0)
     basic_salary = Column(Float, default=0.0)
     active = Column(Boolean, default=True)
@@ -141,6 +146,9 @@ class EmployeeSummary(Base):
     sunday_days = Column(Float, default=0.0)
     holiday_days = Column(Float, default=0.0)
     leave_days = Column(Float, default=0.0)
+    # Days after the man left. Unpaid and never deducted - he simply
+    # was not employed, which is not the same as failing to turn up.
+    terminated_days = Column(Float, default=0.0)
     ot_hours = Column(Float, default=0.0)
     bh_hours = Column(Float, default=0.0)
     basic_pay_input = Column(Float, default=0.0)

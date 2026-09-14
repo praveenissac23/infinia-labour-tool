@@ -66,6 +66,7 @@ class EmployeeIn(BaseModel):
     trade: str = ""
     company: str = "Infinia"
     pay_type: str = "daily"
+    terminated_on: date | None = None
     total_salary: float = 0.0
     basic_salary: float = 0.0
     active: bool = True
@@ -176,6 +177,7 @@ class EmployeeSummaryOut(BaseModel):
     sunday_days: float = 0.0
     holiday_days: float
     leave_days: float
+    terminated_days: float = 0.0
     ot_hours: float
     bh_hours: float
     basic_pay_input: float

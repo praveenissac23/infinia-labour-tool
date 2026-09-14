@@ -760,6 +760,8 @@
                 <option value="Infinia">Infinia</option>
                 <option value="Prime Infinia">Prime Infinia</option>
               </select>
+              <input type="date" id="md-emp-terminated" style="width:150px;"
+                     title="Leave empty for anyone still employed. Set it and he keeps this cycle, then drops off from the next one.">
               <select id="md-emp-paytype" style="width:150px;"
                       title="Daily: paid per day worked, an absence costs the day and a day's deduction. Fixed: the whole month's salary, less one day per absence.">
                 <option value="daily">Daily wage</option>
@@ -789,6 +791,7 @@
                   <th class="sortable" onclick="sortMasterData('trade')">Trade <span id="md-sort-trade"></span></th>
                   <th class="sortable" onclick="sortMasterData('company')">Company <span id="md-sort-company"></span></th>
                   <th class="sortable" onclick="sortMasterData('pay_type')">Pay Type <span id="md-sort-pay_type"></span></th>
+                  <th class="sortable" onclick="sortMasterData('terminated_on')">Status <span id="md-sort-terminated_on"></span></th>
                   <th class="sortable" onclick="sortMasterData('total_salary')">Total Salary <span id="md-sort-total_salary"></span></th>
                   <th class="sortable" onclick="sortMasterData('basic_salary')">Basic Salary <span id="md-sort-basic_salary"></span></th>
                   <th></th>
@@ -1598,7 +1601,7 @@ const API = window.location.hostname.endsWith("onrender.com")
 // before and is no longer offered, but cycles already recorded with it
 // still calculate and print correctly - the figure simply stops
 // growing.
-const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Sunday", "Holiday", "Leave"];
+const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Sunday", "Holiday", "Leave", "Terminated"];
 
 // A colour per status, pale enough to read black text on and to survive
 // a black-and-white printer as distinct shades. Green means the day was
@@ -1608,6 +1611,8 @@ const STATUS_COLOURS = {
   Present: "#E3F4E4", Absent:  "#FBE0DE", Sick:    "#FFF2D6",
   Medical: "#FDE8D7", Sunday:  "#E4EDFA", Holiday: "#E9E4F7",
   Leave:   "#EFEFEF", Friday:  "#E4EDFA",
+  // A man who has left. Dark grey - not a fault, just no longer here.
+  Terminated: "#DCDCDC",
 };
 
 function statusCell(v) {
@@ -2089,8 +2094,15 @@ async function loadDate(dateStr, preserveStatus) {
   try { lastSiteByEmp = await apiCall(`/attendance/last-sites/${dateStr}`) || {}; }
   catch (e) { /* no lookup - rows simply start blank */ }
 
+  // The workforce as it stood on this date: a man who left in August
+  // is still on August's grid and gone from September's.
+  let dayStaff = employees;
+  try { dayStaff = await apiCall(`/employees?active_only=true&as_of=${dateStr}`) || employees; }
+  catch (e) { /* fall back to everyone rather than show an empty day */ }
+  attendanceStaff = dayStaff;
+
   rowData = {};
-  employees.forEach(emp => {
+  dayStaff.forEach(emp => {
     const r = byEmp[emp.emp_no];
     if (r) {
       rowData[emp.emp_no] = {
@@ -2106,10 +2118,16 @@ async function loadDate(dateStr, preserveStatus) {
       // row blank makes his card read as unfilled and puts him on the
       // chase list while he is on a plane. Ahead of the Sunday rule: a
       // Sunday during his leave is still leave.
-      const onLeave = last && last.last_am === "Leave" && last.last_pm === "Leave";
-      if (onLeave) {
+      const carried = last && last.last_am === last.last_pm
+        && ["Leave", "Terminated"].includes(last.last_am) ? last.last_am : null;
+      // A man past his leaving date is Terminated for the rest of the
+      // cycle, whatever was marked before - the company's own record of
+      // when he left decides that, not the last row somebody typed.
+      const gone = emp.terminated_on && dateStr > emp.terminated_on;
+      if (gone || carried) {
+        const st = gone ? "Terminated" : carried;
         rowData[emp.emp_no] = {
-          am: "Leave", pm: "Leave", site: "", engineer: "",
+          am: st, pm: st, site: "", engineer: "",
           ot: "", bh: "", comments: "",
         };
       } else if (isSunday) {
@@ -2130,12 +2148,14 @@ async function loadDate(dateStr, preserveStatus) {
   savedSnapshot = JSON.parse(JSON.stringify(rowData));
   // Pre-filled is not saved. Say so, or a screen full of Sunday rows
   // reads as a day already done and nobody presses Save.
-  const preSun = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
-  const preLeave = employees.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Leave").length;
-  if (preSun || preLeave) {
+  const preSun = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
+  const preLeave = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Leave").length;
+  const preGone = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Terminated").length;
+  if (preSun || preLeave || preGone) {
     const parts = [];
     if (preSun) parts.push(`Sunday pre-filled for ${preSun} worker(s)`);
     if (preLeave) parts.push(`${preLeave} still on leave`);
+    if (preGone) parts.push(`${preGone} no longer employed`);
     showStatus("att-status", "warn",
       `${parts.join(", ")} - not saved yet. Check it, then press Save Attendance.`);
   }
@@ -2257,12 +2277,16 @@ function renderRows() {
   tbody.innerHTML = "";
   let unfilled = 0, shown = 0;
 
-  employees.forEach(emp => {
+  // The workforce for the date being marked - a man who left last
+  // cycle has no row today, but still has one on the days he worked.
+  const staff = (attendanceStaff && attendanceStaff.length) ? attendanceStaff : employees;
+  staff.forEach(emp => {
     if (terms.length) {
       const match = terms.some(t => emp.emp_no.toLowerCase().includes(t) || emp.name.toLowerCase().includes(t));
       if (!match) return;
     }
     const d = rowData[emp.emp_no];
+    if (!d) return;
     const problems = rowProblems(d);
     if (problems.length) unfilled++;
     if (showUnfilledOnly && !problems.length) return;
@@ -2323,6 +2347,8 @@ function tintStatusSelect(sel) {
 
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
 let lastSiteByEmp = {};
+// The workers employed on the date currently open in the grid.
+let attendanceStaff = [];
 
 function onField(empNo, field, value) {
   rowData[empNo][field] = value;
@@ -2349,10 +2375,14 @@ function onTick(empNo, checked) { checked ? ticked.add(empNo) : ticked.delete(em
 // them while a search was active used to select all 74 workers, so a
 // bulk-apply meant for 5 people silently overwrote everyone's day.
 function visibleEmployees() {
+  // The workforce for the date being marked, not the whole history -
+  // a man who left last cycle has no row on today's grid, but still
+  // has one on the days he was employed.
+  const base = (attendanceStaff && attendanceStaff.length) ? attendanceStaff : employees;
   const search = document.getElementById("search-box").value.trim().toLowerCase();
   const terms = search.split(",").map(t => t.trim()).filter(Boolean);
-  if (!terms.length) return employees;
-  return employees.filter(emp =>
+  if (!terms.length) return base;
+  return base.filter(emp =>
     terms.some(t => emp.emp_no.toLowerCase().includes(t) || emp.name.toLowerCase().includes(t))
   );
 }
@@ -2521,6 +2551,9 @@ function renderMasterDataLists() {
       <td>${(e.pay_type || "daily") === "fixed"
              ? '<span class="pill" style="background:#FFF3E0; color:#B26A00;">Fixed monthly</span>'
              : '<span class="pill" style="background:#EFEFEF; color:#555;">Daily wage</span>'}</td>
+      <td>${e.terminated_on
+             ? `<span class="pill" style="background:#DCDCDC; color:#444;" title="Left on ${e.terminated_on}">Left ${e.terminated_on}</span>`
+             : '<span class="pill" style="background:#E3F4E4; color:#2E7D32;">Working</span>'}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
           <button class="btn btn-danger" onclick="removeEmployee('${e.emp_no}', '${(e.name || "").replace(/'/g, "\\'")}')">Remove</button></td>
@@ -2578,6 +2611,7 @@ function editEmployee(empNo) {
   document.getElementById("md-emp-trade").value = emp.trade;
   document.getElementById("md-emp-company").value = emp.company || "Infinia";
   document.getElementById("md-emp-paytype").value = emp.pay_type || "daily";
+  document.getElementById("md-emp-terminated").value = emp.terminated_on || "";
   document.getElementById("md-emp-total").value = emp.total_salary;
   document.getElementById("md-emp-basic").value = emp.basic_salary;
 }
@@ -2598,6 +2632,7 @@ async function saveEmployee() {
         trade: document.getElementById("md-emp-trade").value.trim(),
         company: document.getElementById("md-emp-company").value || "Infinia",
         pay_type: document.getElementById("md-emp-paytype").value || "daily",
+        terminated_on: document.getElementById("md-emp-terminated").value || null,
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
         active: true,
@@ -2607,6 +2642,7 @@ async function saveEmployee() {
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("md-emp-company").value = "Infinia";
     document.getElementById("md-emp-paytype").value = "daily";
+    document.getElementById("md-emp-terminated").value = "";
     employees = await apiCall("/employees?active_only=true");
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();

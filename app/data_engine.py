@@ -51,7 +51,7 @@ CELL_ALLOWANCES = "F47"
 CELL_OTHER_DEDUCTION = "F48"
 CELL_CACHED_FINAL_SALARY = "H44"
 
-STATUS_KEYS = ["Present", "Absent", "Sick", "Medical", "Friday", "Sunday", "Holiday", "Leave"]
+STATUS_KEYS = ["Present", "Absent", "Sick", "Medical", "Friday", "Sunday", "Holiday", "Leave", "Terminated"]
 
 _CELL_REF_RE_DE = re.compile(r'(\$?)([A-Z]{1,3})(\$?)(\d+)')
 
@@ -170,6 +170,7 @@ class EmployeeSummary:
     medical_days: float = 0
     friday_days: float = 0
     sunday_days: float = 0
+    terminated_days: float = 0
     holiday_days: float = 0
     leave_days: float = 0
     ot_hours: float = 0
@@ -388,7 +389,8 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
         "sick_days": status_counts["Sick"], "medical_days": status_counts["Medical"],
         "friday_days": status_counts["Friday"], "sunday_days": status_counts["Sunday"],
         "holiday_days": status_counts["Holiday"],
-        "leave_days": status_counts["Leave"], "ot_hours": ot_total, "bh_hours": bh_total,
+        "leave_days": status_counts["Leave"], "terminated_days": status_counts["Terminated"],
+        "ot_hours": ot_total, "bh_hours": bh_total,
         "basic_pay_input": basic_pay_input, "total_salary_component": total_salary_component,
         "deduction": deduction, "ot_amount": ot_amount, "bh_amount": bh_amount,
         "allowances": allowances, "other_deduction": other_deduction,
