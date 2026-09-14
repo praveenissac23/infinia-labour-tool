@@ -433,8 +433,12 @@ def list_employees(active_only: bool = False, month_year: str = "", as_of: str =
         rows = [e for e in rows if employed_during(e, bounds[0], bounds[1])]
     if may_see_pay:
         return rows
+    # terminated_on goes to everyone: it is not pay information, and the
+    # attendance screen cannot mark a leaver correctly without it.
     return [{"id": e.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "",
-             "active": e.active, "total_salary": 0, "basic_salary": 0} for e in rows]
+             "active": e.active, "terminated_on": e.terminated_on,
+             "company": e.company, "pay_type": e.pay_type,
+             "total_salary": 0, "basic_salary": 0} for e in rows]
 
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
@@ -1021,6 +1025,18 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
                 row_in.am, row_in.pm = "", ""
                 to_process.append((employee, row_in))
             continue
+
+        # He left. Nothing after that date is a working day, however it
+        # arrives - a Sunday prefill, a bulk apply, an import, or a
+        # stale page open since before he was marked. The company's own
+        # leaving date decides, not what was sent.
+        if employee.terminated_on and row_in.full_date > employee.terminated_on:
+            am = pm = "Terminated"
+            row_in.am = row_in.pm = "Terminated"
+            row_in.site = row_in.engineer = ""
+            row_in.ot = 0
+            row_in.bh = 0
+            row_in.comments = (row_in.comments or "")
 
         site, engineer = row_in.site, row_in.engineer
         # Holiday is paid whether or not a site is known, so a missing

@@ -2130,6 +2130,9 @@ async function loadDate(dateStr, preserveStatus) {
       // cycle, whatever was marked before - the company's own record of
       // when he left decides that, not the last row somebody typed.
       const gone = emp.terminated_on && dateStr > emp.terminated_on;
+      // He is not available for a bulk apply either - ticking everyone
+      // and marking them Present must not put a man who has gone home
+      // back on a site.
       if (gone || carried) {
         const st = gone ? "Terminated" : carried;
         rowData[emp.emp_no] = {
@@ -2412,8 +2415,17 @@ function applyBulk() {
     showStatus("att-status", "warn", "Tick the checkbox next to the workers you want to apply this to.");
     return;
   }
+  const staffByNo = {};
+  ((attendanceStaff && attendanceStaff.length) ? attendanceStaff : employees)
+    .forEach(e => { staffByNo[e.emp_no] = e; });
+  let skippedGone = 0;
   ticked.forEach(empNo => {
     const d = rowData[empNo];
+    if (!d) return;
+    // A man past his leaving date keeps his Terminated row whatever is
+    // applied to the ticked list.
+    const who = staffByNo[empNo];
+    if (who && who.terminated_on && currentDate > who.terminated_on) { skippedGone++; return; }
     if (am) d.am = am;
     if (pm) d.pm = pm;
     if (site) d.site = site;
@@ -2430,6 +2442,10 @@ function applyBulk() {
   });
   scheduleDraftSave();
   renderRows();
+  if (skippedGone) {
+    showStatus("att-status", "warn",
+      `${skippedGone} worker(s) had left the company by this date and were left as Terminated.`);
+  }
 }
 
 // Requests and approvals live on separate screens but share code paths
