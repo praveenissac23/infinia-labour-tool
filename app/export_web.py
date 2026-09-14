@@ -1158,6 +1158,407 @@ def build_store_report_pdf(title, rows, subtitle=""):
     doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
 
+SIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signature.png")
+
+
+def build_lpo_pdf(po: dict):
+    """A purchase order on one A4 page, laid out as the company's own.
+
+    Header block left and right, vendor, priced lines, totals stacked at
+    the right with notes and terms beside them, and the signature. Built
+    to print: fixed margins, nothing that reflows off the page, and the
+    line table repeating its header if a long order runs over.
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=12 * mm,
+                             leftMargin=12 * mm, rightMargin=12 * mm, title=po.get("ref", "LPO"))
+    W = doc.width
+    styles = getSampleStyleSheet()
+    grid = colors.HexColor("#8C8C8C")
+    dark = colors.HexColor("#7B1F1A")
+
+    def P(t, size=8.5, bold=False, align=TA_LEFT, colour="#1F2429", leading=None):
+        return Paragraph(str(t if t is not None else ""), ParagraphStyle(
+            f"s{size}{bold}{align}", parent=styles["Normal"], fontSize=size,
+            leading=leading or size + 2.6, alignment=align,
+            fontName="Helvetica-Bold" if bold else "Helvetica",
+            textColor=colors.HexColor(colour)))
+
+    el = []
+
+    # ---- Company band: logo, address, the words PURCHASE ORDER
+    logo = _logo_image()
+    company = [P("<b>INFINIA CONTRACTING LLC</b>", 12.5),
+               P("M09 Bin Bishr Building", 8),
+               P("Abu Hail,  Dubai , United Arab Emirates", 8),
+               P("TRN 100602393900003", 8)]
+    band = Table([[logo or "", company, P("PURCHASE ORDER", 17, align=TA_RIGHT)]],
+                 colWidths=[W * 0.24, W * 0.42, W * 0.34])
+    band.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BOX", (0, 0), (-1, -1), 0.6, grid),
+    ]))
+    el.append(band)
+
+    # ---- The two header columns
+    def pairs(rows):
+        data = [[P(k, 8, colour="#3B3F44"), P(f": {v}" if v not in ("", None) else ":", 8, bold=True)]
+                for k, v in rows]
+        t = Table(data, colWidths=[W * 0.155, W * 0.325])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ]))
+        return t
+
+    left = pairs([("Purchase Order No", po.get("ref", "")),
+                  ("Date", po.get("date_text", "")),
+                  ("Terms", po.get("terms", "")),
+                  ("Delivery Date", po.get("delivery_text", "")),
+                  ("Ref#", po.get("supplier_ref", ""))])
+    right = pairs([("Plot No", po.get("plot_no", "")),
+                   ("Contact Person", po.get("contact_person", "")),
+                   ("Mobile No", po.get("mobile", "")),
+                   ("Delivery Date", po.get("delivery_text", "")),
+                   ("Email ID", po.get("email", "")),
+                   ("Job Scope", po.get("job_scope", "")),
+                   ("Project Location Name", po.get("project_location", ""))])
+    head = Table([[left, right]], colWidths=[W * 0.48, W * 0.52])
+    head.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 0.6, grid),
+        ("LINEAFTER", (0, 0), (0, 0), 0.6, grid),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    el.append(head)
+
+    # ---- Vendor
+    vend = [P("Vendor Address", 8, colour="#3B3F44")]
+    vt = Table([[vend[0]]], colWidths=[W])
+    vt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0F0F0")),
+                            ("BOX", (0, 0), (-1, -1), 0.6, grid),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+    el.append(vt)
+    vlines = [P(po.get("supplier_name", ""), 9.5, bold=True)]
+    for ln in (po.get("supplier_address", "") or "").splitlines():
+        if ln.strip():
+            vlines.append(P(ln.strip(), 8))
+    if po.get("supplier_trn"):
+        vlines.append(P(f"TRN {po['supplier_trn']}", 8))
+    vb = Table([[vlines]], colWidths=[W])
+    vb.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, grid),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    el.append(vb)
+    el.append(Spacer(1, 7))
+
+    # ---- Priced lines
+    hd = lambda t, a=TA_CENTER: Paragraph(f"<b>{t}</b>", ParagraphStyle(
+        "hd", parent=styles["Normal"], fontSize=8.5, leading=11,
+        textColor=colors.white, alignment=a, fontName="Helvetica-Bold"))
+    data = [[hd("#"), hd("Item &amp; Description", TA_LEFT), hd("Qty", TA_RIGHT),
+             hd("Rate", TA_RIGHT), hd("Tax %", TA_RIGHT), hd("Tax", TA_RIGHT), hd("Amount", TA_RIGHT)]]
+    sub = 0.0
+    for i, l in enumerate(po.get("lines", []), start=1):
+        qty = float(l.get("qty") or 0)
+        rate = float(l.get("rate") or 0)
+        amount = qty * rate
+        taxpc = float(l.get("tax_pct") or 0)
+        sub += amount
+        desc = [P(l.get("description", ""), 8.5)]
+        if (l.get("description2") or "").strip():
+            desc.append(P(l["description2"].strip(), 7.5, colour="#555555"))
+        data.append([P(i, 8.5, align=TA_CENTER), desc,
+                     P(f"{qty:,.2f}", 8.5, align=TA_RIGHT),
+                     P(f"{rate:,.2f}", 8.5, align=TA_RIGHT),
+                     P(f"{taxpc:,.2f}", 8.5, align=TA_RIGHT),
+                     P(f"{amount * taxpc / 100:,.2f}", 8.5, align=TA_RIGHT),
+                     P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
+    widths = [W * x for x in (0.05, 0.40, 0.09, 0.11, 0.08, 0.11, 0.16)]
+    lt = Table(data, colWidths=widths, repeatRows=1)
+    lt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), dark),
+        ("GRID", (0, 0), (-1, -1), 0.5, grid),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    el.append(lt)
+
+    # ---- Notes and terms on the left, money on the right
+    disc = float(po.get("discount_pct") or 0)
+    discount = sub * disc / 100.0
+    net = sub - discount
+    vat = sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) *
+              float(l.get("tax_pct") or 0) / 100.0 for l in po.get("lines", []))
+    if disc:
+        vat = net * (float(po.get("tax_pct") or 5)) / 100.0
+    total = net + vat
+
+    money = [[P("Sub Total", 8.5, align=TA_RIGHT), P(f"{sub:,.2f}", 8.5, align=TA_RIGHT)]]
+    if disc:
+        money.append([P(f"Discount({disc:,.2f}%)", 8.5, align=TA_RIGHT),
+                      P(f"(-) {discount:,.2f}", 8.5, align=TA_RIGHT)])
+    money.append([P(f"Standard Rate ({po.get('tax_pct', 5):g}%)", 8.5, align=TA_RIGHT),
+                  P(f"{vat:,.2f}", 8.5, align=TA_RIGHT)])
+    money.append([P("<b>Total</b>", 10, align=TA_RIGHT), P(f"<b>AED {total:,.2f}</b>", 10, align=TA_RIGHT)])
+    mt = Table(money, colWidths=[W * 0.24, W * 0.20])
+    mt.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, len(money) - 2), (-1, len(money) - 2), 0.5, grid),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    sig_cell = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER)]
+    if os.path.exists(SIG_PATH):
+        try:
+            from reportlab.platypus import Image as RLImage
+            sig_cell.append(Spacer(1, 2))
+            sig_cell.append(RLImage(SIG_PATH, width=34 * mm, height=15 * mm))
+        except Exception:
+            sig_cell.append(Spacer(1, 17 * mm))
+    else:
+        sig_cell.append(Spacer(1, 17 * mm))
+    sig_cell.append(P("Authorized Signature", 8.5, align=TA_CENTER))
+    sigt = Table([[sig_cell]], colWidths=[W * 0.44])
+    sigt.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, grid),
+                              ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                              ("TOPPADDING", (0, 0), (-1, -1), 5),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+
+    notes_cell = []
+    if (po.get("notes") or "").strip():
+        notes_cell.append(P("Notes", 8, colour="#3B3F44"))
+        for ln in po["notes"].splitlines():
+            notes_cell.append(P(ln, 8.5))
+        notes_cell.append(Spacer(1, 6))
+    notes_cell.append(P("Terms &amp; Conditions", 8, colour="#3B3F44"))
+    for ln in (po.get("terms_text") or "").splitlines():
+        if ln.strip():
+            notes_cell.append(P(ln.strip(), 8, leading=10.5))
+
+    foot = Table([[notes_cell, [mt, Spacer(1, 6), sigt]]], colWidths=[W * 0.54, W * 0.46])
+    foot.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (0, 0), 2), ("RIGHTPADDING", (0, 0), (0, 0), 10),
+        ("LEFTPADDING", (1, 0), (1, 0), 0), ("RIGHTPADDING", (1, 0), (1, 0), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    el.append(foot)
+
+    doc.build(el)
+    buf.seek(0)
+    return buf
+
+
+def build_lpo_excel(po: dict):
+    """The same order as a spreadsheet, set up to print on one A4 page.
+
+    Same layout as the PDF so the two are recognisably one document, and
+    every figure is a real number rather than text, so he can change a
+    rate and the totals follow."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "LPO"
+    widths = [5, 30, 12, 12, 8, 11, 14]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    thin = Side(style="thin", color="8C8C8C")
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    L, R, C = (Alignment(horizontal="left", vertical="center", wrap_text=True),
+               Alignment(horizontal="right", vertical="center"),
+               Alignment(horizontal="center", vertical="center", wrap_text=True))
+
+    ws.row_dimensions[1].height = 26          # room for the logo
+    ws.merge_cells("B2:E2"); ws["B2"] = "INFINIA CONTRACTING LLC"; ws["B2"].font = Font(bold=True, size=14)
+    ws.merge_cells("F2:G2"); ws["F2"] = "PURCHASE ORDER"
+    ws["F2"].font = Font(bold=True, size=14); ws["F2"].alignment = R
+    ws.merge_cells("B3:E3"); ws["B3"] = "M09 Bin Bishr Building"
+    ws.merge_cells("B4:E4"); ws["B4"] = "Abu Hail,  Dubai , United Arab Emirates"
+    ws.merge_cells("B5:E5"); ws["B5"] = "TRN 100602393900003"
+    for r in (3, 4, 5):
+        ws[f"B{r}"].font = Font(size=9)
+
+    def pair(row, k1, v1, k2, v2):
+        ws.cell(row=row, column=1, value=k1).font = Font(size=9, color="3B3F44")
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+        c = ws.cell(row=row, column=3, value=v1); c.font = Font(size=9, bold=True); c.alignment = L
+        ws.cell(row=row, column=4, value=k2).font = Font(size=9, color="3B3F44")
+        c2 = ws.cell(row=row, column=6, value=v2); c2.font = Font(size=9, bold=True); c2.alignment = L
+        ws.merge_cells(start_row=row, start_column=4, end_row=row, end_column=5)
+        ws.merge_cells(start_row=row, start_column=6, end_row=row, end_column=7)
+
+    pair(6, "Purchase Order No", po.get("ref", ""), "Plot No", po.get("plot_no", ""))
+    pair(7, "Date", po.get("date_text", ""), "Contact Person", po.get("contact_person", ""))
+    pair(8, "Terms", po.get("terms", ""), "Mobile No", po.get("mobile", ""))
+    pair(9, "Delivery Date", po.get("delivery_text", ""), "Delivery Date", po.get("delivery_text", ""))
+    pair(10, "Ref#", po.get("supplier_ref", ""), "Email ID", po.get("email", ""))
+    pair(11, "", "", "Job Scope", po.get("job_scope", ""))
+    pair(12, "", "", "Project Location Name", po.get("project_location", ""))
+    for r in range(6, 13):
+        for col in range(1, 8):
+            ws.cell(row=r, column=col).border = box
+
+    r = 14
+    ws.cell(row=r, column=1, value="Vendor Address").font = Font(size=9, color="3B3F44")
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+    for col in range(1, 8):
+        ws.cell(row=r, column=col).fill = PatternFill("solid", fgColor="F0F0F0")
+        ws.cell(row=r, column=col).border = box
+    r += 1
+    ws.cell(row=r, column=1, value=po.get("supplier_name", "")).font = Font(bold=True, size=10)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+    for col in range(1, 8):
+        ws.cell(row=r, column=col).border = box
+    for ln in [x for x in (po.get("supplier_address", "") or "").splitlines() if x.strip()] + \
+              ([f"TRN {po['supplier_trn']}"] if po.get("supplier_trn") else []):
+        r += 1
+        ws.cell(row=r, column=1, value=ln).font = Font(size=9)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+        for col in range(1, 8):
+            ws.cell(row=r, column=col).border = box
+
+    r += 2
+    head_row = r
+    for i, label in enumerate(["#", "Item & Description", "Qty", "Rate", "Tax %", "Tax", "Amount"], start=1):
+        c = ws.cell(row=r, column=i, value=label)
+        c.font = Font(bold=True, color="FFFFFF", size=9.5)
+        c.fill = PatternFill("solid", fgColor="7B1F1A")
+        c.alignment = C if i != 2 else Alignment(horizontal="left", vertical="center")
+        c.border = box
+    ws.row_dimensions[r].height = 18
+    first_line = r + 1
+    for i, l in enumerate(po.get("lines", []), start=1):
+        r += 1
+        qty = float(l.get("qty") or 0); rate = float(l.get("rate") or 0)
+        taxpc = float(l.get("tax_pct") or 0)
+        desc = l.get("description", "")
+        if (l.get("description2") or "").strip():
+            desc += "\n" + l["description2"].strip()
+        vals = [i, desc, qty, rate, taxpc, None, None]
+        for col, v in enumerate(vals, start=1):
+            c = ws.cell(row=r, column=col, value=v)
+            c.border = box
+            c.alignment = L if col == 2 else (C if col == 1 else R)
+            c.font = Font(size=9.5)
+        ws.cell(row=r, column=6).value = f"=ROUND(C{r}*D{r}*E{r}/100,2)"
+        ws.cell(row=r, column=7).value = f"=ROUND(C{r}*D{r},2)"
+        for col in (3, 4, 6, 7):
+            ws.cell(row=r, column=col).number_format = "#,##0.00"
+        ws.row_dimensions[r].height = 26 if (l.get("description2") or "").strip() else 17
+    last_line = r
+
+    r += 2
+    money_start = r
+    def money(label, formula, bold=False, size=9.5):
+        nonlocal r
+        c1 = ws.cell(row=r, column=5, value=label)
+        c1.alignment = R; c1.font = Font(bold=bold, size=size)
+        ws.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
+        c2 = ws.cell(row=r, column=7, value=formula)
+        c2.alignment = R; c2.font = Font(bold=bold, size=size)
+        c2.number_format = '"AED" #,##0.00' if bold else "#,##0.00"
+        r += 1
+    money("Sub Total", f"=SUM(G{first_line}:G{last_line})")
+    disc = float(po.get("discount_pct") or 0)
+    if disc:
+        money(f"Discount({disc:g}%)", f"=-SUM(G{first_line}:G{last_line})*{disc}/100")
+    money(f"Standard Rate ({po.get('tax_pct', 5):g}%)",
+          f"=SUM(F{first_line}:F{last_line})" if not disc
+          else f"=(SUM(G{first_line}:G{last_line})*(1-{disc}/100))*{po.get('tax_pct',5)}/100")
+    money("Total", f"=SUM(G{money_start}:G{r-1})", bold=True, size=11)
+
+    nr = money_start
+    if (po.get("notes") or "").strip():
+        ws.cell(row=nr, column=1, value="Notes").font = Font(size=9, color="3B3F44")
+        nr += 1
+        import textwrap as _tw
+        for ln in po["notes"].splitlines():
+            for piece in _tw.wrap(ln, width=70) or [""]:
+                ws.cell(row=nr, column=1, value=piece).font = Font(size=9)
+                ws.merge_cells(start_row=nr, start_column=1, end_row=nr, end_column=4)
+                nr += 1
+        nr += 1
+    ws.cell(row=nr, column=1, value="Terms & Conditions").font = Font(size=9, color="3B3F44")
+    nr += 1
+    import textwrap
+    for ln in (po.get("terms_text") or "").splitlines():
+        if not ln.strip():
+            continue
+        # Wrapped by hand: a merged cell does not auto-fit its height, so
+        # a long clause would otherwise be cut off at the column edge.
+        for piece in textwrap.wrap(ln.strip(), width=78) or [""]:
+            c = ws.cell(row=nr, column=1, value=piece)
+            c.font = Font(size=8)
+            c.alignment = Alignment(horizontal="left", vertical="top")
+            ws.merge_cells(start_row=nr, start_column=1, end_row=nr, end_column=4)
+            ws.row_dimensions[nr].height = 11
+            nr += 1
+
+    sr = max(r + 1, nr + 1)          # below both the money and the terms
+    ws.cell(row=sr, column=5, value="For Infinia Contracting LLC").alignment = C
+    ws.merge_cells(start_row=sr, start_column=5, end_row=sr, end_column=7)
+    ws.cell(row=sr + 3, column=5, value="Authorized Signature").alignment = C
+    ws.merge_cells(start_row=sr + 3, start_column=5, end_row=sr + 3, end_column=7)
+    # One outer frame, not a grid - the inner lines made it look like an
+    # empty table rather than a place to sign.
+    edge = Side(style="thin", color="8C8C8C")
+    for col in range(5, 8):
+        top = ws.cell(row=sr, column=col)
+        bot = ws.cell(row=sr + 3, column=col)
+        top.border = Border(top=edge, bottom=None,
+                            left=edge if col == 5 else None, right=edge if col == 7 else None)
+        bot.border = Border(bottom=edge, top=None,
+                            left=edge if col == 5 else None, right=edge if col == 7 else None)
+        for rr in (sr + 1, sr + 2):
+            ws.cell(row=rr, column=col).border = Border(
+                left=edge if col == 5 else None, right=edge if col == 7 else None)
+    ws.row_dimensions[sr + 1].height = 22
+    ws.row_dimensions[sr + 2].height = 22
+    try:
+        if os.path.exists(SIG_PATH):
+            from openpyxl.drawing.image import Image as XLImage
+            sig = XLImage(SIG_PATH)
+            sig.width, sig.height = 110, 48
+            ws.add_image(sig, f"F{sr + 1}")
+    except Exception:
+        pass
+
+    ws.print_area = f"A1:G{max(sr + 4, nr + 1)}"
+    ws.page_setup.orientation = "portrait"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins.left = ws.page_margins.right = 0.4
+    ws.page_margins.top = ws.page_margins.bottom = 0.4
+
+    # The logo goes in here, not through _excel_logo_header: that helper
+    # inserts rows into a finished sheet, which moves every cell while
+    # the formulas keep pointing at the old row numbers - totals came
+    # out as zero. The layout below already starts at row 1 with the
+    # company block, so the picture simply sits on top of it.
+    try:
+        if os.path.exists(LOGO_PATH):
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(LOGO_PATH)
+            img.width, img.height = 150, 25
+            ws.add_image(img, "A1")
+    except Exception:
+        pass
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def build_error_check_pdf(cycle_label, workers, note=""):
     """A reminder sheet for a site: the workers whose cards are not
     finished, with the exact days each one is short.

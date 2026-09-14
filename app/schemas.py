@@ -385,3 +385,35 @@ class SupplierIn(BaseModel):
 class LineDecisionIn(BaseModel):
     decision: str            # approved | rejected | pending
     reason: str = ""
+
+
+# ---- Purchase orders -------------------------------------------------
+class PurchaseOrderLineIn(BaseModel):
+    item_id: int | None = None
+    description: str = ""
+    description2: str = ""
+    qty: float = 0.0
+    unit: str = ""
+    rate: float = 0.0
+    tax_pct: float = 5.0
+
+
+class PurchaseOrderIn(BaseModel):
+    order_date: date | None = None
+    terms: str = "Due on Receipt"
+    delivery_date: date | None = None
+    supplier_ref: str = ""
+    supplier_name: str = ""
+    supplier_address: str = ""
+    supplier_trn: str = ""
+    request_id: int | None = None
+    plot_no: str = ""
+    contact_person: str = ""
+    mobile: str = ""
+    email: str = "purchase@infinia.ae"
+    job_scope: str = ""
+    project_location: str = ""
+    discount_pct: float = 0.0
+    notes: str = ""
+    terms_text: str = ""
+    lines: list[PurchaseOrderLineIn] = []

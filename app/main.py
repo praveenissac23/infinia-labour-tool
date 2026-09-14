@@ -1842,6 +1842,8 @@ def build_backup_data(db: Session) -> dict:
         "adjustments": [_row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
         # ---- Store and materials ----
         "suppliers": [_row_to_dict(s) for s in db.query(models.Supplier).all()],
+        "purchase_orders": [_row_to_dict(o) for o in db.query(models.PurchaseOrder).all()],
+        "purchase_order_lines": [_row_to_dict(l) for l in db.query(models.PurchaseOrderLine).all()],
         "store_items": [_row_to_dict(i) for i in db.query(models.StoreItem).all()],
         "store_movements": [_row_to_dict(m) for m in db.query(models.StoreMovement).all()],
         "material_requests": [_row_to_dict(r) for r in db.query(models.MaterialRequest).all()],
@@ -3310,6 +3312,228 @@ def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
     buf = export_web.build_error_check_pdf(cycle_label, workers, note)
     return StreamingResponse(buf, media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Attendance_Needed_{safe}.pdf"})
+
+
+# ---- Purchase orders -------------------------------------------------
+LPO_START_NO = 20260100          # the first number this system issues
+
+DEFAULT_LPO_TERMS = (
+    "1. We reserve rights to terminate this order without prior notice and reject any items "
+    "delivered based on this order\n"
+    "2. The Purchase Order shall become invalid if the materials/ services are not supplied "
+    "within the delivery date or if the supplier fails to comply with the Quantity and "
+    "Specifications in this order."
+)
+RENTAL_LPO_TERMS = DEFAULT_LPO_TERMS + (
+    "\n3.Lost Price/Damage of materials will be calculated as per the Return Note confirmed "
+    "by the Project Engineer\n"
+    "4. Weekly release of Invoice Mandatory\n"
+    "5. Mail confirmation on Returning of materials & closing of LPO from supplier side Mandatory"
+)
+
+
+def _next_lpo_no(db):
+    """The next order number. Carries on from the highest already issued,
+    so numbering is unbroken even if a record is deleted, and starts at
+    the number the company asked for."""
+    last = db.query(func.max(models.PurchaseOrder.po_no)).scalar()
+    return max(int(last or 0) + 1, LPO_START_NO)
+
+
+@app.get("/purchase/next-no")
+def next_lpo_number(db: Session = Depends(get_db),
+                     user: models.User = Depends(require_screen("approvals"))):
+    n = _next_lpo_no(db)
+    return {"po_no": n, "ref": f"IC/LPO/{n}", "terms_default": DEFAULT_LPO_TERMS,
+            "terms_rental": RENTAL_LPO_TERMS}
+
+
+@app.get("/purchase/rate-history")
+def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
+                      db: Session = Depends(get_db),
+                      user: models.User = Depends(require_screen("approvals"))):
+    """What this material has cost before, most recent first.
+
+    Matched on the catalogue item where there is one, otherwise on the
+    printed description - so a free-text material still builds a
+    history. The point is to see the last rate before typing a new one.
+    """
+    q = (db.query(models.PurchaseOrderLine, models.PurchaseOrder)
+           .join(models.PurchaseOrder, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
+           .filter(models.PurchaseOrder.status != "cancelled"))
+    if item_id:
+        q = q.filter(models.PurchaseOrderLine.item_id == item_id)
+    elif description.strip():
+        q = q.filter(func.lower(models.PurchaseOrderLine.description) == description.strip().lower())
+    else:
+        return {"count": 0, "last": None, "history": []}
+    rows = q.order_by(models.PurchaseOrder.order_date.desc(),
+                      models.PurchaseOrder.po_no.desc()).all()
+    history = [{"ref": o.ref, "date": o.order_date.isoformat(), "supplier": o.supplier_name,
+                "qty": l.qty, "unit": l.unit, "rate": l.rate,
+                "site": o.project_location} for l, o in rows[:limit]]
+    return {"count": len(rows), "last": history[0] if history else None, "history": history}
+
+
+@app.get("/purchase/orders")
+def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(get_db),
+                          user: models.User = Depends(require_screen("approvals"))):
+    """The purchase register - every order raised, newest first."""
+    query = db.query(models.PurchaseOrder).options(joinedload(models.PurchaseOrder.lines))
+    rows = query.order_by(models.PurchaseOrder.po_no.desc()).limit(2000).all()
+    needle = q.strip().lower()
+    out = []
+    for o in rows:
+        total = sum((l.qty or 0) * (l.rate or 0) for l in o.lines)
+        net = total * (1 - (o.discount_pct or 0) / 100.0)
+        blob = " ".join([o.ref, o.supplier_name or "", o.project_location or "",
+                         o.job_scope or "", o.supplier_ref or ""] +
+                        [l.description or "" for l in o.lines]).lower()
+        if needle and needle not in blob:
+            continue
+        out.append({"id": o.id, "ref": o.ref, "po_no": o.po_no,
+                    "date": o.order_date.isoformat(),
+                    "supplier": o.supplier_name, "site": o.project_location,
+                    "job_scope": o.job_scope, "status": o.status,
+                    "lines": len(o.lines),
+                    "total": round(net * (1 + (o.tax_pct or 0) / 100.0), 2),
+                    "request_id": o.request_id})
+        if len(out) >= limit:
+            break
+    return out
+
+
+@app.get("/purchase/orders/{order_id}")
+def get_purchase_order(order_id: int, db: Session = Depends(get_db),
+                        user: models.User = Depends(require_screen("approvals"))):
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    return _lpo_dict(o)
+
+
+def _lpo_dict(o):
+    return {
+        "id": o.id, "po_no": o.po_no, "ref": o.ref,
+        "order_date": o.order_date.isoformat() if o.order_date else "",
+        "terms": o.terms, "delivery_date": o.delivery_date.isoformat() if o.delivery_date else "",
+        "supplier_ref": o.supplier_ref, "supplier_name": o.supplier_name,
+        "supplier_address": o.supplier_address, "supplier_trn": o.supplier_trn,
+        "request_id": o.request_id, "plot_no": o.plot_no, "contact_person": o.contact_person,
+        "mobile": o.mobile, "email": o.email, "job_scope": o.job_scope,
+        "project_location": o.project_location, "discount_pct": o.discount_pct,
+        "tax_pct": o.tax_pct, "notes": o.notes, "terms_text": o.terms_text, "status": o.status,
+        "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
+                   "description2": l.description2, "qty": l.qty, "unit": l.unit,
+                   "rate": l.rate, "tax_pct": l.tax_pct} for l in o.lines],
+    }
+
+
+@app.post("/purchase/orders")
+def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depends(get_db),
+                           user: models.User = Depends(require_screen("approvals"))):
+    """Raise an order. From an approved request, or on its own."""
+    if not (payload.supplier_name or "").strip():
+        raise HTTPException(status_code=400, detail="Enter the supplier.")
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="An order needs at least one line.")
+
+    supplier = _find_or_create_supplier(db, payload.supplier_name,
+                                        payload.contact_person, payload.mobile)
+    n = _next_lpo_no(db)
+    o = models.PurchaseOrder(
+        po_no=n, ref=f"IC/LPO/{n}",
+        order_date=payload.order_date or _dubai_today(),
+        terms=payload.terms or "Due on Receipt",
+        delivery_date=payload.delivery_date,
+        supplier_ref=payload.supplier_ref or "",
+        supplier_id=supplier.id if supplier else None,
+        supplier_name=(supplier.name if supplier else payload.supplier_name).strip(),
+        supplier_address=payload.supplier_address or "",
+        supplier_trn=payload.supplier_trn or "",
+        request_id=payload.request_id,
+        plot_no=payload.plot_no or "", contact_person=payload.contact_person or "",
+        mobile=payload.mobile or "", email=payload.email or "purchase@infinia.ae",
+        job_scope=payload.job_scope or "", project_location=payload.project_location or "",
+        discount_pct=payload.discount_pct or 0.0,
+        notes=payload.notes or "",
+        terms_text=(payload.terms_text or DEFAULT_LPO_TERMS),
+        created_by=user.id,
+    )
+    db.add(o)
+    db.flush()
+    for l in payload.lines:
+        if not (l.description or "").strip() and not l.item_id:
+            continue
+        db.add(models.PurchaseOrderLine(
+            order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
+            description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
+            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+    db.commit()
+    db.refresh(o)
+    log_action(db, user.id, "create_lpo",
+               f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))")
+    return _lpo_dict(o)
+
+
+@app.post("/purchase/orders/{order_id}/cancel")
+def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
+                           user: models.User = Depends(require_screen("approvals"))):
+    """Cancelled, never deleted - the number stays used and the paper
+    that went out is still on the register."""
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    o.status = "cancelled"
+    db.commit()
+    log_action(db, user.id, "cancel_lpo", o.ref)
+    return {"ok": True, "detail": f"{o.ref} cancelled."}
+
+
+def _lpo_for_print(o):
+    d = _lpo_dict(o)
+    d["date_text"] = o.order_date.strftime("%d %b %Y") if o.order_date else ""
+    d["delivery_text"] = o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""
+    return d
+
+
+@app.get("/export/purchase/{order_id}")
+def export_purchase_order(order_id: int, token: str, format: str = "pdf",
+                           db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    d = _lpo_for_print(o)
+    safe = o.ref.replace("/", "")
+    if format == "excel":
+        buf = export_web.build_lpo_excel(d)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={safe}.xlsx"})
+    buf = export_web.build_lpo_pdf(d)
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={safe}.pdf"})
+
+
+@app.post("/purchase/signature")
+async def upload_signature(file: UploadFile = File(...), db: Session = Depends(get_db),
+                            user: models.User = Depends(auth.require_admin)):
+    """The authorised signature, printed on every order. Uploaded once."""
+    data = await file.read()
+    if len(data) > 2_000_000:
+        raise HTTPException(status_code=400, detail="Signature image must be under 2 MB.")
+    if not (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg")):
+        raise HTTPException(status_code=400, detail="Use a PNG or JPG image.")
+    with open(export_web.SIG_PATH, "wb") as f:
+        f.write(data)
+    log_action(db, user.id, "upload_signature", file.filename or "")
+    return {"ok": True, "detail": "Signature saved - it prints on every purchase order."}
+
+
+@app.get("/purchase/signature-status")
+def signature_status(user: models.User = Depends(require_screen("approvals"))):
+    return {"present": os.path.exists(export_web.SIG_PATH)}
 
 
 @app.get("/export/store/report")

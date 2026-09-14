@@ -250,6 +250,74 @@ class Supplier(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class PurchaseOrder(Base):
+    """A local purchase order - the paper the supplier works from.
+
+    Raised from the approved lines of a material request, or on its own
+    when the office buys something nobody asked for through the system.
+    One per supplier: a request split across two traders becomes two
+    orders, which is how the office already works.
+
+    Every line's rate is kept for good, because the rate history is the
+    point - it is what stops the same cement being bought at 16.00 one
+    week and 16.50 the next without anyone noticing.
+    """
+    __tablename__ = "purchase_orders"
+
+    id = Column(Integer, primary_key=True)
+    po_no = Column(Integer, unique=True, nullable=False, index=True)   # 20260100
+    ref = Column(String, unique=True, nullable=False, index=True)      # IC/LPO/20260100
+    order_date = Column(Date, nullable=False)
+    terms = Column(String, default="Due on Receipt")
+    delivery_date = Column(Date, nullable=True)
+    supplier_ref = Column(String, default="")        # the trader's own quote number
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    supplier_name = Column(String, default="")       # as printed, even if the record is renamed later
+    supplier_address = Column(Text, default="")
+    supplier_trn = Column(String, default="")
+
+    request_id = Column(Integer, ForeignKey("material_requests.id"), nullable=True, index=True)
+    plot_no = Column(String, default="")
+    contact_person = Column(String, default="")
+    mobile = Column(String, default="")
+    email = Column(String, default="purchase@infinia.ae")
+    job_scope = Column(String, default="")
+    project_location = Column(String, default="")
+
+    discount_pct = Column(Float, default=0.0)
+    tax_pct = Column(Float, default=5.0)
+    notes = Column(Text, default="")
+    terms_text = Column(Text, default="")
+    status = Column(String, default="issued")        # issued | cancelled
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    lines = relationship("PurchaseOrderLine", back_populates="order",
+                         cascade="all, delete-orphan", order_by="PurchaseOrderLine.id")
+    supplier = relationship("Supplier")
+
+
+class PurchaseOrderLine(Base):
+    """One material on an order, with the rate actually paid."""
+    __tablename__ = "purchase_order_lines"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("store_items.id"), nullable=True, index=True)
+    description = Column(String, default="")         # as printed
+    description2 = Column(String, default="")        # the small second line: "price/week"
+    qty = Column(Float, default=0.0)
+    unit = Column(String, default="")
+    rate = Column(Float, default=0.0)
+    tax_pct = Column(Float, default=5.0)
+
+    order = relationship("PurchaseOrder", back_populates="lines")
+    item = relationship("StoreItem")
+
+
 class StoreItem(Base):
     """
     A material or tool the store holds. item_type drives the whole
