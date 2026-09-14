@@ -63,6 +63,7 @@ def seed_on_startup():
     db = SessionLocal()
     try:
         _retire_staff_role(db)
+        _enforce_terminations(db)
         _recalculate_all_summaries(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
@@ -124,6 +125,35 @@ ROLE_DEFAULTS = {
     "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
+
+
+def _enforce_terminations(db):
+    """Make every stored day after a man's leaving date read Terminated.
+
+    The rewrite normally runs when the leaving date is saved. Anyone
+    marked terminated before that existed - or by an older version -
+    still has working days sitting after his last day, quietly being
+    paid. Running this at startup settles them all, so a restart is
+    enough and nobody has to re-save each leaver by hand.
+    """
+    fixed = 0
+    for emp in db.query(models.Employee).filter(models.Employee.terminated_on.isnot(None)).all():
+        rows = (db.query(models.DailyRow)
+                  .filter(models.DailyRow.emp_no == emp.emp_no,
+                          models.DailyRow.full_date > emp.terminated_on)
+                  .all())
+        touched = [r for r in rows if r.am != "Terminated" or r.pm != "Terminated"
+                   or (r.site or "") or (r.ot or 0) or (r.bh or 0)]
+        for r in touched:
+            r.am = r.pm = "Terminated"
+            r.site = ""
+            r.engineer = ""
+            r.ot = 0
+            r.bh = 0
+        fixed += len(touched)
+    if fixed:
+        db.commit()
+        print(f"Corrected {fixed} day(s) recorded after a worker's leaving date")
 
 
 def _recalculate_all_summaries(db):
