@@ -382,6 +382,7 @@
       <div class="nav-item" data-screen="requests" onclick="switchScreen('requests')">Material Requests</div>
       <div class="nav-item" data-screen="approvals" onclick="switchScreen('approvals')">Material Approvals</div>
       <div class="nav-item" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">Order Follow-up</div>
+      <div class="nav-item" data-screen="approvals" data-target="purchase" onclick="switchScreen('purchase')">Purchase Orders</div>
       <div class="nav-group" data-group="admin">Admin</div>
       <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">Settings</div>
       <div class="nav-item" data-screen="activity" id="nav-activity" onclick="switchScreen('activity')" style="display:none;">Activity Monitor</div>
@@ -1121,6 +1122,108 @@
              One row per material still to arrive, across every open
              request: what, how much, for which site, who is supplying
              it and their number. The chase list, on one screen. -->
+        <div class="screen" id="screen-purchase">
+          <div class="toolbar">
+            <button class="btn btn-primary" onclick="newLpo()">New Purchase Order</button>
+            <label>Search:</label>
+            <input type="text" id="lpo-search" placeholder="LPO no, supplier, site or material" style="width:280px;" oninput="renderLpoRegister()">
+            <span id="lpo-signature-note" style="margin-left:auto; font-size:12px; color:#888;"></span>
+          </div>
+          <div class="status-msg" id="lpo-status"></div>
+
+          <!-- Raise / view one order -->
+          <div class="card" id="lpo-form-card" style="display:none;">
+            <h2 id="lpo-form-title">New Purchase Order</h2>
+
+            <div class="form-row" style="gap:10px; flex-wrap:wrap;">
+              <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" readonly style="width:150px; background:#F7F7F7;"></div>
+              <div class="field"><label>Date</label><input type="date" id="lpo-date" style="width:150px;"></div>
+              <div class="field"><label>Terms</label>
+                <select id="lpo-terms" style="width:150px;">
+                  <option>Due on Receipt</option><option>Net 30</option><option>Net 60</option><option>Net 90</option>
+                </select></div>
+              <div class="field"><label>Delivery date</label><input type="date" id="lpo-delivery" style="width:150px;"></div>
+              <div class="field"><label>Ref# (supplier quote)</label><input type="text" id="lpo-supref" style="width:170px;"></div>
+            </div>
+
+            <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
+              <div class="field"><label>Supplier</label>
+                <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:250px;" oninput="onLpoSupplier()">
+                <datalist id="lpo-supplier-list"></datalist></div>
+              <div class="field"><label>Supplier TRN</label><input type="text" id="lpo-trn" style="width:170px;"></div>
+              <div class="field" style="flex:1; min-width:240px;"><label>Supplier address</label>
+                <input type="text" id="lpo-supaddr" placeholder="Optional - printed under the name" style="width:100%;"></div>
+            </div>
+
+            <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
+              <div class="field"><label>Plot No</label><input type="text" id="lpo-plot" style="width:170px;"></div>
+              <div class="field"><label>Contact person</label><input type="text" id="lpo-contact" style="width:150px;"></div>
+              <div class="field"><label>Mobile</label><input type="text" id="lpo-mobile" style="width:140px;"></div>
+              <div class="field" style="flex:1; min-width:200px;"><label>Job scope</label><input type="text" id="lpo-scope" style="width:100%;"></div>
+              <div class="field" style="flex:1; min-width:200px;"><label>Project location</label><input type="text" id="lpo-location" style="width:100%;"></div>
+            </div>
+
+            <h2 style="margin-top:16px;">Materials</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 8px;">
+              The last rate paid is shown beside each line. A rate above it is flagged before the order goes out.</p>
+            <div class="grid-wrap">
+              <table>
+                <thead><tr>
+                  <th style="width:3%;">#</th>
+                  <th style="width:26%;">Material</th>
+                  <th style="width:12%;">Second line</th>
+                  <th style="width:8%;">Qty</th>
+                  <th style="width:8%;">Unit</th>
+                  <th style="width:9%;">Rate</th>
+                  <th style="width:7%;">Tax %</th>
+                  <th style="width:11%;">Amount</th>
+                  <th style="width:14%;">Last paid</th>
+                  <th style="width:4%;"></th>
+                </tr></thead>
+                <tbody id="lpo-lines"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="margin-top:8px; gap:10px; align-items:center;">
+              <button class="btn btn-gray" onclick="addLpoLine()">Add line</button>
+              <div class="field"><label>Discount %</label><input type="text" id="lpo-discount" value="0" style="width:90px;" oninput="renderLpoTotals()"></div>
+              <div id="lpo-totals" style="margin-left:auto; text-align:right; font-size:13px;"></div>
+            </div>
+
+            <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
+              <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
+                <input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;"></div>
+              <div class="field"><label>Terms &amp; conditions</label>
+                <select id="lpo-termsset" style="width:200px;" onchange="onLpoTermsSet()">
+                  <option value="default">Standard</option>
+                  <option value="rental">Rental (5 clauses)</option>
+                </select></div>
+            </div>
+            <textarea id="lpo-termstext" rows="5" style="width:100%; margin-top:6px; font-size:12px;"></textarea>
+
+            <div class="form-row" style="margin-top:12px; gap:10px;">
+              <button class="btn btn-primary" onclick="saveLpo()">Save &amp; Generate</button>
+              <button class="btn btn-gray" onclick="closeLpoForm()">Cancel</button>
+            </div>
+          </div>
+
+          <!-- The register -->
+          <div class="card" id="lpo-register-card">
+            <h2>Purchase Register</h2>
+            <div class="grid-wrap" style="max-height:60vh;">
+              <table>
+                <thead><tr>
+                  <th style="width:14%;">LPO No</th><th style="width:10%;">Date</th>
+                  <th style="width:22%; text-align:left;">Supplier</th>
+                  <th style="width:16%; text-align:left;">Site</th>
+                  <th style="width:18%; text-align:left;">Job scope</th>
+                  <th style="width:10%;">Total</th><th style="width:10%;"></th>
+                </tr></thead>
+                <tbody id="lpo-register"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div class="screen" id="screen-followup">
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
@@ -1518,6 +1621,19 @@
             <label style="font-size:12px; color:#666; cursor:pointer;">
               <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
+          <div class="card" id="signature-card" style="display:none;">
+            <h2>Purchase Order Signature</h2>
+            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
+              The authorised signature printed on every purchase order. Upload a PNG or JPG of the
+              signature on white or transparent background - it is placed in the signature box of
+              each LPO, in both the PDF and the Excel.</p>
+            <div class="form-row" style="align-items:center; gap:10px;">
+              <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:290px;">
+              <button class="btn btn-primary" onclick="uploadSignature()">Upload</button>
+              <span id="sig-state" style="font-size:12px; color:#888;"></span>
+            </div>
+          </div>
+
           <div class="card" id="fresh-start-card" style="display:none; border:1px solid #E7CEC9;">
             <h2 style="color:#C0392B;">Start Fresh</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
@@ -1725,6 +1841,7 @@ function switchScreen(name) {
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
   if (name === "combine") filterCombineWorkers();
+  if (name === "purchase") loadPurchase();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -1855,6 +1972,16 @@ async function initApp() {
   document.getElementById("user-mgmt-card").style.display = isAdmin ? "block" : "none";
   const freshCard = document.getElementById("fresh-start-card");
   if (freshCard) freshCard.style.display = isAdmin ? "block" : "none";
+  const sigCard = document.getElementById("signature-card");
+  if (sigCard) {
+    sigCard.style.display = isAdmin ? "block" : "none";
+    if (isAdmin) {
+      apiCall("/purchase/signature-status")
+        .then(s => { document.getElementById("sig-state").textContent =
+                       s.present ? "A signature is on file." : "No signature uploaded yet."; })
+        .catch(() => {});
+    }
+  }
   if (CURRENT_ROLE !== "admin") {
     const roleSel = document.getElementById("new-user-role");
     const adminOpt = roleSel.querySelector('option[value="admin"]');
@@ -6530,6 +6657,254 @@ function exportOneWorker(fmt) {
   showStatus("combine-status", "ok", `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who.name} - check your downloads or the new tab.`);
 }
 
+// ============ PURCHASE ORDERS ============
+let lpoRegister = [];
+let lpoLines = [];
+let lpoDefaults = { terms_default: "", terms_rental: "" };
+
+async function loadPurchase() {
+  try {
+    const [reg, next, sig] = await Promise.all([
+      apiCall("/purchase/orders"),
+      apiCall("/purchase/next-no"),
+      apiCall("/purchase/signature-status").catch(() => ({ present: false })),
+    ]);
+    lpoRegister = reg || [];
+    lpoDefaults = next || lpoDefaults;
+    document.getElementById("lpo-signature-note").textContent =
+      sig && sig.present ? "" : "No signature uploaded - orders will print with an empty signature box.";
+    renderLpoRegister();
+    // The screen may be opened before anything has loaded suppliers or
+    // the item list, so fetch them here rather than hoping.
+    if (!suppliers || !suppliers.length) {
+      try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { suppliers = suppliers || []; }
+    }
+    if (!storeItems || !storeItems.length) {
+      try { await loadStoreItems(); } catch (e) { /* the picker still works by typing */ }
+    }
+    const dl = document.getElementById("lpo-supplier-list");
+    if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${s.name}"></option>`).join("");
+    if (!cachedDownloadToken) refreshDownloadToken();
+  } catch (e) {
+    showStatus("lpo-status", "err", errText(e));
+  }
+}
+
+function renderLpoRegister() {
+  const body = document.getElementById("lpo-register");
+  const q = (document.getElementById("lpo-search").value || "").trim().toLowerCase();
+  const rows = lpoRegister.filter(o => !q ||
+    `${o.ref} ${o.supplier} ${o.site} ${o.job_scope}`.toLowerCase().includes(q));
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">${q ? "Nothing matches that." : "No purchase orders yet."}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(o => `
+    <tr${o.status === "cancelled" ? ' style="opacity:.55;"' : ""}>
+      <td><strong>${o.ref}</strong>${o.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}</td>
+      <td>${o.date}</td>
+      <td style="text-align:left;">${o.supplier || "-"}</td>
+      <td style="text-align:left;">${o.site || "-"}</td>
+      <td style="text-align:left;">${o.job_scope || "-"}</td>
+      <td>AED ${money(o.total)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-dark" onclick="downloadLpo(${o.id}, 'pdf')">PDF</button>
+        <button class="btn btn-gray" onclick="downloadLpo(${o.id}, 'excel')">Excel</button>
+      </td>
+    </tr>`).join("");
+}
+
+async function downloadLpo(id, fmt) {
+  // Fetch a token if there isn't one rather than telling the person to
+  // try again - they pressed the button, the file should come.
+  if (!cachedDownloadToken) {
+    try { await refreshDownloadToken(); } catch (e) { /* reported below */ }
+  }
+  if (!cachedDownloadToken) {
+    showStatus("lpo-status", "err", "Could not prepare the download - check the connection and try again.");
+    return;
+  }
+  window.open(`${API}/export/purchase/${id}?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}`, "_blank");
+}
+
+async function newLpo() {
+  const n = await apiCall("/purchase/next-no");
+  lpoDefaults = n;
+  document.getElementById("lpo-form-card").style.display = "block";
+  document.getElementById("lpo-form-title").textContent = "New Purchase Order";
+  document.getElementById("lpo-ref").value = n.ref;
+  document.getElementById("lpo-date").value = isoLocal(new Date());
+  document.getElementById("lpo-delivery").value = isoLocal(new Date());
+  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-supaddr", "lpo-plot", "lpo-contact",
+   "lpo-mobile", "lpo-scope", "lpo-location", "lpo-notes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("lpo-discount").value = "0";
+  document.getElementById("lpo-termsset").value = "default";
+  document.getElementById("lpo-termstext").value = n.terms_default || "";
+  lpoLines = [];
+  addLpoLine();
+  window.scrollTo(0, 0);
+}
+
+function closeLpoForm() {
+  document.getElementById("lpo-form-card").style.display = "none";
+  showStatus("lpo-status", null);
+}
+
+function onLpoTermsSet() {
+  const which = document.getElementById("lpo-termsset").value;
+  document.getElementById("lpo-termstext").value =
+    which === "rental" ? (lpoDefaults.terms_rental || "") : (lpoDefaults.terms_default || "");
+}
+
+function onLpoSupplier() {
+  const name = (document.getElementById("lpo-supplier").value || "").trim().toLowerCase();
+  const s = (suppliers || []).find(x => (x.name || "").toLowerCase() === name);
+  if (s) {
+    if (!document.getElementById("lpo-contact").value) document.getElementById("lpo-contact").value = s.contact_person || "";
+    if (!document.getElementById("lpo-mobile").value) document.getElementById("lpo-mobile").value = s.phone || "";
+  }
+}
+
+function addLpoLine(line) {
+  lpoLines.push(Object.assign({ item_id: null, description: "", description2: "", qty: "",
+                                unit: "", rate: "", tax_pct: 5, last: null }, line || {}));
+  renderLpoLines();
+}
+
+function removeLpoLine(i) { lpoLines.splice(i, 1); renderLpoLines(); }
+
+function onLpoLineField(i, field, value) {
+  lpoLines[i][field] = value;
+  if (field === "description") { lookupLpoRate(i); renderLpoTotals(); return; }
+  // Qty and rate change the line's amount and whether it is above what
+  // was paid last time - both are in the row, so the row is redrawn.
+  // Focus and caret are put back, or typing a rate would jump away
+  // after the first character.
+  if (field === "qty" || field === "rate" || field === "tax_pct") {
+    const active = document.activeElement;
+    const pos = active && active.selectionStart;
+    renderLpoLines();
+    const cols = { qty: 3, rate: 5, tax_pct: 6 };
+    const again = document.querySelectorAll("#lpo-lines tr")[i];
+    if (again) {
+      const box = again.querySelectorAll("input")[{ qty: 2, rate: 4, tax_pct: 5 }[field]];
+      if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+    return;
+  }
+  renderLpoTotals();
+}
+
+// What this material cost last time, fetched as the name is typed.
+let lpoRateTimer = null;
+function lookupLpoRate(i) {
+  clearTimeout(lpoRateTimer);
+  lpoRateTimer = setTimeout(async () => {
+    const d = (lpoLines[i] || {}).description || "";
+    if (!d.trim()) { lpoLines[i].last = null; renderLpoLines(); return; }
+    try {
+      const item = (storeItems || []).find(x => (x.name || "").toLowerCase() === d.trim().toLowerCase());
+      const q = item ? `item_id=${item.id}` : `description=${encodeURIComponent(d.trim())}`;
+      const r = await apiCall(`/purchase/rate-history?${q}`);
+      if (lpoLines[i]) {
+        lpoLines[i].item_id = item ? item.id : null;
+        lpoLines[i].last = r.last || null;
+        lpoLines[i].times = r.count || 0;
+        if (item && !lpoLines[i].unit) lpoLines[i].unit = item.unit || "";
+        renderLpoLines();
+      }
+    } catch (e) { /* history is a help, not a requirement */ }
+  }, 350);
+}
+
+function renderLpoLines() {
+  const body = document.getElementById("lpo-lines");
+  body.innerHTML = lpoLines.map((l, i) => {
+    const qty = parseFloat(l.qty) || 0, rate = parseFloat(l.rate) || 0;
+    let lastCell = '<span style="color:#bbb;">first time</span>';
+    if (l.last) {
+      const up = rate > 0 && rate > l.last.rate;
+      const pct = l.last.rate ? ((rate - l.last.rate) / l.last.rate * 100) : 0;
+      lastCell = `<div style="font-size:12px;">
+          <strong>${money(l.last.rate)}</strong>
+          <span style="color:#888;"> ${l.last.date} · ${l.last.supplier || ""}</span>
+          ${l.times > 1 ? `<span style="color:#888;"> · ${l.times}x</span>` : ""}
+          ${up ? `<div style="color:#C0392B; font-weight:600;">&#9650; +${pct.toFixed(1)}% higher</div>` : ""}
+          ${rate > 0 && rate < l.last.rate ? `<div style="color:#2E7D32;">&#9660; ${Math.abs(pct).toFixed(1)}% lower</div>` : ""}
+        </div>`;
+    }
+    return `<tr>
+      <td>${i + 1}</td>
+      <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
+            oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"></td>
+      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="price/week"
+            oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
+      <td><input type="text" value="${l.qty}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
+      <td><input type="text" value="${l.unit}" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
+      <td><input type="text" value="${l.rate}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
+      <td><input type="text" value="${l.tax_pct}" oninput="onLpoLineField(${i}, 'tax_pct', this.value)" style="width:100%; text-align:right;"></td>
+      <td style="text-align:right;">${money(qty * rate)}</td>
+      <td style="text-align:left;">${lastCell}</td>
+      <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
+    </tr>`;
+  }).join("");
+  renderLpoTotals();
+}
+
+function renderLpoTotals() {
+  const sub = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
+  const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
+  const discount = sub * disc / 100;
+  const net = sub - discount;
+  const vat = disc
+    ? net * 5 / 100
+    : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (parseFloat(l.tax_pct) || 0) / 100, 0);
+  document.getElementById("lpo-totals").innerHTML = `
+    <div>Sub Total <strong style="margin-left:10px;">${money(sub)}</strong></div>
+    ${disc ? `<div>Discount (${disc}%) <strong style="margin-left:10px;">- ${money(discount)}</strong></div>` : ""}
+    <div>VAT <strong style="margin-left:10px;">${money(vat)}</strong></div>
+    <div style="font-size:15px; margin-top:4px;">Total <strong style="margin-left:10px;">AED ${money(net + vat)}</strong></div>`;
+}
+
+async function saveLpo() {
+  const lines = lpoLines
+    .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
+    .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
+                 qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
+                 tax_pct: parseFloat(l.tax_pct) || 0 }));
+  if (!document.getElementById("lpo-supplier").value.trim()) {
+    showStatus("lpo-status", "warn", "Enter the supplier."); return;
+  }
+  if (!lines.length) { showStatus("lpo-status", "warn", "Add at least one material with a quantity."); return; }
+  const body = {
+    order_date: document.getElementById("lpo-date").value || null,
+    terms: document.getElementById("lpo-terms").value,
+    delivery_date: document.getElementById("lpo-delivery").value || null,
+    supplier_ref: document.getElementById("lpo-supref").value.trim(),
+    supplier_name: document.getElementById("lpo-supplier").value.trim(),
+    supplier_trn: document.getElementById("lpo-trn").value.trim(),
+    supplier_address: document.getElementById("lpo-supaddr").value.trim(),
+    plot_no: document.getElementById("lpo-plot").value.trim(),
+    contact_person: document.getElementById("lpo-contact").value.trim(),
+    mobile: document.getElementById("lpo-mobile").value.trim(),
+    job_scope: document.getElementById("lpo-scope").value.trim(),
+    project_location: document.getElementById("lpo-location").value.trim(),
+    discount_pct: parseFloat(document.getElementById("lpo-discount").value) || 0,
+    notes: document.getElementById("lpo-notes").value.trim(),
+    terms_text: document.getElementById("lpo-termstext").value,
+    lines,
+  };
+  try {
+    const r = await apiCall("/purchase/orders", { method: "POST", body: JSON.stringify(body) });
+    showStatus("lpo-status", "ok", `${r.ref} raised. Opening the PDF - the Excel is on the register.`);
+    closeLpoForm();
+    await loadPurchase();
+    await downloadLpo(r.id, "pdf");
+  } catch (e) {
+    showStatus("lpo-status", "err", errText(e));
+  }
+}
+
 // ============ SETTINGS - PASSWORD & USERS ============
 async function changePassword() {
   const current = document.getElementById("pw-current").value;
@@ -6664,6 +7039,20 @@ let MY_SCREENS = [];
 
 // Emptying the company's records is an admin decision, taken once,
 // with the words typed out - not something to be clicked past.
+async function uploadSignature() {
+  const f = document.getElementById("sig-file").files[0];
+  if (!f) { showStatus("settings-status", "warn", "Choose the signature image first."); return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await apiCall("/purchase/signature", { method: "POST", body: fd });
+    showStatus("settings-status", "ok", r.detail || "Signature saved.");
+    document.getElementById("sig-state").textContent = "A signature is on file.";
+  } catch (e) {
+    showStatus("settings-status", "err", errText(e));
+  }
+}
+
 async function runFreshStart() {
   const box = document.getElementById("fresh-confirm");
   const phrase = (box.value || "").trim();
