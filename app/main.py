@@ -26,6 +26,7 @@ from openpyxl.utils import get_column_letter
 
 from database import get_db, engine, Base, SessionLocal
 import models
+import mailer
 import schemas
 import services
 import auth
@@ -2747,9 +2748,56 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
     db.refresh(m)
     log_action(db, user.id, "store_movement",
                f"{payload.kind} {payload.qty} {item.unit} {item.code}")
+
+    # Writing stock off and correcting a count are the two movements
+    # that change the books without anything arriving or leaving, so
+    # the office is told by mail as well as by the ledger.
+    if payload.kind in ("lost", "adjust"):
+        # Whatever happens in there, the movement stands. A stock
+        # write-off failing because a mail server misbehaved would be a
+        # far worse fault than a missing email.
+        try:
+            _email_stock_writeoff(db, user, m, item)
+        except Exception as e:
+            try:
+                log_action(db, user.id, "stock_alert_email_failed",
+                           f"{item.code}: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+
     d = schemas.StoreMovementOut.model_validate(m).model_dump()
     d["item_code"], d["item_name"], d["unit"] = item.code, item.name, item.unit
     return d
+
+
+STOCK_ALERT_TO = os.environ.get("STOCK_ALERT_TO", "info@infinia.ae")
+
+
+def _email_stock_writeoff(db, user, m, item):
+    """Tell the office a quantity changed with nothing moving.
+
+    Sent quietly: if mail is not configured, or the server refuses, the
+    movement still stands and the reason is recorded in the activity
+    log. A write-off must never fail because of a mail server.
+    """
+    held = _stock_map(db).get((item.id, m.location or ""), 0)
+    what = "written off as lost or damaged" if m.kind == "lost" else "corrected after a count"
+    where = m.location or m.from_location or "the central store"
+    body = (
+        f"{item.name} ({item.code}) was {what}.\n\n"
+        f"Quantity : {m.qty:g} {item.unit}\n"
+        f"Where    : {where}\n"
+        f"Date     : {m.moved_on.isoformat() if m.moved_on else ''}\n"
+        f"Entered  : {user.full_name or user.username}\n"
+        f"Reason   : {(m.notes or '').strip() or 'none given'}\n\n"
+        f"Stock now held at {where}: {held:g} {item.unit}\n\n"
+        f"This message was sent by the Infinia store system."
+    )
+    subject = (f"Stock {'write-off' if m.kind == 'lost' else 'correction'}: "
+               f"{item.name} - {m.qty:g} {item.unit}")
+    sent, why = mailer.send(STOCK_ALERT_TO, subject, body)
+    if not sent:
+        log_action(db, user.id, "stock_alert_email_failed", f"{item.code}: {why}")
 
 
 @app.delete("/store/movements/{movement_id}")
