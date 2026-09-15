@@ -99,6 +99,9 @@ class Engineer(Base):
     __tablename__ = "engineers"
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
+    # The number a supplier rings when this man's request becomes an
+    # order. Kept here so it is typed once, not on every order.
+    mobile = Column(String, default="")
     active = Column(Boolean, default=True)
 
 

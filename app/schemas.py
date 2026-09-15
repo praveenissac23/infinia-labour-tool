@@ -101,6 +101,7 @@ class SiteOut(SiteIn):
 class EngineerIn(BaseModel):
     name: str
     active: bool = True
+    mobile: str = ""
 
 
 class EngineerOut(EngineerIn):

@@ -862,6 +862,10 @@ def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
                   user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Engineer).filter(models.Engineer.name == eng.name).first()
     if existing:
+        # A number given now is kept; a blank one leaves what is on
+        # record, so saving a name again cannot wipe his mobile.
+        if (eng.mobile or "").strip():
+            existing.mobile = eng.mobile.strip()
         existing.active = True
         db.commit()
         db.refresh(existing)
@@ -3597,6 +3601,10 @@ def lpo_pending_lines(db: Session = Depends(get_db),
     items = {i.id: i for i in db.query(models.StoreItem).all()}
     # The site's own record carries the plot number and the man in
     # charge, so an order raised from a request needs neither typed.
+    # The man who raised the request is the man the supplier should ring
+    # about it, so his number travels with the line.
+    eng_mobile = {e.name.strip().lower(): (e.mobile or "")
+                  for e in db.query(models.Engineer).all()}
     site_info = {s.code: {"plot_no": s.plot_no or "", "project_name": s.project_name or "",
                           "incharge": s.incharge or "", "incharge_mobile": s.incharge_mobile or "",
                           "address": s.address or "", "map_url": s.map_url or ""}
@@ -3621,6 +3629,7 @@ def lpo_pending_lines(db: Session = Depends(get_db),
             "incharge_mobile": site_info.get(mr.site, {}).get("incharge_mobile", ""),
             "address": site_info.get(mr.site, {}).get("address", ""),
             "map_url": site_info.get(mr.site, {}).get("map_url", ""),
+            "requested_by_mobile": eng_mobile.get((mr.requested_by or "").strip().lower(), ""),
                 "needed_by": mr.needed_by.isoformat() if mr.needed_by else "",
                 "urgency": mr.urgency or "normal", "purpose": l.purpose or "",
                 "item_id": l.item_id,
