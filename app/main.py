@@ -2612,15 +2612,36 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     payload.code, payload.name = code, name
 
     existing = db.query(models.StoreItem).filter(models.StoreItem.code == code).first()
+    # Opening stock is not a column on the item - it is a receipt, so it
+    # lands in the ledger like every other quantity and can be traced.
+    opening = float(payload.opening_qty or 0)
+    opening_where = (payload.opening_location or "").strip()
+    fields = payload.dict()
+    fields.pop("opening_qty", None)
+    fields.pop("opening_location", None)
+
+    is_new = existing is None
     if existing:
-        for k, v in payload.dict().items():
+        for k, v in fields.items():
             setattr(existing, k, v)
         existing.active = True
     else:
-        existing = models.StoreItem(**payload.dict())
+        existing = models.StoreItem(**fields)
         db.add(existing)
     db.commit()
     db.refresh(existing)
+
+    if is_new and opening > 0:
+        db.add(models.StoreMovement(
+            item_id=existing.id, kind="in", qty=opening,
+            location=opening_where, from_location="",
+            moved_on=_dubai_today(), supplier="", incharge="",
+            notes="Opening balance - already held when the material was added",
+            created_by=user.id))
+        db.commit()
+        log_action(db, user.id, "store_movement",
+                   f"opening {opening:g} {existing.unit} {existing.code}")
+
     log_action(db, user.id, "store_save_item", f"{payload.code} - {payload.name}")
     return existing
 

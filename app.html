@@ -1627,6 +1627,8 @@
                   <option value="rental">Rental (hired in)</option>
                 </select>
                 <input type="number" id="it-reorder" placeholder="Warn me under" style="width:130px;" step="any">
+                <input type="number" id="it-opening" placeholder="Already have" style="width:130px;" step="any"
+                       title="How many are on hand right now. Recorded as an opening receipt, so equipment the company already owns does not sit in the reports holding nothing.">
               </div>
               <div class="form-row" id="it-rental-wrap" style="display:none;">
                 <input type="text" id="it-rsupplier" placeholder="Rental supplier" style="width:170px;">
@@ -4614,8 +4616,11 @@ async function applyUnitSuggestions() {
 }
 
 function clearItemForm() {
-  ["it-code","it-name","it-cat","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+  ["it-code","it-name","it-cat","it-reorder","it-opening","it-rsupplier","it-rrate","it-rstart","it-rdue"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  // A fresh form is a new material again, so opening stock is offered.
+  const op = document.getElementById("it-opening");
+  if (op) { op.disabled = false; op.placeholder = "Already have"; }
   document.getElementById("it-unit").innerHTML = unitOptionsHtml("pcs");
   document.getElementById("it-type").value = "consumable";
   onItemTypeChange();
@@ -4764,6 +4769,10 @@ function editStoreItem(id) {
   document.getElementById("it-unit").innerHTML = unitOptionsHtml(i.unit || "pcs");
   document.getElementById("it-type").value = i.item_type;
   document.getElementById("it-reorder").value = i.reorder_level || "";
+  // Opening stock belongs to a new material only - an existing one has
+  // a ledger, and a second opening balance would double its count.
+  const op = document.getElementById("it-opening");
+  if (op) { op.value = ""; op.disabled = true; op.placeholder = "Use Receive"; }
   document.getElementById("it-rsupplier").value = i.rental_supplier || "";
   document.getElementById("it-rrate").value = i.rental_rate || "";
   document.getElementById("it-rperiod").value = i.rental_period || "day";
@@ -4776,7 +4785,9 @@ function editStoreItem(id) {
 }
 
 async function saveStoreItem() {
+  const opening = parseFloat(document.getElementById("it-opening").value) || 0;
   const body = {
+    opening_qty: opening,
     code: document.getElementById("it-code").value.trim(),
     name: properName(document.getElementById("it-name").value.trim()),
     category: document.getElementById("it-cat").value.trim(),

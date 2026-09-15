@@ -213,6 +213,11 @@ class StoreItemIn(BaseModel):
     rental_rate: float = 0.0
     rental_period: str = "day"
     rental_start: Optional[date] = None
+    # What is already on hand when the material is first added. A
+    # machine the company owns exists before anyone records receiving
+    # it, so without this it sits in every report holding nothing.
+    opening_qty: float = 0.0
+    opening_location: str = ""
     rental_due: Optional[date] = None
 
 
