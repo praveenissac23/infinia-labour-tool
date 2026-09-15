@@ -611,9 +611,11 @@ def download_employee_template(token: str, db: Session = Depends(get_db)):
         c.fill = PatternFill("solid", fgColor="C0392B")
         ws.column_dimensions[get_column_letter(i)].width = 18
     ws.append(["D-99", "SAMPLE WORKER", "DRIVER", "Infinia", "Fixed", 2000, 900])
+    ws.freeze_panes = "A2"
     buf = io.BytesIO()
-    for _ws in wb.worksheets:
-        export_web._excel_logo_header(_ws)
+    # No logo band on a template: it inserts rows at the top, which
+    # pushed the column headings off row 1 - so the file this screen
+    # hands out was refused by the import that sent people to it.
     wb.save(buf)
     buf.seek(0)
     return StreamingResponse(
@@ -3382,6 +3384,30 @@ def _next_lpo_no(db):
 SUPPLIER_HEADERS = ["Name", "Contact Person", "Phone", "TRN", "Email", "Payment Terms", "Notes"]
 
 
+@app.get("/export/store/suppliers/template")
+def download_supplier_template(token: str, db: Session = Depends(get_db)):
+    """Blank sheet with the columns the supplier import expects, and one
+    sample row showing what goes where."""
+    auth.get_download_user_from_token(token, db)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font as F, PatternFill as PF, Alignment as A
+    wb = Workbook(); ws = wb.active; ws.title = "Suppliers"
+    for i, head in enumerate(SUPPLIER_HEADERS, start=1):
+        c = ws.cell(row=1, column=i, value=head)
+        c.font = F(bold=True, color="FFFFFF")
+        c.fill = PF("solid", fgColor="7B1F1A")
+        c.alignment = A(horizontal="center")
+        ws.column_dimensions[chr(64 + i)].width = 30 if head == "Name" else 20
+    ws.append(["SAMPLE TRADING LLC", "Contact name", "0501234567", "100000000000003",
+               "sales@example.ae", "Net 60", "Delete this row before importing"])
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Supplier_Template.xlsx"})
+
+
 @app.get("/export/store/suppliers")
 def export_suppliers(token: str, db: Session = Depends(get_db)):
     """The supplier list as a spreadsheet - the same columns the import
@@ -3452,11 +3478,16 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
         if not name:
             skipped += 1
             continue
+        # Whether this trader was already on file has to be asked BEFORE
+        # the find-or-create, which gives a new record its id straight
+        # away - so every import reported nothing added and everything
+        # updated, even a sheet of names never seen before.
+        key = _supplier_key(name)
+        was_new = not db.query(models.Supplier).filter(models.Supplier.name_key == key).first()
         sup = _find_or_create_supplier(db, name, get("contact person"), get("phone"))
         if not sup:
             skipped += 1
             continue
-        was_new = sup.id is None
         for field, key in (("trn", "trn"), ("email", "email"),
                            ("payment_terms", "payment terms"), ("notes", "notes"),
                            ("contact_person", "contact person"), ("phone", "phone")):

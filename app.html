@@ -1350,6 +1350,7 @@
               <button class="btn btn-primary" onclick="saveSupplier()">Save supplier</button>
             </div>
             <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
+              <button class="btn btn-gray" onclick="supplierTemplate()">Download Template</button>
               <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
               <!-- The file box belongs to Import, so it sits with it: beside
                    Export it read as something Export needed. -->
@@ -7043,6 +7044,13 @@ async function saveSupplier() {
     const dl = document.getElementById("lpo-supplier-list");
     if (dl) dl.innerHTML = suppliers.map(s => `<option value="${s.name}"></option>`).join("");
   } catch (e) { showStatus("lpo-status", "err", errText(e)); }
+}
+
+// A blank sheet with the right columns, for a list typed offline.
+async function supplierTemplate() {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("sup-status", "err", "Could not prepare the download."); return; }
+  window.open(`${API}/export/store/suppliers/template?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
 async function exportSuppliers() {
