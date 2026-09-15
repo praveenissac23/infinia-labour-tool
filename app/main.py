@@ -3585,6 +3585,42 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
                       + (f", {skipped} row(s) skipped" if skipped else "") + "."}
 
 
+@app.get("/store/requests/{request_id}/summary")
+def request_summary(request_id: int, db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.get_current_user)):
+    """Enough of a request to read it without opening the screen - what
+    was asked for, how much, for where, by whom, and where it has got
+    to. A notification that says only 'MR-0082 is now ordered' makes
+    somebody go and look; this lets them read it where they are."""
+    mr = (db.query(models.MaterialRequest)
+            .options(joinedload(models.MaterialRequest.lines))
+            .filter(models.MaterialRequest.id == request_id).first())
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    items = {i.id: i for i in db.query(models.StoreItem).all()}
+    sups = {s.id: s.name for s in db.query(models.Supplier).all()}
+    lines = []
+    for l in mr.lines:
+        it = items.get(l.item_id)
+        lines.append({
+            "material": (it.name if it else "") or l.description or "",
+            "qty": l.qty_approved or l.qty_requested or 0,
+            "unit": l.unit or (it.unit if it else ""),
+            "status": l.status or "pending",
+            "purpose": l.purpose or "",
+            "received": l.qty_received or 0,
+            "supplier": sups.get(l.supplier_id, ""),
+        })
+    return {
+        "id": mr.id, "ref": mr.ref, "site": mr.site or "",
+        "requested_by": mr.requested_by or "", "status": mr.status or "",
+        "urgency": mr.urgency or "normal",
+        "needed_by": mr.needed_by.isoformat() if mr.needed_by else "",
+        "expected_on": mr.expected_on.isoformat() if mr.expected_on else "",
+        "notes": mr.notes or "", "lines": lines,
+    }
+
+
 @app.get("/store/purchase/pending")
 def lpo_pending_lines(db: Session = Depends(get_db),
                        user: models.User = Depends(require_screen("approvals"))):
@@ -4579,7 +4615,7 @@ def get_notifications(db: Session = Depends(get_db),
     if "approvals" in allowed:
         for m in reqs:
             if m.status == "pending":
-                out.append({"id": f"new-req-{m.id}", "kind": "request",
+                out.append({"id": f"new-req-{m.id}", "kind": "request", "request_id": m.id,
                              "title": f"New material request {m.ref}",
                              "detail": f"{_person_name(m.requested_by) or 'Someone'} asked for {_mr_lines(m)}"
                                        + (f" for site {m.site}" if m.site else " for the central store")
@@ -4588,7 +4624,7 @@ def get_notifications(db: Session = Depends(get_db),
                              "when": m.requested_on.isoformat(), "level": "info"})
             if (m.needed_by and m.needed_by < today
                     and m.status not in ("delivered", "received", "closed", "rejected")):
-                out.append({"id": f"late-{m.id}-{m.needed_by}", "kind": "late",
+                out.append({"id": f"late-{m.id}-{m.needed_by}", "kind": "late", "request_id": m.id,
                              "title": f"{m.ref} is late",
                              "detail": f"Needed by {m.needed_by.isoformat()}, still "
                                        f"{MR_STATUS_WORDS.get(m.status, m.status)}",
@@ -4619,7 +4655,7 @@ def get_notifications(db: Session = Depends(get_db),
                 title, detail, lvl = f"{m.ref} rejected", (m.office_remark or "The office turned it down"), "warn"
             else:
                 continue
-            out.append({"id": f"status-{m.id}-{m.status}-{upd}", "kind": "status",
+            out.append({"id": f"status-{m.id}-{m.status}-{upd}", "kind": "status", "request_id": m.id,
                          "title": title, "detail": detail,
                          "screen": "followup" if m.status not in ("delivered", "received", "rejected") else "requests",
                          "target": m.ref, "when": upd.isoformat(), "level": lvl})

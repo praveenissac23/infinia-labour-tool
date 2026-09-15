@@ -396,6 +396,12 @@
   .notif-rule.late { background: #C0392B; } .notif-rule.request { background: #1565C0; }
   .notif-rule.low, .notif-rule.rental { background: #B26A00; }
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
+  .notif-lines { padding: 2px 20px 0; }
+  .notif-lines table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  .notif-lines td { padding: 5px 2px; border-bottom: 1px solid #F2EEEB; vertical-align: top; }
+  .notif-lines tr:last-child td { border-bottom: 0; }
+  .notif-lines td.r { text-align: right; white-space: nowrap; color: #555; }
+  .notif-for { font-size: 11.5px; color: #999; margin-top: 2px; }
   .notif-foot { display: flex; gap: 9px; align-items: center; padding: 14px 20px 18px; }
   .notif-count { font-size: 12px; color: #999; margin-right: auto; }
 
@@ -4251,6 +4257,7 @@ function showNextNotification() {
         ${n.detail ? `<div class="notif-detail">${n.detail}</div>` : ""}
       </div>
     </div>
+    <div id="notif-lines" class="notif-lines"></div>
     <div class="notif-foot">
       <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
       <button class="btn btn-gray" id="notif-close">Close</button>
@@ -4274,6 +4281,29 @@ function showNextNotification() {
     closeNotifications();
   };
   document.getElementById("notif-go").focus();
+  // A reference on its own means going to look. The materials, the
+  // quantities and where they are for are fetched and shown here.
+  if (n.request_id) fillNotificationLines(n.request_id);
+}
+
+async function fillNotificationLines(id) {
+  const box = document.getElementById("notif-lines");
+  if (!box) return;
+  try {
+    const r = await apiCall(`/store/requests/${id}/summary`);
+    if (!box.isConnected) return;
+    const head = [r.site ? `Site ${r.site}` : "", r.requested_by ? `asked by ${r.requested_by}` : "",
+                  r.needed_by ? `needed ${r.needed_by}` : ""].filter(Boolean).join(" · ");
+    const rows = r.lines.slice(0, 8).map(l => `
+      <tr>
+        <td>${l.material}${l.purpose ? `<div class="notif-for">for ${l.purpose}</div>` : ""}</td>
+        <td class="r">${num(l.qty)} ${l.unit || ""}</td>
+        <td class="r">${l.supplier || (l.status === "rejected" ? "rejected" : "")}</td>
+      </tr>`).join("");
+    const more = r.lines.length > 8 ? `<div class="notif-for">and ${r.lines.length - 8} more</div>` : "";
+    box.innerHTML = `${head ? `<div class="notif-for">${head}</div>` : ""}
+      <table>${rows}</table>${more}`;
+  } catch (e) { /* the notification still stands without the detail */ }
 }
 
 const NOTIF_ICON = { request: "\u{1F4E5}", late: "\u23F0", status: "\u{1F4E6}", low: "\u{1F4C9}",
