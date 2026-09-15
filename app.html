@@ -482,7 +482,6 @@
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
       <div class="nav-item" data-screen="combine" onclick="switchScreen('combine')">Salary Cards</div>
-      <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
       <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
       <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Check Before You Pay</div>
 
@@ -547,7 +546,7 @@
               <div class="dash-tile-title">Reports</div>
               <div class="dash-tile-sub">Summaries &amp; exports</div>
             </div>
-            <div class="dash-tile" data-screen="adjustments" onclick="switchScreen('adjustments')">
+            <div class="dash-tile" data-screen="adjustments" onclick="switchScreen('combine')">
               <div class="dash-tile-title">Salary Adjustments</div>
               <div class="dash-tile-sub">Bonuses &amp; deductions</div>
             </div>
@@ -1053,6 +1052,46 @@
             </div>
           </div>
 
+
+          <!-- Adjustments sit with the cards they change: same cycle, same
+               workers, and the card above shows the effect. -->
+
+          <div class="toolbar">
+            <strong style="font-size:15px; margin-right:6px;">Salary Adjustments</strong>
+            <label>Cycle:</label>
+            <select id="adj-cycle" onchange="loadAdjustmentsList()"></select>
+            <button class="btn btn-primary" onclick="loadAdjustmentsList()">Load</button>
+            <label>Search:</label>
+            <input type="text" id="adj-search-box" placeholder="Employee No or Name" oninput="renderAdjustmentsWorkerList()">
+          </div>
+          <div class="status-msg" id="adj-status"></div>
+          <div class="card" id="adj-detail-card" style="display:none;">
+            <h2 id="adj-selected-label"></h2>
+            <div id="adj-list"></div>
+            <div class="form-row" style="margin-top:10px;">
+              <input type="text" id="adj-desc" placeholder="Description">
+              <input type="number" id="adj-amount" placeholder="Amount (AED)">
+              <select id="adj-type"><option value="true">Deduction</option><option value="false">Addition</option></select>
+              <button class="btn btn-primary" onclick="addAdjustmentRow()">Add</button>
+            </div>
+          </div>
+          <div class="card" id="adj-all-card">
+            <h2>All Workers (click a row to select)</h2>
+            <div class="grid-wrap" style="max-height: 45vh;">
+              <table>
+                <thead><tr>
+                  <th class="sortable" onclick="sortAdjList('emp_no')">Emp No <span id="adj-sort-emp_no"></span></th>
+                  <th class="sortable" onclick="sortAdjList('emp_name')">Name <span id="adj-sort-emp_name"></span></th>
+                  <th style="text-align:left;">Adjustments</th>
+                  <th class="sortable" onclick="sortAdjList('final_salary')">Final Salary <span id="adj-sort-final_salary"></span></th>
+                  <th class="sortable" onclick="sortAdjList('adjusted')">Adjusted Final Salary <span id="adj-sort-adjusted"></span></th>
+                </tr></thead>
+                <tbody id="adj-worker-body"></tbody>
+                <tfoot><tr id="adj-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
+              </table>
+            </div>
+          </div>
+
         </div>
 
         <div class="screen" id="screen-errorcheck">
@@ -1083,44 +1122,6 @@
         </div>
 
         <!-- ============ SALARY ADJUSTMENTS SCREEN ============ -->
-        <div class="screen" id="screen-adjustments">
-          <div class="toolbar">
-            <label>Cycle:</label>
-            <select id="adj-cycle" onchange="loadAdjustmentsList()"></select>
-            <button class="btn btn-primary" onclick="loadAdjustmentsList()">Load</button>
-            <label>Search:</label>
-            <input type="text" id="adj-search-box" placeholder="Employee No or Name" oninput="renderAdjustmentsWorkerList()">
-          </div>
-          <div class="status-msg" id="adj-status"></div>
-          <div class="card" id="adj-detail-card" style="display:none;">
-            <h2 id="adj-selected-label"></h2>
-            <div id="adj-list"></div>
-            <div class="form-row" style="margin-top:10px;">
-              <input type="text" id="adj-desc" placeholder="Description">
-              <input type="number" id="adj-amount" placeholder="Amount (AED)">
-              <select id="adj-type"><option value="true">Deduction</option><option value="false">Addition</option></select>
-              <button class="btn btn-primary" onclick="addAdjustmentRow()">Add</button>
-            </div>
-          </div>
-          <div class="card">
-            <h2>All Workers (click a row to select)</h2>
-            <div class="grid-wrap" style="max-height: 45vh;">
-              <table>
-                <thead><tr>
-                  <th class="sortable" onclick="sortAdjList('emp_no')">Emp No <span id="adj-sort-emp_no"></span></th>
-                  <th class="sortable" onclick="sortAdjList('emp_name')">Name <span id="adj-sort-emp_name"></span></th>
-                  <th style="text-align:left;">Adjustments</th>
-                  <th class="sortable" onclick="sortAdjList('final_salary')">Final Salary <span id="adj-sort-final_salary"></span></th>
-                  <th class="sortable" onclick="sortAdjList('adjusted')">Adjusted Final Salary <span id="adj-sort-adjusted"></span></th>
-                </tr></thead>
-                <tbody id="adj-worker-body"></tbody>
-                <tfoot><tr id="adj-total-row" style="font-weight:bold; background:#C6EFCE;"></tr></tfoot>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- ============ LIVE CARD SCREEN ============ -->
         <div class="screen" id="screen-livecard">
           <div class="toolbar">
             <label>Cycle:</label>
@@ -2065,7 +2066,6 @@ const SCREEN_TITLES = {
   reports: "Reports / Summaries",
   combine: "Salary Cards",
   errorcheck: "Check Before You Pay",
-  adjustments: "Salary Adjustments",
   livecard: "Live Card",
   settings: "Settings",
   activity: "Activity Monitor",
@@ -2139,8 +2139,19 @@ function switchScreen(name) {
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
-  if (name === "adjustments") loadAdjustmentsList();
-  if (name === "combine") filterCombineWorkers();
+  if (name === "combine") {
+    filterCombineWorkers();
+    // Adjustments live at the foot of this screen now. Only for
+    // someone allowed them - taking the cards is a separate permission.
+    const adj = document.getElementById("adj-cycle");
+    if (adj) {
+      const may = MY_SCREENS.includes("adjustments");
+      const wrap = adj.closest(".toolbar");
+      [wrap, document.getElementById("adj-all-card"), document.getElementById("adj-detail-card")]
+        .forEach(el => { if (el) el.style.display = may ? "" : "none"; });
+      if (may) loadAdjustmentsList();
+    }
+  }
   if (name === "errorcheck") loadErrorCheck();
   if (name === "purchase") loadPurchase();
   if (name === "lporegister") loadLpoReport();
