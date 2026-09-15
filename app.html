@@ -196,6 +196,23 @@
   .nav-group:first-of-type { padding-top: 10px; }
   .nav-group:hover { color: #E8E4DF; }
   .nav-caret { margin-left: auto; font-size: 11px; transition: transform .16s; }
+
+  /* A thin colour down the side of each section, so the eye finds the
+     right part of the menu without reading it. Kept faint - the menu
+     is for navigating, not for looking at. */
+  .sidebar .nav-group[data-group="attendance"],
+  .sidebar .nav-item.grp-attendance { border-left: 3px solid rgba(122,167,214,.55); }
+  .sidebar .nav-group[data-group="store"],
+  .sidebar .nav-item.grp-store { border-left: 3px solid rgba(214,166,106,.55); }
+  .sidebar .nav-group[data-group="admin"],
+  .sidebar .nav-item.grp-admin { border-left: 3px solid rgba(150,150,158,.5); }
+  .sidebar .nav-item.grp-attendance { background: rgba(122,167,214,.05); }
+  .sidebar .nav-item.grp-store { background: rgba(214,166,106,.05); }
+  .sidebar .nav-item.grp-admin { background: rgba(150,150,158,.04); }
+  .sidebar .nav-item.grp-attendance:hover,
+  .sidebar .nav-item.grp-store:hover,
+  .sidebar .nav-item.grp-admin:hover { background: var(--darkgray); }
+  .sidebar .nav-item.active { border-left-color: var(--red); }
   .nav-group.shut .nav-caret { transform: rotate(-90deg); }
   .nav-item.tucked { display: none !important; }
 
@@ -2068,6 +2085,14 @@ function itemsInGroup(group) {
 }
 
 function applyNavGroups() {
+  // Each item wears its section's colour. Done here rather than in the
+  // markup so a screen moved between sections picks up the right one.
+  document.querySelectorAll(".nav-group").forEach(g => {
+    itemsInGroup(g.dataset.group).forEach(i => {
+      i.classList.remove("grp-attendance", "grp-store", "grp-admin");
+      i.classList.add("grp-" + g.dataset.group);
+    });
+  });
   const shut = navShut();
   document.querySelectorAll(".nav-group").forEach(g => {
     const name = g.dataset.group;
