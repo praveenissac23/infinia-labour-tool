@@ -3901,17 +3901,16 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .sheet {{ max-width:820px; margin:18px auto 40px; background:white; padding:22px 26px;
             border:1px solid #DDD; border-radius:6px; font-size:12.5px; }}
   .head {{ display:flex; justify-content:space-between; align-items:flex-start;
-           border-bottom:1px solid #999; padding-bottom:10px; }}
+           border:1px solid #999; padding:10px 12px; }}
   .co strong {{ font-size:15px; }} .co div {{ color:#444; font-size:11.5px; }}
   .po {{ font-size:21px; letter-spacing:.5px; }}
-  .two {{ display:flex; gap:0; border:1px solid #999; border-top:0; }}
-  .two table {{ flex:1; border-collapse:collapse; }}
-  .two table:first-child {{ border-right:1px solid #999; }}
+  .two {{ display:flex; gap:12px; margin-top:10px; align-items:flex-start; }}
+  .half {{ flex:1; border:1px solid #999; }}
+  .boxhead {{ background:#2E3238; color:white; font-size:11px; font-weight:700;
+              letter-spacing:.3px; padding:4px 7px; }}
+  .two table {{ width:100%; border-collapse:collapse; }}
   .pairs td {{ padding:3px 8px; vertical-align:top; }}
   .pairs .k {{ color:#444; width:44%; }} .pairs .v {{ font-weight:600; }}
-  .vlabel {{ background:#F0F0F0; border:1px solid #999; border-top:0; padding:4px 8px; color:#444; }}
-  .vendor {{ border:1px solid #999; border-top:0; padding:8px; }}
-  .vendor div {{ color:#444; font-size:11.5px; }}
   table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; }}
   table.lines th {{ background:#7B1F1A; color:white; padding:6px; font-size:11.5px; }}
   table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
@@ -4066,16 +4065,25 @@ def _lpo_html(o):
     def pair(k, v):
         return f'<tr><td class="k">{k}</td><td class="v">: {esc(v)}</td></tr>'
 
+    # The same two boxes the printed order has: ours on the left, the
+    # vendor's on the right. The preview used to carry the older layout,
+    # so what was on screen did not match what came out of the printer.
+    sup = o.supplier
     left = "".join([pair("Purchase Order No", o.ref),
                     pair("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
-                    pair("Terms", o.terms),
+                    pair("Reference No", o.supplier_ref),
                     pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
-                    pair("Ref#", o.supplier_ref)])
-    right = "".join([pair("Plot No", o.plot_no), pair("Contact Person", o.contact_person),
-                     pair("Mobile No", o.mobile),
-                     pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
-                     pair("Email ID", o.email), pair("Job Scope", o.job_scope),
-                     pair("Project Location Name", o.project_location)])
+                    pair("Project Location", o.project_location),
+                    pair("Project &amp; Plot No", o.plot_no),
+                    pair("Job Scope", o.job_scope),
+                    pair("Contact Person", o.contact_person),
+                    pair("Mobile", o.mobile)])
+    right = "".join([pair("Supplier", o.supplier_name),
+                     pair("TRN", o.supplier_trn),
+                     pair("Email", getattr(o, "supplier_email", "") or (sup.email if sup else "")),
+                     pair("Contact Person", (sup.contact_person if sup else "")),
+                     pair("Mobile", (sup.phone if sup else "")),
+                     pair("Payment Terms", o.terms)])
     addr = ""          # the address is no longer printed on an order
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
     notes = ("".join(f"<div>{esc(x)}</div>" for x in (o.notes or "").splitlines() if x.strip()))
@@ -4087,10 +4095,12 @@ def _lpo_html(o):
           <div>TRN 100602393900003</div></div>
         <div class="po">PURCHASE ORDER</div>
       </div>
-      <div class="two"><table class="pairs">{left}</table><table class="pairs">{right}</table></div>
-      <div class="vlabel">Vendor Address</div>
-      <div class="vendor"><strong>{esc(o.supplier_name)}</strong>{addr}
-        {f'<div>TRN {esc(o.supplier_trn)}</div>' if o.supplier_trn else ''}</div>
+      <div class="two">
+        <div class="half"><div class="boxhead">PURCHASE ORDER DETAILS</div>
+          <table class="pairs">{left}</table></div>
+        <div class="half"><div class="boxhead">VENDOR DETAILS</div>
+          <table class="pairs">{right}</table></div>
+      </div>
       <table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
         <th class="r">Qty</th><th class="r">Rate</th><th class="r">Tax %</th>
         <th class="r">Tax</th><th class="r">Amount</th></tr></thead>
