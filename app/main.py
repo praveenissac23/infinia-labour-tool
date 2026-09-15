@@ -812,7 +812,8 @@ def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.U
         # plot number and the engineer could never be corrected once
         # entered. Anything given is kept; anything left blank is left
         # alone, so a half-filled form cannot wipe what is on record.
-        for field in ("plot_no", "project_name", "incharge", "incharge_mobile"):
+        for field in ("plot_no", "project_name", "incharge", "incharge_mobile",
+                      "address", "map_url"):
             v = (getattr(site, field, "") or "").strip()
             if v:
                 setattr(existing, field, v)
@@ -3597,7 +3598,8 @@ def lpo_pending_lines(db: Session = Depends(get_db),
     # The site's own record carries the plot number and the man in
     # charge, so an order raised from a request needs neither typed.
     site_info = {s.code: {"plot_no": s.plot_no or "", "project_name": s.project_name or "",
-                          "incharge": s.incharge or "", "incharge_mobile": s.incharge_mobile or ""}
+                          "incharge": s.incharge or "", "incharge_mobile": s.incharge_mobile or "",
+                          "address": s.address or "", "map_url": s.map_url or ""}
                  for s in db.query(models.Site).all()}
     out = []
     for mr in reqs:
@@ -3617,6 +3619,8 @@ def lpo_pending_lines(db: Session = Depends(get_db),
             "project_name": site_info.get(mr.site, {}).get("project_name", ""),
             "incharge": site_info.get(mr.site, {}).get("incharge", ""),
             "incharge_mobile": site_info.get(mr.site, {}).get("incharge_mobile", ""),
+            "address": site_info.get(mr.site, {}).get("address", ""),
+            "map_url": site_info.get(mr.site, {}).get("map_url", ""),
                 "needed_by": mr.needed_by.isoformat() if mr.needed_by else "",
                 "urgency": mr.urgency or "normal", "purpose": l.purpose or "",
                 "item_id": l.item_id,
@@ -4019,6 +4023,19 @@ def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
     return {"ok": True, "detail": f"{o.ref} cancelled."}
 
 
+def db_session_site(code):
+    """The site record behind an order's project location, if there is
+    one - orders can name a location that was never added as a site."""
+    from database import SessionLocal
+    s = SessionLocal()
+    try:
+        return s.query(models.Site).filter(func.lower(models.Site.code) == code.lower()).first()
+    except Exception:
+        return None
+    finally:
+        s.close()
+
+
 def _lpo_for_print(o):
     d = _lpo_dict(o)
     # The supplier's own contact details, from his record, so the order
@@ -4027,6 +4044,13 @@ def _lpo_for_print(o):
     d["supplier_email"] = (getattr(o, "supplier_email", "") or (sup.email if sup else "") or "")
     d["supplier_contact"] = (sup.contact_person if sup else "") or ""
     d["supplier_mobile"] = (sup.phone if sup else "") or ""
+    # Where to deliver, from the site record.
+    site = None
+    if o.project_location:
+        code = o.project_location.split(",")[0].strip()
+        site = db_session_site(code)
+    d["site_address"] = (site.address if site else "") or ""
+    d["site_map"] = (site.map_url if site else "") or ""
     d["date_text"] = o.order_date.strftime("%d %b %Y") if o.order_date else ""
     d["delivery_text"] = o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""
     return d
@@ -4053,6 +4077,9 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     t = quote(auth.create_view_token(user.username), safe="")
 
     safe = o.ref.replace("/", "")
+    _map = _site_field(o, "map_url")
+    map_btn = (f'<a class="btn" href="{_map}" target="_blank" rel="noopener">Open the site on a map</a>'
+               if _map.startswith("http") else "")
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4112,6 +4139,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
     <a class="btn wa" id="wa-share" href="https://web.whatsapp.com/" target="_blank" rel="noopener">Share on WhatsApp</a>
+    {map_btn}
   </div>
   <div class="hint" id="wa-hint"></div>
   <div class="sheet">{_lpo_html(o)}</div>
@@ -4179,6 +4207,14 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
 </script>
 </body></html>"""
     return HTMLResponse(page)
+
+
+def _site_field(o, field):
+    """A detail from the site behind this order's project location."""
+    if not o.project_location:
+        return ""
+    s = db_session_site(o.project_location.split(",")[0].strip())
+    return (getattr(s, field, "") if s else "") or ""
 
 
 def _logo_img():
@@ -4274,6 +4310,7 @@ def _lpo_html(o):
                  ("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
                  ("Project Location", o.project_location),
                  ("Project &amp; Plot No", o.plot_no),
+                 ("Delivery Address", _site_field(o, "address")),
                  ("Job Scope", o.job_scope),
                  ("Contact Person", o.contact_person),
                  ("Mobile", o.mobile)]

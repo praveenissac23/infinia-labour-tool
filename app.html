@@ -904,6 +904,10 @@
                 <input type="text" id="md-site-plot" placeholder="Plot no" style="width:170px;">
                 <input type="text" id="md-site-incharge" placeholder="In charge" style="width:150px;">
                 <input type="text" id="md-site-mobile" placeholder="His mobile" style="width:140px;">
+              </div>
+              <div class="form-row" style="flex-wrap:wrap; gap:8px; margin-top:6px;">
+                <input type="text" id="md-site-address" placeholder="Delivery address - printed on orders" style="flex:1; min-width:260px;">
+                <input type="text" id="md-site-map" placeholder="Google Maps link" style="width:230px;">
                 <button class="btn btn-primary" onclick="addSite()">Add / Update</button>
               </div>
               <div id="md-site-list"></div>
@@ -3146,10 +3150,11 @@ async function addSite() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, active: true,
       plot_no: v("md-site-plot"), incharge: v("md-site-incharge"),
-      incharge_mobile: v("md-site-mobile") }),
+      incharge_mobile: v("md-site-mobile"),
+      address: v("md-site-address"), map_url: v("md-site-map") }),
   });
-  ["md-site-code", "md-site-plot", "md-site-incharge", "md-site-mobile"]
-    .forEach(id => document.getElementById(id).value = "");
+  ["md-site-code", "md-site-plot", "md-site-incharge", "md-site-mobile",
+   "md-site-address", "md-site-map"].forEach(id => document.getElementById(id).value = "");
   sites = await apiCall("/sites");
   renderMasterDataLists();
   refreshSiteList();
@@ -3187,6 +3192,8 @@ async function editSite(id, currentCode) {
     document.getElementById("md-site-plot").value = s.plot_no || "";
     document.getElementById("md-site-incharge").value = s.incharge || "";
     document.getElementById("md-site-mobile").value = s.incharge_mobile || "";
+    document.getElementById("md-site-address").value = s.address || "";
+    document.getElementById("md-site-map").value = s.map_url || "";
     document.getElementById("md-site-code").focus();
     showStatus("md-status", "ok",
       `Editing ${s.code} - change what you need and press Add / Update.`);

@@ -1300,6 +1300,7 @@ def build_lpo_pdf(po: dict):
         ("Delivery Date", po.get("delivery_text", "")),
         ("Project Location", po.get("project_location", "")),
         ("Project &amp; Plot No", po.get("plot_no", "")),
+        ("Delivery Address", po.get("site_address", "")),
         ("Job Scope", po.get("job_scope", "")),
         ("Contact Person", po.get("contact_person", "")),
         ("Mobile", po.get("mobile", "")),

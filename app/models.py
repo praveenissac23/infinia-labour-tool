@@ -79,6 +79,10 @@ class Site(Base):
     project_name = Column(String, default="")
     incharge = Column(String, default="")          # our man on site
     incharge_mobile = Column(String, default="")
+    # Where the lorry actually goes. A plot number means nothing to a
+    # driver who has not been there; a map link does.
+    address = Column(Text, default="")
+    map_url = Column(String, default="")
     active = Column(Boolean, default=True)
 
 

@@ -86,6 +86,8 @@ class SiteIn(BaseModel):
     project_name: str = ""
     incharge: str = ""
     incharge_mobile: str = ""
+    address: str = ""
+    map_url: str = ""
     active: bool = True
 
 
