@@ -347,14 +347,22 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
                  + status_counts["Friday"] + status_counts["Sunday"] + status_counts["Holiday"])
 
     if pay_type == "fixed":
-        # A foreman or driver on a monthly figure. The month's salary is
-        # spread evenly over the cycle's actual days - 30 or 31 - and he
-        # is paid that share for every paid day. So a full month is
-        # always exactly the salary, whatever the cycle's length; each
-        # absence or leave day costs exactly one day's share, once, not
-        # twice; and a day not entered yet earns nothing. Sunday,
-        # Holiday, Sick and Medical are paid, as for everyone.
-        total_salary_component = total_salary * paid_days / cycle_days if cycle_days else 0.0
+        # A foreman or driver on a monthly figure.
+        #
+        # The day is always a thirtieth of the salary, whether the cycle
+        # runs 30 days or 31 - that is how the office has always worked
+        # an absence out, and dividing by the cycle's real length made
+        # every figure disagree with the old sheet by a few dirhams.
+        #
+        # And the month is capped at the salary: a man on 3,000 gets
+        # 3,000 for a full month, never 3,100 because the cycle happened
+        # to have 31 days in it.
+        #
+        # So a full month is the salary; each absent or leave day costs
+        # exactly one thirtieth, once; a day not entered yet earns
+        # nothing. Sunday, Holiday, Sick and Medical are paid, as for
+        # everyone.
+        total_salary_component = min(paid_days * daily_rate, total_salary)
         deduction = 0.0
     else:
         total_salary_component = paid_days * daily_rate
