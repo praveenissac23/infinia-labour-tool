@@ -1359,21 +1359,6 @@
               </span>
               <span style="font-size:12px; color:#888;">Matched on the name - importing twice updates rather than duplicates.</span>
             </div>
-            <div id="sig-panel" style="margin-top:14px; padding:11px 13px; border-radius:8px;
-                 border:1px solid #E8DFD9; background:#FBF8F6;">
-              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                <strong style="font-size:13px;">Purchase order signature</strong>
-                <span id="sig-state" style="font-size:12px; color:#888;"></span>
-                <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-                  <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:230px;">
-                  <button class="btn btn-primary" onclick="uploadSignature()">Upload</button>
-                </span>
-              </div>
-              <div style="font-size:11.5px; color:#888; margin-top:5px;">
-                Printed in the signature box of every purchase order, in both the PDF and the Excel.
-                A PNG or JPG on a white or transparent background.</div>
-            </div>
-
             <div class="grid-wrap" style="max-height:34vh; margin-top:10px;">
               <table>
                 <thead><tr>
@@ -2192,12 +2177,9 @@ async function initApp() {
   const sigCard = document.getElementById("signature-card");
   if (sigCard) {
     sigCard.style.display = isAdmin ? "block" : "none";
-    if (isAdmin) {
-      apiCall("/store/purchase/signature-status")
-        .then(s => { document.getElementById("sig-state").textContent =
-                       s.present ? "A signature is on file." : "No signature uploaded yet."; })
-        .catch(() => {});
-    }
+    // One place says what the state is, in red when there is none, so
+    // nobody has to wonder whether orders are going out unsigned.
+    if (isAdmin) refreshSignatureState();
   }
   if (CURRENT_ROLE !== "admin") {
     const roleSel = document.getElementById("new-user-role");
@@ -6968,7 +6950,6 @@ async function loadPurchase() {
 async function loadSuppliersScreen() {
   try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { suppliers = suppliers || []; }
   renderSuppliers();
-  refreshSignatureState();
 }
 
 async function refreshSignatureState() {
@@ -7624,11 +7605,7 @@ let MY_SCREENS = [];
 // Emptying the company's records is an admin decision, taken once,
 // with the words typed out - not something to be clicked past.
 async function uploadSignature() {
-  // The panel now lives on the Suppliers screen as well as Settings, so
-  // the message goes to whichever of the two is open.
-  const where = document.getElementById("screen-suppliers")
-             && document.getElementById("screen-suppliers").classList.contains("active")
-             ? "sup-status" : "settings-status";
+  const where = "settings-status";
   const f = document.getElementById("sig-file").files[0];
   if (!f) { showStatus(where, "warn", "Choose the signature image first."); return; }
   const fd = new FormData();
