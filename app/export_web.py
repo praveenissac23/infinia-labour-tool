@@ -11,6 +11,7 @@ produced here reads the same way a desktop-generated one does.
 """
 import io
 import os
+import tempfile
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1162,13 +1163,35 @@ def build_store_report_pdf(title, rows, subtitle=""):
 # beside it. Kept inside the repo it would be wiped by the next git
 # pull - a deploy would silently start printing orders unsigned.
 # INFINIA_DATA_DIR overrides it where the deployment prefers elsewhere.
-DATA_DIR = os.environ.get(
-    "INFINIA_DATA_DIR",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
-try:
-    os.makedirs(DATA_DIR, exist_ok=True)
-except Exception:
-    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+def _pick_data_dir():
+    """The first directory we can actually write a file into.
+
+    Creating a directory is not the same as being able to write in it -
+    under systemd the service user may own neither. Each candidate is
+    tested by writing a file and deleting it again, so a signature
+    upload cannot fail silently later.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.environ.get("INFINIA_DATA_DIR"),
+        os.path.join(os.path.dirname(here), "data"),
+        os.path.join(os.path.expanduser("~"), ".infinia"),
+        os.path.join(tempfile.gettempdir(), "infinia-data"),
+    ]
+    for d in [c for c in candidates if c]:
+        try:
+            os.makedirs(d, exist_ok=True)
+            probe = os.path.join(d, ".write-test")
+            with open(probe, "wb") as f:
+                f.write(b"x")
+            os.remove(probe)
+            return d
+        except Exception:
+            continue
+    return here
+
+
+DATA_DIR = _pick_data_dir()
 SIG_PATH = os.path.join(DATA_DIR, "signature.png")
 
 # A signature uploaded before this moved is still in the old place;

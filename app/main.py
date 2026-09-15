@@ -4096,15 +4096,28 @@ async def upload_signature(file: UploadFile = File(...), db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Signature image must be under 2 MB.")
     if not (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Use a PNG or JPG image.")
-    with open(export_web.SIG_PATH, "wb") as f:
-        f.write(data)
+    try:
+        with open(export_web.SIG_PATH, "wb") as f:
+            f.write(data)
+    except Exception as e:
+        # Said out loud rather than swallowed: an upload that fails
+        # quietly means orders go out unsigned and nobody knows why.
+        raise HTTPException(status_code=500,
+                            detail=f"Could not save the signature to {export_web.SIG_PATH}: {e}")
+    if not os.path.exists(export_web.SIG_PATH):
+        raise HTTPException(status_code=500, detail="The signature did not save - check the server's disk.")
     log_action(db, user.id, "upload_signature", file.filename or "")
-    return {"ok": True, "detail": "Signature saved - it prints on every purchase order."}
+    return {"ok": True, "detail": "Signature saved - it prints on every purchase order.",
+            "path": export_web.SIG_PATH}
 
 
 @app.get("/store/purchase/signature-status")
 def signature_status(user: models.User = Depends(require_screen("approvals"))):
-    return {"present": os.path.exists(export_web.SIG_PATH)}
+    # The path comes back too, so where it went can be checked on the
+    # server without guessing.
+    present = os.path.exists(export_web.SIG_PATH)
+    return {"present": present, "path": export_web.SIG_PATH,
+            "bytes": os.path.getsize(export_web.SIG_PATH) if present else 0}
 
 
 @app.get("/export/store/report")
