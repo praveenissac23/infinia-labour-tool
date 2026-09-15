@@ -1309,8 +1309,9 @@
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
                 <input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;"></div>
               <div class="field"><label>Terms &amp; conditions</label>
-                <select id="lpo-termsset" style="width:200px;" onchange="onLpoTermsSet()">
-                  <option value="default">Standard</option>
+                <select id="lpo-termsset" style="width:210px;" onchange="onLpoTermsSet()">
+                  <option value="default">Standard (2 clauses)</option>
+                  <option value="material">Material with sample (4)</option>
                   <option value="rental">Rental (5 clauses)</option>
                 </select></div>
             </div>
@@ -7296,7 +7297,9 @@ function closeLpoForm() {
 function onLpoTermsSet() {
   const which = document.getElementById("lpo-termsset").value;
   document.getElementById("lpo-termstext").value =
-    which === "rental" ? (lpoDefaults.terms_rental || "") : (lpoDefaults.terms_default || "");
+    which === "rental" ? (lpoDefaults.terms_rental || "")
+    : which === "material" ? (lpoDefaults.terms_material || "")
+    : (lpoDefaults.terms_default || "");
 }
 
 function onLpoSupplier() {

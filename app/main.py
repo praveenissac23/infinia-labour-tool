@@ -3350,6 +3350,19 @@ DEFAULT_LPO_TERMS = (
     "within the delivery date or if the supplier fails to comply with the Quantity and "
     "Specifications in this order."
 )
+# The set used for materials bought against a confirmed sample - the
+# two clauses the newer sheets carry, ahead of the standard two.
+MATERIAL_LPO_TERMS = (
+    "1. Material should supply as per the sample confirmed by site engineer\n"
+    "2. Any damage or broken of material due to quality issue need to be replaced by the "
+    "supplier immediately\n"
+    "3. We reserve rights to terminate this order without prior notice and reject any items "
+    "delivered based on this order\n"
+    "4. The Purchase Order shall become invalid if the materials/ services are not supplied "
+    "within the delivery date or if the supplier fails to comply with the Quantity and "
+    "Specifications in this order."
+)
+
 RENTAL_LPO_TERMS = DEFAULT_LPO_TERMS + (
     "\n3.Lost Price/Damage of materials will be calculated as per the Return Note confirmed "
     "by the Project Engineer\n"
@@ -3501,7 +3514,7 @@ def next_lpo_number(db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("approvals"))):
     n = _next_lpo_no(db)
     return {"po_no": n, "ref": f"IC/LPO/{n}", "terms_default": DEFAULT_LPO_TERMS,
-            "terms_rental": RENTAL_LPO_TERMS}
+            "terms_rental": RENTAL_LPO_TERMS, "terms_material": MATERIAL_LPO_TERMS}
 
 
 @app.get("/store/purchase/rate-history")
@@ -3831,6 +3844,12 @@ def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
 
 def _lpo_for_print(o):
     d = _lpo_dict(o)
+    # The supplier's own contact details, from his record, so the order
+    # says who to chase without anyone typing it again.
+    sup = o.supplier
+    d["supplier_email"] = (getattr(o, "supplier_email", "") or (sup.email if sup else "") or "")
+    d["supplier_contact"] = (sup.contact_person if sup else "") or ""
+    d["supplier_mobile"] = (sup.phone if sup else "") or ""
     d["date_text"] = o.order_date.strftime("%d %b %Y") if o.order_date else ""
     d["delivery_text"] = o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""
     return d

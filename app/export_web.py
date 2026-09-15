@@ -1254,29 +1254,31 @@ def build_lpo_pdf(po: dict):
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 1.8), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.8),
         ]))
         return t
 
+    # Delivery Date was printed in both columns and Email ID showed our
+    # own address, which the supplier already has. The room that frees
+    # goes to what the order was missing: the project, the plot, and who
+    # to call about it.
     left = pairs([("Purchase Order No", po.get("ref", "")),
-                  ("Date", po.get("date_text", "")),
-                  ("Terms", po.get("terms", "")),
-                  ("Delivery Date", po.get("delivery_text", "")),
-                  ("Ref#", po.get("supplier_ref", ""))])
-    right = pairs([("Plot No", po.get("plot_no", "")),
-                   ("Contact Person", po.get("contact_person", "")),
-                   ("Mobile No", po.get("mobile", "")),
-                   ("Delivery Date", po.get("delivery_text", "")),
-                   ("Email ID", po.get("email", "")),
+                  ("Purchase Order Date", po.get("date_text", "")),
+                  ("Reference No", po.get("supplier_ref", "")),
+                  ("Payment Terms", po.get("terms", "")),
+                  ("Delivery Date", po.get("delivery_text", ""))])
+    right = pairs([("Project Location", po.get("project_location", "")),
+                   ("Project &amp; Plot No", po.get("plot_no", "")),
                    ("Job Scope", po.get("job_scope", "")),
-                   ("Project Location Name", po.get("project_location", ""))])
+                   ("Contact Person", po.get("contact_person", "")),
+                   ("Mobile", po.get("mobile", ""))])
     head = Table([[left, right]], colWidths=[W * 0.48, W * 0.52])
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOX", (0, 0), (-1, -1), 0.6, grid),
         ("LINEAFTER", (0, 0), (0, 0), 0.6, grid),
         ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     el.append(head)
 
@@ -1292,14 +1294,19 @@ def build_lpo_pdf(po: dict):
     # the order - the supplier knows where he is - and it made the block
     # taller than it needed to be.
     vlines = [P(po.get("supplier_name", ""), 9.5, bold=True)]
-    if po.get("supplier_trn"):
-        vlines.append(P(f"TRN {po['supplier_trn']}", 8))
+    # Who to chase at the supplier's end, which the order never carried.
+    for label, key in (("TRN", "supplier_trn"), ("Email", "supplier_email"),
+                       ("Contact", "supplier_contact"), ("Mobile", "supplier_mobile")):
+        if (po.get(key) or "").strip():
+            vlines.append(P(f'<font color="#555555">{label}</font>  {po[key]}', 8))
+    if False:
+        pass
     vb = Table([[vlines]], colWidths=[W])
     vb.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, grid),
                             ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     el.append(vb)
-    el.append(Spacer(1, 7))
+    el.append(Spacer(1, 6))
 
     # ---- Priced lines
     hd = lambda t, a=TA_CENTER: Paragraph(f"<b>{t}</b>", ParagraphStyle(
@@ -1364,11 +1371,11 @@ def build_lpo_pdf(po: dict):
         try:
             from reportlab.platypus import Image as RLImage
             sig_cell.append(Spacer(1, 2))
-            sig_cell.append(RLImage(SIG_PATH, width=34 * mm, height=15 * mm))
+            sig_cell.append(RLImage(SIG_PATH, width=34 * mm, height=13 * mm))
         except Exception:
-            sig_cell.append(Spacer(1, 17 * mm))
+            sig_cell.append(Spacer(1, 13 * mm))
     else:
-        sig_cell.append(Spacer(1, 17 * mm))
+        sig_cell.append(Spacer(1, 13 * mm))
     sig_cell.append(P("Authorized Signature", 8.5, align=TA_CENTER))
     sigt = Table([[sig_cell]], colWidths=[W * 0.44])
     sigt.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, grid),
@@ -1387,12 +1394,12 @@ def build_lpo_pdf(po: dict):
         if ln.strip():
             notes_cell.append(P(ln.strip(), 8, leading=10.5))
 
-    foot = Table([[notes_cell, [mt, Spacer(1, 6), sigt]]], colWidths=[W * 0.54, W * 0.46])
+    foot = Table([[notes_cell, [mt, Spacer(1, 5), sigt]]], colWidths=[W * 0.54, W * 0.46])
     foot.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (0, 0), 2), ("RIGHTPADDING", (0, 0), (0, 0), 10),
         ("LEFTPADDING", (1, 0), (1, 0), 0), ("RIGHTPADDING", (1, 0), (1, 0), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
     ]))
     el.append(foot)
 

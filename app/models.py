@@ -283,6 +283,7 @@ class PurchaseOrder(Base):
     supplier_name = Column(String, default="")       # as printed, even if the record is renamed later
     supplier_address = Column(Text, default="")
     supplier_trn = Column(String, default="")
+    supplier_email = Column(String, default="")      # printed in the vendor block
 
     request_id = Column(Integer, ForeignKey("material_requests.id"), nullable=True, index=True)
     plot_no = Column(String, default="")

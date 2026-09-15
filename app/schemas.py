@@ -410,6 +410,7 @@ class PurchaseOrderIn(BaseModel):
     supplier_name: str = ""
     supplier_address: str = ""
     supplier_trn: str = ""
+    supplier_email: str = ""
     request_id: int | None = None
     plot_no: str = ""
     contact_person: str = ""
