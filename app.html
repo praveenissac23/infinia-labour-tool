@@ -201,18 +201,26 @@
      right part of the menu without reading it. Kept faint - the menu
      is for navigating, not for looking at. */
   .sidebar .nav-group[data-group="attendance"],
-  .sidebar .nav-item.grp-attendance { border-left: 3px solid rgba(122,167,214,.55); }
+  .sidebar .nav-item.grp-attendance { border-left: 4px solid #4FA3C7; }
   .sidebar .nav-group[data-group="store"],
-  .sidebar .nav-item.grp-store { border-left: 3px solid rgba(214,166,106,.55); }
+  .sidebar .nav-item.grp-store { border-left: 4px solid #D9963F; }
   .sidebar .nav-group[data-group="admin"],
-  .sidebar .nav-item.grp-admin { border-left: 3px solid rgba(150,150,158,.5); }
-  .sidebar .nav-item.grp-attendance { background: rgba(122,167,214,.05); }
-  .sidebar .nav-item.grp-store { background: rgba(214,166,106,.05); }
-  .sidebar .nav-item.grp-admin { background: rgba(150,150,158,.04); }
-  .sidebar .nav-item.grp-attendance:hover,
-  .sidebar .nav-item.grp-store:hover,
-  .sidebar .nav-item.grp-admin:hover { background: var(--darkgray); }
-  .sidebar .nav-item.active { border-left-color: var(--red); }
+  .sidebar .nav-item.grp-admin { border-left: 4px solid #8E7BB5; }
+  .sidebar .nav-item.grp-attendance { background: rgba(79,163,199,.14); }
+  .sidebar .nav-item.grp-store { background: rgba(217,150,63,.14); }
+  .sidebar .nav-item.grp-admin { background: rgba(142,123,181,.14); }
+  /* The heading is the strongest band of its own colour, so a section
+     reads as one block rather than a run of stripes. */
+  .sidebar .nav-group[data-group="attendance"] { background: rgba(79,163,199,.22); color: #BFE2F1; }
+  .sidebar .nav-group[data-group="store"] { background: rgba(217,150,63,.22); color: #F3D6AC; }
+  .sidebar .nav-group[data-group="admin"] { background: rgba(142,123,181,.22); color: #DCD2EE; }
+  .sidebar .nav-item.grp-attendance:hover { background: rgba(79,163,199,.30); color: white; }
+  .sidebar .nav-item.grp-store:hover { background: rgba(217,150,63,.30); color: white; }
+  .sidebar .nav-item.grp-admin:hover { background: rgba(142,123,181,.30); color: white; }
+  .sidebar .nav-item.active,
+  .sidebar .nav-item.grp-attendance.active,
+  .sidebar .nav-item.grp-store.active,
+  .sidebar .nav-item.grp-admin.active { background: var(--red); color: white; border-left-color: #F0D5D1; }
   .nav-group.shut .nav-caret { transform: rotate(-90deg); }
   .nav-item.tucked { display: none !important; }
 
