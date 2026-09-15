@@ -419,10 +419,9 @@
       <div class="nav-item" data-screen="attendance" onclick="switchScreen('attendance')">Daily Attendance</div>
       <div class="nav-item" data-screen="masterdata" onclick="switchScreen('masterdata')">Master Data</div>
       <div class="nav-item" data-screen="reports" onclick="switchScreen('reports')">Reports / Summaries</div>
-      <div class="nav-item" data-screen="combine" onclick="switchScreen('combine')">Combine</div>
+      <div class="nav-item" data-screen="combine" onclick="switchScreen('combine')">Salary Cards</div>
       <div class="nav-item" data-screen="adjustments" onclick="switchScreen('adjustments')">Salary Adjustments</div>
       <div class="nav-item" data-screen="livecard" onclick="switchScreen('livecard')">Live Card</div>
-      <div class="nav-item" data-screen="errorcheck" onclick="switchScreen('errorcheck')">Error Check</div>
 
       <div class="nav-group" data-group="store">Store</div>
       <div class="nav-item" data-screen="store" onclick="switchScreen('store')">Store / Inventory</div>
@@ -489,9 +488,9 @@
               <div class="dash-tile-title">Salary Adjustments</div>
               <div class="dash-tile-sub">Bonuses &amp; deductions</div>
             </div>
-            <div class="dash-tile" data-screen="errorcheck" onclick="switchScreen('errorcheck')">
-              <div class="dash-tile-title">Error Check</div>
-              <div class="dash-tile-sub">Find missing data</div>
+            <div class="dash-tile" data-screen="errorcheck" onclick="switchScreen('combine')">
+              <div class="dash-tile-title">Check Before You Pay</div>
+              <div class="dash-tile-sub">Missing days, pay rule, odd hours</div>
             </div>
             <div class="dash-tile" data-screen="settings" onclick="switchScreen('settings')">
               <div class="dash-tile-title">Settings</div>
@@ -964,18 +963,44 @@
               <button class="btn btn-gray" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel-separate')">Separate Excel Files</button>
               <button class="btn btn-gray" style="width:100%;" onclick="exportCombineCards('pdf-separate')">Separate PDF Files</button>
             </div>
+            <div class="card" style="flex:1; min-width:260px;">
+              <h2>One Worker</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">A single worker's card - to hand over, or to send as one payslip.</p>
+              <input type="text" id="combine-emp" list="combine-emp-list" placeholder="Type a name or number"
+                     style="width:100%; margin-bottom:8px;" autocomplete="off">
+              <datalist id="combine-emp-list"></datalist>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('excel')">Excel</button>
+                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('pdf')">PDF</button>
+              </div>
+            </div>
           </div>
 
-          <div class="card" style="margin-top:14px;">
-            <h2>One Worker</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">A single worker's card on its own - to hand over, or to send as one payslip.</p>
-            <div class="form-row" style="align-items:center; gap:10px;">
-              <input type="text" id="combine-emp" list="combine-emp-list" placeholder="Type a name or employee number"
-                     style="flex:1; min-width:280px; max-width:460px;" autocomplete="off">
-              <datalist id="combine-emp-list"></datalist>
-              <button class="btn btn-dark" onclick="exportOneWorker('excel')">Excel</button>
-              <button class="btn btn-dark" onclick="exportOneWorker('pdf')">PDF</button>
+          <div class="card" style="margin-top:14px;" id="payroll-check-card">
+            <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
+              <h2 style="margin:0;">Check Before You Pay</h2>
+              <select id="errcheck-cycle" onchange="loadErrorCheck()" style="width:180px;"></select>
+              <button class="btn btn-primary" onclick="loadErrorCheck()">Run Check</button>
             </div>
+            <p style="font-size:12px; color:#888; margin:6px 0 0;" id="errcheck-note"></p>
+            <div class="status-msg" id="errcheck-status"></div>
+            <div id="errcheck-send" class="form-row" style="display:none; align-items:center; gap:10px; margin-bottom:10px;">
+              <button class="btn btn-gray" onclick="tickAllUnfilled(true)">Tick all unfilled</button>
+              <button class="btn btn-gray" onclick="tickAllUnfilled(false)">Untick all</button>
+              <input type="text" id="errcheck-msg" placeholder="Note for the site (optional)" style="flex:1; min-width:200px; max-width:360px;">
+              <button class="btn btn-dark" onclick="sendAttendanceNeeded('pdf')">Reminder PDF</button>
+              <button class="btn btn-dark" onclick="sendAttendanceNeeded('excel')">Reminder Excel</button>
+            </div>
+            <div class="grid-wrap" style="max-height:52vh; margin-top:10px;">
+              <table>
+                <thead><tr><th style="width:3%;"></th><th style="width:11%;">Emp No</th>
+                  <th style="width:24%; text-align:left;">Name</th><th style="width:12%;"></th>
+                  <th style="text-align:left;">What is wrong</th></tr></thead>
+                <tbody id="errcheck-body"></tbody>
+              </table>
+            </div>
+          </div>
+
           </div>
         </div>
 
@@ -1732,31 +1757,6 @@
         </div>
 
 
-        <div class="screen" id="screen-errorcheck">
-          <div class="toolbar">
-            <label>Cycle:</label>
-            <select id="errcheck-cycle" onchange="loadErrorCheck()"></select>
-            <button class="btn btn-primary" onclick="loadErrorCheck()">Run Check</button>
-          </div>
-          <div class="card">
-            <p style="font-size:12px; color:#888; margin-top:0;" id="errcheck-note"></p>
-            <div class="status-msg" id="errcheck-status"></div>
-            <div id="errcheck-send" class="form-row" style="display:none; align-items:center; gap:10px; margin-bottom:10px;">
-              <button class="btn btn-gray" onclick="tickAllUnfilled(true)">Tick all unfilled</button>
-              <button class="btn btn-gray" onclick="tickAllUnfilled(false)">Untick all</button>
-              <input type="text" id="errcheck-msg" placeholder="Note for the site (optional)" style="flex:1; min-width:200px; max-width:360px;">
-              <button class="btn btn-dark" onclick="sendAttendanceNeeded('pdf')">Reminder PDF</button>
-              <button class="btn btn-dark" onclick="sendAttendanceNeeded('excel')">Reminder Excel</button>
-            </div>
-            <div class="grid-wrap" style="max-height: 60vh;">
-              <table>
-                <thead><tr><th style="width:3%;"></th><th style="width:11%;">Emp No</th><th style="width:24%; text-align:left;">Name</th><th style="width:12%;"></th><th style="text-align:left;">What is wrong</th></tr></thead>
-                <tbody id="errcheck-body"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
         <!-- ============ SETTINGS SCREEN ============ -->
         <div class="screen" id="screen-settings">
           <div class="status-msg" id="settings-status"></div>
@@ -1967,10 +1967,9 @@ const SCREEN_TITLES = {
   attendance: "Daily Attendance Entry",
   masterdata: "Master Data",
   reports: "Reports / Summaries",
-  combine: "Combine",
+  combine: "Salary Cards",
   adjustments: "Salary Adjustments",
   livecard: "Live Card",
-  errorcheck: "Error Check",
   settings: "Settings",
   activity: "Activity Monitor",
   store: "Store / Inventory",
@@ -1989,7 +1988,17 @@ function switchScreen(name) {
   if (name === "activity") loadActivityLog();
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "adjustments") loadAdjustmentsList();
-  if (name === "combine") filterCombineWorkers();
+  if (name === "combine") {
+    filterCombineWorkers();
+    // The check lives at the foot of this screen now. Only for someone
+    // allowed to see it - the exports above are a separate permission.
+    const chk = document.getElementById("payroll-check-card");
+    if (chk) {
+      const may = MY_SCREENS.includes("errorcheck");
+      chk.style.display = may ? "" : "none";
+      if (may) loadErrorCheck();
+    }
+  }
   if (name === "purchase") loadPurchase();
   if (name === "lporegister") loadLpoReport();
   if (name === "suppliers") loadSuppliersScreen();
@@ -2004,7 +2013,6 @@ function switchScreen(name) {
   }
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
-  if (name === "errorcheck") loadErrorCheck();
   if (name === "requests") {
     loadStoreItems().then(() => {
       // "Central store" as the first option meant an unset dropdown
@@ -7447,9 +7455,9 @@ async function changePassword() {
 // the menu rather than internal ids.
 const SCREEN_LABELS = {
   dashboard: "Dashboard", attendance: "Daily Attendance", masterdata: "Master Data",
-  reports: "Reports / Summaries", combine: "Combine", adjustments: "Salary Adjustments",
+  reports: "Reports / Summaries", combine: "Salary Cards", adjustments: "Salary Adjustments",
   livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests",
-  approvals: "Material Approvals", errorcheck: "Error Check",
+  approvals: "Material Approvals", errorcheck: "Check Before You Pay",
   settings: "Settings", activity: "Activity Monitor",
 };
 let permsUserId = null;
