@@ -373,6 +373,26 @@
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
   .notif-foot { display: flex; gap: 9px; align-items: center; padding: 14px 20px 18px; }
   .notif-count { font-size: 12px; color: #999; margin-right: auto; }
+
+  /* Price history: one card per material, the figures that matter
+     across the top, every purchase underneath. */
+  .price-card { border: 1px solid #E4E0DB; border-radius: 8px; margin-bottom: 10px;
+                background: #FFFDFC; overflow: hidden; }
+  .price-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+               padding: 10px 13px; border-bottom: 1px solid #F0EBE7; cursor: pointer; }
+  .price-name { font-weight: 700; font-size: 14px; }
+  .price-figs { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+  .price-fig { text-align: right; }
+  .price-fig b { display: block; font-size: 14px; }
+  .price-fig span { font-size: 10.5px; color: #999; text-transform: uppercase;
+                    letter-spacing: .3px; }
+  .price-low b { color: #2E7D32; } .price-high b { color: #C0392B; }
+  .price-buys { display: none; padding: 2px 13px 10px; }
+  .price-card.open .price-buys { display: block; }
+  .price-buys table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .price-buys td { padding: 5px 4px; border-bottom: 1px solid #F3EFEC; }
+  .price-buys tr:last-child td { border-bottom: 0; }
+  .price-hint { font-size: 11px; color: #aaa; }
   #toast-wrap { position: fixed; right: 18px; bottom: 18px; z-index: 5900;
                 display: flex; flex-direction: column; gap: 10px; max-width: 380px; }
   @keyframes notif-in { from { opacity: 0; transform: translateY(14px) scale(.985); }
@@ -1377,6 +1397,16 @@
         </div>
 
         <div class="screen" id="screen-lporegister">
+          <div class="card" style="margin-bottom:0;">
+            <h2 style="margin:0 0 3px;">What did we pay for it?</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 9px;">
+              Type a few letters of the material - every price paid for it, and who from.</p>
+            <input type="text" id="price-q" placeholder="cement, rebar 16, plywood..."
+                   oninput="debouncedPriceSearch()" autocomplete="off"
+                   style="width:100%; max-width:460px; font-size:14px; padding:8px 10px;">
+            <div id="price-results" style="margin-top:12px;"></div>
+          </div>
+
           <div class="toolbar">
             <label>Show:</label>
             <select id="lpr-group" onchange="loadLpoReport()" style="width:170px;"></select>
@@ -7232,6 +7262,64 @@ async function fillLprSupplierList() {
     lprSupplierNames = (suppliers || []).map(s => s.name);
   }
   dl.innerHTML = lprSupplierNames.map(n => `<option value="${n}"></option>`).join("");
+}
+
+// ---- What did we pay for it? -----------------------------------
+let priceTimer = null;
+function debouncedPriceSearch() {
+  clearTimeout(priceTimer);
+  priceTimer = setTimeout(priceSearch, 300);
+}
+
+async function priceSearch() {
+  const box = document.getElementById("price-results");
+  const q = (document.getElementById("price-q").value || "").trim();
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  try {
+    const r = await apiCall(`/store/purchase/price-search?q=${encodeURIComponent(q)}`);
+    if (!r.materials.length) {
+      box.innerHTML = `<div class="empty-note">Nothing bought under that name yet.</div>`;
+      return;
+    }
+    box.innerHTML = r.materials.map((m, i) => {
+      const spread = m.high > m.low
+        ? `<span class="price-hint">between ${money(m.low)} and ${money(m.high)}</span>` : "";
+      return `
+      <div class="price-card" id="pc-${i}">
+        <div class="price-top" onclick="document.getElementById('pc-${i}').classList.toggle('open')">
+          <div>
+            <div class="price-name">${m.material}</div>
+            <div class="price-hint">bought ${m.times} time${m.times === 1 ? "" : "s"}
+              &middot; ${num(m.total_qty)} ${m.unit || ""} in all ${spread ? "&middot; " + spread : ""}</div>
+          </div>
+          <div class="price-figs">
+            <div class="price-fig price-low"><b>${money(m.low)}</b><span>lowest</span></div>
+            <div class="price-fig"><b>${money(m.average)}</b><span>average</span></div>
+            <div class="price-fig price-high"><b>${money(m.high)}</b><span>highest</span></div>
+            <div class="price-fig"><b>${money(m.last_rate)}</b><span>last paid</span></div>
+          </div>
+        </div>
+        <div class="price-buys">
+          <table>${m.buys.map(b => `
+            <tr>
+              <td style="width:16%;">${b.date}</td>
+              <td style="width:28%;">${b.supplier || "-"}</td>
+              <td style="width:16%;">${b.site || "-"}</td>
+              <td style="width:14%; text-align:right;">${num(b.qty)} ${m.unit || ""}</td>
+              <td style="width:14%; text-align:right; font-weight:600;
+                  color:${b.rate > m.average ? "#C0392B" : b.rate < m.average ? "#2E7D32" : "#1F2429"};">
+                ${money(b.rate)}</td>
+              <td style="width:12%; text-align:right;">
+                <a href="#" onclick="event.preventDefault(); openLpo(${b.id}, window.open('', '_blank'));">${b.ref}</a></td>
+            </tr>`).join("")}</table>
+        </div>
+      </div>`;
+    }).join("");
+    // One material found: show its purchases straight away.
+    if (r.materials.length === 1) document.getElementById("pc-0").classList.add("open");
+  } catch (e) {
+    showStatus("lpr-status", "err", errText(e));
+  }
 }
 
 function onLprMeasure() {

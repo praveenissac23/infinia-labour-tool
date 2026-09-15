@@ -3669,6 +3669,63 @@ LPO_MEASURES = {
 }
 
 
+@app.get("/store/purchase/price-search")
+def lpo_price_search(q: str = "", limit: int = 12, db: Session = Depends(get_db),
+                      user: models.User = Depends(require_screen("approvals"))):
+    """What a material has cost, every time it was bought.
+
+    Typed a few letters at a time - 'cem', 'rebar 16' - and answered
+    with one entry per material: how often it was bought, the lowest,
+    highest and last rate paid, from whom and when, and the purchases
+    themselves underneath. This is the question the purchase officer
+    actually asks, and the register could only answer it by reading
+    order after order.
+    """
+    needle = q.strip().lower()
+    if len(needle) < 2:
+        return {"query": q, "materials": []}
+    rows = (db.query(models.PurchaseOrderLine, models.PurchaseOrder)
+              .join(models.PurchaseOrder, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
+              .filter(models.PurchaseOrder.status != "cancelled")
+              .filter(func.lower(models.PurchaseOrderLine.description).like(f"%{needle}%"))
+              .order_by(models.PurchaseOrder.order_date.desc(),
+                        models.PurchaseOrder.po_no.desc())
+              .limit(600).all())
+
+    grouped = {}
+    for l, o in rows:
+        key = (l.description or "").strip().lower()
+        g = grouped.setdefault(key, {"material": (l.description or "").strip(),
+                                     "unit": l.unit or "", "buys": []})
+        if not g["unit"] and l.unit:
+            g["unit"] = l.unit
+        g["buys"].append({
+            "ref": o.ref, "id": o.id,
+            "date": o.order_date.isoformat() if o.order_date else "",
+            "supplier": o.supplier_name or "", "site": o.project_location or "",
+            "qty": l.qty or 0, "rate": l.rate or 0,
+        })
+
+    out = []
+    for g in grouped.values():
+        rates = [b["rate"] for b in g["buys"] if b["rate"]]
+        if not rates:
+            continue
+        last = g["buys"][0]
+        out.append({
+            "material": g["material"], "unit": g["unit"],
+            "times": len(g["buys"]),
+            "last_rate": last["rate"], "last_date": last["date"],
+            "last_supplier": last["supplier"],
+            "low": min(rates), "high": max(rates),
+            "average": round(sum(rates) / len(rates), 2),
+            "total_qty": round(sum(b["qty"] for b in g["buys"]), 2),
+            "buys": g["buys"][:10],
+        })
+    out.sort(key=lambda x: -x["times"])
+    return {"query": q, "materials": out[:limit]}
+
+
 @app.get("/store/purchase/report")
 def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,total",
                 date_from: str = "", date_to: str = "", supplier: str = "", site: str = "",
