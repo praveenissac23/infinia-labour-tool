@@ -4061,6 +4061,15 @@ function showToasts(fresh) {
   if (!notifShowing) showNextNotification();
 }
 
+// Put the window away and leave whatever is queued for the next poll,
+// which brings it back within a minute.
+function closeNotifications() {
+  const overlay = document.getElementById("notif-overlay");
+  notifShowing = null;
+  notifQueue = [];
+  if (overlay) overlay.classList.remove("on");
+}
+
 function showNextNotification() {
   const overlay = document.getElementById("notif-overlay");
   const box = document.getElementById("notif-box");
@@ -4094,11 +4103,17 @@ function showNextNotification() {
   const read = () => { const r = readIds(); r.add(n.id); saveReadIds(r); renderBell(); };
   // Closed by pressing a button, and only then: clicking the background
   // or pressing Escape would let one be dismissed without being read.
+  // Close shows the next one - that is working through them, which is
+  // what Close is for.
   document.getElementById("notif-close").onclick = () => { read(); showNextNotification(); };
   document.getElementById("notif-go").onclick = () => {
     read();
-    showNextNotification();
+    // Go where the button says, and close the window. Anything still
+    // queued waits rather than opening on top: pressing 'Open
+    // approvals' and landing behind another notification made it look
+    // as though the button had simply closed and done nothing.
     if (MY_SCREENS.includes(target) || target === "dashboard") switchScreen(target);
+    closeNotifications();
   };
   document.getElementById("notif-go").focus();
 }
