@@ -896,9 +896,15 @@
           <div style="display:flex; gap:14px;">
             <div class="card" style="flex:1;">
               <h2>Add Site</h2>
-              <div class="form-row">
-                <input type="text" id="md-site-code" placeholder="Site code (e.g. 704)">
-                <button class="btn btn-primary" onclick="addSite()">Add</button>
+              <p style="font-size:12px; color:#888; margin:0 0 8px;">
+                The plot number and the man in charge are printed on every purchase order for
+                this site - entered once here rather than typed on each order.</p>
+              <div class="form-row" style="flex-wrap:wrap; gap:8px;">
+                <input type="text" id="md-site-code" placeholder="Site code (e.g. 704)" style="width:150px;">
+                <input type="text" id="md-site-plot" placeholder="Plot no" style="width:170px;">
+                <input type="text" id="md-site-incharge" placeholder="In charge" style="width:150px;">
+                <input type="text" id="md-site-mobile" placeholder="His mobile" style="width:140px;">
+                <button class="btn btn-primary" onclick="addSite()">Add / Update</button>
               </div>
               <div id="md-site-list"></div>
             </div>
@@ -1286,6 +1292,7 @@
               <div class="field"><label>Supplier</label>
                 <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:250px;" oninput="onLpoSupplier()">
                 <datalist id="lpo-supplier-list"></datalist>
+                <datalist id="site-list"></datalist>
                 <div id="lpo-supplier-note" style="font-size:11.5px; color:#888; margin-top:3px;"></div></div>
               <div class="field"><label>Supplier TRN</label><input type="text" id="lpo-trn" style="width:170px;"></div>
 
@@ -1296,7 +1303,8 @@
               <div class="field"><label>Contact person</label><input type="text" id="lpo-contact" style="width:150px;"></div>
               <div class="field"><label>Mobile</label><input type="text" id="lpo-mobile" style="width:140px;"></div>
               <div class="field" style="flex:1; min-width:200px;"><label>Job scope</label><input type="text" id="lpo-scope" style="width:100%;"></div>
-              <div class="field" style="flex:1; min-width:200px;"><label>Project location</label><input type="text" id="lpo-location" style="width:100%;"></div>
+              <div class="field" style="flex:1; min-width:200px;"><label>Project location</label>
+                <input type="text" id="lpo-location" list="site-list" style="width:100%;" oninput="onLpoSite()"></div>
             </div>
 
             <h2 style="margin-top:16px;">Materials</h2>
@@ -1306,14 +1314,14 @@
               <table>
                 <thead><tr>
                   <th style="width:3%;">#</th>
-                  <th style="width:26%;">Material</th>
-                  <th style="width:12%;">Note under name</th>
-                  <th style="width:8%;">Qty</th>
-                  <th style="width:8%;">Unit</th>
-                  <th style="width:9%;">Rate</th>
-                  <th style="width:7%;">Tax %</th>
-                  <th style="width:11%;">Amount</th>
-                  <th style="width:14%;">Last paid</th>
+                  <th style="width:32%;">Material</th>
+                  <th style="width:10%;">Note under name</th>
+                  <th style="width:7%;">Qty</th>
+                  <th style="width:7%;">Unit</th>
+                  <th style="width:8%;">Rate</th>
+                  <th style="width:6%;">Tax %</th>
+                  <th style="width:10%;">Amount</th>
+                  <th style="width:16%;">Last paid</th>
                   <th style="width:4%;"></th>
                 </tr></thead>
                 <tbody id="lpo-lines"></tbody>
@@ -3131,16 +3139,29 @@ async function confirmImportEmployeeFile() {
 }
 
 async function addSite() {
-  const code = document.getElementById("md-site-code").value.trim();
+  const v = id => (document.getElementById(id).value || "").trim();
+  const code = v("md-site-code");
   if (!code) return;
   await apiCall("/sites", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, active: true }),
+    body: JSON.stringify({ code, active: true,
+      plot_no: v("md-site-plot"), incharge: v("md-site-incharge"),
+      incharge_mobile: v("md-site-mobile") }),
   });
-  document.getElementById("md-site-code").value = "";
+  ["md-site-code", "md-site-plot", "md-site-incharge", "md-site-mobile"]
+    .forEach(id => document.getElementById(id).value = "");
   sites = await apiCall("/sites");
   renderMasterDataLists();
+  refreshSiteList();
   populateSelect("bulk-site", sites.map(s => s.code), "Site");
+}
+
+// Loads a site back into the form, so a plot number can be corrected
+// without adding the site again.
+// The list the purchase order suggests from.
+function refreshSiteList() {
+  const dl = document.getElementById("site-list");
+  if (dl) dl.innerHTML = (sites || []).map(s => `<option value="${s.code}"></option>`).join("");
 }
 
 async function addEngineer() {
@@ -3157,6 +3178,20 @@ async function addEngineer() {
 }
 
 async function editSite(id, currentCode) {
+  // Loads the site into the form rather than only asking for a new
+  // code: the plot number and the man in charge live here too now, and
+  // a prompt box cannot edit four fields.
+  const s = (sites || []).find(x => x.id === id);
+  if (s) {
+    document.getElementById("md-site-code").value = s.code;
+    document.getElementById("md-site-plot").value = s.plot_no || "";
+    document.getElementById("md-site-incharge").value = s.incharge || "";
+    document.getElementById("md-site-mobile").value = s.incharge_mobile || "";
+    document.getElementById("md-site-code").focus();
+    showStatus("md-status", "ok",
+      `Editing ${s.code} - change what you need and press Add / Update.`);
+    return;
+  }
   const newCode = prompt("Rename site:", currentCode);
   if (!newCode || newCode.trim() === "" || newCode === currentCode) return;
   try {
@@ -6999,6 +7034,7 @@ async function loadPurchase() {
     }
     const dl = document.getElementById("lpo-supplier-list");
     if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${s.name}"></option>`).join("");
+    refreshSiteList();
     if (!cachedDownloadToken) refreshDownloadToken();
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -7161,6 +7197,12 @@ async function lpoFromTicked() {
   const jobs = [...new Set(picked.map(p => p.purpose).filter(Boolean))];
   document.getElementById("lpo-location").value = sites.join(",");
   document.getElementById("lpo-scope").value = jobs.join(" & ");
+  // The plot number and the man on site belong to the site, so they
+  // come with it - nothing here should be typed twice.
+  const first = picked.find(p => p.plot_no || p.incharge) || {};
+  document.getElementById("lpo-plot").value = first.plot_no || "";
+  document.getElementById("lpo-contact").value = first.incharge || "";
+  document.getElementById("lpo-mobile").value = first.incharge_mobile || "";
   const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
   if (needed) document.getElementById("lpo-delivery").value = needed;
   lpoLines = [];
@@ -7409,6 +7451,18 @@ function onLpoTermsSet() {
     : (lpoDefaults.terms_default || "");
 }
 
+// Typing a project location on an order raised from nothing fills the
+// same details the queue would have brought with it.
+function onLpoSite() {
+  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
+  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
+  if (!s) return;
+  const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
+  fill("lpo-plot", s.plot_no);
+  fill("lpo-contact", s.incharge);
+  fill("lpo-mobile", s.incharge_mobile);
+}
+
 function onLpoSupplier() {
   const name = (document.getElementById("lpo-supplier").value || "").trim().toLowerCase();
   const s = (suppliers || []).find(x => (x.name || "").toLowerCase() === name);
@@ -7518,7 +7572,8 @@ function renderLpoLines() {
     return `<tr>
       <td>${i + 1}</td>
       <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
-            oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"></td>
+            oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"
+            title="${(l.description || "").replace(/"/g, "&quot;")}"></td>
       <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="Extra note under the name, e.g. price/week"
             oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
       <td><input type="text" value="${l.qty}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>

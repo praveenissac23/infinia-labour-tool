@@ -808,6 +808,14 @@ def list_sites(db: Session = Depends(get_db), user: models.User = Depends(auth.g
 def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     existing = db.query(models.Site).filter(models.Site.code == site.code).first()
     if existing:
+        # Saving an existing site used to set nothing but active, so the
+        # plot number and the engineer could never be corrected once
+        # entered. Anything given is kept; anything left blank is left
+        # alone, so a half-filled form cannot wipe what is on record.
+        for field in ("plot_no", "project_name", "incharge", "incharge_mobile"):
+            v = (getattr(site, field, "") or "").strip()
+            if v:
+                setattr(existing, field, v)
         existing.active = True
         db.commit()
         db.refresh(existing)
@@ -3586,6 +3594,11 @@ def lpo_pending_lines(db: Session = Depends(get_db),
               .filter(models.MaterialRequest.status.notin_(["rejected", "closed"]))
               .order_by(models.MaterialRequest.needed_by.asc()).all())
     items = {i.id: i for i in db.query(models.StoreItem).all()}
+    # The site's own record carries the plot number and the man in
+    # charge, so an order raised from a request needs neither typed.
+    site_info = {s.code: {"plot_no": s.plot_no or "", "project_name": s.project_name or "",
+                          "incharge": s.incharge or "", "incharge_mobile": s.incharge_mobile or ""}
+                 for s in db.query(models.Site).all()}
     out = []
     for mr in reqs:
         for l in mr.lines:
@@ -3600,6 +3613,10 @@ def lpo_pending_lines(db: Session = Depends(get_db),
             out.append({
                 "line_id": l.id, "request_id": mr.id, "ref": mr.ref,
                 "site": mr.site or "", "requested_by": mr.requested_by or "",
+            "plot_no": site_info.get(mr.site, {}).get("plot_no", ""),
+            "project_name": site_info.get(mr.site, {}).get("project_name", ""),
+            "incharge": site_info.get(mr.site, {}).get("incharge", ""),
+            "incharge_mobile": site_info.get(mr.site, {}).get("incharge_mobile", ""),
                 "needed_by": mr.needed_by.isoformat() if mr.needed_by else "",
                 "urgency": mr.urgency or "normal", "purpose": l.purpose or "",
                 "item_id": l.item_id,

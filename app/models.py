@@ -72,6 +72,13 @@ class Site(Base):
     __tablename__ = "sites"
     id = Column(Integer, primary_key=True)
     code = Column(String, unique=True, nullable=False)
+    # What a purchase order needs printed about the project. Typed once
+    # here, so raising an order for site 907 does not mean typing its
+    # plot number and its engineer again every time.
+    plot_no = Column(String, default="")
+    project_name = Column(String, default="")
+    incharge = Column(String, default="")          # our man on site
+    incharge_mobile = Column(String, default="")
     active = Column(Boolean, default=True)
 
 

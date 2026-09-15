@@ -82,6 +82,10 @@ class EmployeeOut(EmployeeIn):
 # ---- Sites / Engineers ----
 class SiteIn(BaseModel):
     code: str
+    plot_no: str = ""
+    project_name: str = ""
+    incharge: str = ""
+    incharge_mobile: str = ""
     active: bool = True
 
 
