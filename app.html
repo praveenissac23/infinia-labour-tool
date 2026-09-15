@@ -1306,8 +1306,13 @@
             </div>
             <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
               <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
-              <input type="file" id="sup-import-file" accept=".xlsx" style="width:230px;">
-              <button class="btn btn-gray" onclick="importSuppliers()">Import from Excel</button>
+              <!-- The file box belongs to Import, so it sits with it: beside
+                   Export it read as something Export needed. -->
+              <span style="display:inline-flex; align-items:center; gap:8px; margin-left:18px;
+                           padding-left:18px; border-left:1px solid #E4E0DB;">
+                <input type="file" id="sup-import-file" accept=".xlsx" style="width:215px;">
+                <button class="btn btn-gray" onclick="importSuppliers()">Import from Excel</button>
+              </span>
               <span style="font-size:12px; color:#888;">Matched on the name - importing twice updates rather than duplicates.</span>
             </div>
             <div id="sig-panel" style="margin-top:14px; padding:11px 13px; border-radius:8px;
