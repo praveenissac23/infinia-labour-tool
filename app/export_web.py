@@ -1262,50 +1262,59 @@ def build_lpo_pdf(po: dict):
     # own address, which the supplier already has. The room that frees
     # goes to what the order was missing: the project, the plot, and who
     # to call about it.
-    left = pairs([("Purchase Order No", po.get("ref", "")),
-                  ("Purchase Order Date", po.get("date_text", "")),
-                  ("Reference No", po.get("supplier_ref", "")),
-                  ("Payment Terms", po.get("terms", "")),
-                  ("Delivery Date", po.get("delivery_text", ""))])
-    right = pairs([("Project Location", po.get("project_location", "")),
-                   ("Project &amp; Plot No", po.get("plot_no", "")),
-                   ("Job Scope", po.get("job_scope", "")),
-                   ("Contact Person", po.get("contact_person", "")),
-                   ("Mobile", po.get("mobile", ""))])
-    head = Table([[left, right]], colWidths=[W * 0.48, W * 0.52])
+    def box(title, rows, wide_label=0.40):
+        head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.49])
+        head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2E3238")),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 3),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        body = [[P(k, 8, colour="#3B3F44"), P(v if v not in ("", None) else "-", 8, bold=True)]
+                for k, v in rows]
+        t = Table(body, colWidths=[W * 0.49 * wide_label, W * 0.49 * (1 - wide_label)])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 1.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6),
+        ]))
+        wrap = Table([[head], [t]], colWidths=[W * 0.49])
+        wrap.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.6, grid),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+        ]))
+        return wrap
+
+    # Ours on the left, theirs on the right. The vendor used to have a
+    # full-width band of its own, which cost a third of the header for
+    # three lines of text.
+    ours = box("PURCHASE ORDER DETAILS", [
+        ("Purchase Order No", po.get("ref", "")),
+        ("Date", po.get("date_text", "")),
+        ("Reference No", po.get("supplier_ref", "")),
+        ("Delivery Date", po.get("delivery_text", "")),
+        ("Project Location", po.get("project_location", "")),
+        ("Project &amp; Plot No", po.get("plot_no", "")),
+        ("Job Scope", po.get("job_scope", "")),
+        ("Contact Person", po.get("contact_person", "")),
+        ("Mobile", po.get("mobile", "")),
+    ])
+    theirs = box("VENDOR DETAILS", [
+        ("Supplier", po.get("supplier_name", "")),
+        ("TRN", po.get("supplier_trn", "")),
+        ("Email", po.get("supplier_email", "")),
+        ("Contact Person", po.get("supplier_contact", "")),
+        ("Mobile", po.get("supplier_mobile", "")),
+        ("Payment Terms", po.get("terms", "")),
+    ])
+    head = Table([[ours, theirs]], colWidths=[W * 0.50, W * 0.50])
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.6, grid),
-        ("LINEAFTER", (0, 0), (0, 0), 0.6, grid),
-        ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (0, 0), 0), ("RIGHTPADDING", (0, 0), (0, 0), 6),
+        ("LEFTPADDING", (1, 0), (1, 0), 0), ("RIGHTPADDING", (1, 0), (1, 0), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     el.append(head)
-
-    # ---- Vendor
-    vend = [P("Vendor Address", 8, colour="#3B3F44")]
-    vt = Table([[vend[0]]], colWidths=[W])
-    vt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0F0F0")),
-                            ("BOX", (0, 0), (-1, -1), 0.6, grid),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-    el.append(vt)
-    # Name and TRN only. The address was never used by anyone reading
-    # the order - the supplier knows where he is - and it made the block
-    # taller than it needed to be.
-    vlines = [P(po.get("supplier_name", ""), 9.5, bold=True)]
-    # Who to chase at the supplier's end, which the order never carried.
-    for label, key in (("TRN", "supplier_trn"), ("Email", "supplier_email"),
-                       ("Contact", "supplier_contact"), ("Mobile", "supplier_mobile")):
-        if (po.get(key) or "").strip():
-            vlines.append(P(f'<font color="#555555">{label}</font>  {po[key]}', 8))
-    if False:
-        pass
-    vb = Table([[vlines]], colWidths=[W])
-    vb.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, grid),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
-    el.append(vb)
     el.append(Spacer(1, 6))
 
     # ---- Priced lines

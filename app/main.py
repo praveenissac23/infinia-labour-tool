@@ -3764,8 +3764,11 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
 
-    supplier = _find_or_create_supplier(db, payload.supplier_name,
-                                        payload.contact_person, payload.mobile)
+    # Contact Person and Mobile on the order are OURS - the man on site
+    # the supplier should call. Passing them in here wrote them onto the
+    # supplier's record, so his own contact was overwritten with ours
+    # and the vendor block named the wrong person.
+    supplier = _find_or_create_supplier(db, payload.supplier_name)
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
     if supplier:
