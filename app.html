@@ -1318,8 +1318,8 @@
               <table>
                 <thead><tr>
                   <th style="width:3%;">#</th>
-                  <th style="width:32%;">Material</th>
-                  <th style="width:10%;">Note under name</th>
+                  <th style="width:29%;">Material</th>
+                  <th style="width:13%;" title="A small second line printed under the material on the order - for a hire item priced by the week, or a note like 'Double washed'. Leave it empty and nothing prints.">Spec / note <span style="color:#bbb;">(optional)</span></th>
                   <th style="width:7%;">Qty</th>
                   <th style="width:7%;">Unit</th>
                   <th style="width:8%;">Rate</th>
@@ -7581,7 +7581,7 @@ function renderLpoLines() {
       <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
             oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"
             title="${(l.description || "").replace(/"/g, "&quot;")}"></td>
-      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="Extra note under the name, e.g. price/week"
+      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="e.g. price/week" title="Printed small under the material name. Optional."
             oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
       <td><input type="text" value="${l.qty}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${l.unit}" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
