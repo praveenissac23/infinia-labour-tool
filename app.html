@@ -1304,7 +1304,10 @@
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
               <div class="field"><label>Plot No</label><input type="text" id="lpo-plot" style="width:170px;"></div>
-              <div class="field"><label>Contact person</label><input type="text" id="lpo-contact" style="width:150px;"></div>
+              <div class="field"><label>Our contact</label>
+                <input type="text" id="lpo-contact" list="lpo-contact-list" style="width:170px;"
+                       oninput="onLpoContact()" title="Who the supplier calls about this order. The store in-charge by default - change it to the site engineer if he is handling it.">
+                <datalist id="lpo-contact-list"></datalist></div>
               <div class="field"><label>Mobile</label><input type="text" id="lpo-mobile" style="width:140px;"></div>
               <div class="field" style="flex:1; min-width:200px;"><label>Job scope</label><input type="text" id="lpo-scope" style="width:100%;"></div>
               <div class="field" style="flex:1; min-width:200px;"><label>Project location</label>
@@ -1820,6 +1823,20 @@
             <label style="font-size:12px; color:#666; cursor:pointer;">
               <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
+          <div class="card" id="company-card" style="display:none;">
+            <h2>Store In-charge</h2>
+            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
+              The name and number printed as our contact on every purchase order - the person a
+              supplier rings about a delivery. It can be changed to the site engineer on any
+              individual order.</p>
+            <div class="form-row" style="align-items:center; gap:10px;">
+              <input type="text" id="cfg-incharge" placeholder="Name" style="width:200px;">
+              <input type="text" id="cfg-incharge-mobile" placeholder="Mobile" style="width:160px;">
+              <button class="btn btn-primary" onclick="saveCompanySettings()">Save</button>
+              <span id="cfg-state" style="font-size:12px; color:#888;"></span>
+            </div>
+          </div>
+
           <div class="card" id="signature-card" style="display:none;">
             <h2>Purchase Order Signature</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
@@ -2223,6 +2240,11 @@ async function initApp() {
   const sigCard = document.getElementById("signature-card");
   if (sigCard) {
     sigCard.style.display = isAdmin ? "block" : "none";
+    const cfg = document.getElementById("company-card");
+    if (cfg) {
+      cfg.style.display = isAdmin ? "block" : "none";
+      if (isAdmin) loadCompanySettings();
+    }
     // One place says what the state is, in red when there is none, so
     // nobody has to wonder whether orders are going out unsigned.
     if (isAdmin) refreshSignatureState();
@@ -7208,8 +7230,13 @@ async function lpoFromTicked() {
   // come with it - nothing here should be typed twice.
   const first = picked.find(p => p.plot_no || p.incharge) || {};
   document.getElementById("lpo-plot").value = first.plot_no || "";
-  document.getElementById("lpo-contact").value = first.incharge || "";
-  document.getElementById("lpo-mobile").value = first.incharge_mobile || "";
+  // The store places the order, so the store in-charge is the contact.
+  // The site engineer is offered in the list beside him.
+  document.getElementById("lpo-contact").value =
+    lpoDefaults.store_incharge || first.incharge || "";
+  document.getElementById("lpo-mobile").value =
+    lpoDefaults.store_incharge_mobile || first.incharge_mobile || "";
+  buildContactList();
   const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
   if (needed) document.getElementById("lpo-delivery").value = needed;
   lpoLines = [];
@@ -7427,6 +7454,7 @@ async function downloadLpo(id, fmt) {
 async function newLpo() {
   const n = await apiCall("/store/purchase/next-no");
   lpoDefaults = n;
+  buildContactList();
   document.getElementById("lpo-form-card").style.display = "block";
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
   document.getElementById("lpo-ref").value = n.ref;
@@ -7466,8 +7494,33 @@ function onLpoSite() {
   if (!s) return;
   const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
   fill("lpo-plot", s.plot_no);
-  fill("lpo-contact", s.incharge);
-  fill("lpo-mobile", s.incharge_mobile);
+  fill("lpo-contact", lpoDefaults.store_incharge || s.incharge);
+  fill("lpo-mobile", lpoDefaults.store_incharge_mobile || s.incharge_mobile);
+}
+
+// Who the supplier rings. The store in-charge unless somebody picks
+// otherwise - an order is placed by the store, not by the site.
+function buildContactList() {
+  const dl = document.getElementById("lpo-contact-list");
+  if (!dl) return;
+  const names = [];
+  if (lpoDefaults.store_incharge) names.push(lpoDefaults.store_incharge);
+  (engineers || []).forEach(e => { if (!names.includes(e.name)) names.push(e.name); });
+  dl.innerHTML = names.map(n => `<option value="${n}"></option>`).join("");
+}
+
+// Picking a name brings its number with it, so the two never disagree.
+function onLpoContact() {
+  const name = (document.getElementById("lpo-contact").value || "").trim().toLowerCase();
+  const mob = document.getElementById("lpo-mobile");
+  if (!name) return;
+  if (lpoDefaults.store_incharge && name === lpoDefaults.store_incharge.toLowerCase()) {
+    if (lpoDefaults.store_incharge_mobile) mob.value = lpoDefaults.store_incharge_mobile;
+    return;
+  }
+  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
+  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
+  if (s && (s.incharge || "").toLowerCase() === name && s.incharge_mobile) mob.value = s.incharge_mobile;
 }
 
 function onLpoSupplier() {
@@ -7791,6 +7844,30 @@ let MY_SCREENS = [];
 
 // Emptying the company's records is an admin decision, taken once,
 // with the words typed out - not something to be clicked past.
+async function loadCompanySettings() {
+  try {
+    const s = await apiCall("/settings/company");
+    document.getElementById("cfg-incharge").value = s.store_incharge || "";
+    document.getElementById("cfg-incharge-mobile").value = s.store_incharge_mobile || "";
+    document.getElementById("cfg-state").textContent =
+      s.store_incharge ? "" : "Not set - orders will show whoever the site engineer is.";
+  } catch (e) { /* leave the boxes as they are */ }
+}
+
+async function saveCompanySettings() {
+  try {
+    await apiCall("/settings/company", { method: "POST", body: JSON.stringify({
+      store_incharge: document.getElementById("cfg-incharge").value.trim(),
+      store_incharge_mobile: document.getElementById("cfg-incharge-mobile").value.trim(),
+    })});
+    showStatus("settings-status", "ok", "Store in-charge saved - it goes on every new order.");
+    document.getElementById("cfg-state").textContent = "";
+    lpoDefaults = await apiCall("/store/purchase/next-no");
+  } catch (e) {
+    showStatus("settings-status", "err", errText(e));
+  }
+}
+
 async function uploadSignature() {
   const where = "settings-status";
   const f = document.getElementById("sig-file").files[0];

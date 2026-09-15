@@ -86,6 +86,15 @@ class Site(Base):
     active = Column(Boolean, default=True)
 
 
+class Setting(Base):
+    """Small company-wide values that are not worth a table each - the
+    store in-charge whose name goes on a purchase order, and whatever
+    comes after it."""
+    __tablename__ = "settings"
+    key = Column(String, primary_key=True)
+    value = Column(Text, default="")
+
+
 class Engineer(Base):
     __tablename__ = "engineers"
     id = Column(Integer, primary_key=True)

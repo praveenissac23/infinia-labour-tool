@@ -1293,10 +1293,11 @@ def build_lpo_pdf(po: dict):
         n = max(len(a), len(b))
         return (a + [("", "")] * (n - len(a)), b + [("", "")] * (n - len(b)))
 
+    # Eight lines each side. The order's own date and the supplier's
+    # quote reference sit with the vendor, which evens the two columns
+    # and puts the reference beside the trader it belongs to.
     ours_rows = [
         ("Purchase Order No", po.get("ref", "")),
-        ("Date", po.get("date_text", "")),
-        ("Reference No", po.get("supplier_ref", "")),
         ("Delivery Date", po.get("delivery_text", "")),
         ("Project Location", po.get("project_location", "")),
         ("Project &amp; Plot No", po.get("plot_no", "")),
@@ -1312,6 +1313,8 @@ def build_lpo_pdf(po: dict):
         ("Contact Person", po.get("supplier_contact", "")),
         ("Mobile", po.get("supplier_mobile", "")),
         ("Payment Terms", po.get("terms", "")),
+        ("Date", po.get("date_text", "")),
+        ("Reference No", po.get("supplier_ref", "")),
     ]
     ours_rows, theirs_rows = level(ours_rows, theirs_rows)
     oh, ob = box("PURCHASE ORDER DETAILS", ours_rows)

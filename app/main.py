@@ -3630,11 +3630,45 @@ def lpo_pending_lines(db: Session = Depends(get_db),
     return out
 
 
+def get_setting(db, key, default=""):
+    row = db.query(models.Setting).filter(models.Setting.key == key).first()
+    return (row.value if row else "") or default
+
+
+def put_setting(db, key, value):
+    row = db.query(models.Setting).filter(models.Setting.key == key).first()
+    if row:
+        row.value = value or ""
+    else:
+        db.add(models.Setting(key=key, value=value or ""))
+    db.commit()
+
+
+@app.get("/settings/company")
+def read_company_settings(db: Session = Depends(get_db),
+                           user: models.User = Depends(auth.get_current_user)):
+    return {"store_incharge": get_setting(db, "store_incharge"),
+            "store_incharge_mobile": get_setting(db, "store_incharge_mobile")}
+
+
+@app.post("/settings/company")
+def save_company_settings(payload: dict = Body(...), db: Session = Depends(get_db),
+                           user: models.User = Depends(auth.require_admin)):
+    for k in ("store_incharge", "store_incharge_mobile"):
+        if k in payload:
+            put_setting(db, k, str(payload.get(k) or "").strip())
+    log_action(db, user.id, "save_company_settings", "")
+    return read_company_settings(db=db, user=user)
+
+
 @app.get("/store/purchase/next-no")
 def next_lpo_number(db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("approvals"))):
     n = _next_lpo_no(db)
-    return {"po_no": n, "ref": f"IC/LPO/{n}", "terms_default": DEFAULT_LPO_TERMS,
+    return {"po_no": n, "ref": f"IC/LPO/{n}",
+            "store_incharge": get_setting(db, "store_incharge"),
+            "store_incharge_mobile": get_setting(db, "store_incharge_mobile"),
+            "terms_default": DEFAULT_LPO_TERMS,
             "terms_rental": RENTAL_LPO_TERMS, "terms_material": MATERIAL_LPO_TERMS}
 
 
@@ -4305,8 +4339,6 @@ def _lpo_html(o):
         return a + [("", "")] * (n - len(a)), b + [("", "")] * (n - len(b))
 
     left_rows = [("Purchase Order No", o.ref),
-                 ("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
-                 ("Reference No", o.supplier_ref),
                  ("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
                  ("Project Location", o.project_location),
                  ("Project &amp; Plot No", o.plot_no),
@@ -4319,7 +4351,9 @@ def _lpo_html(o):
                   ("Email", getattr(o, "supplier_email", "") or (sup.email if sup else "")),
                   ("Contact Person", (sup.contact_person if sup else "")),
                   ("Mobile", (sup.phone if sup else "")),
-                  ("Payment Terms", o.terms)]
+                  ("Payment Terms", o.terms),
+                  ("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
+                  ("Reference No", o.supplier_ref)]
     left_rows, right_rows = level(left_rows, right_rows)
     left = "".join(pair(k, v) for k, v in left_rows)
     right = "".join(pair(k, v) for k, v in right_rows)
