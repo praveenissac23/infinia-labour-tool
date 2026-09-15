@@ -4005,6 +4005,22 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     return HTMLResponse(page)
 
 
+def _logo_img():
+    """The company logo, inline, for the order shown on screen. The
+    printed order has carried it all along; the preview had only the
+    name in text."""
+    try:
+        if not os.path.exists(export_web.LOGO_PATH):
+            return "<strong>INFINIA CONTRACTING LLC</strong>"
+        import base64
+        with open(export_web.LOGO_PATH, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+        return (f'<img src="data:image/png;base64,{data}" alt="Infinia Contracting" '
+                f'style="height:34px; display:block; margin-bottom:6px;">')
+    except Exception:
+        return "<strong>INFINIA CONTRACTING LLC</strong>"
+
+
 def _sig_img():
     """The signature, inline, for the order shown on screen.
 
@@ -4100,7 +4116,7 @@ def _lpo_html(o):
 
     return f"""
       <div class="head">
-        <div class="co"><strong>INFINIA CONTRACTING LLC</strong>
+        <div class="co">{_logo_img()}
           <div>M09 Bin Bishr Building</div><div>Abu Hail,  Dubai , United Arab Emirates</div>
           <div>TRN 100602393900003</div></div>
         <div class="po">PURCHASE ORDER</div>

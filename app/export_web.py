@@ -46,16 +46,19 @@ LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 LOGO_W_MM, LOGO_H_MM = 42, 7.1          # 995x168 px, scaled to a neat header
 
 
-def _logo_image():
-    """A ReportLab Image of the logo at header size, or None if the file
-    is missing - a missing logo must never stop a payroll file."""
+def _logo_image(width_mm=None):
+    """A ReportLab Image of the logo, or None if the file is missing - a
+    missing logo must never stop a payroll file. The width can be asked
+    for; the height follows the picture's own proportions."""
     try:
         from reportlab.platypus import Image as RLImage
-        if os.path.exists(LOGO_PATH):
-            return RLImage(LOGO_PATH, width=LOGO_W_MM * mm, height=LOGO_H_MM * mm)
+        if not os.path.exists(LOGO_PATH):
+            return None
+        w = width_mm or LOGO_W_MM
+        h = w * (LOGO_H_MM / LOGO_W_MM)
+        return RLImage(LOGO_PATH, width=w * mm, height=h * mm)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _draw_logo_on_page(canvas, doc):
@@ -1231,13 +1234,14 @@ def build_lpo_pdf(po: dict):
     el = []
 
     # ---- Company band: logo, address, the words PURCHASE ORDER
-    logo = _logo_image()
-    company = [P("<b>INFINIA CONTRACTING LLC</b>", 12.5),
-               P("M09 Bin Bishr Building", 8),
+    # The logo carries the name, so printing it again beside it was the
+    # same words twice. The room goes to the logo instead.
+    logo = _logo_image(width_mm=58)
+    company = [P("M09 Bin Bishr Building", 8),
                P("Abu Hail,  Dubai , United Arab Emirates", 8),
                P("TRN 100602393900003", 8)]
     band = Table([[logo or "", company, P("PURCHASE ORDER", 17, align=TA_RIGHT)]],
-                 colWidths=[W * 0.24, W * 0.42, W * 0.34])
+                 colWidths=[W * 0.34, W * 0.32, W * 0.34])
     band.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
