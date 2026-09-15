@@ -1334,9 +1334,9 @@
             <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
               <div class="field"><label>Plot No</label><input type="text" id="lpo-plot" style="width:170px;"></div>
               <div class="field"><label>Our contact</label>
-                <input type="text" id="lpo-contact" list="lpo-contact-list" style="width:170px;"
-                       oninput="onLpoContact()" title="Who the supplier calls about this order. The store in-charge by default - change it to the site engineer if he is handling it.">
-                <datalist id="lpo-contact-list"></datalist></div>
+                <select id="lpo-contact" style="width:180px;" onchange="onLpoContact()"
+                        title="Who the supplier calls about this order. Whoever raised the request, unless somebody else should take it.">
+                </select></div>
               <div class="field"><label>Mobile</label><input type="text" id="lpo-mobile" style="width:140px;"></div>
               <div class="field" style="flex:1; min-width:200px;"><label>Job scope</label><input type="text" id="lpo-scope" style="width:100%;"></div>
               <div class="field" style="flex:1; min-width:200px;"><label>Project location</label>
@@ -7286,11 +7286,8 @@ async function lpoFromTicked() {
   // engineer list. The store in-charge and the site engineer are both
   // in the picker if somebody else should take it.
   const asked = picked.find(p => p.requested_by) || {};
-  document.getElementById("lpo-contact").value =
-    asked.requested_by || lpoDefaults.store_incharge || first.incharge || "";
-  document.getElementById("lpo-mobile").value =
-    asked.requested_by_mobile || lpoDefaults.store_incharge_mobile || first.incharge_mobile || "";
-  buildContactList();
+  buildContactList(asked.requested_by || lpoDefaults.store_incharge || first.incharge || "");
+  if (asked.requested_by_mobile) document.getElementById("lpo-mobile").value = asked.requested_by_mobile;
   const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
   if (needed) document.getElementById("lpo-delivery").value = needed;
   lpoLines = [];
@@ -7508,14 +7505,16 @@ async function downloadLpo(id, fmt) {
 async function newLpo() {
   const n = await apiCall("/store/purchase/next-no");
   lpoDefaults = n;
-  buildContactList();
+  // The store in-charge leads an order raised from nothing; the queue
+  // rebuilds the list round whoever asked when it fills the form.
+  buildContactList(n.store_incharge || "");
   document.getElementById("lpo-form-card").style.display = "block";
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
   const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
-  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-plot", "lpo-contact",
+  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-plot",
    "lpo-mobile", "lpo-scope", "lpo-location", "lpo-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-termsset").value = "default";
@@ -7548,19 +7547,30 @@ function onLpoSite() {
   if (!s) return;
   const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
   fill("lpo-plot", s.plot_no);
-  fill("lpo-contact", lpoDefaults.store_incharge || s.incharge);
+  buildContactList(document.getElementById("lpo-contact").value
+                   || lpoDefaults.store_incharge || s.incharge);
   fill("lpo-mobile", lpoDefaults.store_incharge_mobile || s.incharge_mobile);
 }
 
 // Who the supplier rings. The store in-charge unless somebody picks
 // otherwise - an order is placed by the store, not by the site.
-function buildContactList() {
-  const dl = document.getElementById("lpo-contact-list");
-  if (!dl) return;
+function buildContactList(selected) {
+  const sel = document.getElementById("lpo-contact");
+  if (!sel) return;
   const names = [];
-  if (lpoDefaults.store_incharge) names.push(lpoDefaults.store_incharge);
-  (engineers || []).forEach(e => { if (!names.includes(e.name)) names.push(e.name); });
-  dl.innerHTML = names.map(n => `<option value="${n}"></option>`).join("");
+  const add = n => { if (n && !names.some(x => x.toLowerCase() === n.toLowerCase())) names.push(n); };
+  add(selected);                       // whoever asked, first
+  add(lpoDefaults.store_incharge);
+  (engineers || []).forEach(e => add(e.name));
+  // The site's own man, in case he is neither an engineer on the list
+  // nor the store in-charge.
+  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
+  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
+  if (s) add(s.incharge);
+  sel.innerHTML = names.map(n =>
+    `<option value="${n}"${selected && n.toLowerCase() === selected.toLowerCase() ? " selected" : ""}>${n}</option>`).join("")
+    || `<option value="">No engineers on file</option>`;
+  onLpoContact();
 }
 
 // Picking a name brings its number with it, so the two never disagree.
