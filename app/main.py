@@ -330,16 +330,29 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="Role must be office, site or admin.")
     if payload.role == "admin" and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can create an admin account.")
-    existing = db.query(models.User).filter(models.User.username == payload.username).first()
+    # A login is typed at a keyboard by somebody who is not the person
+    # who made it, so the name is trimmed and lower-cased: "AKHIL " and
+    # "akhil" were two different accounts, and a space in the middle is
+    # a login nobody can get right twice.
+    username = (payload.username or "").strip().lower()
+    if not username:
+        raise HTTPException(status_code=400, detail="Enter a username.")
+    if " " in username:
+        raise HTTPException(status_code=400, detail="A username cannot contain spaces.")
+    # The change-password screen asks for six characters; making one for
+    # somebody else was letting through anything at all, including '123'.
+    if len(payload.password or "") < 6:
+        raise HTTPException(status_code=400, detail="The password must be at least 6 characters.")
+    existing = db.query(models.User).filter(func.lower(models.User.username) == username).first()
     if existing:
         raise HTTPException(status_code=400, detail="That username is already taken.")
     new_user = models.User(
-        username=payload.username,
+        username=username,
         hashed_password=auth.hash_password(payload.password),
         # Full name is no longer collected when creating a login; fall
         # back to the username so the Activity Monitor and header still
         # have something readable to show.
-        full_name=(payload.full_name or "").strip() or payload.username,
+        full_name=(payload.full_name or "").strip() or username,
         role=payload.role,
     )
     db.add(new_user)

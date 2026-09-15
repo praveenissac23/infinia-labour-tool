@@ -7679,9 +7679,14 @@ async function createUser() {
 
   const password = document.getElementById("new-user-password").value;
   const role = document.getElementById("new-user-role").value;
-  if (!username || !password) {
-    showStatus("settings-status", "warn", "Fill in username, full name, and password.");
-    return;
+  // The message named a full-name box that is not on this form, so it
+  // read as though something were missing that could not be filled in.
+  if (!username) { showStatus("settings-status", "warn", "Enter a username."); return; }
+  if (username.includes(" ")) {
+    showStatus("settings-status", "warn", "A username cannot contain spaces - try one word."); return;
+  }
+  if (password.length < 6) {
+    showStatus("settings-status", "warn", "The password must be at least 6 characters."); return;
   }
   try {
     await apiCall("/users", {
