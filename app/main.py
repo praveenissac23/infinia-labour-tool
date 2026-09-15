@@ -3904,8 +3904,8 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
            border:1px solid #999; padding:10px 12px; }}
   .co strong {{ font-size:15px; }} .co div {{ color:#444; font-size:11.5px; }}
   .po {{ font-size:21px; letter-spacing:.5px; }}
-  .two {{ display:flex; gap:12px; margin-top:10px; align-items:flex-start; }}
-  .half {{ flex:1; border:1px solid #999; }}
+  .two {{ display:flex; gap:12px; margin-top:10px; align-items:stretch; }}
+  .half {{ flex:1; border:1px solid #999; display:flex; flex-direction:column; }}
   .boxhead {{ background:#2E3238; color:white; font-size:11px; font-weight:700;
               letter-spacing:.3px; padding:4px 7px; }}
   .two table {{ width:100%; border-collapse:collapse; }}
@@ -4063,27 +4063,37 @@ def _lpo_html(o):
     money.append(f'<tr class="tot"><td>Total</td><td class="r">AED {total:,.2f}</td></tr>')
 
     def pair(k, v):
+        # A padding row keeps the height without printing a stray colon.
+        if not k:
+            return '<tr><td class="k">&nbsp;</td><td class="v"></td></tr>'
         return f'<tr><td class="k">{k}</td><td class="v">: {esc(v)}</td></tr>'
 
     # The same two boxes the printed order has: ours on the left, the
     # vendor's on the right. The preview used to carry the older layout,
     # so what was on screen did not match what came out of the printer.
     sup = o.supplier
-    left = "".join([pair("Purchase Order No", o.ref),
-                    pair("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
-                    pair("Reference No", o.supplier_ref),
-                    pair("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
-                    pair("Project Location", o.project_location),
-                    pair("Project &amp; Plot No", o.plot_no),
-                    pair("Job Scope", o.job_scope),
-                    pair("Contact Person", o.contact_person),
-                    pair("Mobile", o.mobile)])
-    right = "".join([pair("Supplier", o.supplier_name),
-                     pair("TRN", o.supplier_trn),
-                     pair("Email", getattr(o, "supplier_email", "") or (sup.email if sup else "")),
-                     pair("Contact Person", (sup.contact_person if sup else "")),
-                     pair("Mobile", (sup.phone if sup else "")),
-                     pair("Payment Terms", o.terms)])
+    def level(a, b):
+        n = max(len(a), len(b))
+        return a + [("", "")] * (n - len(a)), b + [("", "")] * (n - len(b))
+
+    left_rows = [("Purchase Order No", o.ref),
+                 ("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
+                 ("Reference No", o.supplier_ref),
+                 ("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
+                 ("Project Location", o.project_location),
+                 ("Project &amp; Plot No", o.plot_no),
+                 ("Job Scope", o.job_scope),
+                 ("Contact Person", o.contact_person),
+                 ("Mobile", o.mobile)]
+    right_rows = [("Supplier", o.supplier_name),
+                  ("TRN", o.supplier_trn),
+                  ("Email", getattr(o, "supplier_email", "") or (sup.email if sup else "")),
+                  ("Contact Person", (sup.contact_person if sup else "")),
+                  ("Mobile", (sup.phone if sup else "")),
+                  ("Payment Terms", o.terms)]
+    left_rows, right_rows = level(left_rows, right_rows)
+    left = "".join(pair(k, v) for k, v in left_rows)
+    right = "".join(pair(k, v) for k, v in right_rows)
     addr = ""          # the address is no longer printed on an order
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
     notes = ("".join(f"<div>{esc(x)}</div>" for x in (o.notes or "").splitlines() if x.strip()))

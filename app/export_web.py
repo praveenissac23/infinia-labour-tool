@@ -1268,7 +1268,8 @@ def build_lpo_pdf(po: dict):
                                   ("LEFTPADDING", (0, 0), (-1, -1), 6),
                                   ("TOPPADDING", (0, 0), (-1, -1), 3),
                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-        body = [[P(k, 8, colour="#3B3F44"), P(v if v not in ("", None) else "-", 8, bold=True)]
+        body = [[P(k, 8, colour="#3B3F44"),
+                 P("" if not k else (v if v not in ("", None) else "-"), 8, bold=True)]
                 for k, v in rows]
         t = Table(body, colWidths=[W * 0.49 * wide_label, W * 0.49 * (1 - wide_label)])
         t.setStyle(TableStyle([
@@ -1288,7 +1289,13 @@ def build_lpo_pdf(po: dict):
     # Ours on the left, theirs on the right. The vendor used to have a
     # full-width band of its own, which cost a third of the header for
     # three lines of text.
-    ours = box("PURCHASE ORDER DETAILS", [
+    def level(a, b):
+        """Both boxes end at the same line. One side having three rows
+        fewer left a step down the middle of the page."""
+        n = max(len(a), len(b))
+        return (a + [("", "")] * (n - len(a)), b + [("", "")] * (n - len(b)))
+
+    ours_rows = [
         ("Purchase Order No", po.get("ref", "")),
         ("Date", po.get("date_text", "")),
         ("Reference No", po.get("supplier_ref", "")),
@@ -1298,15 +1305,18 @@ def build_lpo_pdf(po: dict):
         ("Job Scope", po.get("job_scope", "")),
         ("Contact Person", po.get("contact_person", "")),
         ("Mobile", po.get("mobile", "")),
-    ])
-    theirs = box("VENDOR DETAILS", [
+    ]
+    theirs_rows = [
         ("Supplier", po.get("supplier_name", "")),
         ("TRN", po.get("supplier_trn", "")),
         ("Email", po.get("supplier_email", "")),
         ("Contact Person", po.get("supplier_contact", "")),
         ("Mobile", po.get("supplier_mobile", "")),
         ("Payment Terms", po.get("terms", "")),
-    ])
+    ]
+    ours_rows, theirs_rows = level(ours_rows, theirs_rows)
+    ours = box("PURCHASE ORDER DETAILS", ours_rows)
+    theirs = box("VENDOR DETAILS", theirs_rows)
     head = Table([[ours, theirs]], colWidths=[W * 0.50, W * 0.50])
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
