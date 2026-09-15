@@ -4003,6 +4003,26 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     return HTMLResponse(page)
 
 
+def _sig_img():
+    """The signature, inline, for the order shown on screen.
+
+    The PDF embeds it; the preview was drawing an empty box, so an order
+    looked unsigned until it was downloaded. Sent as data in the page
+    itself rather than a second request, which would need its own token.
+    """
+    try:
+        if not os.path.exists(export_web.SIG_PATH):
+            return ""
+        import base64
+        with open(export_web.SIG_PATH, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+        kind = "jpeg" if export_web.SIG_PATH.lower().endswith((".jpg", ".jpeg")) else "png"
+        return (f'<img src="data:image/{kind};base64,{data}" alt="" '
+                f'style="max-height:48px; max-width:150px; display:block; margin:2px auto;">')
+    except Exception:
+        return ""
+
+
 def _lpo_html(o):
     """The order drawn as a page, not an embedded PDF.
 
@@ -4079,7 +4099,7 @@ def _lpo_html(o):
         </div>
         <div>
           <table class="money">{''.join(money)}</table>
-          <div class="sig">For Infinia Contracting LLC<div class="sigbox"></div>Authorized Signature</div>
+          <div class="sig">For Infinia Contracting LLC<div class="sigbox">{_sig_img()}</div>Authorized Signature</div>
         </div>
       </div>"""
 
