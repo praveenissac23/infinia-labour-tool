@@ -1240,11 +1240,12 @@ def build_lpo_pdf(po: dict):
     company = [P("M09 Bin Bishr Building", 8),
                P("Abu Hail,  Dubai , United Arab Emirates", 8),
                P("TRN 100602393900003", 8)]
-    band = Table([[logo or "", company, P("PURCHASE ORDER", 17, align=TA_RIGHT)]],
-                 colWidths=[W * 0.34, W * 0.32, W * 0.34])
+    band = Table([[logo or "", company, P("PURCHASE ORDER", 16, align=TA_RIGHT)]],
+                 colWidths=[W * 0.31, W * 0.37, W * 0.32])
     band.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (0, 0), 4), ("RIGHTPADDING", (0, 0), (0, 0), 12),
+        ("LEFTPADDING", (1, 0), (-1, -1), 8), ("RIGHTPADDING", (1, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("BOX", (0, 0), (-1, -1), 0.6, grid),
     ]))
@@ -1267,7 +1268,7 @@ def build_lpo_pdf(po: dict):
     # goes to what the order was missing: the project, the plot, and who
     # to call about it.
     def box(title, rows, wide_label=0.40):
-        head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.49])
+        head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.495])
         head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2E3238")),
                                   ("LEFTPADDING", (0, 0), (-1, -1), 6),
                                   ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -1275,20 +1276,13 @@ def build_lpo_pdf(po: dict):
         body = [[P(k, 8, colour="#3B3F44"),
                  P("" if not k else (v if v not in ("", None) else "-"), 8, bold=True)]
                 for k, v in rows]
-        t = Table(body, colWidths=[W * 0.49 * wide_label, W * 0.49 * (1 - wide_label)])
+        t = Table(body, colWidths=[W * 0.495 * wide_label, W * 0.495 * (1 - wide_label)])
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
             ("TOPPADDING", (0, 0), (-1, -1), 1.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6),
         ]))
-        wrap = Table([[head], [t]], colWidths=[W * 0.49])
-        wrap.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.6, grid),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
-        ]))
-        return wrap
+        return head, t
 
     # Ours on the left, theirs on the right. The vendor used to have a
     # full-width band of its own, which cost a third of the header for
@@ -1319,14 +1313,20 @@ def build_lpo_pdf(po: dict):
         ("Payment Terms", po.get("terms", "")),
     ]
     ours_rows, theirs_rows = level(ours_rows, theirs_rows)
-    ours = box("PURCHASE ORDER DETAILS", ours_rows)
-    theirs = box("VENDOR DETAILS", theirs_rows)
-    head = Table([[ours, theirs]], colWidths=[W * 0.50, W * 0.50])
+    oh, ob = box("PURCHASE ORDER DETAILS", ours_rows)
+    th, tb = box("VENDOR DETAILS", theirs_rows)
+    # Titles on one row, bodies on the next, in a single table: a shared
+    # row is exactly as tall as its taller cell, so both boxes close on
+    # the same line however much text is in either.
+    head = Table([[oh, th], [ob, tb]], colWidths=[W * 0.495, W * 0.495], hAlign="LEFT")
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (0, 0), 0), ("RIGHTPADDING", (0, 0), (0, 0), 6),
-        ("LEFTPADDING", (1, 0), (1, 0), 0), ("RIGHTPADDING", (1, 0), (1, 0), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("BOX", (0, 0), (0, -1), 0.6, grid),
+        ("BOX", (1, 0), (1, -1), 0.6, grid),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (0, -1), 9), ("RIGHTPADDING", (1, 0), (1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 0), ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
     ]))
     el.append(head)
     el.append(Spacer(1, 6))

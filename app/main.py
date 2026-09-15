@@ -3981,13 +3981,15 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
             border:1px solid #DDD; border-radius:6px; font-size:12.5px; }}
   .head {{ display:flex; justify-content:space-between; align-items:flex-start;
            border:1px solid #999; padding:10px 12px; }}
-  .co strong {{ font-size:15px; }} .co div {{ color:#444; font-size:11.5px; }}
+  .co {{ display:flex; align-items:center; gap:16px; }}
+  .co .addr div {{ color:#444; font-size:11.5px; }}
   .po {{ font-size:21px; letter-spacing:.5px; }}
-  .two {{ display:flex; gap:12px; margin-top:10px; align-items:stretch; }}
+  .two {{ display:flex; gap:10px; margin-top:10px; align-items:stretch; }}
   .half {{ flex:1; border:1px solid #999; display:flex; flex-direction:column; }}
   .boxhead {{ background:#2E3238; color:white; font-size:11px; font-weight:700;
               letter-spacing:.3px; padding:4px 7px; }}
-  .two table {{ width:100%; border-collapse:collapse; }}
+  .half table {{ width:100%; border-collapse:collapse; flex:1; }}
+  .half td {{ vertical-align:top; }}
   .pairs td {{ padding:3px 8px; vertical-align:top; }}
   .pairs .k {{ color:#444; width:44%; }} .pairs .v {{ font-weight:600; }}
   table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; }}
@@ -4095,7 +4097,7 @@ def _logo_img():
         with open(export_web.LOGO_PATH, "rb") as f:
             data = base64.b64encode(f.read()).decode("ascii")
         return (f'<img src="data:image/png;base64,{data}" alt="Infinia Contracting" '
-                f'style="height:34px; display:block; margin-bottom:6px;">')
+                f'style="height:40px; display:block; flex:none;">')
     except Exception:
         return "<strong>INFINIA CONTRACTING LLC</strong>"
 
@@ -4196,8 +4198,9 @@ def _lpo_html(o):
     return f"""
       <div class="head">
         <div class="co">{_logo_img()}
-          <div>M09 Bin Bishr Building</div><div>Abu Hail,  Dubai , United Arab Emirates</div>
-          <div>TRN 100602393900003</div></div>
+          <div class="addr"><div>M09 Bin Bishr Building</div>
+            <div>Abu Hail,  Dubai , United Arab Emirates</div>
+            <div>TRN 100602393900003</div></div></div>
         <div class="po">PURCHASE ORDER</div>
       </div>
       <div class="two">
