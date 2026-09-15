@@ -145,7 +145,7 @@
   /* Inputs inside line tables (material pickers, quantities, notes)
      match the 36px standard everywhere else - the picker is the most
      typed-in box in the store, it shouldn't be the smallest. */
-  td input[type=text], td input[type=number], td select {
+  td input[type=text], td input[type=number], td input:not([type]), td select {
     height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
     border-radius: 7px; font-size: 13.5px; background: white; }
   /* Give the password fields room for their placeholder text - the
@@ -5025,7 +5025,7 @@ function stockOptionsHtml() {
 function materialPickerHtml(cls, listName) {
   const list = listName || "material-list-all";
   const hint = list === "material-list-stock" ? "Start typing - only what is in the store" : "Start typing, e.g. cement";
-  return `<input list="${list}" class="${cls}-txt" placeholder="${hint}"
+  return `<input type="text" list="${list}" class="${cls}-txt" placeholder="${hint}"
                  style="width:100%;" oninput="onMaterialTyped(this)">
           <input type="hidden" class="${cls}">`;
 }
