@@ -2308,23 +2308,34 @@ def _stock_map(db: Session, upto: date = None):
 
     Returns {(item_id, location): qty}. 'upto' gives the position as at
     a date, which is what makes stock-as-at reporting possible.
+
+    Summed by the database, not in Python. The first version loaded
+    every movement as an object and added them up one by one - fine
+    with a few hundred, a noticeable wait with a couple of years of
+    them, and every store screen asks for this several times over.
+    Three grouped sums come back as a few hundred rows however long
+    the ledger grows. The arithmetic is exactly what it was:
+      in / adjust        -> +qty at location
+      lost               -> -qty at from_location
+      out/return/transfer -> -qty at from_location, +qty at location
     """
-    q = db.query(models.StoreMovement)
+    M = models.StoreMovement
+    base = db.query(M.item_id, M.kind, M.from_location, M.location, func.sum(M.qty))
     if upto:
-        q = q.filter(models.StoreMovement.moved_on <= upto)
+        base = base.filter(M.moved_on <= upto)
+    rows = base.group_by(M.item_id, M.kind, M.from_location, M.location).all()
     stock = {}
-    for m in q.all():
-        if m.kind == "in":
-            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
-        elif m.kind == "adjust":
-            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
-        elif m.kind == "lost":
-            # Written off - it leaves wherever it was and doesn't arrive
-            # anywhere, so only the 'from' side moves.
-            stock[(m.item_id, m.from_location)] = stock.get((m.item_id, m.from_location), 0) - m.qty
-        elif m.kind in ("out", "return", "transfer"):
-            stock[(m.item_id, m.from_location)] = stock.get((m.item_id, m.from_location), 0) - m.qty
-            stock[(m.item_id, m.location)] = stock.get((m.item_id, m.location), 0) + m.qty
+    def add(key, q):
+        stock[key] = stock.get(key, 0) + q
+    for item_id, kind, frm, loc, total in rows:
+        total = float(total or 0)
+        if kind in ("in", "adjust"):
+            add((item_id, loc), total)
+        elif kind == "lost":
+            add((item_id, frm), -total)
+        elif kind in ("out", "return", "transfer"):
+            add((item_id, frm), -total)
+            add((item_id, loc), total)
     return stock
 
 

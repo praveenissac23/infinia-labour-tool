@@ -7065,8 +7065,13 @@ async function loadStore() {
       d = await apiCall(url);
     }
     if (view === "stock") {
-      // keep a copy so the give-out rows can show what's on hand
-      try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+      // The give-out rows read what is on hand from storeStockCache,
+      // which loadStoreItems fills from the same endpoint moments
+      // earlier - fetching it a second time here was one of three
+      // ledger replays on opening this one screen.
+      if (!storeStockCache || !storeStockCache.length) {
+        try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+      }
     }
     document.getElementById("store-table-title").textContent = d.title;
     const foot = document.getElementById("store-report-foot");
