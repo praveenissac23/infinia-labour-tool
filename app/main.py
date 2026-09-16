@@ -66,6 +66,7 @@ def seed_on_startup():
     db = SessionLocal()
     try:
         _retire_staff_role(db)
+        _grant_storekeeper_to_existing(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
         already_seeded = db.query(models.Employee).count() > 0
@@ -96,7 +97,12 @@ app.add_middleware(
 # ---------------------------------------------------------------------
 ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "adjustments", "livecard", "store", "requests", "approvals",
-               "errorcheck", "settings", "activity"]
+               "errorcheck", "settings", "activity",
+               # Not a screen but a right: who may record a receipt, an
+               # issue, a return or a write-off. It was decided by role,
+               # which made the store keeper's own job depend on which
+               # role his login happened to carry.
+               "storekeeper"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -124,7 +130,10 @@ ROLE_DEFAULTS = {
     # password and takes a backup. What sits inside it - staff logins,
     # restoring, clearing - is guarded on its own, not by hiding the
     # screen.
-    "office": ["dashboard", "store", "requests", "approvals", "reports", "errorcheck", "settings"],
+    # The office keeps the store, so it records stock in and out by
+    # default - exactly what it could do before this became a permission.
+    "office": ["dashboard", "store", "requests", "approvals", "reports", "errorcheck",
+               "settings", "storekeeper"],
     "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
@@ -196,6 +205,35 @@ def employed_during(emp, cycle_start, cycle_end):
     """
     t = getattr(emp, "terminated_on", None)
     return t is None or t >= cycle_start
+
+
+def _grant_storekeeper_to_existing(db):
+    """Recording stock in and out used to be decided by role: anyone not
+    on a site login could do it. It is a permission now, which is right
+    - but a login whose permissions were saved before today has no such
+    tick, and would lose a job it has been doing all along.
+
+    So every existing non-site login that may open the store is given
+    it, once. A login created afterwards gets it from its role's
+    defaults or from whatever an admin ticks.
+    """
+    flag = db.query(models.Setting).filter(models.Setting.key == "storekeeper_backfilled").first()
+    if flag:
+        return
+    granted = 0
+    for u in db.query(models.User).all():
+        raw = (u.permissions or "").strip()
+        if not raw:
+            continue                       # follows its role's defaults already
+        perms = [p for p in raw.split(",") if p]
+        if "store" in perms and "storekeeper" not in perms and u.role != "site":
+            perms.append("storekeeper")
+            u.permissions = ",".join(perms)
+            granted += 1
+    db.add(models.Setting(key="storekeeper_backfilled", value="1"))
+    db.commit()
+    if granted:
+        print(f"Kept stock in/out for {granted} existing login(s)")
 
 
 def _retire_staff_role(db):
@@ -2740,9 +2778,11 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
     # one central keeper records every receipt and issue - a site
     # engineer issuing to himself is exactly the record nobody can
     # later reconcile.
-    if user.role == "site":
+    if "storekeeper" not in effective_permissions(user):
         raise HTTPException(status_code=403,
-            detail="Stock is received and issued by the store keeper. Raise a material request instead.")
+            detail="Only the store keeper records stock in and out. "
+                   "Ask an admin to tick 'Records stock in and out' on your login, "
+                   "or raise a material request instead.")
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")

@@ -33,7 +33,10 @@ db.add(models.User(username='admin', hashed_password=auth.hash_password('Admin@1
 db.add(models.User(username='office', hashed_password=auth.hash_password('Office@123'), full_name='Office Desk', role='office'))
 db.add(models.User(username='amal', hashed_password=auth.hash_password('Site@123'), full_name='Amal', role='site'))
 db.add(models.User(username='sreekanth', hashed_password=auth.hash_password('Store@123'), full_name='Sreekanth',
-                   role='office', permissions='dashboard,store,requests,settings'))
+                   role='office',
+                   # Recording stock in and out is its own permission now, so the
+                   # keeper carries it explicitly here.
+                   permissions='dashboard,store,requests,settings,storekeeper'))
 workers = [('F-001', 'RAJAN KUMAR', 'Mason', 'Infinia', 3000, 1800),
            ('F-002', 'SURESH BABU', 'Helper', 'Infinia', 1500, 900),
            ('P-001', 'KUMAR SINGH', 'Carpenter', 'Prime Infinia', 2500, 1500),
@@ -65,7 +68,7 @@ ck('no requests yet', len(c.get('/store/requests', headers=A).json()) == 0)
 ck('error check is empty of pay warnings', not any(r.get('severity') == 'legal' for r in c.get(f'/error-check/{CYCLE}', headers=A).json()['rows']))
 me = c.get('/permissions/me', headers=S).json()
 ck('site engineer sees only his screens', set(me['screens']) == {'dashboard', 'attendance', 'store', 'requests', 'settings'}, me['screens'])
-ck('store keeper sees only his screens', set(c.get('/permissions/me', headers=K).json()['screens']) == {'dashboard', 'store', 'requests', 'settings'})
+ck('store keeper sees only his screens', set(c.get('/permissions/me', headers=K).json()['screens']) == {'dashboard', 'store', 'requests', 'settings', 'storekeeper'})
 
 # -------------------------------------------------- 2. Site marks attendance
 section("2. Site engineer marks today's attendance")

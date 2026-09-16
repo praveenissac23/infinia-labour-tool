@@ -17,7 +17,8 @@ models.Base.metadata.create_all(database.engine)
 import main
 
 db = database.SessionLocal()
-for u, r in [('office', 'office'), ('site', 'site'), ('keeper', 'staff')]:
+# 'staff' was retired; the keeper is an office login like the real one.
+for u, r in [('office', 'office'), ('site', 'site'), ('keeper', 'office')]:
     db.add(models.User(username=u, hashed_password=auth.hash_password('p'), full_name=u, role=r))
 db.commit(); db.close()
 c = TestClient(main.app)
