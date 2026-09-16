@@ -3661,6 +3661,32 @@ def request_summary(request_id: int, db: Session = Depends(get_db),
     }
 
 
+@app.get("/store/at-site")
+def stock_at_site(site: str, db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("store"))):
+    """What a site is already holding.
+
+    Asked when a site is chosen on the give-out screen, so the keeper
+    can see what is already there before sending more - the commonest
+    way a store ends up with forty bags at a site that needed ten.
+    """
+    loc = (site or "").strip()
+    if not loc:
+        return {"site": "", "rows": [], "total_lines": 0}
+    stock = _stock_map(db)
+    items = {i.id: i for i in db.query(models.StoreItem).all()}
+    rows = []
+    for (iid, where), qty in stock.items():
+        if where != loc or not qty or iid not in items:
+            continue
+        i = items[iid]
+        rows.append({"item_id": i.id, "code": i.code, "name": i.name,
+                     "unit": i.unit or "", "qty": round(qty, 2),
+                     "item_type": i.item_type})
+    rows.sort(key=lambda r: r["name"].lower())
+    return {"site": loc, "rows": rows, "total_lines": len(rows)}
+
+
 @app.get("/store/purchase/pending")
 def lpo_pending_lines(db: Session = Depends(get_db),
                        user: models.User = Depends(require_screen("approvals"))):

@@ -396,6 +396,21 @@
   .notif-rule.late { background: #C0392B; } .notif-rule.request { background: #1565C0; }
   .notif-rule.low, .notif-rule.rental { background: #B26A00; }
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
+  /* What a site already holds, shown when it is chosen - so nobody
+     sends forty bags to a site that is sitting on thirty. */
+  .holds { border: 1px solid #E4E0DB; border-radius: 8px; background: #FBF9F7;
+           padding: 10px 12px; margin-bottom: 10px; }
+  .holds-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+                font-size: 13px; font-weight: 700; }
+  .holds-head span { font-weight: 400; color: #888; font-size: 12px; }
+  .holds-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .hold-chip { background: white; border: 1px solid #E0DBD6; border-radius: 20px;
+               padding: 3px 11px; font-size: 12px; }
+  .hold-chip b { font-weight: 700; }
+  .hold-chip.match { background: #EAF5EC; border-color: #A9D6B4; color: #1E5B2C; }
+  .at-site { font-size: 12.5px; }
+  .at-site.has { color: #1E5B2C; font-weight: 700; }
+  .at-site.none { color: #bbb; }
   .notif-lines { padding: 2px 20px 0; }
   .notif-lines table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
   .notif-lines td { padding: 5px 2px; border-bottom: 1px solid #F2EEEB; vertical-align: top; }
@@ -1627,12 +1642,14 @@
                   <div class="field"><label>Who is taking it</label>
                     <input type="text" id="out-person" list="people-list"
                            placeholder="Start typing a name or number"></div>
-                  <div class="field"><label>Going to site</label><select id="out-site"></select></div>
+                  <div class="field"><label>Going to site</label>
+                    <select id="out-site" onchange="loadSiteHoldings()"></select></div>
                   <div class="field"><label>Date</label><input type="date" id="out-date"></div>
                 </div>
               </div>
+              <div id="site-holdings" style="display:none;"></div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:3%;">#</th><th style="width:32%;">Material</th><th style="width:12%;">How many</th><th style="width:14%;">In central store</th><th style="width:32%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:28%;">Material</th><th style="width:11%;">How many</th><th style="width:13%;">In central store</th><th style="width:15%;">Already at site</th><th style="width:23%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -5290,6 +5307,8 @@ function onMaterialTyped(box) {
       unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
     }
   }
+  // On the give-out form, say what the chosen site already holds of it.
+  if (row.querySelector(".ol-atsite")) markOutLines();
   // On the request form, show the two numbers that stop double-ordering:
   // what the store already holds, and what is already on an open request
   // still waiting to arrive.
@@ -5347,10 +5366,75 @@ function addOutLine() {
     <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
     <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;" oninput="checkOutQty(this)"></td>
     <td class="ol-have" style="color:#777;">-</td>
+    <td class="ol-atsite at-site none">-</td>
     <td><input type="text" class="ol-note" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'out-lines')">Remove</button></td>`;
   document.getElementById("out-lines").appendChild(tr);
   renumberRows("out-lines");
+}
+
+// What the chosen site is already holding. Shown as soon as a site is
+// picked, and matched against each line as it is typed, so the keeper
+// sees that a material is already out there before sending more.
+let siteHoldings = { site: "", rows: [] };
+
+async function loadSiteHoldings() {
+  const site = (document.getElementById("out-site").value || "").trim();
+  const box = document.getElementById("site-holdings");
+  if (!box) return;
+  if (!site) { box.style.display = "none"; siteHoldings = { site: "", rows: [] }; markOutLines(); return; }
+  try {
+    siteHoldings = await apiCall(`/store/at-site?site=${encodeURIComponent(site)}`);
+  } catch (e) {
+    siteHoldings = { site, rows: [] };
+  }
+  renderSiteHoldings();
+  markOutLines();
+}
+
+function renderSiteHoldings() {
+  const box = document.getElementById("site-holdings");
+  const rows = siteHoldings.rows || [];
+  box.style.display = "block";
+  if (!rows.length) {
+    box.innerHTML = `<div class="holds"><div class="holds-head">Site ${siteHoldings.site}
+      <span>is holding nothing at the moment</span></div></div>`;
+    return;
+  }
+  const taken = outLineItemIds();
+  box.innerHTML = `<div class="holds">
+      <div class="holds-head">Site ${siteHoldings.site} already holds
+        <span>${rows.length} material${rows.length === 1 ? "" : "s"}</span></div>
+      <div class="holds-wrap">${rows.map(r => `
+        <span class="hold-chip${taken.includes(r.item_id) ? " match" : ""}">
+          ${r.name} <b>${num(r.qty)}</b> ${r.unit}</span>`).join("")}</div>
+    </div>`;
+}
+
+function outLineItemIds() {
+  return [...document.querySelectorAll("#out-lines tr")]
+    .map(tr => Number((tr.querySelector(".ol-item") || {}).value || 0))
+    .filter(Boolean);
+}
+
+// Each line says what is already at the site, in green when there is
+// some, so a repeat delivery is obvious before it is saved.
+function markOutLines() {
+  const rows = siteHoldings.rows || [];
+  document.querySelectorAll("#out-lines tr").forEach(tr => {
+    const cell = tr.querySelector(".ol-atsite");
+    if (!cell) return;
+    const id = Number((tr.querySelector(".ol-item") || {}).value || 0);
+    const held = rows.find(r => r.item_id === id);
+    if (held) {
+      cell.textContent = `${num(held.qty)} ${held.unit}`;
+      cell.className = "ol-atsite at-site has";
+    } else {
+      cell.textContent = id ? "none there" : "-";
+      cell.className = "ol-atsite at-site none";
+    }
+  });
+  if (siteHoldings.rows && siteHoldings.rows.length) renderSiteHoldings();
 }
 
 function addInLine() {
@@ -5378,6 +5462,8 @@ async function showOnHand(sel) {
   const row = (storeStockCache || []).find(s => String(s.item_id) === sel.value);
   cellEl.textContent = row ? `${num(row.central)} ${row.unit}` : "-";
   cellEl.style.color = row && row.central <= 0 ? "#C0392B" : "#777";
+  // The same line also says what the site already has of it.
+  markOutLines();
 }
 
 let storeStockCache = [];
