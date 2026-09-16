@@ -2394,7 +2394,18 @@ async function initApp() {
   };
   safely("clock", () => startDashboardClock());
   safely("notifications", () => loadNotifications());
-  setInterval(() => safely("notifications", () => loadNotifications()), 120000);
+  // Every 20 seconds while the tab is in front. The check now costs the
+  // server about 20ms, so this is cheap - and two minutes, stretched to
+  // five by the browser throttling a background tab, was long enough
+  // for a request to be approved and ordered before anyone heard.
+  setInterval(() => { if (!document.hidden) safely("notifications", () => loadNotifications()); }, 20000);
+  // And the moment the tab comes back to the front. A person switching
+  // back to the app to see what is new should see it at once, not in
+  // whatever is left of the twenty seconds.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) safely("notifications", () => loadNotifications());
+  });
+  window.addEventListener("focus", () => safely("notifications", () => loadNotifications()));
   safely("report columns", () => initReportColumnPicker());
   // A minute after login, so it never competes with the screen loading.
   setTimeout(() => safely("daily backup", () => dailyBackupToThisComputer()), 60000);

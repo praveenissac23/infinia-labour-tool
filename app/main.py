@@ -89,6 +89,27 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def never_cache_api(request, call_next):
+    """Every answer from this API is live data and must be fetched fresh.
+
+    With no Cache-Control header a browser is free to answer a repeat
+    GET from its own cache, and Chromium does: the notification poll
+    was firing every twenty seconds and reaching the server once,
+    which is how a new request took five minutes to be seen. Stock,
+    requests and the rest were exposed to the same thing.
+
+    Downloads (PDF, Excel, zip) are left alone - they are one-shot and
+    the browser has no reason to cache them either way.
+    """
+    response = await call_next(request)
+    if not request.url.path.startswith("/export/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # ---------------------------------------------------------------------
 # AUTH
 # ---------------------------------------------------------------------
