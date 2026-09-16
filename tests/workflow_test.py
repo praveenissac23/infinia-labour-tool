@@ -83,7 +83,14 @@ ck('request finishes itself', cur['status'] in ('delivered', 'received'), cur['s
 mv = {m['item_code']: m['supplier'] for m in c.get('/store/movements?limit=5', headers=K).json() if m['kind'] == 'in'}
 ck('each material kept its own trader', mv.get(i1['code']) == 'Al Raha' and mv.get(i2['code']) == 'Newstar')
 st = {s['code']: s for s in c.get('/store/stock', headers=K).json()}
-ck('stock is right', st[i1['code']]['central'] == 10 and st[i2['code']]['central'] == 10)
+# The request was raised for site 910, and both loads were delivered
+# there - so the stock stands at the site, not in a central store the
+# material never passed through.
+ck('stock stands at the site that asked for it',
+   st[i1['code']]['by_site'].get('910') == 10 and st[i2['code']]['by_site'].get('910') == 10,
+   {k: st[k]['by_site'] for k in (i1['code'], i2['code'])})
+ck('and none of it is in the central store',
+   st[i1['code']]['central'] == 0 and st[i2['code']]['central'] == 0)
 ck('nothing left on the chase list', not [1 for x in c.get('/store/requests', headers=S).json()
      for l in x['lines'] if x['status'] not in ('delivered', 'received', 'closed', 'rejected')
      and (l['qty_requested'] - l['qty_received']) > 0])

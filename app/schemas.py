@@ -372,6 +372,11 @@ class ReceiveRequestIn(BaseModel):
     reference: str = ""
     received_on: Optional[date] = None
     notes: str = ""
+    # Where the load actually went. Blank means the central store; a
+    # site code means it was dropped straight there and never touched
+    # the store. None means "wherever the request said", which is the
+    # sensible default and what an older screen will send.
+    deliver_to: Optional[str] = None
 
 
 class UnitChange(BaseModel):

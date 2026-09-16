@@ -824,6 +824,9 @@
                   <input type="text" id="recv-phone" placeholder="Phone"></div>
                 <div class="field"><label>DO / Invoice no</label><input type="text" id="recv-ref-no" placeholder="From the delivery note"></div>
                 <div class="field"><label>Delivery date</label><input type="date" id="recv-date"></div>
+                <div class="field"><label>Delivered to</label>
+                  <select id="recv-where"
+                          title="Where the load actually went. A load dropped straight at the site books to that site; anything unloaded at the store books to the store."></select></div>
               </div>
             </div>
             <div class="grid-wrap" style="max-height:320px;">
@@ -6079,6 +6082,17 @@ async function openReceive(id, supplierId) {
     (chosen && chosen.name ? `${chosen.name}'s delivery against ` : "") +
     (r.site ? `${r.ref} (site ${r.site})` : `${r.ref} (central store)`);
   document.getElementById("recv-date").value = isoLocal(new Date());
+  // Where it went. A request raised for a site defaults to that site -
+  // material dropped straight there should never be booked into a store
+  // it did not pass through - and the keeper can change it.
+  const whereSel = document.getElementById("recv-where");
+  if (whereSel) {
+    const opts = [`<option value="">Central store</option>`]
+      .concat((sites || []).map(s =>
+        `<option value="${s.code}"${s.code === (r.site || "") ? " selected" : ""}>Site ${s.code}</option>`));
+    whereSel.innerHTML = opts.join("");
+    if (!r.site) whereSel.value = "";
+  }
   // Prefill from the supplier of the lines still due. On a split
   // request the request-level supplier is empty by design, but if
   // everything still owed comes from one trader, that name is known.
@@ -6196,6 +6210,7 @@ async function saveReceive() {
         reference: document.getElementById("recv-ref-no").value.trim(),
         received_on: document.getElementById("recv-date").value || null,
         notes: document.getElementById("recv-notes").value.trim(),
+        deliver_to: document.getElementById("recv-where").value,
       }),
     });
     // Keep the ref before closing - closeReceive() clears recvRequest,

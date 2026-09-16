@@ -175,12 +175,16 @@ ck('site engineer sees the request status', any(x['status'] in ('ordered', 'arra
 
 # --------------------------------------------- 6. Store keeper receives
 section("6. Store keeper receives the deliveries")
+# The load came to the central store, not straight to the site - a
+# delivery now books where it actually went, so this says so.
 r = c.post(f"/store/requests/{mr['id']}/receive-bulk", json={
     'supplier': 'Al Raha Trading', 'reference': 'DN-4471', 'notes': '', 'received_on': '2026-09-03',
+    'deliver_to': '',
     'lines': [{'line_id': cement['id'], 'qty': 100}]}, headers=K)
 ck('keeper receives the cement', r.status_code == 200, r.text[:150])
 r = c.post(f"/store/requests/{mr['id']}/receive-bulk", json={
     'supplier': 'Gateway Steel', 'reference': 'INV-882', 'notes': 'short by 20', 'received_on': '2026-09-03',
+    'deliver_to': '',
     'lines': [{'line_id': steel['id'], 'qty': 180}]}, headers=K)
 ck('keeper receives steel, short delivery', r.status_code == 200, r.text[:150])
 req = [x for x in c.get('/store/requests', headers=K).json() if x['id'] == mr['id']][0]
@@ -196,6 +200,7 @@ ck('stock: 100 cement in the store', stock['Cement OPC 50kg']['central'] == 100,
 ck('stock: 180 steel in the store', stock['Steel Bar 12mm']['central'] == 180)
 r = c.post(f"/store/requests/{mr['id']}/receive-bulk", json={
     'supplier': 'Gateway Steel', 'reference': 'INV-883', 'notes': '', 'received_on': '2026-09-03',
+    'deliver_to': '',
     'lines': [{'line_id': steel['id'], 'qty': 20}]}, headers=K)
 ck('balance delivered', r.status_code == 200)
 req = [x for x in c.get('/store/requests', headers=K).json() if x['id'] == mr['id']][0]

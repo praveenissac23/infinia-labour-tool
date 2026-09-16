@@ -4788,6 +4788,23 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
 
+    # Where the load went. Every delivery used to be booked into the
+    # central store, so material dropped straight at a site showed as
+    # sitting in a store it never reached, and had to be issued out
+    # again to correct it. The request's own site is the default now,
+    # and the keeper can say otherwise.
+    where = payload.deliver_to if payload.deliver_to is not None else (mr.site or "")
+    where = (where or "").strip()
+    if where and where != CENTRAL:
+        # Spelled as the site list spells it, so 904 and 904 are one
+        # place rather than two columns in the stock report. A site not
+        # on the list is still accepted as typed: requests are raised
+        # for sites before anyone gets round to adding them, and
+        # refusing the delivery would leave real material unrecorded.
+        known = db.query(models.Site).filter(func.lower(models.Site.code) == where.lower()).first()
+        if known:
+            where = known.code
+
     when = payload.received_on or date.today()
     # Deliveries are often written up a few days late, and sometimes
     # booked a day or two ahead for a load already on its way. Both are
@@ -4838,7 +4855,7 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
         else:
             line_sup = (line.supplier.name if line.supplier else "") or sup_name
         db.add(models.StoreMovement(
-            item_id=line.item_id, kind="in", qty=w.qty, location="",
+            item_id=line.item_id, kind="in", qty=w.qty, location=where,
             supplier=line_sup, reference=payload.reference or mr.ref,
             notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
         line.qty_received = (line.qty_received or 0) + w.qty
