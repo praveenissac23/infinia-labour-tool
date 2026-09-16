@@ -405,8 +405,20 @@
   .holds-count { font-size: 11.5px; color: #8A8178; text-transform: uppercase;
                  letter-spacing: .4px; }
   .holds-none { font-size: 12.5px; color: #999; }
-  .holds-find { margin-left: auto; width: 190px; font-size: 12.5px; padding: 5px 9px;
-                border: 1px solid #DDD7D1; border-radius: 6px; background: white; }
+  .holds.two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+                  background: transparent; border: 0; padding: 0; }
+  .hold-side { border: 1px solid #E6E2DD; border-radius: 10px; background: #FAF8F6;
+               padding: 10px 12px; min-width: 0; }
+  .hold-side.from { border-top: 3px solid #B26A00; }
+  .hold-side.to { border-top: 3px solid #2E7D32; }
+  .holds-side-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .5px;
+                    text-transform: uppercase; }
+  .hold-side.from .holds-side-tag { color: #B26A00; }
+  .hold-side.to .holds-side-tag { color: #2E7D32; }
+  .holds-empty { margin-top: 9px; padding: 16px; text-align: center; font-size: 12.5px;
+                 color: #A9A199; background: white; border: 1px dashed #E2DCD6;
+                 border-radius: 8px; }
+  @media (max-width: 900px) { .holds.two-up { grid-template-columns: 1fr; } }
   /* What is on this delivery, said plainly, above the list. */
   .holds-picked { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
   .holds-picked:empty { display: none; }
@@ -5333,11 +5345,21 @@ function onMaterialTyped(box) {
       // meaning of the request under their hands.
       if (!unitCell.dataset.touched) setUnitSelect(unitCell, hit.unit);
     } else {
-      const s = (storeStockCache || []).find(s => s.item_id === hit.id);
-      unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
+      // What the place it is LEAVING holds, not always the central
+      // store: a move from site 901 must show 901's stock, or the
+      // keeper is checking the wrong number before sending material.
+      if (typeof fromStock !== "undefined" && fromStock !== null) {
+        const held = fromStock.find(r => r.item_id === hit.id);
+        unitCell.textContent = held ? `${num(held.qty)} ${hit.unit}` : `0 ${hit.unit}`;
+        unitCell.style.color = held ? "#777" : "#C0392B";
+      } else {
+        const s = (storeStockCache || []).find(s => s.item_id === hit.id);
+        unitCell.textContent = s ? `${num(s.central)} ${hit.unit}` : `0 ${hit.unit}`;
+        unitCell.style.color = s && s.central > 0 ? "#777" : "#C0392B";
+      }
     }
   }
-  // On the give-out form, say what the chosen site already holds of it.
+  // On the move form, say what the place it is going to already holds.
   if (row.querySelector(".ol-atsite")) markOutLines();
   // On the request form, show the two numbers that stop double-ordering:
   // what the store already holds, and what is already on an open request
@@ -5489,47 +5511,55 @@ async function loadSiteHoldings() {
   const site = (document.getElementById("out-site").value || "").trim();
   const box = document.getElementById("site-holdings");
   if (!box) return;
-  if (!site) { box.style.display = "none"; siteHoldings = { site: "", rows: [] }; markOutLines(); return; }
   try {
     siteHoldings = await apiCall(`/store/at-site?site=${encodeURIComponent(site)}`);
   } catch (e) {
     siteHoldings = { site, rows: [] };
   }
+  siteHoldings.site = site;
   renderSiteHoldings();
   markOutLines();
 }
 
+function placeName(code) {
+  return code ? `Site ${code}` : "Central store";
+}
+
 function renderSiteHoldings() {
   const box = document.getElementById("site-holdings");
-  const rows = siteHoldings.rows || [];
+  const from = (document.getElementById("out-from").value || "").trim();
+  const to = (document.getElementById("out-site").value || "").trim();
   box.style.display = "block";
-  if (!rows.length) {
-    box.innerHTML = `<div class="holds">
-      <div class="holds-head"><span class="holds-site">Site ${siteHoldings.site}</span>
-        <span class="holds-none">is holding nothing at the moment</span></div></div>`;
-    highlightHoldings();
-    return;
-  }
-  // A list, not a wall of tiles: a hundred materials scroll in a fixed
-  // box and can be searched, and the ones on this delivery are pulled
-  // to the top so they are read first.
-  box.innerHTML = `<div class="holds">
-      <div class="holds-head">
-        <span class="holds-site">What site ${siteHoldings.site} is holding</span>
-        <span class="holds-count">${rows.length} material${rows.length === 1 ? "" : "s"}</span>
-        <input type="text" id="holds-find" class="holds-find" placeholder="Find a material"
-               oninput="filterHoldings()" autocomplete="off">
-      </div>
-      <div id="holds-picked" class="holds-picked"></div>
-      <div class="holds-list" id="holds-list">
-        ${rows.map(r => `
-          <div class="hold-row" data-hold="${r.item_id}" data-name="${r.name.toLowerCase()}">
-            <span class="hold-nm" title="${r.name}">${r.name}</span>
-            <span class="hold-q"><b>${num(r.qty)}</b> ${r.unit}</span>
-          </div>`).join("")}
-      </div>
+  // Two lists side by side: what the place it is leaving holds, and
+  // what the place it is going to holds already. The same material is
+  // marked in both, so the whole move is read in one look.
+  const leaving = fromStock !== null
+    ? fromStock
+    : (storeStockCache || []).filter(s => s.central > 0)
+        .map(s => ({ item_id: s.item_id, name: s.name, unit: s.unit, qty: s.central }));
+  box.innerHTML = `<div class="holds two-up">
+      ${holdPanel("from", placeName(from), leaving, "there now")}
+      ${holdPanel("to", placeName(to), siteHoldings.rows || [], "already there")}
     </div>`;
   highlightHoldings();
+}
+
+function holdPanel(side, title, rows, sub) {
+  const list = rows.length
+    ? `<div class="holds-list" id="holds-list-${side}">${rows.map(r => `
+        <div class="hold-row" data-hold="${r.item_id}">
+          <span class="hold-nm" title="${r.name}">${r.name}</span>
+          <span class="hold-q"><b>${num(r.qty)}</b> ${r.unit || ""}</span>
+        </div>`).join("")}</div>`
+    : `<div class="holds-empty">Nothing here at the moment</div>`;
+  return `<div class="hold-side ${side}">
+      <div class="holds-head">
+        <span class="holds-side-tag">${side === "from" ? "Coming from" : "Going to"}</span>
+        <span class="holds-site">${title}</span>
+        <span class="holds-count">${rows.length ? `${rows.length} ${sub}` : ""}</span>
+      </div>
+      ${list}
+    </div>`;
 }
 
 function filterHoldings() {
@@ -5569,29 +5599,17 @@ function markOutLines() {
 
 function highlightHoldings() {
   const taken = outLineItemIds();
-  const list = document.getElementById("holds-list");
-  document.querySelectorAll("#site-holdings [data-hold]").forEach(el => {
-    const on = taken.includes(Number(el.dataset.hold));
-    el.classList.toggle("match", on);
-    // A matched material rises to the top of the list, so it is read
-    // without scrolling through a hundred others.
-    if (on && list && list.firstElementChild !== el) list.prepend(el);
+  ["from", "to"].forEach(side => {
+    const list = document.getElementById(`holds-list-${side}`);
+    if (!list) return;
+    [...list.querySelectorAll("[data-hold]")].forEach(el => {
+      const on = taken.includes(Number(el.dataset.hold));
+      el.classList.toggle("match", on);
+      // A material on this move rises to the top of its own list, so
+      // both sides can be read without scrolling.
+      if (on && list.firstElementChild !== el) list.prepend(el);
+    });
   });
-  // And a word about every material on this delivery: what the site
-  // already has of it, or that it has none.
-  const strip = document.getElementById("holds-picked");
-  if (!strip) return;
-  const rows = siteHoldings.rows || [];
-  const picked = [...document.querySelectorAll("#out-lines tr")].map(tr => {
-    const id = Number((tr.querySelector(".ol-item") || {}).value || 0);
-    if (!id) return null;
-    const txt = tr.querySelector(".ol-item-txt");
-    const held = rows.find(r => r.item_id === id);
-    return { name: (txt && txt.value) || "", held };
-  }).filter(Boolean);
-  strip.innerHTML = picked.length ? picked.map(p => p.held
-    ? `<span class="pick-pill has">${p.name} <b>${num(p.held.qty)} ${p.held.unit}</b> at site</span>`
-    : `<span class="pick-pill none">${p.name} <b>not at site</b></span>`).join("") : "";
 }
 
 function addInLine() {
@@ -5631,15 +5649,20 @@ let storeStockCache = [];
 function checkOutQty(box) {
   const row = box.closest("tr");
   const id = parseInt(row.querySelector(".ol-item").value, 10) || 0;
+  // Against the place it is leaving. Warning on the central store's
+  // figure while moving off a site let a site send more than it had.
+  const useSite = typeof fromStock !== "undefined" && fromStock !== null;
+  const held = useSite ? fromStock.find(r => r.item_id === id) : null;
   const s = (storeStockCache || []).find(x => x.item_id === id);
-  const have = s ? (s.central || 0) : 0;
+  const unit = (held && held.unit) || (s && s.unit) || "";
+  const have = useSite ? (held ? held.qty : 0) : (s ? (s.central || 0) : 0);
   const q = parseFloat(box.value) || 0;
   const over = id && q > have;
   box.style.background = over ? "#FFF4F2" : "";
   const cell = row.querySelector(".ol-have");
   if (cell && id) cell.innerHTML = over
-    ? `<span style="color:#C0392B; font-weight:700;">only ${num(have)} ${s ? s.unit : ""}</span>`
-    : (s ? `${num(have)} ${s.unit}` : "-");
+    ? `<span style="color:#C0392B; font-weight:700;">only ${num(have)} ${unit}</span>`
+    : `${num(have)} ${unit}`;
 }
 
 async function saveIssue() {
