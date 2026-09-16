@@ -617,8 +617,8 @@
             <h2 style="margin-bottom:4px;">Store &amp; Materials</h2>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
               <div class="store-tile keeper-only" data-screen="store" onclick="dashStoreGo('give')">
-                <div class="store-tile-t">Give Out Material</div>
-                <div class="store-tile-s">Someone is taking material to a site</div>
+                <div class="store-tile-t">Move Material</div>
+                <div class="store-tile-s">Store to a site, back again, or site to site</div>
               </div>
               <div class="store-tile keeper-only" data-screen="store" onclick="dashStoreGo('arrive')">
                 <div class="store-tile-t">Material Arrived</div>
@@ -1568,8 +1568,8 @@
               <div class="rep-group" style="margin-top:10px;">Every day</div>
               <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div class="store-tile keeper-only" onclick="storeGo('give')">
-                  <div class="store-tile-t">Give Out Material</div>
-                  <div class="store-tile-s">Someone is taking material to a site</div>
+                  <div class="store-tile-t">Move Material</div>
+                  <div class="store-tile-s">Store to a site, back again, or site to site</div>
                 </div>
                 <div class="store-tile keeper-only" onclick="storeGo('arrive')">
                   <div class="store-tile-t">Material Arrived</div>
@@ -1658,25 +1658,29 @@
           <div id="store-give" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
             <div class="card" style="margin-top:12px; border:2px solid var(--red);">
-              <h2 style="color:var(--red);">Give out material</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">When a worker, driver, foreman or site engineer takes material from the store.</p>
+              <h2 style="color:var(--red);">Move material</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;" id="out-hint">
+                Material leaving one place for another - the store to a site, a site back to the
+                store, or straight from one site to another.</p>
               <div class="form-row">
                 <div class="field-grid" style="margin-bottom:0; width:100%;">
                   <div class="field"><label>Who is taking it</label>
                     <input type="text" id="out-person" list="people-list"
                            placeholder="Start typing a name or number"></div>
-                  <div class="field"><label>Going to site</label>
-                    <select id="out-site" onchange="loadSiteHoldings()"></select></div>
+                  <div class="field"><label>Coming from</label>
+                    <select id="out-from" onchange="onMoveEnds()"></select></div>
+                  <div class="field"><label>Going to</label>
+                    <select id="out-site" onchange="onMoveEnds()"></select></div>
                   <div class="field"><label>Date</label><input type="date" id="out-date"></div>
                 </div>
               </div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:3%;">#</th><th style="width:28%;">Material</th><th style="width:11%;">How many</th><th style="width:13%;">In central store</th><th style="width:15%;">Already at site</th><th style="width:23%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:28%;">Material</th><th style="width:11%;">How many</th><th style="width:13%;" id="out-have-head">In central store</th><th style="width:15%;">Already at site</th><th style="width:23%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
                 <button class="btn btn-dark" onclick="addOutLine()">+ Add another material</button>
-                <button class="btn btn-primary" onclick="saveIssue()">Give Out &amp; Save</button>
+                <button class="btn btn-primary" id="out-save-btn" onclick="saveIssue()">Give out to a site</button>
               </div>
               <div id="site-holdings" style="display:none;"></div>
             </div>
@@ -1776,8 +1780,6 @@
                    that don't apply, instead of showing eight controls at once
                    and leaving the keeper to work out which matter. -->
               <div class="rep-row" style="margin-bottom:18px;">
-                <div class="rep-tile" onclick="setMvKind('return')"><b>Came back from a site</b><span>Material returned to the store</span></div>
-                <div class="rep-tile" onclick="setMvKind('transfer')"><b>Moved between two sites</b><span>Went straight from one site to another</span></div>
                 <div class="rep-tile" onclick="setMvKind('lost')"><b>Lost or damaged</b><span>Write it off the books</span></div>
                 <div class="rep-tile" onclick="setMvKind('adjust')"><b>Fix a wrong number</b><span>After counting the store</span></div>
               </div>
@@ -2256,7 +2258,18 @@ function switchScreen(name) {
       document.getElementById("mr-site").innerHTML = '<option value="">-- choose a site --</option>' +
         sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("") +
         '<option value="STORE">Central store (stock top-up)</option>';
-      document.getElementById("out-site").innerHTML = '<option value="">-- choose --</option>' + siteOpts;
+      // Both ends of a move offer the store and every site. The store is
+      // an empty value, the same way the ledger records it.
+      const bothEnds = '<option value="">Central store</option>' +
+        sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("");
+      document.getElementById("out-from").innerHTML = bothEnds;
+      document.getElementById("out-site").innerHTML =
+        '<option value="">Central store</option>' +
+        sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("");
+      // A move out of the store to a site is the common case, so that is
+      // what the form opens on.
+      document.getElementById("out-from").value = "";
+      document.getElementById("out-site").value = sites.length ? "" : "";
       // 80+ people in a plain dropdown means endless scrolling on the
       // most-used screen. A type-to-search box finds "raj" in two
       // keystrokes, the same way the material picker works.
@@ -5395,6 +5408,83 @@ function addOutLine() {
 // sees that a material is already out there before sending more.
 let siteHoldings = { site: "", rows: [] };
 
+// A move has two ends. Which kind of movement it is follows from them
+// rather than from a separate button: the store to a site is an issue,
+// a site back to the store is a return, one site to another is a
+// transfer. The keeper picks two places; the system knows what to call
+// it.
+function moveKind() {
+  const from = (document.getElementById("out-from").value || "").trim();
+  const to = (document.getElementById("out-site").value || "").trim();
+  if (from && to) return "transfer";
+  if (from && !to) return "return";
+  return "out";
+}
+
+// What to call it afterwards, so the message matches what was done.
+function moveWord() {
+  const from = (document.getElementById("out-from").value || "").trim();
+  const to = (document.getElementById("out-site").value || "").trim();
+  const who = (document.getElementById("out-person").value || "").trim();
+  if (from && to) return `Moved from site ${from} to site ${to}`;
+  if (from && !to) return `Brought back to the store from site ${from}`;
+  return `Given to ${who || "site"} for site ${to}`;
+}
+
+function moveLabel() {
+  return { out: "Give out to a site", return: "Bring back to the store",
+           transfer: "Move from site to site" }[moveKind()];
+}
+
+async function onMoveEnds() {
+  const from = (document.getElementById("out-from").value || "").trim();
+  const to = (document.getElementById("out-site").value || "").trim();
+  if (from && from === to) {
+    showStatus("store-status", "warn", "Coming from and going to are the same place.");
+  } else {
+    showStatus("store-status", null);
+  }
+  // The stock column follows the end it is leaving.
+  const head = document.getElementById("out-have-head");
+  if (head) head.textContent = from ? `At site ${from}` : "In central store";
+  const btn = document.getElementById("out-save-btn");
+  if (btn) btn.textContent = moveLabel();
+  await loadFromStock();
+  await loadSiteHoldings();
+}
+
+// What the place it is leaving actually has, so a line cannot be filled
+// in for material that is not there.
+async function loadFromStock() {
+  const from = (document.getElementById("out-from").value || "").trim();
+  if (!from) { fromStock = null; refreshHaveCells(); return; }
+  try {
+    const r = await apiCall(`/store/at-site?site=${encodeURIComponent(from)}`);
+    fromStock = r.rows || [];
+  } catch (e) { fromStock = []; }
+  refreshHaveCells();
+}
+
+let fromStock = null;          // null means the central store
+
+function refreshHaveCells() {
+  document.querySelectorAll("#out-lines tr").forEach(tr => {
+    const cell = tr.querySelector(".ol-have");
+    const id = Number((tr.querySelector(".ol-item") || {}).value || 0);
+    if (!cell) return;
+    if (!id) { cell.textContent = "-"; return; }
+    if (fromStock) {
+      const held = fromStock.find(r => r.item_id === id);
+      cell.textContent = held ? `${num(held.qty)} ${held.unit}` : "0";
+      cell.style.color = held ? "#777" : "#C0392B";
+    } else {
+      const s = (storeStockCache || []).find(x => x.item_id === id);
+      cell.textContent = s ? `${num(s.central)} ${s.unit}` : "0";
+      cell.style.color = s && s.central > 0 ? "#777" : "#C0392B";
+    }
+  });
+}
+
 async function loadSiteHoldings() {
   const site = (document.getElementById("out-site").value || "").trim();
   const box = document.getElementById("site-holdings");
@@ -5561,8 +5651,16 @@ async function saveIssue() {
     qty: parseFloat(tr.querySelector(".ol-qty").value) || 0,
     note: tr.querySelector(".ol-note").value.trim(),
   })).filter(l => l.item_id && l.qty > 0);
+  const fromWhere = document.getElementById("out-from").value || "";
   if (!person) { showStatus("store-status", "warn", "Choose who is taking the material."); return; }
-  if (!site) { showStatus("store-status", "warn", "Choose which site it is going to."); return; }
+  // A move needs two different ends, not a destination site: coming
+  // back to the store is as much a move as going out to a site.
+  if (fromWhere === site) {
+    showStatus("store-status", "warn",
+      site ? "Coming from and going to are the same site." :
+             "Choose where the material is going, or where it is coming from.");
+    return;
+  }
   if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
   // Stop an over-issue before it reaches the server, with the exact
   // numbers: which material, how much was asked, how much exists.
@@ -5583,7 +5681,9 @@ async function saveIssue() {
     try {
       await apiCall("/store/movements", { method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item_id: l.item_id, kind: "out", qty: l.qty, location: site,
+        body: JSON.stringify({ item_id: l.item_id, kind: moveKind(), qty: l.qty,
+                                from_location: document.getElementById("out-from").value || "",
+                                location: site,
                                 incharge: person, notes: l.note, moved_on: when }) });
       done++;
     } catch (e) { failed.push(errText(e)); }
@@ -5598,7 +5698,7 @@ async function saveIssue() {
       const it = (storeItems || []).find(i => i.id === l.item_id);
       return it ? `${num(l.qty)} ${it.unit} ${it.name}` : `${num(l.qty)}`;
     }).join(", ");
-    showStatus("store-status", "ok", `Given to ${person} for site ${site}: ${given}.`);
+    showStatus("store-status", "ok", `${moveWord()}: ${given}.`);
     loadStoreHome();
     await loadStoreItems();   // stock changed - refresh what the pickers offer
     document.getElementById("out-lines").innerHTML = ""; addOutLine();
