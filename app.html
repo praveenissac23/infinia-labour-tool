@@ -2308,12 +2308,6 @@ async function initApp() {
   document.getElementById("user-mgmt-card").style.display = isAdmin ? "block" : "none";
   const freshCard = document.getElementById("fresh-start-card");
   if (freshCard) freshCard.style.display = isAdmin ? "block" : "none";
-  // Recording stock in and out is its own right. Showing the buttons to
-  // someone who will be refused only wastes his time typing the entry.
-  const mayKeep = MY_SCREENS.includes("storekeeper");
-  document.querySelectorAll(".keeper-only").forEach(el => {
-    el.style.display = mayKeep ? "" : "none";
-  });
   const sigCard = document.getElementById("signature-card");
   if (sigCard) {
     sigCard.style.display = isAdmin ? "block" : "none";
@@ -8008,10 +8002,23 @@ async function savePerms() {
 
 // Hide menu items this user isn't allowed to open. The backend enforces
 // it as well - this is so they aren't shown doors that won't open.
+function applyKeeperVisibility() {
+  // An admin has every right, whatever the list happens to say.
+  const mayKeep = CURRENT_ROLE === "admin" || MY_SCREENS.includes("storekeeper");
+  document.querySelectorAll(".keeper-only").forEach(el => {
+    el.style.display = mayKeep ? "" : "none";
+  });
+}
+
 async function applyScreenPermissions() {
   try {
     const me = await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
+    // Recording stock in and out is its own right. Done here, where the
+    // permissions have actually arrived - reading MY_SCREENS before this
+    // call returns found it empty and hid the buttons from everybody,
+    // admin included.
+    applyKeeperVisibility();
     document.querySelectorAll(".nav-item, .dash-tile[data-screen], .store-tile[data-screen]").forEach(n => {
       const s = n.getAttribute("data-screen");
       if (s && !MY_SCREENS.includes(s)) n.style.display = "none";
