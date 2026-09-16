@@ -1513,7 +1513,7 @@
             <select id="lpr-group" onchange="loadLpoReport()" style="width:170px;"></select>
             <label>From:</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:150px;">
             <label>To:</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:150px;">
-            <select id="lpr-status" onchange="loadLpoReport()" style="width:130px;">
+            <select id="lpr-show" onchange="loadLpoReport()" style="width:130px;">
               <option value="issued">Issued only</option>
               <option value="all">Including cancelled</option>
               <option value="cancelled">Cancelled only</option>
@@ -2611,8 +2611,13 @@ async function loadDate(dateStr, preserveStatus) {
   // worked, not just yesterday, which is blank when yesterday was
   // Absent.
   lastSiteByEmp = {};
-  try { lastSiteByEmp = await apiCall(`/attendance/last-sites/${dateStr}`) || {}; }
-  catch (e) { /* no lookup - rows simply start blank */ }
+  // Only somebody who may open attendance asks - an office login was
+  // sending this at startup and being refused, a 403 in every log for
+  // a screen it was never going to show.
+  if (MY_SCREENS.includes("attendance")) {
+    try { lastSiteByEmp = await apiCall(`/attendance/last-sites/${dateStr}`) || {}; }
+    catch (e) { /* no lookup - rows simply start blank */ }
+  }
 
   // The workforce as it stood on this date: a man who left in August
   // is still on August's grid and gone from September's.
@@ -5562,13 +5567,6 @@ function holdPanel(side, title, rows, sub) {
     </div>`;
 }
 
-function filterHoldings() {
-  const q = (document.getElementById("holds-find").value || "").trim().toLowerCase();
-  document.querySelectorAll("#holds-list .hold-row").forEach(el => {
-    el.style.display = !q || el.dataset.name.includes(q) ? "" : "none";
-  });
-}
-
 function outLineItemIds() {
   return [...document.querySelectorAll("#out-lines tr")]
     .map(tr => Number((tr.querySelector(".ol-item") || {}).value || 0))
@@ -7653,7 +7651,7 @@ function lprParams() {
        + `&supplier=${encodeURIComponent(v("lpr-supplier"))}`
        + `&site=${encodeURIComponent(v("lpr-site"))}`
        + `&material=${encodeURIComponent(v("lpr-material"))}`
-       + `&status=${document.getElementById("lpr-status").value}`;
+       + `&status=${document.getElementById("lpr-show").value}`;
 }
 
 async function loadLpoReport() {
