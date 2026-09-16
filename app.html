@@ -398,19 +398,32 @@
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
   /* What a site already holds, shown when it is chosen - so nobody
      sends forty bags to a site that is sitting on thirty. */
-  .holds { border: 1px solid #E4E0DB; border-radius: 8px; background: #FBF9F7;
-           padding: 10px 12px; margin-bottom: 10px; }
-  .holds-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-                font-size: 13px; font-weight: 700; }
-  .holds-head span { font-weight: 400; color: #888; font-size: 12px; }
-  .holds-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .hold-chip { background: white; border: 1px solid #E0DBD6; border-radius: 20px;
-               padding: 3px 11px; font-size: 12px; }
-  .hold-chip b { font-weight: 700; }
-  .hold-chip.match { background: #EAF5EC; border-color: #A9D6B4; color: #1E5B2C; }
+  .holds { border: 1px solid #E6E2DD; border-radius: 10px; background: #FAF8F6;
+           padding: 12px 14px; margin-bottom: 12px; }
+  .holds-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .holds-site { font-size: 13.5px; font-weight: 700; color: #1F2429; }
+  .holds-count { font-size: 11.5px; color: #8A8178; text-transform: uppercase;
+                 letter-spacing: .4px; }
+  .holds-none { font-size: 12.5px; color: #999; }
+  .holds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+                gap: 8px; margin-top: 10px; }
+  .hold-card { background: white; border: 1px solid #E4DFDA; border-left: 3px solid #D8D2CB;
+               border-radius: 8px; padding: 8px 10px; transition: none; }
+  .hold-name { font-size: 12px; color: #5C6169; line-height: 1.3;
+               display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+               overflow: hidden; min-height: 31px; }
+  .hold-qty { margin-top: 3px; }
+  .hold-qty b { font-size: 17px; font-weight: 700; color: #1F2429; }
+  .hold-qty span { font-size: 12px; color: #8A8178; }
+  .hold-flag { display: none; font-size: 10.5px; font-weight: 700; color: #1E5B2C;
+               text-transform: uppercase; letter-spacing: .4px; margin-top: 4px; }
+  .hold-card.match { border-left-color: #2E7D32; background: #F1F8F2; border-color: #BFDFC6; }
+  .hold-card.match .hold-qty b { color: #1E5B2C; }
+  .hold-card.match .hold-flag { display: block; }
   .at-site { font-size: 12.5px; }
-  .at-site.has { color: #1E5B2C; font-weight: 700; }
   .at-site.none { color: #bbb; }
+  .at-pill { display: inline-block; background: #EAF5EC; border: 1px solid #BFDFC6;
+             color: #1E5B2C; font-weight: 700; border-radius: 20px; padding: 2px 10px; }
   .notif-lines { padding: 2px 20px 0; }
   .notif-lines table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
   .notif-lines td { padding: 5px 2px; border-bottom: 1px solid #F2EEEB; vertical-align: top; }
@@ -5394,18 +5407,26 @@ function renderSiteHoldings() {
   const rows = siteHoldings.rows || [];
   box.style.display = "block";
   if (!rows.length) {
-    box.innerHTML = `<div class="holds"><div class="holds-head">Site ${siteHoldings.site}
-      <span>is holding nothing at the moment</span></div></div>`;
+    box.innerHTML = `<div class="holds">
+      <div class="holds-head"><span class="holds-site">Site ${siteHoldings.site}</span>
+        <span class="holds-none">is holding nothing at the moment</span></div></div>`;
     return;
   }
-  const taken = outLineItemIds();
+  // One card per material, the quantity large enough to read across a
+  // desk, and anything on this delivery marked so it cannot be missed.
   box.innerHTML = `<div class="holds">
-      <div class="holds-head">Site ${siteHoldings.site} already holds
-        <span>${rows.length} material${rows.length === 1 ? "" : "s"}</span></div>
-      <div class="holds-wrap">${rows.map(r => `
-        <span class="hold-chip${taken.includes(r.item_id) ? " match" : ""}">
-          ${r.name} <b>${num(r.qty)}</b> ${r.unit}</span>`).join("")}</div>
+      <div class="holds-head">
+        <span class="holds-site">Site ${siteHoldings.site} already holds</span>
+        <span class="holds-count">${rows.length} material${rows.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="holds-grid">${rows.map(r => `
+        <div class="hold-card" data-hold="${r.item_id}">
+          <div class="hold-name" title="${r.name}">${r.name}</div>
+          <div class="hold-qty"><b>${num(r.qty)}</b> <span>${r.unit}</span></div>
+          <div class="hold-flag">on this delivery</div>
+        </div>`).join("")}</div>
     </div>`;
+  highlightHoldings();
 }
 
 function outLineItemIds() {
@@ -5424,14 +5445,23 @@ function markOutLines() {
     const id = Number((tr.querySelector(".ol-item") || {}).value || 0);
     const held = rows.find(r => r.item_id === id);
     if (held) {
-      cell.textContent = `${num(held.qty)} ${held.unit}`;
+      cell.innerHTML = `<span class="at-pill">${num(held.qty)} ${held.unit}</span>`;
       cell.className = "ol-atsite at-site has";
     } else {
-      cell.textContent = id ? "none there" : "-";
+      cell.textContent = id ? "not there yet" : "-";
       cell.className = "ol-atsite at-site none";
     }
   });
-  if (siteHoldings.rows && siteHoldings.rows.length) renderSiteHoldings();
+  // Only the highlighting changes as a line is typed, so the panel is
+  // not rebuilt each keystroke - that was the lag.
+  highlightHoldings();
+}
+
+function highlightHoldings() {
+  const taken = outLineItemIds();
+  document.querySelectorAll("#site-holdings [data-hold]").forEach(el => {
+    el.classList.toggle("match", taken.includes(Number(el.dataset.hold)));
+  });
 }
 
 function addInLine() {
