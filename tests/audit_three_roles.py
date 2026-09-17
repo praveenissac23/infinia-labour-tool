@@ -7,7 +7,10 @@ def audit(who):
         b=p.chromium.launch(); ctx=b.new_context(viewport={'width':1500,'height':1000}, accept_downloads=True)
         pg=ctx.new_page(); errs=[]; bad=[]
         pg.on('pageerror', lambda e: errs.append(str(e)[:140]))
-        pg.on('response', lambda r: bad.append((r.request.method, r.url.split('8033')[-1][:70], r.status)) if r.status>=400 and '8033' in r.url and '/auth/login' not in r.url else None)
+        # Everything the page calls comes back through the one origin the
+        # live server uses, so watch that port - watching the old API
+        # port meant this list stayed empty and the audit caught nothing.
+        pg.on('response', lambda r: bad.append((r.request.method, r.url.split('8032')[-1][:70], r.status)) if r.status>=400 and '8032' in r.url and '/auth/login' not in r.url else None)
         ctx.on('page', lambda np: np.close())
         pg.goto('http://127.0.0.1:8032/app.html')
         pg.fill('#login-username',who); pg.fill('#login-password','p'); pg.evaluate('doLogin()')
@@ -47,7 +50,13 @@ def audit(who):
         print(f'{who:7} screens: {len(screens):2}  buttons pressed: {clicked:3}  js errors: {len(errs):2}  bad http: {len(bad):2}')
         ctx.close(); b.close()
 for who in ('admin','office','amal'):
-    audit(who)
+    # One role failing to sign in must not throw away the findings from
+    # the roles that did - the report is the point of the run.
+    try:
+        audit(who)
+    except Exception as ex:
+        PROBLEMS.append((who,'(sign in)','-','could not audit: '+str(ex).splitlines()[0][:90]))
+        print(f'{who:7} COULD NOT SIGN IN')
 print()
 seen=set()
 for pr in PROBLEMS:

@@ -15,7 +15,10 @@ with sync_playwright() as p:
     ck('follow-up offers It arrived for the ordered request', pg.evaluate("[...document.querySelectorAll('#screen-followup button')].some(b=>b.textContent.includes('It arrived'))"),
        pg.evaluate("[...document.querySelectorAll('#screen-followup button')].map(b=>b.textContent.trim())"))
     pg.evaluate('''(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.includes('It arrived')); if(b) b.click();})()'''); time.sleep(1.5)
-    ck('delivery form opens', pg.evaluate("document.getElementById('recv-supplier').offsetParent!==null"))
+    # The supplier dropdown is the visible control; the free-text box
+    # beside it stays hidden until "another supplier" is chosen, so
+    # checking that one said the form was shut when it was open.
+    ck('delivery form opens', pg.evaluate("document.getElementById('recv-supplier-pick').offsetParent!==null"))
     ck('delivery defaults to the requesting site', pg.evaluate("document.getElementById('recv-where').value")=='901', pg.evaluate("document.getElementById('recv-where').value"))
     pg.fill('#recv-ref-no','DO-9')
     pg.evaluate('''document.querySelector('#recv-lines input[type=number]').value=100;''')
@@ -56,6 +59,12 @@ with sync_playwright() as p:
     pg.evaluate("switchScreen('errorcheck')"); time.sleep(2.5)
     ck('check before you pay runs', pg.evaluate("document.querySelectorAll('#errcheck-body tr').length")>0)
 
+    # The 100 bags above went to site 901, because a delivery books to
+    # the site that asked for it. So the central store is put in funds
+    # first, otherwise this only re-tests the over-issue guard.
+    pg.evaluate('''(async()=>{const it=(await apiCall('/store/items')).find(i=>i.name.includes('Cement'));
+        await apiCall('/store/movements',{method:'POST',body:JSON.stringify({item_id:it.id,kind:'in',
+        qty:200,location:'',supplier:'Al Raha Trading LLC',notes:'',moved_on:'2026-09-16'})});})()'''); time.sleep(2)
     pg.evaluate("switchScreen('store')"); time.sleep(1); pg.evaluate("storeGo('give')"); time.sleep(1.5)
     pg.evaluate('''(()=>{document.getElementById('out-from').value=''; document.getElementById('out-site').value='904'; onMoveEnds();})()'''); time.sleep(1.5)
     pg.fill('#out-person','D-01 - MOHAMED SALIM'); pg.fill('#out-lines .ol-item-txt','Cement OPC 50kg'); time.sleep(0.8)

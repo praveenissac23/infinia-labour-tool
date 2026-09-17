@@ -1940,22 +1940,47 @@
             </div>
           </div>
 
-          <div class="card" id="fresh-start-card" style="display:none; border:1px solid #E7CEC9;">
-            <h2 style="color:#C0392B;">Start Fresh</h2>
+          <div class="card" id="store-reset-card" style="display:none; border:1px solid #D6E4F0;">
+            <h2 style="color:#1F618D;">Clear the Store for Go-Live</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
-              Clears everything entered while testing and leaves the master lists ready for
-              real data. <strong>Kept:</strong> workers with their company, sites, engineers,
-              the material list and all staff logins.
-              <strong>Cleared:</strong> attendance, payroll summaries, salary adjustments,
-              stock movements, material requests and suppliers.
-              A backup is taken first and appears at the top of the backup list, so today's
-              figures can be restored if they turn out to be needed.
+              Removes the practice entries from the store so it starts empty on day one.
+              <strong>Attendance, payroll, workers, sites, engineers and logins are not
+              touched</strong> &mdash; this reaches the store side only.
+              <br>
+              <strong>Cleared:</strong> every stock movement, every material request and
+              every purchase order. Requests start again at MR&#8209;0001 and orders at
+              IC/LPO/20260100.
+              <br>
+              <strong>Kept</strong> unless ticked below: the material list and the supplier
+              list, since those are usually typed-up master data rather than practice.
             </p>
-            <div class="form-row">
-              <input type="text" id="fresh-confirm" placeholder="Type CLEAR EVERYTHING" style="width:230px;">
-              <button class="btn btn-danger" onclick="runFreshStart()">Clear test data</button>
+            <div class="form-row" style="gap:18px; align-items:center; flex-wrap:wrap;">
+              <label style="font-size:12.5px; color:#555; cursor:pointer; white-space:nowrap;">
+                <input type="checkbox" id="store-reset-materials" style="width:auto; margin-right:5px;">
+                Also empty the material list</label>
+              <label style="font-size:12.5px; color:#555; cursor:pointer; white-space:nowrap;">
+                <input type="checkbox" id="store-reset-suppliers" style="width:auto; margin-right:5px;">
+                Also empty the supplier list</label>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <input type="text" id="store-reset-confirm" placeholder="Type CLEAR STORE" style="width:230px;">
+              <button class="btn btn-danger" onclick="runStoreReset()">Clear store data</button>
             </div>
           </div>
+
+          <!--
+            "Start Fresh" used to sit here. It wiped attendance days,
+            payroll summaries and salary adjustments along with the
+            store, which was right while the system was being set up and
+            is now the single most dangerous button in the app:
+            attendance and payroll carry real money and there is no
+            reason left to erase them. The card is gone rather than
+            merely warned about, because a typed phrase is no protection
+            against a button that should never be pressed again. The
+            endpoint still exists for a rebuild, admin-only and behind
+            its confirmation, but nothing offers it.
+            To empty the store, use "Clear the Store for Go-Live" above.
+          -->
 
           <div class="card" id="user-mgmt-card" style="display:none;">
             <h2>Staff Logins</h2>
@@ -2354,8 +2379,8 @@ async function initApp() {
   // server refuses them for anyone else regardless of what is shown.
   const isAdmin = CURRENT_ROLE === "admin";
   document.getElementById("user-mgmt-card").style.display = isAdmin ? "block" : "none";
-  const freshCard = document.getElementById("fresh-start-card");
-  if (freshCard) freshCard.style.display = isAdmin ? "block" : "none";
+  const storeResetCard = document.getElementById("store-reset-card");
+  if (storeResetCard) storeResetCard.style.display = isAdmin ? "block" : "none";
   const sigCard = document.getElementById("signature-card");
   if (sigCard) {
     sigCard.style.display = isAdmin ? "block" : "none";
@@ -7177,7 +7202,7 @@ let currentActivityLog = [];
 async function loadActivityLog() {
   const body = document.getElementById("activity-body");
   body.innerHTML = `<tr><td colspan="4" class="empty-note">Loading...</td></tr>`;
-  currentActivityLog = await apiCall("/audit-log");
+  currentActivityLog = await apiCall("/users/audit-log");
   renderActivityLog();
 }
 
@@ -8317,30 +8342,46 @@ async function uploadSignature() {
   }
 }
 
-async function runFreshStart() {
-  const box = document.getElementById("fresh-confirm");
+async function runStoreReset() {
+  const box = document.getElementById("store-reset-confirm");
   const phrase = (box.value || "").trim();
-  if (phrase !== "CLEAR EVERYTHING") {
-    showStatus("settings-status", "warn", 'Type CLEAR EVERYTHING exactly, then press the button.');
+  if (phrase !== "CLEAR STORE") {
+    showStatus("settings-status", "warn", 'Type CLEAR STORE exactly, then press the button.');
     return;
   }
-  if (!confirm("This clears all attendance, payroll, stock and requests.\n\n" +
-               "Workers, sites, engineers, the material list and staff logins are kept.\n" +
-               "A backup is taken first.\n\nGo ahead?")) return;
+  const clearMaterials = document.getElementById("store-reset-materials").checked;
+  const clearSuppliers = document.getElementById("store-reset-suppliers").checked;
+  // Spelled out rather than summarised: the two optional lists are the
+  // ones worth losing sleep over, so the last screen before it happens
+  // says in plain words whether they are going.
+  const extra = [clearMaterials ? "the material list" : null,
+                 clearSuppliers ? "the supplier list" : null].filter(Boolean);
+  if (!confirm("This clears every stock movement, material request and purchase order"
+               + (extra.length ? ",\nand also empties " + extra.join(" and ") + "." : ".")
+               + "\n\nAttendance and payroll are NOT touched.\nA backup is taken first."
+               + "\n\nGo ahead?")) return;
   try {
-    const r = await apiCall("/backup/fresh-start", {
-      method: "POST", body: JSON.stringify({ confirm: phrase }),
+    const r = await apiCall("/backup/store-reset", {
+      method: "POST",
+      body: JSON.stringify({ confirm: phrase,
+                             clear_materials: clearMaterials,
+                             clear_suppliers: clearSuppliers }),
     });
     const gone = Object.entries(r.cleared).filter(([, n]) => n)
       .map(([k, n]) => `${num(n)} ${k}`).join(", ") || "nothing to clear";
-    const kept = Object.entries(r.kept).map(([k, n]) => `${num(n)} ${k}`).join(", ");
-    showStatus("settings-status", "ok", `Cleared ${gone}. Kept ${kept}. ${r.detail}`);
+    showStatus("settings-status", "ok", `Cleared ${gone}. ${r.detail}`);
     box.value = "";
+    document.getElementById("store-reset-materials").checked = false;
+    document.getElementById("store-reset-suppliers").checked = false;
     await loadBackupList();
   } catch (e) {
     showStatus("settings-status", "err", errText(e));
   }
 }
+
+// runFreshStart() was removed with its button: it cleared live
+// attendance and payroll along with the store. Clearing the store
+// alone is runStoreReset() above.
 
 async function loadUsers() {
   const users = await apiCall("/users");

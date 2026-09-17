@@ -65,25 +65,43 @@ r = c.post(f"/store/requests/{rid}/receive-bulk", json={"supplier": "Ghantoot", 
     "notes": "", "received_on": None, "lines": [{"line_id": l2["id"], "qty": 5}]}, headers=H)
 check("receive line2 -> delivered", r.status_code == 200 and r.json().get("status") in ("delivered","received"), r.text[:250])
 
+# A delivery books to the site that asked for it, not to the central
+# store: 704 raised this request, so 704 is where the material lands and
+# where it has to be accounted for.
 r = c.get("/store/stock", headers=H)
 stock = r.json()
 cem = next((s for s in stock if s["code"] == item.get("code")), {})
-check("cement central 100", cem.get("central") == 100, str(cem))
+check("cement booked to the site that asked, not central",
+      cem.get("central") == 0 and (cem.get("by_site") or {}).get("704") == 100, str(cem))
 cush = next((s for s in stock if "cushion" in s.get("name","").lower()), {})
-check("cushions central 5, tidy name", cush.get("central") == 5 and cush.get("name","").startswith("Cushions"), str(cush))
+check("cushions at 704, tidy name",
+      (cush.get("by_site") or {}).get("704") == 5 and cush.get("name","").startswith("Cushions"),
+      str(cush))
 
+# The central store holds no cement at all, so it cannot issue any -
+# the guard must read the place the material is leaving, not a total.
+r = c.post("/store/movements", json={"item_id": item["id"], "kind": "out", "qty": 1,
+    "from_location": "", "location": "704", "incharge": "Amal", "notes": "", "moved_on": "2026-08-29"}, headers=H)
+check("central store cannot issue what it does not hold", r.status_code == 400, r.text[:150])
+
+# Stock bought straight into the central store, so the central -> site
+# path is exercised as well as the delivery path.
+r = c.post("/store/movements", json={"item_id": item["id"], "kind": "in", "qty": 100,
+    "location": "", "supplier": "Al Raha Trading LLC", "notes": "", "moved_on": "2026-08-29"}, headers=H)
+check("buy into the central store", r.status_code == 200, r.text[:250])
 r = c.post("/store/movements", json={"item_id": item["id"], "kind": "out", "qty": 500,
-    "location": "704", "incharge": "Amal", "notes": "", "moved_on": "2026-08-29"}, headers=H)
+    "from_location": "", "location": "704", "incharge": "Amal", "notes": "", "moved_on": "2026-08-29"}, headers=H)
 check("server blocks over-issue", r.status_code == 400, r.text[:150])
 r = c.post("/store/movements", json={"item_id": item["id"], "kind": "out", "qty": 40,
-    "location": "704", "incharge": "Amal", "notes": "", "moved_on": "2026-08-29"}, headers=H)
+    "from_location": "", "location": "704", "incharge": "Amal", "notes": "", "moved_on": "2026-08-29"}, headers=H)
 check("give-out works", r.status_code == 200, r.text[:250])
 r = c.post("/store/movements", json={"item_id": item["id"], "kind": "return", "qty": 10,
     "from_location": "704", "location": "", "incharge": "", "notes": "", "moved_on": "2026-08-29"}, headers=H)
 check("return from site", r.status_code == 200, r.text[:250])
 r = c.get("/store/stock", headers=H)
 cem = next(s for s in r.json() if s["code"] == item["code"])
-check("central 70 / site 30 after out+return", cem["central"] == 70 and (cem.get("by_site") or {}).get("704") == 30, str(cem))
+check("central 70 / site 130 after out+return",
+      cem["central"] == 70 and (cem.get("by_site") or {}).get("704") == 130, str(cem))
 
 for kind in ["stock","by_site","usage","assets","lost","hired"]:
     r = c.get(f"/store/report?kind={kind}", headers=H)

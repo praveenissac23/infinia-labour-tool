@@ -486,6 +486,16 @@ def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
     return {"ok": True}
 
 
+# Served from /users/audit-log, with the bare path kept for anything
+# still asking for it.
+#
+# nginx forwards only the API path prefixes listed in its rule, and
+# /audit-log was never one of them - so on the live server every request
+# for it fell through to the frontend and came back 404, and the
+# Activity screen has been empty there while working perfectly in
+# testing. /users is on that list and this is a log of what users did,
+# so it belongs there anyway.
+@app.get("/users/audit-log")
 @app.get("/audit-log")
 def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
                     user: models.User = Depends(auth.require_admin)):
@@ -2028,6 +2038,74 @@ def maybe_create_auto_backup(db: Session):
 # falls through to the frontend, where a POST comes back 405. Reusing a
 # prefix that already works means no server config change to deploy
 # this - and it belongs with the backups anyway, since it takes one.
+@app.post("/backup/store-reset")
+def store_reset(payload: dict = Body(...), db: Session = Depends(get_db),
+                user: models.User = Depends(auth.require_admin)):
+    """Empty the store before it goes live, and touch nothing else.
+
+    The store was filled with practice entries while it was being built,
+    at a time when attendance and payroll were already running on real
+    data. So this clears the store side only - every stock movement,
+    material request and purchase order - and the attendance tables are
+    not even named here, let alone deleted from.
+
+    Two things are kept unless explicitly asked for, because they are
+    usually typed-up master lists rather than practice:
+      the material list  - thousands of items, imported once
+      the supplier list  - names, TRNs and payment terms
+
+    Admin only, the exact words must be typed, and a full backup is
+    taken first and kept on the server, so this can be undone.
+    """
+    payload = payload or {}
+    if payload.get("confirm") != "CLEAR STORE":
+        raise HTTPException(status_code=400,
+            detail='Type CLEAR STORE exactly to confirm.')
+
+    also_materials = bool(payload.get("clear_materials"))
+    also_suppliers = bool(payload.get("clear_suppliers"))
+
+    # A copy of everything first, so a mistake here costs a restore and
+    # not the data.
+    db.add(models.Backup(created_by=user.id, trigger="before-store-reset",
+                         data=json.dumps(build_backup_data(db), default=str)))
+    db.commit()
+
+    # Child rows first, so nothing is left pointing at a deleted parent.
+    targets = [("order lines", models.PurchaseOrderLine),
+               ("purchase orders", models.PurchaseOrder),
+               ("request lines", models.MaterialRequestLine),
+               ("material requests", models.MaterialRequest),
+               ("stock movements", models.StoreMovement)]
+    if also_suppliers:
+        targets.append(("suppliers", models.Supplier))
+    if also_materials:
+        targets.append(("materials", models.StoreItem))
+
+    cleared = {}
+    for label, model in targets:
+        cleared[label] = db.query(model).delete(synchronize_session=False)
+    db.commit()
+
+    log_action(db, user.id, "store_reset",
+               ", ".join(f"{n} {k}" for k, n in cleared.items() if n) or "nothing to clear")
+
+    kept = {
+        "materials": db.query(models.StoreItem).count(),
+        "suppliers": db.query(models.Supplier).count(),
+        # Named in the reply on purpose: the one thing worth confirming
+        # after a clearance is that the live side is still standing.
+        "attendance days": db.query(models.DailyRow).count(),
+        "workers": db.query(models.Employee).count(),
+        "sites": db.query(models.Site).count(),
+    }
+    return {"ok": True, "cleared": cleared, "kept": kept,
+            "detail": f"Store cleared. Attendance and payroll untouched - "
+                      f"{kept['attendance days']} attendance days still on file. "
+                      f"Requests start again at MR-0001 and orders at IC/LPO/{LPO_START_NO}. "
+                      f"A backup taken just before this is at the top of the list below."}
+
+
 @app.post("/backup/fresh-start")
 def fresh_start(payload: dict = Body(...), db: Session = Depends(get_db),
                  user: models.User = Depends(auth.require_admin)):
@@ -2055,7 +2133,9 @@ def fresh_start(payload: dict = Body(...), db: Session = Depends(get_db),
 
     cleared = {}
     # Child-first, so nothing is left pointing at a deleted row.
-    for label, model in (("request lines", models.MaterialRequestLine),
+    for label, model in (("order lines", models.PurchaseOrderLine),
+                         ("purchase orders", models.PurchaseOrder),
+                         ("request lines", models.MaterialRequestLine),
                          ("material requests", models.MaterialRequest),
                          ("stock movements", models.StoreMovement),
                          ("suppliers", models.Supplier),
@@ -3141,9 +3221,21 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
 # MATERIAL REQUESTS (store keeper -> office)
 # ---------------------------------------------------------------------
 def _next_mr_ref(db: Session) -> str:
-    last = db.query(models.MaterialRequest).order_by(models.MaterialRequest.id.desc()).first()
-    n = (last.id + 1) if last else 1
-    return f"MR-{n:04d}"
+    """MR-0001, MR-0002... counted from the highest reference already
+    issued rather than from the row id.
+
+    The database's own id counter does not go back when rows are
+    deleted. Reading it would have numbered the first request after a
+    store clearance MR-0001 and the very next one MR-0084. Reading the
+    references themselves keeps them in step, and keeps numbering
+    unbroken if a single request is ever deleted.
+    """
+    best = 0
+    for (ref,) in db.query(models.MaterialRequest.ref).all():
+        tail = (ref or "").rsplit("-", 1)[-1]
+        if tail.isdigit():
+            best = max(best, int(tail))
+    return f"MR-{best + 1:04d}"
 
 
 def _mr_out(mr: models.MaterialRequest) -> dict:
