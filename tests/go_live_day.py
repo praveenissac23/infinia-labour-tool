@@ -286,10 +286,19 @@ r = c.get(f'/reports/custom?month_year={CYCLE}&data_source=daily&dimensions=comp
 rows = {x['dim_0']: x for x in r['rows']}
 ck('daily report groups by company', set(rows) == {'Infinia', 'Prime Infinia'}, list(rows))
 ck('Infinia headcount 2', rows['Infinia']['worker_count'] == 2)
-r = c.get(f'/reports/custom?month_year={CYCLE}&data_source=summary&dimensions=name&measures=additions,addition_reasons,deductions,deduction_reasons&company=Prime%20Infinia', headers=O).json()
+r = c.get(f'/reports/custom?month_year={CYCLE}&data_source=summary&dimensions=name&measures=adjustments&company=Prime%20Infinia', headers=O).json()
 names = {x['dim_0']: x for x in r['rows']}
 ck('filtered to Prime Infinia only', set(names) == {'KUMAR SINGH', 'MOHAMED SALIM'}, list(names))
-ck('advance shown with its reason', names['MOHAMED SALIM']['deductions'] == 1500 and 'Advance 1,500' in names['MOHAMED SALIM']['deduction_reasons'], names['MOHAMED SALIM'])
+# One column, signed, with the reason beside it.
+ck('advance shown signed with its reason',
+   '-1,500 Advance' in names['MOHAMED SALIM']['adjustments'], names['MOHAMED SALIM'])
+# A report saved before the five columns were merged still opens.
+old = c.get(f'/reports/custom?month_year={CYCLE}&data_source=summary&dimensions=name'
+            f'&measures=additions,addition_reasons,deductions,deduction_reasons,net_adjustment'
+            f'&company=Prime%20Infinia', headers=O).json()
+ck('an old saved report opens as the one column',
+   [x['label'] for x in old['columns']] == ['Employee Name', 'Adjustments'],
+   [x['label'] for x in old['columns']])
 ck('title names the company', 'Prime Infinia' in r['title'])
 tok = c.post('/auth/download-token', headers=O).json()['token']
 for name, path in [('combined excel', f'/export/{CYCLE}/excel'), ('separate excel', f'/export/{CYCLE}/excel-separate'),

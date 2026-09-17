@@ -735,12 +735,12 @@ BUILDER_SUMMARY_MEASURES = {
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
     "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Total Salary (AED)",
     "deduction": "Absence Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
-    # Adjustments entered by hand on the Salary Adjustments screen, split
-    # the way payroll is actually discussed: what was added, what was
-    # taken off, and the two together.
-    "additions": "Additions (AED)", "addition_reasons": "What the additions were for",
-    "deductions": "Deductions (AED)", "deduction_reasons": "What the deductions were for",
-    "net_adjustment": "Net Adjustment (AED)",
+    # Everything entered by hand on the Salary Adjustments screen, in one
+    # column. It used to be five - what was added, why, what was taken
+    # off, why, and the net - which pushed the report far wider than a
+    # page and said the same thing four times. One column carries it:
+    # "+150 Extra Allowance", "-170 Parking fine for D38023".
+    "adjustments": "Adjustments",
     "final_salary": "Final Salary (AED)", "adjusted_final_salary": "Adjusted Final Salary (AED)",
     "worker_count": "Headcount",
 }
@@ -753,7 +753,16 @@ COMPANY_BY_EMP = {}
 
 # Measures that read as words rather than numbers, so they are gathered
 # and joined instead of added up, and never totalled at the foot.
-TEXT_MEASURES = {"addition_reasons", "deduction_reasons"}
+TEXT_MEASURES = {"adjustments"}
+
+# The five columns adjustments used to be spread across. A report saved
+# or bookmarked before they were merged still names them, so they are
+# quietly read as the one column that replaced them rather than failing.
+RETIRED_MEASURES = {
+    "additions": "adjustments", "addition_reasons": "adjustments",
+    "deductions": "adjustments", "deduction_reasons": "adjustments",
+    "net_adjustment": "adjustments",
+}
 
 
 def _company_of(emp_no):
@@ -891,6 +900,17 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
     """
     dimensions = list(dimensions) if dimensions else []
     measures = list(measures) if measures else []
+    # A report saved before the adjustment columns were merged asks for
+    # columns that no longer exist. Read as the one that replaced them,
+    # once, rather than coming back empty or erroring.
+    if measures:
+        seen, mapped = set(), []
+        for m in measures:
+            m = RETIRED_MEASURES.get(m, m)
+            if m not in seen:
+                seen.add(m)
+                mapped.append(m)
+        measures = mapped
     if not dimensions and not measures:
         return ReportResult("Custom Report", [("note", "Note")],
                              [{"note": "Pick at least one dimension or measure to see results."}])
@@ -936,20 +956,14 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                 return 0  # handled via emp_nos set below, not summed here
             if measure_key == "adjusted_final_salary":
                 return s.adjusted_final_salary()
-            # Bonuses and allowances added; advances and fines taken off.
-            if measure_key == "additions":
-                return sum(a.amount for a in s.adjustments if not a.is_deduction)
-            if measure_key == "deductions":
-                return sum(a.amount for a in s.adjustments if a.is_deduction)
-            if measure_key == "net_adjustment":
-                return sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
-            # Why the money moved, in the words whoever entered it used.
-            # Collected as text rather than summed - "Site bonus 300,
-            # Food allowance 200" tells the story a bare 500 does not.
-            if measure_key in ("addition_reasons", "deduction_reasons"):
-                want_ded = measure_key == "deduction_reasons"
-                return [f"{a.description} {a.amount:,.0f}"
-                        for a in s.adjustments if bool(a.is_deduction) == want_ded]
+            # Every adjustment in one column, signed so the direction is
+            # read at a glance and carrying the reason whoever entered it
+            # typed: "+300 Site bonus", "-170 Parking fine for D38023".
+            # Text rather than a number, because a bare 130 tells nobody
+            # what happened.
+            if measure_key == "adjustments":
+                return [f"{'-' if a.is_deduction else '+'}{a.amount:,.0f} {a.description}".strip()
+                        for a in s.adjustments]
             return getattr(s, measure_key, 0) or 0
 
     for item in source_items:

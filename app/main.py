@@ -1297,6 +1297,7 @@ BUILDER_MEASURE_HINTS = {
     "final_salary_cost": "Each worker's own daily rate, apportioned across every paid day in this group's window.",
     "ot_amount": "Each row's OT hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
     "bh_amount": "Each row's BH hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
+    "adjustments": "Everything added or taken off by hand this cycle, signed and with its reason - \"+300 Site bonus\", \"-170 Parking fine\".",
 }
 
 
