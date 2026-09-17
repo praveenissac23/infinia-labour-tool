@@ -2535,6 +2535,16 @@ def _held_at_site(item) -> bool:
     return (getattr(item, "item_type", "") or "consumable") in HELD_AT_SITE
 
 
+def _ever_stocked(db) -> set:
+    """Item ids the store has ever received. A material that has never
+    come in is not "running low" - it is not stocked yet - and on the
+    first morning of an empty store, saying otherwise put a warning
+    against every material with a reorder level, before anything had
+    happened at all."""
+    M = models.StoreMovement
+    return {iid for (iid,) in db.query(M.item_id).filter(M.kind == "in").distinct().all()}
+
+
 def _stock_map(db: Session, upto: date = None):
     """
     Current quantity of every item at every location, derived from the
@@ -2896,10 +2906,17 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     # name creates an item that can't be identified in any report.
     code = (payload.code or "").strip()
     name = _proper_name((payload.name or "").strip())
-    if not code:
-        code = _next_item_code(db)
     if not name:
         raise HTTPException(status_code=400, detail="Item needs a name.")
+    if not code:
+        # Added by name with no code: if the store already knows a
+        # material by that name, this is that material, not a twin.
+        # Two "Cement OPC 50kg" rows split the stock between them and
+        # every report showed half the truth. The request screen already
+        # matched typed names this way; the material form now does too.
+        twin = (db.query(models.StoreItem)
+                  .filter(func.lower(func.trim(models.StoreItem.name)) == name.lower()).first())
+        code = twin.code if twin else _next_item_code(db)
     if payload.item_type == "returnable":
         payload.item_type = "asset"        # retired type, folded into assets
     if payload.item_type not in ("consumable", "asset", "rental"):
@@ -2966,6 +2983,7 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
     """
     items = db.query(models.StoreItem).filter(models.StoreItem.active == True).all()  # noqa: E712
     stock = _stock_map(db)
+    stocked = _ever_stocked(db)
     rows = []
     for it in items:
         at_central = stock.get((it.id, CENTRAL), 0)
@@ -2982,7 +3000,7 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
             rows.append({"item_id": it.id, "code": it.code, "name": it.name,
                           "category": it.category, "unit": it.unit, "item_type": it.item_type,
                           "qty": round(qty, 2), "reorder_level": it.reorder_level,
-                          "low": qty <= it.reorder_level and it.reorder_level > 0})
+                          "low": qty <= it.reorder_level and it.reorder_level > 0 and it.id in stocked})
         else:
             rows.append({"item_id": it.id, "code": it.code, "name": it.name,
                           "category": it.category, "unit": it.unit, "item_type": it.item_type,
@@ -2990,7 +3008,7 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
                           "total": round(at_central + out_total, 2),
                           "by_site": {k: round(v, 2) for k, v in by_site.items()},
                           "reorder_level": it.reorder_level,
-                          "low": at_central <= it.reorder_level and it.reorder_level > 0})
+                          "low": at_central <= it.reorder_level and it.reorder_level > 0 and it.id in stocked})
     return rows
 
 
@@ -3165,8 +3183,9 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
 
     if kind == "low":
         rows = []
+        stocked = _ever_stocked(db)
         for i in items.values():
-            if not i.active or not i.reorder_level: continue
+            if not i.active or not i.reorder_level or i.id not in stocked: continue
             have = stock.get((i.id, CENTRAL), 0)
             if have <= i.reorder_level:
                 rows.append({"code": i.code, "name": i.name, "unit": i.unit,
@@ -3346,6 +3365,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     # The catalogue can run to thousands of materials; listing every one
     # at zero makes the few real ones impossible to find.
     rows = []
+    stocked = _ever_stocked(db)
     for i in items.values():
         if not i.active: continue
         c = stock.get((i.id, CENTRAL), 0)
@@ -3361,7 +3381,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                       # Which site holds what, so a row can open into a
                       # proper breakdown instead of one crowded cell.
                       "by_site": per_site,
-                      "low": bool(i.reorder_level and c <= i.reorder_level)})
+                      "low": bool(i.reorder_level and i.id in stocked and c <= i.reorder_level)})
     return {"title": "Current stock", "rows": sorted(rows, key=lambda r: r["code"])}
 
 
@@ -3439,8 +3459,15 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     # request became thirty. If an identical request - same person, same
     # site, same materials and quantities - already exists from the last
     # few minutes, hand that one back instead of minting another.
-    sig = sorted((l.item_id or 0, " ".join((l.description or "").lower().split()),
-                  round(l.qty_requested, 3)) for l in lines)
+    # Compared by what the material is called, not by its number: a
+    # material typed by name has no number when the request is sent but
+    # does once it is saved, so the second click of a double-click never
+    # matched the first and one press still made two requests.
+    item_names = {i.id: (i.name or "") for i in db.query(models.StoreItem).all()}
+    def _line_key(item_id, description, qty):
+        name = " ".join(((description or "") or item_names.get(item_id or 0, "")).lower().split())
+        return (name, round(qty or 0, 3))
+    sig = sorted(_line_key(l.item_id, l.description, l.qty_requested) for l in lines)
     recent = (db.query(models.MaterialRequest)
                 .filter(models.MaterialRequest.requested_by == payload.requested_by,
                         models.MaterialRequest.site == (payload.site or ""),
@@ -3456,8 +3483,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     for prev in recent:
         if not _recent(prev.created_at):
             continue
-        prev_sig = sorted((pl.item_id or 0, " ".join((pl.description or "").lower().split()),
-                           round(pl.qty_requested or 0, 3)) for pl in prev.lines)
+        prev_sig = sorted(_line_key(pl.item_id, pl.description, pl.qty_requested) for pl in prev.lines)
         if prev_sig == sig:
             out = _mr_out(prev)
             out["duplicate_of"] = prev.ref
@@ -5035,8 +5061,9 @@ def get_notifications(db: Session = Depends(get_db),
     if "store" in allowed:
         items = {i.id: i for i in db.query(models.StoreItem).filter(models.StoreItem.active == True).all()}  # noqa: E712
         stock = _stock_map(db)
+        stocked = _ever_stocked(db)
         low = [(i, stock.get((i.id, CENTRAL), 0)) for i in items.values()
-               if i.reorder_level and stock.get((i.id, CENTRAL), 0) <= i.reorder_level]
+               if i.reorder_level and i.id in stocked and stock.get((i.id, CENTRAL), 0) <= i.reorder_level]
         for i, have in low[:20]:
             out.append({"id": f"low-{i.id}-{have}", "kind": "low",
                          "title": f"{i.name} is running low",
