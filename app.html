@@ -450,6 +450,19 @@
      room and left-aligned - squeezed into a money-width column it broke
      "Parking fine for D38023" across three lines. */
   .col-adjustments { min-width: 230px; text-align: left !important; white-space: normal; }
+  /* The monthly report's Notes column: a line against each worker,
+     typed straight into the row and saved as you leave the box. */
+  .col-notes { min-width: 260px; text-align: left !important; }
+  .adj-lines { font-size: 12.5px; line-height: 1.4; margin-bottom: 4px; color: #333; }
+  .adj-lines div::before { content: "\2022  "; color: #B45A4E; }
+  .note-cell { width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px;
+               padding: 5px 8px; border: 1px solid #E4DEDA; border-radius: 5px;
+               background: #FFFDF8; resize: vertical; min-height: 30px; line-height: 1.35; }
+  .note-cell:focus { outline: none; border-color: #B45A4E; box-shadow: 0 0 0 3px #F3E1DD; background: #fff; }
+  .note-cell.saved { border-color: #9CCFA5; }
+  .btn-monthly { background: #1F618D; color: #fff; margin-left: auto; }
+  .btn-monthly:hover { background: #17496B; }
+  .btn-monthly.on { background: #0F3A57; box-shadow: inset 0 0 0 2px #9CC3E0; }
   .sent-on { font-weight: 600; opacity: .75; margin-left: 4px; font-size: 11.5px; }
   .holds-sent { margin-top: 10px; border-top: 1px dashed #E2DAD4; padding-top: 7px; }
   .holds-sent-head { font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
@@ -1047,6 +1060,9 @@
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
             <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
+            <button class="btn btn-monthly" id="monthly-report-btn" onclick="openMonthlyReport()"
+                    title="The report management sees every month end: fixed columns, your notes beside it, one PDF to send">
+              Monthly Report</button>
           </div>
           <div class="status-msg" id="report-status"></div>
 
@@ -2935,6 +2951,9 @@ function tintStatusSelect(sel) {
 }
 
 function escapeAttr(s) { return (s || "").replace(/"/g, "&quot;"); }
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 let lastSiteByEmp = {};
 // The workers employed on the date currently open in the grid.
 let attendanceStaff = [];
@@ -3755,7 +3774,12 @@ function renderReportPreview() {
   // Headers are draggable: pick one up and drop it where you want the
   // column to sit. Clicking still sorts, so the two do not fight - a
   // drag only counts once the header has actually moved.
-  headRow.innerHTML = result.columns.map(c => {
+  // In the monthly report, Adjustments and Notes share one column at the
+  // end - each adjustment on its own line, the note typed beneath. Two
+  // text columns side by side left the numbers no room. The ordinary
+  // builder is untouched: every column it offers still shows as picked.
+  const shown = monthlyMode ? result.columns.filter(c => c.key !== "adjustments") : result.columns;
+  headRow.innerHTML = shown.map(c => {
     const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
     return `<th class="sortable" draggable="true" data-key="${c.key}"
                 ondragstart="colDragStart(event, '${c.key}')"
@@ -3765,7 +3789,9 @@ function renderReportPreview() {
                 ondragend="colDragEnd()"
                 title="Drag to move this column, click to sort"
                 onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
-  }).join("");
+  }).join("") + (monthlyMode
+    ? `<th class="col-notes" title="This month's adjustments, and a note against this worker for management. The note saves as you leave the box.">Adjustments &amp; Notes</th>`
+    : "");
 
   if (!result.rows.length) {
     body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No data for this cycle/range yet.</td></tr>`;
@@ -3782,16 +3808,35 @@ function renderReportPreview() {
     });
   }
 
+  // In the monthly report the worker's number is the first column, and
+  // the note against him is keyed by it.
+  const noteCell = r => {
+    if (!monthlyMode) return "";
+    const empNo = r.dim_0;
+    const adj = String(r.adjustments || "").trim();
+    const lines = adj && adj !== "-" ? adj.split(", ").filter(Boolean) : [];
+    return `<td class="col-notes">
+        ${lines.length ? `<div class="adj-lines">${lines.map(l => `<div>${escapeHtml(l)}</div>`).join("")}</div>` : ""}
+        <textarea class="note-cell" rows="1"
+        onchange="saveMonthlyNote('${escapeAttr(empNo)}', this)"
+        oninput="this.style.height='auto'; this.style.height=this.scrollHeight+'px'"
+        placeholder="${lines.length ? "add a note" : "-"}">${escapeHtml(monthlyNotes[empNo] || "")}</textarea></td>`;
+  };
   body.innerHTML = rows.map(r => `
-    <tr>${result.columns.map(c => `<td class="col-${c.key}">${reportFormatValue(c.key, r[c.key])}</td>`).join("")}</tr>
+    <tr>${shown.map(c => `<td class="col-${c.key}">${reportFormatValue(c.key, r[c.key])}</td>`).join("")}${noteCell(r)}</tr>
   `).join("");
+  if (monthlyMode) {
+    // Boxes open to fit whatever was saved, so a two-line note is read
+    // without clicking into it.
+    body.querySelectorAll(".note-cell").forEach(t => { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; });
+  }
 
-  totalRow.innerHTML = result.columns.map((c, i) => {
+  totalRow.innerHTML = shown.map((c, i) => {
     if (i === 0) return `<td>TOTAL</td>`;
     const v = result.totals[c.key];
     if (v === undefined) return `<td></td>`;
     return `<td>${reportFormatValue(c.key, v)}</td>`;
-  }).join("");
+  }).join("") + (monthlyMode ? "<td></td>" : "");
 }
 
 function exportReportTable(fmt) {
@@ -3816,6 +3861,8 @@ function exportReportTable(fmt) {
   const company = (document.getElementById("report-company") || {}).value || "";
   let url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
+  // The monthly report prints under its own title, with the notes.
+  if (monthlyMode && fmt === "pdf") url += "&monthly=1";
   let periodText = cycleLabel(cycle);
   if (reportMode() === "range") {
     const f = document.getElementById("report-date-from").value;
@@ -3847,6 +3894,89 @@ function reportMode() {
   return document.getElementById("report-mode").value;
 }
 
+// ============ MONTHLY REPORT ============
+// The one report management sees at month end. It is the report builder
+// with a fixed set of columns plus a Notes column - a line against each
+// worker, typed straight into the row. The figures are never stored:
+// pick any cycle and they are rebuilt from that cycle. The notes ARE
+// stored, against the cycle and the worker, so an old month comes back
+// with the words that went to management with it.
+const MONTHLY_REPORT = {
+  dims: ["emp_no", "name"],
+  measures: ["total_salary", "ot_hours", "bh_hours", "adjustments", "adjusted_final_salary"],
+};
+let monthlyMode = false;
+let monthlyNotes = {};              // emp_no -> note, for the cycle on screen
+let monthlyNotesLoadedFor = null;
+
+async function openMonthlyReport() {
+  if (monthlyMode) { closeMonthlyReport(); return; }
+  monthlyMode = true;
+  const btn = document.getElementById("monthly-report-btn");
+  if (btn) btn.classList.add("on");
+  // Always the payroll cycle, never a date range - management compares
+  // one month with the last.
+  const modeEl = document.getElementById("report-mode");
+  if (modeEl && modeEl.value !== "cycle") { modeEl.value = "cycle"; onReportModeChange(); }
+  // The figures live on the cycle summaries, so that is the source. The
+  // pay-view radios are for the builder; this fixed set replaces them.
+  if (reportSource !== "summary") {
+    reportSource = "summary";
+    await initReportColumnPicker(true);
+  }
+  document.querySelectorAll('input[name="payview"]').forEach(r => { r.checked = false; });
+  document.querySelectorAll('#report-column-picker-id input[data-dim]').forEach(box => {
+    box.checked = MONTHLY_REPORT.dims.includes(box.dataset.dim);
+  });
+  document.querySelectorAll('#report-column-picker-measure input[data-measure]').forEach(box => {
+    box.checked = MONTHLY_REPORT.measures.includes(box.dataset.measure);
+  });
+  // Columns in the order management reads them, not catalogue order.
+  reportColOrder = [...MONTHLY_REPORT.dims, ...MONTHLY_REPORT.measures];
+  await loadMonthlyNotes();
+  await loadReports();
+  showStatus("report-status", "ok",
+    "Monthly report. Type a note against any worker in the last column - it saves as you leave the box. Export PDF to send it.");
+}
+
+function closeMonthlyReport() {
+  monthlyMode = false;
+  const btn = document.getElementById("monthly-report-btn");
+  if (btn) btn.classList.remove("on");
+  renderReportPreview();
+}
+
+async function loadMonthlyNotes() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  if (!cycle) return;
+  try {
+    const r = await apiCall(`/reports/monthly-notes/${encodeURIComponent(cycle)}`);
+    monthlyNotes = r.notes || {};
+  } catch (e) {
+    monthlyNotes = {};
+    showStatus("report-status", "err", "Could not load the saved notes: " + errText(e));
+  }
+  monthlyNotesLoadedFor = cycle;
+}
+
+// Saved the moment the box is left, one worker at a time, so nothing
+// typed is lost to a forgotten Save button at month end.
+async function saveMonthlyNote(empNo, el) {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  const note = (el.value || "").trim();
+  if ((monthlyNotes[empNo] || "") === note) return;
+  try {
+    const r = await apiCall(`/reports/monthly-notes/${encodeURIComponent(cycle)}`, {
+      method: "POST", body: JSON.stringify({ emp_no: empNo, note }),
+    });
+    monthlyNotes = r.notes || monthlyNotes;
+    el.classList.add("saved");
+    setTimeout(() => el.classList.remove("saved"), 1500);
+  } catch (e) {
+    showStatus("report-status", "err", `Could not save the note for ${empNo}: ` + errText(e));
+  }
+}
+
 function onReportModeChange() {
   const mode = reportMode();
   document.getElementById("report-cycle-wrap").style.display = mode === "cycle" ? "" : "none";
@@ -3864,6 +3994,9 @@ function onReportModeChange() {
 async function loadReports() {
   const cycle = document.getElementById("report-cycle").value.trim();
   if (!cycle) return;
+  // In the monthly report, changing the cycle changes whose notes are
+  // on the right as well as whose figures are on the left.
+  if (monthlyMode && monthlyNotesLoadedFor !== cycle) await loadMonthlyNotes();
   document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
   try {
     await initReportColumnPicker();

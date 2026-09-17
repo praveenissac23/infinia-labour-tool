@@ -1402,11 +1402,75 @@ def custom_report(month_year: str, data_source: str = "daily", dimensions: str =
             "rows": result.rows, "totals": result.totals}
 
 
+# ---------------------------------------------------------------------
+# MONTHLY REPORT - the one report management sees every month end
+# ---------------------------------------------------------------------
+# The report itself is the report builder with a fixed set of columns,
+# so nothing here stores figures: the builder recomputes them for
+# whichever cycle is chosen, which is what makes a two-month-old report
+# come back on request. What does need keeping is the notes typed
+# beside it - the explanation a manager reads before the numbers - and
+# those live against the cycle, so an old cycle comes back with the
+# notes that went to management with it.
+#
+# Under /reports/, which nginx forwards. A new prefix would not be.
+def _monthly_notes_key(month_year: str) -> str:
+    return f"monthly_notes:{month_year.strip()}"
+
+
+def _load_monthly_notes(db, month_year: str) -> dict:
+    """{emp_no: note} for the cycle - empty when nothing was ever written."""
+    row = db.query(models.Setting).filter(models.Setting.key == _monthly_notes_key(month_year)).first()
+    if not row or not row.value:
+        return {}
+    try:
+        data = json.loads(row.value)
+    except Exception:
+        return {}
+    notes = data.get("notes") if isinstance(data, dict) else None
+    return {k: v for k, v in (notes or {}).items() if isinstance(v, str) and v.strip()} \
+        if isinstance(notes, dict) else {}
+
+
+@app.get("/reports/monthly-notes/{month_year}")
+def get_monthly_notes(month_year: str, db: Session = Depends(get_db),
+                      user: models.User = Depends(require_screen("reports"))):
+    return {"month_year": month_year, "notes": _load_monthly_notes(db, month_year)}
+
+
+@app.post("/reports/monthly-notes/{month_year}")
+def save_monthly_note(month_year: str, payload: dict = Body(...), db: Session = Depends(get_db),
+                      user: models.User = Depends(require_screen("reports"))):
+    """One worker's note for one cycle. Saved the moment the box is
+    left, so it is one worker at a time; an empty note removes his line."""
+    payload = payload or {}
+    emp_no = str(payload.get("emp_no") or "").strip()
+    if not emp_no:
+        raise HTTPException(status_code=400, detail="Which worker is the note for?")
+    note = str(payload.get("note") or "").strip()
+    notes = _load_monthly_notes(db, month_year)
+    if note:
+        notes[emp_no] = note
+    else:
+        notes.pop(emp_no, None)
+    key = _monthly_notes_key(month_year)
+    row = db.query(models.Setting).filter(models.Setting.key == key).first()
+    value = json.dumps({"notes": notes, "saved_by": user.full_name or user.username,
+                        "saved_on": _dubai_today().isoformat()})
+    if row:
+        row.value = value
+    else:
+        db.add(models.Setting(key=key, value=value))
+    db.commit()
+    log_action(db, user.id, "monthly_note", f"{month_year} {emp_no}: {note[:60]}" if note else f"{month_year} {emp_no}: cleared")
+    return {"ok": True, "month_year": month_year, "notes": notes}
+
+
 @app.get("/export/{month_year}/custom-report")
 def export_custom_report(month_year: str, token: str, data_source: str = "daily",
                           dimensions: str = "", measures: str = "",
                           date_from: str = None, date_to: str = None, format: str = "excel",
-                          company: str = "", db: Session = Depends(get_db)):
+                          company: str = "", monthly: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
@@ -1424,6 +1488,24 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
     if not result.columns:
         raise HTTPException(status_code=400, detail="No columns selected.")
 
+    # The monthly report carries a note against each worker, matched by
+    # the worker number in the first column. Added here, once, so the
+    # Excel and the PDF both have it.
+    if monthly:
+        # One column for both, at the end: each adjustment on its own
+        # line, then the note under it. Two text columns side by side
+        # left the numbers with no room; one reads better and fits A4.
+        notes = _load_monthly_notes(db, month_year)
+        result_dict["columns"] = [c for c in result_dict["columns"] if c["key"] != "adjustments"]
+        result_dict["columns"].append({"key": "adjustments_notes", "label": "Adjustments & Notes"})
+        for row in result_dict["rows"]:
+            adj = str(row.get("adjustments") or "").strip()
+            lines = [a.strip() for a in adj.split(", ") if a.strip() and a.strip() != "-"]
+            note = notes.get(str(row.get("dim_0", "")), "").strip()
+            if note:
+                lines.append("Note: " + note)
+            row["adjustments_notes"] = "\n".join(lines) if lines else "-"
+
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
     if format == "excel":
         buf = export_web.build_generic_result_excel(result_dict, month_year)
@@ -1432,10 +1514,14 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
             headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
         )
     elif format == "pdf":
-        buf = export_web.build_generic_result_pdf(result_dict, month_year)
+        title = "Monthly Payroll Report" if monthly else None
+        buf = export_web.build_generic_result_pdf(
+            result_dict, month_year, title=title,
+            subtitle=(company or "Infinia and Prime Infinia") if monthly else None)
+        fname = f"Infinia_Monthly_Report_{safe_name}.pdf" if monthly else f"Infinia_Report_{safe_name}.pdf"
         return StreamingResponse(
             buf, media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.pdf"},
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
         )
     raise HTTPException(status_code=400, detail="format must be 'excel' or 'pdf'.")
 

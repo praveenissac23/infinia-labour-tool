@@ -913,6 +913,10 @@ def build_generic_result_excel(result_dict, cycle_label):
             cell.border = border
             if isinstance(v, (int, float)):
                 cell.number_format = MONEY_FMT if is_money(c["key"]) else COUNT_FMT
+            elif isinstance(v, str) and "\n" in v:
+                # Lines stay lines - an adjustment and the note under it.
+                cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+                ws.column_dimensions[get_column_letter(i)].width = 46
         r += 1
 
     totals = result_dict.get("totals") or {}
@@ -935,17 +939,64 @@ def build_generic_result_excel(result_dict, cycle_label):
     return buf
 
 
-def build_generic_result_pdf(result_dict, cycle_label):
+def _column_widths(cols, avail):
+    """Column widths in points, for a table that has to read on A4.
+
+    Every column used to get an equal share, so "OT Hours" was as wide
+    as "Adjustments" - the numbers swam in space while "-170 Parking
+    fine for D38023, +50 Extra Allowance" broke into five lines. Then,
+    with a Notes column beside it, sharing by weight squeezed "Employee
+    No" into "Employ / ee No".
+
+    So the columns that hold a number or a code get a fixed width they
+    can always print in, and whatever is left is split between the
+    columns that hold sentences - those are the ones meant to wrap.
+    """
+    def kind(c):
+        k, l = c["key"].lower(), c["label"].lower()
+        if k in ("adjustments", "notes", "adjustments_notes") or "reason" in k or "note" in k:
+            return "text"
+        if k == "dim_1" or "name" in l:
+            return "name"
+        if k == "dim_0" or "employee no" in l or "emp" in l:
+            return "id"
+        if k.startswith("dim_"):
+            return "label"
+        if "hours" in l or "days" in l or "headcount" in l or "man-days" in l:
+            return "count"
+        return "money"
+    fixed = {"id": 48, "name": 96, "label": 70, "count": 38, "money": 64}
+    kinds = [kind(c) for c in cols]
+    widths = [fixed.get(k, 0) for k in kinds]
+    n_text = kinds.count("text")
+    if n_text:
+        left = max(avail - sum(widths), 90 * n_text)
+        share = left / n_text
+        widths = [share if k == "text" else w for k, w in zip(kinds, widths)]
+    else:
+        # No sentence columns: let the fixed ones grow to fill the page.
+        scale = avail / max(sum(widths), 1)
+        widths = [w * scale for w in widths]
+    return widths
+
+
+def build_generic_result_pdf(result_dict, cycle_label, title=None, notes=None, subtitle=None):
     cols = result_dict["columns"]
     styles = getSampleStyleSheet()
     cell_style = ParagraphStyle("TblCell", parent=styles["Normal"], fontSize=7, leading=9)
+    num_style = ParagraphStyle("TblNum", parent=cell_style, alignment=2)          # right
     head_style = ParagraphStyle("TblHead", parent=styles["Normal"], fontSize=7.5, leading=9,
                                  textColor=colors.white, fontName="Helvetica-Bold")
     bold_style = ParagraphStyle("TblBold", parent=styles["Normal"], fontSize=7.5, leading=9, fontName="Helvetica-Bold")
+    bold_num = ParagraphStyle("TblBoldNum", parent=bold_style, alignment=2)
 
     def is_money(key):
         k = key.lower()
         return "cost" in k or "amount" in k or "salary" in k or "pay" in k
+
+    def is_numeric(key):
+        k = key.lower()
+        return not (k.startswith("dim_") or k in ("adjustments", "notes", "adjustments_notes") or "reason" in k)
 
     def fmt(key, v):
         """Money gets 2 decimals (21,344.92); other numbers get thousands
@@ -959,37 +1010,91 @@ def build_generic_result_pdf(result_dict, cycle_label):
             return f"{v:,.10g}" if v != int(v) else f"{int(v):,}"
         return str(v)
 
+    def cell(c, v, bold=False):
+        text = fmt(c["key"], v)
+        if is_numeric(c["key"]):
+            return Paragraph(text, bold_num if bold else num_style)
+        # Every adjustment on its own line, so a man with three reads as
+        # three and not as one run-on sentence.
+        if c["key"] == "adjustments" and text:
+            text = "<br/>".join(_esc(p.strip()) for p in text.split(", ") if p.strip())
+        elif c["key"] == "adjustments_notes" and text:
+            # Adjustments as they are; the note beneath in quiet italic,
+            # so the figure and the explanation are told apart at a glance.
+            parts = []
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("Note: "):
+                    parts.append(f'<i><font color="#6B5E57">{_esc(line[6:])}</font></i>')
+                else:
+                    parts.append(_esc(line))
+            text = "<br/>".join(parts)
+        else:
+            text = _esc(text)
+        return Paragraph(text, bold_style if bold else cell_style)
+
     data = [[Paragraph(c["label"], head_style) for c in cols]]
     for row in result_dict["rows"]:
-        data.append([Paragraph(fmt(c["key"], row.get(c["key"], "")), cell_style) for c in cols])
+        data.append([cell(c, row.get(c["key"], "")) for c in cols])
 
     totals = result_dict.get("totals") or {}
     if totals:
         trow = []
         for i, c in enumerate(cols):
             v = totals.get(c["key"])
-            trow.append(Paragraph("TOTAL" if i == 0 else fmt(c["key"], v), bold_style))
+            trow.append(Paragraph("TOTAL", bold_style) if i == 0 else cell(c, v, bold=True))
         data.append(trow)
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=22 * mm, bottomMargin=10 * mm,
-                             leftMargin=8 * mm, rightMargin=8 * mm)
-    col_width = doc.width / max(len(cols), 1)
-    tbl = Table(data, colWidths=[col_width] * len(cols), repeatRows=1)
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=22 * mm, bottomMargin=12 * mm,
+                             leftMargin=10 * mm, rightMargin=10 * mm)
+    tbl = Table(data, colWidths=_column_widths(cols, doc.width), repeatRows=1)
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{BRAND_RED}")),
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D0D0D0")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2 if totals else -1),
+         [colors.white, colors.HexColor("#FAF7F5")]),
     ]
     if totals:
         style_cmds.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(f"#{GREEN_FILL}")))
     tbl.setStyle(TableStyle(style_cmds))
 
-    title = Paragraph(f"Report - {cycle_label}", ParagraphStyle(
-        "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold", spaceAfter=8))
-    doc.build([title, tbl], onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
+    story = [Paragraph(f"{title or 'Report'} - {cycle_label}", ParagraphStyle(
+        "Title", parent=styles["Normal"], fontSize=13, fontName="Helvetica-Bold",
+        spaceAfter=2 if subtitle else 8))]
+    if subtitle:
+        story.append(Paragraph(subtitle, ParagraphStyle(
+            "Sub", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#666666"),
+            spaceAfter=8)))
+    if notes:
+        # The notes go above the figures: they are what management is
+        # meant to read first, and a page of numbers is easy to stop at.
+        note_style = ParagraphStyle("Note", parent=styles["Normal"], fontSize=8.5, leading=12)
+        note_head = ParagraphStyle("NoteHead", parent=styles["Normal"], fontSize=8,
+                                   fontName="Helvetica-Bold", textColor=colors.HexColor(f"#{BRAND_RED}"),
+                                   spaceAfter=2)
+        body = "<br/>".join(_esc(line) for line in str(notes).splitlines())
+        box = Table([[Paragraph("NOTES", note_head)], [Paragraph(body, note_style)]],
+                    colWidths=[doc.width])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FBF6F4")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E7CEC9")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, 0), 6), ("BOTTOMPADDING", (0, -1), (-1, -1), 6),
+        ]))
+        story += [box, Spacer(1, 8)]
+    story.append(tbl)
+    doc.build(story, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page)
     buf.seek(0)
     return buf
+
+
+def _esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 # ---------------------------------------------------------------------
