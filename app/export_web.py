@@ -1026,10 +1026,9 @@ def build_generic_result_pdf(result_dict, cycle_label, title=None, notes=None, s
                 line = line.strip()
                 if not line:
                     continue
-                if line.startswith("Note: "):
-                    parts.append(f'<i><font color="#6B5E57">{_esc(line[6:])}</font></i>')
-                else:
-                    parts.append(_esc(line))
+                # The note reads in the same black as the adjustments -
+                # a faded grey looked like an afterthought on paper.
+                parts.append(_esc(line[6:] if line.startswith("Note: ") else line))
             text = "<br/>".join(parts)
         else:
             text = _esc(text)
