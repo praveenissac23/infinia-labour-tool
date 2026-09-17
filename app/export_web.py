@@ -1166,6 +1166,9 @@ def build_store_report_excel(title, rows, subtitle=""):
                 c.alignment = Alignment(horizontal="right", vertical="center")
                 if k in numeric_totals:
                     numeric_totals[k] += v
+            elif isinstance(v, str) and "\n" in v:
+                # One site per line, and the row grows to hold them.
+                c.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             else:
                 c.alignment = Alignment(horizontal="left" if _is_texty(k) else "center",
                                         vertical="center")
@@ -1248,7 +1251,10 @@ def build_store_report_pdf(title, rows, subtitle=""):
                 sty = cellR
             elif k == "item_type" and v:
                 v = str(v).title()
-            line.append(Paragraph(str(v) if v not in (None, "") else "-", sty))
+            text = str(v) if v not in (None, "") else "-"
+            # A cell holding lines - one site per line - keeps them.
+            text = "<br/>".join(_esc(t) for t in text.split("\n")) if "\n" in text else _esc(text)
+            line.append(Paragraph(text, sty))
         data.append(line)
     if totals:
         data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>",

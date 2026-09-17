@@ -1060,7 +1060,7 @@
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
             <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
-            <button class="btn btn-monthly" id="monthly-report-btn" onclick="openMonthlyReport()"
+            <button class="btn btn-monthly" id="monthly-report-btn" onclick="switchScreen('monthly'); openMonthlyReport();"
                     title="The report management sees every month end: fixed columns, your notes beside it, one PDF to send">
               Monthly Report</button>
           </div>
@@ -1089,7 +1089,7 @@
             <div id="report-column-picker-measure" class="report-col-picker"></div>
           </div>
 
-          <div class="card">
+          <div class="card" id="report-preview-card">
             <h2>Preview</h2>
             <p id="report-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
             <div class="grid-wrap" style="max-height: 55vh;">
@@ -1101,6 +1101,36 @@
             </div>
           </div>
 
+        </div>
+
+        <!-- ============ MONTHLY REPORT PAGE ============
+             Opened from the button on Reports, never from the left pane -
+             it is a once-a-month job and the pane is full. The preview
+             card is carried over from Reports while this page is open and
+             carried back on leaving, so sorting, drag-to-reorder and
+             everything else the table does work here unchanged. -->
+        <div class="screen" id="screen-monthly">
+          <div class="toolbar">
+            <button class="btn btn-gray" onclick="switchScreen('reports')" title="Back to Reports / Summaries">&larr; Back</button>
+            <label>Payroll cycle:</label>
+            <select id="monthly-cycle" onchange="onMonthlyPick()"></select>
+            <label style="font-size:13px;">Company:</label>
+            <select id="monthly-company" onchange="onMonthlyPick()" style="width:180px;">
+              <option value="">Both companies</option>
+              <option value="Infinia">Infinia</option>
+              <option value="Prime Infinia">Prime Infinia</option>
+            </select>
+            <button class="btn btn-primary" onclick="saveAllMonthlyNotes()" title="Notes also save on their own as you leave each box">Save notes</button>
+            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
+          </div>
+          <div class="status-msg" id="monthly-status"></div>
+          <p style="font-size:12.5px; color:#666; margin:0 0 10px; max-width:900px;">
+            The report management sees at month end. Pick any payroll cycle to bring that
+            month back, with the notes that were saved against it. Type a note against a
+            worker in the last column; drag a column heading to move it, click one to sort.
+          </p>
+          <div id="monthly-preview-slot"></div>
         </div>
 
         <!-- ============ COMBINE SCREEN ============ -->
@@ -2176,6 +2206,7 @@ const SCREEN_TITLES = {
   dashboard: "Dashboard",
   attendance: "Daily Attendance Entry",
   masterdata: "Master Data",
+  monthly: "Monthly Report",
   reports: "Reports / Summaries",
   combine: "Salary Cards",
   errorcheck: "Check Before You Pay",
@@ -2244,15 +2275,20 @@ function switchScreen(name) {
     while (g && !g.classList.contains("nav-group")) g = g.previousElementSibling;
     if (g) toggleNavGroup(g.dataset.group);
   }
+  // Leaving the monthly page by any route - Back, or another item in
+  // the pane - puts the preview card back where Reports expects it.
+  if (monthlyMode && name !== "monthly") closeMonthlyReport();
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
   document.getElementById("screen-" + name).classList.add("active");
+  // The monthly page has no item of its own in the pane; Reports stays lit.
+  const lit = name === "monthly" ? "reports" : name;
   document.querySelectorAll(".nav-item").forEach(el =>
-    el.classList.toggle("active", (el.dataset.target || el.dataset.screen) === name));
+    el.classList.toggle("active", (el.dataset.target || el.dataset.screen) === lit));
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
-  localStorage.setItem("infinia_last_screen", name);
+  localStorage.setItem("infinia_last_screen", lit);
   if (name === "activity") loadActivityLog();
   if (name === "masterdata") loadFormerWorkers();
-  if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
+  if (name === "reports" || name === "monthly" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "combine") {
     filterCombineWorkers();
     // Adjustments live at the foot of this screen now. Only for
@@ -3844,15 +3880,15 @@ function exportReportTable(fmt) {
   const dims = getSelectedDimensions();
   const measures = getSelectedMeasures();
   if (!cycle) {
-    showStatus("report-status", "warn", "Enter a cycle first.");
+    showStatus(monthlyStatus(), "warn", "Enter a cycle first.");
     return;
   }
   if (!dims.length && !measures.length) {
-    showStatus("report-status", "warn", "Tick at least one column above.");
+    showStatus(monthlyStatus(), "warn", "Tick at least one column above.");
     return;
   }
   if (!cachedDownloadToken) {
-    showStatus("report-status", "err", "Still preparing - try again in a moment.");
+    showStatus(monthlyStatus(), "err", "Still preparing - try again in a moment.");
     refreshDownloadToken();
     return;
   }
@@ -3867,12 +3903,12 @@ function exportReportTable(fmt) {
   if (reportMode() === "range") {
     const f = document.getElementById("report-date-from").value;
     const t = document.getElementById("report-date-to").value;
-    if (!f || !t) { showStatus("report-status", "warn", "Pick both a from and a to date."); return; }
+    if (!f || !t) { showStatus(monthlyStatus(), "warn", "Pick both a from and a to date."); return; }
     url += `&date_from=${f}&date_to=${t}`;
     periodText = `${f} to ${t}`;
   }
   window.open(url, "_blank");
-  showStatus("report-status", "ok", `Opening ${fmt.toUpperCase()} for ${periodText}.`);
+  showStatus(monthlyStatus(), "ok", `Opening ${fmt.toUpperCase()} for ${periodText}.`);
 }
 
 // A cycle's own start/end dates - used to seed the date range when
@@ -3908,18 +3944,32 @@ const MONTHLY_REPORT = {
 let monthlyMode = false;
 let monthlyNotes = {};              // emp_no -> note, for the cycle on screen
 let monthlyNotesLoadedFor = null;
+let monthlySaved = null;            // where the picker and radios stood before
 
 async function openMonthlyReport() {
-  if (monthlyMode) { closeMonthlyReport(); return; }
+  if (monthlyMode) return;
   monthlyMode = true;
-  const btn = document.getElementById("monthly-report-btn");
-  if (btn) btn.classList.add("on");
-  // Always the payroll cycle, never a date range - management compares
-  // one month with the last.
+  // Remember the builder as it stood, so Back returns to exactly that.
+  monthlySaved = {
+    source: reportSource, order: [...reportColOrder],
+    mode: (document.getElementById("report-mode") || {}).value || "cycle",
+    payview: (document.querySelector('input[name="payview"]:checked') || {}).value || null,
+    dims: [...document.querySelectorAll('#report-column-picker-id input[data-dim]:checked')].map(b => b.dataset.dim),
+    measures: [...document.querySelectorAll('#report-column-picker-measure input[data-measure]:checked')].map(b => b.dataset.measure),
+  };
+  // Carry the preview card onto this page - the table, its sorting and
+  // its drag-to-reorder come with it.
+  const card = document.getElementById("report-preview-card");
+  const slot = document.getElementById("monthly-preview-slot");
+  if (card && slot && card.parentElement !== slot) slot.appendChild(card);
+  // The page's own cycle and company pickers mirror the ones on Reports.
+  const rc = document.getElementById("report-cycle"), mc = document.getElementById("monthly-cycle");
+  if (mc && rc) { mc.innerHTML = rc.innerHTML; mc.value = rc.value; }
+  const rco = document.getElementById("report-company"), mco = document.getElementById("monthly-company");
+  if (mco && rco) mco.value = rco.value;
+  // Always the payroll cycle, never a date range.
   const modeEl = document.getElementById("report-mode");
   if (modeEl && modeEl.value !== "cycle") { modeEl.value = "cycle"; onReportModeChange(); }
-  // The figures live on the cycle summaries, so that is the source. The
-  // pay-view radios are for the builder; this fixed set replaces them.
   if (reportSource !== "summary") {
     reportSource = "summary";
     await initReportColumnPicker(true);
@@ -3931,20 +3981,44 @@ async function openMonthlyReport() {
   document.querySelectorAll('#report-column-picker-measure input[data-measure]').forEach(box => {
     box.checked = MONTHLY_REPORT.measures.includes(box.dataset.measure);
   });
-  // Columns in the order management reads them, not catalogue order.
   reportColOrder = [...MONTHLY_REPORT.dims, ...MONTHLY_REPORT.measures];
   await loadMonthlyNotes();
   await loadReports();
-  showStatus("report-status", "ok",
-    "Monthly report. Type a note against any worker in the last column - it saves as you leave the box. Export PDF to send it.");
 }
 
+// Back, or any other item in the pane: the card goes home and the
+// builder is exactly as it was left.
 function closeMonthlyReport() {
+  if (!monthlyMode) return;
   monthlyMode = false;
-  const btn = document.getElementById("monthly-report-btn");
-  if (btn) btn.classList.remove("on");
-  renderReportPreview();
+  const card = document.getElementById("report-preview-card");
+  const home = document.getElementById("screen-reports");
+  if (card && home && card.parentElement !== home) home.appendChild(card);
+  const s = monthlySaved; monthlySaved = null;
+  if (!s) { renderReportPreview(); return; }
+  (async () => {
+    if (reportSource !== s.source) { reportSource = s.source; await initReportColumnPicker(true); }
+    document.querySelectorAll('input[name="payview"]').forEach(r => { r.checked = r.value === s.payview; });
+    document.querySelectorAll('#report-column-picker-id input[data-dim]').forEach(b => { b.checked = s.dims.includes(b.dataset.dim); });
+    document.querySelectorAll('#report-column-picker-measure input[data-measure]').forEach(b => { b.checked = s.measures.includes(b.dataset.measure); });
+    reportColOrder = s.order;
+    const modeEl = document.getElementById("report-mode");
+    if (modeEl && modeEl.value !== s.mode) { modeEl.value = s.mode; onReportModeChange(); }
+    loadReports();
+  })();
 }
+
+// The page's pickers drive the ones Reports reads, so every function
+// that looks at "the cycle" sees the same answer on both pages.
+function onMonthlyPick() {
+  const mc = document.getElementById("monthly-cycle"), rc = document.getElementById("report-cycle");
+  const mco = document.getElementById("monthly-company"), rco = document.getElementById("report-company");
+  if (mc && rc) rc.value = mc.value;
+  if (mco && rco) rco.value = mco.value;
+  loadReports();
+}
+
+function monthlyStatus() { return monthlyMode ? "monthly-status" : "report-status"; }
 
 async function loadMonthlyNotes() {
   const cycle = document.getElementById("report-cycle").value.trim();
@@ -3954,7 +4028,7 @@ async function loadMonthlyNotes() {
     monthlyNotes = r.notes || {};
   } catch (e) {
     monthlyNotes = {};
-    showStatus("report-status", "err", "Could not load the saved notes: " + errText(e));
+    showStatus(monthlyStatus(), "err", "Could not load the saved notes: " + errText(e));
   }
   monthlyNotesLoadedFor = cycle;
 }
@@ -3973,7 +4047,29 @@ async function saveMonthlyNote(empNo, el) {
     el.classList.add("saved");
     setTimeout(() => el.classList.remove("saved"), 1500);
   } catch (e) {
-    showStatus("report-status", "err", `Could not save the note for ${empNo}: ` + errText(e));
+    showStatus(monthlyStatus(), "err", `Could not save the note for ${empNo}: ` + errText(e));
+  }
+}
+
+// The Save button: every box on the page, in one go, for whoever would
+// rather press a button than trust the boxes to save themselves.
+async function saveAllMonthlyNotes() {
+  const cycle = document.getElementById("report-cycle").value.trim();
+  const notes = {};
+  document.querySelectorAll("#report-body tr").forEach(tr => {
+    const box = tr.querySelector(".note-cell");
+    const empNo = (tr.querySelector("td.col-dim_0") || {}).textContent;
+    if (box && empNo) { const v = (box.value || "").trim(); if (v) notes[empNo.trim()] = v; }
+  });
+  try {
+    const r = await apiCall(`/reports/monthly-notes/${encodeURIComponent(cycle)}`, {
+      method: "POST", body: JSON.stringify({ notes }),
+    });
+    monthlyNotes = r.notes || notes;
+    showStatus("monthly-status", "ok",
+      `Saved ${Object.keys(monthlyNotes).length} note(s) for ${cycleLabel(cycle)}.`);
+  } catch (e) {
+    showStatus("monthly-status", "err", "Could not save the notes: " + errText(e));
   }
 }
 
@@ -7181,6 +7277,10 @@ async function exportStore(fmt) {
   let url = `${API}/export/store/report?kind=${view}&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`;
   if (from) url += `&date_from=${from}`;
   if (to) url += `&date_to=${to}`;
+  // The download is the screen: whatever the search box has narrowed
+  // it to is what goes on paper.
+  const q = ((document.getElementById("store-report-search") || {}).value || "").trim();
+  if (q) url += `&q=${encodeURIComponent(q)}`;
   window.open(url, "_blank");
   showStatus("store-status", "ok", `Downloading ${fmt.toUpperCase()}.`);
 }

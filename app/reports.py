@@ -973,6 +973,15 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                         for a in s.adjustments]
             return getattr(s, measure_key, 0) or 0
 
+    # A column the other source offers is simply not here - a summary
+    # figure asked of the daily rows, or the reverse. It used to raise
+    # and the whole report came back as a server error; it is left out.
+    dimensions = [d for d in dimensions if d in dim_catalog]
+    measures = [m for m in measures if m in measure_catalog]
+    if not dimensions and not measures:
+        return ReportResult("Custom Report", [("note", "Note")],
+                             [{"note": "None of the picked columns exist for this data source."}])
+
     for item in source_items:
         key = tuple(dim_fn(item, d) for d in dimensions) if dimensions else ("(all)",)
         if key not in groups:

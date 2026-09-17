@@ -1444,15 +1444,23 @@ def save_monthly_note(month_year: str, payload: dict = Body(...), db: Session = 
     """One worker's note for one cycle. Saved the moment the box is
     left, so it is one worker at a time; an empty note removes his line."""
     payload = payload or {}
-    emp_no = str(payload.get("emp_no") or "").strip()
-    if not emp_no:
-        raise HTTPException(status_code=400, detail="Which worker is the note for?")
-    note = str(payload.get("note") or "").strip()
-    notes = _load_monthly_notes(db, month_year)
-    if note:
-        notes[emp_no] = note
+    if isinstance(payload.get("notes"), dict):
+        # The whole page at once, from the Save button: what is sent is
+        # what is kept, so a box emptied on screen is emptied here too.
+        notes = {str(k).strip(): str(v).strip() for k, v in payload["notes"].items()
+                 if str(k).strip() and str(v or "").strip()}
+        what = f"{len(notes)} note(s)"
     else:
-        notes.pop(emp_no, None)
+        emp_no = str(payload.get("emp_no") or "").strip()
+        if not emp_no:
+            raise HTTPException(status_code=400, detail="Which worker is the note for?")
+        note = str(payload.get("note") or "").strip()
+        notes = _load_monthly_notes(db, month_year)
+        if note:
+            notes[emp_no] = note
+        else:
+            notes.pop(emp_no, None)
+        what = f"{emp_no}: {note[:60]}" if note else f"{emp_no}: cleared"
     key = _monthly_notes_key(month_year)
     row = db.query(models.Setting).filter(models.Setting.key == key).first()
     value = json.dumps({"notes": notes, "saved_by": user.full_name or user.username,
@@ -1462,7 +1470,7 @@ def save_monthly_note(month_year: str, payload: dict = Body(...), db: Session = 
     else:
         db.add(models.Setting(key=key, value=value))
     db.commit()
-    log_action(db, user.id, "monthly_note", f"{month_year} {emp_no}: {note[:60]}" if note else f"{month_year} {emp_no}: cleared")
+    log_action(db, user.id, "monthly_note", f"{month_year} {what}")
     return {"ok": True, "month_year": month_year, "notes": notes}
 
 
@@ -3257,13 +3265,17 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             if not i.active or i.item_type not in ("asset", "returnable"): continue
             at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
             lost = _lost_by_item(i.id)
+            # A machine the company owns but has none of - never bought,
+            # or all written off - is not a line on an asset register.
+            if not at and not lost:
+                continue
+            # No "where" column: the store and site figures already say
+            # where it is, and which site is the At Sites report's job.
             rows.append({"code": i.code, "name": i.name, "unit": i.unit,
                           "in_store": round(at.get("", 0), 2),
                           "at_sites": round(sum(q for loc, q in at.items() if loc), 2),
                           "total": round(sum(at.values()), 2),
-                          "written_off": round(lost, 2) if lost else 0,
-                          "where": ", ".join(f"{loc or 'store'}: {q:g}"
-                                              for loc, q in sorted(at.items())) or "-"})
+                          "written_off": round(lost, 2) if lost else 0})
         return {"title": "Owned assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
 
     if kind == "hired":
@@ -4844,7 +4856,7 @@ def signature_status(user: models.User = Depends(require_screen("approvals"))):
 @app.get("/export/store/report")
 def export_store_report(kind: str = "stock", format: str = "excel",
                          date_from: str = None, date_to: str = None,
-                         token: str = None, db: Session = Depends(get_db)):
+                         q: str = "", token: str = None, db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     # Material-request reports live under a different builder to the
     # stock ones, but both export through the same formatter.
@@ -4865,9 +4877,18 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
         if isinstance(r.get("by_site"), dict):
             per = r.pop("by_site")
-            r["at_which_sites"] = ", ".join(f"{loc}: {_clean_export_qty(q)}"
+            # One site per line. Twenty sites on one line read as a
+            # number soup; stacked, the cell reads top to bottom.
+            r["at_which_sites"] = "\n".join(f"{loc}: {_clean_export_qty(q)}"
                                              for loc, q in sorted(per.items())) or "-"
         rows.append(r)
+    # What was typed in "Search within this report" narrows the download
+    # too. Typing "asset" and getting the whole store on paper was the
+    # complaint; the file now holds what the screen showed.
+    q = (q or "").strip().lower()
+    if q:
+        rows = [r for r in rows if q in " ".join(str(v) for v in r.values()).lower()]
+        sub = f'{sub} · matching "{q}"'
     data = {**data, "rows": rows}
     if format == "pdf":
         buf = export_web.build_store_report_pdf(data["title"], data["rows"], sub)

@@ -65,6 +65,10 @@ ck('saving one worker leaves the other alone',
 ck('an empty note clears the line',
    'D-03' not in c.post(f'/reports/monthly-notes/{SEP}', json={'emp_no': 'D-03', 'note': '  '}, headers=H).json()['notes'])
 c.post(f'/reports/monthly-notes/{SEP}', json={'emp_no': 'D-03', 'note': 'Fined for parking at 914; recovered this month.'}, headers=H)
+whole = c.post(f'/reports/monthly-notes/{SEP}', json={'notes': {'D-03': 'Whole-page save.', 'F-722': ''}}, headers=H).json()['notes']
+ck('the Save button sends the whole page and an emptied box clears', whole == {'D-03': 'Whole-page save.'}, whole)
+c.post(f'/reports/monthly-notes/{SEP}', json={'emp_no': 'D-03', 'note': 'Fined for parking at 914; recovered this month.'}, headers=H)
+c.post(f'/reports/monthly-notes/{SEP}', json={'emp_no': 'F-722', 'note': 'ILOE insurance renewed.'}, headers=H)
 ck('a note with no worker is refused',
    c.post(f'/reports/monthly-notes/{SEP}', json={'note': 'x'}, headers=H).status_code == 400)
 ck('a site engineer cannot read the notes',

@@ -11,7 +11,7 @@ consumable; what was sent shows as what was last sent, which is the
 question asked before sending more. The central store still holds
 everything, because there it is genuinely on a shelf.
 """
-import sys
+import sys, io
 sys.path.insert(0, '.')
 from fastapi.testclient import TestClient
 import database, models, auth
@@ -123,6 +123,26 @@ ck('and then it is no longer at the site',
 usage = c.get('/store/report?kind=usage', headers=H).json()['rows']
 ck('the usage report still accounts for the cement',
    any('Cement' in str(r.get('name', '')) for r in usage), usage[:2])
+
+# ---- The asset register: no empty lines, no "where" column ------------
+item('Jack Hammer', 'asset', 'pcs')            # owned on paper, none held
+assets = c.get('/store/report?kind=assets', headers=H).json()['rows']
+names = {r['name'] for r in assets}
+ck('the asset register lists equipment that is held', 'Concrete Mixer' in names, names)
+ck('a machine with none anywhere is not a line', 'Jack Hammer' not in names, names)
+ck('no "where" column', all('where' not in r for r in assets), assets[:1])
+
+# ---- The download is the screen: the search box narrows it too -------
+t = c.post('/auth/download-token', headers=H).json()['token']
+import openpyxl
+xl = c.get(f'/export/store/report?kind=stock&format=excel&q=mixer&token={t}')
+ck('store export with a search builds', xl.status_code == 200, xl.status_code)
+cells = [str(v) for row in openpyxl.load_workbook(io.BytesIO(xl.content)).active.iter_rows(values_only=True) for v in row if v]
+ck('the export holds only what matched', any('Concrete Mixer' in v for v in cells)
+   and not any('Cement OPC' in v for v in cells), [v for v in cells if 'OPC' in v or 'Mixer' in v])
+full = c.get(f'/export/store/report?kind=stock&format=excel&token={t}')
+cells = [str(v) for row in openpyxl.load_workbook(io.BytesIO(full.content)).active.iter_rows(values_only=True) for v in row if v]
+ck('with no search the export is the whole list', any('Cement OPC' in v for v in cells))
 
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)
