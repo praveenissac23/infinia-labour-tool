@@ -2223,6 +2223,7 @@ function switchScreen(name) {
   document.getElementById("screen-title").textContent = SCREEN_TITLES[name];
   localStorage.setItem("infinia_last_screen", name);
   if (name === "activity") loadActivityLog();
+  if (name === "masterdata") loadFormerWorkers();
   if (name === "reports" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "combine") {
     filterCombineWorkers();
@@ -3108,6 +3109,22 @@ function sortMasterData(key) {
   renderMasterDataLists();
 }
 
+// Every worker who has left, so his name and card number stay on the
+// record. Removing a man who has attendance behind him does not delete
+// him - it marks him inactive, and every screen asks for active workers
+// only, so he disappeared from Master Data too and the record of who he
+// was went with him. Loaded separately, and only here: the daily list,
+// the cards and the payroll lists are still the men currently working.
+let formerEmployees = [];
+
+async function loadFormerWorkers() {
+  try {
+    const all = await apiCall("/employees?active_only=false");
+    formerEmployees = all.filter(e => !e.active);
+    renderMasterDataLists();
+  } catch (e) { /* the working list is the important one - leave it be */ }
+}
+
 function renderMasterDataLists() {
   const empBody = document.getElementById("md-emp-body");
   const sorted = [...employees].sort((a, b) => {
@@ -3135,7 +3152,23 @@ function renderMasterDataLists() {
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
           <button class="btn btn-danger" onclick="removeEmployee('${e.emp_no}', '${(e.name || "").replace(/'/g, "\\'")}')">Remove</button></td>
     </tr>
-  `).join("");
+  `).join("") + (formerEmployees.length ? `
+    <tr><td colspan="9" style="background:#F4F4F4; color:#666; font-size:12px;
+        padding:7px 10px; border-top:2px solid #DDD;">
+      Former workers &mdash; kept for the record. They are not on the daily
+      attendance screen and cannot be marked, but their past cards and payroll
+      stand.</td></tr>` +
+    [...formerEmployees].sort((a, b) => natCompare(a.emp_no, b.emp_no)).map(e => `
+    <tr style="color:#999; background:#FCFCFC;">
+      <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade || ""}</td>
+      <td>${e.company || "Infinia"}</td>
+      <td>${(e.pay_type || "daily") === "fixed" ? "Fixed monthly" : "Daily wage"}</td>
+      <td><span class="pill" style="background:#DCDCDC; color:#444;">${
+           e.terminated_on ? `Left ${e.terminated_on}` : "Removed"}</span></td>
+      <td>${(e.total_salary || 0).toLocaleString()}</td>
+      <td>${(e.basic_salary || 0).toLocaleString()}</td>
+      <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button></td>
+    </tr>`).join("") : "");
 
   // Compact chips that wrap across the width instead of one full-width
   // row each - a long list of sites used to run down the page for
@@ -3176,12 +3209,16 @@ async function removeEmployee(empNo, name) {
     showStatus("md-status", r.action === "deleted" ? "ok" : "warn", r.detail || "Done.");
     employees = await apiCall("/employees?active_only=true");
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
-    renderMasterDataLists();
+    // He has just moved from one list to the other, so both are reread.
+    await loadFormerWorkers();
   } catch (e) { showStatus("md-status", "err", errText(e)); }
 }
 
 function editEmployee(empNo) {
-  const emp = employees.find(e => e.emp_no === empNo);
+  // Former workers are on this screen too, so the lookup covers both -
+  // otherwise Edit on a man who has left does nothing at all.
+  const emp = employees.find(e => e.emp_no === empNo)
+           || formerEmployees.find(e => e.emp_no === empNo);
   if (!emp) return;
   document.getElementById("md-emp-no").value = emp.emp_no;
   document.getElementById("md-emp-name").value = emp.name;

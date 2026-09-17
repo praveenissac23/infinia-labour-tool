@@ -1464,10 +1464,18 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
         .all()
     )
     rows_by_date = {r.full_date.isoformat(): schemas.DailyRowOut.from_orm(r) for r in rows if r.full_date}
+    emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
     if summary:
         summary_out = schemas.EmployeeSummaryOut.from_orm(summary)
+        # The name on the card is read from the master record, not from
+        # whatever was stored when the summary was first written. A card
+        # headed with a different name than the man clicked in the list
+        # beside it is the worst thing a pay screen can show, and it is
+        # not worth depending on a recalculation having happened first.
+        if emp:
+            summary_out.emp_name = emp.name
+            summary_out.trade = emp.trade
     else:
-        emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found.")
         summary_out = None
@@ -1550,6 +1558,16 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                         if employed_during(e, cycle_start, cycle_end)]
     rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
 
+    # Every name on this screen comes from the master record. The name
+    # copied onto a day's row is a snapshot of what the worker was
+    # called when it was typed, so after a correction in Master Data
+    # this screen went on naming the old one and sent the office looking
+    # for the wrong man. The stored name is used only for someone no
+    # longer in the list at all.
+    name_now = {e.emp_no: e.name for e in db.query(models.Employee).all()}
+    def who(r):
+        return name_now.get(r.emp_no) or r.emp_name
+
     dates_by_emp = {}
     for r in rows:
         dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
@@ -1614,7 +1632,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         if flagged_statuses and hours:
             marked = " and ".join(sorted(flagged_statuses))
             out.append({
-                "emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site or "-",
+                "emp_no": r.emp_no, "name": who(r), "date": str(r.full_date), "site": r.site or "-",
                 "issue": f"{' and '.join(hours)} hour(s) recorded on a day marked {marked}.",
                 "kind": f"Hours on an {marked.lower()} day" if marked == "Absent" else f"Hours on a {marked.lower()} day",
                 "severity": "contradiction",
@@ -1631,7 +1649,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
 
     for r in rows:
         if r.ot and r.ot > 12:
-            out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
+            out.append({"emp_no": r.emp_no, "name": who(r), "date": str(r.full_date), "site": r.site,
                         "issue": f"OT of {r.ot} hours in one day looks unusually high.",
                         "kind": "High OT",
                         "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
@@ -1639,7 +1657,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                                    "OT hours": f"{r.ot:g}", "BH hours": f"{r.bh or 0:g}",
                                    "Comment": r.comments or "none"}})
         if r.bh and r.bh > 8:
-            out.append({"emp_no": r.emp_no, "name": r.emp_name, "date": str(r.full_date), "site": r.site,
+            out.append({"emp_no": r.emp_no, "name": who(r), "date": str(r.full_date), "site": r.site,
                         "issue": f"BH of {r.bh} hours in one day looks unusually high.",
                         "kind": "High BH",
                         "detail": {"Date": str(r.full_date), "A.M": r.am or "-", "P.M": r.pm or "-",
@@ -1674,7 +1692,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             partial = entered < cycle_days
             adj = sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
             out.append({
-                "emp_no": s.emp_no, "name": s.emp_name, "date": "-", "site": "-",
+                "emp_no": s.emp_no, "name": name_now.get(s.emp_no) or s.emp_name, "date": "-", "site": "-",
                 "issue": (f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
                           f"AED {so_far:,.0f} for the {entered} day(s) entered so far "
                           f"- below the 40% minimum (AED {floor:,.0f})."

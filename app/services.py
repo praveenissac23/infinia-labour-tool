@@ -117,6 +117,17 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
         pay_type=(employee.pay_type or "daily"), cycle_days=cycle_days,
     )
 
+    # The worker's name and trade were written once, when the summary
+    # row was first created, and never touched again - so correcting a
+    # name in Master Data left every card he already had showing the old
+    # one. The worker list beside the card showed the new name and the
+    # card itself the old, which on a payroll screen reads as the wrong
+    # man's wages. They follow the master record now, and because every
+    # summary is recalculated at startup, a restart brings the existing
+    # cards into line by itself.
+    summary.employee_id = employee.id
+    summary.emp_name = employee.name
+    summary.trade = employee.trade
     summary.total_salary = employee.total_salary
     summary.present_days = computed["present_days"]
     summary.absent_days = computed["absent_days"]
