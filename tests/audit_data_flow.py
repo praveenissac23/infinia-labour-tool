@@ -23,8 +23,17 @@ with sync_playwright() as p:
     pg.fill('#recv-ref-no','DO-9')
     pg.evaluate('''document.querySelector('#recv-lines input[type=number]').value=100;''')
     pg.evaluate('saveReceive()'); time.sleep(2.5)
-    st=pg.evaluate('''(async()=>{const r=await apiCall('/store/report?kind=stock'); return r.rows.find(x=>x.name.includes('Cement')).by_site;})()''')
-    ck('the delivery booked to site 901, not the store', st.get('901')==100, st)
+    # Cement is a consumable, so it is not carried as stock standing at
+    # 901 - it shows as what was last sent there. What must be true is
+    # that it went to the site and never into the central store.
+    st=pg.evaluate('''(async()=>{const r=await apiCall('/store/report?kind=stock');
+        const c=r.rows.find(x=>x.name.includes('Cement'));
+        const a=await apiCall('/store/at-site?site=901');
+        return {in_store:c.in_store, at_sites:c.at_sites,
+                sent:(a.recent||[]).find(x=>x.name.includes('Cement'))||null};})()''')
+    ck('the delivery booked to site 901, not the store',
+       st['in_store']==0 and st['sent'] and st['sent']['qty']==100, st)
+    ck('and the cement is not left standing at the site', st['at_sites']==0, st)
     pg.evaluate("switchScreen('followup')"); time.sleep(2)
     ck('nothing left to chase afterwards', 'It arrived' not in pg.inner_text('#screen-followup'))
 

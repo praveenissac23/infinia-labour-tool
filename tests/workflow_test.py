@@ -84,13 +84,20 @@ mv = {m['item_code']: m['supplier'] for m in c.get('/store/movements?limit=5', h
 ck('each material kept its own trader', mv.get(i1['code']) == 'Al Raha' and mv.get(i2['code']) == 'Newstar')
 st = {s['code']: s for s in c.get('/store/stock', headers=K).json()}
 # The request was raised for site 910, and both loads were delivered
-# there - so the stock stands at the site, not in a central store the
-# material never passed through.
-ck('stock stands at the site that asked for it',
-   st[i1['code']]['by_site'].get('910') == 10 and st[i2['code']]['by_site'].get('910') == 10,
+# there - never into a central store the material did not pass through.
+# Both are consumables, so they are not carried as stock standing at
+# 910 either: they were delivered to the job and get used on it. What
+# 910 shows is when it last had some.
+ck('none of it is in the central store',
+   st[i1['code']]['central'] == 0 and st[i2['code']]['central'] == 0,
+   {k: st[k]['central'] for k in (i1['code'], i2['code'])})
+ck('and none of it is left standing at the site',
+   st[i1['code']]['by_site'] == {} and st[i2['code']]['by_site'] == {},
    {k: st[k]['by_site'] for k in (i1['code'], i2['code'])})
-ck('and none of it is in the central store',
-   st[i1['code']]['central'] == 0 and st[i2['code']]['central'] == 0)
+sent = {r['code']: r for r in c.get('/store/at-site?site=910', headers=K).json()['recent']}
+ck('the site shows what was last sent to it',
+   sent.get(i1['code'], {}).get('qty') == 10 and sent.get(i2['code'], {}).get('qty') == 10,
+   sent)
 ck('nothing left on the chase list', not [1 for x in c.get('/store/requests', headers=S).json()
      for l in x['lines'] if x['status'] not in ('delivered', 'received', 'closed', 'rejected')
      and (l['qty_requested'] - l['qty_received']) > 0])

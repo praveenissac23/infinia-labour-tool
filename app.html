@@ -443,6 +443,16 @@
   .at-site.none { color: #bbb; }
   .at-pill { display: inline-block; background: #EAF5EC; border: 1px solid #BFDFC6;
              color: #1E5B2C; font-weight: 700; border-radius: 20px; padding: 2px 10px; }
+  /* What was last sent, rather than what is standing there - a quieter
+     amber, so it is plainly not the same claim as stock on hand. */
+  .at-pill.sent-pill { background: #FDF6E7; border-color: #E8D5A8; color: #8A6410; }
+  .sent-on { font-weight: 600; opacity: .75; margin-left: 4px; font-size: 11.5px; }
+  .holds-sent { margin-top: 10px; border-top: 1px dashed #E2DAD4; padding-top: 7px; }
+  .holds-sent-head { font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+                     color: #A08A5E; font-weight: 700; padding: 0 11px 5px; }
+  .holds-sent .sent-row .hold-q { color: #8A6410; }
+  .hold-row.sent-row.match { background: #FDF6E7; box-shadow: inset 3px 0 0 #C79A2E; }
+  .hold-row.sent-row.match .hold-nm { color: #8A6410; font-weight: 700; }
   .notif-lines { padding: 2px 20px 0; }
   .notif-lines table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
   .notif-lines td { padding: 5px 2px; border-bottom: 1px solid #F2EEEB; vertical-align: top; }
@@ -1687,7 +1697,7 @@
                 </div>
               </div>
               <div class="grid-wrap" style="max-height:none;">
-                <table><thead><tr><th style="width:3%;">#</th><th style="width:28%;">Material</th><th style="width:11%;">How many</th><th style="width:13%;" id="out-have-head">In central store</th><th style="width:15%;">Already at site</th><th style="width:23%;">Note</th><th style="width:7%;"></th></tr></thead>
+                <table><thead><tr><th style="width:3%;">#</th><th style="width:28%;">Material</th><th style="width:11%;">How many</th><th style="width:13%;" id="out-have-head">In central store</th><th style="width:15%;" title="Tools and equipment show what is there now. Consumables show when the site last had some, because they get used up.">At site / last sent</th><th style="width:23%;">Note</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="out-lines"></tbody></table>
               </div>
               <div class="form-row" style="margin-top:8px;">
@@ -5557,15 +5567,26 @@ async function onMoveEnds() {
 // in for material that is not there.
 async function loadFromStock() {
   const from = (document.getElementById("out-from").value || "").trim();
-  if (!from) { fromStock = null; refreshHaveCells(); return; }
+  if (!from) { fromStock = null; siteFromRecent = []; refreshHaveCells(); return; }
   try {
     const r = await apiCall(`/store/at-site?site=${encodeURIComponent(from)}`);
     fromStock = r.rows || [];
-  } catch (e) { fromStock = []; }
+    siteFromRecent = r.recent || [];
+  } catch (e) { fromStock = []; siteFromRecent = []; }
   refreshHaveCells();
 }
 
+let siteFromRecent = [];
+
 let fromStock = null;          // null means the central store
+
+// Cement, sand, nails - the things that get used up. They are stock in
+// the central store and never stock at a site, so the site panels show
+// what was last sent instead of a quantity standing there.
+function isConsumable(itemId) {
+  const s = (storeStockCache || []).find(x => x.item_id === itemId);
+  return !s || !["returnable", "asset", "rental"].includes(s.item_type || "consumable");
+}
 
 function refreshHaveCells() {
   document.querySelectorAll("#out-lines tr").forEach(tr => {
@@ -5575,8 +5596,19 @@ function refreshHaveCells() {
     if (!id) { cell.textContent = "-"; return; }
     if (fromStock) {
       const held = fromStock.find(r => r.item_id === id);
-      cell.textContent = held ? `${num(held.qty)} ${held.unit}` : "0";
-      cell.style.color = held ? "#777" : "#C0392B";
+      if (held) {
+        cell.textContent = `${num(held.qty)} ${held.unit}`;
+        cell.style.color = "#777";
+      } else if (isConsumable(id)) {
+        // Not a shortage - a consumable is used at the site it goes to,
+        // so it is never standing there to begin with. A red 0 would
+        // read as "you are short" when nothing is wrong.
+        cell.textContent = "used on site";
+        cell.style.color = "#999";
+      } else {
+        cell.textContent = "0";
+        cell.style.color = "#C0392B";
+      }
     } else {
       const s = (storeStockCache || []).find(x => x.item_id === id);
       cell.textContent = s ? `${num(s.central)} ${s.unit}` : "0";
@@ -5616,28 +5648,52 @@ function renderSiteHoldings() {
     : (storeStockCache || []).filter(s => s.central > 0)
         .map(s => ({ item_id: s.item_id, name: s.name, unit: s.unit, qty: s.central }));
   box.innerHTML = `<div class="holds two-up">
-      ${holdPanel("from", placeName(from), leaving, "there now")}
-      ${holdPanel("to", placeName(to), siteHoldings.rows || [], "already there")}
+      ${holdPanel("from", placeName(from), leaving, "there now",
+                  fromStock !== null ? (siteFromRecent || []) : [])}
+      ${holdPanel("to", placeName(to), siteHoldings.rows || [], "already there",
+                  to ? (siteHoldings.recent || []) : [])}
     </div>`;
   highlightHoldings();
 }
 
-function holdPanel(side, title, rows, sub) {
+function holdPanel(side, title, rows, sub, recent) {
+  recent = recent || [];
   const list = rows.length
     ? `<div class="holds-list" id="holds-list-${side}">${rows.map(r => `
         <div class="hold-row" data-hold="${r.item_id}">
           <span class="hold-nm" title="${r.name}">${r.name}</span>
           <span class="hold-q"><b>${num(r.qty)}</b> ${r.unit || ""}</span>
         </div>`).join("")}</div>`
-    : `<div class="holds-empty">Nothing here at the moment</div>`;
+    : `<div class="holds-empty">${recent.length
+         ? "Nothing being held here"
+         : "Nothing here at the moment"}</div>`;
+  // Consumables are not held anywhere but the store, so instead of a
+  // quantity the site shows when it last had some. That is what decides
+  // whether to send more.
+  const sent = recent.length
+    ? `<div class="holds-sent">
+         <div class="holds-sent-head">Last sent here</div>
+         ${recent.slice(0, 12).map(r => `
+           <div class="hold-row sent-row" data-sent="${r.item_id}">
+             <span class="hold-nm" title="${r.name}">${r.name}</span>
+             <span class="hold-q">${num(r.qty)} ${r.unit || ""}
+               <span class="sent-on">${r.on ? shortDate(r.on) : ""}</span></span>
+           </div>`).join("")}
+       </div>`
+    : "";
   return `<div class="hold-side ${side}">
       <div class="holds-head">
         <span class="holds-side-tag">${side === "from" ? "Coming from" : "Going to"}</span>
         <span class="holds-site">${title}</span>
         <span class="holds-count">${rows.length ? `${rows.length} ${sub}` : ""}</span>
       </div>
-      ${list}
+      ${list}${sent}
     </div>`;
+}
+
+function shortDate(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
 }
 
 function outLineItemIds() {
@@ -5655,9 +5711,20 @@ function markOutLines() {
     if (!cell) return;
     const id = Number((tr.querySelector(".ol-item") || {}).value || 0);
     const held = rows.find(r => r.item_id === id);
+    const sent = (siteHoldings.recent || []).find(r => r.item_id === id);
     if (held) {
       cell.innerHTML = `<span class="at-pill">${num(held.qty)} ${held.unit}</span>`;
       cell.className = "ol-atsite at-site has";
+    } else if (sent) {
+      // A consumable is never standing at a site, so the useful answer
+      // is when they last had some - that is what says whether this
+      // delivery is a sensible one or a second one nobody needed.
+      cell.innerHTML = `<span class="at-pill sent-pill">${num(sent.qty)} ${sent.unit}
+        <span class="sent-on">${sent.on ? shortDate(sent.on) : ""}</span></span>`;
+      cell.className = "ol-atsite at-site was";
+    } else if (id && isConsumable(id)) {
+      cell.textContent = "none sent yet";
+      cell.className = "ol-atsite at-site none";
     } else {
       cell.textContent = id ? "not there yet" : "-";
       cell.className = "ol-atsite at-site none";
@@ -5680,6 +5747,11 @@ function highlightHoldings() {
       // both sides can be read without scrolling.
       if (on && list.firstElementChild !== el) list.prepend(el);
     });
+  });
+  // The last-sent rows mark the same way, so choosing cement lights up
+  // the line saying when 901 last had some.
+  document.querySelectorAll("[data-sent]").forEach(el => {
+    el.classList.toggle("match", taken.includes(Number(el.dataset.sent)));
   });
 }
 

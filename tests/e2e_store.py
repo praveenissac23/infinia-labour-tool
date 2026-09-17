@@ -70,13 +70,20 @@ check("receive line2 -> delivered", r.status_code == 200 and r.json().get("statu
 # where it has to be accounted for.
 r = c.get("/store/stock", headers=H)
 stock = r.json()
+at704 = c.get("/store/at-site?site=704", headers=H).json()
+sent704 = {r["name"]: r for r in at704["recent"]}
 cem = next((s for s in stock if s["code"] == item.get("code")), {})
+# Both are consumables, so neither went into the central store and
+# neither is carried as stock at 704 - they are used on the job. What
+# 704 keeps is the record of when it last had some.
 check("cement booked to the site that asked, not central",
-      cem.get("central") == 0 and (cem.get("by_site") or {}).get("704") == 100, str(cem))
+      cem.get("central") == 0 and not (cem.get("by_site") or {}), str(cem))
+check("and 704 shows the cement as last sent there",
+      sent704.get(cem.get("name"), {}).get("qty") == 100, str(sent704))
 cush = next((s for s in stock if "cushion" in s.get("name","").lower()), {})
 check("cushions at 704, tidy name",
-      (cush.get("by_site") or {}).get("704") == 5 and cush.get("name","").startswith("Cushions"),
-      str(cush))
+      sent704.get(cush.get("name"), {}).get("qty") == 5 and cush.get("name","").startswith("Cushions"),
+      str(cush) + str(sent704))
 
 # The central store holds no cement at all, so it cannot issue any -
 # the guard must read the place the material is leaving, not a total.
@@ -100,8 +107,11 @@ r = c.post("/store/movements", json={"item_id": item["id"], "kind": "return", "q
 check("return from site", r.status_code == 200, r.text[:250])
 r = c.get("/store/stock", headers=H)
 cem = next(s for s in r.json() if s["code"] == item["code"])
-check("central 70 / site 130 after out+return",
-      cem["central"] == 70 and (cem.get("by_site") or {}).get("704") == 130, str(cem))
+# 100 bought in, 40 issued, 10 handed back: 70 on the shelf. The 40 that
+# went to 704 are not carried there, because cement is used where it
+# goes - but a return still works and puts stock back on the shelf.
+check("central 70 after out+return, none carried at the site",
+      cem["central"] == 70 and not (cem.get("by_site") or {}), str(cem))
 
 for kind in ["stock","by_site","usage","assets","lost","hired"]:
     r = c.get(f"/store/report?kind={kind}", headers=H)

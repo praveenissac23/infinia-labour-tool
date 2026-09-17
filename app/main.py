@@ -2418,6 +2418,25 @@ def health_check():
 # ---------------------------------------------------------------------
 CENTRAL = ""   # empty location string means the central store
 
+# What a site can still be holding.
+#
+# A consumable is spent where it is used. Fifty bags of cement sent to
+# 901 are in the wall within a day or two, so carrying them as stock at
+# that site forever makes every site look like a warehouse and buries
+# the few things that really are there - the drill that has to come
+# back, the hired scaffolding somebody is paying for by the week.
+#
+# In the central store everything is stock, consumables included,
+# because there it genuinely is sitting on a shelf. It is only at a site
+# that a consumable stops being stock. What was sent is not lost: it
+# stays in the ledger and shows as what was last sent there, which is
+# the question a keeper actually asks before sending more.
+HELD_AT_SITE = ("returnable", "asset", "rental")
+
+
+def _held_at_site(item) -> bool:
+    return (getattr(item, "item_type", "") or "consumable") in HELD_AT_SITE
+
 
 def _stock_map(db: Session, upto: date = None):
     """
@@ -2853,10 +2872,16 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
     rows = []
     for it in items:
         at_central = stock.get((it.id, CENTRAL), 0)
-        out_total = sum(v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL)
-        by_site = {loc: v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL and v}
+        # A consumable is never counted as standing at a site - see
+        # HELD_AT_SITE. Its total is what is in the store, because what
+        # went out to a site has been used.
+        if _held_at_site(it):
+            out_total = sum(v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL)
+            by_site = {loc: v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL and v}
+        else:
+            out_total, by_site = 0, {}
         if location is not None:
-            qty = stock.get((it.id, location), 0)
+            qty = stock.get((it.id, location), 0) if (location == CENTRAL or _held_at_site(it)) else 0
             rows.append({"item_id": it.id, "code": it.code, "name": it.name,
                           "category": it.category, "unit": it.unit, "item_type": it.item_type,
                           "qty": round(qty, 2), "reorder_level": it.reorder_level,
@@ -3057,6 +3082,9 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         for (iid, loc), qty in stock.items():
             if loc == CENTRAL or not qty or iid not in items: continue
             i = items[iid]
+            # Consumables are used where they are sent, so they are not
+            # held at a site - see HELD_AT_SITE.
+            if not _held_at_site(i): continue
             rows.append({"site": loc, "code": i.code, "name": i.name,
                           "unit": i.unit, "qty": round(qty, 2), "item_type": i.item_type})
         return {"title": "Stock held at sites", "rows": sorted(rows, key=lambda r: (r["site"], r["code"]))}
@@ -3220,8 +3248,9 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     for i in items.values():
         if not i.active: continue
         c = stock.get((i.id, CENTRAL), 0)
-        per_site = {loc: round(v, 2) for (iid, loc), v in stock.items()
-                    if iid == i.id and loc != CENTRAL and v}
+        per_site = ({loc: round(v, 2) for (iid, loc), v in stock.items()
+                     if iid == i.id and loc != CENTRAL and v}
+                    if _held_at_site(i) else {})
         o = sum(per_site.values())
         if c == 0 and o == 0 and not i.reorder_level:
             continue
@@ -3814,7 +3843,7 @@ def stock_at_site(site: str, db: Session = Depends(get_db),
     """
     loc = (site or "").strip()
     if not loc:
-        return {"site": "", "rows": [], "total_lines": 0}
+        return {"site": "", "rows": [], "recent": [], "total_lines": 0}
     stock = _stock_map(db)
     items = {i.id: i for i in db.query(models.StoreItem).all()}
     rows = []
@@ -3822,11 +3851,35 @@ def stock_at_site(site: str, db: Session = Depends(get_db),
         if where != loc or not qty or iid not in items:
             continue
         i = items[iid]
+        # Only the things that stay - see HELD_AT_SITE. A consumable
+        # sent here has been used, and belongs in "recent" below.
+        if not _held_at_site(i):
+            continue
         rows.append({"item_id": i.id, "code": i.code, "name": i.name,
                      "unit": i.unit or "", "qty": round(qty, 2),
                      "item_type": i.item_type})
     rows.sort(key=lambda r: r["name"].lower())
-    return {"site": loc, "rows": rows, "total_lines": len(rows)}
+
+    # When a consumable last came here, and how much of it. This is the
+    # question the keeper is really asking before sending more cement to
+    # 901 - not "how much is standing there", which is none, but "when
+    # did they last get some, and how much". Newest first.
+    M = models.StoreMovement
+    sent = (db.query(M)
+              .filter(M.location == loc, M.kind.in_(("in", "out", "transfer")))
+              .order_by(M.moved_on.desc(), M.id.desc())
+              .limit(600).all())
+    recent, seen = [], set()
+    for m in sent:
+        i = items.get(m.item_id)
+        if not i or _held_at_site(i) or i.id in seen or not m.qty:
+            continue
+        seen.add(i.id)
+        recent.append({"item_id": i.id, "code": i.code, "name": i.name,
+                       "unit": i.unit or "", "qty": round(m.qty, 2),
+                       "on": m.moved_on.isoformat() if m.moved_on else None,
+                       "item_type": i.item_type})
+    return {"site": loc, "rows": rows, "recent": recent, "total_lines": len(rows)}
 
 
 @app.get("/store/purchase/pending")

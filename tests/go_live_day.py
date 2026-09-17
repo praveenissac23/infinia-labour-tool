@@ -218,7 +218,16 @@ ck('rental received', r.status_code == 200, r.text[:120])
 r = c.post('/store/movements', json={'item_id': items['Scaffold Ledger']['id'], 'kind': 'out', 'qty': 120, 'location': '905', 'incharge': 'Febiyan', 'moved_on': '2026-09-03'}, headers=K)
 ck('rental sent to site', r.status_code == 200)
 stock = {x['name']: x for x in c.get('/store/stock', headers=K).json()}
-ck('cement: 40 in store, 60 at sites', stock['Cement OPC 50kg']['central'] == 40 and stock['Cement OPC 50kg']['out_at_sites'] == 60, stock['Cement OPC 50kg'])
+# Cement is a consumable: 60 bags left the store for 904 and are used on
+# the job, so the store is down to 40 and 904 is not carrying them as
+# stock. The scaffolding below is hired equipment and IS still held at
+# its site - the two lines together are the whole rule.
+ck('cement: 40 left in store, none carried at the site',
+   stock['Cement OPC 50kg']['central'] == 40 and stock['Cement OPC 50kg']['out_at_sites'] == 0,
+   stock['Cement OPC 50kg'])
+_sent = {r['name']: r for r in c.get('/store/at-site?site=904', headers=K).json()['recent']}
+ck('and 904 shows the 60 bags as last sent there',
+   _sent.get('Cement OPC 50kg', {}).get('qty') == 60, _sent)
 ck('scaffold: 180 in store, 120 at sites', stock['Scaffold Ledger']['central'] == 180 and stock['Scaffold Ledger']['out_at_sites'] == 120, stock['Scaffold Ledger'])
 mv = c.get('/store/movements', headers=K).json()
 ck('every movement is recorded', len(mv) >= 6, len(mv))
