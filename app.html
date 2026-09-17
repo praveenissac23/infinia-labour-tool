@@ -3531,7 +3531,7 @@ const PAY_VIEWS = {
   none:       [],
   absence:    ["total_salary_component", "deduction", "final_salary"],
   adjustments: ["adjustments", "adjusted_final_salary"],
-  full:       ["total_salary_component", "deduction", "ot_amount", "bh_amount",
+  full:       ["total_salary", "total_salary_component", "deduction", "ot_amount", "bh_amount",
                "adjustments", "final_salary", "adjusted_final_salary"],
 };
 
@@ -3579,7 +3579,7 @@ function inPickedOrder(keys) {
   return [...rest, ...placed];
 }
 const REPORT_MONEY_KEYS = new Set([
-  "basic_pay_input", "total_salary_component", "deduction",
+  "total_salary", "basic_pay_input", "total_salary_component", "deduction",
   "ot_amount", "bh_amount", "final_salary", "adjusted_final_salary",
   "final_salary_cost",
 ]);
@@ -4267,7 +4267,11 @@ async function selectLiveCardWorker(empNo) {
   }).join("");
 
   const summaryRows = [
-    ["Basic Pay", s.basic_pay_input, ""], ["Total Salary", s.total_salary_component, ""],
+    // "Payable Salary", not "Total Salary": the header above already
+    // shows the man's salary from Master Data, and this is the part of
+    // it he is owed for the days paid this cycle. Both were called Total
+    // Salary and the two figures never matched.
+    ["Basic Pay", s.basic_pay_input, ""], ["Payable Salary", s.total_salary_component, ""],
     ["Absence/Leave", s.deduction, "-"], ["OT Amount", s.ot_amount, "+"], ["BH Amount", s.bh_amount, "+"],
   ].map(([label, val, sign]) => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${label}</strong><span>${sign} AED ${money(val)}</span></div>`).join("");
 
@@ -4275,7 +4279,7 @@ async function selectLiveCardWorker(empNo) {
 
   detail.innerHTML = `
     <h2 style="margin-bottom:2px;">${s.emp_no} - ${s.emp_name}</h2>
-    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${cycleLabel(s.month_year)} &nbsp;|&nbsp; Salary: AED ${money(s.total_salary)}</p>
+    <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${cycleLabel(s.month_year)} &nbsp;|&nbsp; Total Salary: AED ${money(s.total_salary)}</p>
     <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
         <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>

@@ -1298,6 +1298,8 @@ BUILDER_MEASURE_HINTS = {
     "ot_amount": "Each row's OT hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
     "bh_amount": "Each row's BH hours valued at that worker's own hourly rate (their monthly salary / 30 / 8).",
     "adjustments": "Everything added or taken off by hand this cycle, signed and with its reason - \"+300 Site bonus\", \"-170 Parking fine\".",
+    "total_salary": "The worker's monthly salary as entered in Master Data - basic plus fixed allowance. The same figure every cycle.",
+    "total_salary_component": "The part of the salary earned for the days paid this cycle: paid days x (salary / 30). Final Salary = this + OT + BH - absence deduction.",
 }
 
 

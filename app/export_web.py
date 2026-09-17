@@ -156,7 +156,11 @@ def _total_days_fields(summary):
 
 SUMMARY_FIELDS = [
     ("Basic Pay", "basic_pay_input", None),
-    ("Total Salary", "total_salary_component", None),
+    # The salary earned for the days paid this cycle. It was printed as
+    # "Total Salary", the same words Master Data uses for the worker's
+    # full monthly salary, and the two figures rarely agree - so the card
+    # looked wrong to anyone who knew the man's pay.
+    ("Payable Salary", "total_salary_component", None),
     ("Absence or Leave", "deduction", "-"),
     ("OT Amount", "ot_amount", "+"),
     ("BH Amount", "bh_amount", "+"),

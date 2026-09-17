@@ -12,7 +12,11 @@ the exact same formulas as the source card:
                Absent/Sick/Medical/Friday/Sunday/Holiday/Leave]
     OT hours   = SUM(OT column)
     BH hours   = SUM(BH column)
-    Total Salary (pay component) = (Present+Sick+Medical+Friday+Sunday+Holiday) * (Salary/30)
+    Payable Salary (total_salary_component)
+                 = (Present+Sick+Medical+Friday+Sunday+Holiday) * (Salary/30)
+      - "Salary" here is the worker's Total Salary from Master Data
+        (basic + fixed allowance). Payable Salary is the share of it
+        earned this cycle; the two are never called by the same name.
     Deduction                    = (Salary/30) * Absent
     OT Amount                    = (Salary/30/8) * OT hours
     BH Amount                    = (Salary/30/8) * BH hours

@@ -613,7 +613,7 @@ SUMMARY_EXTRA_FIELDS = {
     "ot_amount": ("OT Amount (AED)", lambda s: s.ot_amount),
     "bh_hours": ("BH Hours", lambda s: s.bh_hours),
     "bh_amount": ("BH Amount (AED)", lambda s: s.bh_amount),
-    "total_salary_component": ("Total Salary Component (AED)", lambda s: s.total_salary_component),
+    "total_salary_component": ("Payable Salary (AED)", lambda s: s.total_salary_component),
     "deduction": ("Absence Deduction (AED)", lambda s: s.deduction),
     "other_deduction": ("Other Deductions (AED)", lambda s: s.other_deduction),
     "allowances": ("Allowances (AED)", lambda s: s.allowances),
@@ -733,7 +733,14 @@ BUILDER_SUMMARY_MEASURES = {
     "medical_days": "Medical Days", "friday_days": "Friday Days", "sunday_days": "Sunday Days",
     "holiday_days": "Holiday Days", "leave_days": "Leave Days",
     "ot_hours": "OT Hours", "bh_hours": "BH Hours",
-    "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Total Salary (AED)",
+    # Two different things that were both called "Total Salary" on screen.
+    # total_salary is the worker's salary as entered in Master Data -
+    # basic plus fixed allowance, the contractual monthly figure.
+    # total_salary_component is what that came to for the days paid this
+    # cycle, which is not his salary but the part of it he is owed, so it
+    # is called Payable Salary everywhere it appears.
+    "total_salary": "Total Salary (AED)",
+    "basic_pay_input": "Basic Pay (AED)", "total_salary_component": "Payable Salary (AED)",
     "deduction": "Absence Deduction (AED)", "ot_amount": "OT Amount (AED)", "bh_amount": "BH Amount (AED)",
     # Everything entered by hand on the Salary Adjustments screen, in one
     # column. It used to be five - what was added, why, what was taken
