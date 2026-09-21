@@ -8,7 +8,7 @@ a backup, destroys the lot, restores, and checks each one came back.
 Exists because purchase orders were captured in the snapshot and never
 put back by the restore, and the settings table was not captured at all.
 """
-import sys, warnings
+import sys, json, warnings
 warnings.simplefilter('ignore')
 sys.path.insert(0, '.')
 from fastapi.testclient import TestClient
@@ -99,6 +99,45 @@ ck('monthly notes restored', after['monthly_notes'] == before['monthly_notes'], 
 ck('company settings restored', after['company'] == before['company'], f"{before['company']} -> {after['company']}")
 ck('the admin can still sign in after a restore',
    c.post('/auth/login', data={'username': 'admin', 'password': 'p'}).status_code == 200)
+
+# ---- The guard: every table the app defines is in the snapshot -------
+# This is what keeps the backup complete as the app grows. Add a table
+# next year and it is in the backup the day it is created; if that ever
+# stops being true, this fails rather than being discovered the day
+# someone needs to restore.
+d = database.SessionLocal()
+raw = main._backup_json(d.query(models.Backup).order_by(models.Backup.id.desc()).first())
+d.close()
+declared = {t.name for t in models.Base.metadata.sorted_tables}
+skipped = main.BACKUP_SKIP_TABLES
+missing = sorted(declared - skipped - set(raw.keys()))
+ck(f'every one of the {len(declared - skipped)} tables is in the snapshot', not missing, missing)
+ck('the activity log is kept too', 'audit_log' in raw, sorted(raw.keys()))
+ck('only the backups table is skipped', skipped == {'backups'}, skipped)
+ck('the snapshot names the tables it carries', set(raw.get('tables', [])) == declared - skipped,
+   sorted(set(raw.get('tables', [])) ^ (declared - skipped)))
+
+# ---- Stored compressed, and still readable either way ----------------
+d = database.SessionLocal()
+b = d.query(models.Backup).order_by(models.Backup.id.desc()).first()
+ck('the snapshot is stored compressed', b.data.startswith('gz:'), b.data[:12])
+ck('and reads back as the same data', main._backup_json(b)['format'] == 3)
+plain = json.dumps(main.build_backup_data(d), default=str)
+ck('compression saves most of the space', len(b.data) < len(plain) * 0.5,
+   f'{len(b.data)} vs {len(plain)}')
+# A backup written by the old version, uncompressed, must still restore.
+d.add(models.Backup(created_by=None, trigger='manual', data=plain)); d.commit()
+old_id = d.query(models.Backup).order_by(models.Backup.id.desc()).first().id
+d.close()
+ck('an uncompressed backup from an older version still restores',
+   c.post(f'/backup/{old_id}/restore', headers=H).status_code == 200)
+ck('and the data is still all there', snapshot()['orders'] == before['orders'])
+
+# ---- The downloaded file is readable JSON, not the stored blob -------
+tok = c.post('/auth/download-token', headers=H).json()['token']
+dl = c.get(f'/backup/{bid}/download?token={tok}')
+ck('a downloaded backup is plain JSON', dl.status_code == 200 and json.loads(dl.content)['format'] == 3,
+   dl.content[:40])
 
 print('\n' + ('BACKUP IS COMPLETE AND RESTORABLE' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

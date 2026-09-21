@@ -14,6 +14,7 @@ import io
 import json
 from urllib.parse import quote
 
+import base64, gzip
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -2030,44 +2031,182 @@ def _row_to_dict(obj):
 BACKUP_KEEP_DAYS = 40
 
 
+# The backup covers every table the application defines, found by
+# walking the models rather than by a list kept here. A list has to be
+# remembered: the store was added long after the backup was written and
+# never joined it, so for months a snapshot held the payroll side while
+# thousands of materials and every movement existed only on the live
+# server. Purchase orders were captured but never restored. Settings
+# were never captured at all. Each of those was a table somebody forgot.
+#
+# Walking the schema means a table added next year is in the backup the
+# day it is created, with no one having to think about it, and
+# tests/backup_completeness_test.py fails the build if this ever stops
+# being true.
+#
+# Only the backups table itself is left out - a backup of backups grows
+# on itself every time one is taken.
+BACKUP_SKIP_TABLES = {"backups"}
+
+
+def _backup_models():
+    """Every mapped model except the ones deliberately skipped, in an
+    order where a row never arrives before the rows it points at."""
+    by_table = {}
+    for mapper in Base.registry.mappers:
+        by_table[mapper.class_.__tablename__] = mapper.class_
+    out = []
+    for table in Base.metadata.sorted_tables:      # parents before children
+        if table.name in BACKUP_SKIP_TABLES:
+            continue
+        model = by_table.get(table.name)
+        if model is not None:
+            out.append((table.name, model))
+    return out
+
+
 def build_backup_data(db: Session) -> dict:
     """Everything the company would need to rebuild this system.
 
-    The store was added long after this function and never joined it,
-    so a backup held the payroll side while thousands of materials,
-    every stock movement, every request and every supplier existed only
-    on the live server. A backup that restores half the business is not
-    a backup.
-
-    Left out on purpose: the audit log (a record of who clicked what,
-    not company data), and previous backups (a backup of backups).
-    Staff logins are included so people can sign in after a restore -
-    passwords are stored hashed, never in the clear.
+    Every table, including the activity log: what it costs in size is
+    small next to being asked a year from now who changed a figure and
+    having no answer because the server was rebuilt. Staff logins are
+    included so people can sign in after a restore - passwords are
+    stored hashed, never in the clear.
     """
-    return {
+    data = {
         "generated_at": datetime.utcnow().isoformat(),
-        "format": 2,
-        # ---- People and attendance ----
-        "users": [_row_to_dict(u) for u in db.query(models.User).all()],
-        "employees": [_row_to_dict(e) for e in db.query(models.Employee).all()],
-        "sites": [_row_to_dict(s) for s in db.query(models.Site).all()],
-        "engineers": [_row_to_dict(e) for e in db.query(models.Engineer).all()],
-        "daily_rows": [_row_to_dict(r) for r in db.query(models.DailyRow).all()],
-        "summaries": [_row_to_dict(s) for s in db.query(models.EmployeeSummary).all()],
-        "adjustments": [_row_to_dict(a) for a in db.query(models.SalaryAdjustment).all()],
-        # ---- Store and materials ----
-        "suppliers": [_row_to_dict(s) for s in db.query(models.Supplier).all()],
-        "purchase_orders": [_row_to_dict(o) for o in db.query(models.PurchaseOrder).all()],
-        "purchase_order_lines": [_row_to_dict(l) for l in db.query(models.PurchaseOrderLine).all()],
-        "store_items": [_row_to_dict(i) for i in db.query(models.StoreItem).all()],
-        "store_movements": [_row_to_dict(m) for m in db.query(models.StoreMovement).all()],
-        "material_requests": [_row_to_dict(r) for r in db.query(models.MaterialRequest).all()],
-        "material_request_lines": [_row_to_dict(l) for l in db.query(models.MaterialRequestLine).all()],
-        # Everything the office set up rather than typed as a record:
-        # the store in-charge, the company's own details, the monthly
-        # report notes. Small, and lost for good if a backup skips it.
-        "settings": [_row_to_dict(x) for x in db.query(models.Setting).all()],
+        "format": 3,
+        "tables": [name for name, _ in _backup_models()],
     }
+    for name, model in _backup_models():
+        data[name] = [_row_to_dict(r) for r in db.query(model).all()]
+    # Format 2 and earlier named four tables differently. Both spellings
+    # are written, so a backup taken today can still be read by a server
+    # running yesterday's code if a deploy has to be rolled back.
+    for old, new in (("daily_rows", "daily_rows"), ("summaries", "employee_summaries"),
+                     ("adjustments", "salary_adjustments"), ("users", "users")):
+        if new in data and old != new:
+            data[old] = data[new]
+    return data
+
+
+# Backups now carry every table, the activity log included, so they are
+# stored compressed - a snapshot a day for forty days, each holding the
+# whole company, is a lot of text to keep in a database on a small
+# server. Plain JSON written by older versions still reads back, so
+# nothing taken before today is lost.
+_BACKUP_GZIP_PREFIX = "gz:"
+
+
+def _backup_dump(data: dict) -> str:
+    raw = json.dumps(data, default=str)
+    packed = base64.b64encode(gzip.compress(raw.encode("utf-8"))).decode("ascii")
+    # Only keep the compressed form if it is actually smaller.
+    return _BACKUP_GZIP_PREFIX + packed if len(packed) < len(raw) else raw
+
+
+def _backup_text(stored: str) -> str:
+    """The snapshot as plain JSON, whatever form it was stored in."""
+    if stored and stored.startswith(_BACKUP_GZIP_PREFIX):
+        return gzip.decompress(base64.b64decode(stored[len(_BACKUP_GZIP_PREFIX):])).decode("utf-8")
+    return stored
+
+
+def _backup_json(b) -> dict:
+    return json.loads(_backup_text(b.data))
+
+
+def _coerce_row(model, row):
+    """A JSON row back into the types its columns expect - dates and
+    times come out of JSON as strings."""
+    from sqlalchemy import Date, DateTime
+    out = {}
+    cols = {c.name: c for c in model.__table__.columns}
+    for key, val in dict(row).items():
+        col = cols.get(key)
+        if col is None:
+            continue                       # a column this version no longer has
+        if isinstance(val, str) and val:
+            if isinstance(col.type, DateTime):
+                try:
+                    out[key] = datetime.fromisoformat(val)
+                    continue
+                except ValueError:
+                    pass
+            elif isinstance(col.type, Date):
+                try:
+                    out[key] = date.fromisoformat(val)
+                    continue
+                except ValueError:
+                    pass
+        out[key] = val
+    return out
+
+
+def restore_backup_data(db: Session, data: dict, keep_usernames: set) -> dict:
+    """Put a snapshot back, whole.
+
+    Children are emptied before parents and parents refilled before
+    children, both orders taken from the schema, so no row is ever
+    written pointing at one that is not there yet.
+
+    Staff logins are the one exception: an admin restoring a snapshot
+    must not delete the account they are signed in with, so logins that
+    exist now are left alone and only missing ones are put back.
+    """
+    models_in_order = _backup_models()
+    # Anything the snapshot does not carry is left exactly as it is - an
+    # older backup cannot wipe a table it never knew about.
+    present = [(n, m) for n, m in models_in_order
+               if n in data or n in ("employee_summaries", "salary_adjustments")]
+
+    def rows_for(name):
+        if name in data:
+            return data[name]
+        return data.get({"employee_summaries": "summaries",
+                         "salary_adjustments": "adjustments"}.get(name, name), [])
+
+    for name, model in reversed(present):          # children first
+        if model is models.User:
+            continue
+        db.query(model).delete(synchronize_session=False)
+    db.flush()
+
+    counts = {}
+    for name, model in present:                    # parents first
+        rows = rows_for(name)
+        if model is models.User:
+            # Logins already here are left alone, so the admin running
+            # the restore keeps the account they are signed in with.
+            # A missing one comes back with its own id where that id is
+            # free - which keeps "who recorded this" pointing at the
+            # right person - and is renumbered when it is not, as it
+            # will be on a rebuilt server where a rescue admin already
+            # holds id 1. A collision there used to abort the whole
+            # restore.
+            taken = {u.id for u in db.query(models.User).all()}
+            restored = 0
+            for r in rows:
+                r = _coerce_row(model, r)
+                if r.get("username") in keep_usernames:
+                    continue
+                if r.get("id") in taken:
+                    r.pop("id", None)
+                else:
+                    taken.add(r.get("id"))
+                db.add(model(**r))
+                db.flush()
+                restored += 1
+            counts[name] = restored
+            db.commit()
+            continue
+        for r in rows:
+            db.add(model(**_coerce_row(model, r)))
+        counts[name] = len(rows)
+        db.commit()
+    db.commit()
+    return counts
 
 
 def _add_missing_columns():
@@ -2187,7 +2326,7 @@ def store_reset(payload: dict = Body(...), db: Session = Depends(get_db),
     # A copy of everything first, so a mistake here costs a restore and
     # not the data.
     db.add(models.Backup(created_by=user.id, trigger="before-store-reset",
-                         data=json.dumps(build_backup_data(db), default=str)))
+                         data=_backup_dump(build_backup_data(db))))
     db.commit()
 
     # Child rows first, so nothing is left pointing at a deleted parent.
@@ -2247,7 +2386,7 @@ def fresh_start(payload: dict = Body(...), db: Session = Depends(get_db),
     # A copy of everything first, kept as a normal backup so it can be
     # restored from Settings if today's figures turn out to be needed.
     db.add(models.Backup(created_by=user.id, trigger="before-fresh-start",
-                         data=json.dumps(build_backup_data(db), default=str)))
+                         data=_backup_dump(build_backup_data(db))))
     db.commit()
 
     cleared = {}
@@ -2350,7 +2489,7 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
                   .order_by(models.Backup.id.desc()).first())
     if not existing or existing.created_at.date() != today:
         db.add(models.Backup(created_by=user.id, trigger="daily",
-                             data=json.dumps(build_backup_data(db), default=str)))
+                             data=_backup_dump(build_backup_data(db))))
         # Each snapshot is several megabytes, so old ones are cleared as
         # new ones arrive - otherwise the database quietly grows by a
         # copy of itself every day. Manual backups are left alone: those
@@ -2377,7 +2516,7 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
     if not b:
         raise HTTPException(status_code=404, detail="Backup not found.")
     log_action(db, user.id, "download_backup", f"backup #{backup_id}")
-    buf = io.BytesIO(b.data.encode("utf-8"))
+    buf = io.BytesIO(_backup_text(b.data).encode("utf-8"))
     ts = b.created_at.date().isoformat()
     return StreamingResponse(
         buf, media_type="application/json",
@@ -2389,127 +2528,34 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
 def restore_backup(backup_id: int, db: Session = Depends(get_db),
                     user: models.User = Depends(auth.require_admin)):
     """
+    Put the whole system back as it stood when the snapshot was taken.
+
     Admin only, unlike taking a backup - this overwrites current data,
-    so it stays behind the higher bar. Replaces attendance and the
-    store - employees, sites, engineers, daily rows, summaries,
-    adjustments, suppliers, materials, movements and requests - with
-    exactly what is in the chosen snapshot. Staff logins missing from
-    the live system are put back; existing ones are left alone so the
-    admin doing the restore cannot lock themselves out.
+    so it stays behind the higher bar. Every table the snapshot carries
+    is replaced: workers, sites, engineers, attendance, payroll,
+    adjustments, the store, purchase orders, settings and the activity
+    log. Anything the snapshot does not carry is left alone, so an older
+    backup cannot wipe a table it never knew about.
+
+    Staff logins are the exception: those on the server now are kept, so
+    the admin doing the restore cannot lock themselves out, and only
+    missing ones are put back.
     """
     b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
     if not b:
         raise HTTPException(status_code=404, detail="Backup not found.")
-    data = json.loads(b.data)
+    data = _backup_json(b)
 
-    # Cleared child-first so nothing is left pointing at a deleted row.
-    # Store tables are only cleared when the snapshot actually carries
-    # them, so restoring an older backup cannot wipe the inventory it
-    # never knew about.
-    has_store = any(k in data for k in ("store_items", "store_movements", "material_requests"))
-    if has_store:
-        db.query(models.PurchaseOrderLine).delete()
-        db.query(models.PurchaseOrder).delete()
-        db.query(models.MaterialRequestLine).delete()
-        db.query(models.MaterialRequest).delete()
-        db.query(models.StoreMovement).delete()
-        db.query(models.StoreItem).delete()
-        db.query(models.Supplier).delete()
-    db.query(models.SalaryAdjustment).delete()
-    db.query(models.DailyRow).delete()
-    db.query(models.EmployeeSummary).delete()
-    db.query(models.Employee).delete()
-    db.query(models.Site).delete()
-    db.query(models.Engineer).delete()
-    db.flush()
+    keep = {u.username for u in db.query(models.User).all()}
+    counts = restore_backup_data(db, data, keep)
 
-    def restore_rows(model, rows, date_fields=(), datetime_fields=()):
-        for r in rows:
-            r = dict(r)
-            for f in date_fields:
-                if r.get(f):
-                    r[f] = date.fromisoformat(r[f])
-            for f in datetime_fields:
-                if r.get(f):
-                    r[f] = datetime.fromisoformat(r[f])
-            db.add(model(**r))
+    log_action(db, user.id, "restore_backup",
+               f"restored from backup #{backup_id}: "
+               + ", ".join(f"{n} {c}" for n, c in counts.items() if c))
+    return {"ok": True, "restored_from": backup_id, "restored": counts,
+            "detail": "Restored " + ", ".join(f"{c} {n.replace('_', ' ')}"
+                                               for n, c in counts.items() if c) + "."}
 
-    restore_rows(models.Employee, data.get("employees", []), datetime_fields=("created_at", "updated_at"))
-    restore_rows(models.Site, data.get("sites", []), datetime_fields=("created_at",))
-    restore_rows(models.Engineer, data.get("engineers", []), datetime_fields=("created_at",))
-    restore_rows(models.DailyRow, data.get("daily_rows", []), date_fields=("full_date",), datetime_fields=("created_at", "updated_at"))
-    restore_rows(models.EmployeeSummary, data.get("summaries", []), datetime_fields=("created_at", "updated_at"))
-    db.commit()
-
-    for a in data.get("adjustments", []):
-        a = dict(a)
-        if a.get("created_at"):
-            a["created_at"] = datetime.fromisoformat(a["created_at"])
-        db.add(models.SalaryAdjustment(**a))
-    db.commit()
-
-    # ---- Store: suppliers and materials before the records that point
-    # at them, so every link survives the restore.
-    if has_store:
-        restore_rows(models.Supplier, data.get("suppliers", []), datetime_fields=("created_at",))
-        restore_rows(models.StoreItem, data.get("store_items", []),
-                     date_fields=("rental_start", "rental_due"), datetime_fields=("created_at", "updated_at"))
-        db.commit()
-        restore_rows(models.StoreMovement, data.get("store_movements", []),
-                     date_fields=("moved_on",), datetime_fields=("created_at",))
-        restore_rows(models.MaterialRequest, data.get("material_requests", []),
-                     date_fields=("needed_by", "requested_on", "closed_on", "expected_on"),
-                     datetime_fields=("created_at", "updated_at"))
-        db.commit()
-        restore_rows(models.MaterialRequestLine, data.get("material_request_lines", []))
-        db.commit()
-        # Purchase orders last of the store tables: they point at
-        # suppliers, requests and materials, all of which are back by
-        # now. They were captured in every snapshot but never put back,
-        # so a restore quietly emptied the LPO register.
-        restore_rows(models.PurchaseOrder, data.get("purchase_orders", []),
-                     date_fields=("order_date", "delivery_date"),
-                     datetime_fields=("created_at", "updated_at"))
-        db.commit()
-        restore_rows(models.PurchaseOrderLine, data.get("purchase_order_lines", []))
-        db.commit()
-
-    # Settings: the store in-charge, the company details, the monthly
-    # notes. Replaced wholesale when the snapshot carries them, so a
-    # restore returns the setup exactly as it was on that day.
-    if "settings" in data:
-        db.query(models.Setting).delete()
-        db.flush()
-        for row in data.get("settings", []):
-            db.add(models.Setting(**dict(row)))
-        db.commit()
-
-    # Staff logins last: an admin restoring a snapshot must not delete
-    # the account they are signed in with, so existing logins are kept
-    # and only missing ones are put back.
-    have = {u.username for u in db.query(models.User).all()}
-    for u in data.get("users", []):
-        if u.get("username") in have:
-            continue
-        u = dict(u)
-        for f in ("created_at", "last_login"):
-            if u.get(f):
-                u[f] = datetime.fromisoformat(u[f])
-        # On a rebuilt server the rescue admin already holds an id the
-        # snapshot also claims. The login matters, the number does not -
-        # let the database allocate a free one rather than failing the
-        # whole restore.
-        # Ids are not worth preserving here and cause collisions both
-        # with logins already on the server and with each other once one
-        # has been reassigned. The login, role and permissions are what
-        # matter; let the database number them.
-        u.pop("id", None)
-        db.add(models.User(**u))
-        db.flush()
-    db.commit()
-
-    log_action(db, user.id, "restore_backup", f"restored from backup #{backup_id}")
-    return {"ok": True, "restored_from": backup_id}
 
 
 @app.delete("/backup/{backup_id}")

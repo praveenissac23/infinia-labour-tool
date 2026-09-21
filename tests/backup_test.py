@@ -54,7 +54,7 @@ before = {
 }
 
 bid = c.post('/backup/create', headers=H).json()['id']
-raw = json.loads(database.SessionLocal().query(models.Backup).filter(models.Backup.id == bid).first().data)
+raw = main._backup_json(database.SessionLocal().query(models.Backup).filter(models.Backup.id == bid).first())
 for key in ['users', 'employees', 'sites', 'engineers', 'daily_rows',
             'suppliers', 'store_items', 'store_movements', 'material_requests', 'material_request_lines']:
     ck(f'backup carries {key}', key in raw and len(raw[key]) > 0, f"{len(raw.get(key, []))} rows")
@@ -107,8 +107,8 @@ ck('an old backup does not erase the store',
 # The rescue admin already holds an id the snapshot claims, so this is
 # where an id collision would break the whole restore.
 import subprocess, os, tempfile
-snap = json.dumps(json.loads(database.SessionLocal().query(models.Backup)
-                             .filter(models.Backup.id == bid).first().data))
+snap = json.dumps(main._backup_json(database.SessionLocal().query(models.Backup)
+                             .filter(models.Backup.id == bid).first()))
 fresh = tempfile.NamedTemporaryFile(suffix='.db', delete=False).name
 script = f"""
 import sys, json; sys.path.insert(0, '.')

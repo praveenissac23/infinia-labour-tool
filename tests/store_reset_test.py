@@ -150,7 +150,7 @@ b = (d.query(models.Backup).filter(models.Backup.trigger == 'before-store-reset'
      .order_by(models.Backup.id.desc()).first())
 ck('a backup was taken before clearing', b is not None)
 if b:
-    raw = _j.loads(b.data)
+    raw = main._backup_json(b)
     ck('that backup holds the cleared movements', len(raw.get('store_movements', [])) >= 3,
        len(raw.get('store_movements', [])))
     ck('that backup still holds the live attendance',
