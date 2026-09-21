@@ -3854,6 +3854,54 @@ def download_opening_template(token: str, db: Session = Depends(get_db)):
         headers={"Content-Disposition": 'attachment; filename="Opening_stock.xlsx"'})
 
 
+@app.post("/store/items/opening")
+def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db),
+                         user: models.User = Depends(require_screen("store"))):
+    """A few materials counted in by hand from the Materials panel.
+
+    Same rule as the sheet: each quantity is a receipt marked Opening
+    stock, and a material already received is skipped so nothing is
+    counted twice. The type chosen on the line is saved on the material,
+    so a hired generator counted in here does not sit among consumables."""
+    if "storekeeper" not in effective_permissions(user) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only someone who records stock can count opening stock.")
+    lines = (payload or {}).get("lines") or []
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
+    received = _ever_stocked(db)
+    today = _dubai_today()
+    added, skipped = [], []
+    for l in lines:
+        try:
+            item_id, qty = int(l.get("item_id") or 0), float(l.get("qty") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not item_id or qty <= 0:
+            continue
+        it = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
+        if not it:
+            continue
+        kind = (l.get("item_type") or "").strip()
+        if kind in ("consumable", "asset", "rental") and it.item_type != kind:
+            it.item_type = kind
+        if it.id in received:
+            skipped.append(it.name)
+            continue
+        db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty, location=CENTRAL, from_location="",
+                                    moved_on=today, supplier="", incharge=user.full_name or user.username,
+                                    reference="Opening stock", notes="Opening stock - held when the store went live",
+                                    created_by=user.id))
+        received.add(it.id)
+        added.append(f"{qty:g} {it.unit or ''} {it.name}".strip())
+    db.commit()
+    log_action(db, user.id, "opening_stock", f"{len(added)} material(s) counted in")
+    detail = f"Recorded {len(added)} material(s) as opening stock." if added else "Nothing recorded."
+    if skipped:
+        detail += (f" Skipped {len(skipped)} already received - use Material arrived for more: "
+                   + ", ".join(skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
+    return {"added": added, "skipped": skipped, "detail": detail}
+
+
 @app.post("/store/items/opening-import")
 async def import_opening_stock(file: UploadFile = File(...), db: Session = Depends(get_db),
                                user: models.User = Depends(require_screen("store"))):

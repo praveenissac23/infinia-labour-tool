@@ -1778,16 +1778,22 @@
             <div class="card" style="margin-top:12px; border:1px solid #D6E4F0;">
               <h2 style="color:#1F618D;">Opening stock</h2>
               <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:820px;">
-                What the store already holds on the day it goes live. Download the sheet - every
-                material is listed - type the quantity in store against each one you hold, and
-                import it once. Each quantity is recorded as a receipt marked "Opening stock", so it
-                is traceable like everything else. A material already received is skipped, so
-                importing the sheet twice cannot double anything.
+                What the store already holds. Pick a material, check its type, type the quantity on
+                the shelf; add as many lines as you need and record them together. Each goes into the
+                ledger as a receipt marked "Opening stock". A material already received is skipped,
+                so nothing can be counted twice - anything arriving later goes through Material arrived.
               </p>
-              <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
-                <button class="btn btn-dark" onclick="openingTemplate()">Download opening stock sheet</button>
-                <input type="file" id="opening-file" accept=".xlsx" style="width:260px;">
-                <button class="btn btn-primary" onclick="importOpeningStock()">Import opening stock</button>
+              <table id="opening-table" style="width:100%;">
+                <thead><tr>
+                  <th style="width:4%;">#</th><th style="width:44%;">Material</th>
+                  <th style="width:20%;">Type</th><th style="width:14%;">Quantity</th>
+                  <th style="width:10%;">Unit</th><th style="width:8%;"></th>
+                </tr></thead>
+                <tbody id="opening-lines"></tbody>
+              </table>
+              <div class="form-row" style="margin-top:10px; align-items:center; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-gray" onclick="addOpeningLine()">+ Add another material</button>
+                <button class="btn btn-primary" onclick="saveOpeningStock()">Record opening stock</button>
               </div>
               <div class="status-msg" id="opening-status"></div>
             </div>
@@ -4886,6 +4892,8 @@ function storeGo(which) {
     pickReport("stock", true);
   }
   if (which === "other") setMvKind(null);
+  // The opening-stock table starts with one empty line ready to type in.
+  if (which === "items" && !document.querySelectorAll("#opening-lines tr").length) addOpeningLine();
 }
 
 // Every open request with materials still due, one Record delivery
@@ -5687,9 +5695,13 @@ function onMaterialTyped(box) {
   // the box on Consumable and quietly changing what the item is.
   const typeSel = row.querySelector(".il-type, .mr-type");
   if (typeSel && hit) typeSel.value = hit.item_type || "consumable";
-  const unitCell = row.querySelector(".ol-have, .mr-unit");
+  const unitCell = row.querySelector(".ol-have, .mr-unit, .op-unit");
   if (hit && unitCell) {
-    if (unitCell.classList.contains("mr-unit")) {
+    if (unitCell.classList.contains("op-unit")) {
+      // Opening stock: the unit alone. There is no "on hand" to show -
+      // that is what is being typed in.
+      unitCell.textContent = hit.unit || "";
+    } else if (unitCell.classList.contains("mr-unit")) {
       // Only fill a unit the requester hasn't chosen themselves -
       // replacing "tonne" with the catalogue's "pcs" changed the
       // meaning of the request under their hands.
@@ -7963,24 +7975,49 @@ async function exportSuppliers() {
   window.open(`${API}/export/store/suppliers?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
-async function openingTemplate() {
-  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
-  if (!cachedDownloadToken) { showStatus("opening-status", "err", "Could not prepare the download."); return; }
-  window.open(`${API}/export/store/opening-template?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
-  showStatus("opening-status", "ok", "Opening the sheet - fill 'Quantity in store' and import it here.");
+// Opening stock, typed straight in: a few lines at a time, not a
+// spreadsheet. The store started on paper with the shelves already
+// full, and the keeper counts them in here, ten or fifteen materials
+// at a sitting.
+function addOpeningLine() {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="row-no" style="color:#999; font-weight:600;"></td>
+    <td>${materialPickerHtml("il-item", "material-list-all")}</td>
+    <td><select class="il-type" style="width:100%; min-width:120px;">
+          <option value="consumable">Consumable</option>
+          <option value="asset">Asset (we own it)</option>
+          <option value="rental">Rental (hired in)</option>
+        </select></td>
+    <td><input type="number" class="il-qty" step="any" min="0" style="width:100%; min-width:80px;" placeholder="0"></td>
+    <td class="op-unit" style="color:#777;">-</td>
+    <td><button class="btn btn-gray" onclick="removeEntryRow(this,'opening-lines')">Remove</button></td>`;
+  document.getElementById("opening-lines").appendChild(tr);
+  renumberRows("opening-lines");
+  tr.querySelector(".il-item-txt").focus();
 }
 
-async function importOpeningStock() {
-  const f = document.getElementById("opening-file").files[0];
-  if (!f) { showStatus("opening-status", "warn", "Choose the filled-in sheet first."); return; }
-  if (!confirm("Import the opening stock?\n\nEvery quantity on the sheet is recorded as stock in the " +
-               "central store today. Materials already received are skipped.")) return;
-  const fd = new FormData();
-  fd.append("file", f);
+async function saveOpeningStock() {
+  const lines = [...document.querySelectorAll("#opening-lines tr")].map(tr => ({
+    item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
+    item_type: tr.querySelector(".il-type").value,
+    qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
+    typed: (tr.querySelector(".il-item-txt").value || "").trim(),
+  }));
+  const unmatched = lines.filter(l => l.typed && !l.item_id);
+  if (unmatched.length) {
+    showStatus("opening-status", "warn", `"${unmatched[0].typed}" is not on the material list - pick it from the list, or add it below first.`);
+    return;
+  }
+  const ready = lines.filter(l => l.item_id && l.qty > 0);
+  if (!ready.length) { showStatus("opening-status", "warn", "Add at least one material with a quantity."); return; }
+  if (!confirm(`Record ${ready.length} material(s) as opening stock in the central store?`)) return;
   try {
-    const r = await apiCall("/store/items/opening-import", { method: "POST", body: fd });
-    showStatus("opening-status", r.unknown && r.unknown.length ? "warn" : "ok", r.detail || "Imported.");
-    document.getElementById("opening-file").value = "";
+    const r = await apiCall("/store/items/opening", { method: "POST",
+      body: JSON.stringify({ lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, qty: l.qty })) }) });
+    showStatus("opening-status", r.skipped && r.skipped.length ? "warn" : "ok", r.detail || "Recorded.");
+    document.getElementById("opening-lines").innerHTML = "";
+    addOpeningLine();
     try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
     if (typeof loadStore === "function") loadStore();
   } catch (e) { showStatus("opening-status", "err", errText(e)); }
