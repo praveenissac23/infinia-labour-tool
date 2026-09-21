@@ -5022,12 +5022,13 @@ def _sig_img():
     itself rather than a second request, which would need its own token.
     """
     try:
-        if not os.path.exists(export_web.SIG_PATH):
+        _sig = export_web.signature_file()
+        if not _sig:
             return ""
         import base64
-        with open(export_web.SIG_PATH, "rb") as f:
+        with open(_sig, "rb") as f:
             data = base64.b64encode(f.read()).decode("ascii")
-        kind = "jpeg" if export_web.SIG_PATH.lower().endswith((".jpg", ".jpeg")) else "png"
+        kind = "jpeg" if _sig.lower().endswith((".jpg", ".jpeg")) else "png"
         return (f'<img src="data:image/{kind};base64,{data}" alt="" '
                 f'style="max-height:48px; max-width:150px; display:block; margin:2px auto;">')
     except Exception:
@@ -5160,37 +5161,93 @@ def export_purchase_order(order_id: int, token: str, format: str = "pdf",
         headers={"Content-Disposition": f"{how}; filename={safe}.pdf"})
 
 
+# An order prints the signature at 34mm by 13mm. A phone photo of one
+# runs to several megabytes and thirty times the pixels that size can
+# show, and every PDF then pays to scale it down again - and it rides
+# along in every backup. Brought to a size the paper can actually use.
+SIGNATURE_MAX_PX = 800
+
+
+def _tidy_signature(data: bytes, filename: str = "") -> tuple:
+    """(bytes, extension) for a signature at a size the paper can use.
+
+    Returns the original untouched if the imaging library is missing -
+    an upload must never fail because a picture could not be shrunk.
+    """
+    fallback = "jpg" if (filename or "").lower().endswith((".jpg", ".jpeg")) else "png"
+    try:
+        from PIL import Image, ImageOps
+    except Exception:
+        return data, fallback
+    try:
+        img = Image.open(io.BytesIO(data))
+        # A photo taken sideways carries its rotation as metadata that a
+        # PDF ignores, so the signature printed on its side.
+        img = ImageOps.exif_transpose(img)
+        if max(img.size) > SIGNATURE_MAX_PX:
+            img.thumbnail((SIGNATURE_MAX_PX, SIGNATURE_MAX_PX), Image.LANCZOS)
+        transparent = img.mode in ("RGBA", "LA", "P") and (
+            "transparency" in img.info or img.mode in ("RGBA", "LA"))
+        out = io.BytesIO()
+        if transparent:
+            # A signature cut out of its background: the transparency is
+            # the valuable part, so it stays a PNG.
+            img.convert("RGBA").save(out, format="PNG", optimize=True)
+            ext = "png"
+        else:
+            # A photograph of a signature on paper. Ink is grey on white,
+            # so colour carries nothing, and JPEG holds a photograph in a
+            # fraction of what a lossless format needs. Saved without the
+            # camera's metadata, which also records where it was taken.
+            img.convert("L").save(out, format="JPEG", quality=85, optimize=True)
+            ext = "jpg"
+        shrunk = out.getvalue()
+        return (shrunk, ext) if len(shrunk) < len(data) else (data, fallback)
+    except Exception:
+        return data, fallback     # an unreadable image is the upload's problem
+
+
 @app.post("/store/purchase/signature")
 async def upload_signature(file: UploadFile = File(...), db: Session = Depends(get_db),
                             user: models.User = Depends(auth.require_admin)):
     """The authorised signature, printed on every order. Uploaded once."""
     data = await file.read()
-    if len(data) > 2_000_000:
-        raise HTTPException(status_code=400, detail="Signature image must be under 2 MB.")
+    if len(data) > 8_000_000:
+        raise HTTPException(status_code=400, detail="Signature image must be under 8 MB.")
     if not (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Use a PNG or JPG image.")
+    data, ext = _tidy_signature(data, file.filename or "")
+    target = os.path.join(export_web.DATA_DIR, "signature." + ext)
     try:
-        with open(export_web.SIG_PATH, "wb") as f:
+        # Only one signature is ever held, so the other spelling goes.
+        for other in export_web.SIG_PATHS:
+            if other != target and os.path.exists(other):
+                try:
+                    os.remove(other)
+                except OSError:
+                    pass
+        with open(target, "wb") as f:
             f.write(data)
     except Exception as e:
         # Said out loud rather than swallowed: an upload that fails
         # quietly means orders go out unsigned and nobody knows why.
         raise HTTPException(status_code=500,
-                            detail=f"Could not save the signature to {export_web.SIG_PATH}: {e}")
-    if not os.path.exists(export_web.SIG_PATH):
+                            detail=f"Could not save the signature to {target}: {e}")
+    if not os.path.exists(target):
         raise HTTPException(status_code=500, detail="The signature did not save - check the server's disk.")
-    log_action(db, user.id, "upload_signature", file.filename or "")
+    log_action(db, user.id, "upload_signature",
+               f"{file.filename or ''} -> {os.path.basename(target)}, {len(data)/1024:.0f} KB")
     return {"ok": True, "detail": "Signature saved - it prints on every purchase order.",
-            "path": export_web.SIG_PATH}
+            "path": target, "bytes": len(data)}
 
 
 @app.get("/store/purchase/signature-status")
 def signature_status(user: models.User = Depends(require_screen("approvals"))):
     # The path comes back too, so where it went can be checked on the
     # server without guessing.
-    present = os.path.exists(export_web.SIG_PATH)
-    return {"present": present, "path": export_web.SIG_PATH,
-            "bytes": os.path.getsize(export_web.SIG_PATH) if present else 0}
+    path = export_web.signature_file()
+    return {"present": bool(path), "path": path or export_web.SIG_PATH,
+            "bytes": os.path.getsize(path) if path else 0}
 
 
 @app.get("/export/store/report")

@@ -40,6 +40,21 @@ STATUS_FILLS = {
 }
 GREY_FILL = "D8D8D8"
 
+def _fit_box(path, max_w_mm, max_h_mm):
+    """The largest width and height inside the box that keep the
+    picture's own proportions."""
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            w, h = im.size
+        if w and h:
+            scale = min(max_w_mm / w, max_h_mm / h)
+            return w * scale, h * scale
+    except Exception:
+        pass
+    return max_w_mm, max_h_mm
+
+
 # ---- The company logo, on every file that leaves the app --------------
 # One PNG beside this module; the same image the app shows top-left.
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
@@ -1310,6 +1325,20 @@ def _pick_data_dir():
 
 DATA_DIR = _pick_data_dir()
 SIG_PATH = os.path.join(DATA_DIR, "signature.png")
+# A signature photographed on a phone is a photograph, and a photograph
+# in PNG is several hundred kilobytes that a lossy format holds in
+# twenty. So whichever suits the picture is written - JPEG for a photo,
+# PNG where there is transparency to keep - and every reader asks for
+# whichever one is actually there rather than assuming the extension.
+SIG_PATHS = [os.path.join(DATA_DIR, "signature." + e) for e in ("png", "jpg")]
+
+
+def signature_file():
+    """The signature currently on this server, or None."""
+    found = [p for p in SIG_PATHS if os.path.exists(p)]
+    if not found:
+        return None
+    return max(found, key=os.path.getmtime)
 
 # A signature uploaded before this moved is still in the old place;
 # carry it across once rather than making somebody upload it again.
@@ -1508,11 +1537,17 @@ def build_lpo_pdf(po: dict):
     ]))
 
     sig_cell = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER)]
-    if os.path.exists(SIG_PATH):
+    _sig = signature_file()
+    if _sig:
         try:
             from reportlab.platypus import Image as RLImage
             sig_cell.append(Spacer(1, 2))
-            sig_cell.append(RLImage(SIG_PATH, width=34 * mm, height=13 * mm))
+            # Fitted inside the space rather than forced to fill it: a
+            # signature is not the shape of the box it prints in, and
+            # stretching one to fit is the sort of thing a supplier
+            # notices on paper.
+            _w, _h = _fit_box(_sig, 34, 13)
+            sig_cell.append(RLImage(_sig, width=_w * mm, height=_h * mm))
         except Exception:
             sig_cell.append(Spacer(1, 13 * mm))
     else:
@@ -1713,9 +1748,9 @@ def build_lpo_excel(po: dict):
     ws.row_dimensions[sr + 1].height = 22
     ws.row_dimensions[sr + 2].height = 22
     try:
-        if os.path.exists(SIG_PATH):
+        if signature_file():
             from openpyxl.drawing.image import Image as XLImage
-            sig = XLImage(SIG_PATH)
+            sig = XLImage(signature_file())
             sig.width, sig.height = 110, 48
             ws.add_image(sig, f"F{sr + 1}")
     except Exception:
