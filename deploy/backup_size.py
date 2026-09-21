@@ -1,11 +1,53 @@
 """What the backups actually take up on this server, and what is in them.
 
 Run on the server:
-    cd ~/infinia-labour-tool/app && python3 ../deploy/backup_size.py
+    cd ~/infinia-labour-tool/app && ../venv/bin/python ../deploy/backup_size.py
 
-Uses the application's own database settings, so there are no passwords
-to type and nothing to configure.
+Finds the database the live service uses by itself - the connection
+settings live in the systemd unit, not in a shell, so running this by
+hand would otherwise fall back to a default that has no password.
 """
+import os, re, subprocess, sys
+
+
+def _find_database_url():
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    # What the running service was actually started with.
+    for unit in ("infinia", "infinia.service"):
+        try:
+            out = subprocess.run(["systemctl", "show", unit, "-p", "Environment", "--value"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            m = re.search(r"DATABASE_URL=(\S+)", out or "")
+            if m:
+                return m.group(1)
+            out = subprocess.run(["systemctl", "show", unit, "-p", "EnvironmentFiles", "--value"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            for path in re.findall(r"(/\S+?)(?:\s|$)", out or ""):
+                path = path.rstrip("()").lstrip("-")
+                if os.path.exists(path):
+                    for line in open(path):
+                        if line.strip().startswith("DATABASE_URL="):
+                            return line.split("=", 1)[1].strip().strip("'\"")
+        except Exception:
+            pass
+    # A .env beside the code, if one is used instead.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for env in (os.path.join(here, "..", ".env"), os.path.join(here, "..", "app", ".env")):
+        if os.path.exists(env):
+            for line in open(env):
+                if line.strip().startswith("DATABASE_URL="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+    return None
+
+
+_url = _find_database_url()
+if not _url:
+    sys.exit("Could not find DATABASE_URL. Run:  sudo systemctl show infinia -p Environment\n"
+             "then run this again with it in front:  DATABASE_URL='...' ../venv/bin/python ../deploy/backup_size.py")
+os.environ["DATABASE_URL"] = _url
+print(f"Reading the live database ({_url.split('@')[-1] if '@' in _url else _url})\n")
+
 import sys; sys.path.insert(0, '.')
 import database, models, main
 from sqlalchemy import func
