@@ -2945,12 +2945,17 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     db.commit()
     db.refresh(existing)
 
-    if is_new and opening > 0:
+    # "Already have" applies to a new material, and to one that is on
+    # the list but has never been received - which is every material in
+    # a store that started on paper. Once anything has come in, the box
+    # is ignored: the count is for the start, not a way to top up.
+    never_received = existing.id not in _ever_stocked(db)
+    if (is_new or never_received) and opening > 0:
         db.add(models.StoreMovement(
             item_id=existing.id, kind="in", qty=opening,
             location=opening_where, from_location="",
             moved_on=_dubai_today(), supplier="", incharge="",
-            notes="Opening balance - already held when the material was added",
+            reference="Opening stock", notes="Opening stock - already held when the material was added",
             created_by=user.id))
         db.commit()
         log_action(db, user.id, "store_movement",
@@ -3802,6 +3807,119 @@ def _next_lpo_no(db):
 
 
 SUPPLIER_HEADERS = ["Name", "Contact Person", "Phone", "TRN", "Email", "Payment Terms", "Notes"]
+
+
+# ---------------------------------------------------------------------
+# OPENING STOCK - what the store already held on the day it went live
+# ---------------------------------------------------------------------
+# The store started on paper with shelves already full. Typing each
+# material in through "Material arrived" would take a day and invite
+# mistakes, so the whole count goes in from one sheet: every material
+# listed, a quantity typed against each one held, imported once.
+#
+# Each quantity lands in the ledger as a receipt marked "Opening stock",
+# so it is traceable like everything else. A material that has already
+# been received is skipped - the count is for the day the store starts,
+# and importing the sheet twice must not double it.
+OPENING_HEADERS = ["Code", "Material", "Unit", "Type", "Quantity in store"]
+
+
+@app.get("/export/store/opening-template")
+def download_opening_template(token: str, db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    items = (db.query(models.StoreItem).filter(models.StoreItem.active == True)  # noqa: E712
+               .order_by(models.StoreItem.name).all())
+    received = _ever_stocked(db)
+    wb = Workbook(); ws = wb.active; ws.title = "Opening stock"
+    ws.append(OPENING_HEADERS)
+    for i, h in enumerate(OPENING_HEADERS, start=1):
+        c = ws.cell(row=1, column=i)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=export_web.BRAND_RED)
+        c.alignment = Alignment(horizontal="center")
+    for it in items:
+        # A material already received shows what it holds and is left
+        # alone by the import; the column to fill is blank for the rest.
+        ws.append([it.code, it.name, it.unit or "", (it.item_type or "consumable").title(),
+                   None if it.id not in received else "already received"])
+    for col, w in zip("ABCDE", (12, 48, 10, 14, 20)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="Opening_stock.xlsx"'})
+
+
+@app.post("/store/items/opening-import")
+async def import_opening_stock(file: UploadFile = File(...), db: Session = Depends(get_db),
+                               user: models.User = Depends(require_screen("store"))):
+    from openpyxl import load_workbook
+    if "storekeeper" not in effective_permissions(user) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only someone who records stock can import an opening count.")
+    data = await file.read()
+    try:
+        ws = load_workbook(io.BytesIO(data), data_only=True).active
+    except Exception:
+        raise HTTPException(status_code=400, detail="That file could not be read as a spreadsheet.")
+    rows = list(ws.iter_rows(values_only=True))
+    head_i = next((i for i, r in enumerate(rows[:10])
+                   if any(str(c or "").strip().lower() == "code" for c in r)), None)
+    if head_i is None:
+        raise HTTPException(status_code=400, detail="The sheet needs the Code column from the opening stock template.")
+    header = [str(c or "").strip().lower() for c in rows[head_i]]
+    def col(*names):
+        for n in names:
+            if n in header:
+                return header.index(n)
+        return None
+    i_code, i_name, i_qty = col("code"), col("material", "name"), col("quantity in store", "quantity", "qty")
+    if i_qty is None:
+        raise HTTPException(status_code=400, detail="The sheet needs a 'Quantity in store' column.")
+    by_code = {it.code.lower(): it for it in db.query(models.StoreItem).all()}
+    by_name = {" ".join(it.name.lower().split()): it for it in by_code.values()}
+    received = _ever_stocked(db)
+    today = _dubai_today()
+    added, skipped_received, unknown, blank = 0, [], [], 0
+    for r in rows[head_i + 1:]:
+        raw = r[i_qty] if i_qty < len(r) else None
+        if raw in (None, "") or isinstance(raw, str) and not raw.strip().replace(".", "", 1).isdigit():
+            blank += 1
+            continue
+        qty = float(raw)
+        if qty <= 0:
+            blank += 1
+            continue
+        code = str(r[i_code] or "").strip().lower() if i_code is not None and i_code < len(r) else ""
+        name = " ".join(str(r[i_name] or "").lower().split()) if i_name is not None and i_name < len(r) else ""
+        it = by_code.get(code) or by_name.get(name)
+        if not it:
+            unknown.append(code or name or "?")
+            continue
+        if it.id in received:
+            skipped_received.append(it.code)
+            continue
+        db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty, location=CENTRAL, from_location="",
+                                    moved_on=today, supplier="", incharge=user.full_name or user.username,
+                                    reference="Opening stock", notes="Opening stock - held when the store went live",
+                                    created_by=user.id))
+        received.add(it.id)
+        added += 1
+    db.commit()
+    log_action(db, user.id, "opening_stock", f"{added} material(s) counted in")
+    parts = [f"{added} material(s) counted into the store."]
+    if skipped_received:
+        parts.append(f"{len(skipped_received)} skipped because they had already been received "
+                     f"(record any extra through Material arrived): {', '.join(skipped_received[:8])}"
+                     + (" ..." if len(skipped_received) > 8 else ""))
+    if unknown:
+        parts.append(f"{len(unknown)} not found in the material list: {', '.join(unknown[:8])}"
+                     + (" ..." if len(unknown) > 8 else ""))
+    return {"added": added, "skipped_received": skipped_received, "unknown": unknown,
+            "blank": blank, "detail": " ".join(parts)}
 
 
 @app.get("/export/store/suppliers/template")

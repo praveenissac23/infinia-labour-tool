@@ -1775,6 +1775,23 @@
               <div id="unit-review" style="margin-top:12px;"></div>
             </div>
 
+            <div class="card" style="margin-top:12px; border:1px solid #D6E4F0;">
+              <h2 style="color:#1F618D;">Opening stock</h2>
+              <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:820px;">
+                What the store already holds on the day it goes live. Download the sheet - every
+                material is listed - type the quantity in store against each one you hold, and
+                import it once. Each quantity is recorded as a receipt marked "Opening stock", so it
+                is traceable like everything else. A material already received is skipped, so
+                importing the sheet twice cannot double anything.
+              </p>
+              <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-dark" onclick="openingTemplate()">Download opening stock sheet</button>
+                <input type="file" id="opening-file" accept=".xlsx" style="width:260px;">
+                <button class="btn btn-primary" onclick="importOpeningStock()">Import opening stock</button>
+              </div>
+              <div class="status-msg" id="opening-status"></div>
+            </div>
+
             <div class="card" style="margin-top:12px;">
               <h2>Add or change an item</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">Every material or tool is listed here once, before it can be received or given out.</p>
@@ -7944,6 +7961,29 @@ async function exportSuppliers() {
   if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
   if (!cachedDownloadToken) { showStatus("lpo-status", "err", "Could not prepare the download."); return; }
   window.open(`${API}/export/store/suppliers?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
+
+async function openingTemplate() {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("opening-status", "err", "Could not prepare the download."); return; }
+  window.open(`${API}/export/store/opening-template?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+  showStatus("opening-status", "ok", "Opening the sheet - fill 'Quantity in store' and import it here.");
+}
+
+async function importOpeningStock() {
+  const f = document.getElementById("opening-file").files[0];
+  if (!f) { showStatus("opening-status", "warn", "Choose the filled-in sheet first."); return; }
+  if (!confirm("Import the opening stock?\n\nEvery quantity on the sheet is recorded as stock in the " +
+               "central store today. Materials already received are skipped.")) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await apiCall("/store/items/opening-import", { method: "POST", body: fd });
+    showStatus("opening-status", r.unknown && r.unknown.length ? "warn" : "ok", r.detail || "Imported.");
+    document.getElementById("opening-file").value = "";
+    try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+    if (typeof loadStore === "function") loadStore();
+  } catch (e) { showStatus("opening-status", "err", errText(e)); }
 }
 
 async function importSuppliers() {
