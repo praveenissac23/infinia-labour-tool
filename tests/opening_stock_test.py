@@ -109,5 +109,17 @@ ck('and the store is down to 30', next(s for s in c.get('/store/stock', headers=
 ck('the opening count shows in the purchases report as received',
    any('Cement' in r['name'] for r in c.get('/store/report?kind=purchases', headers=KEEPER).json()['rows']))
 
+# ---- The Materials-panel table: add stock any time -------------------
+r = c.post('/store/items/opening', json={'lines': [{'item_id': cem['id'], 'item_type': 'consumable', 'qty': 20},
+                                                    {'item_id': drill['id'], 'item_type': 'asset', 'qty': 1}]}, headers=KEEPER)
+ck('a few lines added by hand', r.status_code == 200 and len(r.json()['added']) == 2, r.text[:200])
+ck('cement went from 30 to 50', next(s for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] == cem['id'])['central'] == 50)
+r = c.post('/store/items/opening', json={'lines': [{'item_id': cem['id'], 'item_type': 'consumable', 'qty': 5}]}, headers=KEEPER)
+ck('and again later - it is not a one-off', r.status_code == 200 and next(s for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] == cem['id'])['central'] == 55)
+ck('each addition is a receipt in the ledger',
+   sum(1 for m in c.get(f"/store/movements?item_id={cem['id']}", headers=KEEPER).json() if m['reference'] == 'Added by hand') == 2)
+ck('a site engineer cannot add stock', c.post('/store/items/opening', json={'lines': [{'item_id': cem['id'], 'qty': 1}]}, headers=SITE).status_code == 403)
+ck('an empty table is refused', c.post('/store/items/opening', json={'lines': []}, headers=KEEPER).status_code == 400)
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

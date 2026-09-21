@@ -1776,12 +1776,12 @@
             </div>
 
             <div class="card" style="margin-top:12px; border:1px solid #D6E4F0;">
-              <h2 style="color:#1F618D;">Opening stock</h2>
+              <h2 style="color:#1F618D;">Add stock to the store</h2>
               <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:820px;">
-                What the store already holds. Pick a material, check its type, type the quantity on
-                the shelf; add as many lines as you need and record them together. Each goes into the
-                ledger as a receipt marked "Opening stock". A material already received is skipped,
-                so nothing can be counted twice - anything arriving later goes through Material arrived.
+                Put material into the central store by hand, any time - the shelves on day one, or a
+                few things that came in without paperwork. Pick a material, check its type, type the
+                quantity; add as many lines as you need and record them together. Each goes into the
+                ledger as a receipt, so it is traceable like a delivery.
               </p>
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
@@ -1793,7 +1793,7 @@
               </table>
               <div class="form-row" style="margin-top:10px; align-items:center; gap:10px; flex-wrap:wrap;">
                 <button class="btn btn-gray" onclick="addOpeningLine()">+ Add another material</button>
-                <button class="btn btn-primary" onclick="saveOpeningStock()">Record opening stock</button>
+                <button class="btn btn-primary" onclick="saveOpeningStock()">Add to store</button>
               </div>
               <div class="status-msg" id="opening-status"></div>
             </div>
@@ -8011,11 +8011,11 @@ async function saveOpeningStock() {
   }
   const ready = lines.filter(l => l.item_id && l.qty > 0);
   if (!ready.length) { showStatus("opening-status", "warn", "Add at least one material with a quantity."); return; }
-  if (!confirm(`Record ${ready.length} material(s) as opening stock in the central store?`)) return;
+  if (!confirm(`Add ${ready.length} material(s) to the central store?`)) return;
   try {
     const r = await apiCall("/store/items/opening", { method: "POST",
       body: JSON.stringify({ lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, qty: l.qty })) }) });
-    showStatus("opening-status", r.skipped && r.skipped.length ? "warn" : "ok", r.detail || "Recorded.");
+    showStatus("opening-status", "ok", r.detail || "Added.");
     document.getElementById("opening-lines").innerHTML = "";
     addOpeningLine();
     try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}

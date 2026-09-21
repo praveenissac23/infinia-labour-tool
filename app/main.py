@@ -3857,18 +3857,18 @@ def download_opening_template(token: str, db: Session = Depends(get_db)):
 @app.post("/store/items/opening")
 def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db),
                          user: models.User = Depends(require_screen("store"))):
-    """A few materials counted in by hand from the Materials panel.
+    """A few materials put into the store by hand, any time.
 
-    Same rule as the sheet: each quantity is a receipt marked Opening
-    stock, and a material already received is skipped so nothing is
-    counted twice. The type chosen on the line is saved on the material,
-    so a hired generator counted in here does not sit among consumables."""
+    The shelves on day one, or something that came in without a delivery
+    note. Each quantity is a receipt in the ledger like any delivery, so
+    it is traceable. The type chosen on the line is saved on the
+    material, so a hired generator added here does not sit among the
+    consumables."""
     if "storekeeper" not in effective_permissions(user) and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only someone who records stock can count opening stock.")
     lines = (payload or {}).get("lines") or []
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
-    received = _ever_stocked(db)
     today = _dubai_today()
     added, skipped = [], []
     for l in lines:
@@ -3884,21 +3884,14 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         kind = (l.get("item_type") or "").strip()
         if kind in ("consumable", "asset", "rental") and it.item_type != kind:
             it.item_type = kind
-        if it.id in received:
-            skipped.append(it.name)
-            continue
         db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty, location=CENTRAL, from_location="",
                                     moved_on=today, supplier="", incharge=user.full_name or user.username,
-                                    reference="Opening stock", notes="Opening stock - held when the store went live",
+                                    reference="Added by hand", notes="Put into the store from the Materials panel",
                                     created_by=user.id))
-        received.add(it.id)
         added.append(f"{qty:g} {it.unit or ''} {it.name}".strip())
     db.commit()
-    log_action(db, user.id, "opening_stock", f"{len(added)} material(s) counted in")
-    detail = f"Recorded {len(added)} material(s) as opening stock." if added else "Nothing recorded."
-    if skipped:
-        detail += (f" Skipped {len(skipped)} already received - use Material arrived for more: "
-                   + ", ".join(skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
+    log_action(db, user.id, "stock_added", "; ".join(added)[:200])
+    detail = (f"Added to the store: " + ", ".join(added[:6]) + (" ..." if len(added) > 6 else "")) if added else "Nothing added."
     return {"added": added, "skipped": skipped, "detail": detail}
 
 
