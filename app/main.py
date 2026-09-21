@@ -2249,6 +2249,20 @@ def _add_missing_columns():
 
 AUTO_BACKUP_KEEP_DAYS = 40
 
+# Taken by the system as a matter of course, rather than by someone who
+# meant to. Only one of these is kept per day, and they are the ones
+# pruned; a manual backup, or the one taken before a store clearance,
+# was deliberate and is never cleared out from under whoever took it.
+ROUTINE_TRIGGERS = ("auto", "daily")
+
+
+def _todays_routine_backup(db: Session):
+    """Today's routine snapshot, if one has already been taken."""
+    return (db.query(models.Backup)
+              .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS),
+                      func.date(models.Backup.created_at) == _dubai_today())
+              .first())
+
 def maybe_create_auto_backup(db: Session):
     """
     Creates one 'auto' backup per calendar DAY, then prunes automatic
@@ -2265,14 +2279,7 @@ def maybe_create_auto_backup(db: Session):
     snapshot someone deliberately took before a risky change is never
     silently deleted out from under them.
     """
-    today = _dubai_today()
-    existing = (
-        db.query(models.Backup)
-        .filter(models.Backup.trigger == "auto",
-                func.date(models.Backup.created_at) == today)
-        .first()
-    )
-    if not existing:
+    if not _todays_routine_backup(db):
         data = build_backup_data(db)
         db.add(models.Backup(created_by=None, trigger="auto", data=json.dumps(data, default=str)))
         db.commit()
@@ -2280,7 +2287,7 @@ def maybe_create_auto_backup(db: Session):
     # Prune: keep only the newest N automatic backups.
     old_auto = (
         db.query(models.Backup)
-        .filter(models.Backup.trigger == "auto")
+        .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS))
         .order_by(models.Backup.created_at.desc())
         .offset(AUTO_BACKUP_KEEP_DAYS)
         .all()
@@ -2484,10 +2491,12 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     # Keep one snapshot a day on the server as well, so the two copies
     # match and the list does not fill with one row per person per day.
     today = _dubai_today()
-    existing = (db.query(models.Backup)
-                  .filter(models.Backup.trigger == "daily")
-                  .order_by(models.Backup.id.desc()).first())
-    if not existing or existing.created_at.date() != today:
+    # One routine snapshot a day, whatever prompted it. Signing in takes
+    # one and downloading a copy took another, so a day with both held
+    # two identical snapshots of the whole company - and a day that also
+    # had a store clearance held three. Only the deliberate ones, taken
+    # before something risky, are kept alongside.
+    if not _todays_routine_backup(db):
         db.add(models.Backup(created_by=user.id, trigger="daily",
                              data=_backup_dump(build_backup_data(db))))
         # Each snapshot is several megabytes, so old ones are cleared as
@@ -2496,7 +2505,7 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
         # were taken deliberately, usually before something risky.
         cutoff = datetime.now(timezone.utc) - timedelta(days=BACKUP_KEEP_DAYS)
         old_ones = (db.query(models.Backup)
-                      .filter(models.Backup.trigger == "daily",
+                      .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS),
                               models.Backup.created_at < cutoff).all())
         for b in old_ones:
             db.delete(b)

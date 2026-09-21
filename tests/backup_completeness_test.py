@@ -139,5 +139,25 @@ dl = c.get(f'/backup/{bid}/download?token={tok}')
 ck('a downloaded backup is plain JSON', dl.status_code == 200 and json.loads(dl.content)['format'] == 3,
    dl.content[:40])
 
+# ---- One routine snapshot a day, not two or three --------------------
+# Signing in took one and downloading a copy took another, both holding
+# the same company, so a busy day kept three copies of itself.
+d = database.SessionLocal()
+d.query(models.Backup).delete(); d.commit(); d.close()
+c.post('/auth/login', data={'username': 'admin', 'password': 'p'})      # the auto one
+tok = c.post('/auth/download-token', headers=H).json()['token']
+c.get(f'/backup/latest/download?token={tok}')                            # would have taken another
+c.get(f'/backup/latest/download?token={tok}')
+c.post('/auth/login', data={'username': 'admin', 'password': 'p'})
+d = database.SessionLocal()
+routine = d.query(models.Backup).filter(models.Backup.trigger.in_(main.ROUTINE_TRIGGERS)).all()
+ck('four routine events in one day leave one snapshot', len(routine) == 1,
+   [(b.id, b.trigger) for b in routine])
+# A deliberate one still stands beside it.
+c.post('/backup/create', headers=H)
+kinds = [b.trigger for b in d.query(models.Backup).all()]
+d.close()
+ck('a manual backup is kept alongside', sorted(kinds) == ['auto', 'manual'] or sorted(kinds) == ['daily', 'manual'], kinds)
+
 print('\n' + ('BACKUP IS COMPLETE AND RESTORABLE' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)
