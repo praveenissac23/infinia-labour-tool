@@ -1891,7 +1891,12 @@
                      with its own box. -->
                 <div class="field" style="max-width:420px; margin-bottom:4px;">
                   <label>Material</label>
-                  <select id="mv-item" onchange="updateMvHint()"></select>
+                  <!-- Type to filter, like the other screens: a plain
+                       dropdown over three thousand materials was unusable. -->
+                  <input type="text" id="mv-item-txt" list="material-list-stock"
+                         placeholder="Start typing - only what is in the store"
+                         oninput="onMvItemTyped(this)" autocomplete="off">
+                  <input type="hidden" id="mv-item">
                 </div>
                 <p id="mv-stock-hint" style="font-size:12px; color:#666; margin:0 0 14px;"></p>
 
@@ -5259,6 +5264,18 @@ function onMvKindChange() {
 // The number the keeper is about to act on: what the chosen place
 // actually holds of the chosen material. Stops returning 10 ladders
 // from a site that only has 6 before the server has to say no.
+// The corrections form's material box: resolves what was typed to a
+// material the store actually holds, then refreshes the stock line.
+function onMvItemTyped(box) {
+  const txt = box.value.trim().toLowerCase();
+  const hit = (storeItems || []).find(i => `${i.code} - ${i.name}`.toLowerCase() === txt)
+           || (storeItems || []).find(i => i.name.toLowerCase() === txt)
+           || (storeItems || []).find(i => i.code.toLowerCase() === txt);
+  document.getElementById("mv-item").value = hit ? hit.id : "";
+  box.style.background = (txt && !hit) ? "#FFF4F2" : "";
+  updateMvHint();
+}
+
 function updateMvHint() {
   const el = document.getElementById("mv-stock-hint");
   if (!el) return;
@@ -5311,10 +5328,13 @@ async function loadStoreItems(force) {
   const anyStock = new Set((storeStockCache || [])
     .filter(s => (s.central || 0) !== 0 || (s.out_at_sites || 0) !== 0)
     .map(s => s.item_id));
-  const mvItems = (storeItems || []).filter(i => anyStock.has(i.id));
-  document.getElementById("mv-item").innerHTML =
-    mvItems.map(i => `<option value="${i.id}">${i.code} - ${i.name} (${i.unit})</option>`).join("")
-    || '<option value="">Nothing in the store yet</option>';
+  // The material box is a type-to-filter picker over the stock list,
+  // so nothing to build here beyond clearing a choice that no longer
+  // holds stock.
+  const mvHidden = document.getElementById("mv-item");
+  if (mvHidden && mvHidden.value && !anyStock.has(parseInt(mvHidden.value, 10))) {
+    mvHidden.value = ""; document.getElementById("mv-item-txt").value = "";
+  }
   document.getElementById("mv-from").innerHTML = storeLocationOptions(true);
   document.getElementById("mv-to").innerHTML = storeLocationOptions(true);
 
