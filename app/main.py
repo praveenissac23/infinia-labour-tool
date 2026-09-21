@@ -3884,6 +3884,10 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         kind = (l.get("item_type") or "").strip()
         if kind in ("consumable", "asset", "rental") and it.item_type != kind:
             it.item_type = kind
+        # The unit picked on the line is the material's unit from here on.
+        unit = (l.get("unit") or "").strip()
+        if unit and unit != (it.unit or ""):
+            it.unit = unit
         db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty, location=CENTRAL, from_location="",
                                     moved_on=today, supplier="", incharge=user.full_name or user.username,
                                     reference="Added by hand", notes="Put into the store from the Materials panel",

@@ -1786,8 +1786,8 @@
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
                   <th style="width:4%;">#</th><th style="width:44%;">Material</th>
-                  <th style="width:20%;">Type</th><th style="width:14%;">Quantity</th>
-                  <th style="width:10%;">Unit</th><th style="width:8%;"></th>
+                  <th style="width:18%;">Type</th><th style="width:12%;">Quantity</th>
+                  <th style="width:14%;">Unit</th><th style="width:8%;"></th>
                 </tr></thead>
                 <tbody id="opening-lines"></tbody>
               </table>
@@ -5698,9 +5698,9 @@ function onMaterialTyped(box) {
   const unitCell = row.querySelector(".ol-have, .mr-unit, .op-unit");
   if (hit && unitCell) {
     if (unitCell.classList.contains("op-unit")) {
-      // Opening stock: the unit alone. There is no "on hand" to show -
-      // that is what is being typed in.
-      unitCell.textContent = hit.unit || "";
+      // Add-stock line: the material's own unit, offered in the dropdown
+      // and changeable - a wrong unit is corrected here, on the material.
+      setUnitSelect(unitCell, hit.unit || "pcs");
     } else if (unitCell.classList.contains("mr-unit")) {
       // Only fill a unit the requester hasn't chosen themselves -
       // replacing "tonne" with the catalogue's "pcs" changed the
@@ -7990,7 +7990,7 @@ function addOpeningLine() {
           <option value="rental">Rental (hired in)</option>
         </select></td>
     <td><input type="number" class="il-qty" step="any" min="0" style="width:100%; min-width:80px;" placeholder="0"></td>
-    <td class="op-unit" style="color:#777;">-</td>
+    <td><select class="op-unit" style="width:100%; min-width:90px;">${unitOptionsHtml("pcs")}</select></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'opening-lines')">Remove</button></td>`;
   document.getElementById("opening-lines").appendChild(tr);
   renumberRows("opening-lines");
@@ -8001,6 +8001,7 @@ async function saveOpeningStock() {
   const lines = [...document.querySelectorAll("#opening-lines tr")].map(tr => ({
     item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
     item_type: tr.querySelector(".il-type").value,
+    unit: tr.querySelector(".op-unit").value,
     qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
     typed: (tr.querySelector(".il-item-txt").value || "").trim(),
   }));
@@ -8014,7 +8015,7 @@ async function saveOpeningStock() {
   if (!confirm(`Add ${ready.length} material(s) to the central store?`)) return;
   try {
     const r = await apiCall("/store/items/opening", { method: "POST",
-      body: JSON.stringify({ lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, qty: l.qty })) }) });
+      body: JSON.stringify({ lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, unit: l.unit, qty: l.qty })) }) });
     showStatus("opening-status", "ok", r.detail || "Added.");
     document.getElementById("opening-lines").innerHTML = "";
     addOpeningLine();
