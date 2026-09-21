@@ -10,7 +10,7 @@ and issues stock, the office runs the reports and the error check, and
 the admin takes a backup. Every figure is checked against arithmetic
 done by hand, not against what the app says elsewhere.
 """
-import sys, io, json
+import sys, datetime as _dt, io, json
 sys.path.insert(0, '.')
 from datetime import date, timedelta, datetime
 from fastapi.testclient import TestClient
@@ -84,8 +84,13 @@ saved = {x['emp_no']: x for x in c.get('/attendance/2026-09-03', headers=S).json
 ck('all four rows came back', len(saved) == 4)
 ck('half day recorded as such', saved['F-002']['am'] == 'Present' and saved['F-002']['pm'] == 'Absent')
 ck('comment kept', saved['D-01']['comments'] == 'night load')
+# Tomorrow, whenever this is run. It used to be a fixed date in the
+# cycle, which stopped being "future" the day the calendar passed it -
+# the save then succeeded, added a day nobody meant, and the live-card
+# arithmetic below was thrown out by it.
+_tomorrow = (_dt.date.today() + _dt.timedelta(days=1)).isoformat()
 r = c.post('/attendance/save', json={'month_year': CYCLE, 'rows': [
-    {'emp_no': 'F-001', 'full_date': '2026-09-20', 'am': 'Present', 'pm': 'Present', 'site': '904', 'engineer': 'Amal', 'ot': 0, 'bh': 0, 'comments': ''}]}, headers=S)
+    {'emp_no': 'F-001', 'full_date': _tomorrow, 'am': 'Present', 'pm': 'Present', 'site': '904', 'engineer': 'Amal', 'ot': 0, 'bh': 0, 'comments': ''}]}, headers=S)
 ck('a future date is refused', r.status_code == 400, f'{r.status_code} {r.text[:80]}')
 r = c.post('/attendance/save', json={'month_year': CYCLE, 'rows': [
     {'emp_no': 'F-001', 'full_date': '2026-09-02', 'am': 'Present', 'pm': 'Present', 'site': '', 'engineer': '', 'ot': 0, 'bh': 0, 'comments': ''}]}, headers=S)

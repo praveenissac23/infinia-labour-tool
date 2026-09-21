@@ -2063,6 +2063,10 @@ def build_backup_data(db: Session) -> dict:
         "store_movements": [_row_to_dict(m) for m in db.query(models.StoreMovement).all()],
         "material_requests": [_row_to_dict(r) for r in db.query(models.MaterialRequest).all()],
         "material_request_lines": [_row_to_dict(l) for l in db.query(models.MaterialRequestLine).all()],
+        # Everything the office set up rather than typed as a record:
+        # the store in-charge, the company's own details, the monthly
+        # report notes. Small, and lost for good if a backup skips it.
+        "settings": [_row_to_dict(x) for x in db.query(models.Setting).all()],
     }
 
 
@@ -2404,6 +2408,8 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db),
     # never knew about.
     has_store = any(k in data for k in ("store_items", "store_movements", "material_requests"))
     if has_store:
+        db.query(models.PurchaseOrderLine).delete()
+        db.query(models.PurchaseOrder).delete()
         db.query(models.MaterialRequestLine).delete()
         db.query(models.MaterialRequest).delete()
         db.query(models.StoreMovement).delete()
@@ -2456,6 +2462,26 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db),
                      datetime_fields=("created_at", "updated_at"))
         db.commit()
         restore_rows(models.MaterialRequestLine, data.get("material_request_lines", []))
+        db.commit()
+        # Purchase orders last of the store tables: they point at
+        # suppliers, requests and materials, all of which are back by
+        # now. They were captured in every snapshot but never put back,
+        # so a restore quietly emptied the LPO register.
+        restore_rows(models.PurchaseOrder, data.get("purchase_orders", []),
+                     date_fields=("order_date", "delivery_date"),
+                     datetime_fields=("created_at", "updated_at"))
+        db.commit()
+        restore_rows(models.PurchaseOrderLine, data.get("purchase_order_lines", []))
+        db.commit()
+
+    # Settings: the store in-charge, the company details, the monthly
+    # notes. Replaced wholesale when the snapshot carries them, so a
+    # restore returns the setup exactly as it was on that day.
+    if "settings" in data:
+        db.query(models.Setting).delete()
+        db.flush()
+        for row in data.get("settings", []):
+            db.add(models.Setting(**dict(row)))
         db.commit()
 
     # Staff logins last: an admin restoring a snapshot must not delete
