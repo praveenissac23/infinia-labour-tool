@@ -2065,6 +2065,70 @@ def _backup_models():
     return out
 
 
+# Files the app keeps on disk rather than in the database: the uploaded
+# signature, the logo. Everything in the data directory is taken,
+# whatever it is - the same reasoning as walking the schema, so an
+# upload added next year is in the backup without anyone remembering.
+#
+# A cap per file, because that directory is writable and a backup is no
+# place for somebody's stray video.
+BACKUP_FILE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def _backup_file_sources():
+    """(name, absolute path) for every file worth keeping."""
+    out = []
+    data_dir = getattr(export_web, "DATA_DIR", None)
+    if data_dir and os.path.isdir(data_dir):
+        for name in sorted(os.listdir(data_dir)):
+            full = os.path.join(data_dir, name)
+            if os.path.isfile(full) and not name.startswith("."):
+                out.append((name, full))
+    # The logo sits beside the code rather than in the data directory.
+    logo = getattr(export_web, "LOGO_PATH", None)
+    if logo and os.path.isfile(logo) and not any(n == "logo.png" for n, _ in out):
+        out.append(("logo.png", logo))
+    return out
+
+
+def build_backup_files() -> dict:
+    """Each file as base64, so the snapshot stays one JSON document that
+    can be mailed, copied and read anywhere."""
+    files = {}
+    for name, path in _backup_file_sources():
+        try:
+            if os.path.getsize(path) > BACKUP_FILE_MAX_BYTES:
+                continue
+            with open(path, "rb") as f:
+                files[name] = base64.b64encode(f.read()).decode("ascii")
+        except Exception:
+            continue          # a file we cannot read must not stop a backup
+    return files
+
+
+def restore_backup_files(files: dict) -> list:
+    """Put the signature and anything beside it back where they live."""
+    written = []
+    data_dir = getattr(export_web, "DATA_DIR", None)
+    if not data_dir or not files:
+        return written
+    for name, blob in (files or {}).items():
+        # Only ever a plain filename, never a path - a backup must not
+        # be able to write outside the directory it came from.
+        safe = os.path.basename(str(name))
+        if not safe or safe.startswith("."):
+            continue
+        target = export_web.LOGO_PATH if safe == "logo.png" and not os.path.isfile(
+            os.path.join(data_dir, safe)) else os.path.join(data_dir, safe)
+        try:
+            with open(target, "wb") as f:
+                f.write(base64.b64decode(blob))
+            written.append(safe)
+        except Exception:
+            continue
+    return written
+
+
 def build_backup_data(db: Session) -> dict:
     """Everything the company would need to rebuild this system.
 
@@ -2081,6 +2145,9 @@ def build_backup_data(db: Session) -> dict:
     }
     for name, model in _backup_models():
         data[name] = [_row_to_dict(r) for r in db.query(model).all()]
+    # The uploaded signature and the logo - on disk, not in any table,
+    # and gone for good if a snapshot skips them.
+    data["files"] = build_backup_files()
     # Format 2 and earlier named four tables differently. Both spellings
     # are written, so a backup taken today can still be read by a server
     # running yesterday's code if a deploy has to be rolled back.
@@ -2557,6 +2624,9 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db),
 
     keep = {u.username for u in db.query(models.User).all()}
     counts = restore_backup_data(db, data, keep)
+    files = restore_backup_files(data.get("files") or {})
+    if files:
+        counts["files"] = len(files)
 
     log_action(db, user.id, "restore_backup",
                f"restored from backup #{backup_id}: "

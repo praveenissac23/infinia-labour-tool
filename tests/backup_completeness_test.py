@@ -122,9 +122,13 @@ d = database.SessionLocal()
 b = d.query(models.Backup).order_by(models.Backup.id.desc()).first()
 ck('the snapshot is stored compressed', b.data.startswith('gz:'), b.data[:12])
 ck('and reads back as the same data', main._backup_json(b)['format'] == 3)
-plain = json.dumps(main.build_backup_data(d), default=str)
-ck('compression saves most of the space', len(b.data) < len(plain) * 0.5,
-   f'{len(b.data)} vs {len(plain)}')
+# Measured on the records only: the signature and logo are images, which
+# are already compressed and so ride along at their own size.
+_data_only = {k: v for k, v in main.build_backup_data(d).items() if k != 'files'}
+plain = json.dumps(_data_only, default=str)
+ck('the records compress to a fraction of their size',
+   len(main._backup_dump(_data_only)) < len(plain) * 0.5,
+   f'{len(main._backup_dump(_data_only))} vs {len(plain)}')
 # A backup written by the old version, uncompressed, must still restore.
 d.add(models.Backup(created_by=None, trigger='manual', data=plain)); d.commit()
 old_id = d.query(models.Backup).order_by(models.Backup.id.desc()).first().id
@@ -138,6 +142,40 @@ tok = c.post('/auth/download-token', headers=H).json()['token']
 dl = c.get(f'/backup/{bid}/download?token={tok}')
 ck('a downloaded backup is plain JSON', dl.status_code == 200 and json.loads(dl.content)['format'] == 3,
    dl.content[:40])
+
+# ---- The files on disk: the signature and the logo -------------------
+# They live in a directory, not a table, and were the last thing a
+# restore could not bring back.
+import os, base64, export_web
+sig = os.path.join(export_web.DATA_DIR, 'signature.png')
+open(sig, 'wb').write(b'PRAVEEN-SIGNATURE-IMAGE-BYTES')
+open(os.path.join(export_web.DATA_DIR, 'stamp.png'), 'wb').write(b'A-FILE-ADDED-LATER')
+bid2 = c.post('/backup/create', headers=H).json()['id']
+d = database.SessionLocal()
+raw2 = main._backup_json(d.query(models.Backup).filter(models.Backup.id == bid2).first())
+d.close()
+ck('the signature is in the snapshot', 'signature.png' in (raw2.get('files') or {}), sorted((raw2.get('files') or {})))
+ck('and so is a file added later, without anyone listing it', 'stamp.png' in (raw2.get('files') or {}))
+ck('the logo travels too', 'logo.png' in (raw2.get('files') or {}))
+ck('stored as the real bytes',
+   base64.b64decode(raw2['files']['signature.png']) == b'PRAVEEN-SIGNATURE-IMAGE-BYTES')
+
+os.remove(sig); os.remove(os.path.join(export_web.DATA_DIR, 'stamp.png'))
+ck('signature really is gone before the restore', not os.path.exists(sig))
+ck('restore runs with files in it', c.post(f'/backup/{bid2}/restore', headers=H).status_code == 200)
+ck('the signature is back on disk', os.path.exists(sig))
+ck('byte for byte', open(sig, 'rb').read() == b'PRAVEEN-SIGNATURE-IMAGE-BYTES')
+ck('and the later file with it', os.path.exists(os.path.join(export_web.DATA_DIR, 'stamp.png')))
+ck('the app can see its signature again',
+   c.get('/store/purchase/signature-status', headers=H).json().get('present') is not False)
+# A snapshot must never be able to write outside its own directory.
+before_files = set(os.listdir(export_web.DATA_DIR))
+main.restore_backup_files({'../../escaped.png': base64.b64encode(b'x').decode()})
+ck('a path in a filename cannot escape the directory',
+   not os.path.exists(os.path.join(export_web.DATA_DIR, '..', '..', 'escaped.png')))
+for junk in ('stamp.png', 'signature.png', 'escaped.png'):
+    try: os.remove(os.path.join(export_web.DATA_DIR, junk))
+    except OSError: pass
 
 # ---- One routine snapshot a day, not two or three --------------------
 # Signing in took one and downloading a copy took another, both holding
