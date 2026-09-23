@@ -3,4 +3,21 @@ __pycache__/
 node_modules/
 before_fresh_start_*.json
 app/signature.png
+app/signature.jpg
 data/
+
+# The server's own environment and virtualenv. These live on the box,
+# never in the repository - and keeping them out of git's reach is what
+# stops a stray "git add -A" from staging them, where a later stash or
+# checkout can sweep the running service off its own disk.
+.env
+*.env
+app/.env
+venv/
+.venv/
+env/
+
+# Local odds and ends that belong to one machine.
+*.backup
+*.bak
+*.log
