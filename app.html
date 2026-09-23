@@ -1673,13 +1673,13 @@
               <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
               <div class="store-tiles">
                 <div class="store-tile" onclick="storeGo('hire')">
-                  <div class="store-tile-t">Hired Material
+                  <div class="store-tile-t">Rental Materials
                     <span id="hire-badge" class="pill" style="display:none; background:#FDF0D5; color:#8A6100;"></span></div>
-                  <div class="store-tile-s">What is on hire, from whom, how long</div>
+                  <div class="store-tile-s">What is on rent, from whom, how long</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('returns')">
                   <div class="store-tile-t">Return Notes</div>
-                  <div class="store-tile-s">Send hired material back with signed paper</div>
+                  <div class="store-tile-s">Send rented material back with signed paper</div>
                 </div>
                 <div class="store-tile" onclick="storeGo('items')">
                   <div class="store-tile-t">Material List</div>
@@ -1711,7 +1711,7 @@
             </div>
           </div>
 
-          <!-- HIRED MATERIAL
+          <!-- RENTAL MATERIALS
                Scaffolding and the like, standing in our yard and on our
                sites but belonging to a trader. The same materials as
                everything else in the store - only the owner differs,
@@ -1719,12 +1719,12 @@
           <div id="store-hire" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
             <div class="card" style="margin-top:10px;">
-              <h2 style="margin-bottom:4px;">Book material in on hire</h2>
+              <h2 style="margin-bottom:4px;">Book rented material in</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Hired material is booked in like any delivery - it simply stays the trader's,
+                Rented material is booked in like any delivery - it simply stays the supplier's,
                 so it shows separately everywhere and has to go back on a return note.</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <div class="field"><label>Hired from *</label>
+                <div class="field"><label>Rented from *</label>
                   <input type="text" id="hin-supplier" list="lpo-supplier-list"
                          placeholder="Trader" style="width:230px;"></div>
                 <div class="field"><label>Date *</label>
@@ -1749,22 +1749,21 @@
               </div>
               <div class="form-row" style="margin-top:8px; gap:10px;">
                 <button class="btn btn-gray" onclick="addHireInLine()">Add line</button>
-                <button class="btn btn-primary" onclick="saveHireIn()">Book in on hire</button>
+                <button class="btn btn-primary" onclick="saveHireIn()">Book in as rented</button>
               </div>
               <div class="status-msg" id="hin-status"></div>
             </div>
 
             <div class="card">
-              <h2 style="margin-bottom:4px;">On hire right now</h2>
+              <h2 style="margin-bottom:4px;">On rent right now</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Everything standing in our yard or on our sites that belongs to somebody else,
-                and how long it has been out.</p>
+                Every rented material in our yard or on our sites, and how long we have had it.</p>
               <div id="hire-list"></div>
             </div>
           </div>
 
           <!-- RETURN NOTES
-               The paper that settles a hire at the trader's gate. -->
+               The paper that settles a rental at the supplier's gate. -->
           <div id="store-returns" style="display:none;">
             <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
 
@@ -1772,7 +1771,7 @@
               <h2 id="rn-form-title">New Return Note</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
                 Enter what is physically going back, and separately anything that is not coming
-                back at all. What is left stays on hire. Nothing moves off the books until the
+                back at all. What is left stays on rent. Nothing moves off the books until the
                 signed copy is back.</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <div class="field"><label>Note No</label>
@@ -1792,11 +1791,11 @@
                 <table>
                   <thead><tr>
                     <th style="width:28%;">Material</th>
-                    <th style="width:10%;">On hire</th>
+                    <th style="width:10%;">On rent</th>
                     <th style="width:12%;">Returning</th>
                     <th style="width:11%;">Short</th>
                     <th style="width:15%;">Why short</th>
-                    <th style="width:10%;">Left on hire</th>
+                    <th style="width:10%;">Left on rent</th>
                     <th style="width:14%;">Remark</th>
                   </tr></thead>
                   <tbody id="rn-lines"></tbody>
@@ -1944,12 +1943,12 @@
                 <div class="field"><label>Whose is it</label>
                   <select id="op-owner-kind" style="width:190px;" onchange="onOpeningOwnerKind()">
                     <option value="ours">Ours - we own it</option>
-                    <option value="hired">Hired in from a trader</option>
+                    <option value="hired">Rented from a supplier</option>
                   </select></div>
-                <div class="field" id="op-owner-wrap" style="display:none;"><label>Hired from *</label>
+                <div class="field" id="op-owner-wrap" style="display:none;"><label>Rented from *</label>
                   <input type="text" id="op-owner" list="lpo-supplier-list" placeholder="Trader"
                          style="width:220px;">
-                  <div style="font-size:11px; color:#888; margin-top:3px;">It will show on hire and go back on a return note</div></div>
+                  <div style="font-size:11px; color:#888; margin-top:3px;">It will show on rent and go back on a return note</div></div>
               </div>
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
@@ -1980,7 +1979,7 @@
                 <select id="it-type" onchange="onItemTypeChange()" style="width:170px;">
                   <option value="consumable">Consumable</option>
                   <option value="asset">Asset (we own it)</option>
-                  <option value="rental">Rental (hired in)</option>
+                  <option value="rental">Rental (rented in)</option>
                 </select>
                 <input type="number" id="it-reorder" placeholder="Warn me under" style="width:130px;" step="any">
                 <input type="number" id="it-opening" placeholder="Already have" style="width:130px;" step="any"
@@ -2009,7 +2008,7 @@
                   <option value="">All types</option>
                   <option value="consumable">Consumable</option>
                   <option value="asset">Asset (we own it)</option>
-                  <option value="rental">Rental (hired in)</option>
+                  <option value="rental">Rental (rented in)</option>
                 </select>
                 <select id="il-stock" onchange="renderItemMaster()" style="width:200px;">
                   <option value="">Everything</option>
@@ -2113,9 +2112,9 @@
                 <div class="rep-tile" onclick="pickReport('lost')"><b>Lost / Damaged</b><span>Written off, and where</span></div>
               </div>
 
-              <div class="rep-group">Hired Equipment &amp; Material Requests</div>
+              <div class="rep-group">Rental Equipment &amp; Material Requests</div>
               <div class="rep-row">
-                <div class="rep-tile" onclick="pickReport('hired')"><b>On Hire Now</b><span>Hired equipment out right now</span></div>
+                <div class="rep-tile" onclick="pickReport('hired')"><b>On Rent Now</b><span>Rented equipment held right now</span></div>
                 <div class="rep-tile" onclick="pickReport('mr_open')"><span class="rep-badge" id="badge-mr-open"></span><b>Open Requests</b><span>Waiting on office or supplier</span></div>
                 <div class="rep-tile" onclick="pickReport('mr_history')"><b>Request History</b><span>Every request ever made</span></div>
               </div>
@@ -5116,11 +5115,11 @@ async function refreshOnHire() {
   const badge = document.getElementById("hire-badge");
   if (badge) {
     badge.style.display = hireOnHire.lines ? "" : "none";
-    badge.textContent = hireOnHire.lines ? `${hireOnHire.lines} on hire` : "";
+    badge.textContent = hireOnHire.lines ? `${hireOnHire.lines} on rent` : "";
   }
   if (!box) return;
   if (!hireOnHire.suppliers.length) {
-    box.innerHTML = `<div class="empty-note">Nothing is on hire at the moment.</div>`;
+    box.innerHTML = `<div class="empty-note">Nothing is on rent at the moment.</div>`;
     return;
   }
   box.innerHTML = hireOnHire.suppliers.map(g => `
@@ -5132,13 +5131,13 @@ async function refreshOnHire() {
             ${g.lines} material${g.lines === 1 ? "" : "s"} &middot; ${num(g.total_qty)} in all
             ${g.longest_days ? `&middot; longest out <strong>${g.longest_days} day${g.longest_days === 1 ? "" : "s"}</strong>` : ""}</span>
         </div>
-        <button class="btn btn-primary" onclick="newReturnNote(${g.supplier_id})">Return to this trader</button>
+        <button class="btn btn-primary" onclick="newReturnNote(${g.supplier_id})">Return to this supplier</button>
       </div>
       <div class="grid-wrap" style="margin-top:8px;">
         <table>
           <thead><tr>
             <th style="width:46%; text-align:left;">Material</th>
-            <th style="width:18%;">On hire</th><th style="width:18%;">Since</th>
+            <th style="width:18%;">On rent</th><th style="width:18%;">Since</th>
             <th style="width:18%;">Days</th></tr></thead>
           <tbody>${g.items.map(i => `
             <tr>
@@ -5187,7 +5186,7 @@ async function saveHireIn() {
   const lines = hireInLines
     .filter(l => l.item_id && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, qty: parseFloat(l.qty) || 0, notes: l.notes || "" }));
-  if (!v("hin-supplier")) { showStatus("hin-status", "warn", "Name the trader it is hired from."); return; }
+  if (!v("hin-supplier")) { showStatus("hin-status", "warn", "Name the supplier it is rented from."); return; }
   if (!lines.length) {
     showStatus("hin-status", "warn",
       "Add at least one material with a quantity. Materials must already be on the material list - "
@@ -5280,7 +5279,7 @@ async function newReturnNote(supplierId) {
   const sel = document.getElementById("rn-supplier");
   sel.innerHTML = hireOnHire.suppliers.length
     ? hireOnHire.suppliers.map(g => `<option value="${g.supplier_id}">${g.supplier}</option>`).join("")
-    : `<option value="">Nothing is on hire</option>`;
+    : `<option value="">Nothing is on rent</option>`;
   if (supplierId) sel.value = String(supplierId);
   onReturnSupplier();
   window.scrollTo(0, 0);
@@ -5318,7 +5317,7 @@ function renderReturnLines() {
   const body = document.getElementById("rn-lines");
   if (!body) return;
   if (!rnLines.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty-note">Nothing is on hire from this trader.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">Nothing is on rent from this supplier.</td></tr>`;
     renderReturnTotals();
     return;
   }
@@ -5358,7 +5357,7 @@ function renderReturnTotals() {
   el.innerHTML = `
     <div>Going back <strong style="margin-left:8px;">${num(ret)}</strong></div>
     <div style="${sh ? "color:#C0392B;" : ""}">Short <strong style="margin-left:8px;">${num(sh)}</strong></div>
-    <div style="color:#666;">Staying on hire <strong style="margin-left:8px;">${num(left)}</strong></div>`;
+    <div style="color:#666;">Staying on rent <strong style="margin-left:8px;">${num(left)}</strong></div>`;
 }
 
 function closeReturnForm() {
@@ -5399,7 +5398,7 @@ async function editReturnNote(id) {
 async function saveReturnNote() {
   const v = id => (document.getElementById(id).value || "").trim();
   const sid = parseInt(v("rn-supplier") || "0", 10);
-  if (!sid) { showStatus("rn-status", "warn", "Nothing is on hire to return."); return; }
+  if (!sid) { showStatus("rn-status", "warn", "Nothing is on rent to return."); return; }
   const lines = rnLines
     .filter(l => (parseFloat(l.qty_returned) || 0) > 0 || (parseFloat(l.qty_short) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description, unit: l.unit,
@@ -5539,15 +5538,20 @@ async function loadStoreHome() {
                   cell: r => `<td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>` },
       total:    { t: "Total held", w: "11%",
                   cell: r => `<td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>` },
-      whose:    { t: "Whose", w: "15%", cell: r => {
+      whose:    { t: "Owner", w: "15%", cell: r => {
                     const h = hireByCode[r.code];
                     if (!h || !h.hired) return `<td style="font-size:12px; color:#888;">ours</td>`;
                     const names = Object.keys(h.hired_from || {});
-                    const who = names.length === 1 ? names[0] : `${names.length} traders`;
+                    // A name already in brackets - "(no supplier set)" -
+                    // must not be wrapped in another pair.
+                    const one = names[0] || "";
+                    const who = names.length === 1
+                      ? (one.startsWith("(") ? one.slice(1, -1) : one)
+                      : `${names.length} suppliers`;
                     const full = names.map(n => `${n}: ${h.hired_from[n]}`).join(", ");
                     return `<td style="font-size:12px;" title="${full.replace(/"/g, "&quot;")}">
                       ${h.owned ? `${num(h.owned)} ours` : ""}
-                      ${h.owned ? "<br>" : ""}<span style="color:#8A6100; font-weight:600;">${num(h.hired)} hired</span>
+                      ${h.owned ? "<br>" : ""}<span style="color:#8A6100; font-weight:600;">${num(h.hired)} rented</span>
                       <span style="color:#888;"> (${who})</span></td>`;
                   } },
       flag:     { t: "", w: "11%",
@@ -5557,7 +5561,7 @@ async function loadStoreHome() {
     // hire - a store that never hires should not be asked the question.
     const hireByCode = {};
     (storeStockCache || []).forEach(s => {
-      if (s.hired) hireByCode[s.code] = { owned: s.owned, hired: s.hired, hired_from: s.hired_from };
+      if (s.rented) hireByCode[s.code] = { owned: s.owned, hired: s.rented, hired_from: s.rented_from };
     });
     const anyHired = Object.keys(hireByCode).length > 0;
     const homeKeys = orderColumns("home-stock",
@@ -6621,7 +6625,7 @@ function addInLine() {
     <td><select class="il-type" style="width:100%; min-width:120px;">
           <option value="consumable">Consumable</option>
           <option value="asset">Asset (we own it)</option>
-          <option value="rental">Rental (hired in)</option>
+          <option value="rental">Rental (rented in)</option>
         </select></td>
     <td><input type="number" class="il-qty" step="any" style="width:100%; min-width:90px;"></td>
     <td><input type="text" class="il-note" style="width:100%;"></td>
@@ -8590,7 +8594,7 @@ function addOpeningLine() {
     <td><select class="il-type" style="width:100%; min-width:120px;">
           <option value="consumable">Consumable</option>
           <option value="asset">Asset (we own it)</option>
-          <option value="rental">Rental (hired in)</option>
+          <option value="rental">Rental (rented in)</option>
         </select></td>
     <td><input type="number" class="il-qty" step="any" min="0" style="width:100%; min-width:80px;" placeholder="0"></td>
     <td><select class="op-unit" style="width:100%; min-width:90px;">${unitOptionsHtml("pcs")}</select></td>

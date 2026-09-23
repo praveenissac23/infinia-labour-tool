@@ -137,24 +137,28 @@ ck('a site that is not on file is refused',
 # is. Left at that, a hired quantity was booked as ours and the hire
 # list stayed empty - the whole point of the hire tracking missed by one
 # unasked question.
-trap = c.post('/store/items/opening', json={'lines': [
-    {'item_id': drill['id'], 'item_type': 'rental', 'qty': 150}]}, headers=KEEPER)
-ck('a rental line with nobody named is refused, not silently owned',
-   trap.status_code == 400, f'{trap.status_code} {trap.text[:160]}')
-ck('and the refusal says to name the trader',
-   'hired from' in trap.text.lower() or 'trader' in trap.text.lower(), trap.text[:200])
+# A rental line with nobody named is not refused - a rented material is
+# rented either way, and hiding it until the paperwork is tidy is how it
+# goes back unaccounted for. It shows under "(no supplier set)".
+loose = c.post('/store/items/opening', json={'lines': [
+    {'item_id': scaff['id'], 'item_type': 'rental', 'qty': 25}]}, headers=KEEPER)
+ck('a rental line with nobody named still goes in', loose.status_code == 200, loose.text[:160])
+shown = [i for g in c.get('/store/hire', headers=KEEPER).json()['suppliers']
+         for i in g['items'] if i['item_id'] == scaff['id']]
+ck('and shows on the rental list all the same', len(shown) == 1 and shown[0]['qty'] == 25, shown)
 
 hired = c.post('/store/items/opening', json={
     'owner_name': 'Al Raha Scaffolding', 'lines': [
         {'item_id': drill['id'], 'item_type': 'rental', 'qty': 150}]}, headers=KEEPER)
-ck('naming the trader books it in on hire', hired.status_code == 200, hired.text[:200])
-on_hire = c.get('/store/hire', headers=KEEPER).json()
-ck('and it shows on the hire list', on_hire['lines'] == 1, on_hire)
-ck('under the trader it is hired from',
-   on_hire['suppliers'][0]['supplier'] == 'Al Raha Scaffolding', on_hire['suppliers'][0])
-ck('for the quantity added', on_hire['suppliers'][0]['items'][0]['qty'] == 150, on_hire['suppliers'][0])
+ck('naming the trader books it in as rented', hired.status_code == 200, hired.text[:200])
+groups = c.get('/store/hire', headers=KEEPER).json()['suppliers']
+al = next((g for g in groups if g['supplier'] == 'Al Raha Scaffolding'), None)
+ck('the rental list has a group for that supplier', al is not None, [g['supplier'] for g in groups])
+mine = [i for i in (al['items'] if al else []) if i['item_id'] == drill['id']]
+ck('carrying the material and quantity added', len(mine) == 1 and mine[0]['qty'] == 150, mine)
 drow = next(s for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] == drill['id'])
-ck('the stock list separates it from what we own', drow['hired'] == 150, drow)
+ck('and the stock list counts it as rented, not ours',
+   drow['rented_from'].get('Al Raha Scaffolding') == 150, drow)
 
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

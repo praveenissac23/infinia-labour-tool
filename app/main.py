@@ -2755,99 +2755,148 @@ def _stock_map(db: Session, upto: date = None, by_owner: bool = False):
     return stock
 
 
-def _hire_positions(db: Session, supplier_id: int):
-    """Where a trader's material actually stands: {(item_id, location): qty}.
+def _rental_supplier_map(db: Session):
+    """Which trader each rental material belongs to.
 
-    A hire does not sit in one place. Sixty standards arrive in the yard
-    and fifty go up at a site, so settling the hire against the yard
-    alone drives it to minus fifty while the site still shows the rest -
-    the balance nets out and the ledger stops describing anything real.
+    A material marked Rental IS rented - that is what the type means,
+    and the supplier named on the material is who it is rented from.
+    Ownership recorded on a movement is the finer case, for something
+    owned that happens to be hired in as well; it wins where it is set,
+    because it describes a particular quantity rather than a material.
     """
-    return {(i, loc): q for (i, loc, owner), q in _stock_map(db, by_owner=True).items()
-            if owner == supplier_id and q > 1e-9}
+    out = {}
+    for it in db.query(models.StoreItem).filter(models.StoreItem.item_type == "rental").all():
+        sup = None
+        if (it.rental_supplier or "").strip():
+            sup = db.query(models.Supplier).filter(
+                models.Supplier.name_key == _supplier_key(it.rental_supplier)).first()
+        out[it.id] = sup.id if sup else None
+    return out
+
+
+def _rental_positions(db: Session, supplier_id: int = None, upto: date = None):
+    """Every quantity of rented material and where it stands.
+
+    Keyed {(item_id, location, owner_id): qty}, where owner_id is what
+    the ledger recorded - often nothing, because a Rental material is
+    rented whether or not anyone said so on the movement. Settling a
+    return has to put the stock back under the same name it went in
+    under, or a location is driven negative to make a total agree.
+    """
+    rentals = _rental_supplier_map(db)
+    out = {}
+    for (item_id, loc, owner), qty in _stock_map(db, upto=upto, by_owner=True).items():
+        if qty <= 1e-9:
+            continue
+        whose = owner if owner is not None else rentals.get(item_id, "NOT_RENTAL")
+        if whose == "NOT_RENTAL":
+            continue                      # owned material, not rented from anyone
+        if item_id not in rentals and owner is None:
+            continue
+        if supplier_id is not None and whose != supplier_id:
+            continue
+        out[(item_id, loc, owner)] = qty
+    return out
 
 
 def _draw_from(positions, item_id, qty, prefer=""):
-    """Take a quantity off a trader's material, from where it is.
+    """Take a quantity of rented material off, from where it stands.
 
     The place the lorry loaded from goes first, then anywhere else
     holding it, so the ledger records the return against the locations
-    that really gave it up. Returns [(location, qty)], and shortens the
-    positions it was given so several draws can run off one pool.
+    that really gave it up - and under the same owner the quantity was
+    booked with. Returns [(location, owner_id, qty)], and shortens the
+    positions it was given so several draws run off one pool.
     """
     out = []
-    here = sorted([(loc, q) for (i, loc), q in positions.items() if i == item_id and q > 1e-9],
+    here = sorted([(loc, owner, q) for (i, loc, owner), q in positions.items()
+                   if i == item_id and q > 1e-9],
                   key=lambda x: (x[0] != prefer, x[0]))
     left = qty
-    for loc, have in here:
+    for loc, owner, have in here:
         if left <= 1e-9:
             break
         take = min(have, left)
-        positions[(item_id, loc)] = have - take
-        out.append((loc, take))
+        positions[(item_id, loc, owner)] = have - take
+        out.append((loc, owner, take))
         left -= take
     return out, left
 
 
-def _has_hired_stock(db: Session, item_id: int) -> bool:
-    """Whether any of this material is standing on hire - used only to
-    word a message, so a yard with nothing hired is never told its own
-    stock is 'ours' as though there were another kind."""
+def _is_rented(db: Session, item_id: int) -> bool:
+    """Whether any of this material is rented - used only to word a
+    message, so a store with nothing on rent is never told its own stock
+    is 'ours' as though there were another kind."""
+    it = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
+    if it is not None and it.item_type == "rental":
+        return True
     return db.query(models.StoreMovement.id).filter(
         models.StoreMovement.item_id == item_id,
         models.StoreMovement.owner_id.isnot(None)).first() is not None
 
 
-def _on_hire(db: Session, supplier_id: int = None, upto: date = None):
-    """What is standing on hire right now, and since when.
+def _on_rent(db: Session, supplier_id: int = None, upto: date = None):
+    """Every rented material in hand, from whom, and since when.
 
-    Returns one entry per (item, supplier), carrying the quantity still
-    out and the date it first came in - which is what turns "60
-    standards" into "60 standards, out 34 days".
+    A material marked Rental is rented, wherever it was entered and
+    however its movements were booked - the type is the answer, and
+    anything else is an explanation the store keeper should not have to
+    hear. The supplier named on the material says whose it is; a
+    movement that names an owner outright overrides it, which is how an
+    owned material hired in as well is kept apart.
+
+    One entry per (item, supplier), with the quantity in hand and the
+    date it came, which is what turns "60 standards" into "60
+    standards, out 34 days".
     """
-    stock = _stock_map(db, upto=upto, by_owner=True)
+    rentals = _rental_supplier_map(db)
     held = {}
-    for (item_id, _loc, owner), qty in stock.items():
-        if owner is None or abs(qty) < 1e-9:
+    for (item_id, _loc, owner), qty in _stock_map(db, upto=upto, by_owner=True).items():
+        if qty <= 1e-9:
             continue
-        if supplier_id is not None and owner != supplier_id:
+        if owner is None and item_id not in rentals:
+            continue                       # owned material, not rented
+        whose = owner if owner is not None else rentals.get(item_id)
+        if supplier_id is not None and whose != supplier_id:
             continue
-        held[(item_id, owner)] = held.get((item_id, owner), 0) + qty
+        held[(item_id, whose)] = held.get((item_id, whose), 0) + qty
     if not held:
         return []
-    # When each hire started, taken as the first receipt of that
-    # material from that trader - good enough to age a hire by, and it
-    # needs no extra record kept in step with the ledger.
-    # Any movement that first put the material under the trader's name
-    # counts, not receipts alone: stock booked as ours by mistake and
-    # corrected later arrives on hire by an adjustment, and a hire with
-    # no date beside it is the one nobody chases.
+    # When it came. Any movement that first brought the material in
+    # counts, receipts and corrections alike - a rental with no date
+    # beside it is the one nobody chases.
     firsts = dict(
         ((i, o), d) for i, o, d in
         db.query(models.StoreMovement.item_id, models.StoreMovement.owner_id,
                  func.min(models.StoreMovement.moved_on))
           .filter(models.StoreMovement.kind.in_(("in", "adjust")),
-                  models.StoreMovement.qty > 0,
-                  models.StoreMovement.owner_id.isnot(None))
+                  models.StoreMovement.qty > 0)
           .group_by(models.StoreMovement.item_id, models.StoreMovement.owner_id).all())
     items = {i.id: i for i in db.query(models.StoreItem).all()}
     sups = {s.id: s for s in db.query(models.Supplier).all()}
     today = _dubai_today()
     out = []
-    for (item_id, owner), qty in held.items():
-        it, sup = items.get(item_id), sups.get(owner)
-        since = firsts.get((item_id, owner))
+    for (item_id, whose), qty in held.items():
+        it, sup = items.get(item_id), sups.get(whose)
+        since = firsts.get((item_id, whose)) or firsts.get((item_id, None))
         out.append({
             "item_id": item_id,
             "code": it.code if it else "", "name": it.name if it else "(removed)",
             "unit": it.unit if it else "", "item_type": it.item_type if it else "",
-            "supplier_id": owner, "supplier": sup.name if sup else "(removed)",
+            "supplier_id": whose,
+            # A rental material with nobody named still shows, because a
+            # hidden one is how it goes back unaccounted for.
+            "supplier": sup.name if sup else "(no supplier set)",
             "qty": round(qty, 2),
             "since": since.isoformat() if since else "",
             "days": (today - since).days if since else 0,
         })
     out.sort(key=lambda r: (r["supplier"].lower(), r["name"].lower()))
     return out
+
+
+# The old name, kept so nothing that still calls it breaks.
+_on_hire = _on_rent
 
 
 def _supplier_key(name: str) -> str:
@@ -3234,6 +3283,14 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     else:
         existing = models.StoreItem(**fields)
         db.add(existing)
+    # Naming who a rental is from puts them on the supplier list, the
+    # same as a delivery would. Without a record to point at, the
+    # rental list cannot group the material under anybody and it sits
+    # under "(no supplier set)" however carefully the name was typed.
+    if existing.item_type == "rental" and (existing.rental_supplier or "").strip():
+        sup = _find_or_create_supplier(db, existing.rental_supplier)
+        if sup:
+            existing.rental_supplier = sup.name
     db.commit()
     db.refresh(existing)
 
@@ -3248,12 +3305,13 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     # into the owned pile and never reached the hire list.
     hire_owner = None
     if (is_new or never_received) and opening > 0 and existing.item_type == "rental":
-        if not (existing.rental_supplier or "").strip():
-            raise HTTPException(status_code=400,
-                detail="This material is Rental (hired in), so fill in Rental supplier - "
-                       "that is who the quantity is on hire from. Set the type to Asset "
-                       "instead if the company owns it.")
-        hire_owner = _find_or_create_supplier(db, existing.rental_supplier)
+        # Named or not, a Rental material shows on the rental list - it
+        # is rented either way, and hiding it until the paperwork is
+        # tidy is how it goes back unaccounted for. Without a name it
+        # sits under "(no supplier set)", which is a visible job to
+        # finish rather than a silent omission.
+        if (existing.rental_supplier or "").strip():
+            hire_owner = _find_or_create_supplier(db, existing.rental_supplier)
     if (is_new or never_received) and opening > 0:
         db.add(models.StoreMovement(
             item_id=existing.id, kind="in", qty=opening,
@@ -3302,8 +3360,11 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
     # is actually on hire, so a store that never hires pays nothing for
     # the question and sees no column about it.
     owned_map = _stock_map(db, by_owner=True)
-    hired_any = any(o is not None and abs(q) > 1e-9 for (_i, _l, o), q in owned_map.items())
-    sup_names = ({s.id: s.name for s in db.query(models.Supplier).all()} if hired_any else {})
+    rentals = _rental_supplier_map(db)
+    rented_any = any(
+        (o is not None or i in rentals) and abs(q) > 1e-9
+        for (i, _l, o), q in owned_map.items())
+    sup_names = ({s.id: s.name for s in db.query(models.Supplier).all()} if rented_any else {})
     rows = []
     for it in items:
         at_central = stock.get((it.id, CENTRAL), 0)
@@ -3329,25 +3390,28 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
                    "by_site": {k: round(v, 2) for k, v in by_site.items()},
                    "reorder_level": it.reorder_level,
                    "low": at_central <= it.reorder_level and it.reorder_level > 0 and it.id in stocked}
-            if hired_any:
+            if rented_any:
                 # Split the same total by owner, so a row can never read
-                # as 240 of ours when 60 of them belong to a trader.
-                ours = hired = 0.0
+                # as 240 of ours when 60 of them belong to a trader. A
+                # material marked Rental is the trader's whether or not
+                # the movement said so - the type is the answer.
+                ours = rented = 0.0
                 by_owner = {}
                 for (iid, loc, owner), qty in owned_map.items():
                     if iid != it.id or abs(qty) < 1e-9:
                         continue
                     if not _held_at_site(it) and loc != CENTRAL:
                         continue
-                    if owner is None:
+                    whose = owner if owner is not None else rentals.get(it.id, "OURS")
+                    if whose == "OURS":
                         ours += qty
                     else:
-                        hired += qty
-                        nm = sup_names.get(owner, "(removed)")
+                        rented += qty
+                        nm = sup_names.get(whose, "(no supplier set)")
                         by_owner[nm] = round(by_owner.get(nm, 0) + qty, 2)
                 row["owned"] = round(ours, 2)
-                row["hired"] = round(hired, 2)
-                row["hired_from"] = by_owner
+                row["rented"] = round(rented, 2)
+                row["rented_from"] = by_owner
             rows.append(row)
     return rows
 
@@ -3355,13 +3419,13 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
 @app.get("/store/hire")
 def store_on_hire(supplier_id: int = None, db: Session = Depends(get_db),
                    user: models.User = Depends(require_any_screen("store", "approvals"))):
-    """Everything standing on hire, grouped by the trader it belongs to.
+    """Every rented material in hand, grouped by the supplier it is from.
 
-    This is the exposure: what is out, from whom, and how long it has
-    been out. A hire nobody has looked at for four months is the one
+    This is the exposure: what is held, from whom, and how long it has
+    been held. A rental nobody has looked at for four months is the one
     that turns into an argument.
     """
-    rows = _on_hire(db, supplier_id=supplier_id)
+    rows = _on_rent(db, supplier_id=supplier_id)
     by_sup = {}
     for r in rows:
         g = by_sup.setdefault(r["supplier_id"], {
@@ -3649,7 +3713,7 @@ def confirm_hire_return(return_id: int, payload: schemas.HireReturnConfirmIn,
     # Taken off where it actually stands - the place the lorry loaded
     # from first, then anywhere else holding it. One movement per
     # location, so no location is driven negative to make a total agree.
-    positions = _hire_positions(db, r.supplier_id)
+    positions = _rental_positions(db, r.supplier_id)
     prefer = r.from_location or CENTRAL
     for l in r.lines:
         if not l.item_id:
@@ -3663,11 +3727,13 @@ def confirm_hire_return(return_id: int, payload: schemas.HireReturnConfirmIn,
                 raise HTTPException(status_code=400,
                     detail=f"{l.description}: {round(unmet, 2)} cannot be accounted for - "
                            "the position has moved since this note was written. Edit it first.")
-            for loc, took in draws:
+            for loc, drew_owner, took in draws:
                 db.add(models.StoreMovement(
                     item_id=l.item_id, kind=kind, qty=took,
                     from_location=loc, location=loc,
-                    owner_id=r.supplier_id, supplier=r.supplier_name,
+                    # Put back under the very name it went out under, or
+                    # a location is driven negative to make a total agree.
+                    owner_id=drew_owner, supplier=r.supplier_name,
                     incharge=_person_name(payload.received_by or r.driver or ""),
                     reference=r.ref,
                     notes=(f"{l.short_reason} on {r.ref}" if kind == "lost"
@@ -3856,7 +3922,7 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
                     models.Supplier.id == payload.owner_id).first()
                 whose = f" hired from {nm.name}" if nm else " hired"
             else:
-                whose = " of ours" if _has_hired_stock(db, item.id) else ""
+                whose = " of ours" if _is_rented(db, item.id) else ""
             raise HTTPException(status_code=400,
                 detail=f"Only {round(have, 2)} {item.unit} of {item.name}{whose} "
                        f"available at {where}.")
@@ -4674,14 +4740,6 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
     elif owner_name:
         owner = _find_or_create_supplier(db, owner_name)
 
-    # The trap this closes: a line marked 'rental' with nobody named was
-    # booked as ours, so 150 hired ledgers sat in the owned pile and the
-    # hire list stayed empty - which is exactly what it was added to stop.
-    if not owner and any((l.get("item_type") or "").strip() == "rental" for l in lines):
-        raise HTTPException(status_code=400,
-            detail="A line is marked Rental (hired in) but no trader is named. "
-                   "Say who it is hired from, or set the type to Asset if it is ours.")
-
     today = _dubai_today()
     added, skipped = [], []
     for l in lines:
@@ -4701,13 +4759,20 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         unit = (l.get("unit") or "").strip()
         if unit and unit != (it.unit or ""):
             it.unit = unit
+        # Nothing named here, but the material itself may say who it is
+        # rented from - and a Rental material shows on the rental list
+        # either way, so the answer need not be repeated on every line.
+        line_owner = owner
+        if line_owner is None and it.item_type == "rental" and (it.rental_supplier or "").strip():
+            line_owner = _find_or_create_supplier(db, it.rental_supplier)
         db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty,
                                     location=where or CENTRAL, from_location="",
-                                    owner_id=owner.id if owner else None,
-                                    moved_on=today, supplier=owner.name if owner else "",
+                                    owner_id=line_owner.id if line_owner else None,
+                                    moved_on=today,
+                                    supplier=line_owner.name if line_owner else "",
                                     incharge=user.full_name or user.username,
                                     reference="Added by hand",
-                                    notes=("Booked in on hire from the Materials panel" if owner
+                                    notes=(f"Booked in as rented from {line_owner.name}" if line_owner
                                            else "Put into the store from the Materials panel"),
                                     created_by=user.id))
         added.append(f"{qty:g} {it.unit or ''} {it.name}".strip())

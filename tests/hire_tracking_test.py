@@ -70,7 +70,7 @@ ldg = c.post('/store/items', json={'name': 'Ledger 1.8m', 'unit': 'pcs',
 c.post('/store/movements', json={'item_id': std['id'], 'kind': 'in', 'qty': 180,
                                  'location': '', 'moved_on': '2026-08-01'}, headers=H)
 row = stock_row(std['id'])
-ck('a store with nothing on hire carries no owner split', 'hired' not in row, list(row))
+ck('a store with nothing on hire carries no owner split', 'rented' not in row, list(row))
 
 # ---- Hire 60 of the same standard in from a trader -------------------
 r = c.post('/store/hire/in', json={
@@ -82,9 +82,9 @@ ck('the hire is booked in', r.status_code == 200, r.text[:200])
 row = stock_row(std['id'])
 ck('the total counts both piles', row['total'] == 240, row)
 ck('and says 180 are ours', row['owned'] == 180, row)
-ck('and 60 are hired', row['hired'] == 60, row)
+ck('and 60 are hired', row['rented'] == 60, row)
 ck('naming the trader they belong to',
-   row['hired_from'].get('Al Raha Scaffolding') == 60, row['hired_from'])
+   row['rented_from'].get('Al Raha Scaffolding') == 60, row['rented_from'])
 
 hire = c.get('/store/hire', headers=H).json()
 ck('the hire list shows one trader', len(hire['suppliers']) == 1, hire)
@@ -112,7 +112,7 @@ out = c.post('/store/movements', json={'item_id': std['id'], 'kind': 'out', 'qty
                                        'moved_on': '2026-08-10'}, headers=H)
 ck('hired scaffolding issues to a site', out.status_code == 200, out.text[:200])
 row = stock_row(std['id'])
-ck('it is still on hire once it is standing on site', row['hired'] == 60, row)
+ck('it is still on hire once it is standing on site', row['rented'] == 60, row)
 ck('and still counted at the site', row['out_at_sites'] == 50, row)
 
 # ---- The return note -------------------------------------------------
@@ -139,7 +139,7 @@ ck('a shortfall without a reason is refused', noreason.status_code == 400, norea
 
 # ---- Nothing moves until the trader has signed -----------------------
 row = stock_row(std['id'])
-ck('raising the note moves no stock', row['hired'] == 60, row)
+ck('raising the note moves no stock', row['rented'] == 60, row)
 
 t = c.post('/auth/download-token', headers=H).json()['token']
 pdf = c.get(f"/export/store/return/{note['id']}?token={t}&format=pdf")
@@ -155,12 +155,12 @@ ck('the note settles when it comes back signed', cf.status_code == 200, cf.text[
 ck('and reports the shortfall', cf.json()['total_short'] == 10, cf.json())
 
 row = stock_row(std['id'])
-ck('the hired standards are off our books', row.get('hired', 0) == 0, row)
+ck('the hired standards are off our books', row.get('rented', 0) == 0, row)
 ck('our own 180 are untouched', row['owned' if 'owned' in row else 'total'] == 180, row)
 ck('and the total is our own again', row['total'] == 180, row)
 
 led = stock_row(ldg['id'])
-ck('the ledger material still shows 34 on hire', led['hired'] == 34, led)
+ck('the ledger material still shows 34 on hire', led['rented'] == 34, led)
 
 hire = c.get('/store/hire', headers=H).json()
 ck('the hire list now shows only what is left',
@@ -226,7 +226,7 @@ fix = c.post('/store/hire/reassign', json={
 ck('the owner can be corrected', fix.status_code == 200, fix.text[:200])
 row = stock_row(prop['id'])
 ck('the total did not move - nothing was received', row['total'] == before_total, row)
-ck('but it is now hired, not ours', row['hired'] == 150 and row['owned'] == 0, row)
+ck('but it is now hired, not ours', row['rented'] == 150 and row['owned'] == 0, row)
 onh = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
        for i in g['items'] if i['item_id'] == prop['id']]
 ck('it appears on the hire list', len(onh) == 1 and onh[0]['qty'] == 150, onh)
@@ -245,7 +245,7 @@ back = c.post('/store/hire/reassign', json={
     'to_owner_name': ''}, headers=H)
 ck('it can be put back to ours as well', back.status_code == 200, back.text[:200])
 row = stock_row(prop['id'])
-ck('leaving the split right', row['owned'] == 50 and row['hired'] == 100, row)
+ck('leaving the split right', row['owned'] == 50 and row['rented'] == 100, row)
 ck('and the total still untouched', row['total'] == before_total, row)
 
 # ---- Added straight from the material list, the way it reads --------
@@ -259,19 +259,25 @@ mat = c.post('/store/items', json={'name': 'Cantilever Frame', 'unit': 'pcs',
                                    'opening_qty': 20}, headers=H)
 ck('a rental material added from the material list saves', mat.status_code == 200, mat.text[:200])
 frame = next(s for s in c.get('/store/stock', headers=H).json() if s['name'] == 'Cantilever Frame')
-ck('its quantity is hired, not ours', frame['hired'] == 20 and frame['owned'] == 0, frame)
+ck('its quantity is hired, not ours', frame['rented'] == 20 and frame['owned'] == 0, frame)
 ck('from the rental supplier named on the form',
-   frame['hired_from'].get('Ghantoot Equipment Rental') == 20, frame['hired_from'])
+   frame['rented_from'].get('Ghantoot Equipment Rental') == 20, frame['rented_from'])
 listed = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
           for i in g['items'] if i['name'] == 'Cantilever Frame']
 ck('and it is on the hire list straight away', len(listed) == 1 and listed[0]['qty'] == 20, listed)
 
 nameless = c.post('/store/items', json={'name': 'Spigot Nut & Bolt', 'unit': 'pcs',
                                         'item_type': 'rental', 'opening_qty': 40}, headers=H)
-ck('a rental quantity with no supplier named is refused, not booked as ours',
-   nameless.status_code == 400, f'{nameless.status_code} {nameless.text[:140]}')
-ck('and the message names the box to fill',
-   'rental supplier' in nameless.text.lower(), nameless.text[:200])
+ck('a rental material with no supplier named still saves', nameless.status_code == 200,
+   nameless.text[:160])
+loose = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
+         for i in g['items'] if i['name'] == 'Spigot Nut & Bolt']
+ck('and it still shows on the rental list - rented is rented',
+   len(loose) == 1 and loose[0]['qty'] == 40, loose)
+ck('under a name that says the job is unfinished',
+   loose and loose[0]['supplier'] == '(no supplier set)', loose)
+row = next(s for s in c.get('/store/stock', headers=H).json() if s['name'] == 'Spigot Nut & Bolt')
+ck('and the stock list counts it as rented, not ours', row['rented'] == 40, row)
 
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)
