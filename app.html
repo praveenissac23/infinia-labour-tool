@@ -1755,10 +1755,22 @@
             </div>
 
             <div class="card">
-              <h2 style="margin-bottom:4px;">On rent right now</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Every rented material in our yard or on our sites, and how long we have had it.</p>
-              <div id="hire-list"></div>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;">On rent right now</h2>
+                  <p style="font-size:12px; color:#888; margin:0;">
+                    Every rented material in our yard or on our sites, when it was taken and how
+                    long we have had it.</p>
+                </div>
+                <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                  <div class="field"><label>Where</label>
+                    <select id="rent-where" style="width:190px;" onchange="refreshOnHire()"></select></div>
+                  <button class="btn btn-dark" onclick="exportRental('pdf')">Export PDF</button>
+                  <button class="btn btn-dark" onclick="exportRental('excel')">Export Excel</button>
+                </div>
+              </div>
+              <div id="rent-summary" style="display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 0;"></div>
+              <div id="hire-list" style="margin-top:10px;"></div>
             </div>
           </div>
 
@@ -5088,7 +5100,6 @@ function storeGo(which) {
 // ledger could say which, hired kit went missing in the owned pile and
 // the argument happened weeks later against an invoice.
 let hireOnHire = { suppliers: [], lines: 0 };
-let hireInLines = [];
 
 async function loadHirePanel() {
   if (!storeItems || !storeItems.length) { try { await loadStoreItems(); } catch (e) {} }
@@ -5100,17 +5111,49 @@ async function loadHirePanel() {
   refreshSiteList();
   const d = document.getElementById("hin-date");
   if (d && !d.value) d.value = isoLocal(new Date());
-  if (!hireInLines.length) addHireInLine();
+  if (!document.querySelectorAll('#hin-lines tr').length) addHireInLine();
+  // The two Export buttons need a download token, and asking for it
+  // only when one is pressed makes the first press feel slow.
+  if (!cachedDownloadToken) refreshDownloadToken();
   await refreshOnHire();
+}
+
+function rentWhere() {
+  // Before the panel has loaded once the picker has no options yet, and
+  // its value is "". Read that as everywhere, not as the central store:
+  // an empty string IS the central store to the server, so the first
+  // look at the panel quietly hid everything standing on a site.
+  const sel = document.getElementById("rent-where");
+  return (sel && sel.value) ? sel.value : "__all__";
 }
 
 async function refreshOnHire() {
   const box = document.getElementById("hire-list");
+  const picked = rentWhere();
+  const q = picked === "__all__" ? "" : `?location=${encodeURIComponent(picked)}`;
   try {
-    hireOnHire = await apiCall("/store/hire");
+    hireOnHire = await apiCall("/store/hire" + q);
   } catch (e) {
     if (box) box.innerHTML = `<div class="empty-note">${errText(e)}</div>`;
     return;
+  }
+  // The places that actually hold something, rebuilt each time so a
+  // site that has just been emptied stops being offered.
+  const sel = document.getElementById("rent-where");
+  if (sel) {
+    const places = hireOnHire.places || [];
+    sel.innerHTML = `<option value="__all__">Everywhere</option>`
+      + places.map(pl => `<option value="${pl.code}">${pl.label}</option>`).join("");
+    sel.value = places.some(pl => pl.code === picked) ? picked : "__all__";
+  }
+  const sum = document.getElementById("rent-summary");
+  if (sum) {
+    const qty = (hireOnHire.suppliers || []).reduce((s, g) => s + g.total_qty, 0);
+    const longest = (hireOnHire.suppliers || []).reduce((s, g) => Math.max(s, g.longest_days), 0);
+    sum.innerHTML = hireOnHire.lines ? `
+      <span class="stat-chip">${num(qty)} item(s) on rent</span>
+      <span class="stat-chip">${hireOnHire.suppliers.length} supplier(s)</span>
+      ${longest ? `<span class="stat-chip" style="border-color:#8A6100; color:#8A6100; background:#8A610012;">longest out ${longest} day(s)</span>` : ""}` : "";
   }
   const badge = document.getElementById("hire-badge");
   if (badge) {
@@ -5139,61 +5182,92 @@ async function refreshOnHire() {
       <div class="grid-wrap" style="margin-top:8px;">
         <table>
           <thead><tr>
-            <th style="width:46%; text-align:left;">Material</th>
-            <th style="width:18%;">On rent</th><th style="width:18%;">Since</th>
-            <th style="width:18%;">Days</th></tr></thead>
-          <tbody>${g.items.map(i => `
+            <th style="width:34%; text-align:left;">Material</th>
+            <th style="width:13%;">On rent</th>
+            <th style="width:23%; text-align:left;">Where it is</th>
+            <th style="width:15%;">Taken on</th>
+            <th style="width:15%;">Days on rent</th></tr></thead>
+          <tbody>${g.items.map(i => {
+            const spots = Object.entries(i.by_location || {});
+            const where = spots.length
+              ? spots.map(([loc, q]) =>
+                  `${loc ? loc : "Central store"} <span style="color:#888;">${num(q)}</span>`).join("<br>")
+              : "-";
+            return `
             <tr>
               <td style="text-align:left;">${i.name}</td>
               <td>${num(i.qty)} ${i.unit || ""}</td>
+              <td style="text-align:left; font-size:12px;">${where}</td>
               <td>${i.since || "-"}</td>
-              <td${i.days > 60 ? ' style="color:#C0392B; font-weight:600;"' : ""}>${i.days || "-"}</td>
-            </tr>`).join("")}</tbody>
+              <td${i.days > 60 ? ' style="color:#C0392B; font-weight:600;"'
+                 : i.days > 30 ? ' style="color:#8A6100; font-weight:600;"' : ""}>${
+                i.since ? `${i.days} day${i.days === 1 ? "" : "s"}` : "-"}</td>
+            </tr>`; }).join("")}</tbody>
         </table>
       </div>
     </div>`).join("");
 }
 
-function addHireInLine(line) {
-  hireInLines.push(Object.assign({ item_id: null, description: "", qty: "", notes: "" }, line || {}));
-  renderHireInLines();
-}
-function removeHireInLine(i) { hireInLines.splice(i, 1); renderHireInLines(); }
-function onHireInField(i, field, value) {
-  hireInLines[i][field] = value;
-  if (field === "description") {
-    const m = (storeItems || []).find(x => (x.name || "").toLowerCase() === value.trim().toLowerCase());
-    hireInLines[i].item_id = m ? m.id : null;
+// The rental picture as paper, for whatever place is being looked at.
+async function exportRental(fmt) {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) {
+    showStatus("hin-status", "err", "Could not prepare the download - check the connection.");
+    return;
   }
+  const picked = rentWhere();
+  const q = picked === "__all__" ? "" : `&location=${encodeURIComponent(picked)}`;
+  window.open(`${API}/export/store/rental?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}${q}`, "_blank");
 }
 
-function renderHireInLines() {
+// Rows are appended rather than the table redrawn, so adding a second
+// line does not wipe what was typed into the first - the same pattern
+// the add-stock table uses.
+function addHireInLine() {
   const body = document.getElementById("hin-lines");
   if (!body) return;
-  body.innerHTML = hireInLines.map((l, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
-            oninput="onHireInField(${i}, 'description', this.value)" style="width:100%;"
-            placeholder="Start typing a material already on the list"></td>
-      <td><input type="text" value="${l.qty}" oninput="onHireInField(${i}, 'qty', this.value)"
-            style="width:100%; text-align:right;"></td>
-      <td><input type="text" value="${(l.notes || "").replace(/"/g, "&quot;")}"
-            oninput="onHireInField(${i}, 'notes', this.value)" style="width:100%;"></td>
-      <td><button class="btn btn-gray" onclick="removeHireInLine(${i})">&times;</button></td>
-    </tr>`).join("");
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="row-no" style="color:#999; font-weight:600;"></td>
+    <td>${materialPickerHtml("hin-item", "material-list-all")}</td>
+    <td><input type="number" step="any" min="0" class="hin-qty" placeholder="0"
+          style="width:100%; text-align:right;"></td>
+    <td><input type="text" class="hin-note" style="width:100%;"></td>
+    <td><button class="btn btn-gray" onclick="removeEntryRow(this,'hin-lines')">&times;</button></td>`;
+  body.appendChild(tr);
+  renumberRows("hin-lines");
+  const box = tr.querySelector(".hin-item-txt");
+  if (box) box.focus();
+}
+
+function clearHireInLines() {
+  const body = document.getElementById("hin-lines");
+  if (body) body.innerHTML = "";
+  addHireInLine();
 }
 
 async function saveHireIn() {
   const v = id => (document.getElementById(id).value || "").trim();
-  const lines = hireInLines
-    .filter(l => l.item_id && (parseFloat(l.qty) || 0) > 0)
-    .map(l => ({ item_id: l.item_id, qty: parseFloat(l.qty) || 0, notes: l.notes || "" }));
+  // Read the rows themselves - the picker writes the material's id into
+  // a hidden box beside what was typed, the same as every other
+  // material picker in the store.
+  const rows = [...document.querySelectorAll("#hin-lines tr")].map(tr => ({
+    item_id: parseInt((tr.querySelector(".hin-item") || {}).value, 10) || 0,
+    typed: ((tr.querySelector(".hin-item-txt") || {}).value || "").trim(),
+    qty: parseFloat((tr.querySelector(".hin-qty") || {}).value) || 0,
+    notes: ((tr.querySelector(".hin-note") || {}).value || "").trim(),
+  }));
   if (!v("hin-supplier")) { showStatus("hin-status", "warn", "Name the supplier it is rented from."); return; }
-  if (!lines.length) {
+  const unknown = rows.find(r => r.typed && !r.item_id);
+  if (unknown) {
     showStatus("hin-status", "warn",
-      "Add at least one material with a quantity. Materials must already be on the material list - "
-      + "add them there first if they are new.");
+      `"${unknown.typed}" is not on the material list - pick it from the list, or add it there first.`);
+    return;
+  }
+  const lines = rows.filter(r => r.item_id && r.qty > 0)
+                    .map(r => ({ item_id: r.item_id, qty: r.qty, notes: r.notes }));
+  if (!lines.length) {
+    showStatus("hin-status", "warn", "Add at least one material with a quantity.");
     return;
   }
   try {
@@ -5203,7 +5277,7 @@ async function saveHireIn() {
       incharge: v("hin-incharge"), lines,
     })});
     showStatus("hin-status", "ok", r.detail);
-    hireInLines = []; addHireInLine();
+    clearHireInLines();
     ["hin-ref"].forEach(id => document.getElementById(id).value = "");
     await refreshOnHire();
   } catch (e) { showStatus("hin-status", "err", errText(e)); }

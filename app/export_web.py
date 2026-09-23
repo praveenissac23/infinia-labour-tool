@@ -2134,19 +2134,13 @@ def build_hire_return_pdf(note: dict):
 
     # Two signatures: ours on the way out, theirs on receipt. The
     # trader's box is the whole point of the document.
-    ours = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER)]
-    _sig = signature_file()
-    if _sig:
-        try:
-            from reportlab.platypus import Image as RLImage
-            ours.append(Spacer(1, 2))
-            _w, _h = _fit_box(_sig, 34, 13)
-            ours.append(RLImage(_sig, width=_w * mm, height=_h * mm))
-        except Exception:
-            ours.append(Spacer(1, 13 * mm))
-    else:
-        ours.append(Spacer(1, 13 * mm))
-    ours.append(P("Delivered by / Authorised", 8, align=TA_CENTER, colour="#3B3F44"))
+    # No stored signature here, unlike a purchase order. A return note
+    # is printed, carried to the supplier's gate and signed by hand on
+    # both sides - a signature already on the paper is one nobody
+    # watched being given.
+    ours = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER),
+            Spacer(1, 15 * mm),
+            P("Name, signature &amp; date", 8, align=TA_CENTER, colour="#3B3F44")]
 
     theirs = [P(f"For {note.get('supplier') or 'the supplier'}", 8.5, align=TA_CENTER),
               Spacer(1, 15 * mm),
@@ -2244,7 +2238,7 @@ def build_hire_return_excel(note: dict):
         sr += 2
     ws.cell(row=sr, column=1, value="For Infinia Contracting L.L.C").font = Font(bold=True, size=9)
     ws.cell(row=sr, column=5, value=f"For {note.get('supplier') or 'the supplier'}").font = Font(bold=True, size=9)
-    ws.cell(row=sr + 3, column=1, value="Delivered by / Authorised").font = Font(size=9)
+    ws.cell(row=sr + 3, column=1, value="Name, signature & date").font = Font(size=9)
     ws.cell(row=sr + 3, column=5, value="Name, signature & stamp").font = Font(size=9)
     ws.cell(row=sr + 4, column=5, value="Date: ______________").font = Font(size=9)
 

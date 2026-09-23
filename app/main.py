@@ -2835,7 +2835,7 @@ def _is_rented(db: Session, item_id: int) -> bool:
         models.StoreMovement.owner_id.isnot(None)).first() is not None
 
 
-def _on_rent(db: Session, supplier_id: int = None, upto: date = None):
+def _on_rent(db: Session, supplier_id: int = None, upto: date = None, location: str = None):
     """Every rented material in hand, from whom, and since when.
 
     A material marked Rental is rented, wherever it was entered and
@@ -2850,8 +2850,8 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None):
     standards, out 34 days".
     """
     rentals = _rental_supplier_map(db)
-    held = {}
-    for (item_id, _loc, owner), qty in _stock_map(db, upto=upto, by_owner=True).items():
+    held, where = {}, {}
+    for (item_id, loc, owner), qty in _stock_map(db, upto=upto, by_owner=True).items():
         if qty <= 1e-9:
             continue
         if owner is None and item_id not in rentals:
@@ -2859,7 +2859,15 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None):
         whose = owner if owner is not None else rentals.get(item_id)
         if supplier_id is not None and whose != supplier_id:
             continue
+        # Asked for one place, answer for that place only - the figure
+        # on screen has to be the figure standing there, or a site count
+        # cannot be checked against it.
+        if location is not None and (loc or "") != location:
+            continue
         held[(item_id, whose)] = held.get((item_id, whose), 0) + qty
+        spot = where.setdefault((item_id, whose), {})
+        name = loc or CENTRAL
+        spot[name] = round(spot.get(name, 0) + qty, 2)
     if not held:
         return []
     # When it came. Any movement that first brought the material in
@@ -2890,6 +2898,9 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None):
             "qty": round(qty, 2),
             "since": since.isoformat() if since else "",
             "days": (today - since).days if since else 0,
+            # Where it is standing, so a rental can be counted against
+            # the site holding it rather than one number for everywhere.
+            "by_location": where.get((item_id, whose), {}),
         })
     out.sort(key=lambda r: (r["supplier"].lower(), r["name"].lower()))
     return out
@@ -3416,16 +3427,59 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
     return rows
 
 
+def _rental_places(db: Session):
+    """Every place rented material is currently standing, for the filter.
+    Built from the rentals themselves rather than the site list, so it
+    offers the places that actually hold something."""
+    seen = {}
+    for r in _on_rent(db):
+        for loc in r["by_location"]:
+            seen[loc] = seen.get(loc, 0) + 1
+    out = [{"code": CENTRAL, "label": "Central store", "lines": seen.get(CENTRAL, 0)}] \
+        if CENTRAL in seen else []
+    for loc in sorted(k for k in seen if k != CENTRAL):
+        out.append({"code": loc, "label": loc, "lines": seen[loc]})
+    return out
+
+
+def _rental_report_rows(db: Session, location: str = None, supplier: str = ""):
+    """The rental picture as a flat table, one line per material per
+    place - which is what a report has to be to be checked against
+    anything standing in a yard."""
+    want = (supplier or "").strip().lower()
+    rows = []
+    for r in _on_rent(db, location=location):
+        if want and want not in (r["supplier"] or "").lower():
+            continue
+        for loc, qty in sorted(r["by_location"].items()):
+            rows.append({
+                "Supplier": r["supplier"],
+                "Material": r["name"],
+                "Unit": r["unit"] or "",
+                "Quantity on rent": qty,
+                "Where": loc or "Central store",
+                "Taken on": r["since"] or "-",
+                "Days on rent": r["days"] or 0,
+            })
+    rows.sort(key=lambda x: (x["Supplier"].lower(), x["Material"].lower(), x["Where"]))
+    return rows
+
+
 @app.get("/store/hire")
-def store_on_hire(supplier_id: int = None, db: Session = Depends(get_db),
+def store_on_hire(supplier_id: int = None, location: str = None,
+                   db: Session = Depends(get_db),
                    user: models.User = Depends(require_any_screen("store", "approvals"))):
     """Every rented material in hand, grouped by the supplier it is from.
 
-    This is the exposure: what is held, from whom, and how long it has
-    been held. A rental nobody has looked at for four months is the one
-    that turns into an argument.
+    This is the exposure: what is held, from whom, where, and how long
+    it has been held. A rental nobody has looked at for four months is
+    the one that turns into an argument.
+
+    Without a location it answers for everywhere; with one it answers
+    for that place alone, so a figure can be checked against what is
+    standing there.
     """
-    rows = _on_rent(db, supplier_id=supplier_id)
+    rows = _on_rent(db, supplier_id=supplier_id, location=location)
     by_sup = {}
     for r in rows:
         g = by_sup.setdefault(r["supplier_id"], {
@@ -3440,6 +3494,8 @@ def store_on_hire(supplier_id: int = None, db: Session = Depends(get_db),
         g["total_qty"] = round(g["total_qty"], 2)
     return {"suppliers": groups,
             "lines": sum(g["lines"] for g in groups),
+            "places": _rental_places(db),
+            "location": location,
             "any": bool(groups)}
 
 
@@ -3907,27 +3963,62 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
 
     # Don't allow issuing more than is actually held - a negative balance
     # means the ledger no longer describes anything real.
+    draws = None
     if payload.kind in ("out", "return", "transfer", "lost", "hire_return"):
-        # Asked of the owner's own pile, not the heap. Forty hired
-        # standards standing beside two hundred of ours cannot be issued
-        # as if there were two hundred and forty of the trader's - which
-        # is precisely the confusion that loses hired kit.
-        have = _stock_map(db, by_owner=True).get(
-            (item.id, payload.from_location, payload.owner_id), 0)
-        if payload.qty > have + 1e-9:
-            where = payload.from_location or "the central store"
-            whose = ""
-            if payload.owner_id is not None:
+        at_place = {owner: q for (i, loc, owner), q in _stock_map(db, by_owner=True).items()
+                    if i == item.id and loc == payload.from_location and q > 1e-9}
+        if payload.owner_id is not None:
+            # Named an owner, so it is asked of that owner's own pile.
+            # Forty rented standards beside two hundred of ours cannot
+            # be issued as if there were two hundred and forty of the
+            # supplier's - the confusion that loses rented kit.
+            have = at_place.get(payload.owner_id, 0)
+            if payload.qty > have + 1e-9:
                 nm = db.query(models.Supplier).filter(
                     models.Supplier.id == payload.owner_id).first()
-                whose = f" hired from {nm.name}" if nm else " hired"
-            else:
-                whose = " of ours" if _is_rented(db, item.id) else ""
+                raise HTTPException(status_code=400,
+                    detail=f"Only {round(have, 2)} {item.unit} of {item.name} rented from "
+                           f"{nm.name if nm else 'that supplier'} available at "
+                           f"{payload.from_location or 'the central store'}.")
+            draws = [(payload.owner_id, payload.qty)]
+        elif len(at_place) == 1:
+            # Nobody named, and only one name holds it. The keeper
+            # moving sixty ledgers to a site should not have to know
+            # whose they are when there is only one answer - the store
+            # holds them, so the store can issue them, and the ledger
+            # records them under the name they really came off.
+            only = next(iter(at_place))
+            have = at_place[only]
+            if payload.qty > have + 1e-9:
+                raise HTTPException(status_code=400,
+                    detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at "
+                           f"{payload.from_location or 'the central store'}.")
+            draws = [(only, payload.qty)]
+        else:
+            # Ours and a supplier's standing side by side. Taking from
+            # both without being told which is precisely the mix-up
+            # that loses rented kit, so it asks rather than guesses.
+            sups = {s.id: s.name for s in db.query(models.Supplier).all()}
+            piles = ", ".join(
+                f"{round(q, 2)} {'of ours' if o is None else 'rented from ' + sups.get(o, 'a supplier')}"
+                for o, q in sorted(at_place.items(), key=lambda kv: (kv[0] is not None, kv[0] or 0)))
             raise HTTPException(status_code=400,
-                detail=f"Only {round(have, 2)} {item.unit} of {item.name}{whose} "
-                       f"available at {where}.")
+                detail=f"{item.name} at {payload.from_location or 'the central store'} is "
+                       f"{piles}. Say which it is coming out of - ours or the supplier's - "
+                       "so the rented ones are not lost in the owned pile.")
 
-    m = models.StoreMovement(**payload.dict(), created_by=user.id)
+    # One row per owner drawn from, so no name is driven negative to
+    # make a total agree. The first is returned; the rest sit beside it
+    # on the ledger with the same date and reference.
+    made = []
+    for owner, take in (draws or [(payload.owner_id, payload.qty)]):
+        row = models.StoreMovement(**{**payload.dict(), "owner_id": owner, "qty": take},
+                                   created_by=user.id)
+        made.append(row)
+    m = made[0]
+    for extra in made[1:]:
+        extra.incharge = _person_name(getattr(extra, "incharge", "") or "")
+        db.add(extra)
     # Names are tidied wherever they enter the system, not only on the
     # screen that happened to be used - people type AKHIL, akhil and
     # Akhil, and all three are the same man.
@@ -5964,6 +6055,34 @@ def _lpo_html(o):
           <div class="sig">For Infinia Contracting LLC<div class="sigbox">{_sig_img()}</div>Authorized Signature</div>
         </div>
       </div>"""
+
+
+@app.get("/export/store/rental")
+def export_rental_report(token: str, format: str = "pdf", location: str = None,
+                          supplier: str = "", db: Session = Depends(get_db)):
+    """The rental picture as paper: what is on rent, from whom, standing
+    where, taken on what date, and how many days it has been out."""
+    auth.get_download_user_from_token(token, db)
+    rows = _rental_report_rows(db, location=location, supplier=supplier)
+    where = ("Central store" if location == CENTRAL
+             else location if location else "everywhere")
+    total = sum(r["Quantity on rent"] for r in rows)
+    oldest = max((r["Days on rent"] for r in rows), default=0)
+    sub = (f"{where.capitalize() if where == 'everywhere' else where}"
+           f"  |  {len(rows)} line(s), {total:g} item(s) on rent"
+           + (f"  |  longest out {oldest} day(s)" if oldest else "")
+           + f"  |  as at {_dubai_today().strftime('%d %b %Y')}")
+    if supplier.strip():
+        sub = f"{supplier.strip()}  |  " + sub
+    title = "Rental Materials On Rent"
+    if format == "excel":
+        buf = export_web.build_store_report_excel(title, rows, sub)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=rental-materials.xlsx"})
+    buf = export_web.build_store_report_pdf(title, rows, sub)
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": "attachment; filename=rental-materials.pdf"})
 
 
 @app.get("/export/store/return/{return_id}")

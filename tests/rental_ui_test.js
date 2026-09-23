@@ -63,6 +63,54 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   ck('a rental with nobody named is listed too, not hidden',
      loose && !loose.id, JSON.stringify(listed));
 
+  // ---- Where it is, and the location filter ------------------------
+  await p.evaluate(async ([named]) => {
+    const it = (await apiCall('/store/items')).find(x => x.name === named);
+    await apiCall('/store/movements', { method: 'POST', body: JSON.stringify({
+      item_id: it.id, kind: 'out', qty: 60, from_location: '', location: '901',
+      moved_on: new Date().toISOString().slice(0, 10) }) });
+  }, [NAMED]);
+  await p.evaluate(() => refreshOnHire());
+  await p.waitForTimeout(1500);
+
+  const places = await p.evaluate(() =>
+    [...document.querySelectorAll('#rent-where option')].map(o => o.textContent.trim()));
+  ck('the Where filter offers everywhere and each place holding something',
+     places[0] === 'Everywhere' && places.includes('901') && places.includes('Central store'), places);
+
+  const rowText = () => p.evaluate(() => document.getElementById('hire-list').textContent);
+  ck('a row shows where it stands', /901/.test(await rowText()), (await rowText()).slice(0, 120));
+  ck('and how many days it has been on rent', /day/.test(await rowText()), (await rowText()).slice(0, 160));
+
+  await p.evaluate(() => { document.getElementById('rent-where').value = '901'; refreshOnHire(); });
+  await p.waitForTimeout(1600);
+  // Only this run's material is checked: earlier runs leave their own
+  // stock at 901, which is correct and must not fail the assertion.
+  const at901 = await p.evaluate(() => (hireOnHire.suppliers || [])
+    .flatMap(g => g.items).map(i => [i.name, i.qty, i.by_location]));
+  const mine901 = at901.find(x => x[0] === NAMED);
+  ck('filtering to a site shows what stands there, and only that',
+     mine901 && mine901[1] === 60 && Object.keys(mine901[2]).join() === '901',
+     JSON.stringify(mine901 || at901));
+  await p.evaluate(() => { document.getElementById('rent-where').value = '__all__'; refreshOnHire(); });
+  await p.waitForTimeout(1600);
+
+  // ---- The two exports actually produce a file ---------------------
+  for (const fmt of ['pdf', 'excel']) {
+    const res = await p.evaluate(async f => {
+      const t = await apiCall('/auth/download-token', { method: 'POST' });
+      const r = await fetch(`${API}/export/store/rental?token=${encodeURIComponent(t.token)}&format=${f}`);
+      return { ok: r.ok, size: (await r.blob()).size };
+    }, fmt);
+    ck(`Export ${fmt.toUpperCase()} returns a file`, res.ok && res.size > 2000, JSON.stringify(res));
+  }
+  const filtered = await p.evaluate(async () => {
+    const t = await apiCall('/auth/download-token', { method: 'POST' });
+    const r = await fetch(`${API}/export/store/rental?token=${encodeURIComponent(t.token)}&format=pdf&location=901`);
+    return { ok: r.ok, size: (await r.blob()).size };
+  });
+  ck('and the export follows the Where filter', filtered.ok && filtered.size > 2000, JSON.stringify(filtered));
+
   // ---- Return to this supplier actually opens the form -------------
   await p.evaluate(sup => {
     const g = (hireOnHire.suppliers || []).find(x => x.supplier === sup);
@@ -78,7 +126,7 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
 
   // ---- Fill it in and save ----------------------------------------
   await p.evaluate(() => {
-    rnLines[0].qty_returned = 130;
+    rnLines[0].qty_returned = 70;
     rnLines[0].qty_short = 20;
     rnLines[0].short_reason = 'lost';
     renderReturnLines();
@@ -86,7 +134,7 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   });
   await p.waitForTimeout(400);
   const totals = await text('#rn-totals');
-  ck('the running totals add up', /130/.test(totals) && /20/.test(totals), totals);
+  ck('the running totals add up', /70/.test(totals) && /20/.test(totals), totals);
   await p.evaluate(() => saveReturnNote());
   await p.waitForTimeout(2000);
   ck('saving says the note was saved', /saved/i.test(await text('#rn-list-status')),
@@ -135,13 +183,19 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   // ---- Booking rented material in ---------------------------------
   await p.evaluate(() => storeGo('hire'));
   await p.waitForTimeout(1600);
+  // Typed the way a person types it: into the picker, which must find
+  // the material and write its id into the hidden box beside it.
   await p.evaluate(([named, sup]) => {
     document.getElementById('hin-supplier').value = sup + ' Two';
-    const inp = document.querySelector('#hin-lines tr').querySelectorAll('input');
-    inp[0].value = named;
-    onHireInField(0, 'description', named);
-    onHireInField(0, 'qty', '40');
+    const tr = document.querySelector('#hin-lines tr');
+    const box = tr.querySelector('.hin-item-txt');
+    box.value = named;
+    onMaterialTyped(box);
+    tr.querySelector('.hin-qty').value = '40';
   }, [NAMED, SUPPLIER]);
+  const picked = await p.evaluate(() =>
+    (document.querySelector('#hin-lines tr .hin-item') || {}).value || '');
+  ck('typing a material into the picker finds it', picked !== '', `hidden id "${picked}"`);
   await p.evaluate(() => saveHireIn());
   await p.waitForTimeout(2000);
   ck('Book in as rented works', /rented|booked/i.test(await text('#hin-status')),
