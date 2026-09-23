@@ -1509,9 +1509,11 @@
           <div class="card" id="supplier-card">
             <h2>Suppliers</h2>
             <div class="status-msg" id="sup-status"></div>
+            <div id="sup-incomplete" class="status-msg warn" style="display:none;"></div>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">
               Everything a purchase order prints. Filled in once here, fetched every time after.
-              Name, contact, phone and TRN are needed - an order cannot go out without them.</p>
+              Every field is needed - an order cannot go out without them. Anything still
+              missing shows in red below, including traders picked up from an order.</p>
             <div class="form-row" style="gap:8px; flex-wrap:wrap;">
               <input type="text" id="sup-name" placeholder="Supplier name *" style="width:230px;">
               <input type="text" id="sup-contact" placeholder="Contact person *" style="width:160px;">
@@ -1519,8 +1521,8 @@
               <input type="text" id="sup-trn" placeholder="TRN *" style="width:175px;">
             </div>
             <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px;">
-              <input type="text" id="sup-email" placeholder="Email" style="width:190px;">
-              <input type="text" id="sup-terms" list="terms-list" placeholder="Payment terms" style="width:170px;">
+              <input type="text" id="sup-email" placeholder="Email *" style="width:190px;">
+              <input type="text" id="sup-terms" list="terms-list" placeholder="Payment terms *" style="width:170px;">
               <datalist id="terms-list">
                 <option>Due on Receipt</option><option>Net 30</option><option>Net 45</option>
                 <option>Net 60</option><option>Net 90</option><option>Advance payment</option>
@@ -7929,13 +7931,28 @@ function renderSuppliers() {
     body.innerHTML = `<tr><td colspan="7" class="empty-note">No suppliers yet - add one above, or import a list.</td></tr>`;
     return;
   }
-  body.innerHTML = suppliers.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => `
-    <tr>
+  // A trader an order created carries only a name, so every column an
+  // order prints is called out when it is empty - not the TRN alone.
+  const need = v => v || '<span style="color:#C0392B;">missing</span>';
+  const done = s => s.contact_person && s.phone && s.trn && s.email && s.payment_terms;
+  const short = suppliers.filter(s => !done(s)).length;
+  const note = document.getElementById("sup-incomplete");
+  if (note) {
+    note.innerHTML = short
+      ? `<strong>${short}</strong> supplier${short === 1 ? "" : "s"} still incomplete -
+         an order for ${short === 1 ? "it" : "them"} will print blanks. Edit to fill in what is missing.`
+      : "";
+    note.style.display = short ? "block" : "none";
+  }
+  body.innerHTML = suppliers.slice().sort((a, b) =>
+      (done(a) === done(b) ? 0 : done(a) ? 1 : -1)
+      || (a.name || "").localeCompare(b.name || "")).map(s => `
+    <tr${done(s) ? "" : ' style="background:#FFF8F7;"'}>
       <td style="text-align:left;"><strong>${s.name}</strong></td>
-      <td>${s.contact_person || "-"}</td><td>${s.phone || "-"}</td>
-      <td>${s.trn || '<span style="color:#C0392B;">missing</span>'}</td>
-      <td>${s.email || "-"}</td>
-      <td>${s.payment_terms || "-"}</td>
+      <td>${need(s.contact_person)}</td><td>${need(s.phone)}</td>
+      <td>${need(s.trn)}</td>
+      <td>${need(s.email)}</td>
+      <td>${need(s.payment_terms)}</td>
       <td><button class="btn btn-gray" onclick="editSupplier('${(s.name || "").replace(/'/g, "\\'")}')">Edit</button></td>
     </tr>`).join("");
 }
@@ -7959,7 +7976,8 @@ async function saveSupplier() {
   // only moves the problem to the moment somebody is trying to send a
   // purchase order out.
   const missing = [["sup-name", "the supplier's name"], ["sup-contact", "a contact person"],
-                   ["sup-phone", "a phone number"], ["sup-trn", "the TRN"]]
+                   ["sup-phone", "a phone number"], ["sup-trn", "the TRN"],
+                   ["sup-email", "an email address"], ["sup-terms", "payment terms"]]
     .filter(([id]) => !val(id)).map(([, label]) => label);
   if (missing.length) {
     showStatus("sup-status", "warn", `Still needed: ${missing.join(", ")}.`);

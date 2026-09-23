@@ -2798,11 +2798,30 @@ def list_suppliers(db: Session = Depends(get_db),
                        .order_by(models.Supplier.name).all()]
 
 
+# Everything a purchase order prints. A supplier saved from the master
+# screen carries all of it or none of it: half a record is only found
+# later, with an order already waiting to go out.
+SUPPLIER_REQUIRED = (
+    ("name", "the supplier's name"),
+    ("contact_person", "a contact person"),
+    ("phone", "a phone number"),
+    ("trn", "the TRN"),
+    ("email", "an email address"),
+    ("payment_terms", "payment terms"),
+)
+
+
+def _check_supplier_complete(payload):
+    missing = [label for field, label in SUPPLIER_REQUIRED
+               if not (getattr(payload, field, "") or "").strip()]
+    if missing:
+        raise HTTPException(status_code=400, detail="Still needed: " + ", ".join(missing) + ".")
+
+
 @app.post("/store/suppliers")
 def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
                    user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
-    if not (payload.name or "").strip():
-        raise HTTPException(status_code=400, detail="Supplier needs a name.")
+    _check_supplier_complete(payload)
     sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
     if payload.notes:
         sup.notes = payload.notes
@@ -2828,9 +2847,8 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
     sup = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
     if not sup:
         raise HTTPException(status_code=404, detail="Supplier not found.")
+    _check_supplier_complete(payload)
     name = _proper_name((payload.name or "").strip())
-    if not name:
-        raise HTTPException(status_code=400, detail="Supplier needs a name.")
     key = _supplier_key(name)
     clash = db.query(models.Supplier).filter(models.Supplier.name_key == key,
                                               models.Supplier.id != supplier_id).first()
@@ -2841,6 +2859,14 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
     sup.name_key = key
     sup.contact_person = _proper_name((payload.contact_person or "").strip())
     sup.phone = (payload.phone or "").strip()
+    # These three were accepted and then dropped on the floor: an edit
+    # that changed a TRN or the payment terms saved neither, and the old
+    # value stayed on every order printed afterwards.
+    sup.trn = (payload.trn or "").strip()
+    sup.email = (payload.email or "").strip()
+    sup.payment_terms = (payload.payment_terms or "").strip()
+    if (payload.address or "").strip():
+        sup.address = payload.address.strip()
     if payload.notes is not None:
         sup.notes = payload.notes
     db.commit()
@@ -4204,12 +4230,24 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
     if idx["name"] is None:
         raise HTTPException(status_code=400, detail="The sheet needs a Name column.")
     created = updated = skipped = 0
+    incomplete = []
     for r in rows[head_i + 1:]:
         def get(k):
             i = idx.get(k)
             return str(r[i]).strip() if i is not None and i < len(r) and r[i] not in (None, "") else ""
         name = get("name")
         if not name:
+            skipped += 1
+            continue
+        # A sheet cannot put a half-filled trader on the master either -
+        # the same rule the screen enforces, or the quickest way round
+        # it would be to import the row instead of typing it.
+        short = [label for column, label in (("contact person", "contact person"),
+                                             ("phone", "phone"), ("trn", "TRN"),
+                                             ("email", "email"), ("payment terms", "payment terms"))
+                 if not get(column)]
+        if short:
+            incomplete.append(f"{name} (no {', '.join(short)})")
             skipped += 1
             continue
         # Whether this trader was already on file has to be asked BEFORE
@@ -4232,9 +4270,18 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
         updated += 0 if was_new else 1
     db.commit()
     log_action(db, user.id, "import_suppliers", f"{created} created, {updated} updated, {skipped} skipped")
+    # Naming the rows that were left out, rather than only counting them,
+    # so the sheet can be fixed without hunting for which ones fell short.
+    note = ""
+    if incomplete:
+        note = " Left out, needing every column filled: " + "; ".join(incomplete[:8])
+        if len(incomplete) > 8:
+            note += f"; and {len(incomplete) - 8} more"
+        note += "."
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped,
+            "incomplete": incomplete,
             "detail": f"{created} added, {updated} updated"
-                      + (f", {skipped} row(s) skipped" if skipped else "") + "."}
+                      + (f", {skipped} row(s) skipped" if skipped else "") + "." + note}
 
 
 @app.get("/store/requests/{request_id}/summary")

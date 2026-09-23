@@ -47,8 +47,15 @@ sups = r.json() if r.status_code == 200 else []
 check("two suppliers exist", len(sups) == 2, str(sups)[:250])
 alraha = next((s for s in sups if "raha" in s.get("name","").lower()), {})
 check("Al Raha tidy + contact kept", alraha.get("name","").startswith("Al Raha") and alraha.get("phone")=="0501234567", str(alraha))
-r = c.post("/store/suppliers", json={"name": "al-raha trading", "phone": "", "contact_person": ""}, headers=H)
+# The master needs every column filled now, so the variant is saved as a
+# complete record - what is being proved is the folding, that "al-raha
+# trading" lands on the Al Raha already on file instead of a second one.
+r = c.post("/store/suppliers", json={"name": "al-raha trading", "phone": "0501234567",
+    "contact_person": "Rashid", "trn": "100200300400500", "email": "sales@alraha.ae",
+    "payment_terms": "Net 30"}, headers=H)
 check("variant spelling reuses record", r.status_code == 200 and r.json().get("id") == alraha.get("id"), r.text[:150])
+check("an incomplete supplier is refused on the master",
+      c.post("/store/suppliers", json={"name": "Nameless Trading"}, headers=H).status_code == 400)
 
 r = c.get("/store/requests", headers=H)
 mr2 = next((x for x in r.json() if x["id"] == rid), {})
