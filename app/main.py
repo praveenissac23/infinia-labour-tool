@@ -3242,26 +3242,33 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     # a store that started on paper. Once anything has come in, the box
     # is ignored: the count is for the start, not a way to top up.
     never_received = existing.id not in _ever_stocked(db)
-    # A quantity typed here has no trader against it, so it can only be
-    # ours. Letting it through for a material marked rental is what put
-    # hired scaffolding into the owned pile and left the hire list
-    # empty - the type says what kind of thing it is, never whose.
+    # A material marked Rental is hired from somebody, and the form asks
+    # who on the same screen. That name is what makes the quantity the
+    # trader's rather than ours - without it the count went silently
+    # into the owned pile and never reached the hire list.
+    hire_owner = None
     if (is_new or never_received) and opening > 0 and existing.item_type == "rental":
-        raise HTTPException(status_code=400,
-            detail='This material is marked Rental (hired in), so a quantity here would be '
-                   'recorded as ours and would not show on hire. Use "Add stock to the store '
-                   'or a site" above, set "Whose is it" to hired, and name the trader - or '
-                   'change the type to Asset if it is ours.')
+        if not (existing.rental_supplier or "").strip():
+            raise HTTPException(status_code=400,
+                detail="This material is Rental (hired in), so fill in Rental supplier - "
+                       "that is who the quantity is on hire from. Set the type to Asset "
+                       "instead if the company owns it.")
+        hire_owner = _find_or_create_supplier(db, existing.rental_supplier)
     if (is_new or never_received) and opening > 0:
         db.add(models.StoreMovement(
             item_id=existing.id, kind="in", qty=opening,
             location=opening_where, from_location="",
-            moved_on=_dubai_today(), supplier="", incharge="",
-            reference="Opening stock", notes="Opening stock - already held when the material was added",
+            owner_id=hire_owner.id if hire_owner else None,
+            moved_on=_dubai_today(),
+            supplier=hire_owner.name if hire_owner else "", incharge="",
+            reference="Opening stock",
+            notes=(f"Opening stock - on hire from {hire_owner.name}" if hire_owner
+                   else "Opening stock - already held when the material was added"),
             created_by=user.id))
         db.commit()
         log_action(db, user.id, "store_movement",
-                   f"opening {opening:g} {existing.unit} {existing.code}")
+                   f"opening {opening:g} {existing.unit} {existing.code}"
+                   + (f" on hire from {hire_owner.name}" if hire_owner else ""))
 
     log_action(db, user.id, "store_save_item", f"{payload.code} - {payload.name}")
     return existing

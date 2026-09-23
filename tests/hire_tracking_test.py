@@ -248,13 +248,30 @@ row = stock_row(prop['id'])
 ck('leaving the split right', row['owned'] == 50 and row['hired'] == 100, row)
 ck('and the total still untouched', row['total'] == before_total, row)
 
-# ---- The door that did not ask is now shut --------------------------
-trap = c.post('/store/items', json={'name': 'Cantilever Frame', 'unit': 'pcs',
-                                    'item_type': 'rental', 'opening_qty': 20}, headers=H)
-ck('a rental material cannot take an opening quantity as ours',
-   trap.status_code == 400, f'{trap.status_code} {trap.text[:140]}')
-ck('and says where to book it instead',
-   'whose is it' in trap.text.lower() or 'hired' in trap.text.lower(), trap.text[:200])
+# ---- Added straight from the material list, the way it reads --------
+# A material marked Rental is hired from somebody, and the form asks who
+# on the same screen. Taking that name is what the person adding 150
+# ledgers there expects; anything else leaves them looking at an empty
+# hire list wondering what they did wrong.
+mat = c.post('/store/items', json={'name': 'Cantilever Frame', 'unit': 'pcs',
+                                   'item_type': 'rental',
+                                   'rental_supplier': 'Ghantoot Equipment Rental',
+                                   'opening_qty': 20}, headers=H)
+ck('a rental material added from the material list saves', mat.status_code == 200, mat.text[:200])
+frame = next(s for s in c.get('/store/stock', headers=H).json() if s['name'] == 'Cantilever Frame')
+ck('its quantity is hired, not ours', frame['hired'] == 20 and frame['owned'] == 0, frame)
+ck('from the rental supplier named on the form',
+   frame['hired_from'].get('Ghantoot Equipment Rental') == 20, frame['hired_from'])
+listed = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
+          for i in g['items'] if i['name'] == 'Cantilever Frame']
+ck('and it is on the hire list straight away', len(listed) == 1 and listed[0]['qty'] == 20, listed)
+
+nameless = c.post('/store/items', json={'name': 'Spigot Nut & Bolt', 'unit': 'pcs',
+                                        'item_type': 'rental', 'opening_qty': 40}, headers=H)
+ck('a rental quantity with no supplier named is refused, not booked as ours',
+   nameless.status_code == 400, f'{nameless.status_code} {nameless.text[:140]}')
+ck('and the message names the box to fill',
+   'rental supplier' in nameless.text.lower(), nameless.text[:200])
 
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

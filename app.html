@@ -1754,33 +1754,6 @@
               <div class="status-msg" id="hin-status"></div>
             </div>
 
-            <div class="card" style="border:1px solid #E8DFD9; background:#FBF8F6;">
-              <h2 style="margin-bottom:4px;">Stock under the wrong name</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px; max-width:860px;">
-                Material booked as ours that is really a trader's, or the reverse. Nothing
-                physically moves - the quantity is taken off one name and put on the other where
-                it stands, as two corrections that both say why.</p>
-              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-start;">
-                <div class="field"><label>Material</label>
-                  <input type="text" id="rsg-item" list="store-item-list" placeholder="Start typing"
-                         style="width:230px;"></div>
-                <div class="field"><label>Where it is</label>
-                  <input type="text" id="rsg-location" list="site-list" placeholder="Central store"
-                         style="width:160px;"></div>
-                <div class="field"><label>Quantity</label>
-                  <input type="text" id="rsg-qty" style="width:100px; text-align:right;"></div>
-                <div class="field"><label>Currently under</label>
-                  <input type="text" id="rsg-from" list="lpo-supplier-list" placeholder="Ours - leave empty"
-                         style="width:190px;"></div>
-                <div class="field"><label>Should be under</label>
-                  <input type="text" id="rsg-to" list="lpo-supplier-list" placeholder="Ours - leave empty"
-                         style="width:190px;"></div>
-                <div class="field"><label>&nbsp;</label>
-                  <button class="btn btn-primary" onclick="reassignOwner()">Correct the owner</button></div>
-              </div>
-              <div class="status-msg" id="rsg-status"></div>
-            </div>
-
             <div class="card">
               <h2 style="margin-bottom:4px;">On hire right now</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
@@ -5232,34 +5205,6 @@ async function saveHireIn() {
     ["hin-ref"].forEach(id => document.getElementById(id).value = "");
     await refreshOnHire();
   } catch (e) { showStatus("hin-status", "err", errText(e)); }
-}
-
-// Stock that went in under the wrong name. Nothing moves - the quantity
-// changes hands where it stands, so a hire booked as ours can be put
-// right without inventing a delivery.
-async function reassignOwner() {
-  const v = id => (document.getElementById(id).value || "").trim();
-  const name = v("rsg-item");
-  const item = (storeItems || []).find(x => (x.name || "").toLowerCase() === name.toLowerCase());
-  if (!item) {
-    showStatus("rsg-status", "warn", `"${name}" is not on the material list - pick it from the list.`);
-    return;
-  }
-  const qty = parseFloat(v("rsg-qty")) || 0;
-  if (qty <= 0) { showStatus("rsg-status", "warn", "Enter the quantity to correct."); return; }
-  if (v("rsg-from").toLowerCase() === v("rsg-to").toLowerCase()) {
-    showStatus("rsg-status", "warn", "It is already under that name - the two boxes match.");
-    return;
-  }
-  try {
-    const r = await apiCall("/store/hire/reassign", { method: "POST", body: JSON.stringify({
-      item_id: item.id, qty, location: v("rsg-location"),
-      from_owner_name: v("rsg-from"), to_owner_name: v("rsg-to") })});
-    showStatus("rsg-status", "ok", r.detail);
-    ["rsg-item", "rsg-qty", "rsg-from", "rsg-to"].forEach(id => document.getElementById(id).value = "");
-    await refreshOnHire();
-    try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
-  } catch (e) { showStatus("rsg-status", "err", errText(e)); }
 }
 
 // ============ RETURN NOTES ============
