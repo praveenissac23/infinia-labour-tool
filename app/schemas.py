@@ -257,11 +257,59 @@ class StoreMovementIn(BaseModel):
     from_location: str = ""
     location: str = ""
     incharge: str = ""
+    # Whose the stock is: None for ours, a supplier id when it is hired
+    # in from that trader and has to go back to him.
+    owner_id: Optional[int] = None
     supplier: str = ""
     unit_cost: float = 0.0
     reference: str = ""
     notes: str = ""
     moved_on: date
+
+
+class HireInLineIn(BaseModel):
+    item_id: int
+    qty: float = 0.0
+    notes: str = ""
+
+
+class HireInIn(BaseModel):
+    supplier_name: str = ""
+    received_on: date
+    location: str = ""             # "" = the central yard
+    incharge: str = ""
+    reference: str = ""            # the trader's delivery note
+    order_id: Optional[int] = None  # or the LPO it came against
+    notes: str = ""
+    lines: list[HireInLineIn] = []
+
+
+class HireReturnLineIn(BaseModel):
+    item_id: Optional[int] = None
+    description: str = ""
+    unit: str = "pcs"
+    qty_on_hire: float = 0.0
+    qty_returned: float = 0.0
+    qty_short: float = 0.0
+    short_reason: str = ""         # lost | damaged | on site
+    notes: str = ""
+
+
+class HireReturnIn(BaseModel):
+    supplier_id: Optional[int] = None
+    supplier_name: str = ""
+    return_date: Optional[date] = None
+    from_location: str = ""
+    driver: str = ""
+    vehicle: str = ""
+    notes: str = ""
+    lines: list[HireReturnLineIn] = []
+
+
+class HireReturnConfirmIn(BaseModel):
+    received_by: str = ""
+    confirmed_on: Optional[date] = None
+    notes: str = ""
 
 
 class StoreMovementOut(BaseModel):
@@ -272,6 +320,7 @@ class StoreMovementOut(BaseModel):
     from_location: str
     location: str
     incharge: str
+    owner_id: Optional[int] = None
     supplier: str
     unit_cost: float
     reference: str
@@ -280,6 +329,7 @@ class StoreMovementOut(BaseModel):
     item_code: Optional[str] = None
     item_name: Optional[str] = None
     unit: Optional[str] = None
+    owner_name: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -1659,6 +1659,15 @@
                   <div class="store-tile-t">Returns &amp; Corrections</div>
                   <div class="store-tile-s">Came back, moved, or wrong number</div>
                 </div>
+                <div class="store-tile" onclick="storeGo('hire')">
+                  <div class="store-tile-t">Hired Material
+                    <span id="hire-badge" class="pill" style="display:none; background:#FDF0D5; color:#8A6100;"></span></div>
+                  <div class="store-tile-s">What is on hire, from whom, how long</div>
+                </div>
+                <div class="store-tile" onclick="storeGo('returns')">
+                  <div class="store-tile-t">Return Notes</div>
+                  <div class="store-tile-s">Send hired material back with signed paper</div>
+                </div>
               </div>
               <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
               <div style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -1688,6 +1697,137 @@
               </div>
               <div class="grid-wrap" style="max-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
+              </div>
+            </div>
+          </div>
+
+          <!-- HIRED MATERIAL
+               Scaffolding and the like, standing in our yard and on our
+               sites but belonging to a trader. The same materials as
+               everything else in the store - only the owner differs,
+               which is exactly what this panel shows. -->
+          <div id="store-hire" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+            <div class="card" style="margin-top:10px;">
+              <h2 style="margin-bottom:4px;">Book material in on hire</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Hired material is booked in like any delivery - it simply stays the trader's,
+                so it shows separately everywhere and has to go back on a return note.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="field"><label>Hired from *</label>
+                  <input type="text" id="hin-supplier" list="lpo-supplier-list"
+                         placeholder="Trader" style="width:230px;"></div>
+                <div class="field"><label>Date *</label>
+                  <input type="date" id="hin-date" style="width:150px;"></div>
+                <div class="field"><label>Where it landed</label>
+                  <input type="text" id="hin-location" list="site-list"
+                         placeholder="Central store" style="width:170px;"></div>
+                <div class="field"><label>Delivery note / LPO ref</label>
+                  <input type="text" id="hin-ref" placeholder="Their DN number" style="width:170px;"></div>
+                <div class="field"><label>Received by</label>
+                  <input type="text" id="hin-incharge" style="width:150px;"></div>
+              </div>
+              <div class="grid-wrap" style="margin-top:10px;">
+                <table>
+                  <thead><tr>
+                    <th style="width:4%;">#</th><th style="width:52%;">Material</th>
+                    <th style="width:16%;">Quantity</th><th style="width:24%;">Note</th>
+                    <th style="width:4%;"></th>
+                  </tr></thead>
+                  <tbody id="hin-lines"></tbody>
+                </table>
+              </div>
+              <div class="form-row" style="margin-top:8px; gap:10px;">
+                <button class="btn btn-gray" onclick="addHireInLine()">Add line</button>
+                <button class="btn btn-primary" onclick="saveHireIn()">Book in on hire</button>
+              </div>
+              <div class="status-msg" id="hin-status"></div>
+            </div>
+
+            <div class="card">
+              <h2 style="margin-bottom:4px;">On hire right now</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Everything standing in our yard or on our sites that belongs to somebody else,
+                and how long it has been out.</p>
+              <div id="hire-list"></div>
+            </div>
+          </div>
+
+          <!-- RETURN NOTES
+               The paper that settles a hire at the trader's gate. -->
+          <div id="store-returns" style="display:none;">
+            <button class="btn btn-dark" onclick="storeGo('home')">&larr; Back</button>
+
+            <div class="card" id="rn-form-card" style="margin-top:10px; display:none;">
+              <h2 id="rn-form-title">New Return Note</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Enter what is physically going back, and separately anything that is not coming
+                back at all. What is left stays on hire. Nothing moves off the books until the
+                signed copy is back.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="field"><label>Note No</label>
+                  <input type="text" id="rn-ref" readonly style="width:110px; background:#F7F7F7;"></div>
+                <div class="field"><label>Going back to *</label>
+                  <select id="rn-supplier" style="width:230px;" onchange="onReturnSupplier()"></select></div>
+                <div class="field"><label>Date *</label>
+                  <input type="date" id="rn-date" style="width:150px;"></div>
+                <div class="field"><label>Returned from</label>
+                  <input type="text" id="rn-from" list="site-list" placeholder="Central store" style="width:160px;"></div>
+                <div class="field"><label>Driver</label>
+                  <input type="text" id="rn-driver" style="width:150px;"></div>
+                <div class="field"><label>Vehicle</label>
+                  <input type="text" id="rn-vehicle" style="width:130px;"></div>
+              </div>
+              <div class="grid-wrap" style="margin-top:10px;">
+                <table>
+                  <thead><tr>
+                    <th style="width:28%;">Material</th>
+                    <th style="width:10%;">On hire</th>
+                    <th style="width:12%;">Returning</th>
+                    <th style="width:11%;">Short</th>
+                    <th style="width:15%;">Why short</th>
+                    <th style="width:10%;">Left on hire</th>
+                    <th style="width:14%;">Remark</th>
+                  </tr></thead>
+                  <tbody id="rn-lines"></tbody>
+                </table>
+              </div>
+              <div class="form-row" style="margin-top:8px; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="field" style="flex:1; min-width:260px;"><label>Notes on the note</label>
+                  <input type="text" id="rn-notes" style="width:100%;"></div>
+                <div id="rn-totals" style="margin-left:auto; text-align:right; font-size:13px;"></div>
+              </div>
+              <div class="form-row" style="margin-top:10px; gap:10px;">
+                <button class="btn btn-primary" onclick="saveReturnNote()">Save note</button>
+                <button class="btn btn-gray" onclick="closeReturnForm()">Cancel</button>
+              </div>
+              <div class="status-msg" id="rn-status"></div>
+            </div>
+
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;">Return notes</h2>
+                  <p style="font-size:12px; color:#888; margin:0;">
+                    Print it, send it with the driver, and mark it signed when the copy comes back.</p>
+                </div>
+                <button class="btn btn-primary" onclick="newReturnNote()">New return note</button>
+              </div>
+              <div class="status-msg" id="rn-list-status"></div>
+              <div class="grid-wrap" style="max-height:52vh; margin-top:10px;">
+                <table>
+                  <thead><tr>
+                    <th style="width:11%; text-align:left;">Note</th>
+                    <th style="width:11%;">Date</th>
+                    <th style="width:22%; text-align:left;">Supplier</th>
+                    <th style="width:8%;">Lines</th>
+                    <th style="width:10%;">Returned</th>
+                    <th style="width:9%;">Short</th>
+                    <th style="width:11%;">Status</th>
+                    <th style="width:18%;"></th>
+                  </tr></thead>
+                  <tbody id="rn-list"></tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -4874,7 +5014,7 @@ function setUnitSelect(sel, unit) {
 
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
-const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports"];
+const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports","hire","returns"];
 // A store door on the dashboard opens the store screen already on the
 // panel that was asked for, rather than dropping the person on the
 // store home to click again.
@@ -4899,8 +5039,369 @@ function storeGo(which) {
     pickReport("stock", true);
   }
   if (which === "other") setMvKind(null);
+  if (which === "hire") loadHirePanel();
+  if (which === "returns") loadReturnsPanel();
   // The opening-stock table starts with one empty line ready to type in.
   if (which === "items" && !document.querySelectorAll("#opening-lines tr").length) addOpeningLine();
+}
+
+// ============ HIRED MATERIAL ============
+// The same store, one question added to it: whose is this? Scaffolding
+// standing in the yard is either ours or a trader's, and until the
+// ledger could say which, hired kit went missing in the owned pile and
+// the argument happened weeks later against an invoice.
+let hireOnHire = { suppliers: [], lines: 0 };
+let hireInLines = [];
+
+async function loadHirePanel() {
+  if (!storeItems || !storeItems.length) { try { await loadStoreItems(); } catch (e) {} }
+  if (!suppliers || !suppliers.length) {
+    try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { suppliers = suppliers || []; }
+  }
+  const dl = document.getElementById("lpo-supplier-list");
+  if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${s.name}"></option>`).join("");
+  refreshSiteList();
+  const d = document.getElementById("hin-date");
+  if (d && !d.value) d.value = isoLocal(new Date());
+  if (!hireInLines.length) addHireInLine();
+  await refreshOnHire();
+}
+
+async function refreshOnHire() {
+  const box = document.getElementById("hire-list");
+  try {
+    hireOnHire = await apiCall("/store/hire");
+  } catch (e) {
+    if (box) box.innerHTML = `<div class="empty-note">${errText(e)}</div>`;
+    return;
+  }
+  const badge = document.getElementById("hire-badge");
+  if (badge) {
+    badge.style.display = hireOnHire.lines ? "" : "none";
+    badge.textContent = hireOnHire.lines ? `${hireOnHire.lines} on hire` : "";
+  }
+  if (!box) return;
+  if (!hireOnHire.suppliers.length) {
+    box.innerHTML = `<div class="empty-note">Nothing is on hire at the moment.</div>`;
+    return;
+  }
+  box.innerHTML = hireOnHire.suppliers.map(g => `
+    <div class="card" style="margin:0 0 10px; background:#FBF8F6;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div>
+          <strong style="font-size:14px;">${g.supplier}</strong>
+          <span style="font-size:12px; color:#888; margin-left:8px;">
+            ${g.lines} material${g.lines === 1 ? "" : "s"} &middot; ${num(g.total_qty)} in all
+            ${g.longest_days ? `&middot; longest out <strong>${g.longest_days} day${g.longest_days === 1 ? "" : "s"}</strong>` : ""}</span>
+        </div>
+        <button class="btn btn-primary" onclick="newReturnNote(${g.supplier_id})">Return to this trader</button>
+      </div>
+      <div class="grid-wrap" style="margin-top:8px;">
+        <table>
+          <thead><tr>
+            <th style="width:46%; text-align:left;">Material</th>
+            <th style="width:18%;">On hire</th><th style="width:18%;">Since</th>
+            <th style="width:18%;">Days</th></tr></thead>
+          <tbody>${g.items.map(i => `
+            <tr>
+              <td style="text-align:left;">${i.name}</td>
+              <td>${num(i.qty)} ${i.unit || ""}</td>
+              <td>${i.since || "-"}</td>
+              <td${i.days > 60 ? ' style="color:#C0392B; font-weight:600;"' : ""}>${i.days || "-"}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>`).join("");
+}
+
+function addHireInLine(line) {
+  hireInLines.push(Object.assign({ item_id: null, description: "", qty: "", notes: "" }, line || {}));
+  renderHireInLines();
+}
+function removeHireInLine(i) { hireInLines.splice(i, 1); renderHireInLines(); }
+function onHireInField(i, field, value) {
+  hireInLines[i][field] = value;
+  if (field === "description") {
+    const m = (storeItems || []).find(x => (x.name || "").toLowerCase() === value.trim().toLowerCase());
+    hireInLines[i].item_id = m ? m.id : null;
+  }
+}
+
+function renderHireInLines() {
+  const body = document.getElementById("hin-lines");
+  if (!body) return;
+  body.innerHTML = hireInLines.map((l, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
+            oninput="onHireInField(${i}, 'description', this.value)" style="width:100%;"
+            placeholder="Start typing a material already on the list"></td>
+      <td><input type="text" value="${l.qty}" oninput="onHireInField(${i}, 'qty', this.value)"
+            style="width:100%; text-align:right;"></td>
+      <td><input type="text" value="${(l.notes || "").replace(/"/g, "&quot;")}"
+            oninput="onHireInField(${i}, 'notes', this.value)" style="width:100%;"></td>
+      <td><button class="btn btn-gray" onclick="removeHireInLine(${i})">&times;</button></td>
+    </tr>`).join("");
+}
+
+async function saveHireIn() {
+  const v = id => (document.getElementById(id).value || "").trim();
+  const lines = hireInLines
+    .filter(l => l.item_id && (parseFloat(l.qty) || 0) > 0)
+    .map(l => ({ item_id: l.item_id, qty: parseFloat(l.qty) || 0, notes: l.notes || "" }));
+  if (!v("hin-supplier")) { showStatus("hin-status", "warn", "Name the trader it is hired from."); return; }
+  if (!lines.length) {
+    showStatus("hin-status", "warn",
+      "Add at least one material with a quantity. Materials must already be on the material list - "
+      + "add them there first if they are new.");
+    return;
+  }
+  try {
+    const r = await apiCall("/store/hire/in", { method: "POST", body: JSON.stringify({
+      supplier_name: v("hin-supplier"), received_on: v("hin-date"),
+      location: v("hin-location"), reference: v("hin-ref"),
+      incharge: v("hin-incharge"), lines,
+    })});
+    showStatus("hin-status", "ok", r.detail);
+    hireInLines = []; addHireInLine();
+    ["hin-ref"].forEach(id => document.getElementById(id).value = "");
+    await refreshOnHire();
+  } catch (e) { showStatus("hin-status", "err", errText(e)); }
+}
+
+// ============ RETURN NOTES ============
+let rnLines = [];
+let rnEditingId = null;
+
+async function loadReturnsPanel() {
+  if (!suppliers || !suppliers.length) {
+    try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { suppliers = suppliers || []; }
+  }
+  refreshSiteList();
+  if (!cachedDownloadToken) refreshDownloadToken();
+  await refreshReturnList();
+}
+
+async function refreshReturnList() {
+  const body = document.getElementById("rn-list");
+  if (!body) return;
+  let rows = [];
+  try { rows = await apiCall("/store/returns"); }
+  catch (e) { showStatus("rn-list-status", "err", errText(e)); return; }
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty-note">No return notes yet.</td></tr>`;
+    return;
+  }
+  const pill = s => {
+    const c = { draft: ["#EFEBE6", "#5B5B5B"], issued: ["#FDF0D5", "#8A6100"],
+                confirmed: ["#DFF3E3", "#2E7D32"], cancelled: ["#FBE0DE", "#C0392B"] }[s]
+             || ["#EFEBE6", "#5B5B5B"];
+    return `<span class="pill" style="background:${c[0]}; color:${c[1]};">${s}</span>`;
+  };
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td style="text-align:left;"><strong>${r.ref}</strong></td>
+      <td>${r.return_date || "-"}</td>
+      <td style="text-align:left;">${r.supplier || "-"}</td>
+      <td>${r.lines}</td>
+      <td>${num(r.total_returned)}</td>
+      <td${r.total_short ? ' style="color:#C0392B; font-weight:600;"' : ""}>${r.total_short ? num(r.total_short) : "-"}</td>
+      <td>${pill(r.status)}${r.received_by ? `<div style="font-size:11px; color:#888;">${r.received_by}</div>` : ""}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'pdf')">PDF</button>
+        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'excel')">Excel</button>
+        ${r.status !== "confirmed" && r.status !== "cancelled"
+          ? `<button class="btn btn-gray" onclick="editReturnNote(${r.id})">Edit</button>
+             <button class="btn btn-primary" onclick="confirmReturn(${r.id}, '${r.ref}')">Signed &amp; back</button>` : ""}
+      </td>
+    </tr>`).join("");
+}
+
+async function printReturn(id, fmt) {
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) {
+    showStatus("rn-list-status", "err", "Could not prepare the download - check the connection.");
+    return;
+  }
+  window.open(`${API}/export/store/return/${id}?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}`, "_blank");
+}
+
+async function newReturnNote(supplierId) {
+  rnEditingId = null;
+  rnLines = [];
+  document.getElementById("rn-form-card").style.display = "block";
+  document.getElementById("rn-form-title").textContent = "New Return Note";
+  document.getElementById("rn-ref").value = "(on save)";
+  document.getElementById("rn-date").value = isoLocal(new Date());
+  ["rn-from", "rn-driver", "rn-vehicle", "rn-notes"].forEach(id => document.getElementById(id).value = "");
+  showStatus("rn-status", null);
+  // Only traders who actually have material out can be returned to.
+  if (!hireOnHire.suppliers || !hireOnHire.suppliers.length) {
+    try { hireOnHire = await apiCall("/store/hire"); } catch (e) { hireOnHire = { suppliers: [] }; }
+  }
+  const sel = document.getElementById("rn-supplier");
+  sel.innerHTML = hireOnHire.suppliers.length
+    ? hireOnHire.suppliers.map(g => `<option value="${g.supplier_id}">${g.supplier}</option>`).join("")
+    : `<option value="">Nothing is on hire</option>`;
+  if (supplierId) sel.value = String(supplierId);
+  onReturnSupplier();
+  window.scrollTo(0, 0);
+}
+
+// The lines come from what is actually on hire from the chosen trader,
+// so a note can never be written for material he never sent.
+function onReturnSupplier() {
+  const sid = parseInt(document.getElementById("rn-supplier").value || "0", 10);
+  const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === sid);
+  rnLines = (g ? g.items : []).map(i => ({
+    item_id: i.item_id, description: i.name, unit: i.unit,
+    qty_on_hire: i.qty, qty_returned: "", qty_short: "", short_reason: "", notes: "",
+  }));
+  renderReturnLines();
+}
+
+function onRnField(i, field, value) {
+  rnLines[i][field] = value;
+  if (field === "qty_returned" || field === "qty_short") {
+    const active = document.activeElement;
+    const pos = active && active.selectionStart;
+    renderReturnLines();
+    const row = document.querySelectorAll("#rn-lines tr")[i];
+    if (row) {
+      const box = row.querySelectorAll("input")[{ qty_returned: 0, qty_short: 1 }[field]];
+      if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+    return;
+  }
+  renderReturnTotals();
+}
+
+function renderReturnLines() {
+  const body = document.getElementById("rn-lines");
+  if (!body) return;
+  if (!rnLines.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">Nothing is on hire from this trader.</td></tr>`;
+    renderReturnTotals();
+    return;
+  }
+  body.innerHTML = rnLines.map((l, i) => {
+    const ret = parseFloat(l.qty_returned) || 0, sh = parseFloat(l.qty_short) || 0;
+    const left = (l.qty_on_hire || 0) - ret - sh;
+    const over = left < -1e-9;
+    return `<tr${over ? ' style="background:#FFF1F0;"' : ""}>
+      <td style="text-align:left;">${l.description}</td>
+      <td style="text-align:right;">${num(l.qty_on_hire)} ${l.unit || ""}</td>
+      <td><input type="text" value="${l.qty_returned}" oninput="onRnField(${i}, 'qty_returned', this.value)"
+            style="width:100%; text-align:right;"></td>
+      <td><input type="text" value="${l.qty_short}" oninput="onRnField(${i}, 'qty_short', this.value)"
+            style="width:100%; text-align:right;"></td>
+      <td><select onchange="onRnField(${i}, 'short_reason', this.value)" style="width:100%;"
+            ${sh > 0 ? "" : "disabled"}>
+            <option value=""${l.short_reason ? "" : " selected"}>-</option>
+            <option value="lost"${l.short_reason === "lost" ? " selected" : ""}>Lost</option>
+            <option value="damaged"${l.short_reason === "damaged" ? " selected" : ""}>Damaged</option>
+            <option value="on site"${l.short_reason === "on site" ? " selected" : ""}>Still on site</option>
+          </select></td>
+      <td style="text-align:right; ${over ? "color:#C0392B; font-weight:600;" : "color:#666;"}">${num(left)}</td>
+      <td><input type="text" value="${(l.notes || "").replace(/"/g, "&quot;")}"
+            oninput="onRnField(${i}, 'notes', this.value)" style="width:100%;"></td>
+    </tr>`;
+  }).join("");
+  renderReturnTotals();
+}
+
+function renderReturnTotals() {
+  const el = document.getElementById("rn-totals");
+  if (!el) return;
+  const ret = rnLines.reduce((s, l) => s + (parseFloat(l.qty_returned) || 0), 0);
+  const sh = rnLines.reduce((s, l) => s + (parseFloat(l.qty_short) || 0), 0);
+  const left = rnLines.reduce((s, l) =>
+    s + Math.max(0, (l.qty_on_hire || 0) - (parseFloat(l.qty_returned) || 0) - (parseFloat(l.qty_short) || 0)), 0);
+  el.innerHTML = `
+    <div>Going back <strong style="margin-left:8px;">${num(ret)}</strong></div>
+    <div style="${sh ? "color:#C0392B;" : ""}">Short <strong style="margin-left:8px;">${num(sh)}</strong></div>
+    <div style="color:#666;">Staying on hire <strong style="margin-left:8px;">${num(left)}</strong></div>`;
+}
+
+function closeReturnForm() {
+  document.getElementById("rn-form-card").style.display = "none";
+  rnEditingId = null;
+  showStatus("rn-status", null);
+}
+
+async function editReturnNote(id) {
+  try {
+    const r = await apiCall(`/store/returns/${id}`);
+    rnEditingId = r.id;
+    if (!hireOnHire.suppliers || !hireOnHire.suppliers.length) {
+      try { hireOnHire = await apiCall("/store/hire"); } catch (e) {}
+    }
+    document.getElementById("rn-form-card").style.display = "block";
+    document.getElementById("rn-form-title").textContent = `Edit ${r.ref}`;
+    document.getElementById("rn-ref").value = r.ref;
+    document.getElementById("rn-date").value = r.return_date || isoLocal(new Date());
+    document.getElementById("rn-from").value = r.from_location || "";
+    document.getElementById("rn-driver").value = r.driver || "";
+    document.getElementById("rn-vehicle").value = r.vehicle || "";
+    document.getElementById("rn-notes").value = r.notes || "";
+    const sel = document.getElementById("rn-supplier");
+    sel.innerHTML = `<option value="${r.supplier_id}">${r.supplier}</option>`;
+    sel.value = String(r.supplier_id);
+    rnLines = r.lines.map(l => ({
+      item_id: l.item_id, description: l.description, unit: l.unit,
+      qty_on_hire: l.qty_on_hire, qty_returned: l.qty_returned || "",
+      qty_short: l.qty_short || "", short_reason: l.short_reason || "", notes: l.notes || "",
+    }));
+    renderReturnLines();
+    showStatus("rn-status", null);
+    window.scrollTo(0, 0);
+  } catch (e) { showStatus("rn-list-status", "err", errText(e)); }
+}
+
+async function saveReturnNote() {
+  const v = id => (document.getElementById(id).value || "").trim();
+  const sid = parseInt(v("rn-supplier") || "0", 10);
+  if (!sid) { showStatus("rn-status", "warn", "Nothing is on hire to return."); return; }
+  const lines = rnLines
+    .filter(l => (parseFloat(l.qty_returned) || 0) > 0 || (parseFloat(l.qty_short) || 0) > 0)
+    .map(l => ({ item_id: l.item_id, description: l.description, unit: l.unit,
+                 qty_on_hire: l.qty_on_hire,
+                 qty_returned: parseFloat(l.qty_returned) || 0,
+                 qty_short: parseFloat(l.qty_short) || 0,
+                 short_reason: l.short_reason || "", notes: l.notes || "" }));
+  if (!lines.length) {
+    showStatus("rn-status", "warn", "Enter what is going back, or what is short.");
+    return;
+  }
+  const missing = lines.find(l => l.qty_short > 0 && !l.short_reason);
+  if (missing) {
+    showStatus("rn-status", "warn", `${missing.description}: say why it is short.`);
+    return;
+  }
+  const body = { supplier_id: sid, return_date: v("rn-date"), from_location: v("rn-from"),
+                 driver: v("rn-driver"), vehicle: v("rn-vehicle"), notes: v("rn-notes"), lines };
+  try {
+    const r = rnEditingId
+      ? await apiCall(`/store/returns/${rnEditingId}`, { method: "PUT", body: JSON.stringify(body) })
+      : await apiCall("/store/returns", { method: "POST", body: JSON.stringify(body) });
+    closeReturnForm();
+    await refreshReturnList();
+    await refreshOnHire();
+    showStatus("rn-list-status", "ok",
+      `${r.ref} saved. Print it and send it with the driver, then mark it signed when it comes back.`);
+  } catch (e) { showStatus("rn-status", "err", errText(e)); }
+}
+
+async function confirmReturn(id, ref) {
+  const who = prompt(`${ref}: who signed for it at the supplier's end?`, "");
+  if (who === null) return;
+  try {
+    const r = await apiCall(`/store/returns/${id}/confirm`, {
+      method: "POST", body: JSON.stringify({ received_by: (who || "").trim() }) });
+    await refreshReturnList();
+    await refreshOnHire();
+    showStatus("rn-list-status", "ok", r.detail);
+  } catch (e) { showStatus("rn-list-status", "err", errText(e)); }
 }
 
 // Every open request with materials still due, one Record delivery
@@ -4961,6 +5462,10 @@ async function loadStoreHome() {
       apiCall("/store/stock").catch(() => storeStockCache || []),
     ]);
     storeStockCache = stk;
+    // The hire badge on the tile, so what is out on hire is visible
+    // without going looking for it. Quietly - the store home must not
+    // fail over a badge.
+    refreshOnHire().catch(() => {});
     const all = stock.rows || [];
     // Everything the company holds, wherever it is: in the central store,
     // out at a site, or split between them. The columns say which.
@@ -4996,10 +5501,29 @@ async function loadStoreHome() {
                   cell: r => `<td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>` },
       total:    { t: "Total held", w: "11%",
                   cell: r => `<td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>` },
+      whose:    { t: "Whose", w: "15%", cell: r => {
+                    const h = hireByCode[r.code];
+                    if (!h || !h.hired) return `<td style="font-size:12px; color:#888;">ours</td>`;
+                    const names = Object.keys(h.hired_from || {});
+                    const who = names.length === 1 ? names[0] : `${names.length} traders`;
+                    const full = names.map(n => `${n}: ${h.hired_from[n]}`).join(", ");
+                    return `<td style="font-size:12px;" title="${full.replace(/"/g, "&quot;")}">
+                      ${h.owned ? `${num(h.owned)} ours` : ""}
+                      ${h.owned ? "<br>" : ""}<span style="color:#8A6100; font-weight:600;">${num(h.hired)} hired</span>
+                      <span style="color:#888;"> (${who})</span></td>`;
+                  } },
       flag:     { t: "", w: "11%",
                   cell: r => `<td>${r.low ? '<span style="color:#C0392B; font-size:11.5px; font-weight:600;">low</span>' : ""}</td>` },
     };
-    const homeKeys = orderColumns("home-stock", Object.keys(COLS));
+    // Whose it is only earns a column once something is actually on
+    // hire - a store that never hires should not be asked the question.
+    const hireByCode = {};
+    (storeStockCache || []).forEach(s => {
+      if (s.hired) hireByCode[s.code] = { owned: s.owned, hired: s.hired, hired_from: s.hired_from };
+    });
+    const anyHired = Object.keys(hireByCode).length > 0;
+    const homeKeys = orderColumns("home-stock",
+      Object.keys(COLS).filter(k => k !== "whose" || anyHired));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
@@ -5007,7 +5531,7 @@ async function loadStoreHome() {
       ${homeKeys.map(k => COLS[k].cell(r)).join("")}
       </tr>
       <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
-        <td colspan="8" style="text-align:left; padding:0;">
+        <td colspan="${homeKeys.length}" style="text-align:left; padding:0;">
           <div id="sdc-${r.code}" style="padding:16px 34px 16px 20px;"></div>
         </td></tr>`).join("");
   } catch (e) {

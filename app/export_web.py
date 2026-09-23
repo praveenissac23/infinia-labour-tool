@@ -1967,3 +1967,294 @@ def build_material_request_pdf(mr: dict):
                                     ("TOPPADDING", (0, 0), (-1, -1), 6),
                                     ("ALIGN", (0, 0), (-1, -1), "CENTER")]))]
     doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
+
+
+# ---- Hire return note ------------------------------------------------
+# The paper that settles a hire at the trader's gate. Three quantities
+# per line - on hire, going back, short - because that is what an
+# argument needs, and a signature block for each side, because a figure
+# nobody signed is only ever one party's word.
+
+def _return_rows(note: dict):
+    rows = []
+    for i, l in enumerate(note.get("lines") or [], 1):
+        short = float(l.get("qty_short") or 0)
+        rows.append({
+            "no": i,
+            "description": l.get("description") or "",
+            "unit": l.get("unit") or "",
+            "on_hire": float(l.get("qty_on_hire") or 0),
+            "returned": float(l.get("qty_returned") or 0),
+            "short": short,
+            "reason": (l.get("short_reason") or "") if short else "",
+            "notes": l.get("notes") or "",
+        })
+    return rows
+
+
+def _n(v):
+    """A quantity as people write it: 12 not 12.0, 12.5 kept."""
+    v = float(v or 0)
+    return str(int(v)) if abs(v - int(v)) < 1e-9 else f"{v:,.2f}"
+
+
+def build_hire_return_pdf(note: dict):
+    """The return note on one A4 page, for the driver to carry."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10 * mm, bottomMargin=12 * mm,
+                            leftMargin=12 * mm, rightMargin=12 * mm,
+                            title=note.get("ref", "Return Note"))
+    W = doc.width
+    styles = getSampleStyleSheet()
+    grid = colors.HexColor("#8C8C8C")
+
+    def P(t, size=8.5, bold=False, align=TA_LEFT, colour="#1F2429", leading=None):
+        return Paragraph(str(t if t is not None else ""), ParagraphStyle(
+            f"r{size}{bold}{align}{colour}", parent=styles["Normal"], fontSize=size,
+            leading=leading or size + 2.6, alignment=align,
+            fontName="Helvetica-Bold" if bold else "Helvetica",
+            textColor=colors.HexColor(colour)))
+
+    el = []
+    logo = _logo_image(width_mm=58)
+    company = [P("M09 Bin Bishr Building", 8),
+               P("Abu Hail,  Dubai , United Arab Emirates", 8),
+               P("TRN 100602393900003", 8)]
+    # The logo prints at 58mm, so its column must not be narrower than
+    # that or it runs over the address beside it.
+    band = Table([[logo or "", company, P("MATERIAL RETURN NOTE", 13, align=TA_RIGHT)]],
+                 colWidths=[W * 0.32, W * 0.30, W * 0.38])
+    band.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, 0), 4), ("RIGHTPADDING", (0, 0), (0, 0), 12),
+        ("LEFTPADDING", (1, 0), (-1, -1), 8), ("RIGHTPADDING", (1, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BOX", (0, 0), (-1, -1), 0.6, grid),
+    ]))
+    el.append(band)
+    el.append(Spacer(1, 7))
+
+    def box(title, rows):
+        head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.495])
+        head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2E3238")),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 3),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        body = [[P(k, 8, colour="#3B3F44"), P(v if v not in ("", None) else "-", 8, bold=True)]
+                for k, v in rows]
+        bt = Table(body, colWidths=[W * 0.175, W * 0.32])
+        bt.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("BOX", (0, 0), (-1, -1), 0.5, grid),
+        ]))
+        return [head, bt]
+
+    left = box("RETURNED TO", [("Supplier", note.get("supplier")),
+                               ("Attention", note.get("received_by") or ""),
+                               ("Returned from", note.get("from_location") or "Central store")])
+    right = box("RETURN DETAILS", [("Note No", note.get("ref")),
+                                   ("Date", note.get("return_date")),
+                                   ("Driver", note.get("driver")),
+                                   ("Vehicle", note.get("vehicle"))])
+    hdr = Table([[left, right]], colWidths=[W * 0.5, W * 0.5])
+    hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                             ("LEFTPADDING", (0, 0), (0, 0), 0), ("RIGHTPADDING", (0, 0), (0, 0), 6),
+                             ("LEFTPADDING", (1, 0), (1, 0), 6), ("RIGHTPADDING", (1, 0), (1, 0), 0)]))
+    el.append(hdr)
+    el.append(Spacer(1, 9))
+
+    rows = _return_rows(note)
+    # Balance is spelled out rather than left to subtraction: without it
+    # a partial return reads as though the rest went missing, which is
+    # the argument this document exists to prevent.
+    nums = ("On hire", "Returned", "Short", "Still on hire")
+    head = ["#", "Material", "Unit", "On hire", "Returned", "Short", "Still on hire",
+            "Reason / remarks"]
+    data = [[P(h, 7.5, bold=True, colour="#FFFFFF",
+               align=TA_RIGHT if h in nums else TA_LEFT)
+             for h in head]]
+    for r in rows:
+        remark = " / ".join(x for x in (r["reason"].title() if r["reason"] else "", r["notes"]) if x)
+        bal = r["on_hire"] - r["returned"] - r["short"]
+        data.append([
+            P(r["no"], 8), P(r["description"], 8.5),
+            P(r["unit"], 8),
+            P(_n(r["on_hire"]), 8.5, align=TA_RIGHT),
+            P(_n(r["returned"]), 8.5, bold=True, align=TA_RIGHT),
+            P(_n(r["short"]) if r["short"] else "-", 8.5, bold=bool(r["short"]),
+              align=TA_RIGHT, colour="#C0392B" if r["short"] else "#1F2429"),
+            P(_n(bal) if bal > 1e-9 else "-", 8.5, align=TA_RIGHT,
+              colour="#3B3F44" if bal > 1e-9 else "#1F2429"),
+            P(remark, 8, colour="#3B3F44"),
+        ])
+    tot_hire = sum(r["on_hire"] for r in rows)
+    tot_ret = sum(r["returned"] for r in rows)
+    tot_short = sum(r["short"] for r in rows)
+    tot_bal = tot_hire - tot_ret - tot_short
+    data.append([P(""), P("TOTAL", 9, bold=True), P(""),
+                 P(_n(tot_hire), 9, bold=True, align=TA_RIGHT),
+                 P(_n(tot_ret), 9, bold=True, align=TA_RIGHT),
+                 P(_n(tot_short) if tot_short else "-", 9, bold=True, align=TA_RIGHT,
+                   colour="#C0392B" if tot_short else "#1F2429"),
+                 P(_n(tot_bal) if tot_bal > 1e-9 else "-", 9, bold=True, align=TA_RIGHT),
+                 P("")])
+    widths = [W * 0.035, W * 0.27, W * 0.055, W * 0.085, W * 0.09, W * 0.075,
+              W * 0.10, W * 0.29]
+    lt = Table(data, colWidths=widths, repeatRows=1)
+    lt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E3238")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.4, grid),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#EFEBE6")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]))
+    el.append(lt)
+    el.append(Spacer(1, 6))
+
+    if tot_short:
+        el.append(P(f"{_n(tot_short)} item(s) recorded as not returned. "
+                    "Signing below confirms this quantity as agreed by both parties.",
+                    8.5, bold=True, colour="#C0392B"))
+        el.append(Spacer(1, 4))
+    if tot_bal > 1e-9:
+        el.append(P(f"{_n(tot_bal)} item(s) remain on hire and are not part of this return.",
+                    8.5, colour="#3B3F44"))
+        el.append(Spacer(1, 4))
+    if tot_short or tot_bal > 1e-9:
+        el.append(Spacer(1, 2))
+    if (note.get("notes") or "").strip():
+        el.append(P("Notes", 8, colour="#3B3F44"))
+        for ln in str(note["notes"]).splitlines():
+            if ln.strip():
+                el.append(P(ln.strip(), 8.5))
+        el.append(Spacer(1, 6))
+
+    # Two signatures: ours on the way out, theirs on receipt. The
+    # trader's box is the whole point of the document.
+    ours = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER)]
+    _sig = signature_file()
+    if _sig:
+        try:
+            from reportlab.platypus import Image as RLImage
+            ours.append(Spacer(1, 2))
+            _w, _h = _fit_box(_sig, 34, 13)
+            ours.append(RLImage(_sig, width=_w * mm, height=_h * mm))
+        except Exception:
+            ours.append(Spacer(1, 13 * mm))
+    else:
+        ours.append(Spacer(1, 13 * mm))
+    ours.append(P("Delivered by / Authorised", 8, align=TA_CENTER, colour="#3B3F44"))
+
+    theirs = [P(f"For {note.get('supplier') or 'the supplier'}", 8.5, align=TA_CENTER),
+              Spacer(1, 15 * mm),
+              P("Name, signature &amp; stamp", 8, align=TA_CENTER, colour="#3B3F44"),
+              P("Date: ______________", 8, align=TA_CENTER, colour="#3B3F44")]
+
+    sig = Table([[ours, theirs]], colWidths=[W * 0.48, W * 0.48])
+    sig.setStyle(TableStyle([
+        ("BOX", (0, 0), (0, 0), 0.5, grid), ("BOX", (1, 0), (1, 0), 0.5, grid),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    el.append(Spacer(1, 4))
+    el.append(sig)
+    doc.build(el)
+    buf.seek(0)
+    return buf
+
+
+def build_hire_return_excel(note: dict):
+    """The same note as a spreadsheet, set to print on one A4 page."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Return Note"
+    thin = Side(style="thin", color="8C8C8C")
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill = PatternFill("solid", fgColor="2E3238")
+    tot_fill = PatternFill("solid", fgColor="EFEBE6")
+
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "INFINIA CONTRACTING L.L.C  -  MATERIAL RETURN NOTE"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    pairs = [("Note No", note.get("ref", "")), ("Date", note.get("return_date", "")),
+             ("Supplier", note.get("supplier", "")),
+             ("Returned from", note.get("from_location") or "Central store"),
+             ("Driver", note.get("driver", "")), ("Vehicle", note.get("vehicle", ""))]
+    r = 3
+    for i, (k, v) in enumerate(pairs):
+        c = 1 if i % 2 == 0 else 4
+        ws.cell(row=r + i // 2, column=c, value=k).font = Font(bold=True, size=9)
+        ws.cell(row=r + i // 2, column=c + 1, value=v).font = Font(size=9)
+    r += (len(pairs) + 1) // 2 + 1
+
+    nums = ("On hire", "Returned", "Short", "Still on hire")
+    head = ["#", "Material", "Unit", "On hire", "Returned", "Short", "Still on hire",
+            "Reason / remarks"]
+    for i, h in enumerate(head, 1):
+        c = ws.cell(row=r, column=i, value=h)
+        c.font = Font(bold=True, color="FFFFFF", size=9)
+        c.fill = head_fill
+        c.border = box
+        c.alignment = Alignment(horizontal="right" if h in nums else "left", wrap_text=True)
+    rows = _return_rows(note)
+    for j, row in enumerate(rows, 1):
+        remark = " / ".join(x for x in (row["reason"].title() if row["reason"] else "", row["notes"]) if x)
+        bal = row["on_hire"] - row["returned"] - row["short"]
+        for i, v in enumerate([row["no"], row["description"], row["unit"], row["on_hire"],
+                               row["returned"], row["short"] or "", bal or "", remark], 1):
+            c = ws.cell(row=r + j, column=i, value=v)
+            c.border = box
+            c.font = Font(size=9, bold=(i == 6 and bool(row["short"])),
+                          color="C0392B" if (i == 6 and row["short"]) else "000000")
+            c.alignment = Alignment(horizontal="right" if i in (4, 5, 6, 7) else "left",
+                                    wrap_text=(i == 8))
+    last = r + len(rows) + 1
+    ws.cell(row=last, column=2, value="TOTAL").font = Font(bold=True, size=10)
+    ws.cell(row=last, column=4, value=sum(x["on_hire"] for x in rows)).font = Font(bold=True, size=10)
+    ws.cell(row=last, column=5, value=sum(x["returned"] for x in rows)).font = Font(bold=True, size=10)
+    short_total = sum(x["short"] for x in rows)
+    ws.cell(row=last, column=6, value=short_total or "").font = Font(bold=True, size=10, color="C0392B")
+    bal_total = sum(x["on_hire"] - x["returned"] - x["short"] for x in rows)
+    ws.cell(row=last, column=7, value=bal_total or "").font = Font(bold=True, size=10)
+    for i in range(1, 9):
+        ws.cell(row=last, column=i).fill = tot_fill
+        ws.cell(row=last, column=i).border = box
+
+    sr = last + 2
+    if short_total:
+        ws.merge_cells(start_row=sr, start_column=1, end_row=sr, end_column=8)
+        ws.cell(row=sr, column=1,
+                value=f"{_n(short_total)} item(s) recorded as not returned. "
+                      "Signing below confirms this quantity as agreed by both parties.")
+        ws.cell(row=sr, column=1).font = Font(bold=True, size=9, color="C0392B")
+        sr += 2
+    if bal_total:
+        ws.merge_cells(start_row=sr, start_column=1, end_row=sr, end_column=8)
+        ws.cell(row=sr, column=1,
+                value=f"{_n(bal_total)} item(s) remain on hire and are not part of this return.")
+        ws.cell(row=sr, column=1).font = Font(size=9)
+        sr += 2
+    ws.cell(row=sr, column=1, value="For Infinia Contracting L.L.C").font = Font(bold=True, size=9)
+    ws.cell(row=sr, column=5, value=f"For {note.get('supplier') or 'the supplier'}").font = Font(bold=True, size=9)
+    ws.cell(row=sr + 3, column=1, value="Delivered by / Authorised").font = Font(size=9)
+    ws.cell(row=sr + 3, column=5, value="Name, signature & stamp").font = Font(size=9)
+    ws.cell(row=sr + 4, column=5, value="Date: ______________").font = Font(size=9)
+
+    for col, w in zip("ABCDEFGH", (5, 34, 8, 10, 10, 9, 11, 28)):
+        ws.column_dimensions[col].width = w
+    ws.print_area = f"A1:H{sr + 5}"
+    ws.page_setup.orientation = "portrait"
+    ws.page_setup.fitToWidth = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf

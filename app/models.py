@@ -280,6 +280,80 @@ class Supplier(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class HireReturn(Base):
+    """
+    The paper that goes with the lorry when hired material goes back.
+
+    A hire is only ever settled at the trader's gate, and settled once:
+    what was on hire, what is physically going back, and what is not
+    coming back at all. Without a document both sides signed, the
+    argument happens weeks later against an invoice, with nothing to put
+    against it but memory - which is how a shortage of four becomes a
+    claim for twelve.
+
+    status walks the journey of the paper itself:
+      draft     - being prepared, nothing has left the yard
+      issued    - printed and gone with the driver
+      confirmed - signed by the trader and back with us. ONLY at this
+                  point does the stock move, because until the trader
+                  has signed, the material is still ours to account for.
+      cancelled - abandoned; the numbering keeps the gap
+    """
+    __tablename__ = "hire_returns"
+
+    id = Column(Integer, primary_key=True)
+    ref = Column(String, unique=True, nullable=False, index=True)    # RN-0001
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
+    supplier_name = Column(String, default="")      # as printed, even if renamed later
+    return_date = Column(Date, nullable=False, index=True)
+    # Where it is going back from - the yard, or straight off a site.
+    from_location = Column(String, default="")
+    driver = Column(String, default="")
+    vehicle = Column(String, default="")
+    status = Column(String, default="draft", index=True)
+    notes = Column(Text, default="")
+    # Filled when the signed copy comes back, so the register can show
+    # at a glance which returns are still unacknowledged.
+    received_by = Column(String, default="")        # who signed at the trader's end
+    confirmed_on = Column(Date, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    lines = relationship("HireReturnLine", back_populates="ret",
+                         cascade="all, delete-orphan", order_by="HireReturnLine.id")
+    supplier = relationship("Supplier")
+
+
+class HireReturnLine(Base):
+    """
+    One material on a return note.
+
+    Three quantities, because three is what an argument needs: what was
+    on hire, what is going back on this lorry, and what is not coming
+    back. They do not have to add up - a partial return leaves the rest
+    on hire, which is normal and should not look like a loss.
+
+    qty_short is the only figure that costs money, so it carries a
+    reason: lost, damaged, or still standing on a site.
+    """
+    __tablename__ = "hire_return_lines"
+
+    id = Column(Integer, primary_key=True)
+    return_id = Column(Integer, ForeignKey("hire_returns.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("store_items.id"), nullable=True, index=True)
+    description = Column(String, default="")        # as printed
+    unit = Column(String, default="pcs")
+    qty_on_hire = Column(Float, default=0.0)        # the position when the note was written
+    qty_returned = Column(Float, default=0.0)       # physically going back
+    qty_short = Column(Float, default=0.0)          # not coming back at all
+    short_reason = Column(String, default="")       # lost | damaged | on site
+    notes = Column(String, default="")
+
+    ret = relationship("HireReturn", back_populates="lines")
+    item = relationship("StoreItem")
+
+
 class PurchaseOrder(Base):
     """A local purchase order - the paper the supplier works from.
 
@@ -392,11 +466,15 @@ class StoreMovement(Base):
     truth and no chance of a balance drifting away from its history.
 
     kind:
-      'in'       - received into the central store (purchase/delivery)
-      'out'      - issued from central store to a site
-      'return'   - returnable item coming back from a site
-      'adjust'   - correction after a stock count (qty may be negative)
-      'transfer' - moved between two sites
+      'in'          - received into the central store (purchase/delivery)
+      'out'         - issued from central store to a site
+      'return'      - returnable item coming back from a site
+      'adjust'      - correction after a stock count (qty may be negative)
+      'transfer'    - moved between two sites
+      'lost'        - written off where it stood: lost or damaged
+      'hire_return' - hired material handed back to the trader it came
+                      from, so it leaves our books entirely rather than
+                      moving to another location of ours
     location is where the stock ENDS UP; from_location is where it came
     from (used by 'out', 'return' and 'transfer').
     """
@@ -408,6 +486,13 @@ class StoreMovement(Base):
     from_location = Column(String, default="")     # "" = central store
     location = Column(String, default="")          # "" = central store
     incharge = Column(String, default="")          # who took responsibility
+    # WHOSE this stock is, which is a different question from who it was
+    # bought from. Empty means ours. A supplier here means the quantity
+    # is hired in from that trader and has to go back to him - the same
+    # scaffold standard can stand in the yard under both, and without
+    # this column the two are indistinguishable, which is how hired kit
+    # gets lost in the owned pile and argued over on return.
+    owner_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
     supplier = Column(String, default="")
     unit_cost = Column(Float, default=0.0)
     reference = Column(String, default="")         # DO / invoice number

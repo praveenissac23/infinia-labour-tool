@@ -2696,7 +2696,7 @@ def _ever_stocked(db) -> set:
     return {iid for (iid,) in db.query(M.item_id).filter(M.kind == "in").distinct().all()}
 
 
-def _stock_map(db: Session, upto: date = None):
+def _stock_map(db: Session, upto: date = None, by_owner: bool = False):
     """
     Current quantity of every item at every location, derived from the
     movement ledger rather than stored - so a balance can never drift
@@ -2704,6 +2704,12 @@ def _stock_map(db: Session, upto: date = None):
 
     Returns {(item_id, location): qty}. 'upto' gives the position as at
     a date, which is what makes stock-as-at reporting possible.
+
+    by_owner returns {(item_id, location, owner_id): qty} instead, where
+    owner_id None means ours and a supplier id means hired in from that
+    trader. Every caller that does not ask for it gets exactly the
+    figures it got before, summed across owners - the yard holding 240
+    standards is still 240 whoever they belong to.
 
     Summed by the database, not in Python. The first version loaded
     every movement as an object and added them up one by one - fine
@@ -2716,23 +2722,127 @@ def _stock_map(db: Session, upto: date = None):
       out/return/transfer -> -qty at from_location, +qty at location
     """
     M = models.StoreMovement
-    base = db.query(M.item_id, M.kind, M.from_location, M.location, func.sum(M.qty))
+    cols = [M.item_id, M.kind, M.from_location, M.location]
+    if by_owner:
+        cols.append(M.owner_id)
+    base = db.query(*cols, func.sum(M.qty))
     if upto:
         base = base.filter(M.moved_on <= upto)
-    rows = base.group_by(M.item_id, M.kind, M.from_location, M.location).all()
+    rows = base.group_by(*cols).all()
     stock = {}
     def add(key, q):
         stock[key] = stock.get(key, 0) + q
-    for item_id, kind, frm, loc, total in rows:
+    for row in rows:
+        if by_owner:
+            item_id, kind, frm, loc, owner, total = row
+            # Whose it is travels with the quantity, so a key is only
+            # ever added to by movements of the same ownership - hired
+            # stock cannot be issued out of the owned pile.
+            here, there = (item_id, frm, owner), (item_id, loc, owner)
+        else:
+            item_id, kind, frm, loc, total = row
+            here, there = (item_id, frm), (item_id, loc)
         total = float(total or 0)
         if kind in ("in", "adjust"):
-            add((item_id, loc), total)
-        elif kind == "lost":
-            add((item_id, frm), -total)
+            add(there, total)
+        elif kind in ("lost", "hire_return"):
+            # Both leave our books where they stood: one written off,
+            # the other handed back to the trader who owns it.
+            add(here, -total)
         elif kind in ("out", "return", "transfer"):
-            add((item_id, frm), -total)
-            add((item_id, loc), total)
+            add(here, -total)
+            add(there, total)
     return stock
+
+
+def _hire_positions(db: Session, supplier_id: int):
+    """Where a trader's material actually stands: {(item_id, location): qty}.
+
+    A hire does not sit in one place. Sixty standards arrive in the yard
+    and fifty go up at a site, so settling the hire against the yard
+    alone drives it to minus fifty while the site still shows the rest -
+    the balance nets out and the ledger stops describing anything real.
+    """
+    return {(i, loc): q for (i, loc, owner), q in _stock_map(db, by_owner=True).items()
+            if owner == supplier_id and q > 1e-9}
+
+
+def _draw_from(positions, item_id, qty, prefer=""):
+    """Take a quantity off a trader's material, from where it is.
+
+    The place the lorry loaded from goes first, then anywhere else
+    holding it, so the ledger records the return against the locations
+    that really gave it up. Returns [(location, qty)], and shortens the
+    positions it was given so several draws can run off one pool.
+    """
+    out = []
+    here = sorted([(loc, q) for (i, loc), q in positions.items() if i == item_id and q > 1e-9],
+                  key=lambda x: (x[0] != prefer, x[0]))
+    left = qty
+    for loc, have in here:
+        if left <= 1e-9:
+            break
+        take = min(have, left)
+        positions[(item_id, loc)] = have - take
+        out.append((loc, take))
+        left -= take
+    return out, left
+
+
+def _has_hired_stock(db: Session, item_id: int) -> bool:
+    """Whether any of this material is standing on hire - used only to
+    word a message, so a yard with nothing hired is never told its own
+    stock is 'ours' as though there were another kind."""
+    return db.query(models.StoreMovement.id).filter(
+        models.StoreMovement.item_id == item_id,
+        models.StoreMovement.owner_id.isnot(None)).first() is not None
+
+
+def _on_hire(db: Session, supplier_id: int = None, upto: date = None):
+    """What is standing on hire right now, and since when.
+
+    Returns one entry per (item, supplier), carrying the quantity still
+    out and the date it first came in - which is what turns "60
+    standards" into "60 standards, out 34 days".
+    """
+    stock = _stock_map(db, upto=upto, by_owner=True)
+    held = {}
+    for (item_id, _loc, owner), qty in stock.items():
+        if owner is None or abs(qty) < 1e-9:
+            continue
+        if supplier_id is not None and owner != supplier_id:
+            continue
+        held[(item_id, owner)] = held.get((item_id, owner), 0) + qty
+    if not held:
+        return []
+    # When each hire started, taken as the first receipt of that
+    # material from that trader - good enough to age a hire by, and it
+    # needs no extra record kept in step with the ledger.
+    firsts = dict(
+        ((i, o), d) for i, o, d in
+        db.query(models.StoreMovement.item_id, models.StoreMovement.owner_id,
+                 func.min(models.StoreMovement.moved_on))
+          .filter(models.StoreMovement.kind == "in",
+                  models.StoreMovement.owner_id.isnot(None))
+          .group_by(models.StoreMovement.item_id, models.StoreMovement.owner_id).all())
+    items = {i.id: i for i in db.query(models.StoreItem).all()}
+    sups = {s.id: s for s in db.query(models.Supplier).all()}
+    today = _dubai_today()
+    out = []
+    for (item_id, owner), qty in held.items():
+        it, sup = items.get(item_id), sups.get(owner)
+        since = firsts.get((item_id, owner))
+        out.append({
+            "item_id": item_id,
+            "code": it.code if it else "", "name": it.name if it else "(removed)",
+            "unit": it.unit if it else "", "item_type": it.item_type if it else "",
+            "supplier_id": owner, "supplier": sup.name if sup else "(removed)",
+            "qty": round(qty, 2),
+            "since": since.isoformat() if since else "",
+            "days": (today - since).days if since else 0,
+        })
+    out.sort(key=lambda r: (r["supplier"].lower(), r["name"].lower()))
+    return out
 
 
 def _supplier_key(name: str) -> str:
@@ -3166,6 +3276,12 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
     items = db.query(models.StoreItem).filter(models.StoreItem.active == True).all()  # noqa: E712
     stock = _stock_map(db)
     stocked = _ever_stocked(db)
+    # Whose it is, alongside how much there is. Only built when anything
+    # is actually on hire, so a store that never hires pays nothing for
+    # the question and sees no column about it.
+    owned_map = _stock_map(db, by_owner=True)
+    hired_any = any(o is not None and abs(q) > 1e-9 for (_i, _l, o), q in owned_map.items())
+    sup_names = ({s.id: s.name for s in db.query(models.Supplier).all()} if hired_any else {})
     rows = []
     for it in items:
         at_central = stock.get((it.id, CENTRAL), 0)
@@ -3184,14 +3300,387 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
                           "qty": round(qty, 2), "reorder_level": it.reorder_level,
                           "low": qty <= it.reorder_level and it.reorder_level > 0 and it.id in stocked})
         else:
-            rows.append({"item_id": it.id, "code": it.code, "name": it.name,
-                          "category": it.category, "unit": it.unit, "item_type": it.item_type,
-                          "central": round(at_central, 2), "out_at_sites": round(out_total, 2),
-                          "total": round(at_central + out_total, 2),
-                          "by_site": {k: round(v, 2) for k, v in by_site.items()},
-                          "reorder_level": it.reorder_level,
-                          "low": at_central <= it.reorder_level and it.reorder_level > 0 and it.id in stocked})
+            row = {"item_id": it.id, "code": it.code, "name": it.name,
+                   "category": it.category, "unit": it.unit, "item_type": it.item_type,
+                   "central": round(at_central, 2), "out_at_sites": round(out_total, 2),
+                   "total": round(at_central + out_total, 2),
+                   "by_site": {k: round(v, 2) for k, v in by_site.items()},
+                   "reorder_level": it.reorder_level,
+                   "low": at_central <= it.reorder_level and it.reorder_level > 0 and it.id in stocked}
+            if hired_any:
+                # Split the same total by owner, so a row can never read
+                # as 240 of ours when 60 of them belong to a trader.
+                ours = hired = 0.0
+                by_owner = {}
+                for (iid, loc, owner), qty in owned_map.items():
+                    if iid != it.id or abs(qty) < 1e-9:
+                        continue
+                    if not _held_at_site(it) and loc != CENTRAL:
+                        continue
+                    if owner is None:
+                        ours += qty
+                    else:
+                        hired += qty
+                        nm = sup_names.get(owner, "(removed)")
+                        by_owner[nm] = round(by_owner.get(nm, 0) + qty, 2)
+                row["owned"] = round(ours, 2)
+                row["hired"] = round(hired, 2)
+                row["hired_from"] = by_owner
+            rows.append(row)
     return rows
+
+
+@app.get("/store/hire")
+def store_on_hire(supplier_id: int = None, db: Session = Depends(get_db),
+                   user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """Everything standing on hire, grouped by the trader it belongs to.
+
+    This is the exposure: what is out, from whom, and how long it has
+    been out. A hire nobody has looked at for four months is the one
+    that turns into an argument.
+    """
+    rows = _on_hire(db, supplier_id=supplier_id)
+    by_sup = {}
+    for r in rows:
+        g = by_sup.setdefault(r["supplier_id"], {
+            "supplier_id": r["supplier_id"], "supplier": r["supplier"],
+            "items": [], "lines": 0, "total_qty": 0.0, "longest_days": 0})
+        g["items"].append(r)
+        g["lines"] += 1
+        g["total_qty"] += r["qty"]
+        g["longest_days"] = max(g["longest_days"], r["days"])
+    groups = sorted(by_sup.values(), key=lambda g: -g["longest_days"])
+    for g in groups:
+        g["total_qty"] = round(g["total_qty"], 2)
+    return {"suppliers": groups,
+            "lines": sum(g["lines"] for g in groups),
+            "any": bool(groups)}
+
+
+@app.post("/store/hire/in")
+def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("store"))):
+    """Book hired material in, from a delivery note or against an order.
+
+    Hired stock arrives exactly like bought stock, at a location, on a
+    date - the one difference being that it stays the trader's, so it
+    is booked under his name and has to leave again under a return
+    note. Both routes in end at the same ledger entry; an order number
+    simply travels with it as the reference.
+    """
+    if "storekeeper" not in effective_permissions(user):
+        raise HTTPException(status_code=403,
+            detail="Only the store keeper records stock in and out.")
+    sup = _find_or_create_supplier(db, payload.supplier_name)
+    if not sup:
+        raise HTTPException(status_code=400, detail="Name the trader it is hired from.")
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="Add at least one material.")
+    if payload.received_on > _dubai_today():
+        raise HTTPException(status_code=400, detail="Date is in the future.")
+    reference = (payload.reference or "").strip()
+    if payload.order_id:
+        o = db.query(models.PurchaseOrder).filter(
+            models.PurchaseOrder.id == payload.order_id).first()
+        if not o:
+            raise HTTPException(status_code=400, detail="That purchase order was not found.")
+        reference = reference or o.ref
+    booked = []
+    for l in payload.lines:
+        if (l.qty or 0) <= 0:
+            continue
+        item = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
+        if not item:
+            raise HTTPException(status_code=400, detail="One of those materials is not on file.")
+        m = models.StoreMovement(
+            item_id=item.id, kind="in", qty=l.qty,
+            location=payload.location or CENTRAL,
+            owner_id=sup.id, supplier=sup.name,
+            incharge=_person_name(payload.incharge or ""),
+            reference=reference, notes=(l.notes or payload.notes or ""),
+            moved_on=payload.received_on, created_by=user.id)
+        db.add(m)
+        booked.append(f"{l.qty} {item.unit} {item.code}")
+    if not booked:
+        raise HTTPException(status_code=400, detail="Every line was blank.")
+    db.commit()
+    log_action(db, user.id, "hire_in",
+               f"from {sup.name}: " + ", ".join(booked[:6])
+               + (f" and {len(booked) - 6} more" if len(booked) > 6 else ""))
+    return {"ok": True, "supplier": sup.name, "supplier_id": sup.id,
+            "lines": len(booked),
+            "detail": f"{len(booked)} material(s) booked in on hire from {sup.name}."}
+
+
+SHORT_REASONS = ("lost", "damaged", "on site")
+
+
+def _next_return_ref(db):
+    """RN-0001 upward, read from the references themselves rather than
+    from row ids - a cancelled note keeps its number and a cleared table
+    starts again at one."""
+    best = 0
+    for (ref,) in db.query(models.HireReturn.ref).all():
+        m = re.match(r"RN-(\d+)$", (ref or "").strip())
+        if m:
+            best = max(best, int(m.group(1)))
+    return f"RN-{best + 1:04d}"
+
+
+def _return_dict(r, db=None):
+    return {
+        "id": r.id, "ref": r.ref, "supplier_id": r.supplier_id,
+        "supplier": r.supplier_name,
+        "return_date": r.return_date.isoformat() if r.return_date else "",
+        "from_location": r.from_location or "", "driver": r.driver or "",
+        "vehicle": r.vehicle or "", "status": r.status, "notes": r.notes or "",
+        "received_by": r.received_by or "",
+        "confirmed_on": r.confirmed_on.isoformat() if r.confirmed_on else "",
+        "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
+                   "unit": l.unit, "qty_on_hire": l.qty_on_hire,
+                   "qty_returned": l.qty_returned, "qty_short": l.qty_short,
+                   "short_reason": l.short_reason or "", "notes": l.notes or "",
+                   "still_on_hire": round((l.qty_on_hire or 0) - (l.qty_returned or 0)
+                                          - (l.qty_short or 0), 2)}
+                  for l in r.lines],
+        "total_returned": round(sum(l.qty_returned or 0 for l in r.lines), 2),
+        "total_short": round(sum(l.qty_short or 0 for l in r.lines), 2),
+    }
+
+
+@app.get("/store/returns")
+def list_hire_returns(status: str = "", db: Session = Depends(get_db),
+                       user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """The return register - every note raised, newest first."""
+    q = db.query(models.HireReturn).options(joinedload(models.HireReturn.lines))
+    if status:
+        q = q.filter(models.HireReturn.status == status)
+    rows = q.order_by(models.HireReturn.id.desc()).limit(500).all()
+    return [{"id": r.id, "ref": r.ref, "supplier": r.supplier_name,
+             "return_date": r.return_date.isoformat() if r.return_date else "",
+             "status": r.status, "driver": r.driver or "",
+             "lines": len(r.lines),
+             "total_returned": round(sum(l.qty_returned or 0 for l in r.lines), 2),
+             "total_short": round(sum(l.qty_short or 0 for l in r.lines), 2),
+             "received_by": r.received_by or "",
+             "confirmed_on": r.confirmed_on.isoformat() if r.confirmed_on else ""}
+            for r in rows]
+
+
+@app.get("/store/returns/{return_id}")
+def get_hire_return(return_id: int, db: Session = Depends(get_db),
+                     user: models.User = Depends(require_any_screen("store", "approvals"))):
+    r = db.query(models.HireReturn).filter(models.HireReturn.id == return_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    return _return_dict(r, db)
+
+
+def _fill_return_lines(db, r, lines, supplier_id):
+    """Replace a note's lines, refusing to send back more than is on
+    hire. The quantity on hire is read here rather than trusted from the
+    screen - the position may have moved since the note was opened."""
+    held = {h["item_id"]: h["qty"] for h in _on_hire(db, supplier_id=supplier_id)}
+    for l in list(r.lines):
+        db.delete(l)
+    db.flush()
+    kept = 0
+    for l in lines:
+        going = (l.qty_returned or 0) + (l.qty_short or 0)
+        if going <= 0:
+            continue
+        item = db.query(models.StoreItem).filter(
+            models.StoreItem.id == l.item_id).first() if l.item_id else None
+        on_hire = held.get(l.item_id, 0) if l.item_id else (l.qty_on_hire or 0)
+        if l.item_id and going > on_hire + 1e-9:
+            name = item.name if item else "that material"
+            raise HTTPException(status_code=400,
+                detail=f"{name}: only {round(on_hire, 2)} on hire, "
+                       f"but the note accounts for {round(going, 2)}.")
+        if (l.qty_short or 0) > 0 and (l.short_reason or "").strip().lower() not in SHORT_REASONS:
+            name = item.name if item else "a material"
+            raise HTTPException(status_code=400,
+                detail=f"{name}: say why {round(l.qty_short, 2)} are short "
+                       f"- lost, damaged, or on site.")
+        db.add(models.HireReturnLine(
+            return_id=r.id, item_id=l.item_id,
+            description=(l.description or (item.name if item else "")).strip(),
+            unit=(l.unit or (item.unit if item else "pcs")),
+            qty_on_hire=on_hire, qty_returned=l.qty_returned or 0,
+            qty_short=l.qty_short or 0,
+            short_reason=(l.short_reason or "").strip().lower(),
+            notes=(l.notes or "").strip()))
+        kept += 1
+    if not kept:
+        raise HTTPException(status_code=400,
+            detail="Nothing on the note - enter what is going back, or what is short.")
+
+
+@app.post("/store/returns")
+def create_hire_return(payload: schemas.HireReturnIn, db: Session = Depends(get_db),
+                        user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """Open a return note for one trader's material.
+
+    Nothing moves yet. The note is the paper that travels with the
+    lorry; the stock comes off our books only when it comes back
+    signed, because until then we are still holding it.
+    """
+    sup = None
+    if payload.supplier_id:
+        sup = db.query(models.Supplier).filter(
+            models.Supplier.id == payload.supplier_id).first()
+    if not sup and (payload.supplier_name or "").strip():
+        sup = _find_or_create_supplier(db, payload.supplier_name)
+    if not sup:
+        raise HTTPException(status_code=400, detail="Which trader is it going back to?")
+    r = models.HireReturn(
+        ref=_next_return_ref(db), supplier_id=sup.id, supplier_name=sup.name,
+        return_date=payload.return_date or _dubai_today(),
+        from_location=payload.from_location or "", driver=(payload.driver or "").strip(),
+        vehicle=(payload.vehicle or "").strip(), notes=(payload.notes or "").strip(),
+        status="draft", created_by=user.id)
+    db.add(r)
+    db.flush()
+    _fill_return_lines(db, r, payload.lines, sup.id)
+    db.commit()
+    db.refresh(r)
+    log_action(db, user.id, "hire_return_raised",
+               f"{r.ref} to {sup.name} ({len(r.lines)} line(s))")
+    return _return_dict(r, db)
+
+
+@app.put("/store/returns/{return_id}")
+def update_hire_return(return_id: int, payload: schemas.HireReturnIn,
+                        db: Session = Depends(get_db),
+                        user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """Correct a note before it is signed off. Once confirmed it is the
+    record of what both sides agreed, so it stops being editable."""
+    r = db.query(models.HireReturn).filter(models.HireReturn.id == return_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    if r.status == "confirmed":
+        raise HTTPException(status_code=400,
+            detail="This note is signed and settled - raise a new one for anything further.")
+    if r.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This note was cancelled.")
+    if payload.return_date:
+        r.return_date = payload.return_date
+    r.from_location = payload.from_location or ""
+    r.driver = (payload.driver or "").strip()
+    r.vehicle = (payload.vehicle or "").strip()
+    r.notes = (payload.notes or "").strip()
+    _fill_return_lines(db, r, payload.lines, r.supplier_id)
+    db.commit()
+    db.refresh(r)
+    log_action(db, user.id, "hire_return_edited", f"{r.ref} ({len(r.lines)} line(s))")
+    return _return_dict(r, db)
+
+
+@app.post("/store/returns/{return_id}/issue")
+def issue_hire_return(return_id: int, db: Session = Depends(get_db),
+                       user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """Printed and gone with the driver. Still nothing off the books."""
+    r = db.query(models.HireReturn).filter(models.HireReturn.id == return_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    if r.status != "draft":
+        raise HTTPException(status_code=400, detail=f"{r.ref} is already {r.status}.")
+    r.status = "issued"
+    db.commit()
+    log_action(db, user.id, "hire_return_issued", r.ref)
+    return {"ok": True, "detail": f"{r.ref} is out with the driver."}
+
+
+@app.post("/store/returns/{return_id}/confirm")
+def confirm_hire_return(return_id: int, payload: schemas.HireReturnConfirmIn,
+                         db: Session = Depends(get_db),
+                         user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """The signed copy is back: now the stock moves.
+
+    What went back leaves under 'hire_return'; what is short and not
+    coming back is written off under 'lost'. Both take the material off
+    our books, and both say whose it was, so the trader's position
+    closes at the figure his own man signed for.
+    """
+    r = (db.query(models.HireReturn).options(joinedload(models.HireReturn.lines))
+           .filter(models.HireReturn.id == return_id).first())
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    if r.status == "confirmed":
+        raise HTTPException(status_code=400, detail=f"{r.ref} is already settled.")
+    if r.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This note was cancelled.")
+    when = payload.confirmed_on or _dubai_today()
+    if when > _dubai_today():
+        raise HTTPException(status_code=400, detail="Date is in the future.")
+    # Check the whole note before writing any of it: half a return
+    # posted is worse than none, because nobody can see which half.
+    held = {h["item_id"]: h["qty"] for h in _on_hire(db, supplier_id=r.supplier_id)}
+    for l in r.lines:
+        if not l.item_id:
+            continue
+        going = (l.qty_returned or 0) + (l.qty_short or 0)
+        if going > held.get(l.item_id, 0) + 1e-9:
+            raise HTTPException(status_code=400,
+                detail=f"{l.description}: only {round(held.get(l.item_id, 0), 2)} still on hire, "
+                       f"but this note settles {round(going, 2)}. Edit the note first.")
+    # Taken off where it actually stands - the place the lorry loaded
+    # from first, then anywhere else holding it. One movement per
+    # location, so no location is driven negative to make a total agree.
+    positions = _hire_positions(db, r.supplier_id)
+    prefer = r.from_location or CENTRAL
+    for l in r.lines:
+        if not l.item_id:
+            continue
+        for qty, kind in (((l.qty_returned or 0), "hire_return"),
+                          ((l.qty_short or 0), "lost")):
+            if qty <= 0:
+                continue
+            draws, unmet = _draw_from(positions, l.item_id, qty, prefer)
+            if unmet > 1e-9:
+                raise HTTPException(status_code=400,
+                    detail=f"{l.description}: {round(unmet, 2)} cannot be accounted for - "
+                           "the position has moved since this note was written. Edit it first.")
+            for loc, took in draws:
+                db.add(models.StoreMovement(
+                    item_id=l.item_id, kind=kind, qty=took,
+                    from_location=loc, location=loc,
+                    owner_id=r.supplier_id, supplier=r.supplier_name,
+                    incharge=_person_name(payload.received_by or r.driver or ""),
+                    reference=r.ref,
+                    notes=(f"{l.short_reason} on {r.ref}" if kind == "lost"
+                           else f"returned on {r.ref}"),
+                    moved_on=when, created_by=user.id))
+    r.status = "confirmed"
+    r.received_by = (payload.received_by or "").strip()
+    r.confirmed_on = when
+    if (payload.notes or "").strip():
+        r.notes = ((r.notes or "") + "\n" + payload.notes.strip()).strip()
+    db.commit()
+    short = round(sum(l.qty_short or 0 for l in r.lines), 2)
+    log_action(db, user.id, "hire_return_confirmed",
+               f"{r.ref} to {r.supplier_name}: "
+               f"{round(sum(l.qty_returned or 0 for l in r.lines), 2)} returned"
+               + (f", {short} short" if short else ""))
+    return {"ok": True, "detail": f"{r.ref} settled." +
+            (f" {short} item(s) recorded short." if short else ""),
+            "total_short": short}
+
+
+@app.post("/store/returns/{return_id}/cancel")
+def cancel_hire_return(return_id: int, db: Session = Depends(get_db),
+                        user: models.User = Depends(require_any_screen("store", "approvals"))):
+    """Cancelled, never deleted - the number stays used, like an order."""
+    r = db.query(models.HireReturn).filter(models.HireReturn.id == return_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    if r.status == "confirmed":
+        raise HTTPException(status_code=400,
+            detail="This note is signed and settled - it cannot be cancelled.")
+    r.status = "cancelled"
+    db.commit()
+    log_action(db, user.id, "hire_return_cancelled", r.ref)
+    return {"ok": True, "detail": f"{r.ref} cancelled."}
 
 
 @app.get("/store/movements", response_model=list[schemas.StoreMovementOut])
@@ -3238,8 +3727,12 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")
-    if payload.kind not in ("in", "out", "return", "adjust", "transfer", "lost"):
+    if payload.kind not in ("in", "out", "return", "adjust", "transfer", "lost", "hire_return"):
         raise HTTPException(status_code=400, detail="Unknown movement type.")
+    if payload.owner_id is not None:
+        owner = db.query(models.Supplier).filter(models.Supplier.id == payload.owner_id).first()
+        if not owner:
+            raise HTTPException(status_code=400, detail="That hire supplier is not on file.")
     if payload.qty <= 0 and payload.kind != "adjust":
         raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
     if payload.moved_on > date.today():
@@ -3253,12 +3746,25 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
 
     # Don't allow issuing more than is actually held - a negative balance
     # means the ledger no longer describes anything real.
-    if payload.kind in ("out", "return", "transfer", "lost"):
-        have = _stock_map(db).get((item.id, payload.from_location), 0)
+    if payload.kind in ("out", "return", "transfer", "lost", "hire_return"):
+        # Asked of the owner's own pile, not the heap. Forty hired
+        # standards standing beside two hundred of ours cannot be issued
+        # as if there were two hundred and forty of the trader's - which
+        # is precisely the confusion that loses hired kit.
+        have = _stock_map(db, by_owner=True).get(
+            (item.id, payload.from_location, payload.owner_id), 0)
         if payload.qty > have + 1e-9:
             where = payload.from_location or "the central store"
+            whose = ""
+            if payload.owner_id is not None:
+                nm = db.query(models.Supplier).filter(
+                    models.Supplier.id == payload.owner_id).first()
+                whose = f" hired from {nm.name}" if nm else " hired"
+            else:
+                whose = " of ours" if _has_hired_stock(db, item.id) else ""
             raise HTTPException(status_code=400,
-                detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at {where}.")
+                detail=f"Only {round(have, 2)} {item.unit} of {item.name}{whose} "
+                       f"available at {where}.")
 
     m = models.StoreMovement(**payload.dict(), created_by=user.id)
     # Names are tidied wherever they enter the system, not only on the
@@ -5252,6 +5758,30 @@ def _lpo_html(o):
           <div class="sig">For Infinia Contracting LLC<div class="sigbox">{_sig_img()}</div>Authorized Signature</div>
         </div>
       </div>"""
+
+
+@app.get("/export/store/return/{return_id}")
+def export_hire_return(return_id: int, token: str, format: str = "pdf",
+                        inline: bool = False, db: Session = Depends(get_db)):
+    """The return note as paper. Kept under /export/store/ because the
+    proxy forwards only prefixes it already knows - an invented one has
+    cost a round trip more than once."""
+    auth.get_download_user_from_token(token, db)
+    r = (db.query(models.HireReturn).options(joinedload(models.HireReturn.lines))
+           .filter(models.HireReturn.id == return_id).first())
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    note = _return_dict(r, db)
+    safe = r.ref.replace("/", "")
+    if format == "excel":
+        buf = export_web.build_hire_return_excel(note)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={safe}.xlsx"})
+    buf = export_web.build_hire_return_pdf(note)
+    disp = "inline" if inline else "attachment"
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f"{disp}; filename={safe}.pdf"})
 
 
 @app.get("/export/purchase/{order_id}")
