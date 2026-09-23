@@ -4790,6 +4790,69 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     return _lpo_dict(o)
 
 
+@app.put("/store/purchase/orders/{order_id}")
+def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: Session = Depends(get_db),
+                           user: models.User = Depends(require_screen("approvals"))):
+    """Correct an order already raised - a line missed, a rate wrong, a
+    save made before it was ready. The number and the date first raised
+    stay put; everything else is replaced, the way editing a document
+    replaces its own content rather than starting a new one.
+
+    A cancelled order keeps the paper it was cancelled with - reissue by
+    raising a fresh one instead."""
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    if o.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This order is cancelled - raise a new one instead.")
+    if not (payload.supplier_name or "").strip():
+        raise HTTPException(status_code=400, detail="Enter the supplier.")
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="An order needs at least one line.")
+
+    supplier = _find_or_create_supplier(db, payload.supplier_name)
+    if supplier:
+        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms)):
+            if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
+                setattr(supplier, field, value.strip())
+
+    o.order_date = payload.order_date or o.order_date
+    o.terms = payload.terms or "Due on Receipt"
+    o.delivery_date = payload.delivery_date
+    o.supplier_ref = payload.supplier_ref or ""
+    o.supplier_id = supplier.id if supplier else None
+    o.supplier_name = (supplier.name if supplier else payload.supplier_name).strip()
+    o.supplier_address = payload.supplier_address or ""
+    o.supplier_trn = payload.supplier_trn or ""
+    o.plot_no = payload.plot_no or ""
+    o.contact_person = payload.contact_person or ""
+    o.mobile = payload.mobile or ""
+    o.email = payload.email or "purchase@infinia.ae"
+    o.job_scope = payload.job_scope or ""
+    o.project_location = payload.project_location or ""
+    o.discount_pct = payload.discount_pct or 0.0
+    o.notes = payload.notes or ""
+    o.terms_text = payload.terms_text or DEFAULT_LPO_TERMS
+
+    # Lines are replaced wholesale rather than matched and patched - the
+    # same as any other document correction, and simpler than reconciling
+    # which of them the person meant to keep, change or drop.
+    for l in list(o.lines):
+        db.delete(l)
+    db.flush()
+    for l in payload.lines:
+        if not (l.description or "").strip() and not l.item_id:
+            continue
+        db.add(models.PurchaseOrderLine(
+            order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
+            description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
+            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+    db.commit()
+    db.refresh(o)
+    log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))")
+    return _lpo_dict(o)
+
+
 @app.post("/store/purchase/orders/{order_id}/cancel")
 def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):

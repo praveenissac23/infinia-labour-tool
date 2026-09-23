@@ -7866,6 +7866,9 @@ let lpoRegister = [];
 let lpoLines = [];
 let lpoRequestLineIds = [];
 let lpoDefaults = { terms_default: "", terms_rental: "" };
+// Set while an existing order is open for correction; the form saves
+// over it instead of raising a new one. null means a fresh order.
+let lpoEditingId = null;
 
 let lpoPending = [];
 
@@ -8177,6 +8180,7 @@ async function loadLpoReport() {
     const cols = [r.group_label];
     if (r.group_by === "order") cols.push("Date", "Supplier", "Project location");
     r.measures.forEach(m => cols.push(m.label));
+    if (r.group_by === "order") cols.push("");
     head.innerHTML = cols.map((c, i) =>
       `<th style="${i === 0 || (r.group_by === "order" && i <= 3) ? "text-align:left;" : "text-align:right;"}">${c}</th>`).join("");
 
@@ -8198,6 +8202,12 @@ async function loadLpoReport() {
       }
       r.measures.forEach(m => cells.push(
         `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(row[m.key]) : money(row[m.key])}</td>`));
+      // Add another item, fix a line, redo a save made too soon - opens
+      // the same order back in the form rather than raising a new one.
+      if (r.group_by === "order") {
+        cells.push(`<td style="text-align:right;">${row.status === "cancelled" ? "" :
+          `<button class="btn btn-gray" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>`}</td>`);
+      }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
       const open = r.group_by === "order"
@@ -8209,6 +8219,7 @@ async function loadLpoReport() {
     if (r.group_by === "order") tcells.push("<td></td>", "<td></td>", "<td></td>");
     r.measures.forEach(m => tcells.push(
       `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(r.totals[m.key]) : money(r.totals[m.key])}</td>`));
+    if (r.group_by === "order") tcells.push("<td></td>");
     document.getElementById("lpr-total").innerHTML = tcells.join("");
     showStatus("lpr-status", null);
   } catch (e) {
@@ -8335,6 +8346,7 @@ async function downloadLpo(id, fmt) {
 async function newLpo() {
   const n = await apiCall("/store/purchase/next-no");
   lpoDefaults = n;
+  lpoEditingId = null;
   // The store in-charge leads an order raised from nothing; the queue
   // rebuilds the list round whoever asked when it fills the form.
   buildContactList(n.store_incharge || "");
@@ -8358,7 +8370,54 @@ async function newLpo() {
 
 function closeLpoForm() {
   document.getElementById("lpo-form-card").style.display = "none";
+  lpoEditingId = null;
   showStatus("lpo-status", null);
+}
+
+// Opens an already-raised order back in the form, to fix a missed line,
+// a wrong rate, or a save made before it was ready. Saving reissues the
+// same order rather than raising a new one.
+async function editLpo(id) {
+  switchScreen("purchase");
+  try {
+    const o = await apiCall(`/store/purchase/orders/${id}`);
+    if (o.status === "cancelled") {
+      showStatus("lpo-status", "warn", `${o.ref} is cancelled - raise a new order instead of editing it.`);
+      return;
+    }
+    lpoEditingId = o.id;
+    document.getElementById("lpo-form-card").style.display = "block";
+    document.getElementById("lpo-form-title").textContent = `Edit ${o.ref}`;
+    document.getElementById("lpo-ref").value = o.ref;
+    document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
+    document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
+    document.getElementById("lpo-delivery").value = o.delivery_date || "";
+    document.getElementById("lpo-supref").value = o.supplier_ref || "";
+    document.getElementById("lpo-supplier").value = o.supplier_name || "";
+    document.getElementById("lpo-trn").value = o.supplier_trn || "";
+    document.getElementById("lpo-plot").value = o.plot_no || "";
+    buildContactList(o.contact_person || "");
+    document.getElementById("lpo-contact").value = o.contact_person || "";
+    document.getElementById("lpo-mobile").value = o.mobile || "";
+    document.getElementById("lpo-scope").value = o.job_scope || "";
+    document.getElementById("lpo-location").value = o.project_location || "";
+    document.getElementById("lpo-discount").value = o.discount_pct || 0;
+    document.getElementById("lpo-notes").value = o.notes || "";
+    document.getElementById("lpo-termsset").value = "default";
+    document.getElementById("lpo-termstext").value = o.terms_text || "";
+    const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
+    lpoFormRun += 1;
+    lpoLines = [];
+    lpoRequestLineIds = [];
+    (o.lines || []).forEach(l => addLpoLine({
+      item_id: l.item_id, description: l.description, description2: l.description2 || "",
+      qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct,
+    }));
+    if (!lpoLines.length) addLpoLine();
+    window.scrollTo(0, 0);
+  } catch (e) {
+    showStatus("lpo-status", "err", errText(e));
+  }
 }
 
 function onLpoTermsSet() {
@@ -8598,9 +8657,13 @@ async function saveLpo() {
     lines,
   };
   try {
-    const r = await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
-    showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
+    const editing = lpoEditingId;
+    const r = editing
+      ? await apiCall(`/store/purchase/orders/${editing}`, { method: "PUT", body: JSON.stringify(body) })
+      : await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
+    showStatus("lpo-status", "ok", editing
+      ? `${r.ref} updated. Opening it in a new tab.`
+      : `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
     closeLpoForm();
     await loadPurchase();
     await openLpo(r.id, tab);
