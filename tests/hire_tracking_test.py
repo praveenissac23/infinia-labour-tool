@@ -205,5 +205,56 @@ ck(f'attendance and payroll untouched throughout: {before_payroll}',
 ck('August attendance still reads back',
    len(c.get('/attendance/2026-08-05', headers=H).json()) == 2)
 
+# ---- Stock booked under the wrong name, put right --------------------
+# Material can enter the store by several doors, and one of them did not
+# ask whose it was - so a hired quantity sat in the owned pile and the
+# hire list stayed empty. Correcting it must not invent a delivery: the
+# quantity changes hands where it stands and the total never moves.
+prop = c.post('/store/items', json={'name': 'L.D Props 5.0m', 'unit': 'pcs',
+                                    'item_type': 'returnable'}, headers=H).json()
+c.post('/store/items/opening', json={'lines': [
+    {'item_id': prop['id'], 'item_type': 'asset', 'qty': 150}]}, headers=H)
+before_total = stock_row(prop['id'])['total']
+ck('the wrongly-owned stock is there as ours', before_total == 150, before_total)
+ck('and shows on no hire list', not any(
+   i['item_id'] == prop['id'] for g in c.get('/store/hire', headers=H).json()['suppliers']
+   for i in g['items']))
+
+fix = c.post('/store/hire/reassign', json={
+    'item_id': prop['id'], 'qty': 150, 'location': '',
+    'from_owner_name': '', 'to_owner_name': 'Al Raha Scaffolding'}, headers=H)
+ck('the owner can be corrected', fix.status_code == 200, fix.text[:200])
+row = stock_row(prop['id'])
+ck('the total did not move - nothing was received', row['total'] == before_total, row)
+ck('but it is now hired, not ours', row['hired'] == 150 and row['owned'] == 0, row)
+onh = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
+       for i in g['items'] if i['item_id'] == prop['id']]
+ck('it appears on the hire list', len(onh) == 1 and onh[0]['qty'] == 150, onh)
+ck('carrying the date it went under that name', bool(onh[0]['since']), onh[0])
+
+ck('more than is held cannot be reassigned',
+   c.post('/store/hire/reassign', json={'item_id': prop['id'], 'qty': 999,
+          'from_owner_name': '', 'to_owner_name': 'Ghantoot'}, headers=H).status_code == 400)
+ck('and reassigning to the same name is refused',
+   c.post('/store/hire/reassign', json={'item_id': prop['id'], 'qty': 1,
+          'from_owner_name': 'Al Raha Scaffolding',
+          'to_owner_name': 'Al Raha Scaffolding'}, headers=H).status_code == 400)
+
+back = c.post('/store/hire/reassign', json={
+    'item_id': prop['id'], 'qty': 50, 'from_owner_name': 'Al Raha Scaffolding',
+    'to_owner_name': ''}, headers=H)
+ck('it can be put back to ours as well', back.status_code == 200, back.text[:200])
+row = stock_row(prop['id'])
+ck('leaving the split right', row['owned'] == 50 and row['hired'] == 100, row)
+ck('and the total still untouched', row['total'] == before_total, row)
+
+# ---- The door that did not ask is now shut --------------------------
+trap = c.post('/store/items', json={'name': 'Cantilever Frame', 'unit': 'pcs',
+                                    'item_type': 'rental', 'opening_qty': 20}, headers=H)
+ck('a rental material cannot take an opening quantity as ours',
+   trap.status_code == 400, f'{trap.status_code} {trap.text[:140]}')
+ck('and says where to book it instead',
+   'whose is it' in trap.text.lower() or 'hired' in trap.text.lower(), trap.text[:200])
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

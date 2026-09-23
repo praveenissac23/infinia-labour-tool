@@ -2818,11 +2818,16 @@ def _on_hire(db: Session, supplier_id: int = None, upto: date = None):
     # When each hire started, taken as the first receipt of that
     # material from that trader - good enough to age a hire by, and it
     # needs no extra record kept in step with the ledger.
+    # Any movement that first put the material under the trader's name
+    # counts, not receipts alone: stock booked as ours by mistake and
+    # corrected later arrives on hire by an adjustment, and a hire with
+    # no date beside it is the one nobody chases.
     firsts = dict(
         ((i, o), d) for i, o, d in
         db.query(models.StoreMovement.item_id, models.StoreMovement.owner_id,
                  func.min(models.StoreMovement.moved_on))
-          .filter(models.StoreMovement.kind == "in",
+          .filter(models.StoreMovement.kind.in_(("in", "adjust")),
+                  models.StoreMovement.qty > 0,
                   models.StoreMovement.owner_id.isnot(None))
           .group_by(models.StoreMovement.item_id, models.StoreMovement.owner_id).all())
     items = {i.id: i for i in db.query(models.StoreItem).all()}
@@ -3237,6 +3242,16 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     # a store that started on paper. Once anything has come in, the box
     # is ignored: the count is for the start, not a way to top up.
     never_received = existing.id not in _ever_stocked(db)
+    # A quantity typed here has no trader against it, so it can only be
+    # ours. Letting it through for a material marked rental is what put
+    # hired scaffolding into the owned pile and left the hire list
+    # empty - the type says what kind of thing it is, never whose.
+    if (is_new or never_received) and opening > 0 and existing.item_type == "rental":
+        raise HTTPException(status_code=400,
+            detail='This material is marked Rental (hired in), so a quantity here would be '
+                   'recorded as ours and would not show on hire. Use "Add stock to the store '
+                   'or a site" above, set "Whose is it" to hired, and name the trader - or '
+                   'change the type to Asset if it is ours.')
     if (is_new or never_received) and opening > 0:
         db.add(models.StoreMovement(
             item_id=existing.id, kind="in", qty=opening,
@@ -3681,6 +3696,79 @@ def cancel_hire_return(return_id: int, db: Session = Depends(get_db),
     db.commit()
     log_action(db, user.id, "hire_return_cancelled", r.ref)
     return {"ok": True, "detail": f"{r.ref} cancelled."}
+
+
+@app.post("/store/hire/reassign")
+def reassign_stock_owner(payload: dict = Body(...), db: Session = Depends(get_db),
+                          user: models.User = Depends(require_screen("store"))):
+    """Put stock under the right name when it went in under the wrong one.
+
+    Material booked as ours that is really a trader's, or the reverse.
+    Nothing physically moves, so nothing is received or issued: the
+    quantity is taken off one name and put on the other at the same
+    place, as two corrections that both say why. The ledger keeps the
+    mistake and the fix rather than pretending neither happened.
+    """
+    if "storekeeper" not in effective_permissions(user) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only someone who records stock can do this.")
+    try:
+        item_id = int((payload or {}).get("item_id") or 0)
+        qty = float((payload or {}).get("qty") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Check the material and quantity.")
+    item = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=400, detail="Pick a material.")
+    if qty <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
+
+    where = ((payload or {}).get("location") or "").strip()
+    if where:
+        site = db.query(models.Site).filter(func.lower(models.Site.code) == where.lower()).first()
+        if not site:
+            raise HTTPException(status_code=400, detail=f'"{where}" is not a site on file.')
+        where = site.code
+
+    def _owner(key_id, key_name):
+        oid = (payload or {}).get(key_id)
+        if oid:
+            o = db.query(models.Supplier).filter(models.Supplier.id == int(oid)).first()
+            if not o:
+                raise HTTPException(status_code=400, detail="That trader is not on file.")
+            return o
+        nm = ((payload or {}).get(key_name) or "").strip()
+        return _find_or_create_supplier(db, nm) if nm else None
+
+    frm = _owner("from_owner_id", "from_owner_name")     # None = ours
+    to = _owner("to_owner_id", "to_owner_name")          # None = ours
+    if (frm.id if frm else None) == (to.id if to else None):
+        raise HTTPException(status_code=400, detail="It is already under that name.")
+
+    have = _stock_map(db, by_owner=True).get((item.id, where, frm.id if frm else None), 0)
+    if qty > have + 1e-9:
+        whose = f"hired from {frm.name}" if frm else "ours"
+        place = where or "the central store"
+        raise HTTPException(status_code=400,
+            detail=f"Only {round(have, 2)} {item.unit} of {item.name} ({whose}) at {place}.")
+
+    was = frm.name if frm else "ours"
+    now = to.name if to else "ours"
+    note = f"Owner corrected: {was} -> {now}"
+    for signed, owner in ((-qty, frm), (qty, to)):
+        db.add(models.StoreMovement(
+            item_id=item.id, kind="adjust", qty=signed,
+            location=where, from_location=where,
+            owner_id=owner.id if owner else None,
+            supplier=owner.name if owner else "",
+            incharge=user.full_name or user.username,
+            reference="Owner correction", notes=note,
+            moved_on=_dubai_today(), created_by=user.id))
+    db.commit()
+    log_action(db, user.id, "stock_owner_corrected",
+               f"{qty:g} {item.unit} {item.code} at {where or 'central store'}: {was} -> {now}")
+    return {"ok": True,
+            "detail": f"{qty:g} {item.unit or ''} {item.name} is now "
+                      + (f"on hire from {now}." if to else "recorded as ours.")}
 
 
 @app.get("/store/movements", response_model=list[schemas.StoreMovementOut])
