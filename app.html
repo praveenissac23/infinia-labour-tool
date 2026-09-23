@@ -175,7 +175,17 @@
 
   /* Big tap targets on the store home - one per task, so it's obvious
      what each does without reading a manual. */
-  .store-tile { flex: 1 1 210px; min-width: 200px; border: 1px solid #E7CEC9; border-radius: 10px;
+  /* Five to a row, every row the same. Laid out as a grid rather than
+     wrapped flex: flex stretched whatever was left over to fill the
+     line, so a group of six put five up and left the sixth spanning
+     the full width on its own.
+     Each group holds five, so the column count steps 5 -> 3 -> 1 and
+     skips 4 and 2: those leave a single tile stranded on a row of its
+     own, which is the raggedness this replaced. */
+  .store-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  @media (max-width: 1150px) { .store-tiles { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px)  { .store-tiles { grid-template-columns: 1fr; } }
+  .store-tile { min-width: 0; border: 1px solid #E7CEC9; border-radius: 10px;
                 padding: 16px 18px; cursor: pointer; background: #FDF6F5; position: relative;
                 transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease,
                             background .15s ease; }
@@ -1638,7 +1648,7 @@
             <div class="card">
               <h2>What do you want to do?</h2>
               <div class="rep-group" style="margin-top:10px;">Every day</div>
-              <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <div class="store-tiles">
                 <div class="store-tile keeper-only" onclick="storeGo('give')">
                   <div class="store-tile-t">Move Material</div>
                   <div class="store-tile-s">Store to a site, back again, or site to site</div>
@@ -1659,6 +1669,9 @@
                   <div class="store-tile-t">Returns &amp; Corrections</div>
                   <div class="store-tile-s">Came back, moved, or wrong number</div>
                 </div>
+              </div>
+              <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
+              <div class="store-tiles">
                 <div class="store-tile" onclick="storeGo('hire')">
                   <div class="store-tile-t">Hired Material
                     <span id="hire-badge" class="pill" style="display:none; background:#FDF0D5; color:#8A6100;"></span></div>
@@ -1668,9 +1681,6 @@
                   <div class="store-tile-t">Return Notes</div>
                   <div class="store-tile-s">Send hired material back with signed paper</div>
                 </div>
-              </div>
-              <div class="rep-group" style="margin-top:16px;">Manage &amp; check</div>
-              <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div class="store-tile" onclick="storeGo('items')">
                   <div class="store-tile-t">Material List</div>
                   <div class="store-tile-s">Add or change materials and tools</div>
