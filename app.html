@@ -1497,7 +1497,7 @@
             <textarea id="lpo-termstext" rows="5" style="width:100%; margin-top:6px; font-size:12px;"></textarea>
 
             <div class="form-row" style="margin-top:12px; gap:10px;">
-              <button class="btn btn-primary" onclick="saveLpo()">Save &amp; Generate</button>
+              <button class="btn btn-primary" id="lpo-save-btn" onclick="saveLpo()">Save &amp; Generate</button>
               <button class="btn btn-gray" onclick="closeLpoForm()">Cancel</button>
             </div>
           </div>
@@ -8137,6 +8137,9 @@ async function lpoFromTicked() {
 let lprCatalog = null;
 let lprMeasures = ["orders", "sub_total", "vat", "total"];
 let lprTimer = null;
+// A line to show once the register has finished loading - set by
+// whatever sent the person here, so the reload does not wipe it.
+let lprFlash = null;
 
 function debouncedLpoReport() {
   clearTimeout(lprTimer);
@@ -8193,7 +8196,9 @@ async function loadLpoReport() {
       const cells = [];
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:left;"><strong>${row.label}</strong>${
-          row.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}</td>`);
+          row.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}${
+          row.edited && row.status !== "cancelled"
+            ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${row.edited_on}">edited</span>` : ""}</td>`);
         cells.push(`<td style="text-align:left;">${row.date || "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.supplier || "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
@@ -8221,7 +8226,8 @@ async function loadLpoReport() {
       `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(r.totals[m.key]) : money(r.totals[m.key])}</td>`));
     if (r.group_by === "order") tcells.push("<td></td>");
     document.getElementById("lpr-total").innerHTML = tcells.join("");
-    showStatus("lpr-status", null);
+    if (lprFlash) { showStatus("lpr-status", "ok", lprFlash); lprFlash = null; }
+    else showStatus("lpr-status", null);
   } catch (e) {
     showStatus("lpr-status", "err", errText(e));
   }
@@ -8352,6 +8358,7 @@ async function newLpo() {
   buildContactList(n.store_incharge || "");
   document.getElementById("lpo-form-card").style.display = "block";
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
+  document.getElementById("lpo-save-btn").textContent = "Save & Generate";
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
@@ -8388,6 +8395,8 @@ async function editLpo(id) {
     lpoEditingId = o.id;
     document.getElementById("lpo-form-card").style.display = "block";
     document.getElementById("lpo-form-title").textContent = `Edit ${o.ref}`;
+    // Not "Generate" - this order already exists and keeps its number.
+    document.getElementById("lpo-save-btn").textContent = "Save changes";
     document.getElementById("lpo-ref").value = o.ref;
     document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
     document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
@@ -8623,8 +8632,10 @@ function renderLpoTotals() {
 
 async function saveLpo() {
   // Claim the tab now, while this is still a click. Pointed at the
-  // order as soon as it has a number.
-  const tab = window.open("", "_blank");
+  // order as soon as it has a number. An edit is a correction to an
+  // order that already exists, so nothing is generated and no tab is
+  // taken - it just saves back onto the same order.
+  const tab = lpoEditingId ? null : window.open("", "_blank");
   const lines = lpoLines
     .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
@@ -8661,11 +8672,18 @@ async function saveLpo() {
     const r = editing
       ? await apiCall(`/store/purchase/orders/${editing}`, { method: "PUT", body: JSON.stringify(body) })
       : await apiCall("/store/purchase/orders", { method: "POST", body: JSON.stringify(body) });
-    showStatus("lpo-status", "ok", editing
-      ? `${r.ref} updated. Opening it in a new tab.`
-      : `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
     closeLpoForm();
     await loadPurchase();
+    if (editing) {
+      // Back to the register, where the order now reads as edited. The
+      // corrected order is there to open or download whenever it is
+      // wanted - saving a correction is not the moment to force it open.
+      lprFlash = `${r.ref} updated - it is marked edited on the register.`;
+      switchScreen("lporegister");
+      return;
+    }
+    showStatus("lpo-status", "ok",
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
     await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));

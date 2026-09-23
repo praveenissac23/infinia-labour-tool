@@ -4610,7 +4610,12 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
                                       "sub_total": 0.0, "vat": 0.0, "total": 0.0,
                                       "date": o.order_date.isoformat() if o.order_date else "",
                                       "supplier": o.supplier_name or "", "site": o.project_location or "",
-                                      "job": o.job_scope or "", "status": o.status, "id": o.id})
+                                      "job": o.job_scope or "", "status": o.status, "id": o.id,
+                                      # Corrected since it was first raised, so the
+                                      # register shows the change on the order itself
+                                      # rather than leaving it to look untouched.
+                                      "edited": bool(o.updated_at),
+                                      "edited_on": o.updated_at.strftime("%d %b %Y") if o.updated_at else ""})
             r["orders"].add(o.po_no)
             r["lines"] += 1
             r["qty"] += (l.qty or 0)

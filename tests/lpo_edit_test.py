@@ -74,6 +74,23 @@ reg = c.get('/store/purchase/orders', headers=H).json()
 ck('still only one order on the register', len(reg) == 1, len(reg))
 ck('the register copy matches the correction', reg[0]['lines'] == 2, reg[0]['lines'])
 
+# ---- The register marks it edited, and only after a real edit --------
+def reg_row(ref):
+    rows = c.get('/store/purchase/report?group_by=order&measures=total&status=all',
+                 headers=H).json()['rows']
+    return next((r for r in rows if r['label'] == ref), None)
+
+row = reg_row(orig_ref)
+ck('the edited order is on the register', row is not None, row)
+ck('and the register marks it edited', row and row['edited'] is True, row)
+ck('with the date it was corrected', row and row['edited_on'], row)
+
+fresh = c.post('/store/purchase/orders', json={
+    'order_date': '2026-09-03', 'supplier_name': 'Metrabar Trading',
+    'lines': [{'description': 'Binding wire', 'qty': 5, 'unit': 'kg', 'rate': 12}]}, headers=H).json()
+ck('an order never edited is not marked edited',
+   reg_row(fresh['ref'])['edited'] is False, reg_row(fresh['ref']))
+
 # ---- Editing without a supplier or without lines is refused ----------
 bad1 = c.put(f"/store/purchase/orders/{po['id']}", json={
     'order_date': orig_date, 'supplier_name': '', 'lines': [{'description': 'x', 'qty': 1, 'rate': 1}]}, headers=H)
