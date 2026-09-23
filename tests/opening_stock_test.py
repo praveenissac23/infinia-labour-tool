@@ -121,5 +121,40 @@ ck('each addition is a receipt in the ledger',
 ck('a site engineer cannot add stock', c.post('/store/items/opening', json={'lines': [{'item_id': cem['id'], 'qty': 1}]}, headers=SITE).status_code == 403)
 ck('an empty table is refused', c.post('/store/items/opening', json={'lines': []}, headers=KEEPER).status_code == 400)
 
+# ---- Stock can be put straight onto a site, not only the yard --------
+site_add = c.post('/store/items/opening', json={'location': '901', 'lines': [
+    {'item_id': drill['id'], 'item_type': 'asset', 'qty': 3}]}, headers=KEEPER)
+ck('stock can be added straight to a site', site_add.status_code == 200, site_add.text[:200])
+drow = next(s for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] == drill['id'])
+ck('and it lands at the site, not the central store', drow['by_site'].get('901') == 3, drow)
+ck('the reply says where it went', 'site 901' in site_add.json()['detail'], site_add.json()['detail'])
+ck('a site that is not on file is refused',
+   c.post('/store/items/opening', json={'location': 'NOWHERE', 'lines': [
+       {'item_id': drill['id'], 'qty': 1}]}, headers=KEEPER).status_code == 400)
+
+# ---- Hired stock added here really goes on hire ----------------------
+# Marking a line 'rental' says what kind of thing it is, never whose it
+# is. Left at that, a hired quantity was booked as ours and the hire
+# list stayed empty - the whole point of the hire tracking missed by one
+# unasked question.
+trap = c.post('/store/items/opening', json={'lines': [
+    {'item_id': drill['id'], 'item_type': 'rental', 'qty': 150}]}, headers=KEEPER)
+ck('a rental line with nobody named is refused, not silently owned',
+   trap.status_code == 400, f'{trap.status_code} {trap.text[:160]}')
+ck('and the refusal says to name the trader',
+   'hired from' in trap.text.lower() or 'trader' in trap.text.lower(), trap.text[:200])
+
+hired = c.post('/store/items/opening', json={
+    'owner_name': 'Al Raha Scaffolding', 'lines': [
+        {'item_id': drill['id'], 'item_type': 'rental', 'qty': 150}]}, headers=KEEPER)
+ck('naming the trader books it in on hire', hired.status_code == 200, hired.text[:200])
+on_hire = c.get('/store/hire', headers=KEEPER).json()
+ck('and it shows on the hire list', on_hire['lines'] == 1, on_hire)
+ck('under the trader it is hired from',
+   on_hire['suppliers'][0]['supplier'] == 'Al Raha Scaffolding', on_hire['suppliers'][0])
+ck('for the quantity added', on_hire['suppliers'][0]['items'][0]['qty'] == 150, on_hire['suppliers'][0])
+drow = next(s for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] == drill['id'])
+ck('the stock list separates it from what we own', drow['hired'] == 150, drow)
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

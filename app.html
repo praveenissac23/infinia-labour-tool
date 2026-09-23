@@ -1928,13 +1928,29 @@
             </div>
 
             <div class="card" style="margin-top:12px; border:1px solid #D6E4F0;">
-              <h2 style="color:#1F618D;">Add stock to the store</h2>
-              <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:820px;">
-                Put material into the central store by hand, any time - the shelves on day one, or a
-                few things that came in without paperwork. Pick a material, check its type, type the
-                quantity; add as many lines as you need and record them together. Each goes into the
-                ledger as a receipt, so it is traceable like a delivery.
+              <h2 style="color:#1F618D;">Add stock to the store or a site</h2>
+              <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:860px;">
+                Put material in by hand, any time - the shelves on day one, or a few things that
+                came in without paperwork. Say where it is and whose it is, pick a material, type
+                the quantity; add as many lines as you need and record them together. Each goes
+                into the ledger as a receipt, so it is traceable like a delivery.
               </p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-start; margin-bottom:10px;">
+                <div class="field"><label>Where it is</label>
+                  <input type="text" id="op-location" list="site-list" placeholder="Central store"
+                         style="width:190px;"
+                         title="Leave empty for the central store, or name a site to put it straight there.">
+                  <div style="font-size:11px; color:#888; margin-top:3px;">Empty = central store</div></div>
+                <div class="field"><label>Whose is it</label>
+                  <select id="op-owner-kind" style="width:190px;" onchange="onOpeningOwnerKind()">
+                    <option value="ours">Ours - we own it</option>
+                    <option value="hired">Hired in from a trader</option>
+                  </select></div>
+                <div class="field" id="op-owner-wrap" style="display:none;"><label>Hired from *</label>
+                  <input type="text" id="op-owner" list="lpo-supplier-list" placeholder="Trader"
+                         style="width:220px;">
+                  <div style="font-size:11px; color:#888; margin-top:3px;">It will show on hire and go back on a return note</div></div>
+              </div>
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
                   <th style="width:4%;">#</th><th style="width:44%;">Material</th>
@@ -1945,7 +1961,7 @@
               </table>
               <div class="form-row" style="margin-top:10px; align-items:center; gap:10px; flex-wrap:wrap;">
                 <button class="btn btn-gray" onclick="addOpeningLine()">+ Add another material</button>
-                <button class="btn btn-primary" onclick="saveOpeningStock()">Add to store</button>
+                <button class="btn btn-primary" id="op-save-btn" onclick="saveOpeningStock()">Add stock</button>
               </div>
               <div class="status-msg" id="opening-status"></div>
             </div>
@@ -5051,8 +5067,20 @@ function storeGo(which) {
   if (which === "other") setMvKind(null);
   if (which === "hire") loadHirePanel();
   if (which === "returns") loadReturnsPanel();
-  // The opening-stock table starts with one empty line ready to type in.
-  if (which === "items" && !document.querySelectorAll("#opening-lines tr").length) addOpeningLine();
+  // The opening-stock table starts with one empty line ready to type in,
+  // and needs the site and trader lists behind its two pickers.
+  if (which === "items") {
+    if (!document.querySelectorAll("#opening-lines tr").length) addOpeningLine();
+    refreshSiteList();
+    onOpeningOwnerKind();
+    (async () => {
+      if (!suppliers || !suppliers.length) {
+        try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { return; }
+      }
+      const dl = document.getElementById("lpo-supplier-list");
+      if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${s.name}"></option>`).join("");
+    })();
+  }
 }
 
 // ============ HIRED MATERIAL ============
@@ -8572,6 +8600,15 @@ function addOpeningLine() {
   tr.querySelector(".il-item-txt").focus();
 }
 
+// Hired stock needs a trader named, so the box for it only appears when
+// it is going to be used.
+function onOpeningOwnerKind() {
+  const hired = document.getElementById("op-owner-kind").value === "hired";
+  document.getElementById("op-owner-wrap").style.display = hired ? "" : "none";
+  const btn = document.getElementById("op-save-btn");
+  if (btn) btn.textContent = hired ? "Book in on hire" : "Add stock";
+}
+
 async function saveOpeningStock() {
   const lines = [...document.querySelectorAll("#opening-lines tr")].map(tr => ({
     item_id: parseInt(tr.querySelector(".il-item").value, 10) || 0,
@@ -8587,10 +8624,29 @@ async function saveOpeningStock() {
   }
   const ready = lines.filter(l => l.item_id && l.qty > 0);
   if (!ready.length) { showStatus("opening-status", "warn", "Add at least one material with a quantity."); return; }
-  if (!confirm(`Add ${ready.length} material(s) to the central store?`)) return;
+
+  const where = (document.getElementById("op-location").value || "").trim();
+  const hired = document.getElementById("op-owner-kind").value === "hired";
+  const owner = (document.getElementById("op-owner").value || "").trim();
+  if (hired && !owner) {
+    showStatus("opening-status", "warn", "Name the trader it is hired from.");
+    return;
+  }
+  // Marking a line Rental only says what kind of thing it is, never
+  // whose it is. Saying so here saves discovering it on an empty hire
+  // list a week later.
+  if (!hired && ready.some(l => l.item_type === "rental")) {
+    showStatus("opening-status", "warn",
+      'A line is marked "Rental (hired in)" but "Whose is it" says ours. '
+      + 'Set it to "Hired in from a trader" and name them, or change the line to Asset.');
+    return;
+  }
+  const place = where ? `site ${where}` : "the central store";
+  if (!confirm(`Add ${ready.length} material(s) to ${place}${hired ? `, on hire from ${owner}` : ""}?`)) return;
   try {
     const r = await apiCall("/store/items/opening", { method: "POST",
-      body: JSON.stringify({ lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, unit: l.unit, qty: l.qty })) }) });
+      body: JSON.stringify({ location: where, owner_name: hired ? owner : "",
+        lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, unit: l.unit, qty: l.qty })) }) });
     showStatus("opening-status", "ok", r.detail || "Added.");
     document.getElementById("opening-lines").innerHTML = "";
     addOpeningLine();

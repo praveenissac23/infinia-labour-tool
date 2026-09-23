@@ -4546,12 +4546,47 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
     note. Each quantity is a receipt in the ledger like any delivery, so
     it is traceable. The type chosen on the line is saved on the
     material, so a hired generator added here does not sit among the
-    consumables."""
+    consumables.
+
+    It goes where it actually is - the yard or a site - and under whose
+    name it actually stands. Marking a line 'rental' only says what kind
+    of thing it is; it does not say whose, and without a trader named
+    the quantity was quietly booked as ours and never appeared on hire.
+    """
     if "storekeeper" not in effective_permissions(user) and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only someone who records stock can count opening stock.")
     lines = (payload or {}).get("lines") or []
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
+
+    where = ((payload or {}).get("location") or "").strip()
+    if where:
+        site = db.query(models.Site).filter(
+            func.lower(models.Site.code) == where.lower()).first()
+        if not site:
+            raise HTTPException(status_code=400,
+                detail=f'"{where}" is not a site on file. Pick one from the list, or leave it '
+                       "on the central store.")
+        where = site.code
+
+    owner = None
+    owner_id = (payload or {}).get("owner_id")
+    owner_name = ((payload or {}).get("owner_name") or "").strip()
+    if owner_id:
+        owner = db.query(models.Supplier).filter(models.Supplier.id == int(owner_id)).first()
+        if not owner:
+            raise HTTPException(status_code=400, detail="That hire supplier is not on file.")
+    elif owner_name:
+        owner = _find_or_create_supplier(db, owner_name)
+
+    # The trap this closes: a line marked 'rental' with nobody named was
+    # booked as ours, so 150 hired ledgers sat in the owned pile and the
+    # hire list stayed empty - which is exactly what it was added to stop.
+    if not owner and any((l.get("item_type") or "").strip() == "rental" for l in lines):
+        raise HTTPException(status_code=400,
+            detail="A line is marked Rental (hired in) but no trader is named. "
+                   "Say who it is hired from, or set the type to Asset if it is ours.")
+
     today = _dubai_today()
     added, skipped = [], []
     for l in lines:
@@ -4571,15 +4606,26 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         unit = (l.get("unit") or "").strip()
         if unit and unit != (it.unit or ""):
             it.unit = unit
-        db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty, location=CENTRAL, from_location="",
-                                    moved_on=today, supplier="", incharge=user.full_name or user.username,
-                                    reference="Added by hand", notes="Put into the store from the Materials panel",
+        db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty,
+                                    location=where or CENTRAL, from_location="",
+                                    owner_id=owner.id if owner else None,
+                                    moved_on=today, supplier=owner.name if owner else "",
+                                    incharge=user.full_name or user.username,
+                                    reference="Added by hand",
+                                    notes=("Booked in on hire from the Materials panel" if owner
+                                           else "Put into the store from the Materials panel"),
                                     created_by=user.id))
         added.append(f"{qty:g} {it.unit or ''} {it.name}".strip())
     db.commit()
-    log_action(db, user.id, "stock_added", "; ".join(added)[:200])
-    detail = (f"Added to the store: " + ", ".join(added[:6]) + (" ..." if len(added) > 6 else "")) if added else "Nothing added."
-    return {"added": added, "skipped": skipped, "detail": detail}
+    place = f"site {where}" if where else "the central store"
+    log_action(db, user.id, "stock_added",
+               f"at {place}" + (f", on hire from {owner.name}" if owner else "")
+               + ": " + "; ".join(added)[:180])
+    detail = ((f"Added to {place}" + (f", on hire from {owner.name}" if owner else "") + ": "
+               + ", ".join(added[:6]) + (" ..." if len(added) > 6 else ""))
+              if added else "Nothing added.")
+    return {"added": added, "skipped": skipped, "detail": detail,
+            "location": where, "owner": owner.name if owner else ""}
 
 
 @app.post("/store/items/opening-import")
