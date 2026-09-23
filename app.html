@@ -5131,7 +5131,10 @@ async function refreshOnHire() {
             ${g.lines} material${g.lines === 1 ? "" : "s"} &middot; ${num(g.total_qty)} in all
             ${g.longest_days ? `&middot; longest out <strong>${g.longest_days} day${g.longest_days === 1 ? "" : "s"}</strong>` : ""}</span>
         </div>
-        <button class="btn btn-primary" onclick="newReturnNote(${g.supplier_id})">Return to this supplier</button>
+        ${g.supplier_id
+          ? `<button class="btn btn-primary" onclick="newReturnNote(${g.supplier_id})">Return to this supplier</button>`
+          : `<button class="btn btn-gray" onclick="newReturnNote(null)"
+                title="A return note has to be addressed to somebody">Name the supplier first</button>`}
       </div>
       <div class="grid-wrap" style="margin-top:8px;">
         <table>
@@ -5264,6 +5267,25 @@ async function printReturn(id, fmt) {
 }
 
 async function newReturnNote(supplierId) {
+  // The form lives on the Return Notes panel. Called from the rental
+  // list it was being filled in behind a hidden panel, so the button
+  // looked dead - open the panel it is on first.
+  if (document.getElementById("store-returns").offsetParent === null) {
+    storeGo("returns");
+    await new Promise(r => setTimeout(r, 60));
+  }
+  // A rental nobody is named against cannot be sent back, because a
+  // return note has to be addressed to somebody. Say so where the
+  // person is, rather than opening a form that cannot be saved.
+  if (supplierId === null || supplierId === undefined || Number.isNaN(Number(supplierId))) {
+    const loose = (hireOnHire.suppliers || []).find(g => !g.supplier_id);
+    const what = loose && loose.items.length ? loose.items.map(i => i.name).join(", ") : "that material";
+    showStatus("rn-list-status", "warn",
+      `No supplier is named for ${what}. Open it in the Material List, fill in `
+      + `"Rental supplier", and it will be ready to return.`);
+    closeReturnForm();
+    return;
+  }
   rnEditingId = null;
   rnLines = [];
   document.getElementById("rn-form-card").style.display = "block";
