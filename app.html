@@ -10988,6 +10988,12 @@ function hrTab(which) {
   document.querySelectorAll(".hr-pane").forEach(el =>
     el.style.display = el.id === `hrpane-${which}` ? "" : "none");
   localStorage.setItem("infinia_hr_tab", which);
+  // The salary sheet is always read fresh when it comes into view: an
+  // absence, a bill or a loan entered on another tab a moment ago has to
+  // be on it without anyone pressing refresh.
+  if (which === "payroll") {
+    if (HR_RUN) loadPayrollRun(HR_RUN.id); else if (HR_COMPANIES.length) openPayrollCycle();
+  }
   if (which === "staff") loadStaff();
   if (which === "loans") loadLoans();
   if (which === "leave") loadLeave();
@@ -11023,9 +11029,9 @@ async function loadHrScreen() {
     if (el && !el.value) el.value = thisMonth;
   }
   await loadRunList();
+  // The salary tab opens the current month for the first company by
+  // itself; any other tab leaves it for when the salary tab is shown.
   hrTab(localStorage.getItem("infinia_hr_tab") || "payroll");
-  // The current month for the first company is on screen straight away.
-  if (!HR_RUN) await openPayrollCycle();
 }
 
 // ---- Salary cycle ----------------------------------------------------
@@ -11039,7 +11045,15 @@ async function loadRunList() {
       `${hrMoney(r.net_pay)} (${r.status === "approved" ? "approved" : "draft"})</option>`).join("");
 }
 
-async function openPayrollCycle() {
+// One opening at a time: picking the month and the company in quick
+// succession asks for the same sheet twice, and the second waits for the
+// first rather than racing it.
+let HR_OPENING = Promise.resolve();
+function openPayrollCycle() {
+  HR_OPENING = HR_OPENING.then(hrOpenNow, hrOpenNow);
+  return HR_OPENING;
+}
+async function hrOpenNow() {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
   if (!month || !company_id) return;
@@ -11068,7 +11082,13 @@ async function loadPayrollRun(id) {
     document.getElementById("hr-run-company").value = HR_RUN.company_id;
     document.getElementById("hr-run-group").value = HR_RUN.group || "staff";
     renderRun();
-  } catch (e) { hrMsg("err", errText(e)); }
+    await loadRunList();
+    document.getElementById("hr-run-pick").value = HR_RUN.id;
+  } catch (e) {
+    // Discarded since it was last shown: open the month afresh.
+    if (e && e.status === 404) { HR_RUN = null; await openPayrollCycle(); return; }
+    hrMsg("err", errText(e));
+  }
 }
 
 // A figure the accountant types. Shown as it prints - 7,000.00, not
@@ -11090,6 +11110,7 @@ function runCell(l, field, locked) {
   return `<td class="num"><input type="text" inputmode="decimal" class="hr-cell hr-amt"
       data-line="${l.id}" data-field="${field}" value="${hrBox(v)}" placeholder="-"
       oninput="recalcLine(${l.id})" onfocus="hrAmtFocus(this)" onblur="hrAmtBlur(this)"
+      onchange="hrAutoSave()"
       title="${l.loan_edited ? "Changed on this sheet" : "The instalment due - type over it to take a different amount this month"}"
       ${l.loan_edited ? 'style="border-color:#D9A441;"' : ""}></td>`;
 }
@@ -11119,6 +11140,7 @@ function hrLoanCell(l, locked) {
   return `<td class="num"><input type="text" inputmode="decimal" class="hr-cell hr-amt"
       data-line="${l.id}" data-field="loan_deduction" value="${hrBox(v)}" placeholder="0"
       oninput="recalcLine(${l.id})" onfocus="hrAmtFocus(this)" onblur="hrAmtBlur(this)"
+      onchange="hrAutoSave()"
       title="${l.loan_edited ? "Changed on this sheet" : "The instalment the loan terms set - type over it to take a different amount this month"}"
       ${l.loan_edited ? 'style="border-color:#D9A441;"' : ""}>${bal}</td>`;
 }
@@ -11184,7 +11206,8 @@ function renderRun() {
       ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
       <td class="txt">${locked ? `<span class="hr-remark">${escapeHtml(remark)}</span>` :
         `<input type="text" class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks"
-                value="${escapeAttr(remark)}" title="${escapeAttr(remark)}" oninput="recalcLine(${l.id})">`}</td>
+                value="${escapeAttr(remark)}" title="${escapeAttr(remark)}" oninput="recalcLine(${l.id})"
+                onchange="hrAutoSave()">`}</td>
     </tr>`; }).join("");
   renderRunFoot();
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route);
@@ -11241,7 +11264,15 @@ function recalcLine(id) {
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(routes);
 }
 
-async function savePayrollRun() {
+// What is typed on the sheet is kept the moment the box is left, so
+// moving to another tab can never lose it.
+let HR_SAVE_TIMER = null;
+function hrAutoSave() {
+  clearTimeout(HR_SAVE_TIMER);
+  HR_SAVE_TIMER = setTimeout(() => savePayrollRun(true), 150);
+}
+
+async function savePayrollRun(quiet) {
   if (!HR_RUN) return;
   const lines = HR_RUN.lines.map(l => ({ id: l.id, loan_deduction: l.loan_deduction, remarks: l.remarks }));
   try {
@@ -11249,7 +11280,8 @@ async function savePayrollRun() {
       method: "PUT", body: JSON.stringify({ lines }) });
     renderRun();
     await loadRunList();
-    hrMsg("ok", `Saved. Net pay ${hrMoney(HR_RUN.totals.net_pay)}.`);
+    document.getElementById("hr-run-pick").value = HR_RUN.id;
+    if (quiet !== true) hrMsg("ok", `Saved. Net pay ${hrMoney(HR_RUN.totals.net_pay)}.`);
   } catch (e) { hrMsg("err", errText(e)); }
 }
 

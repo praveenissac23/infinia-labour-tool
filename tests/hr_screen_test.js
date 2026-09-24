@@ -341,7 +341,7 @@ const CYCLE_MONTH = '2026-08';
                 `&token=${encodeURIComponent(tok)}`);
   const body = await pv.content();
   ck('the preview carries the Infinia letterhead', body.includes('data:image/png;base64'));
-  ck('and the statement headings', body.includes('Fix Allown.') &&
+  ck('and the statement headings', body.includes('Gross Salary') && body.includes('Add / Ded.') &&
      body.includes('Salary Payable') && body.includes('Net Pay'));
   ck('and the three foot totals',
      body.includes('WPS TOTAL'), body.slice(0, 200));

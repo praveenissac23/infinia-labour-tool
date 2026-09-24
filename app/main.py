@@ -8567,6 +8567,14 @@ def _migrate_hr(db):
     Runs once: after that there is nothing left to bring across.
     """
     changed = False
+    # Duplicate drafts of one month, from before opening was guarded.
+    seen = {}
+    for r in db.query(models.PayrollRun).order_by(models.PayrollRun.id).all():
+        key = (r.company_id, r.month_year, r.group)
+        if key in seen and r.status != "approved":
+            db.delete(r); changed = True
+        else:
+            seen.setdefault(key, r.id)
     for l in db.query(models.StaffLeave).filter(models.StaffLeave.batch.is_(None)).all():
         l.batch = f"L{l.id}"
         l.kind = l.kind or _leave_kind(l)
@@ -8813,6 +8821,19 @@ def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
     for e in people:
         db.add(models.PayrollLine(run_id=r.id, employee_id=e.id))
     db.commit(); db.refresh(r)
+    # Two requests to open the same month at the same moment - a month
+    # picked twice quickly - must not leave two drafts of it. The first
+    # one on file wins and any other is removed.
+    twins = (db.query(models.PayrollRun).filter(
+        models.PayrollRun.month_year == month_year, models.PayrollRun.company_id == c.id,
+        models.PayrollRun.group == group).order_by(models.PayrollRun.id).all())
+    if len(twins) > 1:
+        keep = twins[0]
+        for t in twins[1:]:
+            if t.status != "approved":
+                db.delete(t)
+        db.commit()
+        r = db.query(models.PayrollRun).filter(models.PayrollRun.id == keep.id).first()
     _refresh_run(db, r)
     log_action(db, user.id, "payroll_opened",
                f"{c.short_name or c.name} {month_year} ({len(people)} staff)")
