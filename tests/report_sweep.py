@@ -281,6 +281,13 @@ checked_paths = {
     "/export/purchase/{order_id}/view", "/export/employees/report/view",
     "/export/{month_year}/custom-report/view",
     "/export/{month_year}/attendance-needed/view", "/export/{month_year}/cards/view",
+    # Office HR and payroll. These carry pay for named office staff, so
+    # they are checked by office_payroll_test.py against the signed
+    # August statements rather than against seeded data here - this
+    # sweep only has to know they exist and are accounted for.
+    "/export/payroll/statement/view", "/export/payroll/consolidated/view",
+    "/export/payroll/loans/view", "/export/payroll/leave/view",
+    "/export/payroll/documents/view", "/export/payroll/staff/view",
 }
 missed = sorted(set(views) - checked_paths)
 ck("every preview endpoint is covered by this sweep", not missed, missed)

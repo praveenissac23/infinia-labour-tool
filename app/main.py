@@ -121,6 +121,14 @@ async def never_cache_api(request, call_next):
 ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "adjustments", "livecard", "store", "requests", "approvals",
                "errorcheck", "settings", "activity",
+               # Office HR and payroll. Its own section because a
+               # different person works in it, on a monthly rhythm, and
+               # because office salaries need a tighter gate than site
+               # headcount - one section behind one right is something
+               # we can get right, where the same figures filtered row
+               # by row through ten existing screens is not. Admin only
+               # until the office staff who should have it are named.
+               "hrpayroll",
                # Not a screen but a right: who may record a receipt, an
                # issue, a return or a write-off. It was decided by role,
                # which made the store keeper's own job depend on which
@@ -6718,7 +6726,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     klass = {"L": "l", "C": "c", "R": "r"}
     # The same column widths the printed copy uses, so a material name
     # is not crushed beside an inch of white space under "Unit".
-    fracs = export_web.col_fractions(rows, cols)
+    fracs = export_web.col_fractions(rows, cols, money_cols, total_cols)
     cgroup = "".join(f'<col style="width:{f * 100:.2f}%">' for f in fracs)
     head = "".join(f'<th class="{klass[aligns[c]]}">'
                    f'{escape(export_web._store_label(c))}</th>' for c in cols)
@@ -7208,6 +7216,1261 @@ def view_material_request(req_id: int, token: str = None, db: Session = Depends(
     url = f"/export/store/request/{mr.id}?token={t}"
     # The request prints on a portrait page, so it previews on one.
     return _preview_page(mr.ref, sub, rows, url, url, orientation="portrait")
+
+
+# ======================================================================
+# OFFICE HR & PAYROLL
+# ======================================================================
+# Everything here lives under /employees/ deliberately. nginx forwards a
+# fixed list of prefixes to this application and anything outside it
+# never arrives - a new /hr/ prefix would work in testing and 404 the
+# moment it went live. /employees is already on that list.
+#
+# Office staff are paid a monthly figure with only the exceptions
+# entered. Twenty people and twelve leave events in a month: recording
+# attendance for each of them daily would be six hundred entries to
+# capture those twelve, which nobody sustains and which becomes fiction
+# within two cycles.
+
+HR = Depends(require_screen("hrpayroll"))
+
+# Gratuity: 21 days' basic wage per year for the first five years, 30
+# days a year after that, on completion of one year. The figures the
+# app shows are indicative until Infinia's PRO has confirmed them
+# against current law - which is why the rule sits here, in one place,
+# rather than being spelled out wherever a number is needed.
+GRATUITY_DAYS_FIRST_5 = 21
+GRATUITY_DAYS_AFTER_5 = 30
+GRATUITY_MIN_YEARS = 1
+
+
+def _hr_company(db, company_id=None, name=None):
+    q = db.query(models.Company)
+    if company_id:
+        return q.filter(models.Company.id == company_id).first()
+    if name:
+        return q.filter(func.lower(models.Company.name) == str(name).strip().lower()).first()
+    return None
+
+
+def _company_dict(c):
+    return {"id": c.id, "name": c.name, "short_name": c.short_name,
+            "code_prefix": c.code_prefix, "trn": c.trn, "wps_id": c.wps_id,
+            "address": c.address or "", "active": c.active}
+
+
+@app.get("/employees/companies")
+def list_companies(db: Session = Depends(get_db), user: models.User = HR):
+    rows = db.query(models.Company).order_by(models.Company.name).all()
+    return [_company_dict(c) for c in rows]
+
+
+@app.post("/employees/companies")
+def save_company(payload: dict = Body(...), db: Session = Depends(get_db),
+                  user: models.User = HR):
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="A company needs a name.")
+    c = None
+    if payload.get("id"):
+        c = db.query(models.Company).filter(models.Company.id == payload["id"]).first()
+    if not c:
+        c = _hr_company(db, name=name)
+    if not c:
+        c = models.Company(name=name)
+        db.add(c)
+    c.name = name
+    for f in ("short_name", "code_prefix", "trn", "wps_id", "address"):
+        if f in payload:
+            setattr(c, f, (payload.get(f) or "").strip())
+    db.commit(); db.refresh(c)
+    log_action(db, user.id, "company_saved", c.name)
+    return _company_dict(c)
+
+
+# ---- The staff record -------------------------------------------------
+
+def _gross(e):
+    return round((e.basic_salary or 0) + (e.allowance or 0), 2)
+
+
+def _service_years(e, upto=None):
+    if not e.joined_on:
+        return 0.0
+    end = upto or _dubai_today()
+    if e.terminated_on and e.terminated_on < end:
+        end = e.terminated_on
+    return max((end - e.joined_on).days / 365.25, 0.0)
+
+
+def gratuity_for(e, upto=None):
+    """What this worker has accrued in end-of-service, today.
+
+    On the basic wage, not the gross - which is why basic and allowance
+    are held separately and why an increment that goes to the allowance
+    leaves this figure alone. Nationals contribute to GPSSA instead and
+    accrue nothing here.
+    """
+    if (e.scheme or "gratuity") != "gratuity":
+        return 0.0
+    y = _service_years(e, upto)
+    if y < GRATUITY_MIN_YEARS:
+        return 0.0
+    daily = (e.basic_salary or 0) / 30.0
+    first = min(y, 5) * GRATUITY_DAYS_FIRST_5 * daily
+    rest = max(y - 5, 0) * GRATUITY_DAYS_AFTER_5 * daily
+    # Capped at two years' total wage, as the law provides.
+    return round(min(first + rest, (_gross(e) or 0) * 24), 2)
+
+
+def _staff_dict(e, db=None):
+    return {
+        "id": e.id, "emp_no": e.emp_no, "name": e.name,
+        "designation": e.designation or e.trade or "",
+        "company_id": e.company_id, "company": e.company or "",
+        "joined_on": e.joined_on.isoformat() if e.joined_on else "",
+        "basic": round(e.basic_salary or 0, 2),
+        "allowance": round(e.allowance or 0, 2),
+        "gross": _gross(e),
+        "contract_basic": round(e.contract_basic or 0, 2),
+        "basic_pct": round((e.basic_salary or 0) / _gross(e) * 100, 1) if _gross(e) else 0,
+        "pay_route": e.pay_route or "wps", "iban": e.iban or "",
+        "scheme": e.scheme or "gratuity", "pension": round(e.pension or 0, 2),
+        "probation_end": e.probation_end.isoformat() if e.probation_end else "",
+        "notice_days": e.notice_days or 30,
+        "terminated_on": e.terminated_on.isoformat() if e.terminated_on else "",
+        "years": round(_service_years(e), 2),
+        "gratuity": gratuity_for(e),
+        "active": e.active,
+    }
+
+
+@app.get("/employees/staff")
+def list_staff(company_id: int = None, include_left: bool = False,
+                db: Session = Depends(get_db), user: models.User = HR):
+    """The office staff list - everyone paid a monthly figure."""
+    q = db.query(models.Employee).filter(models.Employee.staff == True)  # noqa: E712
+    if company_id:
+        q = q.filter(models.Employee.company_id == company_id)
+    if not include_left:
+        q = q.filter(models.Employee.active == True)  # noqa: E712
+    rows = q.order_by(models.Employee.emp_no).all()
+    return {"rows": [_staff_dict(e, db) for e in rows],
+            "total_gratuity": round(sum(gratuity_for(e) for e in rows), 2)}
+
+
+@app.put("/employees/staff/{emp_no}")
+def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
+                user: models.User = HR):
+    """The office side of one person's record.
+
+    Basic and allowance are set here only when a record is first put on
+    file or corrected. A rise goes through the increment screen instead,
+    so the reason and the date are kept rather than a figure quietly
+    changing.
+    """
+    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
+    e.staff = True
+    if payload.get("company_id"):
+        c = _hr_company(db, company_id=payload["company_id"])
+        if not c:
+            raise HTTPException(status_code=400, detail="That company is not on file.")
+        e.company_id = c.id
+        e.company = c.short_name or c.name
+    for f in ("designation", "pay_route", "iban", "scheme"):
+        if f in payload:
+            setattr(e, f, (payload.get(f) or "").strip())
+    for f, col in (("joined_on", "joined_on"), ("probation_end", "probation_end")):
+        if f in payload:
+            setattr(e, col, _as_date(payload.get(f)))
+    for f, col in (("basic", "basic_salary"), ("allowance", "allowance"),
+                   ("contract_basic", "contract_basic"), ("pension", "pension")):
+        if f in payload and payload.get(f) not in (None, ""):
+            setattr(e, col, float(payload[f] or 0))
+    if "notice_days" in payload:
+        e.notice_days = int(payload.get("notice_days") or 30)
+    e.total_salary = _gross(e)
+    # A joining figure, so the salary history starts from something.
+    if e.joined_on and not db.query(models.SalaryChange).filter(
+            models.SalaryChange.employee_id == e.id).first():
+        db.add(models.SalaryChange(
+            employee_id=e.id, effective_on=e.joined_on, kind="joining",
+            basic=e.basic_salary or 0, allowance=e.allowance or 0, amount=0,
+            reason="On joining", created_by=user.id))
+    db.commit(); db.refresh(e)
+    log_action(db, user.id, "staff_saved", f"{e.emp_no} {e.name}")
+    return _staff_dict(e, db)
+
+
+def _as_date(v):
+    if not v:
+        return None
+    if isinstance(v, date):
+        return v
+    for f in ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y", "%d-%b-%y", "%d-%b-%Y"):
+        try:
+            return datetime.strptime(str(v).strip(), f).date()
+        except ValueError:
+            continue
+    return None
+
+
+# ---- Documents that expire -------------------------------------------
+# Seventy-odd labourers and twenty office staff, three or four documents
+# each. A missed renewal is a fine and a man who cannot work, so this
+# covers everyone rather than only the office - the exposure is mostly
+# on the labour side, by weight of numbers.
+
+DOC_KINDS = {"eid": "Emirates ID", "visa": "Visa / labour card",
+             "passport": "Passport", "labour_card": "Labour card",
+             "insurance": "Insurance", "contract": "Labour contract"}
+
+
+def _doc_dict(d, emp):
+    days = (d.expires_on - _dubai_today()).days if d.expires_on else None
+    return {"id": d.id, "employee_id": d.employee_id,
+            "emp_no": emp.emp_no if emp else "", "name": emp.name if emp else "",
+            "staff": bool(emp.staff) if emp else False,
+            "company": (emp.company or "") if emp else "",
+            "kind": d.kind, "kind_label": DOC_KINDS.get(d.kind, d.kind.replace("_", " ").title()),
+            "number": d.number or "",
+            "issued_on": d.issued_on.isoformat() if d.issued_on else "",
+            "expires_on": d.expires_on.isoformat() if d.expires_on else "",
+            "days_left": days,
+            "status": ("expired" if days is not None and days < 0 else
+                       "urgent" if days is not None and days <= 30 else
+                       "soon" if days is not None and days <= 90 else "valid"),
+            "notes": d.notes or ""}
+
+
+@app.get("/employees/documents")
+def list_documents(within: int = None, kind: str = "", q: str = "",
+                    group: str = "", db: Session = Depends(get_db),
+                    user: models.User = HR):
+    """Every document on file, newest expiry first.
+
+    `within` narrows to what expires in that many days - and always
+    includes anything already expired, because a lapsed document is
+    more urgent than one expiring next week, not less.
+    """
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    rows = []
+    for d in db.query(models.EmployeeDocument).all():
+        emp = emps.get(d.employee_id)
+        if not emp or not emp.active:
+            continue
+        if kind and d.kind != kind:
+            continue
+        if group == "staff" and not emp.staff:
+            continue
+        if group == "labour" and emp.staff:
+            continue
+        r = _doc_dict(d, emp)
+        if within is not None and (r["days_left"] is None or r["days_left"] > within):
+            continue
+        if q.strip() and q.strip().lower() not in f"{emp.emp_no} {emp.name}".lower():
+            continue
+        rows.append(r)
+    rows.sort(key=lambda r: (r["days_left"] if r["days_left"] is not None else 99999))
+    counts = {k: sum(1 for r in rows if r["status"] == k)
+              for k in ("expired", "urgent", "soon", "valid")}
+    return {"rows": rows, "counts": counts, "kinds": DOC_KINDS}
+
+
+@app.post("/employees/documents")
+def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = HR):
+    """Record or renew a document.
+
+    Renewing is changing the expiry date here. The spreadsheet this
+    replaces had three visas reading expired with RENEWED written in the
+    remarks and the date never touched - so the file said one thing and
+    the truth was another, and neither could be trusted.
+    """
+    emp_no = str(payload.get("emp_no") or "").strip()
+    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
+    kind = (payload.get("kind") or "").strip().lower()
+    if kind not in DOC_KINDS:
+        raise HTTPException(status_code=400,
+            detail=f"Which document is it? One of: {', '.join(DOC_KINDS.values())}.")
+    expires = _as_date(payload.get("expires_on"))
+    if not expires:
+        raise HTTPException(status_code=400,
+            detail="An expiry date is the point of the record - it cannot be left empty.")
+    d = None
+    if payload.get("id"):
+        d = db.query(models.EmployeeDocument).filter(
+            models.EmployeeDocument.id == payload["id"]).first()
+    if not d:
+        d = db.query(models.EmployeeDocument).filter(
+            models.EmployeeDocument.employee_id == e.id,
+            models.EmployeeDocument.kind == kind).first()
+    if not d:
+        d = models.EmployeeDocument(employee_id=e.id, kind=kind)
+        db.add(d)
+    was = d.expires_on
+    d.number = (payload.get("number") or "").strip()
+    d.issued_on = _as_date(payload.get("issued_on"))
+    d.expires_on = expires
+    d.notes = (payload.get("notes") or "").strip()
+    db.commit(); db.refresh(d)
+    log_action(db, user.id, "document_saved",
+               f"{e.emp_no} {DOC_KINDS[kind]} -> {expires.isoformat()}"
+               + (f" (was {was.isoformat()})" if was and was != expires else ""))
+    return _doc_dict(d, e)
+
+
+@app.delete("/employees/documents/{doc_id}")
+def delete_document(doc_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    d = db.query(models.EmployeeDocument).filter(
+        models.EmployeeDocument.id == doc_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="That document is not on file.")
+    emp = db.query(models.Employee).filter(models.Employee.id == d.employee_id).first()
+    db.delete(d); db.commit()
+    log_action(db, user.id, "document_deleted",
+               f"{emp.emp_no if emp else '?'} {DOC_KINDS.get(d.kind, d.kind)}")
+    return {"ok": True}
+
+
+# ---- Increments -------------------------------------------------------
+
+@app.get("/employees/increments")
+def list_increments(emp_no: str = "", db: Session = Depends(get_db),
+                     user: models.User = HR):
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    q = db.query(models.SalaryChange)
+    if emp_no.strip():
+        e = db.query(models.Employee).filter(
+            models.Employee.emp_no == emp_no.strip()).first()
+        q = q.filter(models.SalaryChange.employee_id == (e.id if e else -1))
+    rows = []
+    for c in q.order_by(models.SalaryChange.effective_on.desc()).all():
+        e = emps.get(c.employee_id)
+        if not e:
+            continue
+        rows.append({"id": c.id, "emp_no": e.emp_no, "name": e.name,
+                      "effective_on": c.effective_on.isoformat(),
+                      "kind": c.kind, "amount": round(c.amount or 0, 2),
+                      "basic": round(c.basic or 0, 2),
+                      "allowance": round(c.allowance or 0, 2),
+                      "gross": round((c.basic or 0) + (c.allowance or 0), 2),
+                      "reason": c.reason or "",
+                      "future": c.effective_on > _dubai_today()})
+    return {"rows": rows}
+
+
+@app.post("/employees/increments")
+def add_increment(payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = HR):
+    """A rise, and where it lands.
+
+    By default the whole of it goes to the allowance and the basic stays
+    where it is. Gratuity is calculated on the basic in force at the
+    end, so raising basic revalues every year already served - an
+    increment of 1,000 on basic costs far more than the 1,000. Moving
+    part of it to basic is allowed, and asked for explicitly.
+
+    Dated ahead, it sits here until its cycle arrives rather than being
+    remembered and typed in on the day.
+    """
+    emp_no = str(payload.get("emp_no") or "").strip()
+    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
+    when = _as_date(payload.get("effective_on"))
+    if not when:
+        raise HTTPException(status_code=400, detail="When does the increment start?")
+    amount = float(payload.get("amount") or 0)
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="How much is the increment?")
+    to_basic = float(payload.get("to_basic") or 0)
+    if to_basic > amount + 1e-9:
+        raise HTTPException(status_code=400,
+            detail=f"Only {amount:,.2f} is being given - {to_basic:,.2f} cannot go to basic.")
+    to_allow = round(amount - to_basic, 2)
+    new_basic = round((e.basic_salary or 0) + to_basic, 2)
+    new_allow = round((e.allowance or 0) + to_allow, 2)
+    c = models.SalaryChange(
+        employee_id=e.id, effective_on=when, kind="increment",
+        basic=new_basic, allowance=new_allow, amount=amount,
+        reason=(payload.get("reason") or "").strip(), created_by=user.id)
+    db.add(c)
+    # Only a rise that has actually arrived changes what he is paid. One
+    # dated ahead is recorded and applied when its cycle comes round.
+    applied = when <= _dubai_today()
+    if applied:
+        e.basic_salary, e.allowance = new_basic, new_allow
+        e.total_salary = _gross(e)
+    db.commit(); db.refresh(c)
+    log_action(db, user.id, "increment_added",
+               f"{e.emp_no} {amount:,.2f} from {when.isoformat()}"
+               + (f" ({to_basic:,.2f} to basic)" if to_basic else " (all to allowance)"))
+    return {"ok": True, "applied": applied, "basic": new_basic, "allowance": new_allow,
+            "detail": (f"{e.name}: {amount:,.2f} from {when.strftime('%d %b %Y')}."
+                       + ("" if applied else " Dated ahead - it applies when that cycle comes."))}
+
+
+def apply_due_increments(db, upto=None):
+    """Bring in any increment whose date has now passed.
+
+    Runs when a payroll cycle is opened, so a rise agreed in September
+    for January is simply there in January without anyone remembering.
+    """
+    upto = upto or _dubai_today()
+    brought = []
+    for e in db.query(models.Employee).filter(models.Employee.staff == True).all():  # noqa: E712
+        due = (db.query(models.SalaryChange)
+                 .filter(models.SalaryChange.employee_id == e.id,
+                          models.SalaryChange.effective_on <= upto)
+                 .order_by(models.SalaryChange.effective_on.desc(),
+                            models.SalaryChange.id.desc()).first())
+        if not due:
+            continue
+        if abs((e.basic_salary or 0) - (due.basic or 0)) > 0.005 or \
+           abs((e.allowance or 0) - (due.allowance or 0)) > 0.005:
+            e.basic_salary, e.allowance = due.basic, due.allowance
+            e.total_salary = _gross(e)
+            brought.append(f"{e.emp_no} {e.name}")
+    if brought:
+        db.commit()
+    return brought
+
+
+# ---- Loans ------------------------------------------------------------
+
+def _loan_dict(l, emp=None):
+    paid = round(sum(r.amount or 0 for r in l.repayments), 2)
+    return {"id": l.id, "employee_id": l.employee_id,
+            "emp_no": emp.emp_no if emp else "", "name": emp.name if emp else "",
+            "amount": round(l.amount or 0, 2), "taken_on": l.taken_on.isoformat(),
+            "terms": l.terms or "", "instalment": round(l.instalment or 0, 2),
+            "repaid": paid, "balance": round((l.amount or 0) - paid, 2),
+            "closed": bool(l.closed) or (l.amount or 0) - paid <= 0.005,
+            "notes": l.notes or "",
+            "repayments": [{"id": r.id, "amount": round(r.amount or 0, 2),
+                             "paid_on": r.paid_on.isoformat(),
+                             "month_year": r.month_year or "", "source": r.source or ""}
+                            for r in sorted(l.repayments, key=lambda r: r.paid_on)]}
+
+
+@app.get("/employees/loans")
+def list_loans(open_only: bool = False, db: Session = Depends(get_db),
+                user: models.User = HR):
+    """Every loan and what is left of it.
+
+    The balance is the amount lent less everything recovered, worked out
+    each time rather than stored - so the ledger and the balance cannot
+    disagree, which is the failure a spreadsheet of running totals
+    invites.
+    """
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    rows = [_loan_dict(l, emps.get(l.employee_id))
+            for l in db.query(models.StaffLoan)
+                       .options(joinedload(models.StaffLoan.repayments))
+                       .order_by(models.StaffLoan.taken_on.desc()).all()]
+    if open_only:
+        rows = [r for r in rows if not r["closed"]]
+    return {"rows": rows,
+            "total_lent": round(sum(r["amount"] for r in rows), 2),
+            "total_outstanding": round(sum(r["balance"] for r in rows if not r["closed"]), 2)}
+
+
+@app.post("/employees/loans")
+def add_loan(payload: dict = Body(...), db: Session = Depends(get_db),
+              user: models.User = HR):
+    emp_no = str(payload.get("emp_no") or "").strip()
+    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
+    amount = float(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="How much was lent?")
+    when = _as_date(payload.get("taken_on")) or _dubai_today()
+    l = models.StaffLoan(employee_id=e.id, amount=amount, taken_on=when,
+                          terms=(payload.get("terms") or "").strip(),
+                          instalment=float(payload.get("instalment") or 0),
+                          notes=(payload.get("notes") or "").strip(),
+                          created_by=user.id)
+    db.add(l); db.commit(); db.refresh(l)
+    log_action(db, user.id, "loan_added", f"{e.emp_no} {amount:,.2f}")
+    return _loan_dict(l, e)
+
+
+@app.post("/employees/loans/{loan_id}/repay")
+def repay_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                user: models.User = HR):
+    """Money recovered outside payroll - cash back, or a settlement."""
+    l = db.query(models.StaffLoan).options(
+        joinedload(models.StaffLoan.repayments)).filter(
+        models.StaffLoan.id == loan_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="That loan is not on file.")
+    amount = float(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="How much came back?")
+    paid = sum(r.amount or 0 for r in l.repayments)
+    left = (l.amount or 0) - paid
+    if amount > left + 0.005:
+        raise HTTPException(status_code=400,
+            detail=f"Only {left:,.2f} is outstanding on this loan.")
+    db.add(models.LoanRepayment(
+        loan_id=l.id, amount=amount, paid_on=_as_date(payload.get("paid_on")) or _dubai_today(),
+        month_year=(payload.get("month_year") or "").strip(),
+        source=(payload.get("source") or "cash").strip(),
+        notes=(payload.get("notes") or "").strip()))
+    if amount >= left - 0.005:
+        l.closed = True
+    db.commit(); db.refresh(l)
+    log_action(db, user.id, "loan_repaid", f"loan #{l.id} {amount:,.2f}")
+    return _loan_dict(l, db.query(models.Employee).filter(
+        models.Employee.id == l.employee_id).first())
+
+
+def _loan_due(db, employee_id):
+    """What the run should propose deducting from this man this month."""
+    total = 0.0
+    for l in (db.query(models.StaffLoan)
+                .options(joinedload(models.StaffLoan.repayments))
+                .filter(models.StaffLoan.employee_id == employee_id,
+                         models.StaffLoan.closed == False).all()):  # noqa: E712
+        left = (l.amount or 0) - sum(r.amount or 0 for r in l.repayments)
+        if left <= 0.005:
+            continue
+        total += min(l.instalment or 0, left)
+    return round(total, 2)
+
+
+# ---- Leave ------------------------------------------------------------
+
+@app.get("/employees/leave")
+def list_leave(month_year: str = "", emp_no: str = "", db: Session = Depends(get_db),
+                user: models.User = HR):
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    q = db.query(models.StaffLeave)
+    if month_year.strip():
+        a, b = _staff_month_bounds(month_year)
+        q = q.filter(models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b)
+    if emp_no.strip():
+        e = db.query(models.Employee).filter(
+            models.Employee.emp_no == emp_no.strip()).first()
+        q = q.filter(models.StaffLeave.employee_id == (e.id if e else -1))
+    rows = []
+    for l in q.order_by(models.StaffLeave.on_date.desc()).all():
+        e = emps.get(l.employee_id)
+        if not e:
+            continue
+        rows.append({"id": l.id, "emp_no": e.emp_no, "name": e.name,
+                      "on_date": l.on_date.isoformat(),
+                      "portion": l.portion or 1.0,
+                      "half": (l.portion or 1.0) < 1,
+                      "reason": l.reason or "", "paid": bool(l.paid),
+                      "certificate": bool(l.certificate), "notes": l.notes or ""})
+    return {"rows": rows,
+            "days": round(sum(r["portion"] for r in rows), 2),
+            "unpaid_days": round(sum(r["portion"] for r in rows if not r["paid"]), 2)}
+
+
+@app.post("/employees/leave")
+def add_leave(payload: dict = Body(...), db: Session = Depends(get_db),
+               user: models.User = HR):
+    """A day off, and whether it costs him anything.
+
+    Paid means no deduction and the day still counts as service. Unpaid
+    means a deduction at gross over thirty, and the day drops out of the
+    service period the gratuity is worked on.
+    """
+    emp_no = str(payload.get("emp_no") or "").strip()
+    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
+    on = _as_date(payload.get("on_date"))
+    if not on:
+        raise HTTPException(status_code=400, detail="Which day?")
+    portion = 0.5 if payload.get("half") or float(payload.get("portion") or 1) < 1 else 1.0
+    dup = db.query(models.StaffLeave).filter(
+        models.StaffLeave.employee_id == e.id, models.StaffLeave.on_date == on).first()
+    if dup:
+        raise HTTPException(status_code=400,
+            detail=f"{e.name} already has {on.strftime('%d %b')} recorded. Change that entry instead.")
+    l = models.StaffLeave(employee_id=e.id, on_date=on, portion=portion,
+                           reason=(payload.get("reason") or "sick").strip().lower(),
+                           paid=bool(payload.get("paid", True)),
+                           certificate=bool(payload.get("certificate")),
+                           notes=(payload.get("notes") or "").strip(),
+                           created_by=user.id)
+    db.add(l); db.commit()
+    log_action(db, user.id, "leave_added",
+               f"{e.emp_no} {on.isoformat()} {'half' if portion < 1 else 'full'}"
+               f" {'paid' if l.paid else 'UNPAID'}")
+    return {"ok": True}
+
+
+@app.delete("/employees/leave/{leave_id}")
+def delete_leave(leave_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    l = db.query(models.StaffLeave).filter(models.StaffLeave.id == leave_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="That leave entry is not on file.")
+    db.delete(l); db.commit()
+    return {"ok": True}
+
+
+# ---- The monthly run --------------------------------------------------
+# Office staff run on the calendar month, not the 26th-to-25th cycle the
+# labour cards use: the August leave sheet carries the 26th, 27th and
+# 29th of August, which would fall in the next labour cycle. Two
+# different rhythms for two different ways of being paid.
+
+def _staff_month_bounds(month_year: str):
+    d = datetime.strptime(f"1 {month_year}", "%d %B %Y").date()
+    nxt = date(d.year + (d.month == 12), (d.month % 12) + 1, 1)
+    return d, nxt - timedelta(days=1)
+
+
+def _absence_deduction(db, e, month_year):
+    """What the unpaid days that month cost him.
+
+    A day is gross over thirty, dropped to whole dirhams, and a half
+    day is half of that. The flooring is not tidiness: it is the rule
+    the August statements were written to, and it is what makes them
+    come out where they do. Arathi's 8,000 gives 266.67 a day, but her
+    half day was charged 133.00, not 133.34 - the day was taken as 266
+    first. The same step accounts for Preenu's 166.00 out of 166.67,
+    Syed's 133.00 out of 133.34, and leaves Rajasekar's 400.00 and
+    Sreekanth's 112.50 exactly where the accountant put them. Five
+    deductions, one rule, no exceptions.
+
+    Paid leave costs nothing. The figure is a proposal: the accountant
+    accepts it, changes it, or waives it.
+    """
+    a, b = _staff_month_bounds(month_year)
+    days = db.query(models.StaffLeave).filter(
+        models.StaffLeave.employee_id == e.id,
+        models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b,
+        models.StaffLeave.paid == False).all()  # noqa: E712
+    portion = sum(d.portion or 1.0 for d in days)
+    if not portion:
+        return 0.0, ""
+    rate = float(int(_gross(e) / 30.0))
+    note = ", ".join(f"{d.on_date.strftime('%d %b')}{' (half)' if (d.portion or 1) < 1 else ''}"
+                     for d in sorted(days, key=lambda d: d.on_date))
+    return round(rate * portion, 2), note
+
+
+def _line_net(l):
+    return round((l.fixed_salary or 0) - (l.deduction or 0) - (l.statutory or 0)
+                 - (l.loan_deduction or 0) + (l.other_allowance or 0)
+                 + (l.leave_salary or 0) + (l.air_ticket or 0) + (l.pension or 0), 2)
+
+
+def _line_dict(l, e):
+    return {"id": l.id, "employee_id": l.employee_id,
+            "emp_no": e.emp_no if e else "", "name": e.name if e else "",
+            "designation": (e.designation or e.trade or "") if e else "",
+            "joined_on": e.joined_on.isoformat() if e and e.joined_on else "",
+            "pay_route": (e.pay_route or "wps") if e else "wps",
+            "scheme": (e.scheme or "gratuity") if e else "gratuity",
+            "basic": round(l.basic or 0, 2), "allowance": round(l.allowance or 0, 2),
+            "fixed_salary": round(l.fixed_salary or 0, 2),
+            "deduction": round(l.deduction or 0, 2),
+            "deduction_note": l.deduction_note or "",
+            "statutory": round(l.statutory or 0, 2),
+            "other_allowance": round(l.other_allowance or 0, 2),
+            "loan_deduction": round(l.loan_deduction or 0, 2),
+            "leave_salary": round(l.leave_salary or 0, 2),
+            "air_ticket": round(l.air_ticket or 0, 2),
+            "pension": round(l.pension or 0, 2),
+            "payable": round((l.fixed_salary or 0) + (l.other_allowance or 0)
+                             - (l.deduction or 0) - (l.statutory or 0), 2),
+            "net_pay": round(l.net_pay or 0, 2), "remarks": l.remarks or ""}
+
+
+def _run_dict(r, db):
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    lines = [_line_dict(l, emps.get(l.employee_id))
+             for l in sorted(r.lines, key=lambda l: (emps.get(l.employee_id).emp_no
+                                                      if emps.get(l.employee_id) else ""))]
+    by_route = {}
+    for l in lines:
+        by_route[l["pay_route"]] = round(by_route.get(l["pay_route"], 0) + l["net_pay"], 2)
+    return {
+        "id": r.id, "month_year": r.month_year, "group": r.group,
+        "company_id": r.company_id,
+        "company": r.company.name if r.company else "",
+        "company_short": (r.company.short_name or r.company.name) if r.company else "",
+        "status": r.status,
+        "approved_on": r.approved_on.isoformat() if r.approved_on else "",
+        "notes": r.notes or "", "lines": lines,
+        "totals": {
+            "fixed_salary": round(sum(l["fixed_salary"] for l in lines), 2),
+            "deduction": round(sum(l["deduction"] + l["statutory"] for l in lines), 2),
+            "other_allowance": round(sum(l["other_allowance"] for l in lines), 2),
+            "loan_deduction": round(sum(l["loan_deduction"] for l in lines), 2),
+            "leave_salary": round(sum(l["leave_salary"] + l["air_ticket"] for l in lines), 2),
+            "pension": round(sum(l["pension"] for l in lines), 2),
+            "payable": round(sum(l["payable"] for l in lines), 2),
+            "basic": round(sum(l["basic"] for l in lines), 2),
+            "allowance": round(sum(l["allowance"] for l in lines), 2),
+            "net_pay": round(sum(l["net_pay"] for l in lines), 2),
+        },
+        "by_route": by_route,
+    }
+
+
+@app.get("/employees/payroll/runs")
+def list_payroll_runs(db: Session = Depends(get_db), user: models.User = HR):
+    rows = (db.query(models.PayrollRun).options(joinedload(models.PayrollRun.lines))
+              .order_by(models.PayrollRun.id.desc()).limit(200).all())
+    return {"rows": [{"id": r.id, "month_year": r.month_year, "group": r.group,
+                       "company": r.company.short_name or r.company.name if r.company else "",
+                       "status": r.status, "lines": len(r.lines),
+                       "net_pay": round(sum(l.net_pay or 0 for l in r.lines), 2),
+                       "approved_on": r.approved_on.isoformat() if r.approved_on else ""}
+                      for r in rows]}
+
+
+@app.post("/employees/payroll/runs")
+def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
+                      user: models.User = HR):
+    """Open a cycle for one company, filled in as far as it can be.
+
+    Every figure the system already knows arrives on the row: the fixed
+    salary from the staff record, the absence deduction proposed from
+    the leave register, the loan instalment due, the pension for a
+    national. What is left to enter is what actually happened that
+    month - a taxi bill, leave salary, a ticket.
+    """
+    month_year = (payload.get("month_year") or "").strip()
+    try:
+        _staff_month_bounds(month_year)
+    except Exception:
+        raise HTTPException(status_code=400,
+            detail='Which cycle? Give it as a month and year, like "August 2026".')
+    c = _hr_company(db, company_id=payload.get("company_id"))
+    if not c:
+        raise HTTPException(status_code=400, detail="Which company is this run for?")
+    group = (payload.get("group") or "staff").strip().lower()
+    existing = db.query(models.PayrollRun).filter(
+        models.PayrollRun.month_year == month_year,
+        models.PayrollRun.company_id == c.id,
+        models.PayrollRun.group == group).first()
+    if existing:
+        return _run_dict(existing, db)
+
+    brought = apply_due_increments(db)
+    q = db.query(models.Employee).filter(
+        models.Employee.staff == True,  # noqa: E712
+        models.Employee.active == True,  # noqa: E712
+        models.Employee.company_id == c.id)
+    people = [e for e in q.order_by(models.Employee.emp_no).all()
+              if (e.scheme or "gratuity") == ("pension" if group == "local" else "gratuity")]
+    if not people:
+        raise HTTPException(status_code=400,
+            detail=f"No {group} staff on file for {c.short_name or c.name}.")
+    r = models.PayrollRun(company_id=c.id, month_year=month_year, group=group,
+                           status="draft", created_by=user.id)
+    db.add(r); db.flush()
+    for e in people:
+        ded, note = _absence_deduction(db, e, month_year)
+        l = models.PayrollLine(
+            run_id=r.id, employee_id=e.id,
+            basic=e.basic_salary or 0, allowance=e.allowance or 0,
+            fixed_salary=_gross(e), deduction=ded, deduction_note=note,
+            loan_deduction=_loan_due(db, e.id), pension=e.pension or 0)
+        l.net_pay = _line_net(l)
+        db.add(l)
+    db.commit(); db.refresh(r)
+    log_action(db, user.id, "payroll_opened",
+               f"{c.short_name or c.name} {month_year} ({len(people)} staff)")
+    out = _run_dict(r, db)
+    if brought:
+        out["notice"] = "Increments now due were applied: " + ", ".join(brought)
+    return out
+
+
+@app.get("/employees/payroll/runs/{run_id}")
+def get_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    r = db.query(models.PayrollRun).options(
+        joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    return _run_dict(r, db)
+
+
+@app.put("/employees/payroll/runs/{run_id}")
+def save_payroll_run(run_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                      user: models.User = HR):
+    """The month's exceptions, as entered."""
+    r = db.query(models.PayrollRun).options(
+        joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    if r.status == "approved":
+        raise HTTPException(status_code=400,
+            detail=f"{r.month_year} is approved and locked. Reopen it to change a figure.")
+    by_id = {l.id: l for l in r.lines}
+    for row in payload.get("lines") or []:
+        l = by_id.get(row.get("id"))
+        if not l:
+            continue
+        for f in ("deduction", "statutory", "other_allowance", "loan_deduction",
+                  "leave_salary", "air_ticket", "pension"):
+            if f in row:
+                setattr(l, f, float(row.get(f) or 0))
+        if "remarks" in row:
+            l.remarks = (row.get("remarks") or "").strip()
+        if "deduction_note" in row:
+            l.deduction_note = (row.get("deduction_note") or "").strip()
+        l.net_pay = _line_net(l)
+    if "notes" in payload:
+        r.notes = (payload.get("notes") or "").strip()
+    db.commit(); db.refresh(r)
+    return _run_dict(r, db)
+
+
+@app.post("/employees/payroll/runs/{run_id}/approve")
+def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    """Lock the cycle and take the loan instalments off the balances.
+
+    Until this moment nothing has moved: the deductions sat on the run
+    as intentions. Approving is what turns them into recoveries against
+    the loans, so a run opened and abandoned never touches a balance.
+    """
+    r = db.query(models.PayrollRun).options(
+        joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    if r.status == "approved":
+        raise HTTPException(status_code=400, detail=f"{r.month_year} is already approved.")
+    _, month_end = _staff_month_bounds(r.month_year)
+    for l in r.lines:
+        left = round(l.loan_deduction or 0, 2)
+        if left <= 0.005:
+            continue
+        for loan in (db.query(models.StaffLoan)
+                       .options(joinedload(models.StaffLoan.repayments))
+                       .filter(models.StaffLoan.employee_id == l.employee_id,
+                                models.StaffLoan.closed == False)  # noqa: E712
+                       .order_by(models.StaffLoan.taken_on).all()):
+            if left <= 0.005:
+                break
+            owed = (loan.amount or 0) - sum(x.amount or 0 for x in loan.repayments)
+            if owed <= 0.005:
+                continue
+            take = min(left, owed)
+            db.add(models.LoanRepayment(loan_id=loan.id, amount=take, paid_on=month_end,
+                                         month_year=r.month_year, source="payroll"))
+            if take >= owed - 0.005:
+                loan.closed = True
+            left = round(left - take, 2)
+    r.status = "approved"
+    r.approved_by = user.id
+    r.approved_on = _dubai_today()
+    db.commit(); db.refresh(r)
+    log_action(db, user.id, "payroll_approved",
+               f"{r.company.short_name if r.company else ''} {r.month_year}: "
+               f"{sum(l.net_pay or 0 for l in r.lines):,.2f}")
+    return _run_dict(r, db)
+
+
+@app.post("/employees/payroll/runs/{run_id}/reopen")
+def reopen_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    """Unlock a cycle, putting back the loan recoveries it made.
+
+    Not a silent edit: the reopening is logged, and the balances return
+    to where they stood so approving again cannot recover the same
+    instalment twice.
+    """
+    r = db.query(models.PayrollRun).options(
+        joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    if r.status != "approved":
+        raise HTTPException(status_code=400, detail=f"{r.month_year} is not approved.")
+    back = (db.query(models.LoanRepayment)
+              .filter(models.LoanRepayment.month_year == r.month_year,
+                       models.LoanRepayment.source == "payroll").all())
+    emp_ids = {l.employee_id for l in r.lines}
+    for rep in back:
+        loan = db.query(models.StaffLoan).filter(
+            models.StaffLoan.id == rep.loan_id).first()
+        if loan and loan.employee_id in emp_ids:
+            loan.closed = False
+            db.delete(rep)
+    r.status = "draft"
+    r.approved_by = None
+    r.approved_on = None
+    db.commit(); db.refresh(r)
+    log_action(db, user.id, "payroll_reopened", f"{r.month_year}")
+    return _run_dict(r, db)
+
+
+@app.get("/employees/payroll/consolidated")
+def consolidated_statement(month_year: str = "", db: Session = Depends(get_db),
+                            user: models.User = HR):
+    """Every company's cycle for one month, on one sheet.
+
+    This is the document that went wrong in August. It was built by
+    hand from the two signed statements and lost three deductions, two
+    leave salaries and a loan instalment on the way across, so it came
+    out at 93,187.00 against a true 103,988.00 - short by 10,801 with
+    nothing on the page to show it.
+
+    It cannot happen here, because nothing is carried across. The rows
+    below are the same payroll lines the company statements print, read
+    a second time. If a figure changes on a run it changes here in the
+    same breath, and if the two ever disagreed it would mean the sum of
+    the parts had stopped equalling the whole.
+    """
+    month_year = (month_year or "").strip()
+    if not month_year:
+        raise HTTPException(status_code=400,
+            detail='Which month? Give it as a month and year, like "August 2026".')
+    runs = (db.query(models.PayrollRun).options(joinedload(models.PayrollRun.lines))
+              .filter(models.PayrollRun.month_year == month_year)
+              .order_by(models.PayrollRun.company_id, models.PayrollRun.id).all())
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    rows, drafts = [], []
+    for r in runs:
+        if r.status != "approved":
+            drafts.append(r.company.short_name or r.company.name if r.company else "?")
+        for l in sorted(r.lines, key=lambda l: (emps.get(l.employee_id).emp_no
+                                                 if emps.get(l.employee_id) else "")):
+            e = emps.get(l.employee_id)
+            d = _line_dict(l, e)
+            d["company"] = (r.company.short_name or r.company.name) if r.company else ""
+            d["status"] = r.status
+            d["run_id"] = r.id
+            rows.append(d)
+
+    def tot(*fields):
+        return round(sum(sum(r[f] for f in fields) for r in rows), 2)
+
+    by_route, by_company = {}, {}
+    for d in rows:
+        by_route[d["pay_route"]] = round(by_route.get(d["pay_route"], 0) + d["net_pay"], 2)
+        by_company[d["company"]] = round(by_company.get(d["company"], 0) + d["net_pay"], 2)
+    return {
+        "month_year": month_year, "rows": rows,
+        "companies": [{"name": k, "net_pay": v} for k, v in by_company.items()],
+        "by_route": by_route,
+        "draft_companies": drafts,
+        "totals": {
+            "fixed_salary": tot("fixed_salary"),
+            "deduction": tot("deduction", "statutory"),
+            "other_allowance": tot("other_allowance"),
+            "loan_deduction": tot("loan_deduction"),
+            "leave_salary": tot("leave_salary", "air_ticket"),
+            "pension": tot("pension"),
+            "payable": tot("payable"),
+            "net_pay": tot("net_pay"),
+        },
+    }
+
+
+# ---- The HR papers -----------------------------------------------------
+#
+# Six sheets, all of them built the same way the rest of the app builds a
+# report: one set of rows, read once, printed three ways. The salary
+# statement is the one that matters - it is the document that goes to the
+# bank and the one the accountant signs - so its columns are the columns
+# of the sheet he has been typing by hand, in the same order, under the
+# same headings.
+
+DOC_STANDING = {"expired": "Expired", "urgent": "Due within 30 days",
+                "soon": "Due within 90 days", "valid": "Valid"}
+
+
+def _require_hr_reader(user):
+    if "hrpayroll" not in effective_permissions(user):
+        raise HTTPException(status_code=403,
+            detail="Only the accounts and admin accounts can see office pay.")
+
+
+def _dmy(d):
+    return d.strftime("%d-%b-%y") if d else "-"
+
+
+def _statement_rows(lines, consolidated=False):
+    """The salary statement, laid out as the signed sheet lays it out.
+
+    The keys are the headings themselves rather than field names, so what
+    prints is "Fix Allown." and not "Fix Allown" or "allowance" - this
+    sheet goes to the bank and to the staff, and it should read the way
+    the one before it read.
+    """
+    out = []
+    for i, l in enumerate(lines, 1):
+        r = {"Sr.": i, "Emp. Code": l["emp_no"], "Employee Name": l["name"],
+             "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-",
+             "Salary Paid": "Monthly"}
+        if consolidated:
+            r["Company"] = l.get("company", "")
+        r.update({
+            "Basic Salary": l["basic"], "Fix Allown.": l["allowance"],
+            "Taxi / Other Bills": l["other_allowance"],
+            "Absent / Other Ded.": round(l["deduction"] + l["statutory"], 2),
+            "Salary Payable": l["payable"],
+            "Loan / Reimb.": l["loan_deduction"],
+            "Leave Salary": round(l["leave_salary"] + l["air_ticket"], 2),
+            "Net Pay": l["net_pay"],
+            "Remark": l["remarks"] or (l["deduction_note"] and f"Absent {l['deduction_note']}") or "",
+        })
+        out.append(r)
+    return out
+
+
+STATEMENT_MONEY = ["Basic Salary", "Fix Allown.", "Taxi / Other Bills",
+                   "Absent / Other Ded.", "Salary Payable", "Loan / Reimb.",
+                   "Leave Salary", "Net Pay"]
+
+
+def _route_line(by_route):
+    """The three figures the accountant writes at the foot of the sheet."""
+    names = [("wps", "WPS TOTAL"), ("bank", "BANK TRANSFER"), ("cash", "CASH SALARY TOTAL")]
+    order = {k: i for i, (k, _) in enumerate(names)}
+    label = dict(names)
+    parts = [f"{label.get(k, k.upper())}: {by_route[k]:,.2f}"
+             for k in sorted(by_route, key=lambda k: (order.get(k, 9), k))]
+    return "   |   ".join(parts)
+
+
+def _run_or_404(db, run_id):
+    r = db.query(models.PayrollRun).options(
+        joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    return r
+
+
+def _statement_parts(db, run_id):
+    r = _run_or_404(db, run_id)
+    d = _run_dict(r, db)
+    rows = _statement_rows(d["lines"])
+    title = f"Salary Statement for {d['month_year']}"
+    sub = (f"{d['company']}   |   {len(rows)} staff   |   "
+           f"{_route_line(d['by_route'])}"
+           + ("" if d["status"] == "approved" else "   |   DRAFT"))
+    return rows, title, sub
+
+
+@app.get("/export/payroll/statement")
+def export_payroll_statement(run_id: int, token: str, format: str = "pdf",
+                              db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _statement_parts(db, run_id)
+    return _hr_file(title, rows, sub, format, STATEMENT_MONEY, "Salary_Statement")
+
+
+@app.get("/export/payroll/statement/view")
+def view_payroll_statement(run_id: int, token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _statement_parts(db, run_id)
+    url = f"/export/payroll/statement?run_id={run_id}&token={t}"
+    return _preview_page(title, sub, rows, url, url,
+                         money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
+
+
+def _consolidated_parts(db, month_year):
+    d = consolidated_statement(month_year=month_year, db=db, user=None)
+    rows = _statement_rows(d["rows"], consolidated=True)
+    title = "Consolidated Employee Salary Statement"
+    sub = (f"{month_year}   |   {len(rows)} staff across "
+           f"{len(d['companies'])} companies   |   {_route_line(d['by_route'])}"
+           + (f"   |   DRAFT: {', '.join(d['draft_companies'])}"
+              if d["draft_companies"] else ""))
+    return rows, title, sub
+
+
+@app.get("/export/payroll/consolidated")
+def export_consolidated(month_year: str, token: str, format: str = "pdf",
+                         db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _consolidated_parts(db, month_year)
+    return _hr_file(title, rows, sub, format, STATEMENT_MONEY, "Consolidated_Statement")
+
+
+@app.get("/export/payroll/consolidated/view")
+def view_consolidated(month_year: str, token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _consolidated_parts(db, month_year)
+    url = f"/export/payroll/consolidated?month_year={quote(month_year)}&token={t}"
+    return _preview_page(title, sub, rows, url, url,
+                         money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
+
+
+# ---- Loans -------------------------------------------------------------
+
+LOAN_MONEY = ["Total Loan Taken", "Repaid", "Balance", "Monthly"]
+
+
+def _loan_parts(db):
+    d = list_loans(db=db, user=None)
+    rows = [{"Sr.": i, "Emp. Code": l["emp_no"], "Employee Name": l["name"],
+             "Taken On": _dmy(_as_date(l["taken_on"])) if l["taken_on"] else "-",
+             "Total Loan Taken": l["amount"], "Repaid": l["repaid"],
+             "Balance": l["balance"], "Monthly": l["instalment"],
+             "Agreed Reimbursement Terms": l["terms"] or "-",
+             "Status": "Closed" if l["closed"] else "Running"}
+            for i, l in enumerate(d["rows"], 1)]
+    sub = (f"{len(rows)} loan(s)   |   Outstanding "
+           f"{sum(r['Balance'] for r in rows):,.2f}   |   "
+           f"As at {_dubai_today():%d %b %Y}")
+    return rows, "Staff Loan Statement", sub
+
+
+@app.get("/export/payroll/loans")
+def export_loans(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _loan_parts(db)
+    return _hr_file(title, rows, sub, format, LOAN_MONEY, "Loan_Statement")
+
+
+@app.get("/export/payroll/loans/view")
+def view_loans(token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _loan_parts(db)
+    url = f"/export/payroll/loans?token={t}"
+    return _preview_page(title, sub, rows, url, url,
+                         money_cols=LOAN_MONEY,
+                         total_cols=["Total Loan Taken", "Repaid", "Balance"])
+
+
+# ---- Leave -------------------------------------------------------------
+
+def _leave_parts(db, month_year):
+    d = list_leave(month_year=month_year, emp_no="", db=db, user=None)
+    rows = [{"Sr.": i, "Emp. Code": l["emp_no"], "Staff": l["name"],
+             "Date of Leave": _dmy(_as_date(l["on_date"])),
+             "Reason": (l["reason"] or "-").title(),
+             "Portion": "Half day" if l["portion"] < 1 else "Full day",
+             "Paid": "Yes" if l["paid"] else "No",
+             "Certificate": "Yes" if l["certificate"] else "-",
+             "Remark": l["notes"] or "-"}
+            for i, l in enumerate(d["rows"], 1)]
+    unpaid = sum(1 - (1 if l["paid"] else 0) for l in d["rows"])
+    sub = (f"{month_year or 'All'}   |   {len(rows)} event(s), {d['days']:g} day(s)"
+           f"   |   {unpaid} unpaid")
+    return rows, "Staff Leave Details", sub
+
+
+@app.get("/export/payroll/leave")
+def export_leave(token: str, month_year: str = "", format: str = "pdf",
+                  db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _leave_parts(db, month_year)
+    return _hr_file(title, rows, sub, format, [], "Leave_Details")
+
+
+@app.get("/export/payroll/leave/view")
+def view_leave(token: str, month_year: str = "", db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _leave_parts(db, month_year)
+    url = f"/export/payroll/leave?month_year={quote(month_year)}&token={t}"
+    return _preview_page(title, sub, rows, url, url)
+
+
+# ---- Documents ---------------------------------------------------------
+
+def _document_parts(db, days):
+    days = None if days is None or days < 0 else days
+    d = list_documents(within=days, db=db, user=None)
+    rows = [{"Sr.": i, "Emp. Code": x["emp_no"], "Employee Name": x["name"],
+             "Document": x["kind_label"], "Number": x["number"] or "-",
+             "Issued": _dmy(_as_date(x["issued_on"])) if x["issued_on"] else "-",
+             "Expires": _dmy(_as_date(x["expires_on"])) if x["expires_on"] else "-",
+             "Days Left": x["days_left"] if x["days_left"] is not None else "-",
+             "Standing": DOC_STANDING[x["status"]], "Remark": x["notes"] or "-"}
+            for i, x in enumerate(d["rows"], 1)]
+    c = d["counts"]
+    sub = (f"{len(rows)} document(s)   |   {c['expired']} expired, "
+           f"{c['urgent']} due within 30 days, {c['soon']} within 90   |   "
+           f"As at {_dubai_today():%d %b %Y}")
+    return rows, "Document Expiry Tracker", sub
+
+
+@app.get("/export/payroll/documents")
+def export_documents(token: str, within: int = -1, format: str = "pdf",
+                      db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _document_parts(db, within)
+    return _hr_file(title, rows, sub, format, [], "Document_Tracker")
+
+
+@app.get("/export/payroll/documents/view")
+def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _document_parts(db, within)
+    url = f"/export/payroll/documents?within={within}&token={t}"
+    return _preview_page(title, sub, rows, url, url)
+
+
+# ---- The staff register, with what each man has earned in gratuity -----
+
+STAFF_MONEY = ["Basic", "Fix Allown.", "Gross", "Gratuity To Date"]
+
+
+def _staff_parts(db):
+    d = list_staff(db=db, user=None)
+    rows = [{"Sr.": i, "Emp. Code": s["emp_no"], "Employee Name": s["name"],
+             "Company": s["company"], "Designation": s["designation"] or "-",
+             "Joining Date": _dmy(_as_date(s["joined_on"])) if s["joined_on"] else "-",
+             "Years": s["years"], "Basic": s["basic"], "Fix Allown.": s["allowance"],
+             "Gross": s["gross"], "Scheme": (s["scheme"] or "gratuity").title(),
+             "Gratuity To Date": s["gratuity"], "Paid By": (s["pay_route"] or "wps").upper()}
+            for i, s in enumerate(d["rows"], 1)]
+    sub = (f"{len(rows)} staff   |   Monthly payroll "
+           f"{sum(r['Gross'] for r in rows):,.2f}   |   Gratuity accrued "
+           f"{sum(r['Gratuity To Date'] for r in rows):,.2f}   |   "
+           f"As at {_dubai_today():%d %b %Y}")
+    return rows, "Office Staff Register", sub
+
+
+@app.get("/export/payroll/staff")
+def export_staff_register(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _staff_parts(db)
+    return _hr_file(title, rows, sub, format, STAFF_MONEY, "Staff_Register")
+
+
+@app.get("/export/payroll/staff/view")
+def view_staff_register(token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _staff_parts(db)
+    url = f"/export/payroll/staff?token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=STAFF_MONEY,
+                         total_cols=["Gross", "Gratuity To Date"])
+
+
+def _hr_file(title, rows, sub, format, money, stem):
+    """One sheet, as paper or as a spreadsheet. Which way up the page
+    goes is left to the data, the same as every other report here."""
+    if format == "excel":
+        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money,
+                                                   total_cols=money)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Infinia_{stem}.xlsx"})
+    buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money,
+                                             total_cols=money)
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Infinia_{stem}.pdf"})
 
 
 @app.get("/permissions/screens")

@@ -348,7 +348,7 @@ def _page_size(orientation):
     return landscape(A4) if orientation == "landscape" else A4
 
 
-def col_fractions(rows, cols):
+def col_fractions(rows, cols, money_cols=None, total_cols=None):
     """What share of the page each column should take.
 
     Every column used to be given the same width - the page divided by
@@ -366,14 +366,49 @@ def col_fractions(rows, cols):
     """
     if not cols:
         return []
+    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
+    # The totals line is part of the table and has to be measured with
+    # it. A column of figures none of which reaches a thousand still
+    # adds up to one that does, and the sum was the cell that broke: the
+    # deductions came to 1,099.00 under a column sized for 400.00. The
+    # word TOTAL in the first column is measured for the same reason -
+    # it was appearing as "TOT" over "AL" above a two-character Sr.
+    totals_row = {}
+    if rows:
+        adding = set(total_cols) if total_cols else {c for c in cols if money_like(c)}
+        for c in cols:
+            if c not in adding:
+                continue
+            s = sum(r.get(c) or 0 for r in rows if isinstance(r.get(c), (int, float)))
+            totals_row[c] = f"{s:,.2f}" if money_like(c) else _clean_qty(s)
+        if totals_row and cols[0] not in totals_row:
+            # Bold, and with padding either side, so it needs more room
+            # than its five letters suggest - otherwise the first column
+            # of a wide sheet shows "TOT" above "AL".
+            totals_row[cols[0]] = "TOTAL  "
     want = []
     for c in cols:
-        widest = 0
+        widest = len(totals_row.get(c, ""))
         for r in rows:
             v = r.get(c)
             if v in (None, ""):
                 continue
-            text = str(v)
+            # Measured as it will be PRINTED, not as it is held. A net
+            # pay of 14000.0 is six characters in the row and nine on
+            # the page - "14,000.00" - and measuring the short one gave
+            # the column too little room, so the figure broke across two
+            # lines as "14,000.0" and a lonely "0". Any column whose
+            # numbers are formatted has to be measured formatted.
+            if isinstance(v, bool):
+                text = "Yes" if v else ""
+            elif isinstance(v, (int, float)):
+                text = f"{v:,.2f}" if money_like(c) else _clean_qty(v)
+            elif isinstance(v, dict):
+                text = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items())
+            else:
+                text = str(v)
+            if not text:
+                continue
             # A cell of several lines is as wide as its longest line.
             widest = max(widest, max(len(x) for x in text.split("\n")))
         # A heading wraps over two or three lines happily enough, so the
@@ -382,7 +417,13 @@ def col_fractions(rows, cols):
         # 360 a sixteen-character width because it is called "In central
         # store" - most of the page went to headings, not to figures.
         head = max((len(w) for w in _store_label(c).split()), default=4)
-        want.append(max(min(widest, 46), min(head, 12), 4))
+        # Plus the cell padding, which is the same few points on every
+        # column however narrow it is. Sharing the page out purely by
+        # character count ignored that fixed cost, and on a wide sheet
+        # it was the narrow columns that paid: a five-character staff
+        # code came out as "IC00" over "1". Two characters' worth of
+        # padding per column, then the rest shared by content.
+        want.append(max(min(widest, 46), min(head, 12), 4) + 2)
     total = float(sum(want)) or 1.0
     return [w / total for w in want]
 
@@ -1636,7 +1677,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
                      for i, k in enumerate(cols)])
 
     tbl = Table(data, repeatRows=1,
-                colWidths=[doc.width * f for f in col_fractions(rows, cols)])
+                colWidths=[doc.width * f for f in col_fractions(rows, cols, money_cols, total_cols)])
     style = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
              ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

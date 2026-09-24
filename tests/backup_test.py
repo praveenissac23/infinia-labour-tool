@@ -162,7 +162,11 @@ SITE = {'Authorization': 'Bearer ' + c.post(
 
 stored = c.get('/backup/list', headers=H).json()
 stored = stored if isinstance(stored, list) else stored.get('backups', [])
-bid = stored[0]['id'] if stored else None
+# Not the old-format fixture planted above: that one is a deliberately
+# thin snapshot, and picking it made the completeness check below
+# measure the fixture instead of the route.
+full = [b for b in stored if b.get('trigger') != 'old-format']
+bid = full[0]['id'] if full else None
 ck('there is a stored backup to test against', bid is not None)
 
 site_dl = c.post('/auth/download-token', headers=SITE).json().get('token', '')

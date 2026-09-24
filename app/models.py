@@ -60,6 +60,33 @@ class Employee(Base):
     terminated_on = Column(Date, nullable=True)
     total_salary = Column(Float, default=0.0)
     basic_salary = Column(Float, default=0.0)
+
+    # ---- The office side of the same record --------------------------
+    # A labourer and an accountant are both people: the same joining
+    # date, the same documents, the same end of service. What differs is
+    # how they are paid, which is what `staff` marks.
+    staff = Column(Boolean, default=False)         # monthly office staff
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+    joined_on = Column(Date, nullable=True)        # service runs from here
+    designation = Column(String, default="")       # QS, Accounts, Project Engineer
+    # Basic and allowance are two independent figures, not a ratio. New
+    # joiners start 40/60; an increment goes to the allowance and leaves
+    # basic where it is, so the gratuity liability does not climb.
+    allowance = Column(Float, default=0.0)
+    # What the registered MOHRE contract says the basic is. As
+    # increments accumulate in the allowance the two drift apart, and
+    # that gap is what a dispute turns on - so it is on screen rather
+    # than discovered later.
+    contract_basic = Column(Float, default=0.0)
+    pay_route = Column(String, default="wps")      # wps | bank | cash
+    iban = Column(String, default="")
+    # Nationals contribute to GPSSA and accrue no end-of-service
+    # gratuity; everyone else accrues gratuity and pays no pension.
+    scheme = Column(String, default="gratuity")    # gratuity | pension
+    pension = Column(Float, default=0.0)           # the monthly GPSSA figure
+    probation_end = Column(Date, nullable=True)
+    notice_days = Column(Integer, default=30)
+
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -588,3 +615,199 @@ class MaterialRequestLine(Base):
     request = relationship("MaterialRequest", back_populates="lines")
     item = relationship("StoreItem")
     supplier = relationship("Supplier")
+
+
+# ======================================================================
+# OFFICE HR & PAYROLL
+# ======================================================================
+# The labour side of this app pays men by the day, from attendance.
+# Office staff are paid a monthly figure and only the exceptions are
+# entered - a day missed, a taxi bill, a loan instalment. Both kinds of
+# worker are the same Employee row: a man promoted from labourer to
+# storekeeper keeps his joining date, his service and his loan balance
+# instead of being entered again with the gratuity clock restarted.
+
+
+class Company(Base):
+    """One of the companies the group employs through.
+
+    Infinia and Prime Infinia today, more to come. Each pays its own
+    people, files its own WPS and prints its own letterhead, so this is
+    a record rather than a switch between two names in code.
+    """
+    __tablename__ = "companies"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)      # INFINIA CONTRACTING L.L.C.
+    short_name = Column(String, default="")                 # Infinia
+    code_prefix = Column(String, default="")                # IC -> IC001
+    trn = Column(String, default="")
+    wps_id = Column(String, default="")                     # MOHRE establishment id
+    address = Column(Text, default="")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SalaryChange(Base):
+    """A joining figure or an increment, with the split it landed on.
+
+    Gratuity is calculated on the basic in force when a man leaves, so
+    an increment that touches basic revalues every year already served.
+    Keeping each change means the figure can be explained rather than
+    only asserted, and an increment agreed for a future month can sit
+    here until its cycle arrives.
+    """
+    __tablename__ = "salary_changes"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    effective_on = Column(Date, nullable=False, index=True)
+    kind = Column(String, default="increment")     # joining | increment | correction
+    basic = Column(Float, default=0.0)             # after this change
+    allowance = Column(Float, default=0.0)         # after this change
+    amount = Column(Float, default=0.0)            # the rise itself
+    reason = Column(String, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class EmployeeDocument(Base):
+    """A document that expires, and the date it does.
+
+    The visa, the Emirates ID, the labour card, the passport. A missed
+    renewal is a fine and a man who cannot work, and it is the labour
+    force - seventy-odd men - where most of that risk sits. Renewing
+    means changing the expiry date here, so the warning list can never
+    disagree with what was actually renewed.
+    """
+    __tablename__ = "employee_documents"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False, index=True)   # eid | visa | passport | labour_card | insurance
+    number = Column(String, default="")
+    issued_on = Column(Date, nullable=True)
+    expires_on = Column(Date, nullable=True, index=True)
+    notes = Column(Text, default="")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class StaffLoan(Base):
+    """Money lent to a worker, and what is left of it.
+
+    The balance is never stored: it is the amount lent less everything
+    recovered, so the ledger and the balance cannot drift apart. On the
+    day somebody leaves, what is outstanding settles against the
+    gratuity - which is the moment this has to be right.
+    """
+    __tablename__ = "staff_loans"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    taken_on = Column(Date, nullable=False)
+    terms = Column(String, default="")             # "Monthly 500 reimbursement"
+    instalment = Column(Float, default=0.0)        # what the run proposes each cycle
+    closed = Column(Boolean, default=False)
+    notes = Column(Text, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+    repayments = relationship("LoanRepayment", back_populates="loan",
+                               cascade="all, delete-orphan")
+
+
+class LoanRepayment(Base):
+    """One recovery against a loan - normally a payroll deduction."""
+    __tablename__ = "loan_repayments"
+    id = Column(Integer, primary_key=True)
+    loan_id = Column(Integer, ForeignKey("staff_loans.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    paid_on = Column(Date, nullable=False)
+    month_year = Column(String, default="", index=True)    # the cycle it came off
+    source = Column(String, default="payroll")             # payroll | cash | settlement
+    notes = Column(String, default="")
+
+    loan = relationship("StaffLoan", back_populates="repayments")
+
+
+class StaffLeave(Base):
+    """A day or half-day somebody was not at work.
+
+    Whether it costs the man money is a judgement - a sick day with a
+    certificate is paid, one without may not be - so the register
+    records what happened and the payroll run proposes the deduction
+    from it. Unpaid days are also the ones that do not count towards
+    gratuity, which is the other reason this is kept rather than
+    remembered.
+    """
+    __tablename__ = "staff_leave"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    on_date = Column(Date, nullable=False, index=True)
+    portion = Column(Float, default=1.0)           # 1.0 a day, 0.5 a half day
+    reason = Column(String, default="")            # sick | annual | unpaid | company
+    paid = Column(Boolean, default=True)           # paid: no deduction, counts as service
+    certificate = Column(Boolean, default=False)
+    notes = Column(String, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class PayrollRun(Base):
+    """One company's office payroll for one cycle.
+
+    Approving it locks the figures. After that a correction is a
+    recorded amendment rather than a quiet edit, which is what stops
+    two documents covering the same month disagreeing.
+    """
+    __tablename__ = "payroll_runs"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+    month_year = Column(String, nullable=False, index=True)     # "August 2026"
+    group = Column(String, default="staff")        # staff | local - printed separately
+    status = Column(String, default="draft")       # draft | approved
+    notes = Column(Text, default="")
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_on = Column(Date, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    lines = relationship("PayrollLine", back_populates="run", cascade="all, delete-orphan")
+
+
+class PayrollLine(Base):
+    """One worker's month.
+
+    Net = fixed - deduction - loan + allowance + leave salary + pension.
+    The basic and allowance behind the fixed figure are copied onto the
+    line as they stood, so a statement reprinted next year still shows
+    the month as it was rather than as the staff record is today.
+    """
+    __tablename__ = "payroll_lines"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("payroll_runs.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+
+    basic = Column(Float, default=0.0)             # as it stood that month
+    allowance = Column(Float, default=0.0)
+    fixed_salary = Column(Float, default=0.0)      # basic + allowance
+
+    deduction = Column(Float, default=0.0)         # absence and unpaid leave
+    deduction_note = Column(String, default="")
+    statutory = Column(Float, default=0.0)         # ILOE, SOE and the like
+    other_allowance = Column(Float, default=0.0)   # taxi, bills, reimbursements
+    loan_deduction = Column(Float, default=0.0)
+    leave_salary = Column(Float, default=0.0)
+    air_ticket = Column(Float, default=0.0)
+    pension = Column(Float, default=0.0)           # GPSSA, for nationals
+    net_pay = Column(Float, default=0.0)
+    remarks = Column(String, default="")
+
+    run = relationship("PayrollRun", back_populates="lines")
+    employee = relationship("Employee")
