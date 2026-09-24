@@ -2671,6 +2671,28 @@ def health_check():
 # STORE / INVENTORY
 # ---------------------------------------------------------------------
 CENTRAL = ""   # empty location string means the central store
+CENTRAL_LABEL = "Central store"
+
+
+def _drop_empty(rows, *cols):
+    """Take out a column nothing in this report filled in.
+
+    A slip number or a remark earns a column when somebody has written
+    one. A column of dashes all the way down the page is not
+    information - it is a wider report saying nothing, and on paper it
+    squeezes the columns that do say something."""
+    for col in cols:
+        if all((r.get(col) or "-") == "-" for r in rows):
+            for r in rows:
+                r.pop(col, None)
+    return rows
+
+
+def _place_label(loc):
+    """A location as it should read on paper. The central store is an
+    empty string in the ledger, which prints as a blank column and looks
+    like missing data rather than the yard."""
+    return (loc or "").strip() or CENTRAL_LABEL
 
 # What a site can still be holding.
 #
@@ -4006,6 +4028,16 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
                     detail=f"Only {round(have, 2)} {item.unit} of {item.name} available at "
                            f"{payload.from_location or 'the central store'}.")
             draws = [(only, payload.qty)]
+        elif not at_place:
+            # None there at all. This fell through to the "whose is it"
+            # branch below, which then listed no piles and asked which
+            # of nothing it was coming out of - "Cement at the central
+            # store is ." Say the plain thing instead.
+            raise HTTPException(status_code=400,
+                detail=f"There is no {item.name} at "
+                       f"{payload.from_location or 'the central store'} to take out. "
+                       "Book the delivery in first, or correct the stock if it is "
+                       "standing there unrecorded.")
         else:
             # Ours and a supplier's standing side by side. Taking from
             # both without being told which is precisely the mix-up
@@ -4177,16 +4209,32 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return {"title": "Purchases received", "rows": sorted(rows, key=lambda r: -r["qty"])}
 
     if kind == "usage":
-        agg = {}
-        for m in moves(["out"]):
+        # One line per issue, not a total per material. The date it went
+        # and the man who took it are written down when the stock is
+        # given out, and they are the whole point of the record - a
+        # total says 40 bags went to 901 and answers nobody asking when,
+        # or who signed for them. Totals are still there, on the
+        # movement itself and at the foot of the report.
+        # Issues from the store and moves between sites both count: the
+        # question is where material went and who has it, and a site
+        # that passed twenty boards to the site next door has moved them
+        # just as surely as the store that sent them out.
+        rows = []
+        for m in moves(["out", "transfer"]):
             i = items.get(m.item_id)
-            if not i: continue
-            key = (i.id, m.location)
-            a = agg.setdefault(key, {"code": i.code, "name": i.name, "unit": i.unit,
-                                      "site": m.location, "qty": 0})
-            a["qty"] += m.qty
-        rows = [{**v, "qty": round(v["qty"], 2)} for v in agg.values()]
-        return {"title": "Materials issued", "rows": sorted(rows, key=lambda r: (r["site"], r["code"]))}
+            if not i:
+                continue
+            rows.append({"date": m.moved_on.isoformat() if m.moved_on else "",
+                          "code": i.code, "name": i.name, "unit": i.unit,
+                          "qty": round(m.qty, 2),
+                          "from": _place_label(m.from_location),
+                          "to": _place_label(m.location),
+                          "given_to": (m.incharge or "").strip() or "-",
+                          "reference": (m.reference or "").strip() or "-",
+                          "notes": (m.notes or "").strip()})
+        rows.sort(key=lambda r: (r["date"], r["to"], r["code"]), reverse=True)
+        _drop_empty(rows, "reference", "notes")
+        return {"title": "Materials issued and moved", "rows": rows}
 
     if kind == "returnable":
         rows = []
@@ -4302,9 +4350,14 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                         .with_entities(models.StoreMovement.supplier).scalar() or "")
             rows.append({"date": m.moved_on.isoformat(), "code": i.code, "name": i.name,
                           "type": i.item_type, "qty": round(m.qty, 2), "unit": i.unit,
-                          "where": m.from_location or "central store",
+                          "where": _place_label(m.from_location),
+                          # Who was holding it when it went. A write-off
+                          # with nobody's name against it is a number
+                          # nobody can be asked about.
+                          "reported_by": (m.incharge or "").strip() or "-",
                           "hired_from": sup or ("not recorded" if i.item_type == "rental" else "owned"),
                           "reason": m.notes or "not given"})
+        _drop_empty(rows, "reported_by")
         return {"title": "Lost and damaged", "rows": rows}
 
     # default: full stock position
@@ -6293,13 +6346,30 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     and a preview that shows nothing is worse than no preview at all.
     """
     cols = list(rows[0].keys()) if rows else []
-    numeric = {c for c in cols
-               if all(isinstance(r.get(c), (int, float)) for r in rows)}
-    head = "".join(f'<th class="{"r" if c in numeric else ""}">{escape(str(c))}</th>' for c in cols)
+    # The same column rule the PDF and the Excel copy use, so the sheet
+    # checked on screen is laid out like the one that prints - and the
+    # headings read as headings rather than as the field names behind
+    # them ("Given to", not "given_to").
+    aligns = {c: export_web.col_align(c, rows) for c in cols}
+    klass = {"L": "", "C": "c", "R": "r"}
+    head = "".join(f'<th class="{klass[aligns[c]]}">'
+                   f'{escape(export_web._store_label(c))}</th>' for c in cols)
+
+    def show(c, v):
+        if v is None or v == "":
+            return "-"
+        if isinstance(v, bool):
+            return "Yes" if v else "-"
+        if isinstance(v, (int, float)):
+            return f"{v:,.2f}" if export_web._is_money(c) else export_web._clean_qty(v)
+        if isinstance(v, str) and export_web._looks_like_date(v):
+            return export_web._day(v)
+        return str(v)
+
     body = "".join(
         "<tr>" + "".join(
-            f'<td class="{"r" if c in numeric else ""}">'
-            + escape("" if r.get(c) is None else str(r.get(c))).replace("\n", "<br>")
+            f'<td class="{klass[aligns[c]]}">'
+            + escape(show(c, r.get(c))).replace("\n", "<br>")
             + "</td>" for c in cols) + "</tr>"
         for r in rows)
     empty = '<p class="none">Nothing to show.</p>' if not rows else ""
@@ -6324,6 +6394,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
         font-size:11.5px; letter-spacing:.3px; position:sticky; top:0; }}
   td {{ border-bottom:1px solid #EEE; padding:7px 10px; vertical-align:top; }}
   th.r, td.r {{ text-align:right; }}
+  th.c, td.c {{ text-align:center; }}
   tr:nth-child(even) td {{ background:#FCFBFA; }}
   .none {{ padding:26px; color:#777; font-size:13px; text-align:center; }}
   @media print {{ .bar {{ position:static; }} a.btn {{ display:none; }}
@@ -6619,11 +6690,13 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         data = material_request_report(kind=kind[3:], db=db, user=None)
     else:
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, db=db, user=None)
+    # Dates read the way they are said, here as on the rows themselves.
     sub = ""
     if date_from or date_to:
-        sub = f"{date_from or 'start'} to {date_to or 'today'}"
+        sub = (f"{export_web._day(date_from) if date_from else 'the start'} to "
+               f"{export_web._day(date_to) if date_to else 'today'}")
     else:
-        sub = f"As at {date.today().isoformat()}"
+        sub = f"As at {_dubai_today():%d %b %Y}"
     # On screen the site split opens as its own panel; on paper there is
     # nowhere to expand, so it becomes a readable column instead of a
     # raw mapping.

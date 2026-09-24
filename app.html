@@ -2179,7 +2179,7 @@
               <div class="rep-row">
                 <div class="rep-tile" onclick="pickReport('stock')"><b>Current Stock</b><span>Everything held: store vs sites</span></div>
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>At Sites</b><span>What each site is holding</span></div>
-                <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption</b><span>What sites have used up</span></div>
+                <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption</b><span>What went out, to whom and when</span></div>
                 <div class="rep-tile" onclick="pickReport('assets')"><b>Assets</b><span>Owned equipment and where it is</span></div>
                 <div class="rep-tile" onclick="pickReport('lost')"><b>Lost / Damaged</b><span>Written off, and where</span></div>
               </div>
@@ -8370,7 +8370,10 @@ async function loadStore() {
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
-                   written_off: "Written off", qty: "Qty", name: "Material", code: "Code" };
+                   written_off: "Written off", qty: "Qty", name: "Material", code: "Code",
+                   given_to: "Given to", incharge: "Given to", date: "Date", from: "From",
+                   to: "To", reference: "Ref", notes: "Remarks", since: "Out since",
+                   last_arrived: "Last arrived" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
       keys.map(k => `<th ${dragAttrs(view, k)}>${label(k)}</th>`).join("");

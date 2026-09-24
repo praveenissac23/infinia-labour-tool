@@ -232,6 +232,11 @@ STORE_LABELS = {
     "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
     "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
     "days_late": "Days late", "outstanding": "Still to come",
+    "given_to": "Given to", "date": "Date", "from": "From", "to": "To",
+    "at_which_sites": "Where at sites", "reported_by": "Reported by",
+    "where": "Where", "reason": "Reason", "type": "Type",
+    "reference": "Ref", "notes": "Remarks", "incharge": "Given to",
+    "last_arrived": "Last arrived", "since": "Out since",
 }
 
 
@@ -256,6 +261,38 @@ def _is_texty(k):
     return any(w in k.lower() for w in
                ("name", "item", "category", "note", "description", "supplier",
                 "purpose", "site", "status", "urgency", "hired", "person"))
+
+
+def _is_money(k):
+    return any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+
+
+def col_align(key, rows):
+    """How a whole column sits - heading and every cell in it alike.
+
+    The heading used to be centred on every column while the cells under
+    it went left or right by type, so a report read as though it had
+    been laid out twice by two different people.
+
+    Centred, to match the report tables on the screen the figures were
+    checked on - the printed copy and the screen should not be two
+    different documents. The one exception is a cell that genuinely runs
+    on: a site breakdown listing four sites, a remark of a sentence or
+    two. Centring those leaves a ragged block nobody can read down, so
+    they sit flush left and their heading goes with them.
+
+    Returns "L" or "C".
+    """
+    vals = [r.get(key) for r in rows]
+    seen = [v for v in vals if v not in (None, "", "-")]
+    if any(isinstance(v, dict) for v in seen):
+        return "L"
+    if any(isinstance(v, str) and "\n" in v for v in seen):
+        return "L"
+    longest = max((len(str(v)) for v in seen if isinstance(v, str)), default=0)
+    if longest > 38:
+        return "L"
+    return "C"
 
 
 def _cycle_dates(month_year):
@@ -1164,13 +1201,17 @@ def build_store_report_excel(title, rows, subtitle=""):
         wb.save(buf); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
-    money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    money_like = _is_money
+    # The same one alignment per column the PDF uses, heading included.
+    aligns = {k: col_align(k, rows) for k in cols}
+    excel_align = {"L": "left", "C": "center", "R": "right"}
     header_row = r
     for i, k in enumerate(cols, start=1):
         c = ws.cell(row=r, column=i, value=_store_label(k))
         c.font = Font(bold=True, color="FFFFFF", size=10)
         c.fill = PatternFill("solid", fgColor=BRAND_RED)
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center",
+                                wrap_text=True)
         c.border = border
     r += 1
 
@@ -1189,18 +1230,17 @@ def build_store_report_excel(title, rows, subtitle=""):
             c.border = border
             c.font = Font(size=10)
             if isinstance(v, (int, float)):
-                # Numbers flush right with thousands separators; counts
-                # keep no fake decimals, money always shows two.
+                # Counts keep no fake decimals; money always shows two.
+                # Alignment follows the column, like every other cell.
                 c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
-                c.alignment = Alignment(horizontal="right", vertical="center")
+                c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
                 if k in numeric_totals:
                     numeric_totals[k] += v
             elif isinstance(v, str) and "\n" in v:
                 # One site per line, and the row grows to hold them.
                 c.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             else:
-                c.alignment = Alignment(horizontal="left" if _is_texty(k) else "center",
-                                        vertical="center")
+                c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
         r += 1
 
     if numeric_totals:
@@ -1209,7 +1249,7 @@ def build_store_report_excel(title, rows, subtitle=""):
             c = ws.cell(row=r, column=i, value=v)
             c.font = Font(bold=True)
             c.fill = PatternFill("solid", fgColor=GREEN_FILL)
-            c.alignment = Alignment(horizontal="right" if isinstance(v, (int, float)) else "center")
+            c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
             c.border = border
             if isinstance(v, (int, float)):
                 c.number_format = '#,##0.00'
@@ -1258,28 +1298,36 @@ def build_store_report_pdf(title, rows, subtitle=""):
         doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
-    money_like = lambda k: any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    money_like = _is_money
+    # One alignment per column, and the heading takes the same one, so a
+    # centred heading never sits over a left-hand column again.
+    aligns = {k: col_align(k, rows) for k in cols}
     cellL = ParagraphStyle("CL", parent=cell, alignment=TA_LEFT)
     cellR = ParagraphStyle("CR", parent=cell, alignment=TA_RIGHT)
-    data = [[Paragraph(_store_label(k), head) for k in cols]]
+    headL = ParagraphStyle("HL", parent=head, alignment=TA_LEFT)
+    headR = ParagraphStyle("HR", parent=head, alignment=TA_RIGHT)
+    pick = {"L": cellL, "C": cell, "R": cellR}
+    pickh = {"L": headL, "C": head, "R": headR}
+    # Totals sit under their own column, centred with it.
+    data = [[Paragraph(_store_label(k), pickh[aligns[k]]) for k in cols]]
     totals = {k: 0 for k in cols if money_like(k)}
     for row in rows:
         line = []
         for k in cols:
             v = row.get(k, "")
-            sty = cellL if _is_texty(k) else cell
+            sty = pick[aligns[k]]
             if isinstance(v, dict):
                 # Site breakdowns are counts: "704: 380", never "704: 380.0".
                 v = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items()) or "-"
-                sty = cellL
             elif isinstance(v, bool):
                 v = "Yes" if v else ""
             elif isinstance(v, (int, float)):
                 if k in totals: totals[k] += v
                 v = f"{v:,.2f}" if money_like(k) else _clean_qty(v)
-                sty = cellR
             elif k == "item_type" and v:
                 v = str(v).title()
+            elif isinstance(v, str) and _looks_like_date(v):
+                v = _day(v)
             text = str(v) if v not in (None, "") else "-"
             # A cell holding lines - one site per line - keeps them.
             text = "<br/>".join(_esc(t) for t in text.split("\n")) if "\n" in text else _esc(text)
@@ -1287,7 +1335,7 @@ def build_store_report_pdf(title, rows, subtitle=""):
         data.append(line)
     if totals:
         data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>",
-                               cellR if k in totals else cell)
+                               pick[aligns[k]])
                      for i, k in enumerate(cols)])
 
     w = doc.width / len(cols)
@@ -2004,6 +2052,19 @@ def _return_rows(note: dict):
             "notes": l.get("notes") or "",
         })
     return rows
+
+
+def _looks_like_date(v):
+    """An ISO date the app stored, so a report can print it the way it
+    is read aloud rather than as 2026-09-24."""
+    v = str(v or "")
+    if len(v) != 10 or v[4] != "-" or v[7] != "-":
+        return False
+    try:
+        datetime.strptime(v, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 
 def _day(v):

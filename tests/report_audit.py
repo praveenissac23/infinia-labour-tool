@@ -44,10 +44,12 @@ c.post(f"/store/requests/{mr['id']}/receive-bulk", json={'supplier': 'Al Raha Tr
 for it, q, sup, dt in [('Steel Cutting Machine', 2, 'Newstar', '2026-08-20'), ('Scaffold Ledger 1.20M', 700, 'Gateway Scaffolding', '2026-08-18')]:
     c.post('/store/movements', json={'item_id': items[it]['id'], 'kind': 'in', 'qty': q, 'location': '',
         'supplier': sup, 'reference': 'DO-1', 'moved_on': dt}, headers=K)
-c.post('/store/movements', json={'item_id': items['Cement OPC 42.5']['id'], 'kind': 'out', 'qty': 40, 'location': '904', 'incharge': 'Akhil', 'moved_on': '2026-08-27'}, headers=K)
+# Cement ordered for 904 is delivered to 904, so there is none standing
+# in the central store to issue out of - that is what the delivery does.
+c.post('/store/movements', json={'item_id': items['Steel Cutting Machine']['id'], 'kind': 'out', 'qty': 1, 'location': '904', 'incharge': 'Akhil', 'moved_on': '2026-08-27', 'reference': 'MI-0003', 'notes': 'For the raft'}, headers=K)
 c.post('/store/movements', json={'item_id': items['Scaffold Ledger 1.20M']['id'], 'kind': 'out', 'qty': 125, 'location': '905', 'incharge': 'Raj', 'moved_on': '2026-08-26'}, headers=K)
 c.post('/store/movements', json={'item_id': items['Steel Cutting Machine']['id'], 'kind': 'out', 'qty': 1, 'location': '907', 'incharge': 'Muhsina', 'moved_on': '2026-08-28'}, headers=K)
-c.post('/store/movements', json={'item_id': items['Scaffold Ledger 1.20M']['id'], 'kind': 'lost', 'qty': 5, 'from_location': '905', 'moved_on': '2026-08-30', 'notes': 'damaged on site'}, headers=K)
+c.post('/store/movements', json={'item_id': items['Scaffold Ledger 1.20M']['id'], 'kind': 'lost', 'qty': 5, 'from_location': '905', 'incharge': 'Raj', 'moved_on': '2026-08-30', 'notes': 'damaged on site'}, headers=K)
 
 bad = []
 for k in ["stock", "low", "by_site", "purchases", "usage", "assets", "lost", "hired"]:
@@ -73,6 +75,46 @@ fails = [f"{k} {f}" for k in ["stock", "purchases", "hired", "lost", "assets", "
          if c.get(f'/export/store/report?kind={k}&format={f}&token={tok}', headers=K).status_code != 200]
 print(("FAIL exports: " + ", ".join(fails)) if fails else "PASS every export builds")
 bad += fails
+
+# ---- What was moved, who took it, and when ---------------------------
+# The issued report used to total a material per site, which threw away
+# the two things written down when stock is given out: the date and the
+# man who signed for it. A total saying 40 bags went to 901 answers
+# nobody asking when, or who has them.
+import export_web
+issued = c.get('/store/report?kind=usage', headers=K).json()['rows']
+need = ("date", "given_to", "from", "to", "qty", "name", "unit", "reference")
+missing = [col for col in need if not issued or col not in issued[0]]
+print(("FAIL " if missing else "PASS ") + "issued report names the day and the man"
+      + (f"   MISSING: {missing}" if missing else ""))
+if missing: bad.append("usage-columns")
+if issued:
+    dated = [r for r in issued if r.get("date")]
+    named = [r for r in issued if (r.get("given_to") or "-") != "-"]
+    ok = len(dated) == len(issued) and named
+    print(("PASS " if ok else "FAIL ") + "every issue carries its date, and the men are on it")
+    if not ok: bad.append("usage-blank")
+
+# One alignment per column, and the heading takes the same one. A
+# centred heading over a left-hand column read as two layouts at once.
+al_bad = []
+for k in ["stock", "by_site", "usage", "purchases", "assets", "hired", "lost", "low"]:
+    rows = c.get(f'/store/report?kind={k}', headers=K).json().get('rows', [])
+    if not rows:
+        continue
+    for col in rows[0]:
+        if export_web.col_align(col, rows) not in ("L", "C"):
+            al_bad.append(f"{k}.{col}")
+print(("FAIL alignment: " + ", ".join(al_bad)) if al_bad
+      else "PASS every report column has one settled alignment")
+bad += al_bad
+
+# The preview is the same sheet, so its headings read as headings.
+pv = c.get(f'/export/store/report/view?kind=usage&token={tok}')
+pv_ok = (pv.status_code == 200 and "given_to" not in pv.text
+         and ">Given to<" in pv.text and "<th class=\"c\">" in pv.text)
+print(("PASS " if pv_ok else "FAIL ") + "the preview is headed and aligned like the print")
+if not pv_ok: bad.append("preview-headings")
 
 print()
 print("REPORTS CLEAN" if not bad else f"{len(bad)} PROBLEM(S): {bad}")
