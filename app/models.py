@@ -759,6 +759,44 @@ class StaffLeave(Base):
     notes = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # What kind of day off it was. The kind decides whether it is paid:
+    # absent, unpaid leave and vacation cost the day; a company holiday
+    # or other paid leave costs nothing; a sick day is paid up to one a
+    # month and the rest count as absent.
+    kind = Column(String, nullable=True)           # absent|sick|vacation|unpaid|holiday|paid_leave
+    # "auto" follows the rule above. "paid" / "unpaid" is the accountant
+    # overriding it for this entry. No default on purpose: rows from
+    # before this existed are given the decision they were actually
+    # paid on, so a signed month does not change.
+    pay_rule = Column(String, nullable=True)
+    # A range of days entered once - a week's vacation - shares a batch,
+    # so it is shown, edited and removed as the one entry it was.
+    batch = Column(String, nullable=True, index=True)
+
+    employee = relationship("Employee")
+
+
+class PayItem(Base):
+    """An addition to or a deduction from one person's month.
+
+    Taxi bills, a fee paid on his behalf, leave salary, an air ticket -
+    or an ILOE premium, a fine, an advance recovered. Entered here, once,
+    and the salary cycle for that month picks them up by itself.
+    """
+    __tablename__ = "pay_items"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    month_year = Column(String, nullable=False, index=True)    # "September 2026"
+    direction = Column(String, nullable=False)                 # add | deduct
+    category = Column(String, nullable=False)                  # taxi | leave_salary | iloe | ...
+    amount = Column(Float, nullable=False)
+    on_date = Column(Date, nullable=True)
+    notes = Column(String, default="")
+    # Set when the item was raised by something else - a vacation's
+    # leave salary - so it follows that entry when it is changed.
+    source = Column(String, default="")                        # "" | leave:<batch>
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     employee = relationship("Employee")
 
@@ -802,6 +840,10 @@ class PayrollLine(Base):
     basic = Column(Float, default=0.0)             # as it stood that month
     allowance = Column(Float, default=0.0)
     fixed_salary = Column(Float, default=0.0)      # basic + allowance
+    # The accountant typed over the proposed instalment or remark, so a
+    # refresh of the draft keeps his figure instead of the proposal.
+    loan_edited = Column(Boolean, default=False)
+    remark_edited = Column(Boolean, default=False)
 
     deduction = Column(Float, default=0.0)         # absence and unpaid leave
     deduction_note = Column(String, default="")

@@ -173,21 +173,22 @@ LEAVE = [   # emp, date, half day?, paid?, reason
     ("PI004", "2026-08-24", False, True,  "Sick"),
 ]
 
-# What only August knew: bills, leave salary, tickets, the ILOE premium.
-AUG_EXTRAS = {
-    "IC001": {"leave_salary": 7000, "air_ticket": 500, "remarks": "Leave salary & Air Ticket"},
-    "IC010": {"other_allowance": 1228.00, "remarks": "Taxi Bills"},
-    "IC017": {"other_allowance": 328.00, "remarks": "Taxi Bills"},
-    "IC019": {"other_allowance": 315.50, "remarks": "Taxi Bills"},
-    "IC020": {"other_allowance": 241.50, "remarks": "SOE Fee 241.50"},
-    "IC022": {"leave_salary": 7000, "remarks": "Leave salary & Loan Reimbursement"},
-    "IC025": {"other_allowance": 195.50, "remarks": "Taxi Bills"},
-    "IC101": {"remarks": "BY CASH"},
-    "IC102": {"remarks": "BY CASH"},
-    "IC201": {"remarks": "Project Director's remuneration"},
-    "IC202": {"remarks": "Manager's remuneration"},
-    "IC203": {"remarks": "Manager's remuneration"},
-    "PI001": {"statutory": 126.00, "remarks": "ILOE DEDUCTION"},
+# What only August knew: bills, leave salary, tickets, the ILOE premium -
+# entered in the additions register, as they will be every month.
+AUG_ITEMS = [   # emp, add/deduct, category, amount, note
+    ("IC001", "add", "leave_salary", 7000, ""), ("IC001", "add", "air_ticket", 500, ""),
+    ("IC010", "add", "taxi", 1228.00, "Taxi Bills"), ("IC017", "add", "taxi", 328.00, "Taxi Bills"),
+    ("IC019", "add", "taxi", 315.50, "Taxi Bills"), ("IC020", "add", "fees", 241.50, "SOE Fee 241.50"),
+    ("IC022", "add", "leave_salary", 7000, ""), ("IC025", "add", "taxi", 195.50, "Taxi Bills"),
+    ("PI001", "deduct", "iloe", 126.00, "ILOE DEDUCTION"),
+]
+# The remarks as the signed statements word them.
+AUG_REMARKS = {
+    "IC001": "Leave salary & Air Ticket", "IC010": "Taxi Bills", "IC017": "Taxi Bills",
+    "IC019": "Taxi Bills", "IC020": "SOE Fee 241.50", "IC022": "Leave salary & Loan Reimbursement",
+    "IC025": "Taxi Bills", "IC101": "BY CASH", "IC102": "BY CASH",
+    "IC201": "Project Director's remuneration", "IC202": "Manager's remuneration",
+    "IC203": "Manager's remuneration", "PI001": "ILOE DEDUCTION",
 }
 SIGNED = {"Infinia": {"wps": 86609.50, "bank": 100000.00, "cash": 14100.00},
           "Prime Infinia": {"wps": 17378.50}}
@@ -480,6 +481,15 @@ def main_load():
                      "the new expiry under HR & Payroll > Documents: " + "; ".join(stale))
 
     # ---- August, rebuilt and checked ----------------------------------
+    for code, d, cat, amt, note in AUG_ITEMS:
+        e = db.query(models.Employee).filter(models.Employee.emp_no == code).first()
+        if db.query(models.PayItem).filter(models.PayItem.employee_id == e.id,
+                                           models.PayItem.month_year == AUG,
+                                           models.PayItem.category == cat).first():
+            continue
+        call(main.add_pay_item, {"emp_no": code, "month_year": AUG, "direction": d,
+                                 "category": cat, "amount": amt, "notes": note},
+             db=db, user=admin)
     for key, c in (("Infinia", ic), ("Prime Infinia", pi)):
         run, err = call(main.open_payroll_run, {"month_year": AUG, "company_id": c["id"],
                                                 "group": "staff"}, db=db, user=admin)
@@ -490,7 +500,7 @@ def main_load():
             say(f"August for {key}: already approved.")
             continue
         by = {l["emp_no"]: l for l in run["lines"]}
-        lines = [dict(v, id=by[k]["id"]) for k, v in AUG_EXTRAS.items() if k in by]
+        lines = [{"id": by[k]["id"], "remarks": v} for k, v in AUG_REMARKS.items() if k in by]
         run = main.save_payroll_run(run["id"], {"lines": lines}, db=db, user=admin)
         got = run["by_route"]
         want = SIGNED[key]

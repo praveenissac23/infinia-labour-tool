@@ -258,27 +258,35 @@ ck('the deduction says which days it is for',
    '24 Aug' in lines['IC020']['deduction_note'], lines['IC020']['deduction_note'])
 
 # What is left is what only the month knows: the bills, the leave
-# salary, the ticket.
-EXTRAS = {
-    'IC001': {'leave_salary': 7000, 'air_ticket': 500,
-              'remarks': 'Leave salary & Air Ticket'},
-    'IC010': {'other_allowance': 1228.00, 'remarks': 'Taxi Bills'},
-    'IC017': {'other_allowance': 328.00, 'remarks': 'Taxi Bills'},
-    'IC019': {'other_allowance': 315.50, 'remarks': 'Taxi Bills'},
-    'IC020': {'other_allowance': 241.50, 'remarks': 'SOE Fee 241.50'},
-    'IC022': {'leave_salary': 7000, 'remarks': 'Leave salary & Loan Reimbursement'},
-    'IC025': {'other_allowance': 195.50, 'remarks': 'Taxi Bills'},
-    'IC101': {'remarks': 'BY CASH'},
-    'IC102': {'remarks': 'BY CASH'},
-    'IC201': {'remarks': "Project Director's remuneration"},
-    'IC202': {'remarks': "Manager's remuneration"},
-    'IC203': {'remarks': "Manager's remuneration"},
-}
+# salary, the ticket. They go in the additions register, as the
+# accountant will enter them, and the open cycle picks them up.
+ITEMS = [
+    ('IC001', 'add', 'leave_salary', 7000, ''),
+    ('IC001', 'add', 'air_ticket', 500, ''),
+    ('IC010', 'add', 'taxi', 1228.00, 'Taxi Bills'),
+    ('IC017', 'add', 'taxi', 328.00, 'Taxi Bills'),
+    ('IC019', 'add', 'taxi', 315.50, 'Taxi Bills'),
+    ('IC020', 'add', 'fees', 241.50, 'SOE Fee 241.50'),
+    ('IC022', 'add', 'leave_salary', 7000, ''),
+    ('IC025', 'add', 'taxi', 195.50, 'Taxi Bills'),
+]
+for emp, d, cat, amt, note in ITEMS:
+    r = c.post('/employees/pay-items', json={'emp_no': emp, 'month_year': CYCLE,
+               'direction': d, 'category': cat, 'amount': amt, 'notes': note}, headers=H)
+    assert r.status_code == 200, r.text[:200]
+REMARKS = {'IC101': 'BY CASH', 'IC102': 'BY CASH',
+           'IC201': "Project Director's remuneration",
+           'IC202': "Manager's remuneration", 'IC203': "Manager's remuneration"}
 r = c.put(f"/employees/payroll/runs/{run['id']}",
-          json={'lines': [dict(EXTRAS[k], id=lines[k]['id']) for k in EXTRAS]}, headers=H)
-ck('the month\'s exceptions save', r.status_code == 200, r.text[:200])
+          json={'lines': [{'id': lines[k]['id'], 'remarks': v} for k, v in REMARKS.items()]},
+          headers=H)
+ck('the additions register fills the open cycle by itself', r.status_code == 200, r.text[:200])
 run = r.json()
 lines = {l['emp_no']: l for l in run['lines']}
+ck('with the remark written from the entries',
+   lines['IC020']['remarks'].startswith('SOE Fee 241.50'), lines['IC020']['remarks'])
+ck("and a remark typed on the sheet kept", lines['IC101']['remarks'] == 'BY CASH',
+   lines['IC101']['remarks'])
 
 # Against the signed sheet, line by line.
 SIGNED_IC = {
@@ -337,9 +345,11 @@ ck('both 500 instalments are proposed',
 
 # Shyju's 126.00 is an ILOE premium, not an absence - it goes in the
 # statutory column, and prints in the same place on the sheet.
-r = c.put(f"/employees/payroll/runs/{prun['id']}", json={'lines': [
-    {'id': pl['PI001']['id'], 'statutory': 126.00, 'remarks': 'ILOE DEDUCTION'}]}, headers=H)
-prun = r.json()
+r = c.post('/employees/pay-items', json={'emp_no': 'PI001', 'month_year': CYCLE,
+           'direction': 'deduct', 'category': 'iloe', 'amount': 126, 'notes': 'ILOE DEDUCTION'},
+           headers=H)
+ck('an ILOE premium goes in as a deduction', r.status_code == 200, r.text[:200])
+prun = c.get(f"/employees/payroll/runs/{prun['id']}", headers=H).json()
 pl = {l['emp_no']: l for l in prun['lines']}
 
 SIGNED_PI = {'PI001': (4874.00, 0.00, 4874.00), 'PI002': (3867.00, 500.00, 3367.00),

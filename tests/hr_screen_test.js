@@ -44,8 +44,8 @@ const CYCLE_MONTH = '2026-08';
   ck('it opens', await p.locator('#screen-hrpayroll').isVisible());
   ck('and is titled as the office side of the app',
      (await p.locator('#screen-title').textContent()).includes('HR'));
-  ck('six registers, one open',
-     await p.locator('.hr-tab').count() === 6 &&
+  ck('seven registers, one open',
+     await p.locator('.hr-tab').count() === 7 &&
      await p.locator('.hr-pane:visible').count() === 1);
 
   // ---- Set the month up ------------------------------------------------
@@ -80,6 +80,33 @@ const CYCLE_MONTH = '2026-08';
                              instalment: 200, terms: 'Monthly 200' }) });
   });
 
+  // Clear what an earlier run of this test left for August, so it runs
+  // the same every time, and make sure the month is open.
+  await p.evaluate(async () => {
+    const runs = (await apiCall('/employees/payroll/runs')).rows;
+    for (const r of runs.filter(r => r.company === 'BrowserCo' && r.month_year === 'August 2026'))
+      if (r.status === 'approved') await apiCall(`/employees/payroll/runs/${r.id}/reopen`, { method: 'POST' });
+    const lv = (await apiCall('/employees/leave?month_year=August 2026')).rows;
+    for (const r of lv.filter(r => ['BT001', 'BT002'].includes(r.emp_no)))
+      await apiCall(`/employees/leave/entry/${r.batch}`, { method: 'DELETE' });
+    const it = (await apiCall('/employees/pay-items?month_year=August 2026')).rows;
+    for (const r of it.filter(r => ['BT001', 'BT002'].includes(r.emp_no)))
+      await apiCall(`/employees/pay-items/${r.id}`, { method: 'DELETE' });
+    await apiCall('/employees/leave', { method: 'POST', body: JSON.stringify({
+      emp_no: 'BT002', kind: 'absent', from: '2026-08-11' }) });
+    for (const l of (await apiCall('/employees/loans')).rows.filter(l => l.emp_no === 'BT001'))
+      for (const r of l.repayments.filter(r => r.source !== 'payroll'))
+        await apiCall(`/employees/loans/repayments/${r.id}`, { method: 'DELETE' });
+    const run = runs.find(r => r.company === 'BrowserCo' && r.month_year === 'August 2026');
+    if (run) {
+      const full = await apiCall(`/employees/payroll/runs/${run.id}`);
+      await apiCall(`/employees/payroll/runs/${run.id}`, { method: 'PUT', body: JSON.stringify({
+        lines: full.lines.map(l => ({ id: l.id, loan_reset: true, remarks: '' })) }) });
+    }
+  });
+  // Any browser pop-up at all is a failure: the page asks its own questions.
+  p.on('dialog', d => { errs.push('browser pop-up: ' + d.message().slice(0, 80)); d.dismiss(); });
+
   // The screen picked up its company list before any of that existed,
   // so it is loaded again here - the same thing that happens when the
   // accountant adds a company and the list refills.
@@ -111,41 +138,113 @@ const CYCLE_MONTH = '2026-08';
   ck("the loan instalment is on the other man's row",
      await line('BT001', 'loan_deduction') === 200, await line('BT001', 'loan_deduction'));
 
-  // ---- Typing a figure moves everything that depends on it -------------
-  // Checked against what the figures ought to be rather than against
-  // what they were a moment ago: run twice over the same database the
-  // bill is already there, and "it changed" would be false while
-  // everything was in fact correct.
-  await p.evaluate(() => {
-    const id = HR_RUN.lines.find(l => l.emp_no === 'BT001').id;
-    const cell = document.querySelector(
-      `.hr-cell[data-line="${id}"][data-field="other_allowance"]`);
-    cell.value = '150';
-    cell.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await p.waitForTimeout(300);
-  const id1 = await p.evaluate(() => HR_RUN.lines.find(l => l.emp_no === 'BT001').id);
-  ck('typing a taxi bill moves the net pay at once',
-     (await p.locator('#hr-net-' + id1).textContent()).trim() === '4,950.00',
-     await p.locator('#hr-net-' + id1).textContent());
-  ck('and the salary payable with it',
-     (await p.locator('#hr-payable-' + id1).textContent()).trim() === '5,150.00',
-     await p.locator('#hr-payable-' + id1).textContent());
-  ck('and the foot of the sheet keeps up',
-     (await p.locator('#hr-run-foot').textContent()).includes('150.00'));
-  ck('and the WPS figure at the bottom keeps up',
-     (await p.locator('#hr-run-routes').textContent()).includes('WPS TOTAL'),
-     await p.locator('#hr-run-routes').textContent());
+  // ---- The registers fill the sheet ------------------------------------
+  // Nothing is typed on the salary sheet except the instalment and the
+  // remark: a bill goes in Additions & Deductions, an absence in
+  // Absence, and the open cycle picks both up by itself.
+  const cycleLine = async (emp) => {
+    const id = await p.evaluate(() => HR_RUN.id);
+    await p.evaluate(i => loadPayrollRun(i), id); await p.waitForTimeout(900);
+    return p.evaluate(e => HR_RUN.lines.find(l => l.emp_no === e), emp);
+  };
+  const choose = async (sel, value) => p.selectOption(sel, value);
+  const ask = async () => {           // answer the page's own question box
+    await p.waitForSelector('.hr-ask [data-a="yes"]', { timeout: 5000 });
+    await p.click('.hr-ask [data-a="yes"]');
+    await p.waitForTimeout(1200);
+  };
 
-  await p.evaluate('savePayrollRun()');
-  await p.waitForTimeout(1500);
-  ck('the bill survives a save',
-     await line('BT001', 'other_allowance') === 150, await line('BT001', 'other_allowance'));
+  await p.evaluate("hrTab('items')"); await p.waitForTimeout(800);
+  await choose('#hr-item-emp', 'BT001');
+  await p.fill('#hr-item-month', CYCLE_MONTH);
+  await choose('#hr-item-dir', 'add'); await choose('#hr-item-cat', 'taxi');
+  await p.fill('#hr-item-amount', '150');
+  await p.fill('#hr-item-note', 'Taxi bills');
+  await p.click('#hr-item-save'); await p.waitForTimeout(1200);
+  ck('a taxi bill goes in from the Additions tab',
+     (await p.locator('#hr-items-body').textContent()).includes('150.00'),
+     await p.locator('#hr-items-body').textContent());
+
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(800);
+  for (const d of ['2026-08-05', '2026-08-06']) {
+    await choose('#hr-leave-emp', 'BT001'); await choose('#hr-leave-kind', 'sick');
+    await p.fill('#hr-leave-from', d); await p.fill('#hr-leave-to', '');
+    await p.click('#hr-leave-save'); await p.waitForTimeout(1200);
+  }
+  const lv = await p.locator('#hr-leave-body').textContent();
+  ck("the month's first sick day shows paid and the second deducted",
+     /5 Aug 2026[\s\S]*Paid/.test(lv) && /6 Aug 2026[\s\S]*Deducted/.test(lv), lv.slice(0, 300));
+
+  await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(500);
+  let L1 = await cycleLine('BT001');
+  ck('the sheet picked up the bill without it being typed there', L1.other_allowance === 150, L1.other_allowance);
+  ck('and one sick day deducted at the daily rate: 166.00', L1.deduction === 166, L1.deduction);
+  ck('net pay: 5,000 + 150 - 166 - 200 instalment = 4,784.00', L1.net_pay === 4784, L1.net_pay);
+  ck('the bill and the absence are not boxes on the sheet',
+     await p.evaluate(id => !document.querySelector(`.hr-cell[data-line="${id}"][data-field="other_allowance"]`), L1.id));
+
+  // The instalment is typed on the sheet, and the net follows at once.
+  await p.evaluate(id => {
+    const cell = document.querySelector(`.hr-cell[data-line="${id}"][data-field="loan_deduction"]`);
+    cell.value = '100'; cell.dispatchEvent(new Event('input', { bubbles: true }));
+  }, L1.id);
+  await p.waitForTimeout(300);
+  ck('typing a smaller instalment moves the net pay at once: 4,884.00',
+     (await p.locator('#hr-net-' + L1.id).textContent()).trim() === '4,884.00',
+     await p.locator('#hr-net-' + L1.id).textContent());
+  await p.evaluate('savePayrollRun()'); await p.waitForTimeout(1200);
+  L1 = await cycleLine('BT001');
+  ck('and it is kept when the sheet refills', L1.loan_deduction === 100, L1.loan_deduction);
+  await p.evaluate(id => {
+    const cell = document.querySelector(`.hr-cell[data-line="${id}"][data-field="loan_deduction"]`);
+    cell.value = '200'; cell.dispatchEvent(new Event('input', { bubbles: true }));
+  }, L1.id);
+  await p.evaluate('savePayrollRun()'); await p.waitForTimeout(1200);
+
+  // A vacation, with leave salary offered at a month's gross.
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(600);
+  await choose('#hr-leave-emp', 'BT002'); await choose('#hr-leave-kind', 'vacation');
+  await p.evaluate('hrLeaveKindChanged()');
+  await p.fill('#hr-leave-from', '2026-08-20'); await p.fill('#hr-leave-to', '2026-08-22');
+  await p.evaluate('hrLeaveRangeChanged()');
+  ck('a year served, so leave salary is offered at his gross',
+     (await p.inputValue('#hr-vac-salary')) === '10,000', await p.inputValue('#hr-vac-salary'));
+  ck('and the form says how many days', (await p.locator('#hr-leave-hint').textContent()).includes('3 calendar days'));
+  await p.fill('#hr-vac-ticket', '1200');
+  await p.click('#hr-leave-save'); await p.waitForTimeout(1300);
+  ck('the vacation shows as one line, 20-22 Aug',
+     (await p.locator('#hr-leave-body').textContent()).includes('20-22 Aug 2026'),
+     await p.locator('#hr-leave-body').textContent());
+  await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
+  let L2 = await cycleLine('BT002');
+  ck('the three days are deducted with the absent day: 1,332.00', L2.deduction === 1332, L2.deduction);
+  ck('and leave salary and ticket are on the sheet', L2.leave_salary === 10000 && L2.air_ticket === 1200,
+     [L2.leave_salary, L2.air_ticket]);
+
+  // Changing the entry changes the pay.
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(600);
+  const vb = await p.evaluate(() => HR_LEAVE.find(r => r.kind === 'vacation' && r.emp_no === 'BT002').batch);
+  await p.evaluate(b => hrLeaveEdit(b), vb);
+  ck('Edit loads the entry back into the form', (await p.inputValue('#hr-leave-to')) === '2026-08-22');
+  await p.fill('#hr-leave-to', '2026-08-21');
+  await p.click('#hr-leave-save'); await p.waitForTimeout(1300);
+  await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
+  L2 = await cycleLine('BT002');
+  ck('shortened to two days, the sheet follows: 999.00', L2.deduction === 999, L2.deduction);
+
+  // Removing asks in the page, not in a browser box.
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(600);
+  const sb = await p.evaluate(() => HR_LEAVE.find(r => r.emp_no === 'BT001' && r.from === '2026-08-06').batch);
+  p.evaluate(b => hrLeaveDelete(b), sb);
+  await ask();
+  ck('an entry is removed after the page asks', !(await p.evaluate(() =>
+     HR_LEAVE.some(r => r.emp_no === 'BT001' && r.from === '2026-08-06'))));
 
   // ---- Approving locks it ---------------------------------------------
-  p.on('dialog', d => d.accept());
-  await p.evaluate('approvePayrollRun()');
-  await p.waitForTimeout(2000);
+  await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
+  await cycleLine('BT001');
+  p.evaluate('approvePayrollRun()');
+  await ask(); await p.waitForTimeout(800);
   ck('approving locks the sheet',
      await p.evaluate(() => HR_RUN.status) === 'approved',
      await p.evaluate(() => HR_RUN.status));
@@ -159,27 +258,53 @@ const CYCLE_MONTH = '2026-08';
        const d = await apiCall('/employees/loans');
        return d.rows.find(l => l.emp_no === 'BT001').balance;
      }) === 2200);
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(600);
+  await choose('#hr-leave-emp', 'BT001'); await choose('#hr-leave-kind', 'absent');
+  await p.fill('#hr-leave-from', '2026-08-12'); await p.fill('#hr-leave-to', '');
+  await p.click('#hr-leave-save'); await p.waitForTimeout(1000);
+  ck('an absence in the approved month is refused, with the reason',
+     (await p.locator('#hr-status').textContent()).includes('Reopen'),
+     await p.locator('#hr-status').textContent());
 
-  await p.evaluate('reopenPayrollRun()');
-  await p.waitForTimeout(1500);
+  await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
+  p.evaluate('reopenPayrollRun()');
+  await ask();
   ck('reopening puts the instalment back',
      await p.evaluate(async () => {
        const d = await apiCall('/employees/loans');
        return d.rows.find(l => l.emp_no === 'BT001').balance;
      }) === 2400);
-  ck('and the boxes come back when it is reopened',
+  ck('and the instalment box comes back when it is reopened',
      await p.evaluate(() => document.querySelectorAll('#hr-run-body input.hr-amt').length > 0));
 
+  // ---- A repayment with its own date, and correcting it --------------
+  await p.evaluate("hrTab('loans')"); await p.waitForTimeout(800);
+  const loanId = await p.evaluate(() => HR_LOANS.find(l => l.emp_no === 'BT001').id);
+  await p.evaluate(i => hrLoanToggle(i), loanId); await p.waitForTimeout(300);
+  await p.fill('#hr-rep-date', '2026-08-18'); await p.fill('#hr-rep-amount', '300');
+  await p.fill('#hr-rep-note', 'Paid at the office');
+  await p.click('text=Record repayment'); await p.waitForTimeout(1200);
+  const hist = await p.locator('#hr-loan-body').textContent();
+  ck('a repayment is recorded in the page with its date - no pop-up',
+     hist.includes('18 Aug 2026') && hist.includes('Paid at the office'), hist.slice(0, 300));
+  ck('and the balance drops: 2,100.00', hist.includes('2,100.00'));
+  const repId = await p.evaluate(() => HR_LOANS.find(l => l.emp_no === 'BT001').repayments
+                                  .find(r => r.notes === 'Paid at the office').id);
+  await p.evaluate(([l, r]) => hrRepEdit(l, r), [loanId, repId]); await p.waitForTimeout(300);
+  await p.fill('#hr-rep-date', '2026-08-19');
+  await p.click('text=Save changes'); await p.waitForTimeout(1200);
+  ck('its date can be corrected', (await p.locator('#hr-loan-body').textContent()).includes('19 Aug 2026'));
+  p.evaluate(r => hrRepDelete(r), repId);
+  await ask();
+  ck('and it can be removed, putting the balance back',
+     (await p.locator('#hr-loan-body').textContent()).includes('2,400.00'));
+
   // ---- Every register carries the four buttons -------------------------
-  const PANES = {
-    payroll: ['previewStatement', 'downloadStatement', 'printStatement'],
-    staff: [], loans: [], leave: [], docs: [], increments: [],
-  };
-  for (const tab of Object.keys(PANES)) {
+  const PANES = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs'];
+  for (const tab of PANES) {
     await p.evaluate(t => hrTab(t), tab);
     await p.waitForTimeout(700);
     ck(`${tab} opens`, await p.locator(`#hrpane-${tab}`).isVisible());
-    if (tab === 'increments') continue;   // a history, not a report
     const text = await p.locator(`#hrpane-${tab}`).textContent();
     ck(`${tab} offers a preview`, text.includes('Preview'), text.slice(0, 80));
     ck(`${tab} offers a PDF`, text.includes('Export to PDF'));
@@ -195,17 +320,12 @@ const CYCLE_MONTH = '2026-08';
   ck('and shows what each has earned in gratuity',
      (await p.locator('#hr-staff-foot').textContent()).includes('TOTAL'),
      await p.locator('#hr-staff-foot').textContent());
-
-  await p.evaluate("hrTab('loans')"); await p.waitForTimeout(900);
-  ck('the loan register shows a balance',
-     (await p.locator('#hr-loan-body').textContent()).includes('2,400.00'));
-
-  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(400);
-  await p.fill('#hr-leave-month', CYCLE_MONTH);
-  await p.evaluate('loadLeave()'); await p.waitForTimeout(900);
-  ck('the leave register shows the unpaid day',
-     (await p.locator('#hr-leave-body').textContent()).includes('Unpaid'),
-     await p.locator('#hr-leave-body').textContent());
+  await p.evaluate("hrTab('increments')"); await p.waitForTimeout(900);
+  const incId = await p.evaluate(() => HR_INCS.find(r => r.emp_no === 'BT001').id);
+  await p.evaluate(i => hrIncEdit(i), incId);
+  ck('a salary history line opens for correction',
+     await p.locator('#hr-inc-edit').isVisible() && (await p.inputValue('#hr-ie-basic')) === '2,000');
+  await p.evaluate('hrIncReset()');
 
   await p.evaluate("hrTab('docs')"); await p.waitForTimeout(900);
   ck('the document tracker loads', await p.locator('#hr-doc-body').count() === 1);

@@ -11,6 +11,7 @@ from typing import Optional
 import os
 import re
 import io
+import uuid
 import json
 from urllib.parse import quote
 
@@ -71,6 +72,7 @@ def seed_on_startup():
         _grant_storekeeper_to_existing(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
+        _migrate_hr(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
         db.close()
@@ -7733,7 +7735,8 @@ def _loan_dict(l, emp=None):
             "notes": l.notes or "",
             "repayments": [{"id": r.id, "amount": round(r.amount or 0, 2),
                              "paid_on": r.paid_on.isoformat(),
-                             "month_year": r.month_year or "", "source": r.source or ""}
+                             "month_year": r.month_year or "", "source": r.source or "",
+                             "notes": r.notes or ""}
                             for r in sorted(l.repayments, key=lambda r: r.paid_on)]}
 
 
@@ -7824,68 +7827,535 @@ def _loan_due(db, employee_id):
     return round(total, 2)
 
 
-# ---- Leave ------------------------------------------------------------
+# ---- Changing what is on file ------------------------------------------
+
+def _num(v):
+    try:
+        return round(float(str(v if v is not None else 0).replace(",", "")), 2)
+    except ValueError:
+        return 0.0
+
+
+@app.put("/employees/loans/{loan_id}")
+def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+               user: models.User = HR):
+    l = db.query(models.StaffLoan).options(joinedload(models.StaffLoan.repayments)).filter(
+        models.StaffLoan.id == loan_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="That loan is not on file.")
+    if "amount" in payload:
+        amt = _num(payload["amount"])
+        got = round(sum(r.amount or 0 for r in l.repayments), 2)
+        if amt <= 0:
+            raise HTTPException(status_code=400, detail="How much was lent?")
+        if amt < got - 0.005:
+            raise HTTPException(status_code=400,
+                detail=f"{got:,.2f} has already been recovered - the loan cannot be less than that.")
+        l.amount = amt
+    if payload.get("taken_on"):
+        l.taken_on = _as_date(payload["taken_on"]) or l.taken_on
+    for f in ("terms", "notes"):
+        if f in payload:
+            setattr(l, f, (payload.get(f) or "").strip())
+    if "instalment" in payload:
+        l.instalment = _num(payload["instalment"])
+    left = (l.amount or 0) - sum(r.amount or 0 for r in l.repayments)
+    l.closed = left <= 0.005
+    db.commit(); db.refresh(l)
+    log_action(db, user.id, "loan_changed", f"loan #{l.id}")
+    return _loan_dict(l, db.query(models.Employee).filter(models.Employee.id == l.employee_id).first())
+
+
+@app.delete("/employees/loans/{loan_id}")
+def delete_loan(loan_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    l = db.query(models.StaffLoan).options(joinedload(models.StaffLoan.repayments)).filter(
+        models.StaffLoan.id == loan_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="That loan is not on file.")
+    if any(r.source == "payroll" for r in l.repayments):
+        raise HTTPException(status_code=400,
+            detail="Instalments from approved salary cycles have been taken against this loan, "
+                   "so it cannot be removed. Correct it instead.")
+    for r in list(l.repayments):
+        db.delete(r)
+    db.delete(l); db.commit()
+    log_action(db, user.id, "loan_removed", f"loan #{loan_id}")
+    return {"ok": True}
+
+
+def _repayment_or_404(db, rep_id):
+    r = db.query(models.LoanRepayment).filter(models.LoanRepayment.id == rep_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That repayment is not on file.")
+    if r.source == "payroll":
+        raise HTTPException(status_code=400,
+            detail=f"This instalment came off the {r.month_year} salary. Reopen that cycle "
+                   "to change it - it is part of what was paid.")
+    return r
+
+
+@app.put("/employees/loans/repayments/{rep_id}")
+def edit_repayment(rep_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                    user: models.User = HR):
+    r = _repayment_or_404(db, rep_id)
+    l = db.query(models.StaffLoan).options(joinedload(models.StaffLoan.repayments)).filter(
+        models.StaffLoan.id == r.loan_id).first()
+    if "amount" in payload:
+        amt = _num(payload["amount"])
+        others = sum(x.amount or 0 for x in l.repayments if x.id != r.id)
+        if amt <= 0:
+            raise HTTPException(status_code=400, detail="How much came back?")
+        if others + amt > (l.amount or 0) + 0.005:
+            raise HTTPException(status_code=400,
+                detail=f"Only {(l.amount or 0) - others:,.2f} was outstanding.")
+        r.amount = amt
+    if payload.get("paid_on"):
+        r.paid_on = _as_date(payload["paid_on"]) or r.paid_on
+    for f in ("source", "notes"):
+        if f in payload:
+            setattr(r, f, (payload.get(f) or "").strip() or ("cash" if f == "source" else ""))
+    db.flush(); db.refresh(l)
+    l.closed = (l.amount or 0) - sum(x.amount or 0 for x in l.repayments) <= 0.005
+    db.commit()
+    log_action(db, user.id, "repayment_changed", f"loan #{l.id} repayment #{r.id}")
+    return {"ok": True}
+
+
+@app.delete("/employees/loans/repayments/{rep_id}")
+def delete_repayment(rep_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    r = _repayment_or_404(db, rep_id)
+    l = db.query(models.StaffLoan).filter(models.StaffLoan.id == r.loan_id).first()
+    db.delete(r); db.flush()
+    l.closed = False
+    db.commit()
+    log_action(db, user.id, "repayment_removed", f"loan #{l.id}")
+    return {"ok": True}
+
+
+def _resync_salary(db, e):
+    """The record's salary is whatever the history says is in force today."""
+    ch = (db.query(models.SalaryChange)
+            .filter(models.SalaryChange.employee_id == e.id,
+                    models.SalaryChange.effective_on <= _dubai_today())
+            .order_by(models.SalaryChange.effective_on.desc(),
+                      models.SalaryChange.id.desc()).first())
+    if ch:
+        e.basic_salary, e.allowance = ch.basic, ch.allowance
+        e.total_salary = _gross(e)
+
+
+@app.put("/employees/increments/{change_id}")
+def edit_increment(change_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                    user: models.User = HR):
+    """Correct a step in the salary history - its date, what it came to,
+    the reason. The figures are given as they should read; nothing is
+    worked out from the step before, so a correction cannot ripple."""
+    c = db.query(models.SalaryChange).filter(models.SalaryChange.id == change_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    e = db.query(models.Employee).filter(models.Employee.id == c.employee_id).first()
+    if payload.get("effective_on"):
+        c.effective_on = _as_date(payload["effective_on"]) or c.effective_on
+    if "basic" in payload:
+        c.basic = _num(payload["basic"])
+    if "allowance" in payload:
+        c.allowance = _num(payload["allowance"])
+    if "reason" in payload:
+        c.reason = (payload.get("reason") or "").strip()
+    # The rise is what this step added to the one before it.
+    prev = (db.query(models.SalaryChange)
+              .filter(models.SalaryChange.employee_id == e.id,
+                      models.SalaryChange.id != c.id,
+                      models.SalaryChange.effective_on <= c.effective_on)
+              .order_by(models.SalaryChange.effective_on.desc(),
+                        models.SalaryChange.id.desc()).first())
+    if c.kind != "joining":
+        c.amount = round((c.basic + c.allowance) - ((prev.basic + prev.allowance) if prev else 0), 2)
+    _resync_salary(db, e)
+    db.commit()
+    log_action(db, user.id, "salary_history_changed", f"{e.emp_no} {c.effective_on}")
+    return {"ok": True}
+
+
+@app.delete("/employees/increments/{change_id}")
+def delete_increment(change_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    c = db.query(models.SalaryChange).filter(models.SalaryChange.id == change_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    if c.kind == "joining":
+        raise HTTPException(status_code=400,
+            detail="The joining salary is where the history starts - correct it instead.")
+    e = db.query(models.Employee).filter(models.Employee.id == c.employee_id).first()
+    db.delete(c); db.flush()
+    _resync_salary(db, e)
+    db.commit()
+    log_action(db, user.id, "salary_history_removed", f"{e.emp_no}")
+    return {"ok": True}
+
+
+# ---- Absence and leave ------------------------------------------------
+#
+# Everyone is at work unless something is recorded here, so only the
+# exceptions are entered - a day, a half day, or a run of days entered
+# once. What each costs is decided by its kind, by the rules the office
+# already pays by:
+#
+#   absent, unpaid leave, vacation    the day is deducted
+#   company holiday, other paid leave the day is paid
+#   sick                              one day a month is paid; any more
+#                                     that month count as absent
+#
+# Vacation days are deducted like absence because leave salary is paid
+# for them separately, as an addition, when he goes. The accountant can
+# still mark any single entry paid or unpaid, and that decision stands.
+
+LEAVE_KINDS = {"absent": "Absent", "sick": "Sick", "vacation": "Annual vacation",
+               "unpaid": "Unpaid leave", "holiday": "Company holiday / day off",
+               "paid_leave": "Paid leave (other)"}
+_UNPAID_KINDS = {"absent", "vacation", "unpaid"}
+_PAID_KINDS = {"holiday", "paid_leave"}
+SICK_DAYS_PAID_A_MONTH = 1.0
+
+
+def _leave_kind(l):
+    if l.kind:
+        return l.kind
+    r = (l.reason or "").lower()
+    return "sick" if "sick" in r else ("absent" if not l.paid else "paid_leave")
+
+
+def _judge_days(rows):
+    """Each day of one person's calendar month, and how much of it is paid.
+
+    Returns (row, paid portion, unpaid portion, why) in date order. The
+    sick allowance is used up in date order, so it is the first sick day
+    of the month that is paid and the later ones that are not.
+    """
+    allowance = SICK_DAYS_PAID_A_MONTH
+    out = []
+    for l in sorted(rows, key=lambda x: (x.on_date, x.id or 0)):
+        kind = _leave_kind(l)
+        portion = l.portion or 1.0
+        rule = l.pay_rule or "auto"
+        if rule == "paid":
+            paid, why = portion, "marked paid"
+        elif rule == "unpaid":
+            paid, why = 0.0, "marked unpaid"
+        elif kind == "sick":
+            paid = min(portion, max(allowance, 0.0))
+            why = ("the month's paid sick day" if paid >= portion else
+                   "beyond the one paid sick day" if paid == 0 else "part of the paid sick day")
+        elif kind in _PAID_KINDS:
+            paid, why = portion, "paid"
+        else:
+            paid, why = 0.0, "deducted"
+        if kind == "sick" and paid:
+            allowance -= paid
+        out.append((l, round(paid, 2), round(portion - paid, 2), why))
+    return out
+
+
+def _month_rows(db, employee_id, a, b):
+    return (db.query(models.StaffLeave)
+              .filter(models.StaffLeave.employee_id == employee_id,
+                      models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b)
+              .all())
+
+
+def _day_rate(gross):
+    # Gross over thirty, dropped to whole dirhams - the rule the August
+    # statements were written to (Arathi's half day 133.00, not 133.34).
+    return float(int((gross or 0) / 30.0))
+
+
+def _span_text(days):
+    """24 Aug, 10-19 Sep, 3 Sep (half) - consecutive days run together."""
+    days = sorted(days, key=lambda d: d[0])
+    out, i = [], 0
+    while i < len(days):
+        j = i
+        while (j + 1 < len(days) and days[j + 1][1] >= 1 and days[j][1] >= 1
+               and (days[j + 1][0] - days[j][0]).days == 1):
+            j += 1
+        a, b = days[i][0], days[j][0]
+        if i == j:
+            out.append(a.strftime("%d %b").lstrip("0") + (" (half)" if days[i][1] < 1 else ""))
+        elif a.month == b.month:
+            out.append(f"{a.day}-{b.day} {b.strftime('%b')}")
+        else:
+            out.append(f"{a.strftime('%d %b').lstrip('0')} - {b.strftime('%d %b').lstrip('0')}")
+        i = j + 1
+    return ", ".join(out)
+
+
+def _absence_deduction(db, e, month_year, gross=None):
+    """What the unpaid days that month cost him, and which days they were.
+
+    A day is gross over thirty dropped to whole dirhams; a half day half
+    of that. Never more than the month's salary: a man away the whole of
+    a 31-day month loses his salary, not a day more.
+    """
+    a, b = _staff_month_bounds(month_year)
+    judged = _judge_days(_month_rows(db, e.id, a, b))
+    unpaid = [(l.on_date, u, _leave_kind(l)) for l, _, u, _ in judged if u > 0]
+    total = sum(u for _, u, _ in unpaid)
+    if not total:
+        return 0.0, ""
+    g = _gross(e) if gross is None else gross
+    amount = _day_rate(g) * total
+    if total >= (b - a).days + 1:
+        amount = g
+    # "Sick 10 Sep; Absent 15 Sep (half); Vacation 20-24 Sep" - each kind
+    # named, so the remark on the statement says why, not just when.
+    short = {"absent": "Absent", "sick": "Sick", "vacation": "Vacation",
+             "unpaid": "Unpaid leave", "holiday": "Holiday", "paid_leave": "Leave"}
+    order = []
+    for _, _, k in unpaid:
+        if k not in order:
+            order.append(k)
+    note = "; ".join(f"{short.get(k, k.title())} "
+                     + _span_text([(d, u) for d, u, kk in unpaid if kk == k]) for k in order)
+    return round(min(amount, g), 2), note
+
+
+def _approved_months(db, e):
+    """The months already approved for this person's statement, which
+    nothing entered afterwards may change."""
+    return {r.month_year for r in db.query(models.PayrollRun).filter(
+        models.PayrollRun.company_id == e.company_id,
+        models.PayrollRun.group == (e.pay_group or "staff"),
+        models.PayrollRun.status == "approved").all()}
+
+
+def _month_name(d):
+    return d.strftime("%B %Y")
+
+
+def _guard_months(db, e, days):
+    locked = sorted({_month_name(d) for d in days} & _approved_months(db, e),
+                    key=lambda m: datetime.strptime(m, "%B %Y"))
+    if locked:
+        raise HTTPException(status_code=400,
+            detail=f"{', '.join(locked)} is already approved for {e.company or 'this company'}. "
+                   "Reopen that salary cycle first, then change the entry.")
+
+
+def _staff_by_code(db, emp_no):
+    e = db.query(models.Employee).filter(
+        models.Employee.emp_no == str(emp_no or "").strip()).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No staff member with code {emp_no}.")
+    return e
+
+
+def _entry_dict(db, rows, e, judged_by_id, month_bounds=None):
+    rows = sorted(rows, key=lambda l: l.on_date)
+    first = rows[0]
+    kind = _leave_kind(first)
+    batch = first.batch or f"L{first.id}"
+    in_month = rows if not month_bounds else [
+        l for l in rows if month_bounds[0] <= l.on_date <= month_bounds[1]]
+    paid = sum(judged_by_id.get(l.id, (0, 0))[0] for l in in_month)
+    unpaid = sum(judged_by_id.get(l.id, (0, 0))[1] for l in in_month)
+    days = sum(l.portion or 1.0 for l in in_month)
+    whys = {judged_by_id.get(l.id, (0, 0, ""))[2] for l in in_month} - {""}
+    if unpaid and paid:
+        pay = f"{paid:g} paid, {unpaid:g} deducted"
+    elif unpaid:
+        pay = "Deducted"
+    else:
+        pay = "Paid"
+    items = db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").all()
+    ls = next((i for i in items if i.category == "leave_salary"), None)
+    at = next((i for i in items if i.category == "air_ticket"), None)
+    gross = 0.0
+    if month_bounds:
+        b_, a_ = _salary_as_of(db, e, month_bounds[1])
+        gross = b_ + a_
+    return {
+        "batch": batch, "emp_no": e.emp_no, "name": e.name, "employee_id": e.id,
+        "kind": kind, "kind_label": LEAVE_KINDS.get(kind, kind.title()),
+        "from": rows[0].on_date.isoformat(), "to": rows[-1].on_date.isoformat(),
+        "half": len(rows) == 1 and (first.portion or 1.0) < 1,
+        "days_total": round(sum(l.portion or 1.0 for l in rows), 2),
+        "days": round(days, 2), "paid_days": round(paid, 2), "unpaid_days": round(unpaid, 2),
+        "pay": pay, "why": "; ".join(sorted(whys)),
+        "pay_rule": first.pay_rule or "auto",
+        "cost": round(_day_rate(gross) * unpaid, 2) if month_bounds else 0.0,
+        "certificate": bool(first.certificate), "notes": first.notes or "",
+        "leave_salary": round(ls.amount, 2) if ls else 0.0,
+        "air_ticket": round(at.amount, 2) if at else 0.0,
+        "pay_month": (ls or at).month_year if (ls or at) else "",
+    }
+
 
 @app.get("/employees/leave")
 def list_leave(month_year: str = "", emp_no: str = "", db: Session = Depends(get_db),
                 user: models.User = HR):
+    """The month's absences, one line an entry - a week's vacation is
+    one line, not seven - with what each costs that month."""
     emps = {e.id: e for e in db.query(models.Employee).all()}
     q = db.query(models.StaffLeave)
+    bounds = None
     if month_year.strip():
-        a, b = _staff_month_bounds(month_year)
-        q = q.filter(models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b)
+        bounds = _staff_month_bounds(month_year)
+        q = q.filter(models.StaffLeave.on_date >= bounds[0],
+                     models.StaffLeave.on_date <= bounds[1])
     if emp_no.strip():
-        e = db.query(models.Employee).filter(
-            models.Employee.emp_no == emp_no.strip()).first()
+        e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no.strip()).first()
         q = q.filter(models.StaffLeave.employee_id == (e.id if e else -1))
+    hits = q.all()
+    # Judge each person's whole month, so the sick allowance is counted
+    # the same way the salary cycle counts it.
+    judged = {}
+    for eid in {l.employee_id for l in hits}:
+        if bounds:
+            month = _month_rows(db, eid, *bounds)
+            for l, p, u, why in _judge_days(month):
+                judged[l.id] = (p, u, why)
+        else:
+            by_month = {}
+            for l in hits:
+                if l.employee_id == eid:
+                    by_month.setdefault((l.on_date.year, l.on_date.month), None)
+            for (y, m) in by_month:
+                a = date(y, m, 1)
+                b = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
+                for l, p, u, why in _judge_days(_month_rows(db, eid, a, b)):
+                    judged[l.id] = (p, u, why)
+    batches = {}
+    for l in hits:
+        batches.setdefault(l.batch or f"L{l.id}", []).append(l)
+    # A range reaching outside the month still shows whole, so its dates
+    # read right; only the days inside the month are counted.
     rows = []
-    for l in q.order_by(models.StaffLeave.on_date.desc()).all():
-        e = emps.get(l.employee_id)
+    for batch, ls in batches.items():
+        e = emps.get(ls[0].employee_id)
         if not e:
             continue
-        rows.append({"id": l.id, "emp_no": e.emp_no, "name": e.name,
-                      "on_date": l.on_date.isoformat(),
-                      "portion": l.portion or 1.0,
-                      "half": (l.portion or 1.0) < 1,
-                      "reason": l.reason or "", "paid": bool(l.paid),
-                      "certificate": bool(l.certificate), "notes": l.notes or ""})
-    return {"rows": rows,
-            "days": round(sum(r["portion"] for r in rows), 2),
-            "unpaid_days": round(sum(r["portion"] for r in rows if not r["paid"]), 2)}
+        whole = (db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all()
+                 if ls[0].batch else ls)
+        rows.append(_entry_dict(db, whole, e, judged, bounds))
+    rows.sort(key=lambda r: (r["from"], r["emp_no"]))
+    return {"rows": rows, "kinds": LEAVE_KINDS,
+            "days": round(sum(r["days"] for r in rows), 2),
+            "unpaid_days": round(sum(r["unpaid_days"] for r in rows), 2),
+            "cost": round(sum(r["cost"] for r in rows), 2)}
+
+
+def _leave_from_payload(payload):
+    kind = (payload.get("kind") or "").strip().lower()
+    reason = (payload.get("reason") or "").strip()
+    if not kind:
+        # The older form: a reason and a paid box.
+        kind = "sick" if "sick" in reason.lower() else (
+            "absent" if payload.get("paid") is False else "paid_leave")
+    if kind not in LEAVE_KINDS:
+        raise HTTPException(status_code=400,
+            detail=f"What kind of absence? One of: {', '.join(LEAVE_KINDS.values())}.")
+    rule = (payload.get("pay_rule") or "").strip().lower()
+    if not rule:
+        rule = ("auto" if "paid" not in payload else ("paid" if payload.get("paid") else "unpaid"))
+    if rule not in ("auto", "paid", "unpaid"):
+        rule = "auto"
+    start = _as_date(payload.get("from") or payload.get("on_date"))
+    if not start:
+        raise HTTPException(status_code=400, detail="Which day, or from which day?")
+    end = _as_date(payload.get("to")) or start
+    if end < start:
+        raise HTTPException(status_code=400, detail="The last day is before the first.")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="That range is longer than a year - check the dates.")
+    half = bool(payload.get("half")) or float(payload.get("portion") or 1) < 1
+    if half and end != start:
+        raise HTTPException(status_code=400, detail="A half day is one day - give a single date.")
+    return kind, rule, start, end, (0.5 if half else 1.0), reason
+
+
+def _write_entry(db, e, payload, user, batch=None, replacing=()):
+    kind, rule, start, end, portion, reason = _leave_from_payload(payload)
+    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    _guard_months(db, e, days + [r.on_date for r in replacing])
+    taken = {l.on_date for l in db.query(models.StaffLeave).filter(
+        models.StaffLeave.employee_id == e.id,
+        models.StaffLeave.on_date >= start, models.StaffLeave.on_date <= end).all()
+        if l not in replacing}
+    clash = sorted(d for d in days if d in taken)
+    if clash:
+        raise HTTPException(status_code=400,
+            detail=f"{e.name} already has {_span_text([(d, 1) for d in clash])} recorded. "
+                   "Change that entry instead.")
+    for r in replacing:
+        db.delete(r)
+    batch = batch or uuid.uuid4().hex[:12]
+    for d in days:
+        db.add(models.StaffLeave(
+            employee_id=e.id, on_date=d, portion=portion, kind=kind, pay_rule=rule,
+            batch=batch, reason=reason or LEAVE_KINDS[kind],
+            paid=(rule == "paid" or (rule == "auto" and kind in _PAID_KINDS)),
+            certificate=bool(payload.get("certificate")),
+            notes=(payload.get("notes") or "").strip(), created_by=user.id))
+    # Leave salary and the ticket travel with the vacation they are for.
+    db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").delete()
+    if kind == "vacation":
+        pay_month = (payload.get("pay_month") or "").strip() or _month_name(start)
+        for cat, key in (("leave_salary", "leave_salary"), ("air_ticket", "air_ticket")):
+            amt = float(payload.get(key) or 0)
+            if amt > 0:
+                _guard_months(db, e, [datetime.strptime(f"1 {pay_month}", "%d %B %Y").date()])
+                db.add(models.PayItem(
+                    employee_id=e.id, month_year=pay_month, direction="add", category=cat,
+                    amount=amt, on_date=start, source=f"leave:{batch}",
+                    notes=f"Vacation {_span_text([(start, 1)])}"
+                          + (f" - {_span_text([(end, 1)])}" if end != start else ""),
+                    created_by=user.id))
+    db.commit()
+    return batch, len(days)
 
 
 @app.post("/employees/leave")
 def add_leave(payload: dict = Body(...), db: Session = Depends(get_db),
                user: models.User = HR):
-    """A day off, and whether it costs him anything.
+    """An absence: one day, a half day, or a run of days entered once."""
+    e = _staff_by_code(db, payload.get("emp_no"))
+    batch, n = _write_entry(db, e, payload, user)
+    log_action(db, user.id, "leave_added", f"{e.emp_no} {payload.get('kind') or ''} "
+               f"{payload.get('from') or payload.get('on_date')} ({n} day(s))")
+    return {"ok": True, "batch": batch, "days": n}
 
-    Paid means no deduction and the day still counts as service. Unpaid
-    means a deduction at gross over thirty, and the day drops out of the
-    service period the gratuity is worked on.
-    """
-    emp_no = str(payload.get("emp_no") or "").strip()
-    e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
-    if not e:
-        raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
-    on = _as_date(payload.get("on_date"))
-    if not on:
-        raise HTTPException(status_code=400, detail="Which day?")
-    portion = 0.5 if payload.get("half") or float(payload.get("portion") or 1) < 1 else 1.0
-    dup = db.query(models.StaffLeave).filter(
-        models.StaffLeave.employee_id == e.id, models.StaffLeave.on_date == on).first()
-    if dup:
-        raise HTTPException(status_code=400,
-            detail=f"{e.name} already has {on.strftime('%d %b')} recorded. Change that entry instead.")
-    l = models.StaffLeave(employee_id=e.id, on_date=on, portion=portion,
-                           reason=(payload.get("reason") or "sick").strip().lower(),
-                           paid=bool(payload.get("paid", True)),
-                           certificate=bool(payload.get("certificate")),
-                           notes=(payload.get("notes") or "").strip(),
-                           created_by=user.id)
-    db.add(l); db.commit()
-    log_action(db, user.id, "leave_added",
-               f"{e.emp_no} {on.isoformat()} {'half' if portion < 1 else 'full'}"
-               f" {'paid' if l.paid else 'UNPAID'}")
+
+@app.put("/employees/leave/entry/{batch}")
+def edit_leave(batch: str, payload: dict = Body(...), db: Session = Depends(get_db),
+                user: models.User = HR):
+    old = db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all()
+    if not old:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    e = db.query(models.Employee).filter(models.Employee.id == old[0].employee_id).first()
+    if payload.get("emp_no") and str(payload["emp_no"]).strip() != e.emp_no:
+        _guard_months(db, e, [r.on_date for r in old])
+        e = _staff_by_code(db, payload["emp_no"])
+        for r in old:
+            db.delete(r)
+        db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").delete()
+        db.flush()
+        old = []
+    batch, n = _write_entry(db, e, payload, user, batch=batch, replacing=old)
+    log_action(db, user.id, "leave_changed", f"{e.emp_no} entry {batch} ({n} day(s))")
+    return {"ok": True, "batch": batch, "days": n}
+
+
+@app.delete("/employees/leave/entry/{batch}")
+def delete_leave_entry(batch: str, db: Session = Depends(get_db), user: models.User = HR):
+    rows = db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    e = db.query(models.Employee).filter(models.Employee.id == rows[0].employee_id).first()
+    _guard_months(db, e, [r.on_date for r in rows])
+    for r in rows:
+        db.delete(r)
+    db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").delete()
+    db.commit()
+    log_action(db, user.id, "leave_removed", f"{e.emp_no} entry {batch}")
     return {"ok": True}
 
 
@@ -7894,8 +8364,240 @@ def delete_leave(leave_id: int, db: Session = Depends(get_db), user: models.User
     l = db.query(models.StaffLeave).filter(models.StaffLeave.id == leave_id).first()
     if not l:
         raise HTTPException(status_code=404, detail="That leave entry is not on file.")
+    e = db.query(models.Employee).filter(models.Employee.id == l.employee_id).first()
+    _guard_months(db, e, [l.on_date])
     db.delete(l); db.commit()
     return {"ok": True}
+
+
+# ---- Additions and deductions ------------------------------------------
+
+PAY_CATEGORIES = {
+    "add": {"taxi": "Taxi bills", "bills": "Other bills / reimbursement",
+            "fees": "SOE / fees paid", "overtime": "Overtime", "bonus": "Bonus / incentive",
+            "leave_salary": "Leave salary", "air_ticket": "Air ticket",
+            "other_add": "Other addition"},
+    "deduct": {"iloe": "ILOE", "fine": "Traffic fine", "advance": "Salary advance",
+               "damage": "Damage / loss", "other_ded": "Other deduction"},
+}
+
+
+def _item_dict(i, e):
+    return {"id": i.id, "emp_no": e.emp_no if e else "", "name": e.name if e else "",
+            "employee_id": i.employee_id, "month_year": i.month_year,
+            "direction": i.direction, "category": i.category,
+            "category_label": PAY_CATEGORIES.get(i.direction, {}).get(i.category, i.category),
+            "amount": round(i.amount or 0, 2),
+            "on_date": i.on_date.isoformat() if i.on_date else "",
+            "notes": i.notes or "", "source": i.source or "",
+            "from_vacation": (i.source or "").startswith("leave:")}
+
+
+@app.get("/employees/pay-items")
+def list_pay_items(month_year: str = "", emp_no: str = "", db: Session = Depends(get_db),
+                    user: models.User = HR):
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    q = db.query(models.PayItem)
+    if month_year.strip():
+        q = q.filter(models.PayItem.month_year == month_year.strip())
+    if emp_no.strip():
+        e = db.query(models.Employee).filter(models.Employee.emp_no == emp_no.strip()).first()
+        q = q.filter(models.PayItem.employee_id == (e.id if e else -1))
+    rows = [_item_dict(i, emps.get(i.employee_id)) for i in q.all()]
+    rows.sort(key=lambda r: (r["month_year"], r["emp_no"], r["direction"], r["id"]))
+    return {"rows": rows, "categories": PAY_CATEGORIES,
+            "additions": round(sum(r["amount"] for r in rows if r["direction"] == "add"), 2),
+            "deductions": round(sum(r["amount"] for r in rows if r["direction"] == "deduct"), 2)}
+
+
+def _item_from_payload(db, payload):
+    e = _staff_by_code(db, payload.get("emp_no"))
+    month = (payload.get("month_year") or "").strip()
+    try:
+        first = datetime.strptime(f"1 {month}", "%d %B %Y").date()
+    except ValueError:
+        raise HTTPException(status_code=400,
+            detail='Which month\'s salary? Give it as a month and year, like "September 2026".')
+    direction = (payload.get("direction") or "").strip().lower()
+    if direction not in PAY_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Is it an addition or a deduction?")
+    cat = (payload.get("category") or "").strip().lower()
+    if cat not in PAY_CATEGORIES[direction]:
+        raise HTTPException(status_code=400,
+            detail=f"Which kind? One of: {', '.join(PAY_CATEGORIES[direction].values())}.")
+    try:
+        amount = round(float(str(payload.get("amount") or 0).replace(",", "")), 2)
+    except ValueError:
+        amount = 0
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="How much?")
+    return e, month, first, direction, cat, amount
+
+
+@app.post("/employees/pay-items")
+def add_pay_item(payload: dict = Body(...), db: Session = Depends(get_db),
+                  user: models.User = HR):
+    e, month, first, direction, cat, amount = _item_from_payload(db, payload)
+    _guard_months(db, e, [first])
+    i = models.PayItem(employee_id=e.id, month_year=month, direction=direction, category=cat,
+                       amount=amount, on_date=_as_date(payload.get("on_date")),
+                       notes=(payload.get("notes") or "").strip(), created_by=user.id)
+    db.add(i); db.commit(); db.refresh(i)
+    log_action(db, user.id, "pay_item_added",
+               f"{e.emp_no} {month} {direction} {cat} {amount:,.2f}")
+    return _item_dict(i, e)
+
+
+@app.put("/employees/pay-items/{item_id}")
+def edit_pay_item(item_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = HR):
+    i = db.query(models.PayItem).filter(models.PayItem.id == item_id).first()
+    if not i:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    old_e = db.query(models.Employee).filter(models.Employee.id == i.employee_id).first()
+    _guard_months(db, old_e, [datetime.strptime(f"1 {i.month_year}", "%d %B %Y").date()])
+    e, month, first, direction, cat, amount = _item_from_payload(db, payload)
+    _guard_months(db, e, [first])
+    i.employee_id, i.month_year, i.direction, i.category, i.amount = e.id, month, direction, cat, amount
+    i.on_date = _as_date(payload.get("on_date"))
+    i.notes = (payload.get("notes") or "").strip()
+    db.commit()
+    log_action(db, user.id, "pay_item_changed", f"{e.emp_no} {month} {cat} {amount:,.2f}")
+    return _item_dict(i, e)
+
+
+@app.delete("/employees/pay-items/{item_id}")
+def delete_pay_item(item_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    i = db.query(models.PayItem).filter(models.PayItem.id == item_id).first()
+    if not i:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    e = db.query(models.Employee).filter(models.Employee.id == i.employee_id).first()
+    _guard_months(db, e, [datetime.strptime(f"1 {i.month_year}", "%d %B %Y").date()])
+    db.delete(i); db.commit()
+    log_action(db, user.id, "pay_item_removed", f"{e.emp_no if e else ''} {i.month_year} {i.category}")
+    return {"ok": True}
+
+
+def _items_for(db, e, month_year):
+    return db.query(models.PayItem).filter(models.PayItem.employee_id == e.id,
+                                           models.PayItem.month_year == month_year).all()
+
+
+def _auto_remark(items, absent_note, loan):
+    parts = []
+    for i in sorted(items, key=lambda i: (i.direction != "add", i.id)):
+        label = PAY_CATEGORIES.get(i.direction, {}).get(i.category, i.category)
+        text = i.notes if (i.notes and not (i.source or "").startswith("leave:")) else label
+        if i.category in ("leave_salary", "air_ticket"):
+            text = label
+        if text not in parts:
+            parts.append(text)
+    if loan:
+        parts.append("Loan reimbursement")
+    if absent_note:
+        parts.append(absent_note)
+    return "; ".join(parts)
+
+
+def _fill_line(db, l, e, month_year, a, b):
+    """Every figure on a draft line, from the registers."""
+    basic, allow = _salary_as_of(db, e, b)
+    gross = round(basic + allow, 2)
+    ded, note = _absence_deduction(db, e, month_year, gross)
+    part, pnote = _part_month(e, a, b, gross)
+    items = _items_for(db, e, month_year)
+    add = lambda cats=None, excl=(): round(sum(i.amount for i in items if i.direction == "add"
+                                               and (cats is None or i.category in cats)
+                                               and i.category not in excl), 2)
+    l.basic, l.allowance, l.fixed_salary = basic, allow, gross
+    l.deduction = round(min(ded + part, gross), 2)
+    l.deduction_note = "; ".join(x for x in (pnote, note) if x)
+    l.other_allowance = add(excl=("leave_salary", "air_ticket"))
+    l.leave_salary = add(("leave_salary",))
+    l.air_ticket = add(("air_ticket",))
+    l.statutory = round(sum(i.amount for i in items if i.direction == "deduct"), 2)
+    l.pension = e.pension or 0
+    if not l.loan_edited:
+        l.loan_deduction = _loan_due(db, e.id)
+    if not l.remark_edited:
+        l.remarks = _auto_remark(items, l.deduction_note, l.loan_deduction)
+    l.net_pay = _line_net(l)
+
+
+def _refresh_run(db, r):
+    """Bring a draft cycle up to date with the registers.
+
+    Opening a cycle early and then recording a taxi bill, an absence or
+    a new joiner is the normal order of things, so a draft is never a
+    snapshot: each time it is looked at, it is filled again from what is
+    on file. Only what the accountant typed on the sheet itself - an
+    instalment skipped, a remark - is kept. An approved cycle is never
+    touched.
+    """
+    if r.status == "approved":
+        return
+    a, b = _staff_month_bounds(r.month_year)
+    have = {l.employee_id for l in r.lines}
+    for e in (db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
+                                                models.Employee.company_id == r.company_id)
+                .order_by(models.Employee.emp_no).all()):
+        if e.id in have:
+            continue
+        if (e.pay_group or "staff") == r.group and _employed_in(e, a, b) and \
+           (e.active or (e.terminated_on and e.terminated_on >= a)):
+            db.add(models.PayrollLine(run_id=r.id, employee_id=e.id))
+    db.flush(); db.refresh(r)
+    emps = {e.id: e for e in db.query(models.Employee).filter(
+        models.Employee.id.in_([l.employee_id for l in r.lines])).all()}
+    for l in r.lines:
+        _fill_line(db, l, emps[l.employee_id], r.month_year, a, b)
+    db.commit(); db.refresh(r)
+
+
+def _migrate_hr(db):
+    """Bring what was entered before the registers existed into them.
+
+    Leave rows get the decision they were actually paid on, so a signed
+    month still adds up the same; and the bills, fees, leave salary and
+    tickets typed straight onto the August sheets become entries in the
+    additions register, so re-opening August does not lose them.
+    Runs once: after that there is nothing left to bring across.
+    """
+    changed = False
+    for l in db.query(models.StaffLeave).filter(models.StaffLeave.batch.is_(None)).all():
+        l.batch = f"L{l.id}"
+        l.kind = l.kind or _leave_kind(l)
+        if not l.pay_rule:
+            l.pay_rule = "paid" if l.paid else "unpaid"
+        changed = True
+    if get_setting(db, "hr_items_migrated") != "1":
+        for r in db.query(models.PayrollRun).all():
+            for ln in r.lines:
+                if db.query(models.PayItem).filter(
+                        models.PayItem.employee_id == ln.employee_id,
+                        models.PayItem.month_year == r.month_year).first():
+                    continue
+                rem = (ln.remarks or "").lower()
+                todo = []
+                if ln.other_allowance:
+                    cat = "taxi" if "taxi" in rem else ("fees" if ("soe" in rem or "fee" in rem) else "bills")
+                    todo.append(("add", cat, ln.other_allowance))
+                if ln.leave_salary:
+                    todo.append(("add", "leave_salary", ln.leave_salary))
+                if ln.air_ticket:
+                    todo.append(("add", "air_ticket", ln.air_ticket))
+                if ln.statutory:
+                    todo.append(("deduct", "iloe" if "iloe" in rem else "other_ded", ln.statutory))
+                for d, cat, amt in todo:
+                    db.add(models.PayItem(employee_id=ln.employee_id, month_year=r.month_year,
+                                          direction=d, category=cat, amount=amt,
+                                          notes=ln.remarks or "", source="migrated"))
+                ln.remark_edited = bool(ln.remarks)
+                ln.loan_edited = True
+        put_setting(db, "hr_items_migrated", "1")
+        changed = True
+    if changed:
+        db.commit()
 
 
 # ---- The monthly run --------------------------------------------------
@@ -7908,36 +8610,6 @@ def _staff_month_bounds(month_year: str):
     d = datetime.strptime(f"1 {month_year}", "%d %B %Y").date()
     nxt = date(d.year + (d.month == 12), (d.month % 12) + 1, 1)
     return d, nxt - timedelta(days=1)
-
-
-def _absence_deduction(db, e, month_year, gross=None):
-    """What the unpaid days that month cost him.
-
-    A day is gross over thirty, dropped to whole dirhams, and a half
-    day is half of that. The flooring is not tidiness: it is the rule
-    the August statements were written to, and it is what makes them
-    come out where they do. Arathi's 8,000 gives 266.67 a day, but her
-    half day was charged 133.00, not 133.34 - the day was taken as 266
-    first. The same step accounts for Preenu's 166.00 out of 166.67,
-    Syed's 133.00 out of 133.34, and leaves Rajasekar's 400.00 and
-    Sreekanth's 112.50 exactly where the accountant put them. Five
-    deductions, one rule, no exceptions.
-
-    Paid leave costs nothing. The figure is a proposal: the accountant
-    accepts it, changes it, or waives it.
-    """
-    a, b = _staff_month_bounds(month_year)
-    days = db.query(models.StaffLeave).filter(
-        models.StaffLeave.employee_id == e.id,
-        models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b,
-        models.StaffLeave.paid == False).all()  # noqa: E712
-    portion = sum(d.portion or 1.0 for d in days)
-    if not portion:
-        return 0.0, ""
-    rate = float(int((_gross(e) if gross is None else gross) / 30.0))
-    note = ", ".join(f"{d.on_date.strftime('%d %b')}{' (half)' if (d.portion or 1) < 1 else ''}"
-                     for d in sorted(days, key=lambda d: d.on_date))
-    return round(rate * portion, 2), note
 
 
 def _salary_as_of(db, e, day):
@@ -8016,7 +8688,8 @@ def _line_dict(l, e):
             "pension": round(l.pension or 0, 2),
             "payable": round((l.fixed_salary or 0) + (l.other_allowance or 0)
                              - (l.deduction or 0) - (l.statutory or 0), 2),
-            "net_pay": round(l.net_pay or 0, 2), "remarks": l.remarks or ""}
+            "net_pay": round(l.net_pay or 0, 2), "remarks": l.remarks or "",
+            "loan_edited": bool(l.loan_edited), "remark_edited": bool(l.remark_edited)}
 
 
 def _run_dict(r, db):
@@ -8089,6 +8762,7 @@ def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
         models.PayrollRun.company_id == c.id,
         models.PayrollRun.group == group).first()
     if existing:
+        _refresh_run(db, existing)
         return _run_dict(existing, db)
 
     brought = apply_due_increments(db)
@@ -8109,20 +8783,9 @@ def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
                            status="draft", created_by=user.id)
     db.add(r); db.flush()
     for e in people:
-        basic, allow = _salary_as_of(db, e, b)
-        gross = round(basic + allow, 2)
-        ded, note = _absence_deduction(db, e, month_year, gross)
-        part, pnote = _part_month(e, a, b, gross)
-        ded = round(ded + part, 2)
-        note = "; ".join(x for x in (pnote, note and f"Absent {note}") if x)
-        l = models.PayrollLine(
-            run_id=r.id, employee_id=e.id,
-            basic=basic, allowance=allow,
-            fixed_salary=gross, deduction=ded, deduction_note=note,
-            loan_deduction=_loan_due(db, e.id), pension=e.pension or 0)
-        l.net_pay = _line_net(l)
-        db.add(l)
+        db.add(models.PayrollLine(run_id=r.id, employee_id=e.id))
     db.commit(); db.refresh(r)
+    _refresh_run(db, r)
     log_action(db, user.id, "payroll_opened",
                f"{c.short_name or c.name} {month_year} ({len(people)} staff)")
     out = _run_dict(r, db)
@@ -8137,6 +8800,7 @@ def get_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.Use
         joinedload(models.PayrollRun.lines)).filter(models.PayrollRun.id == run_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    _refresh_run(db, r)
     return _run_dict(r, db)
 
 
@@ -8151,24 +8815,48 @@ def save_payroll_run(run_id: int, payload: dict = Body(...), db: Session = Depen
     if r.status == "approved":
         raise HTTPException(status_code=400,
             detail=f"{r.month_year} is approved and locked. Reopen it to change a figure.")
+    # Only the two things decided on the sheet itself: an instalment taken
+    # differently this month, and the remark. Every other figure comes
+    # from the registers - absence, additions, deductions - and changing
+    # it means changing the entry there, so the record and the pay agree.
     by_id = {l.id: l for l in r.lines}
     for row in payload.get("lines") or []:
         l = by_id.get(row.get("id"))
         if not l:
             continue
-        for f in ("deduction", "statutory", "other_allowance", "loan_deduction",
-                  "leave_salary", "air_ticket", "pension"):
-            if f in row:
-                setattr(l, f, float(row.get(f) or 0))
+        if "loan_deduction" in row:
+            v = round(float(str(row.get("loan_deduction") or 0).replace(",", "")), 2)
+            if abs(v - (l.loan_deduction or 0)) > 0.005:
+                l.loan_deduction, l.loan_edited = v, True
+        if row.get("loan_reset"):
+            l.loan_edited = False
         if "remarks" in row:
-            l.remarks = (row.get("remarks") or "").strip()
-        if "deduction_note" in row:
-            l.deduction_note = (row.get("deduction_note") or "").strip()
+            text = (row.get("remarks") or "").strip()
+            if text != (l.remarks or ""):
+                l.remarks, l.remark_edited = text, bool(text)
         l.net_pay = _line_net(l)
     if "notes" in payload:
         r.notes = (payload.get("notes") or "").strip()
     db.commit(); db.refresh(r)
+    _refresh_run(db, r)
     return _run_dict(r, db)
+
+
+@app.delete("/employees/payroll/runs/{run_id}")
+def delete_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.User = HR):
+    """Throw away a draft - nothing in it is lost, since every figure
+    comes from the registers and a fresh one fills itself again."""
+    r = db.query(models.PayrollRun).filter(models.PayrollRun.id == run_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That payroll run is not on file.")
+    if r.status == "approved":
+        raise HTTPException(status_code=400,
+            detail=f"{r.month_year} is approved. Reopen it before it can be removed.")
+    for l in list(r.lines):
+        db.delete(l)
+    db.delete(r); db.commit()
+    log_action(db, user.id, "payroll_draft_removed", r.month_year)
+    return {"ok": True}
 
 
 @app.post("/employees/payroll/runs/{run_id}/approve")
@@ -8185,6 +8873,7 @@ def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models
         raise HTTPException(status_code=404, detail="That payroll run is not on file.")
     if r.status == "approved":
         raise HTTPException(status_code=400, detail=f"{r.month_year} is already approved.")
+    _refresh_run(db, r)
     _, month_end = _staff_month_bounds(r.month_year)
     for l in r.lines:
         left = round(l.loan_deduction or 0, 2)
@@ -8494,18 +9183,96 @@ def view_loans(token: str, db: Session = Depends(get_db)):
 
 def _leave_parts(db, month_year):
     d = list_leave(month_year=month_year, emp_no="", db=db, user=None)
-    rows = [{"Sr.": i, "Emp. Code": l["emp_no"], "Staff": l["name"],
-             "Date of Leave": _dmy(_as_date(l["on_date"])),
-             "Reason": (l["reason"] or "-").title(),
-             "Portion": "Half day" if l["portion"] < 1 else "Full day",
-             "Paid": "Yes" if l["paid"] else "No",
-             "Certificate": "Yes" if l["certificate"] else "-",
-             "Remark": l["notes"] or "-"}
-            for i, l in enumerate(d["rows"], 1)]
-    unpaid = sum(1 - (1 if l["paid"] else 0) for l in d["rows"])
-    sub = (f"{month_year or 'All'}   |   {len(rows)} event(s), {d['days']:g} day(s)"
-           f"   |   {unpaid} unpaid")
-    return rows, "Staff Leave Details", sub
+
+    def when(r):
+        a_, b_ = _as_date(r["from"]), _as_date(r["to"])
+        return _dmy(a_) if a_ == b_ else f"{_dmy(a_)} to {_dmy(b_)}"
+    rows = [{"Sr.": i, "Emp. Code": r["emp_no"], "Staff": r["name"],
+             "Type": r["kind_label"], "Date(s)": when(r),
+             "Days": ("Half" if r["half"] else f"{r['days']:g}"),
+             "Pay": r["pay"], "Deduction": r["cost"],
+             "Certificate": "Yes" if r["certificate"] else "-",
+             "Remark": r["notes"] or "-"}
+            for i, r in enumerate(d["rows"], 1)]
+    sub = (f"{month_year or 'All'}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}, "
+           f"{d['days']:g} day(s), {d['unpaid_days']:g} deducted   |   "
+           f"Deductions {d['cost']:,.2f}")
+    return rows, "Staff Absence & Leave", sub
+
+
+# ---- Additions and deductions ------------------------------------------
+
+ITEM_MONEY = ["Addition", "Deduction"]
+
+
+def _items_parts(db, month_year):
+    d = list_pay_items(month_year=month_year, emp_no="", db=db, user=None)
+    rows = [{"Sr.": i, "Emp. Code": r["emp_no"], "Staff": r["name"],
+             "Month": r["month_year"], "Item": r["category_label"],
+             "Addition": r["amount"] if r["direction"] == "add" else 0.0,
+             "Deduction": r["amount"] if r["direction"] == "deduct" else 0.0,
+             "Remark": r["notes"] or "-"}
+            for i, r in enumerate(d["rows"], 1)]
+    sub = (f"{month_year or 'All months'}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}   |   "
+           f"Additions {d['additions']:,.2f}   |   Deductions {d['deductions']:,.2f}")
+    return rows, "Salary Additions & Deductions", sub
+
+
+@app.get("/export/payroll/items")
+def export_items(token: str, month_year: str = "", format: str = "pdf",
+                  db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _items_parts(db, month_year)
+    return _hr_file(title, rows, sub, format, ITEM_MONEY, "Additions_Deductions")
+
+
+@app.get("/export/payroll/items/view")
+def view_items(token: str, month_year: str = "", db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _items_parts(db, month_year)
+    url = f"/export/payroll/items?month_year={quote(month_year)}&token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=ITEM_MONEY, total_cols=ITEM_MONEY)
+
+
+# ---- Salary history ----------------------------------------------------
+
+HISTORY_MONEY = ["Increase", "Basic", "Allowance", "Salary"]
+
+
+def _history_parts(db, emp_no=""):
+    d = list_increments(emp_no=emp_no, db=db, user=None)
+    rows = sorted(d["rows"], key=lambda r: (r["emp_no"], r["effective_on"]))
+    kind = {"joining": "Joined", "increment": "Increment", "correction": "Correction"}
+    out = []
+    for i, r in enumerate(rows, 1):
+        out.append({"Sr.": i, "Emp. Code": r["emp_no"], "Employee Name": r["name"],
+                    "From": _dmy(_as_date(r["effective_on"])),
+                    "Change": kind.get(r["kind"], r["kind"].title()) + (" (due)" if r["future"] else ""),
+                    "Increase": r["amount"], "Basic": r["basic"], "Allowance": r["allowance"],
+                    "Salary": r["gross"], "Reason": r["reason"] or "-"})
+    people = len({r["emp_no"] for r in rows})
+    sub = f"{people} staff   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
+    return out, "Salary History", sub
+
+
+@app.get("/export/payroll/increments")
+def export_history(token: str, emp_no: str = "", format: str = "pdf",
+                    db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _history_parts(db, emp_no)
+    return _hr_file(title, rows, sub, format, HISTORY_MONEY, "Salary_History")
+
+
+@app.get("/export/payroll/increments/view")
+def view_history(token: str, emp_no: str = "", db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _history_parts(db, emp_no)
+    url = f"/export/payroll/increments?emp_no={quote(emp_no)}&token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=HISTORY_MONEY, total_cols=[])
 
 
 @app.get("/export/payroll/leave")
@@ -8513,7 +9280,7 @@ def export_leave(token: str, month_year: str = "", format: str = "pdf",
                   db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
     rows, title, sub = _leave_parts(db, month_year)
-    return _hr_file(title, rows, sub, format, [], "Leave_Details")
+    return _hr_file(title, rows, sub, format, ["Deduction"], "Absence_Leave")
 
 
 @app.get("/export/payroll/leave/view")
@@ -8523,7 +9290,8 @@ def view_leave(token: str, month_year: str = "", db: Session = Depends(get_db)):
     t = quote(auth.create_view_token(user.username), safe="")
     rows, title, sub = _leave_parts(db, month_year)
     url = f"/export/payroll/leave?month_year={quote(month_year)}&token={t}"
-    return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
+    return _preview_page(title, sub, rows, url, url, money_cols=["Deduction"],
+                         total_cols=["Deduction"])
 
 
 # ---- Documents ---------------------------------------------------------
