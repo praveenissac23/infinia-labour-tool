@@ -307,8 +307,9 @@ def col_align(key, rows):
 # paper; many columns need the page on its side or the text is squeezed
 # to nothing. Rather than every report having to declare which, the
 # shape of the data decides.
-PORTRAIT_MAX_COLS = 6          # six columns still read on a portrait A4
-PORTRAIT_MAX_WIDTH = 78        # ...unless they carry long text
+# Characters of text a portrait A4 holds across at the size these
+# reports print. Past this the page turns on its side.
+PORTRAIT_MAX_WIDTH = 96
 
 
 def choose_orientation(rows, cols=None):
@@ -316,15 +317,18 @@ def choose_orientation(rows, cols=None):
     cols = list(cols if cols is not None else (list(rows[0].keys()) if rows else []))
     if not cols:
         return "portrait"
-    if len(cols) > PORTRAIT_MAX_COLS:
-        return "landscape"
-    # A few wide columns - a material name plus a remark plus a site
-    # list - need the same room as many narrow ones.
+    # How wide the table actually wants to be, not how many columns it
+    # has. Eight short columns - a code, a unit, four counts - fit a
+    # portrait page comfortably and waste far less paper than turning
+    # the page sideways for them; four columns carrying material names
+    # and remarks do not. Headings wrap, so they are measured by their
+    # longest word, the same way the column widths are.
     width = 0
     for c in cols:
         seen = [str(r.get(c)) for r in rows if r.get(c) not in (None, "")]
         longest = max((len(x) for x in seen), default=0)
-        width += max(len(_store_label(c)), min(longest, 40))
+        head = max((len(w) for w in _store_label(c).split()), default=4)
+        width += max(min(longest, 46), min(head, 12), 4) + 2   # +2 for the padding
     return "landscape" if width > PORTRAIT_MAX_WIDTH else "portrait"
 
 
@@ -360,10 +364,13 @@ def col_fractions(rows, cols):
             text = str(v)
             # A cell of several lines is as wide as its longest line.
             widest = max(widest, max(len(x) for x in text.split("\n")))
-        head = len(_store_label(c))
-        # A heading wraps happily over two words, so it does not need
-        # its whole length - but it must not be crushed either.
-        want.append(max(min(widest, 46), min(head, 14), 4))
+        # A heading wraps over two or three lines happily enough, so the
+        # column only has to be as wide as the heading's longest WORD.
+        # Measuring the whole heading gave a column holding the number
+        # 360 a sixteen-character width because it is called "In central
+        # store" - most of the page went to headings, not to figures.
+        head = max((len(w) for w in _store_label(c).split()), default=4)
+        want.append(max(min(widest, 46), min(head, 12), 4))
     total = float(sum(want)) or 1.0
     return [w / total for w in want]
 

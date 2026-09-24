@@ -2017,7 +2017,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
-  .page {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm; margin:16px auto;
+  .page {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
            background:white; padding:8mm; box-sizing:border-box;
            box-shadow:0 1px 6px rgba(0,0,0,.14); page-break-after:always; }}
   .mark img {{ width:42mm; display:block; }}
@@ -2049,7 +2049,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
                border:0.5px solid #B0B0B0; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
-    .page {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    .page {{ width:auto; margin:0; padding:0; box-shadow:none; }}
     @page {{ size:A4 portrait; margin:10mm; }}
   }}
 </style></head><body>
@@ -6226,7 +6226,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
                 padding:3px 8px; border-radius:4px; }}
   /* The order prints on a portrait A4, so it is shown on one - what is
      checked on screen is the sheet that comes out of the printer. */
-  .sheet {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm;
+  .sheet {{ width:210mm; max-width:calc(100% - 24px);
             margin:16px auto; background:white; padding:12mm 12mm;
             box-sizing:border-box; box-shadow:0 1px 6px rgba(0,0,0,.14);
             font-size:12.5px; }}
@@ -6259,7 +6259,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .sigbox {{ height:52px; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
-    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; }}
     @page {{ size:A4 portrait; margin:10mm; }}
   }}
 </style></head><body>
@@ -6577,7 +6577,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
-  .sheet {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm; margin:16px auto;
+  .sheet {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
             background:white; padding:10mm 12mm; box-sizing:border-box;
             box-shadow:0 1px 6px rgba(0,0,0,.14); font-size:8.5pt; }}
   .band {{ display:flex; align-items:center; border:0.6px solid #8C8C8C; }}
@@ -6613,7 +6613,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
   .sigs .cap2 {{ font-size:8pt; color:#3B3F44; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
-    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; }}
   }}
 </style></head><body>
   <div class="bar">
@@ -6727,7 +6727,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # Usually decided from the shape of the report; a document that
     # prints to a fixed page says which, so the two cannot disagree.
     facing = orientation or export_web.choose_orientation(rows, cols)
-    page_w, page_h = ("297mm", "210mm") if facing == "landscape" else ("210mm", "297mm")
+    page_w = "297mm" if facing == "landscape" else "210mm"
     logo = export_web.logo_data_uri()
     logo_html = (f'<img src="{logo}" alt="Infinia">' if logo else "")
     sheet = (empty or
@@ -6748,7 +6748,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
   /* A4 the way round this report prints. */
-  .page {{ width:{page_w}; max-width:calc(100% - 24px); min-height:{page_h}; margin:16px auto;
+  .page {{ width:{page_w}; max-width:calc(100% - 24px); margin:16px auto;
            background:white; padding:10mm 8mm 12mm; box-sizing:border-box;
            box-shadow:0 1px 6px rgba(0,0,0,.14); }}
   .mark img {{ width:42mm; display:block; }}
@@ -6773,7 +6773,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   .none {{ padding:26px; color:#777; font-size:13px; text-align:center; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
-    .page {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    .page {{ width:auto; margin:0; padding:0; box-shadow:none; }}
     @page {{ size:A4 {facing}; margin:10mm; }}
   }}
 </style></head><body>

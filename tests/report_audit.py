@@ -122,7 +122,9 @@ for k in ["stock", "usage", "by_site", "assets", "hired", "lost", "purchases", "
         "the Infinia logo": 'data:image/png;base64,' in pv.text,
         "the letterhead": "INFINIA CONTRACTING LLC" in pv.text,
         "the brand heading band": "#" + export_web.BRAND_RED in pv.text,
-        "an A4 landscape page": "297mm" in pv.text,
+        # A4, the way round this report prints - upright for a narrow
+        # one, on its side for a wide one.
+        "an A4 page": ("297mm" in pv.text) or ("210mm" in pv.text),
         "the report's own title": (c.get(f'/store/report?kind={k}', headers=K)
                                     .json().get("title", "") in pv.text),
         "headings, not field names": "given_to" not in pv.text,
