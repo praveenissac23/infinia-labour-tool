@@ -120,5 +120,66 @@ tok_dl = c.post('/auth/download-token', headers=H).json()['token']
 pdf = c.get(f"/export/purchase/{po['id']}?token={tok_dl}&format=pdf")
 ck('the corrected order still prints', pdf.status_code == 200 and pdf.content[:4] == b'%PDF', pdf.status_code)
 
+# ---- Two sides of an order, and neither wears the other's name --------
+# The vendor block on the printed order wants the trader's man, his
+# number and his email. They used to be read off the supplier record
+# when the order was printed, so they could not be corrected here and an
+# order raised last March printed whoever the trader employs today.
+c.post('/store/suppliers', json={
+    'name': 'Aasa Middle East Contracting LLC', 'contact_person': 'Faisal Rahman',
+    'phone': '0554472210', 'trn': '100218689600003', 'email': 'faisal@aasame.ae',
+    'payment_terms': '30 days'}, headers=H)
+vo = c.post('/store/purchase/orders', json={
+    'supplier_name': 'Aasa Middle East Contracting LLC', 'supplier_trn': '100218689600003',
+    'supplier_contact': 'Faisal Rahman', 'supplier_phone': '0554472210',
+    'supplier_email': 'faisal@aasame.ae',
+    'contact_person': 'Akhil', 'mobile': '0509998877',
+    'job_scope': 'Blockwork', 'project_location': '901',
+    'lines': [{'description': 'Cement OPC 50kg', 'qty': 100, 'unit': 'bags', 'rate': 16.5}]},
+    headers=H)
+ck('an order carries the vendor contact', vo.status_code == 200, vo.text[:200])
+vo = vo.json()
+ck('their man, number and email are kept on the order',
+   (vo['supplier_contact'], vo['supplier_phone'], vo['supplier_email'])
+   == ('Faisal Rahman', '0554472210', 'faisal@aasame.ae'), vo)
+ck('and ours stays on our side',
+   vo['contact_person'] == 'Akhil' and vo['mobile'] == '0509998877', vo)
+
+vu = c.put(f"/store/purchase/orders/{vo['id']}", json={
+    'supplier_name': 'Aasa Middle East Contracting LLC', 'supplier_trn': '100218689600003',
+    'supplier_contact': 'Nasir Ali', 'supplier_phone': '0561234567',
+    'supplier_email': 'nasir@aasame.ae',
+    'contact_person': 'Akhil', 'mobile': '0509998877',
+    'lines': [{'description': 'Cement OPC 50kg', 'qty': 100, 'unit': 'bags', 'rate': 16.5}]},
+    headers=H)
+ck('their man can be corrected on the order', vu.status_code == 200, vu.text[:200])
+reopened = c.get(f"/store/purchase/orders/{vo['id']}", headers=H).json()
+ck('and the correction survives reopening',
+   reopened['supplier_contact'] == 'Nasir Ali'
+   and reopened['supplier_phone'] == '0561234567', reopened)
+vpv = c.get(f"/export/purchase/{vo['id']}/view?token={tok_dl}")
+ck('the printed order shows the corrected man',
+   vpv.status_code == 200 and 'Nasir Ali' in vpv.text and '0561234567' in vpv.text,
+   vpv.status_code)
+ck('and our man appears once, on our side only',
+   vpv.text.count('Akhil') == 1, vpv.text.count('Akhil'))
+sup_after = [s for s in c.get('/store/suppliers', headers=H).json()
+             if s['name'].startswith('Aasa')][0]
+ck('a supplier already on file is not rewritten by an order',
+   sup_after['contact_person'] == 'Faisal Rahman', sup_after['contact_person'])
+
+# A trader new to the list learns from the first order raised on him.
+nu = c.post('/store/purchase/orders', json={
+    'supplier_name': 'Northline Building Materials', 'supplier_trn': '100999888777003',
+    'supplier_contact': 'Vinod K', 'supplier_phone': '0507776655',
+    'supplier_email': 'vinod@northline.ae',
+    'lines': [{'description': 'Sand', 'qty': 5, 'unit': 'm3', 'rate': 80}]}, headers=H)
+ck('an order for a new trader is raised', nu.status_code == 200, nu.text[:200])
+new_sup = [s for s in c.get('/store/suppliers', headers=H).json()
+           if s['name'] == 'Northline Building Materials'][0]
+ck('and the supplier list learns his details from it',
+   (new_sup['contact_person'], new_sup['phone'], new_sup['email'])
+   == ('Vinod K', '0507776655', 'vinod@northline.ae'), new_sup)
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

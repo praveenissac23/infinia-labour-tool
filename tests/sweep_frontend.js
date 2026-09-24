@@ -144,6 +144,29 @@ setTimeout(async()=>{
   for (const k of ["stock","by_site","usage","assets","lost","hired","mr_open","mr_history"]) { w.pickReport(k,true); await wait(150); }
   ok("every report tile opens without error", errsSince(n).length===0);
 
+  // ---- The purchase order has two sides, and says which is which ----
+  // "Mobile" sat beside our engineer's name with nothing to say whose
+  // number it was, and the trader's own contact could not be typed at
+  // all. Both sides are now labelled panels with their own fields.
+  n=errs.length; w.switchScreen("purchase"); await wait(400);
+  await w.newLpo(); await wait(400);
+  const sides = d.querySelectorAll(".lpo-sides .lpo-side");
+  ok("the order form is split into supplier and us", sides.length === 2);
+  ok("each side says whose it is",
+     /supplier/i.test(sides[0].querySelector("h4").textContent)
+     && /^us\b/i.test(sides[1].querySelector("h4").textContent.trim()));
+  ok("the trader's own contact, number and email can be typed",
+     ["lpo-sup-contact","lpo-sup-phone","lpo-sup-email"].every(id => d.getElementById(id)));
+  const lbl = id => d.querySelector(`label[for="${id}"]`)
+    || d.getElementById(id).closest(".field").querySelector("label");
+  ok("their mobile and ours are told apart by name",
+     /their/i.test(lbl("lpo-sup-phone").textContent)
+     && /our/i.test(lbl("lpo-mobile").textContent));
+  ok("and every box says what goes in it",
+     ["lpo-supplier","lpo-sup-contact","lpo-sup-phone","lpo-sup-email","lpo-mobile",
+      "lpo-plot","lpo-location","lpo-scope"].every(id => d.getElementById(id).placeholder));
+  ok("opening a new order raises no error", errsSince(n).length===0);
+
   console.log(errs.length ? "\nPAGE ERRORS:\n - "+errs.join("\n - ") : "\nno page errors");
   console.log(fail ? `\n${fail} FAILURE(S)` : "\nSWEEP CLEAN");
   process.exit(fail?1:0);

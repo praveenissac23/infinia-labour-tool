@@ -5601,6 +5601,9 @@ def _lpo_dict(o):
         "terms": o.terms, "delivery_date": o.delivery_date.isoformat() if o.delivery_date else "",
         "supplier_ref": o.supplier_ref, "supplier_name": o.supplier_name,
         "supplier_address": o.supplier_address, "supplier_trn": o.supplier_trn,
+        "supplier_email": getattr(o, "supplier_email", "") or "",
+        "supplier_contact": getattr(o, "supplier_contact", "") or "",
+        "supplier_phone": getattr(o, "supplier_phone", "") or "",
         "request_id": o.request_id, "plot_no": o.plot_no, "contact_person": o.contact_person,
         "mobile": o.mobile, "email": o.email, "job_scope": o.job_scope,
         "project_location": o.project_location, "discount_pct": o.discount_pct,
@@ -5628,7 +5631,10 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
     if supplier:
-        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms)):
+        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms),
+                             ("email", payload.supplier_email),
+                             ("contact_person", payload.supplier_contact),
+                             ("phone", payload.supplier_phone)):
             if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
                 setattr(supplier, field, value.strip())
     n = _next_lpo_no(db)
@@ -5642,6 +5648,10 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         supplier_name=(supplier.name if supplier else payload.supplier_name).strip(),
         supplier_address=payload.supplier_address or "",
         supplier_trn=payload.supplier_trn or "",
+        supplier_email=(payload.supplier_email or (supplier.email if supplier else "") or ""),
+        supplier_contact=(payload.supplier_contact
+                          or (supplier.contact_person if supplier else "") or ""),
+        supplier_phone=(payload.supplier_phone or (supplier.phone if supplier else "") or ""),
         request_id=payload.request_id,
         plot_no=payload.plot_no or "", contact_person=payload.contact_person or "",
         mobile=payload.mobile or "", email=payload.email or "purchase@infinia.ae",
@@ -5709,7 +5719,10 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     if supplier:
-        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms)):
+        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms),
+                             ("email", payload.supplier_email),
+                             ("contact_person", payload.supplier_contact),
+                             ("phone", payload.supplier_phone)):
             if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
                 setattr(supplier, field, value.strip())
 
@@ -5721,6 +5734,9 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.supplier_name = (supplier.name if supplier else payload.supplier_name).strip()
     o.supplier_address = payload.supplier_address or ""
     o.supplier_trn = payload.supplier_trn or ""
+    o.supplier_email = payload.supplier_email or ""
+    o.supplier_contact = payload.supplier_contact or ""
+    o.supplier_phone = payload.supplier_phone or ""
     o.plot_no = payload.plot_no or ""
     o.contact_person = payload.contact_person or ""
     o.mobile = payload.mobile or ""
@@ -5783,8 +5799,9 @@ def _lpo_for_print(o):
     # says who to chase without anyone typing it again.
     sup = o.supplier
     d["supplier_email"] = (getattr(o, "supplier_email", "") or (sup.email if sup else "") or "")
-    d["supplier_contact"] = (sup.contact_person if sup else "") or ""
-    d["supplier_mobile"] = (sup.phone if sup else "") or ""
+    d["supplier_contact"] = (getattr(o, "supplier_contact", "")
+                             or (sup.contact_person if sup else "") or "")
+    d["supplier_mobile"] = (getattr(o, "supplier_phone", "") or (sup.phone if sup else "") or "")
     # Where to deliver, from the site record.
     site = None
     if o.project_location:
@@ -6057,8 +6074,9 @@ def _lpo_html(o):
     right_rows = [("Supplier", o.supplier_name),
                   ("TRN", o.supplier_trn),
                   ("Email", getattr(o, "supplier_email", "") or (sup.email if sup else "")),
-                  ("Contact Person", (sup.contact_person if sup else "")),
-                  ("Mobile", (sup.phone if sup else "")),
+                  ("Contact Person", getattr(o, "supplier_contact", "")
+                   or (sup.contact_person if sup else "")),
+                  ("Mobile", getattr(o, "supplier_phone", "") or (sup.phone if sup else "")),
                   ("Payment Terms", o.terms),
                   ("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
                   ("Reference No", o.supplier_ref)]

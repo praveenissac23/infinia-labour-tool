@@ -380,7 +380,13 @@ class PurchaseOrder(Base):
     supplier_name = Column(String, default="")       # as printed, even if the record is renamed later
     supplier_address = Column(Text, default="")
     supplier_trn = Column(String, default="")
+    # The vendor block as it was on the day. A trader's man moves on and
+    # his number changes; an order raised last March must still show who
+    # was rung about it, so these are copied onto the order rather than
+    # read live off the supplier record every time it is printed.
     supplier_email = Column(String, default="")      # printed in the vendor block
+    supplier_contact = Column(String, default="")    # their man, not ours
+    supplier_phone = Column(String, default="")      # their number, not ours
 
     request_id = Column(Integer, ForeignKey("material_requests.id"), nullable=True, index=True)
     plot_no = Column(String, default="")

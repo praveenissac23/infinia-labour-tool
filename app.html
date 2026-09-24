@@ -185,6 +185,20 @@
   .store-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
   @media (max-width: 1150px) { .store-tiles { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 700px)  { .store-tiles { grid-template-columns: 1fr; } }
+
+  /* An order has two sides - theirs and ours - and the form should show
+     which is which without anybody having to work it out from the
+     labels. Two tinted panels side by side, the supplier's first
+     because that is the one that gets filled in first. */
+  .lpo-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  @media (max-width: 1000px) { .lpo-sides { grid-template-columns: 1fr; } }
+  .lpo-side { background: #FAF9F7; border: 1px solid #E7E4DF; border-radius: 8px;
+              padding: 10px 12px 9px; }
+  .lpo-side h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .6px;
+                 text-transform: uppercase; color: #8C2F26; }
+  .lpo-side .field label { font-size: 10.5px; }
+  .lpo-side input, .lpo-side select { font-size: 13px; }
+  .lpo-hint { margin: 7px 0 0; font-size: 11px; color: #8A8681; line-height: 1.35; }
   .store-tile { min-width: 0; border: 1px solid #E7CEC9; border-radius: 10px;
                 padding: 16px 18px; cursor: pointer; background: #FDF6F5; position: relative;
                 transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease,
@@ -1446,26 +1460,61 @@
               <div class="field"><label>Ref# (supplier quote)</label><input type="text" id="lpo-supref" style="width:170px;"></div>
             </div>
 
-            <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
-              <div class="field"><label>Supplier</label>
-                <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:250px;" oninput="onLpoSupplier()">
-                <datalist id="lpo-supplier-list"></datalist>
-                <datalist id="site-list"></datalist>
-                <div id="lpo-supplier-note" style="font-size:11.5px; color:#888; margin-top:3px;"></div></div>
-              <div class="field"><label>Supplier TRN</label><input type="text" id="lpo-trn" style="width:170px;"></div>
+            <!-- Two sides of the order, told apart at a glance. The
+                 printed order has a VENDOR box and an OURS box; the form
+                 that fills them should read the same way, or "Mobile"
+                 beside our engineer's name looks like the supplier's. -->
+            <div class="lpo-sides">
+              <section class="lpo-side">
+                <h4>Supplier &mdash; who we are buying from</h4>
+                <div class="form-row" style="gap:10px; flex-wrap:wrap;">
+                  <div class="field" style="flex:1 1 210px; min-width:190px;"><label>Supplier</label>
+                    <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:100%;"
+                           placeholder="Start typing the trader's name" oninput="onLpoSupplier()">
+                    <datalist id="lpo-supplier-list"></datalist>
+                    <datalist id="site-list"></datalist></div>
+                  <div class="field" style="flex:0 0 160px;"><label>Their TRN</label>
+                    <input type="text" id="lpo-trn" style="width:100%;" placeholder="15 digits"></div>
+                </div>
+                <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
+                  <div class="field" style="flex:1 1 150px; min-width:130px;"><label>Their contact person</label>
+                    <input type="text" id="lpo-sup-contact" style="width:100%;"
+                           placeholder="Who we deal with there"></div>
+                  <div class="field" style="flex:0 0 140px;"><label>Their mobile</label>
+                    <input type="text" id="lpo-sup-phone" style="width:100%;" placeholder="05x xxx xxxx"></div>
+                  <div class="field" style="flex:1 1 180px; min-width:160px;"><label>Their email</label>
+                    <input type="text" id="lpo-sup-email" style="width:100%;"
+                           placeholder="Where the order is sent"></div>
+                </div>
+                <div id="lpo-supplier-note" style="font-size:11.5px; color:#888; margin-top:6px;"></div>
+                <p class="lpo-hint">Filled in from the supplier list. Change it here if their man or
+                   number has changed &mdash; it is saved back for next time.</p>
+              </section>
 
-            </div>
-
-            <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
-              <div class="field"><label>Plot No</label><input type="text" id="lpo-plot" style="width:170px;"></div>
-              <div class="field"><label>Our contact</label>
-                <select id="lpo-contact" style="width:180px;" onchange="onLpoContact()"
-                        title="Who the supplier calls about this order. Whoever raised the request, unless somebody else should take it.">
-                </select></div>
-              <div class="field"><label>Mobile</label><input type="text" id="lpo-mobile" style="width:140px;"></div>
-              <div class="field" style="flex:1; min-width:200px;"><label>Job scope</label><input type="text" id="lpo-scope" style="width:100%;"></div>
-              <div class="field" style="flex:1; min-width:200px;"><label>Project location</label>
-                <input type="text" id="lpo-location" list="site-list" style="width:100%;" oninput="onLpoSite()"></div>
+              <section class="lpo-side">
+                <h4>Us &mdash; who the supplier deals with</h4>
+                <div class="form-row" style="gap:10px; flex-wrap:wrap;">
+                  <div class="field" style="flex:1 1 150px; min-width:130px;"><label>Our contact person</label>
+                    <select id="lpo-contact" style="width:100%;" onchange="onLpoContact()"
+                            title="Who the supplier calls about this order. Whoever raised the request, unless somebody else should take it.">
+                    </select></div>
+                  <div class="field" style="flex:0 0 140px;"><label>Our mobile</label>
+                    <input type="text" id="lpo-mobile" style="width:100%;"
+                           placeholder="Number they ring us on"></div>
+                  <div class="field" style="flex:0 0 140px;"><label>Plot no</label>
+                    <input type="text" id="lpo-plot" style="width:100%;" placeholder="e.g. 347-4803"></div>
+                </div>
+                <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
+                  <div class="field" style="flex:1 1 170px; min-width:150px;"><label>Project location</label>
+                    <input type="text" id="lpo-location" list="site-list" style="width:100%;"
+                           placeholder="Site to deliver to" oninput="onLpoSite()"></div>
+                  <div class="field" style="flex:1 1 190px; min-width:160px;"><label>Job scope</label>
+                    <input type="text" id="lpo-scope" style="width:100%;"
+                           placeholder="What the material is for"></div>
+                </div>
+                <p class="lpo-hint">This is the Infinia side of the order &mdash; the name and number
+                   printed for the supplier to call.</p>
+              </section>
             </div>
 
             <h2 style="margin-top:16px;">Materials</h2>
@@ -9224,8 +9273,9 @@ async function newLpo() {
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
   const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
-  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-plot",
-   "lpo-mobile", "lpo-scope", "lpo-location", "lpo-notes"].forEach(id => document.getElementById(id).value = "");
+  ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-sup-contact", "lpo-sup-phone",
+   "lpo-sup-email", "lpo-plot", "lpo-mobile", "lpo-scope", "lpo-location",
+   "lpo-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-termsset").value = "default";
   document.getElementById("lpo-termstext").value = n.terms_default || "";
@@ -9265,6 +9315,9 @@ async function editLpo(id) {
     document.getElementById("lpo-supref").value = o.supplier_ref || "";
     document.getElementById("lpo-supplier").value = o.supplier_name || "";
     document.getElementById("lpo-trn").value = o.supplier_trn || "";
+    document.getElementById("lpo-sup-contact").value = o.supplier_contact || "";
+    document.getElementById("lpo-sup-phone").value = o.supplier_phone || "";
+    document.getElementById("lpo-sup-email").value = o.supplier_email || "";
     document.getElementById("lpo-plot").value = o.plot_no || "";
     buildContactList(o.contact_person || "");
     document.getElementById("lpo-contact").value = o.contact_person || "";
@@ -9361,20 +9414,25 @@ function onLpoSupplier() {
   // Say what the supplier record is missing, here rather than after the
   // order has been sent with a blank TRN on it.
   if (note) {
-    const gaps = [["contact_person", "contact"], ["phone", "phone"], ["trn", "TRN"]]
+    const gaps = [["contact_person", "contact person"], ["phone", "mobile"],
+                  ["email", "email"], ["trn", "TRN"]]
       .filter(([k]) => !(s[k] || "").trim()).map(([, l]) => l);
     note.textContent = gaps.length
-      ? `${s.name} has no ${gaps.join(", ")} on file - add it on the Suppliers screen.`
+      ? `Nothing on file for their ${gaps.join(", ")} - type it in above and it is kept for next time.`
       : "";
     note.style.color = gaps.length ? "#B26A00" : "#888";
   }
   // Everything the supplier master holds, so the purchase officer types
-  // the rates and nothing else. Anything already typed is left alone.
-  // Only what belongs to the supplier. Contact Person and Mobile on an
-  // order are OURS - the man the supplier rings - and filling them from
-  // his own record put his name on our side of the order.
+  // the rates and nothing else. Anything already typed is left alone -
+  // a number corrected by hand on this order is not overwritten.
+  // These go in the supplier panel only. Our contact person and our
+  // mobile sit on the other side of the form and are never filled from
+  // his record: that put the trader's own man on our side of the order.
   const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
   fill("lpo-trn", s.trn);
+  fill("lpo-sup-contact", s.contact_person);
+  fill("lpo-sup-phone", s.phone);
+  fill("lpo-sup-email", s.email);
   // Whatever terms are on the supplier, standard or not.
   if (s.payment_terms) document.getElementById("lpo-terms").value = s.payment_terms;
 }
@@ -9517,6 +9575,9 @@ async function saveLpo() {
     supplier_ref: document.getElementById("lpo-supref").value.trim(),
     supplier_name: document.getElementById("lpo-supplier").value.trim(),
     supplier_trn: document.getElementById("lpo-trn").value.trim(),
+    supplier_contact: document.getElementById("lpo-sup-contact").value.trim(),
+    supplier_phone: document.getElementById("lpo-sup-phone").value.trim(),
+    supplier_email: document.getElementById("lpo-sup-email").value.trim(),
     plot_no: document.getElementById("lpo-plot").value.trim(),
     contact_person: document.getElementById("lpo-contact").value.trim(),
     mobile: document.getElementById("lpo-mobile").value.trim(),
