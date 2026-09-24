@@ -11746,11 +11746,16 @@ function hrSearchSelect(sel) {
        || `<div class="hr-find-none">Nobody matches</div>`);
     list.style.display = "block";
   };
+  let picking = false;
   const pick = v => {
+    picking = true;
     sel.value = v; input.value = label(); list.style.display = "none";
     sel.dispatchEvent(new Event("change", { bubbles: true }));
+    setTimeout(() => { picking = false; }, 200);
   };
-  input.addEventListener("focus", () => { input.select(); hit = 0; show(); });
+  // Focus clears the box so the whole list shows and typing starts
+  // fresh; leaving without choosing puts the current name back.
+  input.addEventListener("focus", () => { input.value = ""; hit = 0; show(); });
   input.addEventListener("input", () => { hit = 0; show(); });
   input.addEventListener("keydown", ev => {
     const rows = [...list.querySelectorAll("div[data-v]")];
@@ -11761,10 +11766,12 @@ function hrSearchSelect(sel) {
     else if (ev.key === "Escape") { input.value = label(); list.style.display = "none"; }
   });
   list.addEventListener("mousedown", ev => { const r = ev.target.closest("div[data-v]"); if (r) { ev.preventDefault(); pick(r.dataset.v); } });
+  list.addEventListener("touchend", ev => { const r = ev.target.closest("div[data-v]"); if (r) { ev.preventDefault(); pick(r.dataset.v); } });
   input.addEventListener("blur", () => setTimeout(() => {
+    if (picking) return;
     list.style.display = "none";
-    if (!input.value.trim() && all) { if (sel.value) pick(""); } else input.value = label();
-  }, 120));
+    input.value = label();
+  }, 150));
   hrBindSelect(sel, render);
   render();
 }
