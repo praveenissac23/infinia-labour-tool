@@ -28,7 +28,10 @@ O, S, K = H('office'), H('site'), H('keeper')
 items = {}
 for name, unit, typ in [('Cement OPC 42.5', 'bag', 'consumable'), ('Steel Rebar 20MM', 't', 'consumable'),
                         ('Steel Cutting Machine', 'pcs', 'asset'), ('Scaffold Ledger 1.20M', 'pcs', 'rental')]:
-    items[name] = c.post('/store/items', json={'name': name, 'unit': unit, 'item_type': typ, 'reorder_level': 20}, headers=K).json()
+    body = {'name': name, 'unit': unit, 'item_type': typ, 'reorder_level': 20}
+    if typ == 'rental':
+        body['rental_supplier'] = 'Al Raha Scaffolding'
+    items[name] = c.post('/store/items', json=body, headers=K).json()
 mr = c.post('/store/requests', json={'site': '904', 'requested_by': 'febiyan', 'needed_by': '2026-09-02',
     'urgency': 'urgent', 'notes': '', 'lines': [
       {'item_id': items['Cement OPC 42.5']['id'], 'qty_requested': 100, 'unit': 'bag', 'purpose': 'slab', 'item_type': 'consumable', 'description': '', 'est_cost': 0, 'notes': ''},

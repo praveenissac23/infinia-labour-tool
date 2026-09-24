@@ -43,7 +43,11 @@ with sync_playwright() as p:
     ck('register lists the orders', pg.evaluate("document.querySelectorAll('#lpr-body tr').length")>=1)
 
     pg.evaluate("switchScreen('suppliers')"); time.sleep(1.5)
-    for f,v in (('#sup-name','New Trader LLC'),('#sup-contact','Sam'),('#sup-phone','0501112222'),('#sup-trn','100111222333003')): pg.fill(f,v)
+    # Every box on the supplier card is required - a trader half on file
+    # is the one nobody can pay, so the form fills all of it.
+    for f,v in (('#sup-name','New Trader LLC'),('#sup-contact','Sam'),
+                ('#sup-phone','0501112222'),('#sup-trn','100111222333003'),
+                ('#sup-email','sam@newtrader.ae'),('#sup-terms','30 days')): pg.fill(f,v)
     pg.evaluate('saveSupplier()'); time.sleep(1.5)
     ck('supplier saves', 'saved' in pg.inner_text('#sup-status').lower(), pg.inner_text('#sup-status')[:50])
 

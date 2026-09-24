@@ -266,18 +266,32 @@ listed = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
           for i in g['items'] if i['name'] == 'Cantilever Frame']
 ck('and it is on the hire list straight away', len(listed) == 1 and listed[0]['qty'] == 20, listed)
 
+# Rented material has to go back to somebody, so naming them is part of
+# calling it a rental at all - not a tidy-up for later. Left out, the
+# quantity lands under nobody and goes back unaccounted for.
 nameless = c.post('/store/items', json={'name': 'Spigot Nut & Bolt', 'unit': 'pcs',
                                         'item_type': 'rental', 'opening_qty': 40}, headers=H)
-ck('a rental material with no supplier named still saves', nameless.status_code == 200,
-   nameless.text[:160])
-loose = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
-         for i in g['items'] if i['name'] == 'Spigot Nut & Bolt']
-ck('and it still shows on the rental list - rented is rented',
-   len(loose) == 1 and loose[0]['qty'] == 40, loose)
-ck('under a name that says the job is unfinished',
-   loose and loose[0]['supplier'] == '(no supplier set)', loose)
-row = next(s for s in c.get('/store/stock', headers=H).json() if s['name'] == 'Spigot Nut & Bolt')
-ck('and the stock list counts it as rented, not ours', row['rented'] == 40, row)
+ck('a rental material with no supplier is refused', nameless.status_code == 400,
+   f'{nameless.status_code} {nameless.text[:140]}')
+ck('and the message names the box to fill',
+   'rental supplier' in nameless.text.lower(), nameless.text[:200])
+ck('nothing of it was saved',
+   not any(s['name'] == 'Spigot Nut & Bolt' for s in c.get('/store/items', headers=H).json()))
+
+# An asset needs no supplier - it is ours, there is nobody to return it to.
+own = c.post('/store/items', json={'name': 'Bolt Cutter', 'unit': 'pcs',
+                                   'item_type': 'asset', 'opening_qty': 4}, headers=H)
+ck('an asset saves with no supplier at all', own.status_code == 200, own.text[:140])
+
+# The same material rented from two traders is two positions, not one.
+two = c.post('/store/items/opening', json={'lines': [
+    {'item_id': mat.json()['id'], 'item_type': 'rental', 'qty': 15,
+     'rental_supplier': 'Second Scaffolding Co'}]}, headers=H)
+ck('a line can name a different supplier to the material', two.status_code == 200, two.text[:160])
+both = {g['supplier']: [i['qty'] for i in g['items'] if i['name'] == 'Cantilever Frame']
+        for g in c.get('/store/hire', headers=H).json()['suppliers']}
+ck('and the two are kept apart on the rental list',
+   both.get('Ghantoot Equipment Rental') == [20] and both.get('Second Scaffolding Co') == [15], both)
 
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

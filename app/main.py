@@ -3279,6 +3279,12 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
         payload.item_type = "asset"        # retired type, folded into assets
     if payload.item_type not in ("consumable", "asset", "rental"):
         raise HTTPException(status_code=400, detail="Item type must be consumable, asset or rental.")
+    # A rental is rented from somebody and has to go back to them, so
+    # the name is part of saying it is a rental at all.
+    if payload.item_type == "rental" and not (payload.rental_supplier or "").strip():
+        raise HTTPException(status_code=400,
+            detail="A Rental material is rented from somebody - fill in Rental supplier, "
+                   "so it can go back to them. Set the type to Asset if the company owns it.")
     if payload.reorder_level < 0:
         raise HTTPException(status_code=400, detail="Reorder level can't be negative.")
     payload.code, payload.name = code, name
@@ -4864,12 +4870,23 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         unit = (l.get("unit") or "").strip()
         if unit and unit != (it.unit or ""):
             it.unit = unit
-        # Nothing named here, but the material itself may say who it is
-        # rented from - and a Rental material shows on the rental list
-        # either way, so the answer need not be repeated on every line.
+        # Rented material has to go back to somebody, so a rental line
+        # carries the name. Given on the line it is used and remembered
+        # on the material; not given, the material's own name stands in;
+        # neither, and it is refused rather than landing under nobody.
         line_owner = owner
-        if line_owner is None and it.item_type == "rental" and (it.rental_supplier or "").strip():
-            line_owner = _find_or_create_supplier(db, it.rental_supplier)
+        named = (l.get("rental_supplier") or "").strip()
+        if kind == "rental" or it.item_type == "rental":
+            if named:
+                line_owner = _find_or_create_supplier(db, named)
+                if line_owner:
+                    it.rental_supplier = line_owner.name
+            elif line_owner is None and (it.rental_supplier or "").strip():
+                line_owner = _find_or_create_supplier(db, it.rental_supplier)
+            if line_owner is None:
+                raise HTTPException(status_code=400,
+                    detail=f"{it.name} is rented - say who it is rented from, so it can go "
+                           "back to them. Set the type to Asset instead if the company owns it.")
         spot = _place(l.get("location"), f" (on the {it.name} line)") or where
         db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty,
                                     location=spot or CENTRAL, from_location="",

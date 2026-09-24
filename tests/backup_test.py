@@ -30,7 +30,8 @@ def ck(l, ok, x=''):
 
 # A working store: materials, an ordered and delivered request, movements.
 it1 = c.post('/store/items', json={'name': 'Cement OPC', 'unit': 'bag', 'item_type': 'consumable', 'reorder_level': 20}, headers=H).json()
-it2 = c.post('/store/items', json={'name': 'Scaffold Ledger', 'unit': 'pcs', 'item_type': 'rental'}, headers=H).json()
+it2 = c.post('/store/items', json={'name': 'Scaffold Ledger', 'unit': 'pcs', 'item_type': 'rental',
+                                   'rental_supplier': 'Al Raha Scaffolding'}, headers=H).json()
 mr = c.post('/store/requests', json={'site': '904', 'requested_by': 'Febiyan', 'needed_by': '2026-09-05',
     'urgency': 'urgent', 'notes': 'for slab', 'lines': [{'item_id': it1['id'], 'qty_requested': 100, 'unit': 'bag',
     'purpose': 'slab', 'item_type': 'consumable', 'description': '', 'est_cost': 0, 'notes': ''}]}, headers=H).json()

@@ -40,11 +40,15 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   await p.evaluate(() => doLogin());
   await p.waitForTimeout(3000);
 
+  // A rental now carries the supplier it goes back to, so both are
+  // named. An unnamed one can no longer be created at all - the screens
+  // refuse it - which is checked on the add-stock panel instead.
   await p.evaluate(async ([named, loose, sup]) => {
     await apiCall('/store/items', { method: 'POST', body: JSON.stringify({
       name: named, unit: 'pcs', item_type: 'rental', rental_supplier: sup, opening_qty: 150 }) });
     await apiCall('/store/items', { method: 'POST', body: JSON.stringify({
-      name: loose, unit: 'pcs', item_type: 'rental', opening_qty: 60 }) });
+      name: loose, unit: 'pcs', item_type: 'rental',
+      rental_supplier: sup + ' Yard', opening_qty: 60 }) });
   }, [NAMED, LOOSE, SUPPLIER]);
 
   // ---- The rental panel lists both, named or not -------------------
@@ -60,8 +64,8 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   const loose = listed.find(g => g.items.includes(LOOSE));
   ck('a rental with a supplier is listed under them',
      named && named.supplier === SUPPLIER, JSON.stringify(listed));
-  ck('a rental with nobody named is listed too, not hidden',
-     loose && !loose.id, JSON.stringify(listed));
+  ck('a second rental is listed under its own supplier',
+     loose && loose.supplier === SUPPLIER + ' Yard', JSON.stringify(listed));
 
   // ---- Where it is, and the location filter ------------------------
   await p.evaluate(async ([named]) => {
@@ -204,6 +208,36 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
     (hireOnHire.suppliers || []).some(g => g.supplier === sup + ' Two'), SUPPLIER);
   ck('and the new supplier appears on the rental list', after);
 
+  // ---- The date on the booking form is today, every time -----------
+  // Set once and left, a tab still open the next morning kept
+  // yesterday's date, and anything booked through it arrived a day old
+  // - a rental showing one day on rent the moment it was entered.
+  await p.evaluate(() => storeGo('hire'));
+  await p.waitForTimeout(1800);
+  const today = await p.evaluate(() => isoLocal(new Date()));
+  ck('the booking date opens on today', (await p.inputValue('#hin-date')) === today,
+     await p.inputValue('#hin-date'));
+
+  await p.evaluate(() => {
+    const d = document.getElementById('hin-date');
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    d.value = isoLocal(y); d.dataset.autofilled = d.value;
+  });
+  await p.evaluate(() => storeGo('home'));
+  await p.waitForTimeout(900);
+  await p.evaluate(() => storeGo('hire'));
+  await p.waitForTimeout(1800);
+  ck('a stale default is moved on rather than left at yesterday',
+     (await p.inputValue('#hin-date')) === today, await p.inputValue('#hin-date'));
+
+  await p.evaluate(() => { document.getElementById('hin-date').value = '2026-09-01'; });
+  await p.evaluate(() => storeGo('home'));
+  await p.waitForTimeout(900);
+  await p.evaluate(() => storeGo('hire'));
+  await p.waitForTimeout(1800);
+  ck('but a date chosen by hand is kept',
+     (await p.inputValue('#hin-date')) === '2026-09-01', await p.inputValue('#hin-date'));
+
   // ---- A banner belongs to the moment it was shown -----------------
   // "RN-0001 settled" stayed green on its panel long after the return
   // and read as current every time the panel was opened again, which
@@ -230,6 +264,21 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   await p.waitForTimeout(1400);
   ck('but a message shown on arrival still shows',
      /supplier/i.test(await text('#rn-list-status')), await text('#rn-list-status'));
+
+  // ---- A rental cannot be created without saying whose it is -------
+  const refused = await p.evaluate(async t => {
+    try {
+      await apiCall('/store/items', { method: 'POST', body: JSON.stringify({
+        name: 'Nameless Rental ' + t, unit: 'pcs', item_type: 'rental', opening_qty: 5 }) });
+      return 'ACCEPTED';
+    } catch (e) {
+      // apiCall throws { status, body: { detail } } - not an Error.
+      const d = e && e.body && e.body.detail;
+      return String(d || (e && e.message) || JSON.stringify(e));
+    }
+  }, TAG);
+  ck('a rental with no supplier is refused, naming the box',
+     /rental supplier/i.test(refused), refused);
 
   console.log(errs.length ? '\n' + errs.join('\n') : '\nno page errors');
   console.log('\n' + (FAIL.length ? FAIL.length + ' FAILED: ' + FAIL.join('; ') : 'RENTAL SCREENS CLEAN'));

@@ -1950,10 +1950,10 @@
               </p>
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
-                  <th style="width:4%;">#</th><th style="width:34%;">Material</th>
-                  <th style="width:15%;">Type</th><th style="width:10%;">Quantity</th>
-                  <th style="width:13%;">Unit</th><th style="width:16%;">Where it is</th>
-                  <th style="width:8%;"></th>
+                  <th style="width:4%;">#</th><th style="width:26%;">Material</th>
+                  <th style="width:13%;">Type</th><th style="width:9%;">Quantity</th>
+                  <th style="width:11%;">Unit</th><th style="width:14%;">Where it is</th>
+                  <th style="width:16%;">Rented from</th><th style="width:7%;"></th>
                 </tr></thead>
                 <tbody id="opening-lines"></tbody>
               </table>
@@ -5191,8 +5191,16 @@ async function loadHirePanel() {
   if (loc) loc.innerHTML = siteOptionsHtml(loc.value || "");
   const who = document.getElementById("hin-incharge");
   if (who) who.innerHTML = peopleOptionsHtml(who.value || "");
+  // Today, refreshed every time the panel opens. Set once and left, a
+  // tab still open in the morning kept yesterday's date, and everything
+  // booked through it arrived dated yesterday - a rental one day old
+  // the moment it was entered. A date the person typed themselves is
+  // theirs and is kept; only the one we filled in is moved on.
   const d = document.getElementById("hin-date");
-  if (d && !d.value) d.value = isoLocal(new Date());
+  if (d && (!d.value || d.value === d.dataset.autofilled)) {
+    d.value = isoLocal(new Date());
+    d.dataset.autofilled = d.value;
+  }
   if (!document.querySelectorAll('#hin-lines tr').length) addHireInLine();
   // The two Export buttons need a download token, and asking for it
   // only when one is pressed makes the first press feel slow.
@@ -6443,7 +6451,14 @@ function onMaterialTyped(box) {
   // If this material already has a type, show it rather than leaving
   // the box on Consumable and quietly changing what the item is.
   const typeSel = row.querySelector(".il-type, .mr-type");
-  if (typeSel && hit) typeSel.value = hit.item_type || "consumable";
+  if (typeSel && hit) {
+    typeSel.value = hit.item_type || "consumable";
+    // Picking a rental material has to open its supplier box, the same
+    // as choosing Rental by hand would.
+    if (row.querySelector(".op-supplier") && typeof onOpeningType === "function") {
+      onOpeningType(typeSel);
+    }
+  }
   const unitCell = row.querySelector(".ol-have, .mr-unit, .op-unit");
   if (hit && unitCell) {
     if (unitCell.classList.contains("op-unit")) {
@@ -8811,7 +8826,7 @@ function addOpeningLine() {
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("il-item", "material-list-all")}</td>
-    <td><select class="il-type" style="width:100%; min-width:120px;">
+    <td><select class="il-type" style="width:100%; min-width:120px;" onchange="onOpeningType(this)">
           <option value="consumable">Consumable</option>
           <option value="asset">Asset (we own it)</option>
           <option value="rental">Rental (rented in)</option>
@@ -8820,10 +8835,31 @@ function addOpeningLine() {
     <td><select class="op-unit" style="width:100%; min-width:90px;">${unitOptionsHtml("pcs")}</select></td>
     <td><select class="op-where" style="width:100%; min-width:120px;"
           title="Where this quantity is - the yard, or straight onto a site.">${siteOptionsHtml("")}</select></td>
+    <td><input type="text" class="op-supplier" list="lpo-supplier-list" placeholder="Rental only"
+          style="width:100%; min-width:110px; display:none;"
+          title="Who this is rented from. It has to go back to them, so the name is needed."></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'opening-lines')">Remove</button></td>`;
   document.getElementById("opening-lines").appendChild(tr);
   renumberRows("opening-lines");
   tr.querySelector(".il-item-txt").focus();
+}
+
+// Rented material has to go back to somebody, so the name is asked for
+// on the line that is rented and nowhere else - an asset and a
+// consumable are ours and have no supplier to return them to.
+function onOpeningType(sel) {
+  const tr = sel.closest("tr");
+  const box = tr.querySelector(".op-supplier");
+  if (!box) return;
+  const rental = sel.value === "rental";
+  box.style.display = rental ? "" : "none";
+  if (!rental) { box.value = ""; box.style.background = ""; return; }
+  // The material may already say who it is rented from; fill that in
+  // rather than asking again for something already on file.
+  const id = parseInt((tr.querySelector(".il-item") || {}).value, 10) || 0;
+  const it = (storeItems || []).find(x => x.id === id);
+  if (it && (it.rental_supplier || "").trim() && !box.value) box.value = it.rental_supplier;
+  box.focus();
 }
 
 async function saveOpeningStock() {
@@ -8833,6 +8869,7 @@ async function saveOpeningStock() {
     unit: tr.querySelector(".op-unit").value,
     qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
     location: (tr.querySelector(".op-where").value || "").trim(),
+    rental_supplier: ((tr.querySelector(".op-supplier") || {}).value || "").trim(),
     typed: (tr.querySelector(".il-item-txt").value || "").trim(),
   }));
   const unmatched = lines.filter(l => l.typed && !l.item_id);
@@ -8843,8 +8880,15 @@ async function saveOpeningStock() {
   const ready = lines.filter(l => l.item_id && l.qty > 0);
   if (!ready.length) { showStatus("opening-status", "warn", "Add at least one material with a quantity."); return; }
 
-  // Whose it is needs no question of its own: a line marked Rental is
-  // the supplier's, and which supplier is on the material already.
+  // Rented material has to go back to somebody, so a rental line
+  // without a name is stopped here rather than landing under
+  // "(no supplier set)" for somebody to find later.
+  const nameless = ready.find(l => l.item_type === "rental" && !l.rental_supplier);
+  if (nameless) {
+    showStatus("opening-status", "warn",
+      `${nameless.typed || "A rental line"} is rented - say who from, so it can go back to them.`);
+    return;
+  }
   const places = [...new Set(ready.map(l => l.location))];
   const place = places.length > 1 ? `${places.length} places`
               : (places[0] ? `site ${places[0]}` : "the central store");
@@ -8853,7 +8897,7 @@ async function saveOpeningStock() {
     const r = await apiCall("/store/items/opening", { method: "POST",
       body: JSON.stringify({ lines: ready.map(l => ({
         item_id: l.item_id, item_type: l.item_type, unit: l.unit,
-        qty: l.qty, location: l.location })) }) });
+        qty: l.qty, location: l.location, rental_supplier: l.rental_supplier })) }) });
     showStatus("opening-status", "ok", r.detail || "Added.");
     document.getElementById("opening-lines").innerHTML = "";
     addOpeningLine();

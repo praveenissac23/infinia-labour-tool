@@ -35,7 +35,12 @@ def ck(l, ok, x=''):
 
 # The material list, as imported before go-live. Nothing received yet.
 def item(name, kind, unit):
-    return c.post('/store/items', json={'name': name, 'unit': unit, 'item_type': kind}, headers=KEEPER).json()
+    # A rental is rented from somebody and has to go back to them, so the
+    # name is part of calling it a rental at all.
+    body = {'name': name, 'unit': unit, 'item_type': kind}
+    if kind == 'rental':
+        body['rental_supplier'] = 'Al Raha Scaffolding'
+    return c.post('/store/items', json=body, headers=KEEPER).json()
 cem = item('Cement OPC 50kg', 'consumable', 'bag')
 sand = item('Sand Washed', 'consumable', 'm3')
 drill = item('Hilti Drill TE-60', 'asset', 'pcs')

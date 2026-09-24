@@ -65,7 +65,10 @@ ck('attendance in place: 45 days, 3 summaries, 1 adjustment', before[:3] == (45,
 # ======================================================================
 section('Practice entries in the store')
 def item(name, kind, unit, who=KEEPER):
-    return c.post('/store/items', json={'name': name, 'unit': unit, 'item_type': kind}, headers=who).json()
+    body = {'name': name, 'unit': unit, 'item_type': kind}
+    if kind == 'rental':
+        body['rental_supplier'] = 'Al Raha Scaffolding'
+    return c.post('/store/items', json=body, headers=who).json()
 old_cem = item('Cement OPC 50kg', 'consumable', 'bag')
 old_drill = item('Hilti Drill TE-60', 'returnable', 'pcs')
 c.post('/store/movements', json={'item_id': old_cem['id'], 'kind': 'in', 'qty': 100, 'location': '', 'supplier': 'Practice Trader', 'moved_on': '2026-09-01'}, headers=KEEPER)
@@ -107,7 +110,12 @@ ck('no notifications left over from practice',
 # ======================================================================
 section('Day one: the site engineer asks for material')
 sand = item('Sand Washed', 'consumable', 'm3')
-scaff = item('Scaffold Ledger 2m', 'rental', 'pcs')
+# Named here because it is hired from Gateway further down, and a
+# rental carries the name of whoever it goes back to.
+scaff = c.post('/store/items', json={'name': 'Scaffold Ledger 2m', 'unit': 'pcs',
+                                     'item_type': 'rental',
+                                     'rental_supplier': 'Gateway Scaffolding'},
+                headers=KEEPER).json()
 mixer = item('Concrete Mixer 350L', 'asset', 'pcs')
 mr = c.post('/store/requests', json={'site': '901', 'requested_by': 'Febiyan', 'needed_by': '2026-09-25', 'urgency': 'urgent', 'notes': 'slab pour Thursday',
     'lines': [{'item_id': old_cem['id'], 'qty_requested': 100, 'unit': 'bag', 'purpose': 'slab', 'item_type': 'consumable', 'description': '', 'est_cost': 16, 'notes': ''},

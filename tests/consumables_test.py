@@ -35,8 +35,10 @@ def ck(l, ok, x=''):
     if not ok: FAIL.append(l)
 
 def item(name, kind, unit):
-    return c.post('/store/items', json={'name': name, 'unit': unit,
-                                        'item_type': kind}, headers=H).json()
+    body = {'name': name, 'unit': unit, 'item_type': kind}
+    if kind == 'rental':
+        body['rental_supplier'] = 'Al Raha Scaffolding'
+    return c.post('/store/items', json=body, headers=H).json()
 
 cement = item('Cement OPC 50kg', 'consumable', 'bag')
 drill = item('Hilti Drill', 'returnable', 'pcs')
