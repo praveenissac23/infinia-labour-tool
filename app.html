@@ -2417,6 +2417,29 @@
             <label style="font-size:12px; color:#666; cursor:pointer;">
               <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
+          <div class="card" id="companies-card" style="display:none;">
+            <h2>Companies</h2>
+            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
+              The companies staff and labourers are employed by. Used across attendance, payroll and
+              the office HR section. Click a name to change its details.</p>
+            <div class="grid-wrap" style="max-height:30vh;">
+              <table class="hr-grid">
+                <thead><tr><th class="txt" style="width:34%;">Name</th><th style="width:14%;">Short name</th>
+                  <th style="width:10%;">Code prefix</th><th style="width:20%;">TRN</th><th style="width:22%;">WPS ID</th></tr></thead>
+                <tbody id="companies-body"></tbody>
+              </table>
+            </div>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:10px; align-items:flex-end;">
+              <input type="hidden" id="co-id">
+              <label class="hr-field"><span>Full name *</span><input type="text" id="co-name" style="width:260px;"></label>
+              <label class="hr-field"><span>Short name</span><input type="text" id="co-short" style="width:130px;"></label>
+              <label class="hr-field"><span>Code prefix</span><input type="text" id="co-prefix" style="width:90px;" placeholder="IC"></label>
+              <label class="hr-field"><span>TRN</span><input type="text" id="co-trn" style="width:170px;"></label>
+              <label class="hr-field"><span>WPS ID</span><input type="text" id="co-wps" style="width:170px;"></label>
+              <button class="btn btn-primary" id="co-save" onclick="saveCompany()">Add company</button>
+              <button class="btn btn-gray" id="co-cancel" onclick="coReset()" style="display:none;">Cancel</button>
+            </div>
+          </div>
           <div class="card" id="company-card" style="display:none;">
             <h2>Store In-charge</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
@@ -2716,13 +2739,7 @@
                 <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
                 <button class="btn btn-gray" onclick="hrCloseDlg()">Cancel</button>
               </div>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:12px;
-                           border-top:1px solid #EFEBE4; align-items:center; font-size:12.5px; color:#666;">
-                Companies: <b id="hr-company-list" style="color:#333;"></b>
-                <input type="text" id="hr-company-name" placeholder="New company, full name" style="width:210px; margin-left:12px;">
-                <input type="text" id="hr-company-short" placeholder="Short name" style="width:120px;">
-                <button class="btn btn-gray" onclick="addCompany()">Add company</button>
-              </div>
+
             </div>
           </div>
 
@@ -3207,6 +3224,7 @@ function switchScreen(name) {
   if (name === "activity") loadActivityLog();
   if (name === "masterdata") loadFormerWorkers();
   if (name === "hrpayroll") loadHrScreen();
+  if (name === "settings") loadCompanies();
   if (name === "reports" || name === "monthly" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "combine") {
     filterCombineWorkers();
@@ -11611,8 +11629,7 @@ function renderStaff() {
          <td class="num">${hrMoney(sum("basic"))}</td>
          <td class="num">${hrMoney(sum("allowance"))}</td>
          <td class="num">${hrMoney(sum("gross"))}</td><td></td></tr>` : "";
-  document.getElementById("hr-company-list").textContent =
-    HR_COMPANIES.map(c => c.short_name || c.name).join(", ") || "none yet";
+
 }
 
 function hrOpenDlg(which) {
@@ -11702,17 +11719,42 @@ async function addStaff() {
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
-async function addCompany() {
-  const name = document.getElementById("hr-company-name").value.trim();
-  if (!name) { hrMsg("warn", "A company needs a name."); return; }
+async function loadCompanies() {
+  const card = document.getElementById("companies-card");
+  if (!card) return;
+  let rows;
+  try { rows = await apiCall("/employees/companies"); } catch (e) { card.style.display = "none"; return; }
+  card.style.display = "";
+  document.getElementById("companies-body").innerHTML = rows.map(c => `
+    <tr><td class="txt"><a href="#" onclick="coEdit(${c.id});return false;" style="color:var(--red); text-decoration:none;">${escapeHtml(c.name)}</a></td>
+      <td>${escapeHtml(c.short_name || "-")}</td><td>${escapeHtml(c.code_prefix || "-")}</td>
+      <td>${escapeHtml(c.trn || "-")}</td><td>${escapeHtml(c.wps_id || "-")}</td></tr>`).join("") ||
+    `<tr><td colspan="5" class="hr-nil" style="padding:12px;">No companies yet.</td></tr>`;
+  window.__companies = rows;
+}
+function coEdit(id) {
+  const c = (window.__companies || []).find(x => x.id === id); if (!c) return;
+  document.getElementById("co-id").value = c.id;
+  document.getElementById("co-name").value = c.name; document.getElementById("co-short").value = c.short_name || "";
+  document.getElementById("co-prefix").value = c.code_prefix || ""; document.getElementById("co-trn").value = c.trn || "";
+  document.getElementById("co-wps").value = c.wps_id || "";
+  document.getElementById("co-save").textContent = "Save changes"; document.getElementById("co-cancel").style.display = "";
+}
+function coReset() {
+  ["co-id", "co-name", "co-short", "co-prefix", "co-trn", "co-wps"].forEach(i => document.getElementById(i).value = "");
+  document.getElementById("co-save").textContent = "Add company"; document.getElementById("co-cancel").style.display = "none";
+}
+async function saveCompany() {
+  const v = i => document.getElementById(i).value.trim();
+  if (!v("co-name")) { showStatus("settings-status", "warn", "A company needs a name."); return; }
   try {
     await apiCall("/employees/companies", { method: "POST", body: JSON.stringify({
-      name, short_name: document.getElementById("hr-company-short").value.trim() }) });
-    document.getElementById("hr-company-name").value = "";
-    document.getElementById("hr-company-short").value = "";
-    await loadHrScreen();
-    hrMsg("ok", `${name} added.`);
-  } catch (e) { hrMsg("err", errText(e)); }
+      id: parseInt(v("co-id"), 10) || undefined, name: v("co-name"), short_name: v("co-short"),
+      code_prefix: v("co-prefix"), trn: v("co-trn"), wps_id: v("co-wps") }) });
+    const was = v("co-id");
+    coReset(); await loadCompanies();
+    showStatus("settings-status", "ok", was ? "Company updated." : "Company added.");
+  } catch (e) { showStatus("settings-status", "err", errText(e)); }
 }
 
 // ---- Choices without dropdowns -----------------------------------------
