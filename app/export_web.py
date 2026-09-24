@@ -232,6 +232,10 @@ STORE_LABELS = {
     "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
     "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
     "days_late": "Days late", "outstanding": "Still to come",
+    "contact_person": "Contact person", "phone": "Mobile", "trn": "TRN",
+    "payment_terms": "Payment terms", "email": "Email",
+    "emp_no": "Worker No", "days_missing": "Days missing",
+    "which_days": "Which days", "trade": "Trade",
     "given_to": "Given to", "date": "Date", "from": "From", "to": "To",
     "at_which_sites": "Where at sites", "reported_by": "Reported by",
     "where": "Where", "reason": "Reason", "type": "Type",
@@ -812,6 +816,79 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(Spacer(1, 8))
     elements.append(sign_tbl)
     return elements
+
+
+def salary_card_html(summary, rows):
+    """One worker's card as HTML - the same document the PDF prints.
+
+    Written out rather than showing the PDF in a frame: a phone and a
+    browser with no PDF plugin both show a blank box, and a preview that
+    shows nothing is worse than none. Kept beside the PDF builder so the
+    two are changed together.
+    """
+    from html import escape as esc
+
+    def cell(v):
+        return esc("" if v in (None, "") else str(v))
+
+    by_date = _rows_by_date(rows)
+    info = [("Employee Name", summary.emp_name or ""), ("Employee No", summary.emp_no or ""),
+            ("Trade", summary.trade or ""), ("Month & Year", summary.month_year or ""),
+            ("Salary (AED)", f"{summary.total_salary:,.0f}")]
+    info_html = "".join(f"<tr><th>{esc(k)}:</th><td>{cell(v)}</td></tr>" for k, v in info)
+
+    body = []
+    for d in _cycle_dates(summary.month_year):
+        r = by_date.get(d)
+        label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
+        vals = ([label, r.am, r.pm, _num(r.ot), _num(r.bh), r.site, r.engineer, r.comments]
+                if r is not None else [label, "", "", "", "", "", "", ""])
+        def tint(status):
+            fill = STATUS_FILLS.get(status)
+            return ' style="background:#' + fill + '"' if fill else ""
+        body.append(
+            "<tr>" + f"<td>{cell(vals[0])}</td>"
+            + "<td" + tint(vals[1]) + ">" + cell(vals[1]) + "</td>"
+            + "<td" + tint(vals[2]) + ">" + cell(vals[2]) + "</td>"
+            + "".join(f"<td>{cell(v)}</td>" for v in vals[3:]) + "</tr>")
+
+    def day_row(label, attr):
+        fill = STATUS_FILLS.get(label)
+        style = ' style="background:#' + fill + '"' if fill else ""
+        val = getattr(summary, attr, 0) or 0
+        return f"<tr{style}><th>{esc(label)}</th><td>{val:g}</td></tr>"
+    days = "".join(day_row(label, attr) for label, attr in _total_days_fields(summary))
+
+    money = "".join(
+        f"<tr><th>{esc(label)}</th><td>{(f'{sign} ' if sign else '')}"
+        f"AED {(getattr(summary, attr, 0) or 0):,.2f}</td></tr>"
+        for label, attr, sign in SUMMARY_FIELDS)
+    for adj in summary.adjustments:
+        colour = "#C0392B" if adj.is_deduction else "#2E7D32"
+        money += (f"<tr><th>{esc(adj.description)}</th>"
+                  f'<td style="color:{colour}">{"-" if adj.is_deduction else "+"} '
+                  f"AED {adj.amount:,.2f}</td></tr>")
+
+    final = _adjusted_final_salary(summary)
+    final_bg = STATUS_FILLS["Absent"] if final < 0 else GREEN_FILL
+    return f"""
+  <div class="card">
+    <table class="info">{info_html}</table>
+    <table class="grid">
+      <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>OT</th><th>BH</th>
+        <th>Site</th><th>Engineer</th><th>Comments</th></tr></thead>
+      <tbody>{''.join(body)}</tbody>
+    </table>
+    <div class="office">OFFICE USE ONLY</div>
+    <div class="foot">
+      <table class="days">{days}</table>
+      <table class="money">{money}</table>
+      <table class="final">
+        <tr><th>FINAL SALARY TO PROCESS</th></tr>
+        <tr><td style="background:#{final_bg}">AED {final:,.2f}</td></tr>
+      </table>
+    </div>
+  </div>"""
 
 
 def build_combined_pdf(summaries_with_rows):

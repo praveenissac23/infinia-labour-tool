@@ -2734,6 +2734,11 @@ CENTRAL = ""   # empty location string means the central store
 CENTRAL_LABEL = "Central store"
 
 
+def i_unit(row):
+    """The unit on a report row, for a sentence that reads naturally."""
+    return (row.get("unit") or "").strip() or "off"
+
+
 def _drop_empty(rows, *cols):
     """Take out a column nothing in this report filled in.
 
@@ -4279,12 +4284,13 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # question is where material went and who has it, and a site
         # that passed twenty boards to the site next door has moved them
         # just as surely as the store that sent them out.
-        rows = []
+        sent = []
         for m in moves(["out", "transfer"]):
             i = items.get(m.item_id)
             if not i:
                 continue
-            rows.append({"date": m.moved_on.isoformat() if m.moved_on else "",
+            sent.append({"_id": m.id, "_item": i.id, "_qty": float(m.qty or 0),
+                          "date": m.moved_on.isoformat() if m.moved_on else "",
                           "code": i.code, "name": i.name, "unit": i.unit,
                           "qty": round(m.qty, 2),
                           "from": _place_label(m.from_location),
@@ -4292,6 +4298,48 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "given_to": (m.incharge or "").strip() or "-",
                           "reference": (m.reference or "").strip() or "-",
                           "notes": (m.notes or "").strip()})
+
+        # What came back is not consumption. Material sent to the wrong
+        # site and returned to the store never got used, so the issue
+        # that sent it has to be cancelled out - otherwise a mistake and
+        # its correction both sit on the report and the site looks like
+        # it burned through twice what it had.
+        #
+        # A return is matched against that material's issues INTO the
+        # place it came back from, newest first: the last lorry out is
+        # the one that comes back. Whatever is left on a line is what
+        # actually stayed there.
+        for m in moves(["return"]):
+            i = items.get(m.item_id)
+            if not i:
+                continue
+            left = float(m.qty or 0)
+            came_from = _place_label(m.from_location)
+            candidates = sorted(
+                (r for r in sent
+                 if r["_item"] == i.id and r["to"] == came_from and r["_qty"] > 1e-9
+                 and r["date"] <= (m.moved_on.isoformat() if m.moved_on else "9999")),
+                key=lambda r: r["date"], reverse=True)
+            for r in candidates:
+                if left <= 1e-9:
+                    break
+                take = min(left, r["_qty"])
+                r["_qty"] -= take
+                left -= take
+
+        rows = []
+        for r in sent:
+            if r["_qty"] <= 1e-9:
+                continue          # sent and brought back: never consumed
+            was = r["qty"]
+            r["qty"] = round(r["_qty"], 2)
+            if r["qty"] < was - 1e-9:
+                back = _clean_export_qty(round(was - r["qty"], 2))
+                r["notes"] = ((r["notes"] + " / ") if r["notes"] else "") \
+                    + f"{back} {i_unit(r)} returned to the store"
+            for k in ("_id", "_item", "_qty"):
+                r.pop(k, None)
+            rows.append(r)
         rows.sort(key=lambda r: (r["date"], r["to"], r["code"]), reverse=True)
         _drop_empty(rows, "reference", "notes")
         return {"title": "Materials issued and moved", "rows": rows}
@@ -4817,14 +4865,39 @@ def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
 
     cycle_label = f"{cycle_start.strftime('%d %b')} - {cycle_end.strftime('%d %b %Y')}"
     safe = "".join(c if c.isalnum() else "_" for c in month_year)
+    # Through the same builders as every other report, so the reminder a
+    # foreman is handed is letterheaded and reads like the rest.
+    rows = [{"emp_no": w["emp_no"], "name": w["name"], "trade": w["trade"] or "-",
+              "days_missing": len([d for d in w["days"].split(",") if d.strip()]),
+              "which_days": w["days"]} for w in workers]
+    title = "Attendance Still Needed"
+    sub = cycle_label + (f"  |  {note.strip()}" if note.strip() else "")
+    if format == "rows":
+        return {"rows": rows, "title": title, "subtitle": sub}
     if format == "excel":
-        buf = export_web.build_error_check_excel(cycle_label, workers, note)
+        buf = export_web.build_store_report_excel(title, rows, sub)
         return StreamingResponse(
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Attendance_Needed_{safe}.xlsx"})
-    buf = export_web.build_error_check_pdf(cycle_label, workers, note)
+    buf = export_web.build_store_report_pdf(title, rows, sub)
     return StreamingResponse(buf, media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Attendance_Needed_{safe}.pdf"})
+
+
+@app.get("/export/{month_year}/attendance-needed/view")
+def view_attendance_needed(month_year: str, token: str, emp_nos: str = "", note: str = "",
+                            db: Session = Depends(get_db)):
+    """The reminder sheet as the page that prints."""
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    d = export_attendance_needed(month_year=month_year, token=token, emp_nos=emp_nos,
+                                  format="rows", note=note, db=db)
+    extra = ""
+    for k, v in (("emp_nos", emp_nos), ("note", note)):
+        if v:
+            extra += f"&{k}={quote(str(v), safe='')}"
+    url = f"/export/{quote(month_year, safe='')}/attendance-needed?token={t}{extra}"
+    return _preview_page(d["title"], d["subtitle"], d["rows"], url, url)
 
 
 # ---- Purchase orders -------------------------------------------------
@@ -5150,6 +5223,47 @@ def export_suppliers(token: str, db: Session = Depends(get_db)):
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=Infinia_Suppliers.xlsx"})
+
+
+def _supplier_report_rows(db):
+    """The trader list as a report to read, rather than the bare sheet
+    that goes back in through the importer."""
+    return [{"name": s.name,
+              "contact_person": s.contact_person or "-",
+              "phone": s.phone or "-",
+              "email": s.email or "-",
+              "trn": s.trn or "-",
+              "payment_terms": s.payment_terms or "-"}
+            for s in db.query(models.Supplier).order_by(models.Supplier.name).all()]
+
+
+@app.get("/export/store/suppliers/report")
+def export_supplier_report(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+    """The supplier list as paper - letterheaded, unlike the round-trip
+    sheet beside it, which has to keep its bare headings for import."""
+    auth.get_download_user_from_token(token, db)
+    rows = _supplier_report_rows(db)
+    title = "Supplier List"
+    sub = f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d %b %Y}"
+    if format == "excel":
+        buf = export_web.build_store_report_excel(title, rows, sub)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Infinia_Supplier_List.xlsx"})
+    buf = export_web.build_store_report_pdf(title, rows, sub)
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Supplier_List.pdf"})
+
+
+@app.get("/export/store/suppliers/report/view")
+def view_supplier_report(token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows = _supplier_report_rows(db)
+    url = f"/export/store/suppliers/report?token={t}"
+    return _preview_page("Supplier List",
+                         f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d %b %Y}",
+                         rows, url, url)
 
 
 @app.post("/store/suppliers/import")

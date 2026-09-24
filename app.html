@@ -1267,6 +1267,7 @@
               <button class="btn btn-gray" onclick="tickAllUnfilled(true)">Tick all unfilled</button>
               <button class="btn btn-gray" onclick="tickAllUnfilled(false)">Untick all</button>
               <input type="text" id="errcheck-msg" placeholder="Note for the site (optional)" style="flex:1; min-width:200px; max-width:360px;">
+              <button class="btn btn-dark" onclick="sendAttendanceNeeded('view')">Preview</button>
               <button class="btn btn-dark" onclick="sendAttendanceNeeded('pdf')">Reminder PDF</button>
               <button class="btn btn-dark" onclick="sendAttendanceNeeded('excel')">Reminder Excel</button>
             </div>
@@ -1424,6 +1425,7 @@
               </select>
               <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:220px;" oninput="loadRequests()">
               <button class="btn btn-primary" onclick="loadRequests()">Refresh</button>
+              <button class="btn btn-dark" onclick="exportRequests('view')">Preview</button>
               <button class="btn btn-dark" onclick="exportRequests('excel')">Download Excel</button>
               <button class="btn btn-dark" onclick="exportRequests('pdf')">Download PDF</button>
             </div>
@@ -1617,6 +1619,7 @@
             </div>
             <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
               <button class="btn btn-gray" onclick="supplierTemplate()">Download Template</button>
+              <button class="btn btn-dark" onclick="previewSuppliers()">Preview</button>
               <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
               <!-- The file box belongs to Import, so it sits with it: beside
                    Export it read as something Export needed. -->
@@ -7712,7 +7715,10 @@ async function saveReceive() {
 
 async function exportRequests(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
-  window.open(`${API}/export/store/report?kind=mr_history&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+  const t = encodeURIComponent(cachedDownloadToken);
+  window.open(fmt === "view"
+    ? `${API}/export/store/report/view?kind=mr_history&token=${t}`
+    : `${API}/export/store/report?kind=mr_history&format=${fmt}&token=${t}`, "_blank");
 }
 
 // Serial numbers down the left of each entry table so rows can be
@@ -8618,13 +8624,18 @@ function sendAttendanceNeeded(fmt) {
     return;
   }
   const note = (document.getElementById("errcheck-msg").value || "").trim();
-  const url = `${API}/export/${encodeURIComponent(cycle)}/attendance-needed`
+  // "view" opens the sheet itself, with PDF, Excel and Print on it.
+  const tail = fmt === "view" ? "/view" : "";
+  const url = `${API}/export/${encodeURIComponent(cycle)}/attendance-needed${tail}`
     + `?token=${encodeURIComponent(cachedDownloadToken)}`
     + `&emp_nos=${encodeURIComponent(picked.join(","))}`
-    + `&format=${fmt}${note ? "&note=" + encodeURIComponent(note) : ""}`;
+    + (fmt === "view" ? "" : `&format=${fmt}`)
+    + (note ? "&note=" + encodeURIComponent(note) : "");
   window.open(url, "_blank");
   showStatus("errcheck-status", "ok",
-    `Reminder for ${picked.length} worker(s) - check your downloads or the new tab.`);
+    fmt === "view"
+      ? `Reminder for ${picked.length} worker(s) - opening it now.`
+      : `Reminder for ${picked.length} worker(s) - check your downloads or the new tab.`);
 }
 
 // Straight to the day that needs filling, with the worker's row found
@@ -8894,6 +8905,14 @@ async function supplierTemplate() {
   if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
   if (!cachedDownloadToken) { showStatus("sup-status", "err", "Could not prepare the download."); return; }
   window.open(`${API}/export/store/suppliers/template?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+}
+
+// The trader list as paper. The Export to Excel beside it is the
+// round-trip sheet the importer reads back, so it stays bare; this is
+// the one to print and hand over.
+async function previewSuppliers() {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  window.open(`${API}/export/store/suppliers/report/view?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
 async function exportSuppliers() {

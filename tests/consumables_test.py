@@ -146,5 +146,48 @@ full = c.get(f'/export/store/report?kind=stock&format=excel&token={t}')
 cells = [str(v) for row in openpyxl.load_workbook(io.BytesIO(full.content)).active.iter_rows(values_only=True) for v in row if v]
 ck('with no search the export is the whole list', any('Cement OPC' in v for v in cells))
 
+# ---- What came back was never consumed -------------------------------
+# Material sent to the wrong site and returned to the store never got
+# used. The consumption report counted the mistake AND left the
+# correction off, so the site read as having burned through twice what
+# it ever had.
+for _s in ('971', '972'):
+    c.post('/sites', json={'code': _s, 'name': 'Site ' + _s}, headers=H)
+glue = c.post('/store/items', json={'name': 'Tile Adhesive 20kg', 'unit': 'bags',
+                                     'item_type': 'consumable'}, headers=H).json()
+c.post('/store/items/opening', json={'lines': [
+    {'item_id': glue['id'], 'qty': 200, 'location': ''}]}, headers=H)
+def _used():
+    return [r for r in c.get('/store/report?kind=usage', headers=H).json()['rows']
+            if r['code'] == glue['code']]
+mv = lambda **kw: c.post('/store/movements', json={'item_id': glue['id'], **kw}, headers=H)
+
+mv(kind='out', qty=40, from_location='', location='971', incharge='Rajan', moved_on='2026-09-10')
+ck('an issue shows as consumption', len(_used()) == 1, _used())
+mv(kind='out', qty=25, from_location='', location='972', incharge='Biju', moved_on='2026-09-12')
+ck('so does one sent to the wrong site', len(_used()) == 2, _used())
+mv(kind='return', qty=25, from_location='972', location='', incharge='Biju', moved_on='2026-09-13')
+left = _used()
+ck('sent back in full, it is no longer consumption', len(left) == 1, left)
+ck('and the issue that did stay is untouched',
+   left and left[0]['to'] == '971' and left[0]['qty'] == 40, left)
+
+mv(kind='return', qty=15, from_location='971', location='', incharge='Rajan', moved_on='2026-09-14')
+left = _used()
+ck('a part return leaves only what stayed', len(left) == 1 and left[0]['qty'] == 25, left)
+ck('and the line says how much went back',
+   'returned to the store' in (left[0].get('notes') or ''), left)
+
+mv(kind='out', qty=10, from_location='', location='971', incharge='Rajan', moved_on='2026-09-20')
+ck('a later issue is its own line', len(_used()) == 2, _used())
+mv(kind='return', qty=10, from_location='971', location='', incharge='Rajan', moved_on='2026-09-21')
+left = _used()
+ck('the newest issue is the one cancelled, not the older one',
+   len(left) == 1 and left[0]['date'] == '2026-09-10' and left[0]['qty'] == 25, left)
+
+held = [r for r in c.get('/store/report?kind=stock', headers=H).json()['rows']
+        if r['code'] == glue['code']][0]
+ck('and none of it disturbs the stock figures', held['in_store'] == 175, held)
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)
