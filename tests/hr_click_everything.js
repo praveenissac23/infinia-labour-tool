@@ -141,7 +141,7 @@ const ck = (m, cond, ctx) => {
   ck('the cycle bar loads a sheet from every choice without a button',
      await p.evaluate(() => !!HR_RUN || document.getElementById('hr-status').textContent.length > 0));
   await p.click('#hr-grp-seg button[data-v="staff"]'); await p.waitForTimeout(900);
-  const TABS = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs'];
+  const TABS = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs', 'gratuity'];
   let pressed = 0;
   const pressAll = async (tab, label) => {
     const n = await p.locator(`#hrpane-${tab} button:visible`).count();

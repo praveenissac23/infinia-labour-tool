@@ -2534,6 +2534,7 @@
             <div class="hr-tab" data-tab="staff" onclick="hrTab('staff')">Staff Register</div>
             <div class="hr-tab" data-tab="increments" onclick="hrTab('increments')">Increments</div>
             <div class="hr-tab" data-tab="docs" onclick="hrTab('docs')">Documents</div>
+            <div class="hr-tab" data-tab="gratuity" onclick="hrTab('gratuity')">Gratuity</div>
           </div>
           <div class="status-msg" id="hr-status"></div>
 
@@ -2618,10 +2619,7 @@
             <div class="card">
               <h2>Office Staff</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Everyone paid a monthly figure. Gratuity is worked out from the joining
-                date and the basic on file - 21 days a year for the first five years and
-                30 after, as UAE labour law sets it - and grows on its own as service
-                lengthens. Click a name to change the record.</p>
+                Everyone paid a monthly figure. Click a name to change the record.</p>
               <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
                 <label style="font-size:12px; font-weight:bold; color:#555;">Company</label>
                 <select id="hr-staff-company" style="width:190px;" onchange="renderStaff()"></select>
@@ -2637,8 +2635,8 @@
                     <th class="txt" style="width:11%;">Company</th><th class="txt" style="width:12%;">Designation</th>
                     <th style="width:9%;">Joined</th><th style="width:7%;">Service</th>
                     <th class="num" style="width:8%;">Basic</th><th class="num" style="width:8%;">Fix Allown.</th>
-                    <th class="num" style="width:8%;">Gross</th><th class="num" style="width:9%;">Gratuity to date</th>
-                    <th style="width:5%;">Paid by</th>
+                    <th class="num" style="width:9%;">Gross</th>
+                    <th style="width:7%;">Paid by</th>
                   </tr></thead>
                   <tbody id="hr-staff-body"></tbody>
                   <tfoot id="hr-staff-foot"></tfoot>
@@ -2899,6 +2897,36 @@
                     <th style="width:13%;">Standing</th>
                   </tr></thead>
                   <tbody id="hr-doc-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Gratuity -------------------------------------------->
+          <div class="hr-pane" id="hrpane-gratuity" style="display:none;">
+            <div class="card">
+              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <h2 style="margin:0 12px 0 0;">End of service gratuity</h2>
+                <button class="btn btn-dark" onclick="previewHr('gratuity')">Preview</button>
+                <button class="btn btn-gray" onclick="downloadHr('gratuity','pdf')">Export to PDF</button>
+                <button class="btn btn-gray" onclick="downloadHr('gratuity','excel')">Export to Excel</button>
+              </div>
+              <p style="font-size:12px; color:#888; margin:8px 0 10px;">
+                UAE labour law: 21 days' basic wage a year for the first five years and 30 days a year
+                after, once a year has been served, on the basic only, capped at two years' basic. A day
+                is basic &times; 12 &divide; 365. Unpaid absence does not count as service. Nationals are on
+                GPSSA and staff paid in cash are not entitled.</p>
+              <div class="grid-wrap" style="max-height:62vh;">
+                <table class="hr-grid">
+                  <thead><tr>
+                    <th style="width:7%;">Code</th><th class="txt" style="width:19%;">Name</th>
+                    <th class="txt" style="width:10%;">Company</th><th style="width:10%;">Joined</th>
+                    <th style="width:8%;">Service</th><th class="num" style="width:8%;">Basic</th>
+                    <th class="num" style="width:8%;">Per day</th><th class="num" style="width:8%;">Days</th>
+                    <th class="num" style="width:10%;">Gratuity to date</th><th class="txt" style="width:12%;">Basis</th>
+                  </tr></thead>
+                  <tbody id="hr-grat-body"></tbody>
+                  <tfoot id="hr-grat-foot"></tfoot>
                 </table>
               </div>
             </div>
@@ -11073,6 +11101,7 @@ function hrTab(which) {
   if (which === "leave") loadLeave();
   if (which === "items") loadItems();
   if (which === "docs") loadDocuments();
+  if (which === "gratuity") loadGratuity();
   if (which === "increments") loadIncrements();
 }
 
@@ -11559,21 +11588,16 @@ function renderStaff() {
       ${s.gross ? `<td class="num">${hrMoney(s.basic)}</td><td class="num">${hrMoney(s.allowance)}</td>
                    <td class="num strong">${hrMoney(s.gross)}</td>`
                 : `<td colspan="3" class="hr-nil">salary not on file</td>`}
-      <td class="num" title="${escapeAttr(s.gratuity_why || "")}">${s.scheme === "pension" ? '<span class="hr-nil">GPSSA</span>' :
-                        s.scheme === "none" ? '<span class="hr-nil">not entitled</span>' :
-                        !s.joined_on ? '<span class="hr-nil">-</span>' :
-                        s.gratuity ? hrMoney(s.gratuity) : '<span class="hr-nil">under 1 year</span>'}</td>
       <td>${route[s.pay_route] || escapeHtml(s.pay_route)}</td>
     </tr>`).join("") ||
-    `<tr><td colspan="11" class="hr-nil" style="padding:14px;">No staff on file yet.</td></tr>`;
+    `<tr><td colspan="10" class="hr-nil" style="padding:14px;">No staff on file yet.</td></tr>`;
   const sum = f => rows.reduce((a, s) => a + Number(s[f] || 0), 0);
   document.getElementById("hr-staff-foot").innerHTML = rows.length
     ? `<tr class="hr-foot">
          <td colspan="6" class="txt">TOTAL - ${rows.length} staff</td>
          <td class="num">${hrMoney(sum("basic"))}</td>
          <td class="num">${hrMoney(sum("allowance"))}</td>
-         <td class="num">${hrMoney(sum("gross"))}</td>
-         <td class="num">${hrMoney(sum("gratuity"))}</td><td></td></tr>` : "";
+         <td class="num">${hrMoney(sum("gross"))}</td><td></td></tr>` : "";
   document.getElementById("hr-company-list").textContent =
     HR_COMPANIES.map(c => c.short_name || c.name).join(", ") || "none yet";
 }
@@ -12357,6 +12381,33 @@ async function deleteDocument(id) {
     hrClearDoc();
     await loadDocuments();
   } catch (e) { hrMsg("err", errText(e)); }
+}
+
+// ---- Gratuity ---------------------------------------------------------
+
+async function loadGratuity() {
+  let d;
+  try { d = await apiCall("/employees/staff"); } catch (e) { hrMsg("err", errText(e)); return; }
+  const rows = (d.rows || []).slice().sort((a, b) =>
+    String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
+  const basis = s => s.scheme === "pension" ? "GPSSA pension" : s.scheme === "none" ? "Not entitled" :
+                     !s.joined_on ? "No joining date" : s.gratuity ? "Accruing" : "Under 1 year";
+  document.getElementById("hr-grat-body").innerHTML = rows.map(s => `
+    <tr${s.gratuity ? "" : ' class="hr-soft"'} title="${escapeAttr(s.gratuity_why || "")}">
+      <td>${escapeHtml(s.emp_no)}</td><td class="txt">${escapeHtml(s.name)}</td>
+      <td class="txt">${escapeHtml(s.company)}</td>
+      <td>${s.joined_on ? hrDate(s.joined_on) : '<span class="hr-nil">-</span>'}</td>
+      <td>${s.joined_on ? hrService(s.years) : '<span class="hr-nil">-</span>'}</td>
+      <td class="num">${hrMoney(s.basic)}</td>
+      <td class="num">${s.gratuity ? hrMoney(s.gratuity_daily) : '<span class="hr-nil">-</span>'}</td>
+      <td class="num">${s.gratuity ? s.gratuity_days : '<span class="hr-nil">-</span>'}</td>
+      <td class="num net">${s.gratuity ? hrMoney(s.gratuity) : '<span class="hr-nil">-</span>'}</td>
+      <td class="txt">${basis(s)}</td>
+    </tr>`).join("") || `<tr><td colspan="10" class="hr-nil" style="padding:14px;">No staff on file.</td></tr>`;
+  const total = rows.reduce((a, s) => a + (s.gratuity || 0), 0);
+  document.getElementById("hr-grat-foot").innerHTML = `<tr class="hr-foot">
+    <td colspan="8" class="txt">TOTAL LIABILITY - ${rows.filter(s => s.gratuity).length} staff accruing</td>
+    <td class="num">${hrMoney(total)}</td><td></td></tr>`;
 }
 
 // ---- Increments ------------------------------------------------------

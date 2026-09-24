@@ -44,8 +44,8 @@ const CYCLE_MONTH = '2026-08';
   ck('it opens', await p.locator('#screen-hrpayroll').isVisible());
   ck('and is titled as the office side of the app',
      (await p.locator('#screen-title').textContent()).includes('HR'));
-  ck('seven registers, one open',
-     await p.locator('.hr-tab').count() === 7 &&
+  ck('eight registers, one open',
+     await p.locator('.hr-tab').count() === 8 &&
      await p.locator('.hr-pane:visible').count() === 1);
 
   // ---- Set the month up ------------------------------------------------
@@ -300,7 +300,7 @@ const CYCLE_MONTH = '2026-08';
      (await p.locator('#hr-loan-body').textContent()).includes('2,400.00'));
 
   // ---- Every register carries the four buttons -------------------------
-  const PANES = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs'];
+  const PANES = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs', 'gratuity'];
   for (const tab of PANES) {
     await p.evaluate(t => hrTab(t), tab);
     await p.waitForTimeout(700);
@@ -317,9 +317,10 @@ const CYCLE_MONTH = '2026-08';
   await p.evaluate("hrTab('staff')"); await p.waitForTimeout(900);
   ck('the staff register lists the two',
      (await p.locator('#hr-staff-body tr').count()) >= 2);
-  ck('and shows what each has earned in gratuity',
-     (await p.locator('#hr-staff-foot').textContent()).includes('TOTAL'),
-     await p.locator('#hr-staff-foot').textContent());
+  await p.evaluate("hrTab('gratuity')"); await p.waitForTimeout(900);
+  ck('the gratuity tab shows what each has earned',
+     (await p.locator('#hr-grat-foot').textContent()).includes('TOTAL LIABILITY'),
+     await p.locator('#hr-grat-foot').textContent());
   await p.evaluate("hrTab('increments')"); await p.waitForTimeout(900);
   const incId = await p.evaluate(() => HR_INCS.find(r => r.emp_no === 'BT001').id);
   await p.evaluate(i => hrIncEdit(i), incId);

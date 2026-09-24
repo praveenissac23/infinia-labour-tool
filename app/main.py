@@ -7432,6 +7432,7 @@ def _staff_dict(e, db=None):
         "years": round(_service_years(e), 2),
         "gratuity": (g := gratuity_detail(e, db))["amount"],
         "gratuity_why": g["why"], "gratuity_entitled": g["entitled"],
+        "gratuity_daily": g["daily"], "gratuity_days": g["days"],
         "active": e.active,
     }
 
@@ -9518,7 +9519,7 @@ def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
 
 # ---- The staff register, with what each man has earned in gratuity -----
 
-STAFF_MONEY = ["Basic", "Fix Allown.", "Gross", "Gratuity To Date"]
+STAFF_MONEY = ["Basic", "Fix Allown.", "Gross"]
 
 
 def _staff_parts(db):
@@ -9527,14 +9528,45 @@ def _staff_parts(db):
              "Company": s["company"], "Designation": s["designation"] or "-",
              "Joining Date": _dmy(_as_date(s["joined_on"])) if s["joined_on"] else "-",
              "Years": s["years"], "Basic": s["basic"], "Fix Allown.": s["allowance"],
-             "Gross": s["gross"], "Scheme": {"gratuity": "Gratuity", "pension": "GPSSA", "none": "Not entitled"}.get(s["scheme"] or "gratuity", s["scheme"]),
-             "Gratuity To Date": s["gratuity"], "Paid By": (s["pay_route"] or "wps").upper()}
+             "Gross": s["gross"], "Paid By": (s["pay_route"] or "wps").upper()}
             for i, s in enumerate(d["rows"], 1)]
     sub = (f"{len(rows)} staff   |   Monthly payroll "
-           f"{sum(r['Gross'] for r in rows):,.2f}   |   Gratuity accrued "
-           f"{sum(r['Gratuity To Date'] for r in rows):,.2f}   |   "
-           f"As at {_dubai_today():%d %b %Y}")
+           f"{sum(r['Gross'] for r in rows):,.2f}   |   As at {_dubai_today():%d %b %Y}")
     return rows, "Office Staff Register", sub
+
+
+GRATUITY_MONEY = ["Basic", "Per Day", "Gratuity To Date"]
+
+
+def _gratuity_parts(db):
+    d = list_staff(db=db, user=None)
+    basis = lambda s: ("GPSSA pension" if s["scheme"] == "pension" else "Not entitled" if s["scheme"] == "none"
+                       else "No joining date" if not s["joined_on"] else "Accruing" if s["gratuity"] else "Under 1 year")
+    rows = [{"Sr.": i, "Emp. Code": s["emp_no"], "Employee Name": s["name"], "Company": s["company"],
+             "Joining Date": _dmy(_as_date(s["joined_on"])) if s["joined_on"] else "-",
+             "Years": s["years"], "Basic": s["basic"], "Per Day": s["gratuity_daily"],
+             "Days": s["gratuity_days"], "Gratuity To Date": s["gratuity"], "Basis": basis(s)}
+            for i, s in enumerate(d["rows"], 1)]
+    sub = (f"{len(rows)} staff   |   Liability {sum(r['Gratuity To Date'] for r in rows):,.2f}"
+           f"   |   21 / 30 days' basic a year, basic x 12 / 365 a day   |   As at {_dubai_today():%d %b %Y}")
+    return rows, "End of Service Gratuity", sub
+
+
+@app.get("/export/payroll/gratuity")
+def export_gratuity(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _gratuity_parts(db)
+    return _hr_file(title, rows, sub, format, GRATUITY_MONEY, "Gratuity")
+
+
+@app.get("/export/payroll/gratuity/view")
+def view_gratuity(token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _gratuity_parts(db)
+    url = f"/export/payroll/gratuity?token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=GRATUITY_MONEY, total_cols=["Gratuity To Date"])
 
 
 @app.get("/export/payroll/staff")
@@ -9552,7 +9584,7 @@ def view_staff_register(token: str, db: Session = Depends(get_db)):
     rows, title, sub = _staff_parts(db)
     url = f"/export/payroll/staff?token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=STAFF_MONEY,
-                         total_cols=["Gross", "Gratuity To Date"])
+                         total_cols=["Gross"])
 
 
 def _hr_file(title, rows, sub, format, money, stem):

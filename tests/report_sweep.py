@@ -289,6 +289,7 @@ checked_paths = {
     "/export/payroll/loans/view", "/export/payroll/leave/view",
     "/export/payroll/documents/view", "/export/payroll/staff/view",
     "/export/payroll/items/view", "/export/payroll/increments/view",
+    "/export/payroll/gratuity/view",
 }
 missed = sorted(set(views) - checked_paths)
 ck("every preview endpoint is covered by this sweep", not missed, missed)
