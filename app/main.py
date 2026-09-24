@@ -8653,6 +8653,13 @@ def _migrate_hr(db):
                                                   models.Employee.pay_group == "local").all():
             if (e.scheme or "gratuity") != "pension":
                 e.pay_group = "staff"
+        # The two housemaids: 1,500 a month, no salary was on file for them.
+        for e in db.query(models.Employee).filter(models.Employee.emp_no.in_(["IC008", "IC028"])).all():
+            if not (e.basic_salary or 0) and not (e.allowance or 0):
+                e.basic_salary, e.allowance, e.total_salary = 600.0, 900.0, 1500.0
+                if not db.query(models.SalaryChange).filter(models.SalaryChange.employee_id == e.id).first() and e.joined_on:
+                    db.add(models.SalaryChange(employee_id=e.id, effective_on=e.joined_on, kind="joining",
+                                               basic=600.0, allowance=900.0, amount=0, reason="On joining"))
         put_setting(db, "hr_household_on_office", "1")
         changed = True
     if get_setting(db, "hr_cash_no_gratuity") != "1":

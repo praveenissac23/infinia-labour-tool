@@ -128,8 +128,8 @@ STAFF = [
     ("IC015", "KHADIJA FARIS ABDULLA", "IC", "Local staff",     "2024-12-01", 2400, 3600, "wps", "local", "pension", 700),
     ("IC018", "AYA ADIL",             "IC", "Local staff",      "2025-06-23", 2400, 3600, "wps", "local", "pension", 1175),
     ("IC026", "SARA ADIL",            "IC", "Local staff",      "2026-06-17", 2400, 3600, "wps", "local", "pension", 1410),
-    ("IC008", "RAJI MOL",             "IC", "Maid",             "", 0, 0, "wps", "staff", "gratuity", 0),
-    ("IC028", "SARASWATHI",           "IC", "Maid",             "", 0, 0, "wps", "staff", "gratuity", 0),
+    ("IC008", "RAJI MOL",             "IC", "Maid",             "", 600, 900, "wps", "staff", "gratuity", 0),
+    ("IC028", "SARASWATHI",           "IC", "Maid",             "", 600, 900, "wps", "staff", "gratuity", 0),
 ]
 
 # Salary history from the increment file: the joining gross, then each
