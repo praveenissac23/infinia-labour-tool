@@ -204,6 +204,33 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
     (hireOnHire.suppliers || []).some(g => g.supplier === sup + ' Two'), SUPPLIER);
   ck('and the new supplier appears on the rental list', after);
 
+  // ---- A banner belongs to the moment it was shown -----------------
+  // "RN-0001 settled" stayed green on its panel long after the return
+  // and read as current every time the panel was opened again, which
+  // is worse than no message: it says something is true now.
+  await p.evaluate(() => showStatus('rn-list-status', 'ok', 'stale message'));
+  await p.evaluate(() => storeGo('home'));
+  await p.waitForTimeout(1200);
+  await p.evaluate(() => storeGo('returns'));
+  await p.waitForTimeout(1500);
+  ck('a message does not survive leaving the panel',
+     (await text('#rn-list-status')).trim() === '', await text('#rn-list-status'));
+
+  await p.evaluate(() => showStatus('rn-list-status', 'ok', 'stale message'));
+  await p.evaluate(() => switchScreen('masterdata'));
+  await p.waitForTimeout(1200);
+  await p.evaluate(() => switchScreen('store'));
+  await p.waitForTimeout(1500);
+  ck('nor a trip round the app',
+     (await text('#rn-list-status')).trim() === '', await text('#rn-list-status'));
+
+  await p.evaluate(() => storeGo('hire'));
+  await p.waitForTimeout(1400);
+  await p.evaluate(() => newReturnNote(null));
+  await p.waitForTimeout(1400);
+  ck('but a message shown on arrival still shows',
+     /supplier/i.test(await text('#rn-list-status')), await text('#rn-list-status'));
+
   console.log(errs.length ? '\n' + errs.join('\n') : '\nno page errors');
   console.log('\n' + (FAIL.length ? FAIL.length + ' FAILED: ' + FAIL.join('; ') : 'RENTAL SCREENS CLEAN'));
   await b.close();

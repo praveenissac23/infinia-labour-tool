@@ -2489,7 +2489,16 @@ function switchScreen(name) {
   // the pane - puts the preview card back where Reports expects it.
   if (monthlyMode && name !== "monthly") closeMonthlyReport();
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
-  document.getElementById("screen-" + name).classList.add("active");
+  const screen = document.getElementById("screen-" + name);
+  screen.classList.add("active");
+  // A banner belongs to the moment it was shown. Left alone, "RN-0001
+  // settled" stayed green on its panel and read as current every time
+  // the screen was opened again, long after the return. Cleared on the
+  // way in, before the loaders run, so a loader's own message survives.
+  screen.querySelectorAll(".status-msg").forEach(el => {
+    el.className = "status-msg";
+    el.textContent = "";
+  });
   // The monthly page has no item of its own in the pane; Reports stays lit.
   const lit = name === "monthly" ? "reports" : name;
   document.querySelectorAll(".nav-item").forEach(el =>
@@ -5063,12 +5072,21 @@ function dashStoreGo(panel) {
   setTimeout(() => storeGo(panel), 60);
 }
 
+// The store is one screen with many panels, so moving between them has
+// to end a banner the same way moving between screens does.
+function clearStoreMessages() {
+  document.querySelectorAll("#screen-store .status-msg").forEach(el => {
+    el.className = "status-msg";
+    el.textContent = "";
+  });
+}
+
 function storeGo(which) {
   STORE_PANELS.forEach(p => {
     const el = document.getElementById("store-" + p);
     if (el) el.style.display = (p === which) ? "" : "none";
   });
-  showStatus("store-status", null);
+  clearStoreMessages();
   if (which === "home") loadStoreHome();
   if (which === "arrive") loadArrivePanel();
   if (which === "suppliers") switchScreen("suppliers");   // its own screen now
@@ -8588,6 +8606,9 @@ function renderSuppliers() {
   const short = suppliers.filter(s => !done(s)).length;
   const note = document.getElementById("sup-incomplete");
   if (note) {
+    // Entering the screen clears every banner on it, class and all, so
+    // this one re-states its own colour rather than assuming it kept it.
+    note.className = "status-msg warn";
     note.innerHTML = short
       ? `<strong>${short}</strong> supplier${short === 1 ? "" : "s"} still incomplete -
          an order for ${short === 1 ? "it" : "them"} will print blanks. Edit to fill in what is missing.`
