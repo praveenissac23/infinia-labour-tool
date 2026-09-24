@@ -137,6 +137,23 @@ ck('a site that is not on file is refused',
 # is. Left at that, a hired quantity was booked as ours and the hire
 # list stayed empty - the whole point of the hire tracking missed by one
 # unasked question.
+# Each line carries its own place, so one entry can put cement in the
+# yard and scaffolding straight onto a site.
+split = c.post('/store/items/opening', json={'lines': [
+    {'item_id': cem['id'], 'item_type': 'consumable', 'qty': 12, 'location': ''},
+    {'item_id': drill['id'], 'item_type': 'asset', 'qty': 2, 'location': '901'}]}, headers=KEEPER)
+ck('one entry can add to two places at once', split.status_code == 200, split.text[:200])
+ck('and says so rather than naming one of them',
+   '2 places' in split.json()['detail'], split.json()['detail'])
+st = {s['name']: s for s in c.get('/store/stock', headers=KEEPER).json()}
+ck('the yard line landed in the yard', st['Cement OPC 50kg']['central'] == 67,
+   st['Cement OPC 50kg']['central'])
+ck('and the site line landed on the site (3 there already),',
+   st['Hilti Drill TE-60']['by_site'].get('901') == 5, st['Hilti Drill TE-60']['by_site'])
+ck('a bad site on one line is refused, naming the line',
+   'Cement' in c.post('/store/items/opening', json={'lines': [
+       {'item_id': cem['id'], 'qty': 1, 'location': 'NOWHERE'}]}, headers=KEEPER).text)
+
 # A rental line with nobody named is not refused - a rented material is
 # rented either way, and hiding it until the paperwork is tidy is how it
 # goes back unaccounted for. It shows under "(no supplier set)".

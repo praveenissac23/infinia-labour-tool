@@ -1731,12 +1731,11 @@
                 <div class="field"><label>Date *</label>
                   <input type="date" id="hin-date" style="width:150px;"></div>
                 <div class="field"><label>Where it landed</label>
-                  <input type="text" id="hin-location" list="site-list"
-                         placeholder="Central store" style="width:170px;"></div>
+                  <select id="hin-location" style="width:180px;"></select></div>
                 <div class="field"><label>Delivery note / LPO ref</label>
                   <input type="text" id="hin-ref" placeholder="Their DN number" style="width:170px;"></div>
                 <div class="field"><label>Received by</label>
-                  <input type="text" id="hin-incharge" style="width:150px;"></div>
+                  <select id="hin-incharge" style="width:190px;"></select></div>
               </div>
               <div class="grid-wrap" style="margin-top:10px;">
                 <table>
@@ -1944,31 +1943,17 @@
               <h2 style="color:#1F618D;">Add stock to the store or a site</h2>
               <p style="font-size:12px; color:#666; margin:0 0 10px; max-width:860px;">
                 Put material in by hand, any time - the shelves on day one, or a few things that
-                came in without paperwork. Say where it is and whose it is, pick a material, type
-                the quantity; add as many lines as you need and record them together. Each goes
-                into the ledger as a receipt, so it is traceable like a delivery.
+                came in without paperwork. Pick a material, say where it is and how many; add as
+                many lines as you need, each to its own place, and record them together. A line
+                marked Rental goes in under the supplier named on that material, so it shows on
+                the rental page. Each goes into the ledger as a receipt, traceable like a delivery.
               </p>
-              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-start; margin-bottom:10px;">
-                <div class="field"><label>Where it is</label>
-                  <input type="text" id="op-location" list="site-list" placeholder="Central store"
-                         style="width:190px;"
-                         title="Leave empty for the central store, or name a site to put it straight there.">
-                  <div style="font-size:11px; color:#888; margin-top:3px;">Empty = central store</div></div>
-                <div class="field"><label>Whose is it</label>
-                  <select id="op-owner-kind" style="width:190px;" onchange="onOpeningOwnerKind()">
-                    <option value="ours">Ours - we own it</option>
-                    <option value="hired">Rented from a supplier</option>
-                  </select></div>
-                <div class="field" id="op-owner-wrap" style="display:none;"><label>Rented from *</label>
-                  <input type="text" id="op-owner" list="lpo-supplier-list" placeholder="Trader"
-                         style="width:220px;">
-                  <div style="font-size:11px; color:#888; margin-top:3px;">It will show on rent and go back on a return note</div></div>
-              </div>
               <table id="opening-table" style="width:100%;">
                 <thead><tr>
-                  <th style="width:4%;">#</th><th style="width:44%;">Material</th>
-                  <th style="width:18%;">Type</th><th style="width:12%;">Quantity</th>
-                  <th style="width:14%;">Unit</th><th style="width:8%;"></th>
+                  <th style="width:4%;">#</th><th style="width:34%;">Material</th>
+                  <th style="width:15%;">Type</th><th style="width:10%;">Quantity</th>
+                  <th style="width:13%;">Unit</th><th style="width:16%;">Where it is</th>
+                  <th style="width:8%;"></th>
                 </tr></thead>
                 <tbody id="opening-lines"></tbody>
               </table>
@@ -3686,6 +3671,66 @@ function refreshSiteList() {
   if (dl) dl.innerHTML = (sites || []).map(s => `<option value="${s.code}"></option>`).join("");
 }
 
+// Where a quantity is, as a list to choose from rather than a name to
+// type: a site typed slightly wrong is refused, and the keeper is left
+// guessing which spelling the system wanted.
+function siteOptionsHtml(selected) {
+  const chosen = selected || "";
+  return `<option value=""${chosen === "" ? " selected" : ""}>Central store</option>`
+       + (sites || []).map(s =>
+           `<option value="${s.code}"${s.code === chosen ? " selected" : ""}>${s.code}${
+             s.project_name ? " - " + s.project_name : ""}</option>`).join("");
+}
+
+// Who took it, or handed it over. Engineers first because they are who
+// the office deals with, then drivers, then foremen, then everybody
+// else - the order somebody actually looks down the list in.
+const PEOPLE_ORDER = [
+  ["Engineers", t => false],
+  ["Drivers", t => /driver/i.test(t)],
+  ["Foremen", t => /foreman|charge ?hand|supervisor/i.test(t)],
+  ["Labour", () => true],
+];
+
+function peopleOptionsHtml(selected) {
+  const chosen = (selected || "").trim();
+  const opt = n => `<option value="${n.replace(/"/g, "&quot;")}"${
+    n.toLowerCase() === chosen.toLowerCase() ? " selected" : ""}>${n}</option>`;
+  const groups = [];
+  const eng = (engineers || []).map(e => e.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  if (eng.length) groups.push(`<optgroup label="Engineers">${eng.map(opt).join("")}</optgroup>`);
+  const left = (employees || []).slice();
+  for (const [label, match] of PEOPLE_ORDER.slice(1)) {
+    const mine = left.filter(e => match(e.trade || ""));
+    if (!mine.length) continue;
+    mine.forEach(e => left.splice(left.indexOf(e), 1));
+    groups.push(`<optgroup label="${label}">${mine
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      .map(e => opt(e.name)).join("")}</optgroup>`);
+  }
+  // A name already on the record that is nobody on the list any more -
+  // somebody who has left - still has to show, or editing quietly
+  // changes who it was.
+  const known = [...eng, ...(employees || []).map(e => e.name)];
+  const orphan = chosen && !known.some(n => (n || "").toLowerCase() === chosen.toLowerCase())
+    ? `<optgroup label="On this record">${opt(chosen)}</optgroup>` : "";
+  return `<option value="">- choose -</option>` + orphan + groups.join("");
+}
+
+// The people lists are wanted on store screens that never load them
+// themselves, so they are fetched once and reused.
+async function ensurePeople() {
+  try {
+    if (!sites || !sites.length) sites = await apiCall("/sites") || [];
+  } catch (e) { sites = sites || []; }
+  try {
+    if (!engineers || !engineers.length) engineers = await apiCall("/engineers") || [];
+  } catch (e) { engineers = engineers || []; }
+  try {
+    if (!employees || !employees.length) employees = await apiCall("/employees?active_only=true") || [];
+  } catch (e) { employees = employees || []; }
+}
+
 async function addEngineer() {
   const name = document.getElementById("md-eng-name").value.trim();
   const mobile = document.getElementById("md-eng-mobile").value.trim();
@@ -5104,7 +5149,18 @@ function storeGo(which) {
   if (which === "items") {
     if (!document.querySelectorAll("#opening-lines tr").length) addOpeningLine();
     refreshSiteList();
-    onOpeningOwnerKind();
+    ensurePeople().then(() => {
+      refreshSiteList();
+      document.querySelectorAll("#opening-lines .op-where").forEach(sel => {
+        sel.innerHTML = siteOptionsHtml(sel.value);
+      });
+    });
+    // A row built before the sites arrived has an empty picker, so every
+    // row's list is refreshed on the way in, keeping what was chosen.
+    document.querySelectorAll("#opening-lines .op-where").forEach(sel => {
+      const had = sel.value;
+      sel.innerHTML = siteOptionsHtml(had);
+    });
     (async () => {
       if (!suppliers || !suppliers.length) {
         try { suppliers = await apiCall("/store/suppliers") || []; } catch (e) { return; }
@@ -5130,6 +5186,11 @@ async function loadHirePanel() {
   const dl = document.getElementById("lpo-supplier-list");
   if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${s.name}"></option>`).join("");
   refreshSiteList();
+  await ensurePeople();
+  const loc = document.getElementById("hin-location");
+  if (loc) loc.innerHTML = siteOptionsHtml(loc.value || "");
+  const who = document.getElementById("hin-incharge");
+  if (who) who.innerHTML = peopleOptionsHtml(who.value || "");
   const d = document.getElementById("hin-date");
   if (d && !d.value) d.value = isoLocal(new Date());
   if (!document.querySelectorAll('#hin-lines tr').length) addHireInLine();
@@ -8346,6 +8407,21 @@ async function loadErrorCheck() {
   // short of days AND below 40%, and the pay warning is often just the
   // consequence of the days not being in yet.
   const canRemind = w => (w.issues[0] || {}).days_missing > 0;
+
+  // The day to open for this worker: the first day missing where days
+  // are missing, otherwise the day the problem is on. Every row gets
+  // one, so the answer to "show me" is always a single click rather
+  // than reading a date out of a sentence and finding it by hand.
+  const pretty = d => {
+    const t = new Date(d + "T00:00:00");
+    return isNaN(t) ? d : t.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  };
+  const gotoDay = w => {
+    const withGoto = w.issues.find(x => x.goto);
+    if (withGoto) return { day: withGoto.goto, label: pretty(withGoto.goto) };
+    const dated = w.issues.find(x => /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || "")));
+    return dated ? { day: String(dated.date), label: pretty(String(dated.date)) } : null;
+  };
   const anyUnfilled = byWorker.some(canRemind);
   const sendBar = document.getElementById("errcheck-send");
   if (sendBar) sendBar.style.display = anyUnfilled ? "" : "none";
@@ -8372,6 +8448,17 @@ async function loadErrorCheck() {
     </tr>
     <tr id="ec-${i}" style="display:none; background:#FAFAFA;">
       <td colspan="5" style="padding:12px 20px; text-align:left;">
+        ${(() => {
+          // Opening a worker is the moment somebody wants to go and fix
+          // it, so the way there sits right here rather than being a
+          // date to read off and find by hand.
+          const go = gotoDay(w);
+          if (!go) return "";
+          return `<div style="display:flex; justify-content:flex-end; margin:-4px 0 6px;">
+            <button class="btn btn-primary" title="Open ${go.day} on Daily Attendance"
+              onclick="event.stopPropagation(); fillMissing('${go.day}', '${w.emp_no}')">
+              ${canRemind(w) ? "Fill missing" : "Open"} ${go.label} &rarr;</button></div>`;
+        })()}
         ${w.issues.map(x => {
           const t = TAG[x.severity];
           const detail = x.detail || {};
@@ -8438,6 +8525,34 @@ function sendAttendanceNeeded(fmt) {
   window.open(url, "_blank");
   showStatus("errcheck-status", "ok",
     `Reminder for ${picked.length} worker(s) - check your downloads or the new tab.`);
+}
+
+// Straight to the day that needs filling, with the worker's row found
+// and lit so there is no hunting down a list of seventy-odd names.
+async function fillMissing(day, empNo) {
+  switchScreen("attendance");
+  const picker = document.getElementById("date-picker");
+  if (picker) picker.value = day;
+  try {
+    await loadDate(day);
+  } catch (e) {
+    showStatus("att-status", "err", errText(e));
+    return;
+  }
+  // The grid is built by now, so the man can be pointed at.
+  const row = [...document.querySelectorAll("#grid-body tr")]
+    .find(tr => (tr.textContent || "").includes(empNo));
+  if (row) {
+    row.scrollIntoView({ block: "center" });
+    const was = row.style.background;
+    row.style.transition = "background .4s ease";
+    row.style.background = "#FFF3CD";
+    setTimeout(() => { row.style.background = was; }, 2200);
+    const first = row.querySelector("select, input");
+    if (first) first.focus();
+  }
+  showStatus("att-status", "ok",
+    `${day}${empNo ? " - " + empNo : ""}. Fill it in and save.`);
 }
 
 function toggleErrorRow(i) {
@@ -8703,19 +8818,12 @@ function addOpeningLine() {
         </select></td>
     <td><input type="number" class="il-qty" step="any" min="0" style="width:100%; min-width:80px;" placeholder="0"></td>
     <td><select class="op-unit" style="width:100%; min-width:90px;">${unitOptionsHtml("pcs")}</select></td>
+    <td><select class="op-where" style="width:100%; min-width:120px;"
+          title="Where this quantity is - the yard, or straight onto a site.">${siteOptionsHtml("")}</select></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'opening-lines')">Remove</button></td>`;
   document.getElementById("opening-lines").appendChild(tr);
   renumberRows("opening-lines");
   tr.querySelector(".il-item-txt").focus();
-}
-
-// Hired stock needs a trader named, so the box for it only appears when
-// it is going to be used.
-function onOpeningOwnerKind() {
-  const hired = document.getElementById("op-owner-kind").value === "hired";
-  document.getElementById("op-owner-wrap").style.display = hired ? "" : "none";
-  const btn = document.getElementById("op-save-btn");
-  if (btn) btn.textContent = hired ? "Book in on hire" : "Add stock";
 }
 
 async function saveOpeningStock() {
@@ -8724,6 +8832,7 @@ async function saveOpeningStock() {
     item_type: tr.querySelector(".il-type").value,
     unit: tr.querySelector(".op-unit").value,
     qty: parseFloat(tr.querySelector(".il-qty").value) || 0,
+    location: (tr.querySelector(".op-where").value || "").trim(),
     typed: (tr.querySelector(".il-item-txt").value || "").trim(),
   }));
   const unmatched = lines.filter(l => l.typed && !l.item_id);
@@ -8734,28 +8843,17 @@ async function saveOpeningStock() {
   const ready = lines.filter(l => l.item_id && l.qty > 0);
   if (!ready.length) { showStatus("opening-status", "warn", "Add at least one material with a quantity."); return; }
 
-  const where = (document.getElementById("op-location").value || "").trim();
-  const hired = document.getElementById("op-owner-kind").value === "hired";
-  const owner = (document.getElementById("op-owner").value || "").trim();
-  if (hired && !owner) {
-    showStatus("opening-status", "warn", "Name the trader it is hired from.");
-    return;
-  }
-  // Marking a line Rental only says what kind of thing it is, never
-  // whose it is. Saying so here saves discovering it on an empty hire
-  // list a week later.
-  if (!hired && ready.some(l => l.item_type === "rental")) {
-    showStatus("opening-status", "warn",
-      'A line is marked "Rental (hired in)" but "Whose is it" says ours. '
-      + 'Set it to "Hired in from a trader" and name them, or change the line to Asset.');
-    return;
-  }
-  const place = where ? `site ${where}` : "the central store";
-  if (!confirm(`Add ${ready.length} material(s) to ${place}${hired ? `, on hire from ${owner}` : ""}?`)) return;
+  // Whose it is needs no question of its own: a line marked Rental is
+  // the supplier's, and which supplier is on the material already.
+  const places = [...new Set(ready.map(l => l.location))];
+  const place = places.length > 1 ? `${places.length} places`
+              : (places[0] ? `site ${places[0]}` : "the central store");
+  if (!confirm(`Add ${ready.length} material(s) to ${place}?`)) return;
   try {
     const r = await apiCall("/store/items/opening", { method: "POST",
-      body: JSON.stringify({ location: where, owner_name: hired ? owner : "",
-        lines: ready.map(l => ({ item_id: l.item_id, item_type: l.item_type, unit: l.unit, qty: l.qty })) }) });
+      body: JSON.stringify({ lines: ready.map(l => ({
+        item_id: l.item_id, item_type: l.item_type, unit: l.unit,
+        qty: l.qty, location: l.location })) }) });
     showStatus("opening-status", "ok", r.detail || "Added.");
     document.getElementById("opening-lines").innerHTML = "";
     addOpeningLine();

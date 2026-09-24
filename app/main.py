@@ -1700,6 +1700,10 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"No attendance entered at all for {month_year}.",
                         "kind": "Nothing entered",
+                        # The day to open, machine-readable, so the screen
+                        # can jump straight there instead of the reader
+                        # copying a date out of a sentence.
+                        "goto": upto[0].isoformat() if upto else "",
                         "detail": {"Cycle": f"{cycle_start} to {cycle_end}",
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": "0", "Trade": emp.trade or "-"}})
@@ -1709,6 +1713,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"{len(missing)} day(s) missing: {preview}{more}",
                         "kind": f"{len(missing)} day(s) missing",
+                        "goto": missing[0].isoformat(),
                         "detail": {"Trade": emp.trade or "-",
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": str(len(entered)),
@@ -4812,15 +4817,22 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one material with a quantity.")
 
-    where = ((payload or {}).get("location") or "").strip()
-    if where:
-        site = db.query(models.Site).filter(
-            func.lower(models.Site.code) == where.lower()).first()
-        if not site:
+    # A place per line, so one go can put cement in the yard and
+    # scaffolding straight onto a site. A line without one falls back to
+    # whatever the whole entry named, and then to the central store.
+    sites = {s.code.lower(): s.code for s in db.query(models.Site).all()}
+
+    def _place(raw, where_from):
+        name = (raw or "").strip()
+        if not name:
+            return ""
+        if name.lower() not in sites:
             raise HTTPException(status_code=400,
-                detail=f'"{where}" is not a site on file. Pick one from the list, or leave it '
-                       "on the central store.")
-        where = site.code
+                detail=f'"{name}" is not a site on file{where_from}. Pick one from the list, '
+                       "or leave it empty for the central store.")
+        return sites[name.lower()]
+
+    where = _place((payload or {}).get("location"), "")
 
     owner = None
     owner_id = (payload or {}).get("owner_id")
@@ -4834,6 +4846,7 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
 
     today = _dubai_today()
     added, skipped = [], []
+    places, rented = set(), set()
     for l in lines:
         try:
             item_id, qty = int(l.get("item_id") or 0), float(l.get("qty") or 0)
@@ -4857,8 +4870,9 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
         line_owner = owner
         if line_owner is None and it.item_type == "rental" and (it.rental_supplier or "").strip():
             line_owner = _find_or_create_supplier(db, it.rental_supplier)
+        spot = _place(l.get("location"), f" (on the {it.name} line)") or where
         db.add(models.StoreMovement(item_id=it.id, kind="in", qty=qty,
-                                    location=where or CENTRAL, from_location="",
+                                    location=spot or CENTRAL, from_location="",
                                     owner_id=line_owner.id if line_owner else None,
                                     moved_on=today,
                                     supplier=line_owner.name if line_owner else "",
@@ -4868,16 +4882,25 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
                                            else "Put into the store from the Materials panel"),
                                     created_by=user.id))
         added.append(f"{qty:g} {it.unit or ''} {it.name}".strip())
+        places.add(spot)
+        if line_owner:
+            rented.add(line_owner.name)
     db.commit()
-    place = f"site {where}" if where else "the central store"
+    # Say where it went. One place is named; several are counted, since
+    # listing five sites in a banner reads worse than saying five.
+    if len(places) == 1:
+        one = next(iter(places))
+        place = f"site {one}" if one else "the central store"
+    else:
+        place = f"{len(places)} places"
+    whose = f", on rent from {', '.join(sorted(rented))}" if rented else ""
     log_action(db, user.id, "stock_added",
-               f"at {place}" + (f", on hire from {owner.name}" if owner else "")
-               + ": " + "; ".join(added)[:180])
-    detail = ((f"Added to {place}" + (f", on hire from {owner.name}" if owner else "") + ": "
+               f"at {place}{whose}: " + "; ".join(added)[:180])
+    detail = ((f"Added to {place}{whose}: "
                + ", ".join(added[:6]) + (" ..." if len(added) > 6 else ""))
               if added else "Nothing added.")
     return {"added": added, "skipped": skipped, "detail": detail,
-            "location": where, "owner": owner.name if owner else ""}
+            "locations": sorted(places), "rented_from": sorted(rented)}
 
 
 @app.post("/store/items/opening-import")
