@@ -17,7 +17,7 @@
 const { chromium } = require('playwright');
 
 const BASE = 'http://127.0.0.1:8032';
-const WIDTHS = [1500, 1280, 1100, 960, 860];
+const WIDTHS = [1500, 1280, 1100, 960, 860, 430];   // 430 is a phone
 const FAIL = [];
 const ck = (m, cond, ctx) => {
   console.log((cond ? 'PASS ' : 'FAIL ') + m + (cond ? '' : `  [${ctx}]`));
@@ -59,27 +59,55 @@ const ck = (m, cond, ctx) => {
   await p.evaluate(async () => { await newLpo(); });
   await p.waitForTimeout(1200);
 
-  // ---- The catalogue is behind the box ------------------------------
-  const dl = await p.evaluate(() => {
-    const d = document.getElementById('material-list-all');
-    const box = document.querySelector('#lpo-lines input');
-    return { options: d ? d.querySelectorAll('option').length : 0,
-             points_at: box ? box.getAttribute('list') : null,
-             sample: d ? [...d.querySelectorAll('option')].slice(0, 2).map(o => o.value) : [] };
+  // ---- The suggestions appear as you type ---------------------------
+  // Not a <datalist>: an iPhone ignores those completely, so on a phone
+  // the picker never appeared at all. This is our own list.
+  const box = p.locator('#lpo-lines tr .lpo-mat').first();
+  await box.click();
+  await p.waitForTimeout(400);
+  ck('focusing the material box offers the catalogue',
+     await p.locator('#lpo-match .match-row').count() > 0);
+
+  await p.keyboard.type('cem');
+  await p.waitForTimeout(500);
+  const hits = await p.evaluate(() => [...document.querySelectorAll('#lpo-match .match-row')]
+    .map(r => r.querySelector('.match-name').textContent));
+  ck('typing narrows it to what was typed',
+     hits.length > 0 && hits.every(h => /cem/i.test(h)), JSON.stringify(hits));
+  ck('and each suggestion shows the code and unit beside the name',
+     await p.locator('#lpo-match .match-row .match-meta').first().textContent() !== '');
+
+  // The list is hung off the page, or the scrolling materials table
+  // would cut it off at its own edge.
+  ck('the list is not trapped inside the scrolling table',
+     await p.evaluate(() => {
+       const l = document.getElementById('lpo-match');
+       return l && l.parentElement === document.body
+         && getComputedStyle(l).position === 'fixed';
+     }));
+  const place = await p.evaluate(() => {
+    const el = document.getElementById('lpo-match');
+    if (!el) return { missing: true };
+    const l = el.getBoundingClientRect();
+    const b = document.querySelector('#lpo-lines .lpo-mat').getBoundingClientRect();
+    // Below the box, or above it when the box sits near the bottom of
+    // the window - which is where it lands on a phone with the keyboard
+    // up. Either way it touches the box and is wholly on screen.
+    const under = Math.abs(l.top - b.bottom) < 6;
+    const over = Math.abs(l.bottom - b.top) < 6;
+    return { ok: (under || over) && Math.abs(l.left - b.left) < 40
+                 && l.top >= 0 && l.bottom <= window.innerHeight,
+             where: under ? 'below' : (over ? 'above' : 'adrift'),
+             list: [Math.round(l.top), Math.round(l.bottom), Math.round(l.left)],
+             box: [Math.round(b.top), Math.round(b.bottom), Math.round(b.left)] };
   });
-  ck('the material box is wired to the catalogue',
-     dl.points_at === 'material-list-all', dl.points_at);
-  ck('and the catalogue has materials in it', dl.options > 0, JSON.stringify(dl));
-  ck('listed by code and name, so one can be found among thousands',
-     dl.sample.every(v => / - /.test(v)), dl.sample);
+  ck('and it sits against the box, wholly on screen', place.ok === true, JSON.stringify(place));
 
   // ---- The cursor stays where it is being typed ---------------------
-  const box = p.locator('#lpo-lines tr input').first();
-  await box.click();
-  for (const ch of 'ceme') { await p.keyboard.type(ch); await p.waitForTimeout(240); }
+  await p.keyboard.type('e');
   await p.waitForTimeout(800);                 // past the 350ms rate lookup
   const typed = await p.evaluate(() => {
-    const first = document.querySelector('#lpo-lines input');
+    const first = document.querySelector('#lpo-lines .lpo-mat');
     return { focused: document.activeElement === first,
              value: first.value, caret: first.selectionStart };
   });
@@ -87,38 +115,68 @@ const ck = (m, cond, ctx) => {
   ck('nothing typed is dropped', typed.value === 'ceme', typed.value);
   ck('and the caret stays at the end', typed.caret === 4, typed.caret);
 
-  // Typing a rate redraws the row too - the same rule holds there.
+  // Typing a rate repaints the amount - the boxes must not be rebuilt.
   await p.evaluate(() => {
-    const r = document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[4];
-    r.focus();
+    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[2].focus();
+  });
+  await p.keyboard.type('10');
+  await p.waitForTimeout(300);
+  await p.evaluate(() => {
+    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[4].focus();
   });
   await p.keyboard.type('16');
   await p.waitForTimeout(400);
   await p.keyboard.type('.5');
-  await p.waitForTimeout(400);
+  await p.waitForTimeout(500);
   const rate = await p.evaluate(() => {
-    const r = document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[4];
-    return { focused: document.activeElement === r, value: r.value };
+    const row = document.querySelectorAll('#lpo-lines tr')[0];
+    const r = row.querySelectorAll('input')[4];
+    return { focused: document.activeElement === r, value: r.value,
+             amount: row.querySelector('.lpo-amt').textContent };
   });
-  ck('and typing a rate does the same', rate.focused && rate.value === '16.5',
+  ck('typing a rate keeps its cursor too', rate.focused && rate.value === '16.5',
      JSON.stringify(rate));
+  ck('and the amount follows along', /165/.test(rate.amount.replace(/[^0-9]/g, '')),
+     rate.amount);
 
-  // ---- Picking a whole entry prints the name, not the code ----------
-  const picked = await p.evaluate(async () => {
-    const it = (storeItems || []).find(i => i.name === 'Cement OPC 50kg') || (storeItems || [])[0];
-    const el = document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[0];
-    el.value = `${it.code} - ${it.name}`;
+  // ---- Choosing one fills the line ----------------------------------
+  const chose = await p.evaluate(async () => {
+    const el = document.querySelector('#lpo-lines .lpo-mat');
+    el.focus(); el.value = 'cem';
     el.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 800));
-    return { want: it.name, id: it.id, unit: it.unit,
-             got: lpoLines[0].description, gotId: lpoLines[0].item_id,
-             gotUnit: lpoLines[0].unit };
+    await new Promise(r => setTimeout(r, 400));
+    const row = document.querySelector('#lpo-match .match-row');
+    if (!row) return { none: true };
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 700));
+    return { desc: lpoLines[0].description, id: lpoLines[0].item_id,
+             unit: lpoLines[0].unit, shown: document.querySelector('#lpo-lines .lpo-mat').value,
+             open: !!document.getElementById('lpo-match') };
   });
-  ck('picking one off the list prints the name, not the code',
-     picked.got === picked.want, JSON.stringify(picked));
+  ck('tapping a suggestion puts the name in the box',
+     chose.desc && chose.shown === chose.desc, JSON.stringify(chose));
   ck('and takes its id, so the rate history is the right one',
-     picked.gotId === picked.id, JSON.stringify(picked));
-  ck('and its unit', picked.gotUnit === picked.unit, JSON.stringify(picked));
+     !!chose.id, JSON.stringify(chose));
+  ck('and its unit', !!chose.unit, JSON.stringify(chose));
+  ck('and the list closes behind it', chose.open === false, JSON.stringify(chose));
+
+  // Arrow keys and Enter, for whoever never touches the mouse.
+  const byKey = await p.evaluate(async () => {
+    const el = document.querySelector('#lpo-lines .lpo-mat');
+    el.focus(); el.value = 'ply';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 400));
+    const down = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+    el.dispatchEvent(down);
+    const hot = document.querySelector('#lpo-match .match-row.on');
+    const name = hot && hot.querySelector('.match-name').textContent;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 500));
+    return { wanted: name, got: lpoLines[0].description };
+  });
+  ck('arrow down and Enter choose one without the mouse',
+     byKey.wanted && byKey.got === byKey.wanted, JSON.stringify(byKey));
+
   await p.close();
 
   // ---- Every hint fits its box, at every width the office uses ------
@@ -141,6 +199,24 @@ const ck = (m, cond, ctx) => {
     const pg = await open(w);
     const cut = await measure(pg);
     ck(`every hint fits its box at ${w}px`, cut.length === 0, cut.join(' | '));
+    if (w === 430) {
+      const onPhone = await pg.evaluate(async () => {
+        const el = document.querySelector('#lpo-lines .lpo-mat');
+        el.focus(); el.value = 'cem';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 500));
+        const l = document.getElementById('lpo-match');
+        if (!l) return { shown: false };
+        const r = l.getBoundingClientRect();
+        return { shown: true, onScreen: r.left >= 0 && r.right <= window.innerWidth
+                 && r.top >= 0 && r.bottom <= window.innerHeight,
+                 rows: l.querySelectorAll('.match-row').length,
+                 tall: l.querySelector('.match-row').getBoundingClientRect().height };
+      });
+      ck('the picker still opens on a phone', onPhone.shown, JSON.stringify(onPhone));
+      ck('fully on the screen', onPhone.onScreen, JSON.stringify(onPhone));
+      ck('with rows big enough for a finger', onPhone.tall >= 38, onPhone.tall);
+    }
     if (w === 960) {
       const stacked = await pg.evaluate(() => {
         const s = document.querySelectorAll('.lpo-sides .lpo-side');

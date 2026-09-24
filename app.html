@@ -203,6 +203,22 @@
      mid-letter, and the full text is on the box as a tooltip. */
   .lpo-side input::placeholder, #lpo-lines input::placeholder { text-overflow: ellipsis; }
   .lpo-hint { margin: 7px 0 0; font-size: 11px; color: #8A8681; line-height: 1.35; }
+
+  /* The material suggestions. Our own list rather than <datalist>,
+     which an iPhone ignores altogether - on a phone the picker simply
+     never appeared. Rows are finger-sized. */
+  .match-list { position: fixed; z-index: 400;
+                max-height: 260px; overflow-y: auto; background: white;
+                border: 1px solid #D9D5CE; border-radius: 7px; margin-top: 2px;
+                box-shadow: 0 6px 18px rgba(0,0,0,.13); }
+  .match-row { display: flex; justify-content: space-between; align-items: baseline;
+               gap: 10px; padding: 9px 10px; cursor: pointer; font-size: 13px;
+               border-bottom: 1px solid #F2F0EC; }
+  .match-row:last-child { border-bottom: 0; }
+  .match-row:hover, .match-row.on { background: #FBF3F2; }
+  .match-name { color: #1F2429; }
+  .match-meta { color: #8A8681; font-size: 11.5px; white-space: nowrap; }
+  @media (max-width: 700px) { .match-row { padding: 12px 10px; font-size: 14px; } }
   .store-tile { min-width: 0; border: 1px solid #E7CEC9; border-radius: 10px;
                 padding: 16px 18px; cursor: pointer; background: #FDF6F5; position: relative;
                 transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease,
@@ -9301,6 +9317,9 @@ async function newLpo() {
 function closeLpoForm() {
   document.getElementById("lpo-form-card").style.display = "none";
   lpoEditingId = null;
+  // The suggestions hang off the page, not off the form, so closing the
+  // form would otherwise leave a list floating over the register.
+  closeMatchList();
   showStatus("lpo-status", null);
 }
 
@@ -9461,27 +9480,21 @@ function removeLpoLine(i) { lpoLines.splice(i, 1); renderLpoLines(); }
 function onLpoLineField(i, field, value) {
   lpoLines[i][field] = value;
   if (field === "description") {
-    // The picker lists materials as "CODE - Name", which is how you
-    // find one among three thousand. The order should print the name,
-    // so the code is dropped the moment a whole entry is chosen - and
-    // only then, or it would fight somebody mid-word.
-    const picked = (storeItems || []).find(
-      x => `${x.code} - ${x.name}`.toLowerCase() === value.trim().toLowerCase());
-    if (picked) {
-      lpoLines[i].description = picked.name;
-      lpoLines[i].item_id = picked.id;
-      if (!lpoLines[i].unit) lpoLines[i].unit = picked.unit || "";
-      renderLpoLines();
-    }
+    // Typed by hand rather than chosen, so the line no longer stands
+    // for whichever material was picked before.
+    lpoLines[i].item_id = null;
+    const box = document.querySelectorAll("#lpo-lines tr")[i];
+    if (box) showMatches(box.querySelector(".lpo-mat"), i);
     lookupLpoRate(i);
     renderLpoTotals();
     return;
   }
-  // Qty and rate change the line's amount and whether it is above what
-  // was paid last time - both are in the row, so the row is redrawn.
-  // renderLpoLines keeps the cursor where it was.
+  // Qty, rate and tax change the amount and whether the rate is above
+  // what was paid last time. Only those two cells are repainted - the
+  // boxes are left alone, so the cursor never moves.
   if (field === "qty" || field === "rate" || field === "tax_pct") {
-    renderLpoLines();
+    paintLpoLine(i);
+    renderLpoTotals();
     return;
   }
   renderLpoTotals();
@@ -9501,7 +9514,7 @@ function lookupLpoRate(i) {
   lpoRateTimers[i] = setTimeout(async () => {
     if (run !== lpoFormRun) return;
     const d = (lpoLines[i] || {}).description || "";
-    if (!d.trim()) { lpoLines[i].last = null; renderLpoLines(); return; }
+    if (!d.trim()) { lpoLines[i].last = null; paintLpoLine(i); return; }
     try {
       const item = (storeItems || []).find(x => (x.name || "").toLowerCase() === d.trim().toLowerCase());
       // Ask on both the item and the name - the same material may have
@@ -9512,70 +9525,227 @@ function lookupLpoRate(i) {
         lpoLines[i].item_id = item ? item.id : null;
         lpoLines[i].last = r.last || null;
         lpoLines[i].times = r.count || 0;
-        if (item && !lpoLines[i].unit) lpoLines[i].unit = item.unit || "";
-        renderLpoLines();
+        // The unit box is filled only when it is empty, and written to
+        // directly - the row is never rebuilt, so whatever is being
+        // typed keeps the cursor and, on a phone, the keyboard.
+        if (item && !lpoLines[i].unit) {
+          lpoLines[i].unit = item.unit || "";
+          const row = document.querySelectorAll("#lpo-lines tr")[i];
+          const u = row && row.querySelector(".lpo-unit");
+          if (u && !u.value) u.value = lpoLines[i].unit;
+        }
+        paintLpoLine(i);
       }
     } catch (e) { /* history is a help, not a requirement */ }
   }, 350);
 }
 
+// The computed part of one line: the amount, and what the material cost
+// last time. Kept apart from the boxes on purpose. Redrawing the whole
+// row to show a figure threw away the box being typed into - on a
+// phone that also shut the keyboard - so nothing that happens while
+// somebody is typing touches an input any more.
+function paintLpoLine(i) {
+  const row = document.querySelectorAll("#lpo-lines tr")[i];
+  const l = lpoLines[i];
+  if (!row || !l) return;
+  const qty = parseFloat(l.qty) || 0, rate = parseFloat(l.rate) || 0;
+  let lastCell = '<span style="color:#bbb;">first time</span>';
+  if (l.last) {
+    const up = rate > 0 && rate > l.last.rate;
+    const pct = l.last.rate ? ((rate - l.last.rate) / l.last.rate * 100) : 0;
+    lastCell = `<div style="font-size:12px;">
+        <strong>${money(l.last.rate)}</strong>
+        <span style="color:#888;"> ${l.last.date} \u00b7 ${l.last.supplier || ""}</span>
+        ${l.times > 1 ? `<span style="color:#888;"> \u00b7 ${l.times}x</span>` : ""}
+        ${up ? `<div style="color:#C0392B; font-weight:600;">&#9650; +${pct.toFixed(1)}% higher</div>` : ""}
+        ${rate > 0 && rate < l.last.rate ? `<div style="color:#2E7D32;">&#9660; ${Math.abs(pct).toFixed(1)}% lower</div>` : ""}
+      </div>`;
+  }
+  const amt = row.querySelector(".lpo-amt"), last = row.querySelector(".lpo-last");
+  if (amt) amt.textContent = money(qty * rate);
+  if (last) last.innerHTML = lastCell;
+}
+
+// A full redraw. Only for lines coming or going - never while typing.
 function renderLpoLines() {
   const body = document.getElementById("lpo-lines");
-  // Redrawing the lines throws away the box being typed into, and with
-  // it the cursor. The rate lookup fires 350ms after a keystroke and
-  // redraws, so typing a material name lost focus mid-word and had to
-  // be clicked back into. Note where the cursor is first and put it
-  // back afterwards - for every box on the line, not only the numbers,
-  // because the next redraw added will otherwise break this again.
-  const was = document.activeElement;
-  let mark = null;
-  if (was && body.contains(was)) {
-    const row = was.closest("tr");
-    const rows = [...body.querySelectorAll("tr")];
-    mark = { row: rows.indexOf(row),
-             box: [...row.querySelectorAll("input")].indexOf(was),
-             from: was.selectionStart, to: was.selectionEnd };
-  }
+  closeMatchList();
   body.innerHTML = lpoLines.map((l, i) => {
     const qty = parseFloat(l.qty) || 0, rate = parseFloat(l.rate) || 0;
-    let lastCell = '<span style="color:#bbb;">first time</span>';
-    if (l.last) {
-      const up = rate > 0 && rate > l.last.rate;
-      const pct = l.last.rate ? ((rate - l.last.rate) / l.last.rate * 100) : 0;
-      lastCell = `<div style="font-size:12px;">
-          <strong>${money(l.last.rate)}</strong>
-          <span style="color:#888;"> ${l.last.date} · ${l.last.supplier || ""}</span>
-          ${l.times > 1 ? `<span style="color:#888;"> · ${l.times}x</span>` : ""}
-          ${up ? `<div style="color:#C0392B; font-weight:600;">&#9650; +${pct.toFixed(1)}% higher</div>` : ""}
-          ${rate > 0 && rate < l.last.rate ? `<div style="color:#2E7D32;">&#9660; ${Math.abs(pct).toFixed(1)}% lower</div>` : ""}
-        </div>`;
-    }
+    const esc = v => String(v == null ? "" : v).replace(/"/g, "&quot;");
     return `<tr>
       <td>${i + 1}</td>
-      <td><input type="text" list="material-list-all" placeholder="e.g. cement"
-            value="${(l.description || "").replace(/"/g, "&quot;")}"
-            oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"
-            title="${(l.description || "").replace(/"/g, "&quot;")}"></td>
-      <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="e.g. price/week" title="Printed small under the material name. Optional."
+      <td><input type="text" placeholder="e.g. cement"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            value="${esc(l.description)}" class="lpo-mat"
+            oninput="onLpoLineField(${i}, 'description', this.value)"
+            onfocus="showMatches(this, ${i})"
+            onkeydown="matchKey(event, this, ${i})"
+            onblur="closeMatchList(true)"
+            style="width:100%;" title="${esc(l.description)}"></td>
+      <td><input type="text" value="${esc(l.description2)}" placeholder="e.g. price/week" title="Printed small under the material name. Optional."
             oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
-      <td><input type="text" value="${l.qty}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
-      <td><input type="text" value="${l.unit}" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
-      <td><input type="text" value="${l.rate}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
-      <td><input type="text" value="${l.tax_pct}" oninput="onLpoLineField(${i}, 'tax_pct', this.value)" style="width:100%; text-align:right;"></td>
-      <td style="text-align:right;">${money(qty * rate)}</td>
-      <td style="text-align:left;">${lastCell}</td>
+      <td><input type="text" inputmode="decimal" value="${esc(l.qty)}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
+      <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
+      <td><input type="text" inputmode="decimal" value="${esc(l.rate)}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
+      <td><input type="text" inputmode="decimal" value="${esc(l.tax_pct)}" oninput="onLpoLineField(${i}, 'tax_pct', this.value)" style="width:100%; text-align:right;"></td>
+      <td class="lpo-amt" style="text-align:right;">${money(qty * rate)}</td>
+      <td class="lpo-last" style="text-align:left;"></td>
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
     </tr>`;
   }).join("");
-  if (mark && mark.row >= 0 && mark.box >= 0) {
-    const row = body.querySelectorAll("tr")[mark.row];
-    const box = row && row.querySelectorAll("input")[mark.box];
-    if (box) {
-      box.focus();
-      try { box.setSelectionRange(mark.from, mark.to); } catch (e) {}
-    }
-  }
+  lpoLines.forEach((l, i) => paintLpoLine(i));
   renderLpoTotals();
+}
+
+// ---- The material suggestions ----------------------------------------
+// Built here rather than left to <datalist>, which iPhones ignore
+// completely and Android browsers show inconsistently - so on a phone
+// the picker simply never appeared. This is an ordinary list under the
+// box: it works the same on a desktop, a tablet and a phone, and being
+// ours it can show the code, the name and the unit on each line.
+let matchFor = null;          // the row whose list is open
+let matchAt = -1;             // which suggestion is highlighted
+let matchBox = null;          // the box it belongs to
+
+// The list is hung off the page, so it has to be told when the thing it
+// points at has moved - the materials table scrolls sideways, and a
+// phone scrolls the page under the keyboard.
+let matchWatching = false;
+function watchMatchList() {
+  if (matchWatching) return;
+  matchWatching = true;
+  const follow = (e) => {
+    const list = document.getElementById("lpo-match");
+    if (!list || !matchBox) return;
+    if (e && list.contains(e.target)) return;      // scrolling the list itself
+    placeMatchList(matchBox);
+  };
+  window.addEventListener("scroll", follow, true);
+  window.addEventListener("resize", follow);
+}
+
+function closeMatchList(soon) {
+  const go = () => {
+    const box = document.getElementById("lpo-match");
+    if (box) box.remove();
+    matchFor = null; matchAt = -1; matchBox = null;
+  };
+  // A blur fires before the tap on a suggestion lands, so closing on
+  // blur has to wait long enough for the tap to be counted.
+  if (soon) setTimeout(go, 180); else go();
+}
+
+function materialMatches(text) {
+  const q = (text || "").trim().toLowerCase();
+  const all = storeItems || [];
+  if (!q) return all.slice(0, 30);
+  const words = q.split(/\s+/).filter(Boolean);
+  const scored = [];
+  for (const it of all) {
+    const hay = `${it.code} ${it.name}`.toLowerCase();
+    if (!words.every(w => hay.includes(w))) continue;
+    // A name that starts with what was typed comes first; then the
+    // code; then anything containing it.
+    const n = (it.name || "").toLowerCase();
+    scored.push([n.startsWith(q) ? 0 : (String(it.code).toLowerCase().startsWith(q) ? 1 : 2), it]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || String(a[1].name).localeCompare(String(b[1].name)));
+  return scored.slice(0, 30).map(x => x[1]);
+}
+
+function showMatches(box, i) {
+  if (!box) return;
+  const hits = materialMatches(box.value);
+  closeMatchList();
+  if (!hits.length) return;
+  matchFor = i; matchAt = -1;
+  const list = document.createElement("div");
+  list.id = "lpo-match";
+  list.className = "match-list";
+  list.innerHTML = hits.map((it, n) => `
+    <div class="match-row" data-n="${n}" data-id="${it.id}"
+         onmousedown="pickMaterial(event, ${i}, ${it.id})"
+         ontouchstart="pickMaterial(event, ${i}, ${it.id})">
+      <span class="match-name">${it.name}</span>
+      <span class="match-meta">${it.code}${it.unit ? " \u00b7 " + it.unit : ""}</span>
+    </div>`).join("");
+  // Hung off the page rather than the cell. The materials table scrolls
+  // inside its own box, and anything drawn inside a scrolling box is cut
+  // off at its edge - which would have hidden most of the list.
+  document.body.appendChild(list);
+  matchBox = box;
+  placeMatchList(box);
+  watchMatchList();
+}
+
+// Under the box, unless there is more room above it - which is the case
+// on a phone once the keyboard is up.
+function placeMatchList(box) {
+  const list = document.getElementById("lpo-match");
+  if (!list || !box) return;
+  const r = box.getBoundingClientRect();
+  const below = window.innerHeight - r.bottom;
+  const room = Math.max(140, Math.min(260, (below > 180 ? below : r.top) - 12));
+  list.style.width = Math.max(r.width, 230) + "px";
+  list.style.maxHeight = room + "px";
+  list.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 230) - 8)) + "px";
+  if (below > 180) {
+    list.style.top = (r.bottom + 2) + "px";
+    list.style.bottom = "auto";
+  } else {
+    list.style.top = "auto";
+    list.style.bottom = (window.innerHeight - r.top + 2) + "px";
+  }
+}
+
+function pickMaterial(ev, i, itemId) {
+  // mousedown, not click: click lands after blur has already closed the
+  // list, so the tap hit nothing and the name never went in.
+  if (ev) ev.preventDefault();
+  const it = (storeItems || []).find(x => x.id === itemId);
+  if (!it || !lpoLines[i]) return;
+  lpoLines[i].description = it.name;
+  lpoLines[i].item_id = it.id;
+  if (!lpoLines[i].unit) lpoLines[i].unit = it.unit || "";
+  const row = document.querySelectorAll("#lpo-lines tr")[i];
+  if (row) {
+    const mat = row.querySelector(".lpo-mat");
+    const unit = row.querySelector(".lpo-unit");
+    if (mat) { mat.value = it.name; mat.title = it.name; }
+    if (unit && !unit.value) unit.value = lpoLines[i].unit;
+  }
+  closeMatchList();
+  lookupLpoRate(i);
+  renderLpoTotals();
+}
+
+function matchKey(ev, box, i) {
+  const list = document.getElementById("lpo-match");
+  if (!list) {
+    if (ev.key === "ArrowDown") { showMatches(box, i); ev.preventDefault(); }
+    return;
+  }
+  const rows = [...list.querySelectorAll(".match-row")];
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    matchAt += (ev.key === "ArrowDown" ? 1 : -1);
+    if (matchAt < 0) matchAt = rows.length - 1;
+    if (matchAt >= rows.length) matchAt = 0;
+    rows.forEach((r, n) => r.classList.toggle("on", n === matchAt));
+    const on = rows[matchAt];
+    if (on) on.scrollIntoView({ block: "nearest" });
+    ev.preventDefault();
+  } else if (ev.key === "Enter") {
+    if (matchAt >= 0 && rows[matchAt]) {
+      pickMaterial(ev, i, Number(rows[matchAt].dataset.id));
+      ev.preventDefault();
+    } else {
+      closeMatchList();
+    }
+  } else if (ev.key === "Escape") {
+    closeMatchList();
+  }
 }
 
 function renderLpoTotals() {
