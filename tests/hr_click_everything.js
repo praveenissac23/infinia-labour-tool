@@ -70,10 +70,10 @@ const ck = (m, cond, ctx) => {
 
   // ---- The reported fault: absence recorded, sheet must follow at once --
   const infinia = await p.evaluate(() => (HR_COMPANIES.find(c => c.short_name === 'Infinia') || HR_COMPANIES[0]).id);
-  await p.selectOption('#hr-run-company', String(infinia));
+  await p.evaluate(i => { document.getElementById('hr-run-company').value = i; }, infinia);
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  await p.fill('#hr-run-month', month);
+  await p.evaluate(m => { document.getElementById('hr-run-month').value = m; }, month);
   await p.evaluate('openPayrollCycle()'); await p.waitForTimeout(1500);
   const who = await p.evaluate(() => HR_RUN.lines.find(l => l.fixed_salary > 0 && !l.deduction).emp_no);
   const before = await p.evaluate(w => HR_RUN.lines.find(l => l.emp_no === w).deduction, who);
@@ -84,8 +84,8 @@ const ck = (m, cond, ctx) => {
     for (let i = 1; i <= 28; i++) { const d = `${m}-${String(i).padStart(2, '0')}`; if (!taken.has(d)) return d; }
   }, [who, month]);
   await p.click('.hr-tab[data-tab="leave"]'); await p.waitForTimeout(700);
-  await p.selectOption('#hr-leave-emp', who);
-  await p.selectOption('#hr-leave-kind', 'absent');
+  await p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, ['#hr-leave-emp', who]);
+  await p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, ['#hr-leave-kind', 'absent']);
   await p.fill('#hr-leave-from', day); await p.fill('#hr-leave-to', '');
   await p.click('#hr-leave-save'); await p.waitForTimeout(1200);
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(1500);
@@ -99,9 +99,9 @@ const ck = (m, cond, ctx) => {
      `${before} -> ${after}`);
   // A bill, the same way.
   await p.click('.hr-tab[data-tab="items"]'); await p.waitForTimeout(700);
-  await p.selectOption('#hr-item-emp', who);
+  await p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, ['#hr-item-emp', who]);
   await p.fill('#hr-item-month', month);
-  await p.selectOption('#hr-item-dir', 'add'); await p.selectOption('#hr-item-cat', 'taxi');
+  await p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, ['#hr-item-dir', 'add']); await p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, ['#hr-item-cat', 'taxi']);
   await p.fill('#hr-item-amount', '75'); await p.fill('#hr-item-note', 'Sweep taxi');
   await p.click('#hr-item-save'); await p.waitForTimeout(1200);
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(1500);
@@ -132,6 +132,15 @@ const ck = (m, cond, ctx) => {
   // ---- Every button on every tab --------------------------------------
   // Buttons that change what is on file are answered "Cancel" when the
   // page asks; the rest run for real.
+  // The cycle bar: company, statement, month back and forward, month chips.
+  await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(800);
+  for (const sel of ['#hr-co-seg button', '#hr-grp-seg button', '.hr-month-nav > button']) {
+    const n = await p.locator(sel).count();
+    for (let i = 0; i < n; i++) { await p.locator(sel).nth(i).click(); await p.waitForTimeout(900); }
+  }
+  ck('the cycle bar loads a sheet from every choice without a button',
+     await p.evaluate(() => !!HR_RUN || document.getElementById('hr-status').textContent.length > 0));
+  await p.click('#hr-grp-seg button[data-v="staff"]'); await p.waitForTimeout(900);
   const TABS = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs'];
   let pressed = 0;
   const pressAll = async (tab, label) => {
@@ -177,8 +186,10 @@ const ck = (m, cond, ctx) => {
 
   // ---- Approve, reopen, discard - on a scratch month ---------------------
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(800);
-  await p.fill('#hr-run-month', '2027-03');
-  await p.evaluate('openPayrollCycle()'); await p.waitForTimeout(1500);
+  await p.evaluate(() => { document.getElementById('hr-run-month').value = '2027-03'; });
+  await p.evaluate('openPayrollCycle()'); await p.waitForTimeout(1200);
+  ck('a month not yet opened waits for its Open button', await p.locator('#hr-run-empty button').isVisible());
+  await p.click('#hr-run-empty button'); await p.waitForTimeout(1500);
   ck('a future month opens as a draft', await p.evaluate(() => HR_RUN && HR_RUN.status === 'draft'));
   p.evaluate('approvePayrollRun()'); await p.waitForSelector('.hr-ask'); await p.click('.hr-ask [data-a="yes"]');
   await p.waitForTimeout(1500);
@@ -189,7 +200,7 @@ const ck = (m, cond, ctx) => {
   p.evaluate('dropPayrollRun()'); await p.waitForSelector('.hr-ask'); await p.click('.hr-ask [data-a="yes"]');
   await p.waitForTimeout(1500);
   ck('Discard draft works from its button', await p.evaluate(async () =>
-     !(await apiCall('/employees/payroll/runs')).rows.some(r => r.month_year === 'March 2027')));
+     !(await apiCall('/employees/payroll/runs')).rows.some(r => r.month_year === 'March 2027' && r.company === 'Infinia')));
   await p.click('.hr-tab[data-tab="leave"]'); await p.waitForTimeout(500);
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(1500);
   ck('after a discard, the tab opens the month afresh instead of a dead sheet',

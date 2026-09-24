@@ -116,9 +116,9 @@ const CYCLE_MONTH = '2026-08';
   // ---- Opening a cycle fills itself in ---------------------------------
   await p.evaluate("hrTab('payroll')");
   await p.waitForTimeout(400);
-  await p.selectOption('#hr-run-company',
-    { label: 'BrowserCo' }).catch(() => {});
-  await p.fill('#hr-run-month', CYCLE_MONTH);
+  await p.evaluate(() => hrPickCompany(HR_COMPANIES.find(c => c.short_name === 'BrowserCo').id));
+  await p.waitForTimeout(800);
+  await p.evaluate(m => { document.getElementById('hr-run-month').value = m; hrSyncBar(); }, CYCLE_MONTH);
   await p.evaluate('openPayrollCycle()');
   await p.waitForTimeout(1800);
 
@@ -147,7 +147,7 @@ const CYCLE_MONTH = '2026-08';
     await p.evaluate(i => loadPayrollRun(i), id); await p.waitForTimeout(900);
     return p.evaluate(e => HR_RUN.lines.find(l => l.emp_no === e), emp);
   };
-  const choose = async (sel, value) => p.selectOption(sel, value);
+  const choose = async (sel, value) => p.evaluate(([s, v]) => { const el = document.querySelector(s); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, value]);
   const ask = async () => {           // answer the page's own question box
     await p.waitForSelector('.hr-ask [data-a="yes"]', { timeout: 5000 });
     await p.click('.hr-ask [data-a="yes"]');

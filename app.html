@@ -143,6 +143,62 @@
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
   .hr-mini { padding: 3px 9px !important; font-size: 12px !important; }
+  /* The cycle bar */
+  .hr-cyclebar { padding: 14px 18px 12px; }
+  .hr-cb-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .hr-cb-group { display: flex; flex-direction: column; gap: 5px; }
+  .hr-cb-label { font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: #8A8178; }
+  .hr-cb-spacer { flex: 1; }
+  .hr-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 8px; overflow: hidden; background: #FBF8F4; }
+  .hr-seg button { border: 0; background: transparent; padding: 7px 14px; font-size: 13px; font-weight: 600;
+                   color: #6B5E55; cursor: pointer; border-right: 1px solid #E4DCD2; }
+  .hr-seg button:last-child { border-right: 0; }
+  .hr-seg button:hover { background: #F4EDE5; }
+  .hr-seg button.on { background: var(--red); color: white; }
+  .hr-month-nav { display: inline-flex; align-items: center; border: 1px solid #E4DCD2; border-radius: 8px; background: white; }
+  .hr-month-nav > button { border: 0; background: transparent; width: 32px; height: 34px; font-size: 20px;
+                           line-height: 1; color: #7A3B33; cursor: pointer; }
+  .hr-month-nav > button:hover { background: #F7F1EA; }
+  .hr-month-label { position: relative; min-width: 150px; text-align: center; font-weight: 700; font-size: 14px;
+                    color: #222; cursor: pointer; padding: 0 6px; border-left: 1px solid #EFE8DF; border-right: 1px solid #EFE8DF;
+                    line-height: 34px; }
+  .hr-month-label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .hr-months { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #F0EAE2;
+               overflow-x: auto; }
+  .hr-mchip { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+              border: 1px solid #EAE3DA; background: #FDFBF8; border-radius: 8px; padding: 6px 12px;
+              cursor: pointer; min-width: 118px; text-align: left; }
+  .hr-mchip:hover { border-color: #D9B6B0; }
+  .hr-mchip.on { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; background: white; }
+  .hr-mchip-m { font-size: 12.5px; font-weight: 700; color: #333; }
+  .hr-mchip-s { font-size: 11px; color: #8A8178; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .hr-mchip-s i { width: 7px; height: 7px; border-radius: 50%; background: #CFC6BC; display: inline-block; }
+  .hr-mchip.approved .hr-mchip-s i { background: #2E7D32; }
+  .hr-mchip.approved .hr-mchip-s { color: #2E6B31; }
+  .hr-mchip.draft .hr-mchip-s i { background: #D9A441; }
+  .hr-mchip.draft .hr-mchip-s { color: #8A6A1F; }
+  .hr-help { font-size: 12px; color: #8A8178; margin: 0 0 10px; }
+  .hr-empty { text-align: center; padding: 34px 20px; }
+  .hr-empty-t { font-size: 15px; font-weight: 700; color: #333; }
+  .hr-empty-s { font-size: 12.5px; color: #8A8178; margin: 6px 0 14px; }
+  .hr-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+              line-height: 34px; color: #8A8178; }
+  .hr-state i { width: 8px; height: 8px; border-radius: 50%; background: #CFC6BC; display: inline-block; }
+  .hr-state.approved { color: #2E6B31; } .hr-state.approved i { background: #2E7D32; }
+  .hr-state.draft { color: #8A6A1F; } .hr-state.draft i { background: #D9A441; }
+  .hr-seg-form { flex-wrap: wrap; max-width: 100%; }
+  .hr-seg-form button { padding: 8px 12px; font-size: 12.5px; }
+  .hr-seg-form button:disabled { opacity: .55; cursor: default; }
+  .hr-find { position: relative; }
+  .hr-find input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
+                   border-radius: 7px; font-size: 13.5px; }
+  .hr-find input:focus { outline: none; border-color: var(--red); }
+  .hr-find-list { display: none; position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 3px);
+                  background: white; border: 1px solid #E4DCD2; border-radius: 8px; max-height: 260px; overflow-y: auto;
+                  box-shadow: 0 10px 28px rgba(0,0,0,.12); min-width: 240px; }
+  .hr-find-list > div { padding: 7px 11px; font-size: 13px; cursor: pointer; }
+  .hr-find-list > div.on, .hr-find-list > div:hover { background: #F7F1EA; }
+  .hr-find-none { color: #999; cursor: default !important; }
   .hr-progress { border: 1px solid #EADFD2; background: #FCF9F4; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
   .hr-progress-top { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; color: #555; }
   .hr-progress-top b { color: #222; }
@@ -2475,35 +2531,50 @@
 
           <!-- ---- Salary cycle ---------------------------------------->
           <div class="hr-pane" id="hrpane-payroll">
-            <div class="card">
-              <h2>Salary Cycle</h2>
-              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Company</span><select id="hr-run-company" style="width:200px;" onchange="openPayrollCycle()"></select></label>
-                <label class="hr-field"><span>Statement</span><select id="hr-run-group" style="width:190px;" title="Which statement" onchange="openPayrollCycle()">
-                  <option value="staff">Office staff</option>
-                  <option value="local">Local &amp; household staff</option>
-                </select></label>
-                <label class="hr-field"><span>Month</span><input type="month" id="hr-run-month" style="width:160px;" onchange="openPayrollCycle()"></label>
-
-                <span style="font-size:12px; color:#888;">
-                  Pick a company and month and the sheet loads, filled from everything on file -
-                  salary, absences, additions and deductions, and each loan's instalment.</span>
-              </div>
-              <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
-                <label style="font-size:12px; font-weight:bold; color:#555;">Saved cycles</label>
-                <select id="hr-run-pick" style="width:340px;" onchange="loadPayrollRun(this.value)"></select>
+            <!-- Which sheet is open: company, statement and month, chosen with
+                 one click each, and the months before it with their standing. -->
+            <div class="card hr-cyclebar">
+              <div class="hr-cb-row">
+                <div class="hr-cb-group">
+                  <span class="hr-cb-label">Company</span>
+                  <div class="hr-seg" id="hr-co-seg"></div>
+                </div>
+                <div class="hr-cb-group">
+                  <span class="hr-cb-label">Statement</span>
+                  <div class="hr-seg" id="hr-grp-seg">
+                    <button data-v="staff" onclick="hrPickGroup('staff')">Office staff</button>
+                    <button data-v="local" onclick="hrPickGroup('local')">Local &amp; household</button>
+                  </div>
+                </div>
+                <div class="hr-cb-group">
+                  <span class="hr-cb-label">Month</span>
+                  <div class="hr-month-nav">
+                    <button onclick="hrStepMonth(-1)" title="Previous month" aria-label="Previous month">&#8249;</button>
+                    <label class="hr-month-label"><span id="hr-month-label"></span>
+                      <input type="month" id="hr-run-month" onchange="openPayrollCycle()" aria-label="Choose month"></label>
+                    <button onclick="hrStepMonth(1)" title="Next month" aria-label="Next month">&#8250;</button>
+                  </div>
+                </div>
+                <div class="hr-cb-group" style="justify-content:flex-end;">
+                  <span id="hr-month-state" class="hr-state"></span>
+                </div>
+                <div class="hr-cb-spacer"></div>
                 <button class="btn btn-dark" onclick="previewConsolidated()">Consolidated statement</button>
               </div>
+
+              <!-- The choices themselves, kept for the code that reads them. -->
+              <select id="hr-run-company" hidden></select>
+              <select id="hr-run-group" hidden><option value="staff">Office staff</option><option value="local">Local</option></select>
+              <select id="hr-run-pick" hidden></select>
             </div>
 
+            <div class="card hr-empty" id="hr-run-empty" style="display:none;"></div>
             <div class="card" id="hr-run-card" style="display:none;">
               <h2 id="hr-run-title">Cycle</h2>
               <div id="hr-run-notice" class="status-msg warn" style="display:none;"></div>
               <div id="hr-run-progress" class="hr-progress" style="display:none;"></div>
-              <p id="hr-run-help" style="font-size:12px; color:#888; margin:0 0 10px;">
-                The sheet fills itself from Absence and Additions &amp; Deductions every time it is
-                opened - change a figure there and it follows here. Only the loan instalment and the
-                remark are typed on the sheet.</p>
+              <p id="hr-run-help" class="hr-help">Filled from Absence and Additions &amp; Deductions.
+                Only the loan instalment and the remark are typed here.</p>
               <div class="form-row" style="gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" id="hr-save-btn" onclick="savePayrollRun()">Save</button>
                 <button class="btn btn-gray" id="hr-approve-btn" onclick="approvePayrollRun()">Approve &amp; lock</button>
@@ -2587,7 +2658,7 @@
               <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:8px; align-items:flex-end;">
                 <label class="hr-field"><span>IBAN</span><input type="text" id="hr-e-iban" style="width:230px;"></label>
                 <label class="hr-field"><span>End of service</span><select id="hr-e-scheme" style="width:190px;" onchange="hrSchemeChanged()">
-                  <option value="gratuity">Gratuity</option><option value="pension">GPSSA pension (national)</option>
+                  <option value="gratuity">Gratuity</option><option value="pension">GPSSA pension</option><option value="none">No gratuity</option>
                 </select></label>
                 <label class="hr-field" id="hr-e-pension-f"><span>Pension / month</span><input type="number" id="hr-e-pension" style="width:130px;" step="0.01"></label>
                 <label class="hr-field"><span>Paid on</span><select id="hr-e-group" style="width:190px;">
@@ -2647,6 +2718,7 @@
                   <option value="holiday">Company holiday / day off</option>
                   <option value="paid_leave">Paid leave (other)</option>
                 </select></label>
+                <div style="flex-basis:100%; height:0;"></div>
                 <label class="hr-field"><span>From</span><input type="date" id="hr-leave-from" style="width:150px;" onchange="hrLeaveRangeChanged()"></label>
                 <label class="hr-field"><span>To <em style="font-weight:400;">(blank = one day)</em></span><input type="date" id="hr-leave-to" style="width:150px;" onchange="hrLeaveRangeChanged()"></label>
                 <label style="font-size:12.5px; color:#555; padding-bottom:9px;" id="hr-leave-half-l">
@@ -11010,6 +11082,8 @@ async function loadHrScreen() {
   const opts = HR_COMPANIES.map(c =>
     `<option value="${c.id}">${escapeHtml(c.short_name || c.name)}</option>`).join("");
   document.getElementById("hr-run-company").innerHTML = opts;
+  if (!document.getElementById("hr-run-company").value && HR_COMPANIES[0])
+    document.getElementById("hr-run-company").value = HR_COMPANIES[0].id;
   document.getElementById("hr-e-company").innerHTML = opts;
   document.getElementById("hr-n-company").innerHTML = opts;
   document.getElementById("hr-staff-company").innerHTML =
@@ -11022,6 +11096,7 @@ async function loadHrScreen() {
   try { HR_STAFF = (await apiCall("/employees/staff")).rows || []; } catch (e) { HR_STAFF = []; }
   hrFillStaffPickers();
   hrItemDirChanged();
+  hrNoDropdowns();
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   for (const id of ["hr-run-month", "hr-leave-month", "hr-items-month", "hr-item-month"]) {
@@ -11036,9 +11111,46 @@ async function loadHrScreen() {
 
 // ---- Salary cycle ----------------------------------------------------
 
+function hrPickCompany(id) {
+  document.getElementById("hr-run-company").value = id;
+  hrSyncBar(); openPayrollCycle();
+}
+function hrPickGroup(g) {
+  document.getElementById("hr-run-group").value = g;
+  hrSyncBar(); openPayrollCycle();
+}
+function hrStepMonth(n) {
+  const el = document.getElementById("hr-run-month");
+  const [y, m] = (el.value || hrToday().slice(0, 7)).split("-").map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  hrSyncBar(); openPayrollCycle();
+}
+function hrPickMonth(v) {
+  document.getElementById("hr-run-month").value = v;
+  hrSyncBar(); openPayrollCycle();
+}
+
+// The bar shows what is chosen, and the months around it for this company
+// and statement: approved, in draft, or not started.
+function hrSyncBar() {
+  const co = document.getElementById("hr-run-company").value;
+  const grp = document.getElementById("hr-run-group").value || "staff";
+  const month = document.getElementById("hr-run-month").value || hrToday().slice(0, 7);
+  document.getElementById("hr-co-seg").innerHTML = HR_COMPANIES.map(c =>
+    `<button class="${String(c.id) === String(co) ? "on" : ""}" onclick="hrPickCompany(${c.id})">${escapeHtml(c.short_name || c.name)}</button>`).join("");
+  document.querySelectorAll("#hr-grp-seg button").forEach(b => b.classList.toggle("on", b.dataset.v === grp));
+  document.getElementById("hr-month-label").textContent = hrCycleName(month);
+  const st = HR_RUN && HR_RUN.month_year === hrCycleName(month) ? HR_RUN.status : "";
+  const el = document.getElementById("hr-month-state");
+  el.className = "hr-state " + st;
+  el.innerHTML = st === "approved" ? "<i></i>Approved &amp; locked" : st === "draft" ? "<i></i>Draft - not yet approved" : "";
+}
+
 async function loadRunList() {
   try { HR_RUNS = (await apiCall("/employees/payroll/runs")).rows || []; }
   catch (e) { HR_RUNS = []; }
+  setTimeout(hrSyncBar, 0);
   document.getElementById("hr-run-pick").innerHTML =
     `<option value="">Pick a saved cycle</option>` + HR_RUNS.map(r =>
       `<option value="${r.id}">${escapeHtml(r.company)} - ${escapeHtml(r.month_year)} - ` +
@@ -11053,10 +11165,28 @@ function openPayrollCycle() {
   HR_OPENING = HR_OPENING.then(hrOpenNow, hrOpenNow);
   return HR_OPENING;
 }
-async function hrOpenNow() {
+async function hrOpenNow(force) {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
   if (!month || !company_id) return;
+  // Looking at a month is not opening it. A month with no cycle yet -
+  // other than the current one - waits for the Open button, so stepping
+  // back and forth through the calendar leaves nothing behind.
+  const group = document.getElementById("hr-run-group").value || "staff";
+  const co = HR_COMPANIES.find(c => c.id === company_id) || {};
+  const exists = HR_RUNS.some(r => r.month_year === month && r.company === (co.short_name || co.name)
+                                   && (r.group || "staff") === group);
+  if (force !== true && !exists && document.getElementById("hr-run-month").value !== hrToday().slice(0, 7)) {
+    HR_RUN = null; renderRun();
+    const box = document.getElementById("hr-run-empty");
+    box.style.display = "";
+    box.innerHTML = `<div class="hr-empty-t">${escapeHtml(month)} has not been opened for ${escapeHtml(co.short_name || co.name || "")}</div>
+      <div class="hr-empty-s">Opening it fills the sheet from the staff register, absences, additions and deductions, and loans.</div>
+      <button class="btn btn-primary" onclick="hrOpenNow(true)">Open ${escapeHtml(month)}</button>`;
+    hrSyncBar();
+    return;
+  }
+  document.getElementById("hr-run-empty").style.display = "none";
   try {
     const group = document.getElementById("hr-run-group").value || "staff";
     HR_RUN = await apiCall("/employees/payroll/runs", {
@@ -11173,9 +11303,9 @@ function renderRun() {
   if (!r) { card.style.display = "none"; return; }
   card.style.display = "";
   const locked = r.status === "approved";
+  hrSyncBar();
   document.getElementById("hr-run-title").innerHTML =
-    `${escapeHtml(r.company_short)} - ${escapeHtml(r.month_year)}` +
-    (r.group === "local" ? " - local &amp; household" : "") +
+    `${escapeHtml(r.company_short)} &middot; ${r.group === "local" ? "Local &amp; household" : "Office staff"} &middot; ${escapeHtml(r.month_year)}` +
     ` <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>`;
   document.getElementById("hr-save-btn").style.display = locked ? "none" : "";
   document.getElementById("hr-approve-btn").style.display = locked ? "none" : "";
@@ -11412,7 +11542,8 @@ function renderStaff() {
       ${s.gross ? `<td class="num">${hrMoney(s.basic)}</td><td class="num">${hrMoney(s.allowance)}</td>
                    <td class="num strong">${hrMoney(s.gross)}</td>`
                 : `<td colspan="3" class="hr-nil">salary not on file</td>`}
-      <td class="num">${s.scheme === "pension" ? '<span class="hr-nil">GPSSA</span>' :
+      <td class="num" title="${escapeAttr(s.gratuity_why || "")}">${s.scheme === "pension" ? '<span class="hr-nil">GPSSA</span>' :
+                        s.scheme === "none" ? '<span class="hr-nil">not entitled</span>' :
                         !s.joined_on ? '<span class="hr-nil">-</span>' :
                         s.gratuity ? hrMoney(s.gratuity) : '<span class="hr-nil">under 1 year</span>'}</td>
       <td>${route[s.pay_route] || escapeHtml(s.pay_route)}</td>
@@ -11514,6 +11645,97 @@ async function addCompany() {
     await loadHrScreen();
     hrMsg("ok", `${name} added.`);
   } catch (e) { hrMsg("err", errText(e)); }
+}
+
+// ---- Choices without dropdowns -----------------------------------------
+// Every <select> on the HR screen stays in the page, hidden, as the place
+// its value lives - so none of the code that reads or sets it changes -
+// and is shown instead as buttons (a handful of choices) or, for a list
+// of people, a search box that finds them as a name or code is typed.
+
+function hrBindSelect(sel, render) {
+  const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  Object.defineProperty(sel, "value", {
+    configurable: true,
+    get() { return d.get.call(this); },
+    set(v) { d.set.call(this, v); render(); },
+  });
+  new MutationObserver(render).observe(sel, { childList: true, attributes: true, attributeFilter: ["disabled"] });
+  sel.addEventListener("change", render);
+}
+
+function hrSegmentSelect(sel) {
+  const box = document.createElement("div");
+  box.className = "hr-seg hr-seg-form";
+  sel.after(box);
+  sel.hidden = true;
+  const render = () => {
+    const opts = [...sel.options].filter(o => o.value !== "" || o.textContent !== "Choose...");
+    box.innerHTML = opts.map(o =>
+      `<button type="button" data-v="${escapeAttr(o.value)}" class="${o.value === sel.value ? "on" : ""}"
+         ${sel.disabled ? "disabled" : ""}>${escapeHtml(o.textContent)}</button>`).join("");
+  };
+  box.addEventListener("click", ev => {
+    const b = ev.target.closest("button"); if (!b || sel.disabled) return;
+    sel.value = b.dataset.v;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  hrBindSelect(sel, render);
+  render();
+}
+
+function hrSearchSelect(sel) {
+  const wrap = document.createElement("div");
+  wrap.className = "hr-find";
+  wrap.style.width = sel.style.width || "230px";
+  wrap.innerHTML = `<input type="text" autocomplete="off" spellcheck="false"><div class="hr-find-list"></div>`;
+  sel.after(wrap);
+  sel.hidden = true;
+  const input = wrap.querySelector("input"), list = wrap.querySelector(".hr-find-list");
+  const all = sel.dataset.all;
+  input.placeholder = all ? `${all} - type to find` : "Type a name or code";
+  const label = () => { const o = sel.selectedOptions[0]; return o && o.value ? o.textContent : ""; };
+  const render = () => { if (document.activeElement !== input) input.value = label(); input.disabled = sel.disabled; };
+  let hit = 0;
+  const show = () => {
+    const q = input.value.toLowerCase().trim();
+    const opts = [...sel.options].filter(o => o.value && (!q || o.textContent.toLowerCase().includes(q)));
+    hit = Math.min(hit, Math.max(opts.length - 1, 0));
+    list.innerHTML = (all ? `<div data-v="" class="${hit === -1 ? "on" : ""}">${escapeHtml(all)}</div>` : "") +
+      (opts.map((o, i) => `<div data-v="${escapeAttr(o.value)}" class="${i === hit ? "on" : ""}">${escapeHtml(o.textContent)}</div>`).join("")
+       || `<div class="hr-find-none">Nobody matches</div>`);
+    list.style.display = "block";
+  };
+  const pick = v => {
+    sel.value = v; input.value = label(); list.style.display = "none";
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  input.addEventListener("focus", () => { input.select(); hit = 0; show(); });
+  input.addEventListener("input", () => { hit = 0; show(); });
+  input.addEventListener("keydown", ev => {
+    const rows = [...list.querySelectorAll("div[data-v]")];
+    const base = all ? 1 : 0;
+    if (ev.key === "ArrowDown") { hit = Math.min(hit + 1, rows.length - 1 - base); show(); ev.preventDefault(); }
+    else if (ev.key === "ArrowUp") { hit = Math.max(hit - 1, all ? -1 : 0); show(); ev.preventDefault(); }
+    else if (ev.key === "Enter") { const r = rows[hit + base]; if (r) pick(r.dataset.v); ev.preventDefault(); }
+    else if (ev.key === "Escape") { input.value = label(); list.style.display = "none"; }
+  });
+  list.addEventListener("mousedown", ev => { const r = ev.target.closest("div[data-v]"); if (r) { ev.preventDefault(); pick(r.dataset.v); } });
+  input.addEventListener("blur", () => setTimeout(() => {
+    list.style.display = "none";
+    if (!input.value.trim() && all) { if (sel.value) pick(""); } else input.value = label();
+  }, 120));
+  hrBindSelect(sel, render);
+  render();
+}
+
+function hrNoDropdowns() {
+  document.querySelectorAll("#screen-hrpayroll select:not([hidden])").forEach(sel => {
+    if (sel.dataset.done) return;
+    sel.dataset.done = "1";
+    if (sel.classList.contains("hr-staff-pick")) hrSearchSelect(sel);
+    else hrSegmentSelect(sel);
+  });
 }
 
 // ---- Shared -----------------------------------------------------------

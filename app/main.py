@@ -7331,24 +7331,85 @@ def _service_years(e, upto=None):
     return max((end - e.joined_on).days / 365.25, 0.0)
 
 
-def gratuity_for(e, upto=None):
-    """What this worker has accrued in end-of-service, today.
+def _unpaid_days(db, e, upto):
+    """Days of unpaid absence up to a date - which do not count as service."""
+    if db is None or not e.joined_on:
+        return 0.0
+    rows = (db.query(models.StaffLeave)
+              .filter(models.StaffLeave.employee_id == e.id,
+                      models.StaffLeave.on_date >= e.joined_on,
+                      models.StaffLeave.on_date <= upto).all())
+    by_month = {}
+    for l in rows:
+        by_month.setdefault((l.on_date.year, l.on_date.month), []).append(l)
+    total = 0.0
+    for (y, m), ls in by_month.items():
+        # The whole month is judged, so the paid sick day is counted the
+        # way the salary counted it.
+        a = date(y, m, 1)
+        b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
+        for l, _, unpaid, _ in _judge_days(_month_rows(db, e.id, a, b)):
+            if l.on_date <= upto:
+                total += unpaid
+    return round(total, 2)
 
-    On the basic wage, not the gross - which is why basic and allowance
-    are held separately and why an increment that goes to the allowance
-    leaves this figure alone. Nationals contribute to GPSSA instead and
-    accrue nothing here.
+
+def gratuity_detail(e, db=None, upto=None):
+    """End-of-service gratuity to date, and how it is worked out.
+
+    UAE Federal Decree-Law 33 of 2021, article 51, for a full-time
+    employee who has served at least a year: 21 days' basic wage for each
+    of the first five years, 30 days for each year after, in proportion
+    for part of a year, never more than two years' wage in total.
+
+    Where the law leaves a choice, the one that costs the company less is
+    taken, and each is still within the law:
+      * a day's wage is the basic x 12 / 365, not the basic / 30;
+      * days of unpaid absence are not service and are taken out;
+      * the two-year cap is two years of the basic.
+    Gratuity is on the basic wage only, which is why a rise put on the
+    allowance leaves it where it is. Nationals on GPSSA, and anyone
+    marked as not entitled (staff paid in cash), accrue none.
     """
-    if (e.scheme or "gratuity") != "gratuity":
-        return 0.0
-    y = _service_years(e, upto)
-    if y < GRATUITY_MIN_YEARS:
-        return 0.0
-    daily = (e.basic_salary or 0) / 30.0
-    first = min(y, 5) * GRATUITY_DAYS_FIRST_5 * daily
-    rest = max(y - 5, 0) * GRATUITY_DAYS_AFTER_5 * daily
-    # Capped at two years' total wage, as the law provides.
-    return round(min(first + rest, (_gross(e) or 0) * 24), 2)
+    scheme = e.scheme or "gratuity"
+    out = {"amount": 0.0, "entitled": scheme == "gratuity", "scheme": scheme,
+           "service_days": 0, "unpaid_days": 0.0, "years": 0.0, "daily": 0.0,
+           "days": 0.0, "capped": False, "why": ""}
+    if scheme != "gratuity":
+        out["why"] = "GPSSA pension instead" if scheme == "pension" else "Not entitled"
+        return out
+    if not e.joined_on:
+        out["why"] = "No joining date on file"
+        return out
+    end = upto or _dubai_today()
+    if e.terminated_on and e.terminated_on < end:
+        end = e.terminated_on
+    service = max((end - e.joined_on).days + 1, 0)
+    unpaid = _unpaid_days(db, e, end)
+    years = max(service - unpaid, 0) / 365.0
+    basic = e.basic_salary or 0
+    daily = basic * 12 / 365.0
+    out.update(service_days=service, unpaid_days=unpaid, years=round(years, 3),
+               daily=round(daily, 2))
+    if years < GRATUITY_MIN_YEARS:
+        out["why"] = "Under one year's service"
+        return out
+    days = min(years, 5) * GRATUITY_DAYS_FIRST_5 + max(years - 5, 0) * GRATUITY_DAYS_AFTER_5
+    amount = days * daily
+    cap = basic * 24
+    out["days"] = round(days, 2)
+    if amount > cap:
+        amount, out["capped"] = cap, True
+    out["amount"] = round(amount, 2)
+    out["why"] = (f"{years:.2f} yrs x {'21' if years <= 5 else '21/30'} days = {days:.1f} days"
+                  f" x {daily:,.2f} a day (basic {basic:,.0f} x 12 / 365)"
+                  + (f", {unpaid:g} unpaid day(s) not counted" if unpaid else "")
+                  + (", capped at two years' basic" if out["capped"] else ""))
+    return out
+
+
+def gratuity_for(e, upto=None, db=None):
+    return gratuity_detail(e, db, upto)["amount"]
 
 
 def _staff_dict(e, db=None):
@@ -7369,7 +7430,8 @@ def _staff_dict(e, db=None):
         "notice_days": e.notice_days or 30,
         "terminated_on": e.terminated_on.isoformat() if e.terminated_on else "",
         "years": round(_service_years(e), 2),
-        "gratuity": gratuity_for(e),
+        "gratuity": (g := gratuity_detail(e, db))["amount"],
+        "gratuity_why": g["why"], "gratuity_entitled": g["entitled"],
         "active": e.active,
     }
 
@@ -7385,7 +7447,7 @@ def list_staff(company_id: int = None, include_left: bool = False,
         q = q.filter(models.Employee.active == True)  # noqa: E712
     rows = q.order_by(models.Employee.emp_no).all()
     return {"rows": [_staff_dict(e, db) for e in rows],
-            "total_gratuity": round(sum(gratuity_for(e) for e in rows), 2)}
+            "total_gratuity": round(sum(gratuity_for(e, db=db) for e in rows), 2)}
 
 
 @app.post("/employees/staff")
@@ -7410,6 +7472,9 @@ def add_staff(payload: dict = Body(...), db: Session = Depends(get_db),
     if not _as_date(payload.get("joined_on")):
         raise HTTPException(status_code=400,
             detail="A joining date is needed - service and gratuity run from it.")
+    # Staff paid in cash are not given gratuity - the house rule.
+    if not payload.get("scheme"):
+        payload["scheme"] = "none" if (payload.get("pay_route") or "") == "cash" else "gratuity"
     e = models.Employee(emp_no=emp_no, name=name,
                          trade=(payload.get("designation") or "").strip(),
                          pay_type="fixed", staff=True, active=True)
@@ -8581,6 +8646,13 @@ def _migrate_hr(db):
         if not l.pay_rule:
             l.pay_rule = "paid" if l.paid else "unpaid"
         changed = True
+    if get_setting(db, "hr_cash_no_gratuity") != "1":
+        for e in db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
+                                                  models.Employee.pay_route == "cash").all():
+            if (e.scheme or "gratuity") == "gratuity":
+                e.scheme = "none"
+        put_setting(db, "hr_cash_no_gratuity", "1")
+        changed = True
     if get_setting(db, "hr_items_migrated") != "1":
         for r in db.query(models.PayrollRun).all():
             for ln in r.lines:
@@ -9429,7 +9501,7 @@ def _staff_parts(db):
              "Company": s["company"], "Designation": s["designation"] or "-",
              "Joining Date": _dmy(_as_date(s["joined_on"])) if s["joined_on"] else "-",
              "Years": s["years"], "Basic": s["basic"], "Fix Allown.": s["allowance"],
-             "Gross": s["gross"], "Scheme": (s["scheme"] or "gratuity").title(),
+             "Gross": s["gross"], "Scheme": {"gratuity": "Gratuity", "pension": "GPSSA", "none": "Not entitled"}.get(s["scheme"] or "gratuity", s["scheme"]),
              "Gratuity To Date": s["gratuity"], "Paid By": (s["pay_route"] or "wps").upper()}
             for i, s in enumerate(d["rows"], 1)]
     sub = (f"{len(rows)} staff   |   Monthly payroll "
