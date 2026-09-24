@@ -112,6 +112,10 @@
   .hr-cycle td { padding: 5px 4px; font-size: 12.5px; }
   .hr-cycle th { padding: 8px 4px; }
   .hr-cycle td.txt { line-height: 1.25; }
+  .hr-cycle textarea.hr-rem { width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 12.5px; line-height: 1.35;
+     border: 1px solid #E4E0DB; border-radius: 4px; background: #FFFDFB; resize: none; overflow: hidden; font-family: inherit; }
+  .hr-cycle textarea.hr-rem:focus { outline: none; border-color: var(--red); background: white; }
+  .hr-todate { color: #2E7D32; }
   .hr-cycle input.hr-amt, .hr-cycle input.hr-rem {
      width: 100%; box-sizing: border-box; padding: 4px 4px; font-size: 12px;
      border: 1px solid #E4E0DB; border-radius: 4px; background: #FFFDFB; }
@@ -2593,15 +2597,15 @@
                   <thead><tr>
                     <th style="width:5%;">Code</th>
                     <th class="txt" style="width:16%;">Employee</th>
-                    <th class="num" style="width:9%;">Basic</th>
-                    <th class="num" style="width:9%;">Fix Allown.</th>
+                    <th class="num" style="width:7%;">Basic</th>
+                    <th class="num" style="width:7%;">Fix Allown.</th>
                     <th class="num" style="width:9%;">Add / Ded.</th>
                     <th class="num" style="width:8.5%;">Absent Ded.</th>
                     <th class="num" style="width:10%;">Salary Payable</th>
                     <th class="num" style="width:9%;">Loan</th>
                     <th class="num" style="width:10.5%;">Net Pay</th>
                     <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
-                    <th class="txt" style="width:14%;">Remark</th>
+                    <th class="txt" style="width:18%;">Remark</th>
                   </tr></thead>
                   <tbody id="hr-run-body"></tbody>
                   <tfoot id="hr-run-foot"></tfoot>
@@ -11276,6 +11280,7 @@ function hrLoanCell(l, locked) {
 }
 
 // Typing is easier without the commas; they come back when the box is left.
+function hrGrow(el) { el.style.height = "auto"; el.style.height = (el.scrollHeight + 2) + "px"; }
 function hrAmtFocus(el) { el.value = el.value.replace(/,/g, ""); el.select(); }
 function hrAmtBlur(el) { el.value = hrBox(hrNum(el.value)); }
 // Inside a box a round figure is written without its .00 - 3,000 rather
@@ -11331,29 +11336,19 @@ function renderRun() {
       ${runCell(l, "deduction", locked)}
       <td class="num strong" id="hr-payable-${l.id}">${hrMoney(hrPayable(l))}</td>
       ${hrLoanCell(l, locked)}
-      <td class="num net" id="hr-net-${l.id}">${hrMoney(l.net_pay)}${r.progress && r.progress.running
-        ? `<span class="sub hr-todate" title="Earned up to ${hrDate(r.progress.as_of)}">to date ${hrMoney(l.to_date)}</span>` : ""}</td>
+      <td class="num net" id="hr-net-${l.id}" title="${r.progress && r.progress.running ? `Earned to ${hrDate(r.progress.as_of)}; ${hrMoney(l.net_pay)} for the full month` : ""}">${
+        r.progress && r.progress.running ? `<span class="hr-todate">${hrMoney(l.to_date)}</span>` : hrMoney(l.net_pay)}</td>
       ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
       <td class="txt">${locked ? `<span class="hr-remark">${escapeHtml(remark)}</span>` :
-        `<input type="text" class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks"
-                value="${escapeAttr(remark)}" title="${escapeAttr(remark)}" oninput="recalcLine(${l.id})"
-                onchange="hrAutoSave()">`}</td>
+        `<textarea class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks" rows="1"
+                oninput="recalcLine(${l.id}); hrGrow(this)" onchange="hrAutoSave()">${escapeHtml(remark)}</textarea>`}</td>
     </tr>`; }).join("");
   renderRunFoot();
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route);
   // The month so far, as the labour live card shows it: how far in we
   // are, and what the staff have earned up to today.
-  const pg = document.getElementById("hr-run-progress");
-  const p = r.progress;
-  if (p && p.running) {
-    pg.style.display = "";
-    pg.innerHTML = `<div class="hr-progress-top"><b>${escapeHtml(r.month_year)} in progress</b>
-        <span>Day ${p.day} of ${p.days} - to ${hrDate(p.as_of)}</span>
-        <span>Earned so far <b>${hrMoney(p.to_date)}</b> of ${hrMoney(r.totals.net_pay + r.totals.loan_deduction)} for the month</span></div>
-      <div class="hr-bar"><div style="width:${p.pct}%"></div></div>
-      <div class="hr-progress-note">"To date" under each net pay is the salary earned up to today, less absences recorded,
-        plus additions entered so far. The loan instalment comes off at the month end.</div>`;
-  } else pg.style.display = "none";
+  document.getElementById("hr-run-progress").style.display = "none";
+  document.querySelectorAll("#hr-run-body textarea.hr-rem").forEach(hrGrow);
 }
 
 // The figures at the foot are the figures in the rows added up, worked
@@ -11386,7 +11381,8 @@ function recalcLine(id) {
   // Pension is printed beside net pay, never added into it.
   l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
   document.getElementById(`hr-payable-${id}`).textContent = hrMoney(hrPayable(l));
-  document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
+  if (!(HR_RUN.progress && HR_RUN.progress.running))
+    document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
   const routes = {};
   HR_RUN.lines.forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
