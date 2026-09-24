@@ -123,5 +123,40 @@ plain = c.get(base + '&format=pdf')
 ptext = ' '.join((p.extract_text() or '') for p in PdfReader(io.BytesIO(plain.content)).pages)
 ck('the ordinary export has no Notes column', plain.status_code == 200 and 'ILOE insurance' not in ptext)
 
+# ---- Preview: the same sheet, before it is a file ---------------------
+# A report that can only be checked by downloading it, opening it and
+# then deleting it again does not get checked.
+import sys as _sys
+_sys.path.insert(0, '.')
+import export_web
+pv = c.get(base.replace('/custom-report?', '/custom-report/view?') + '&monthly=1')
+ck('the monthly report previews on screen', pv.status_code == 200, pv.status_code)
+body = pv.text
+ck('the preview carries the Infinia logo', 'data:image/png;base64,' in body)
+ck('and the letterhead', 'INFINIA CONTRACTING LLC' in body)
+ck('and the report title the file uses', 'Monthly Payroll Report' in body)
+ck('with PDF, Excel and Print on it',
+   'format=pdf' in body and 'format=excel' in body and 'window.print()' in body)
+ck('the figures are the ones in the file',
+   'ILOE insurance renewed' in body and 'Parking fine' in body)
+ck('and the total is on it', 'TOTAL' in body)
+
+# The preview and the file must agree which way up the page goes.
+from pypdf import PdfReader as _PR
+box = _PR(io.BytesIO(c.get(base + '&format=pdf&monthly=1').content)).pages[0].mediabox
+pdf_turn = 'landscape' if box.width > box.height else 'portrait'
+pv_turn = 'portrait' if 'width:210mm' in body else 'landscape'
+ck('the preview is the same way up as the printed copy', pdf_turn == pv_turn,
+   f'{pdf_turn} vs {pv_turn}')
+
+# And the spreadsheet comes off a printer as a report, not a mess.
+ws2 = openpyxl.load_workbook(io.BytesIO(c.get(base + '&format=excel&monthly=1').content)).active
+ck('the spreadsheet is set to A4', int(ws2.page_setup.paperSize or 0) == 9,
+   ws2.page_setup.paperSize)
+ck('fitted to one page wide',
+   bool(ws2.page_setup.fitToWidth) and bool(ws2.sheet_properties.pageSetUpPr.fitToPage))
+ck('with the heading row repeated on later pages', bool(ws2.print_title_rows),
+   ws2.print_title_rows)
+
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED: ' + '; '.join(FAIL)))
 sys.exit(1 if FAIL else 0)

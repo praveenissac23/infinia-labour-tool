@@ -1102,6 +1102,7 @@
               <input type="date" id="report-date-to" onchange="loadReports()">
             </span>
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
+            <button class="btn btn-dark" onclick="exportReportTable('view')">Preview</button>
             <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
             <button class="btn btn-monthly" id="monthly-report-btn" onclick="switchScreen('monthly'); openMonthlyReport();"
@@ -1165,6 +1166,7 @@
               <option value="Prime Infinia">Prime Infinia</option>
             </select>
             <button class="btn btn-primary" onclick="saveAllMonthlyNotes()" title="Notes also save on their own as you leave each box">Save notes</button>
+            <button class="btn btn-dark" onclick="exportReportTable('view')">Preview</button>
             <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
           </div>
@@ -4232,10 +4234,15 @@ function exportReportTable(fmt) {
   // Export must cover the SAME period as the preview - previously it
   // always exported the whole cycle, silently ignoring a date range.
   const company = (document.getElementById("report-company") || {}).value || "";
-  let url = `${API}/export/${encodeURIComponent(cycle)}/custom-report?token=${encodeURIComponent(cachedDownloadToken)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}&format=${fmt}`;
+  // "view" opens the sheet on screen first, with its own PDF, Excel and
+  // Print buttons on it - the same document, before it is a file to
+  // find in Downloads and delete again.
+  const path = fmt === "view" ? "custom-report/view" : "custom-report";
+  let url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
+  if (fmt !== "view") url += `&format=${fmt}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
   // The monthly report prints under its own title, with the notes.
-  if (monthlyMode && fmt === "pdf") url += "&monthly=1";
+  if (monthlyMode && (fmt === "pdf" || fmt === "view")) url += "&monthly=1";
   let periodText = cycleLabel(cycle);
   if (reportMode() === "range") {
     const f = document.getElementById("report-date-from").value;
@@ -4245,7 +4252,9 @@ function exportReportTable(fmt) {
     periodText = `${f} to ${t}`;
   }
   window.open(url, "_blank");
-  showStatus(monthlyStatus(), "ok", `Opening ${fmt.toUpperCase()} for ${periodText}.`);
+  showStatus(monthlyStatus(), "ok",
+    fmt === "view" ? `Opening the report for ${periodText}.`
+                   : `Opening ${fmt.toUpperCase()} for ${periodText}.`);
 }
 
 // A cycle's own start/end dates - used to seed the date range when

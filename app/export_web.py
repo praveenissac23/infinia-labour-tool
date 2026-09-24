@@ -241,7 +241,16 @@ STORE_LABELS = {
 
 
 def _store_label(k):
-    return STORE_LABELS.get(k, k.replace("_", " ").title())
+    """The heading for a column key.
+
+    A key that is already a heading - "Basic Pay", "OT Hours" - is left
+    exactly as it is. Title-casing it turned "Total (AED)" into
+    "Total (Aed)" and "OT Hours" into "Ot Hours"."""
+    if k in STORE_LABELS:
+        return STORE_LABELS[k]
+    if " " in k or (k != k.lower() and "_" not in k):
+        return k
+    return k.replace("_", " ").title()
 
 
 def _clean_qty(v):
@@ -272,27 +281,82 @@ def col_align(key, rows):
 
     The heading used to be centred on every column while the cells under
     it went left or right by type, so a report read as though it had
-    been laid out twice by two different people.
+    been laid out twice by two different people. Centred now, heading
+    and contents together, matching the tables on the screen the
+    figures were checked on.
 
-    Centred, to match the report tables on the screen the figures were
-    checked on - the printed copy and the screen should not be two
-    different documents. The one exception is a cell that genuinely runs
-    on: a site breakdown listing four sites, a remark of a sentence or
-    two. Centring those leaves a ragged block nobody can read down, so
-    they sit flush left and their heading goes with them.
-
-    Returns "L" or "C".
+    Kept as one function so there is one place to change it, rather than
+    the rule being spelled out again in the PDF, the spreadsheet and the
+    preview and drifting apart between them.
     """
-    vals = [r.get(key) for r in rows]
-    seen = [v for v in vals if v not in (None, "", "-")]
-    if any(isinstance(v, dict) for v in seen):
-        return "L"
-    if any(isinstance(v, str) and "\n" in v for v in seen):
-        return "L"
-    longest = max((len(str(v)) for v in seen if isinstance(v, str)), default=0)
-    if longest > 38:
-        return "L"
     return "C"
+
+
+# ---- A4, the way round that fits ------------------------------------
+# A report is printed and handed to somebody, so it has to come off the
+# printer whole. Few columns stand up on a portrait page and waste less
+# paper; many columns need the page on its side or the text is squeezed
+# to nothing. Rather than every report having to declare which, the
+# shape of the data decides.
+PORTRAIT_MAX_COLS = 6          # six columns still read on a portrait A4
+PORTRAIT_MAX_WIDTH = 78        # ...unless they carry long text
+
+
+def choose_orientation(rows, cols=None):
+    """"portrait" or "landscape", from the shape of the report."""
+    cols = list(cols if cols is not None else (list(rows[0].keys()) if rows else []))
+    if not cols:
+        return "portrait"
+    if len(cols) > PORTRAIT_MAX_COLS:
+        return "landscape"
+    # A few wide columns - a material name plus a remark plus a site
+    # list - need the same room as many narrow ones.
+    width = 0
+    for c in cols:
+        seen = [str(r.get(c)) for r in rows if r.get(c) not in (None, "")]
+        longest = max((len(x) for x in seen), default=0)
+        width += max(len(_store_label(c)), min(longest, 40))
+    return "landscape" if width > PORTRAIT_MAX_WIDTH else "portrait"
+
+
+def _page_size(orientation):
+    return landscape(A4) if orientation == "landscape" else A4
+
+
+def print_ready(ws, orientation="landscape", header_row=None, last_col=None,
+                last_row=None, title=None):
+    """Set a sheet up so Ctrl-P gives the report, not a mess.
+
+    A spreadsheet that prints across nine pages with the headings only
+    on the first is not a report anybody can hand over. Every sheet the
+    app produces is therefore set to A4, fitted to the width of one
+    page, centred on it, with a margin to hold and the heading row
+    repeated at the top of every page.
+    """
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = ("landscape" if orientation == "landscape" else "portrait")
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    if ws.sheet_properties.pageSetUpPr is None:
+        from openpyxl.worksheet.properties import PageSetupProperties
+        ws.sheet_properties.pageSetUpPr = PageSetupProperties()
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.page_margins.left = ws.page_margins.right = 0.3
+    ws.page_margins.top = 0.5
+    ws.page_margins.bottom = 0.4
+    ws.page_margins.header = ws.page_margins.footer = 0.2
+    # The heading row again at the top of page two and page nine, or a
+    # long report becomes columns of unlabelled numbers.
+    if header_row:
+        ws.print_title_rows = f"1:{header_row}"
+    if last_col and last_row:
+        ws.print_area = f"A1:{get_column_letter(last_col)}{last_row}"
+    # Which report this is, and which page of it, on every sheet.
+    ws.oddFooter.center.text = (title or ws.title) + "  -  Page &P of &N"
+    ws.oddFooter.center.size = 8
+    ws.oddFooter.center.color = "808080"
+    return ws
 
 
 def _cycle_dates(month_year):
@@ -820,6 +884,31 @@ def _report_row_value(item, key):
     return getattr(item, key, "")
 
 
+def report_table_rows(items, column_keys):
+    """The Report Builder's picked columns as plain rows.
+
+    Turned into ordinary rows so the builder's report goes through the
+    same PDF, spreadsheet and preview as every other report in the app,
+    rather than through a layout of its own that drifts away from them.
+
+    Returns the rows and the names of the money columns, which are the
+    ones worth a total at the foot.
+    """
+    cols = [(k, *REPORT_COLUMNS_META.get(k, (k, "text")))
+            for k in column_keys if k in REPORT_COLUMNS_META]
+    rows = []
+    for item in items:
+        row = {}
+        for key, label, kind in cols:
+            v = _report_row_value(item, key)
+            if kind in ("money", "num"):
+                row[label] = float(v or 0)
+            else:
+                row[label] = str(v) if v not in (None, "") else "-"
+        rows.append(row)
+    return rows, [label for _, label, kind in cols if kind == "money"]
+
+
 def build_report_table_excel(items, column_keys, cycle_label):
     wb = Workbook()
     ws = wb.active
@@ -1046,6 +1135,38 @@ def _column_widths(cols, avail):
     return widths
 
 
+def generic_result_rows(result_dict):
+    """A built report's columns and rows as plain rows keyed by heading.
+
+    So the Report Builder's output goes through the same PDF,
+    spreadsheet and preview as everything else, instead of a third
+    layout that drifts away from the other two.
+
+    Returns the rows and the names of the money columns.
+    """
+    cols = result_dict.get("columns") or []
+    def money(key):
+        k = key.lower()
+        return "cost" in k or "amount" in k or "salary" in k or "pay" in k
+    def numeric(key):
+        k = key.lower()
+        return not (k.startswith("dim_")
+                    or k in ("adjustments", "notes", "adjustments_notes")
+                    or "reason" in k)
+    rows = []
+    for r in result_dict.get("rows") or []:
+        row = {}
+        for cdef in cols:
+            key, label = cdef["key"], cdef["label"]
+            v = r.get(key)
+            if numeric(key) and isinstance(v, (int, float)) and not isinstance(v, bool):
+                row[label] = float(v)
+            else:
+                row[label] = str(v) if v not in (None, "") else "-"
+        rows.append(row)
+    return rows, [cdef["label"] for cdef in cols if money(cdef["key"])]
+
+
 def build_generic_result_pdf(result_dict, cycle_label, title=None, notes=None, subtitle=None):
     cols = result_dict["columns"]
     styles = getSampleStyleSheet()
@@ -1165,7 +1286,7 @@ def _esc(s):
 # ---------------------------------------------------------------------
 # STORE / INVENTORY EXPORTS
 # ---------------------------------------------------------------------
-def build_store_report_excel(title, rows, subtitle=""):
+def build_store_report_excel(title, rows, subtitle="", orientation=None, money_cols=None):
     """
     Any store report as a formatted sheet: company header, report title,
     the period it covers, bordered auto-width columns, and a totals row
@@ -1201,7 +1322,7 @@ def build_store_report_excel(title, rows, subtitle=""):
         wb.save(buf); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
-    money_like = _is_money
+    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
     # The same one alignment per column the PDF uses, heading included.
     aligns = {k: col_align(k, rows) for k in cols}
     excel_align = {"L": "left", "C": "center", "R": "right"}
@@ -1262,11 +1383,8 @@ def build_store_report_excel(title, rows, subtitle=""):
     for i, k in enumerate(cols, start=1):
         width = max(len(str(_store_label(k))) + 4, *(len(str(row.get(k, ""))) + 3 for row in rows))
         ws.column_dimensions[get_column_letter(i)].width = min(max(width, 10), 40)
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_options.horizontalCentered = True
+    print_ready(ws, orientation or choose_orientation(rows, cols),
+                header_row=header_row, last_col=len(cols), last_row=r - 1, title=title)
 
     buf = io.BytesIO()
     for _ws in wb.worksheets:
@@ -1274,9 +1392,17 @@ def build_store_report_excel(title, rows, subtitle=""):
     wb.save(buf); buf.seek(0); return buf
 
 
-def build_store_report_pdf(title, rows, subtitle=""):
+def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_cols=None):
+    """A report as paper.
+
+    The page stands up or lies on its side to suit the report: a short
+    one wastes less paper upright, a wide one is unreadable that way.
+    Callers may force it; left alone, the data decides.
+    """
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=22 * mm, bottomMargin=10 * mm,
+    orientation = orientation or choose_orientation(rows)
+    doc = SimpleDocTemplate(buf, pagesize=_page_size(orientation),
+                             topMargin=22 * mm, bottomMargin=10 * mm,
                              leftMargin=8 * mm, rightMargin=8 * mm)
     styles = getSampleStyleSheet()
     head = ParagraphStyle("H", parent=styles["Normal"], fontSize=8, leading=10,
@@ -1298,7 +1424,11 @@ def build_store_report_pdf(title, rows, subtitle=""):
         doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
-    money_like = _is_money
+    # A caller that knows which of its columns are money says so; the
+    # rest are guessed from the column name. A payroll column called
+    # "Net Pay" is money and no amount of guessing from the word will
+    # say so.
+    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
     # One alignment per column, and the heading takes the same one, so a
     # centred heading never sits over a left-hand column again.
     aligns = {k: col_align(k, rows) for k in cols}

@@ -132,6 +132,39 @@ print(("FAIL preview: " + "; ".join(pv_bad)) if pv_bad
       else "PASS every preview is the sheet that prints, letterhead and all")
 bad += pv_bad
 
+# The page stands up or lies on its side to suit the report, and the
+# preview, the PDF and the spreadsheet must all agree on which - a
+# preview shown upright while the file comes out sideways is not a
+# preview of that file.
+import io as _io
+from pypdf import PdfReader
+from openpyxl import load_workbook
+turn_bad = []
+for k in ["stock", "usage", "by_site", "assets", "hired", "lost", "purchases", "low"]:
+    rows = c.get(f'/store/report?kind={k}', headers=K).json().get('rows', [])
+    if not rows:
+        continue
+    want = export_web.choose_orientation(rows)
+    box = PdfReader(_io.BytesIO(
+        c.get(f'/export/store/report?kind={k}&format=pdf&token={tok}').content)).pages[0].mediabox
+    got_pdf = "landscape" if box.width > box.height else "portrait"
+    pv = c.get(f'/export/store/report/view?kind={k}&token={tok}').text
+    got_pv = "portrait" if "width:210mm" in pv else "landscape"
+    ws = load_workbook(_io.BytesIO(
+        c.get(f'/export/store/report?kind={k}&format=excel&token={tok}').content)).active
+    if got_pdf != got_pv:
+        turn_bad.append(f"{k}: pdf {got_pdf} but preview {got_pv}")
+    # openpyxl hands back an int where its own constant is a string.
+    if int(ws.page_setup.paperSize or 0) != int(ws.PAPERSIZE_A4):
+        turn_bad.append(f"{k}: the sheet is not set to A4")
+    if not (ws.page_setup.fitToWidth and ws.sheet_properties.pageSetUpPr.fitToPage):
+        turn_bad.append(f"{k}: the sheet does not fit the page width")
+    if not ws.print_title_rows:
+        turn_bad.append(f"{k}: the heading row does not repeat on later pages")
+print(("FAIL print setup: " + "; ".join(turn_bad)) if turn_bad
+      else "PASS every report is print-ready, and all three copies agree which way up")
+bad += turn_bad
+
 print()
 print("REPORTS CLEAN" if not bad else f"{len(bad)} PROBLEM(S): {bad}")
 sys.exit(1 if bad else 0)

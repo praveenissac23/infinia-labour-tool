@@ -1517,23 +1517,56 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
             row["adjustments_notes"] = "\n".join(lines) if lines else "-"
 
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    # Through the same builders as every other report in the app, so the
+    # preview, the printed copy and the spreadsheet are one document -
+    # letterheaded, centred, and the right way up for the columns
+    # picked.
+    rows, money = export_web.generic_result_rows(result_dict)
+    title = "Monthly Payroll Report" if monthly else "Salary Report"
+    sub = ((company or "Infinia and Prime Infinia") + "  |  " if monthly else "") + \
+          (f"{export_web._day(date_from)} to {export_web._day(date_to)}"
+           if (date_from and date_to) else f"Wage cycle {month_year}")
+    if format == "rows":
+        return {"rows": rows, "money_cols": money, "title": title, "subtitle": sub}
     if format == "excel":
-        buf = export_web.build_generic_result_excel(result_dict, month_year)
+        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money)
         return StreamingResponse(
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
         )
     elif format == "pdf":
-        title = "Monthly Payroll Report" if monthly else None
-        buf = export_web.build_generic_result_pdf(
-            result_dict, month_year, title=title,
-            subtitle=(company or "Infinia and Prime Infinia") if monthly else None)
+        buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money)
         fname = f"Infinia_Monthly_Report_{safe_name}.pdf" if monthly else f"Infinia_Report_{safe_name}.pdf"
         return StreamingResponse(
             buf, media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={fname}"},
         )
     raise HTTPException(status_code=400, detail="format must be 'excel' or 'pdf'.")
+
+
+@app.get("/export/{month_year}/custom-report/view")
+def view_custom_report(month_year: str, token: str, data_source: str = "daily",
+                        dimensions: str = "", measures: str = "",
+                        date_from: str = None, date_to: str = None,
+                        company: str = "", monthly: str = "",
+                        db: Session = Depends(get_db)):
+    """The Report Builder's own table as the sheet that prints."""
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    d = export_custom_report(month_year=month_year, token=token, data_source=data_source,
+                              dimensions=dimensions, measures=measures,
+                              date_from=date_from, date_to=date_to, format="rows",
+                              company=company, monthly=monthly, db=db)
+    extra = (f"&data_source={quote(data_source, safe='')}"
+             f"&dimensions={quote(dimensions, safe='')}"
+             f"&measures={quote(measures, safe='')}")
+    for k, v in (("date_from", date_from), ("date_to", date_to),
+                 ("company", company), ("monthly", monthly)):
+        if v:
+            extra += f"&{k}={quote(str(v), safe='')}"
+    url = f"/export/{quote(month_year, safe='')}/custom-report?token={t}{extra}"
+    return _preview_page(d["title"], d["subtitle"], d["rows"], url, url,
+                         money_cols=d["money_cols"])
 
 
 @app.get("/live-card/{emp_no}/{month_year}")
@@ -1982,19 +2015,46 @@ def export_report_table(month_year: str, token: str, columns: str, format: str, 
         raise HTTPException(status_code=404, detail="No data found for this cycle.")
 
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
+    # Through the same builders as every other report, so the preview,
+    # the printed copy and the spreadsheet are one document - the right
+    # way up for the columns picked, with the letterhead on it.
+    rows, money = export_web.report_table_rows(items, column_keys)
+    title, sub = _report_table_heading(month_year)
+    if format == "rows":
+        # The preview asks for the same rows rather than parsing a file.
+        return {"rows": rows, "money_cols": money}
     if format == "excel":
-        buf = export_web.build_report_table_excel(items, column_keys, month_year)
+        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money)
         return StreamingResponse(
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
         )
     elif format == "pdf":
-        buf = export_web.build_report_table_pdf(items, column_keys, month_year)
+        buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money)
         return StreamingResponse(
             buf, media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.pdf"},
         )
     raise HTTPException(status_code=400, detail="format must be 'excel' or 'pdf'.")
+
+
+def _report_table_heading(month_year):
+    return "Salary Report", f"Wage cycle {month_year}"
+
+
+@app.get("/export/{month_year}/report-table/view")
+def view_report_table(month_year: str, token: str, columns: str,
+                       db: Session = Depends(get_db)):
+    """The Report Builder's table as the sheet that prints."""
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    data = export_report_table(month_year=month_year, token=token, columns=columns,
+                               format="rows", db=db)
+    rows, money = data["rows"], data["money_cols"]
+    title, sub = _report_table_heading(month_year)
+    url = (f"/export/{quote(month_year, safe='')}/report-table?token={t}"
+           f"&columns={quote(columns, safe='')}")
+    return _preview_page(title, sub, rows, url, url, money_cols=money)
 
 
 @app.get("/export/{month_year}/excel-separate")
@@ -6336,7 +6396,8 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 </body></html>""")
 
 
-def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str):
+def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str,
+                   money_cols=None):
     """A report on screen, drawn as the sheet that prints.
 
     The same landscape page, the same Infinia letterhead, the same red
@@ -6354,6 +6415,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # headings read as headings rather than as the field names behind
     # them ("Given to", not "given_to").
     aligns = {c: export_web.col_align(c, rows) for c in cols}
+    money_set = (set(money_cols) if money_cols
+                 else {c for c in cols if export_web._is_money(c)})
     klass = {"L": "l", "C": "c", "R": "r"}
     head = "".join(f'<th class="{klass[aligns[c]]}">'
                    f'{escape(export_web._store_label(c))}</th>' for c in cols)
@@ -6364,7 +6427,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
         if isinstance(v, bool):
             return "Yes" if v else "-"
         if isinstance(v, (int, float)):
-            return f"{v:,.2f}" if export_web._is_money(c) else export_web._clean_qty(v)
+            return f"{v:,.2f}" if c in money_set else export_web._clean_qty(v)
         if isinstance(v, str) and export_web._looks_like_date(v):
             return export_web._day(v)
         if isinstance(v, dict):
@@ -6381,17 +6444,21 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # The totals line the PDF prints, on the same columns: money adds
     # up, everything else stays blank rather than showing a sum of
     # quantities in different units.
-    money_cols = [c for c in cols if export_web._is_money(c)]
     foot = ""
-    if rows and money_cols:
+    if rows and money_set:
         sums = {c: sum(r.get(c) or 0 for r in rows
-                       if isinstance(r.get(c), (int, float))) for c in money_cols}
+                       if isinstance(r.get(c), (int, float))) for c in cols if c in money_set}
         foot = ('<tr class="tot">' + "".join(
             f'<td class="{klass[aligns[c]]}">'
             + (f"{sums[c]:,.2f}" if c in sums else ("TOTAL" if i == 0 else ""))
             + "</td>" for i, c in enumerate(cols)) + "</tr>")
 
     empty = '<p class="none">Nothing to show.</p>' if not rows else ""
+    # The page stands up or lies on its side exactly as the printed copy
+    # will, decided from the same data by the same rule - so the preview
+    # is not portrait while the file that comes out is landscape.
+    facing = export_web.choose_orientation(rows, cols)
+    page_w, page_h = ("297mm", "210mm") if facing == "landscape" else ("210mm", "297mm")
     logo = export_web.logo_data_uri()
     logo_html = (f'<img src="{logo}" alt="Infinia">' if logo else "")
     sheet = (empty or
@@ -6410,8 +6477,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
-  /* A4 on its side, which is how these print. */
-  .page {{ width:297mm; max-width:calc(100% - 24px); min-height:210mm; margin:16px auto;
+  /* A4 the way round this report prints. */
+  .page {{ width:{page_w}; max-width:calc(100% - 24px); min-height:{page_h}; margin:16px auto;
            background:white; padding:10mm 8mm 12mm; box-sizing:border-box;
            box-shadow:0 1px 6px rgba(0,0,0,.14); }}
   .mark img {{ width:42mm; display:block; }}
@@ -6434,7 +6501,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
     .page {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
-    @page {{ size:A4 landscape; margin:10mm; }}
+    @page {{ size:A4 {facing}; margin:10mm; }}
   }}
 </style></head><body>
   <div class="bar">
