@@ -6337,13 +6337,16 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 
 
 def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str):
-    """A report on screen before it is a file.
+    """A report on screen, drawn as the sheet that prints.
 
-    The rows themselves, as a table, with the two downloads above them -
-    so checking a figure costs a look rather than a file to find and
-    delete afterwards. Written out rather than embedding the PDF: a
-    phone, and a browser without a PDF plugin, both show a blank frame,
-    and a preview that shows nothing is worse than no preview at all.
+    The same landscape page, the same Infinia letterhead, the same red
+    heading band, the same banding down the rows and the same totals
+    line - so what is checked here is what comes out of the printer,
+    rather than a plainer table that happens to hold the same figures.
+
+    Written out in HTML rather than embedding the PDF itself: a phone,
+    and a browser with no PDF plugin, both show a blank frame, and a
+    preview that shows nothing is worse than no preview at all.
     """
     cols = list(rows[0].keys()) if rows else []
     # The same column rule the PDF and the Excel copy use, so the sheet
@@ -6351,7 +6354,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # headings read as headings rather than as the field names behind
     # them ("Given to", not "given_to").
     aligns = {c: export_web.col_align(c, rows) for c in cols}
-    klass = {"L": "", "C": "c", "R": "r"}
+    klass = {"L": "l", "C": "c", "R": "r"}
     head = "".join(f'<th class="{klass[aligns[c]]}">'
                    f'{escape(export_web._store_label(c))}</th>' for c in cols)
 
@@ -6364,6 +6367,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
             return f"{v:,.2f}" if export_web._is_money(c) else export_web._clean_qty(v)
         if isinstance(v, str) and export_web._looks_like_date(v):
             return export_web._day(v)
+        if isinstance(v, dict):
+            return ", ".join(f"{a}: {export_web._clean_qty(b)}" for a, b in v.items()) or "-"
         return str(v)
 
     body = "".join(
@@ -6372,33 +6377,65 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
             + escape(show(c, r.get(c))).replace("\n", "<br>")
             + "</td>" for c in cols) + "</tr>"
         for r in rows)
+
+    # The totals line the PDF prints, on the same columns: money adds
+    # up, everything else stays blank rather than showing a sum of
+    # quantities in different units.
+    money_cols = [c for c in cols if export_web._is_money(c)]
+    foot = ""
+    if rows and money_cols:
+        sums = {c: sum(r.get(c) or 0 for r in rows
+                       if isinstance(r.get(c), (int, float))) for c in money_cols}
+        foot = ('<tr class="tot">' + "".join(
+            f'<td class="{klass[aligns[c]]}">'
+            + (f"{sums[c]:,.2f}" if c in sums else ("TOTAL" if i == 0 else ""))
+            + "</td>" for i, c in enumerate(cols)) + "</tr>")
+
     empty = '<p class="none">Nothing to show.</p>' if not rows else ""
+    logo = export_web.logo_data_uri()
+    logo_html = (f'<img src="{logo}" alt="Infinia">' if logo else "")
+    sheet = (empty or
+             f'<table><thead><tr>{head}</tr></thead><tbody>{body}{foot}</tbody></table>')
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-          background:#F1EFEA; color:#1F2429; }}
+  body {{ margin:0; background:#F1EFEA; color:#1F2429;
+          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
   .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
-          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:2; }}
+          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:5; }}
   .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
   .bar .who {{ font-size:12.5px; color:#666; }}
   a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
-  .sheet {{ margin:16px; background:white; border:1px solid #DDD; border-radius:6px;
-            overflow:auto; }}
-  table {{ width:100%; border-collapse:collapse; font-size:12.5px; }}
-  th {{ background:#2E3238; color:white; padding:8px 10px; text-align:left;
-        font-size:11.5px; letter-spacing:.3px; position:sticky; top:0; }}
-  td {{ border-bottom:1px solid #EEE; padding:7px 10px; vertical-align:top; }}
-  th.r, td.r {{ text-align:right; }}
+  /* A4 on its side, which is how these print. */
+  .page {{ width:297mm; max-width:calc(100% - 24px); min-height:210mm; margin:16px auto;
+           background:white; padding:10mm 8mm 12mm; box-sizing:border-box;
+           box-shadow:0 1px 6px rgba(0,0,0,.14); }}
+  .mark img {{ width:42mm; display:block; }}
+  .mark {{ min-height:12mm; }}
+  .head {{ text-align:center; margin-top:-6mm; }}
+  .head .co {{ font-size:13pt; font-weight:bold; }}
+  .head .ti {{ font-size:10pt; font-weight:bold; margin-top:2px; }}
+  .head .sub {{ font-size:8pt; color:#777; margin-top:2px; }}
+  .sheet {{ margin-top:8px; overflow-x:auto; }}
+  table {{ width:100%; border-collapse:collapse; font-size:8.5pt; }}
+  th {{ background:#{export_web.BRAND_RED}; color:white; font-weight:bold;
+        font-size:8pt; padding:4px 5px; border:0.4px solid #CCCCCC; }}
+  td {{ padding:4px 5px; border:0.4px solid #CCCCCC; vertical-align:middle; }}
+  th.l, td.l {{ text-align:left; }}
   th.c, td.c {{ text-align:center; }}
-  tr:nth-child(even) td {{ background:#FCFBFA; }}
+  th.r, td.r {{ text-align:right; }}
+  tbody tr:nth-child(even) td {{ background:#F7F7F7; }}
+  tr.tot td {{ background:#{export_web.GREEN_FILL} !important; font-weight:bold; }}
   .none {{ padding:26px; color:#777; font-size:13px; text-align:center; }}
-  @media print {{ .bar {{ position:static; }} a.btn {{ display:none; }}
-                  .sheet {{ margin:0; border:0; }} }}
+  @media print {{
+    body {{ background:white; }} .bar {{ display:none; }}
+    .page {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    @page {{ size:A4 landscape; margin:10mm; }}
+  }}
 </style></head><body>
   <div class="bar">
     <h1>{escape(title)}</h1>
@@ -6406,8 +6443,17 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     <span style="margin-left:auto;"></span>
     <a class="btn dark" href="{pdf_url}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="{excel_url}&amp;format=excel">Download Excel</a>
+    <a class="btn" href="#" onclick="window.print();return false;">Print</a>
   </div>
-  <div class="sheet">{empty or f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'}</div>
+  <div class="page">
+    <div class="mark">{logo_html}</div>
+    <div class="head">
+      <div class="co">INFINIA CONTRACTING LLC</div>
+      <div class="ti">{escape(title)}</div>
+      {f'<div class="sub">{subtitle}</div>' if subtitle else ''}
+    </div>
+    <div class="sheet">{sheet}</div>
+  </div>
 </body></html>""")
 
 
@@ -6436,11 +6482,14 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         needle = q.strip().lower()
         rows = [r for r in rows if needle in " ".join(str(v) for v in r.values()).lower()]
     url = f"/export/store/report?token={t}{extra}"
-    label = kind.replace("mr_", "").replace("_", " ").title()
-    return _preview_page(f"{label} report",
-                         (f"{date_from or 'the start'} to {date_to or 'today'}"
-                          if (date_from or date_to) else f"As at {_dubai_today():%d %b %Y}"),
-                         rows, url, url)
+    # The report's own title, the one the PDF prints - not "Usage
+    # report" built back out of the url. A preview headed differently
+    # from the file it previews is a different document.
+    title = data.get("title") or kind.replace("mr_", "").replace("_", " ").title()
+    sub = (f"{export_web._day(date_from) if date_from else 'the start'} to "
+           f"{export_web._day(date_to) if date_to else 'today'}") \
+        if (date_from or date_to) else f"As at {_dubai_today():%d %b %Y}"
+    return _preview_page(title, sub, rows, url, url)
 
 
 @app.get("/export/store/purchase-report/view")

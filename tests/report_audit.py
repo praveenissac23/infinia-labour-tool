@@ -109,12 +109,28 @@ print(("FAIL alignment: " + ", ".join(al_bad)) if al_bad
       else "PASS every report column has one settled alignment")
 bad += al_bad
 
-# The preview is the same sheet, so its headings read as headings.
-pv = c.get(f'/export/store/report/view?kind=usage&token={tok}')
-pv_ok = (pv.status_code == 200 and "given_to" not in pv.text
-         and ">Given to<" in pv.text and "<th class=\"c\">" in pv.text)
-print(("PASS " if pv_ok else "FAIL ") + "the preview is headed and aligned like the print")
-if not pv_ok: bad.append("preview-headings")
+# The preview IS the printed sheet, not a plainer table holding the same
+# figures: the same letterhead, the same red heading band, the same
+# title, the same landscape page. A preview that differs from the file
+# it previews gets approved and then something else comes out.
+pv_bad = []
+for k in ["stock", "usage", "by_site", "assets", "hired", "lost", "purchases", "low"]:
+    pv = c.get(f'/export/store/report/view?kind={k}&token={tok}')
+    if pv.status_code != 200:
+        pv_bad.append(f"{k}:HTTP{pv.status_code}"); continue
+    want = {
+        "the Infinia logo": 'data:image/png;base64,' in pv.text,
+        "the letterhead": "INFINIA CONTRACTING LLC" in pv.text,
+        "the brand heading band": "#" + export_web.BRAND_RED in pv.text,
+        "an A4 landscape page": "297mm" in pv.text,
+        "the report's own title": (c.get(f'/store/report?kind={k}', headers=K)
+                                    .json().get("title", "") in pv.text),
+        "headings, not field names": "given_to" not in pv.text,
+    }
+    pv_bad += [f"{k}: no {w}" for w, ok in want.items() if not ok]
+print(("FAIL preview: " + "; ".join(pv_bad)) if pv_bad
+      else "PASS every preview is the sheet that prints, letterhead and all")
+bad += pv_bad
 
 print()
 print("REPORTS CLEAN" if not bad else f"{len(bad)} PROBLEM(S): {bad}")
