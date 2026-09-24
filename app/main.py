@@ -9556,8 +9556,10 @@ def _staff_parts(db):
 GRATUITY_MONEY = ["Basic", "Per Day", "Gratuity To Date"]
 
 
-def _gratuity_parts(db):
+def _gratuity_parts(db, emp_no=""):
     d = list_staff(db=db, user=None)
+    if emp_no.strip():
+        d["rows"] = [s for s in d["rows"] if s["emp_no"] == emp_no.strip()]
     basis = lambda s: ("GPSSA pension" if s["scheme"] == "pension" else "Not entitled" if s["scheme"] == "none"
                        else "No joining date" if not s["joined_on"] else "Accruing" if s["gratuity"] else "Under 1 year")
     rows = [{"Sr.": i, "Emp. Code": s["emp_no"], "Employee Name": s["name"], "Company": s["company"],
@@ -9565,25 +9567,41 @@ def _gratuity_parts(db):
              "Years": s["years"], "Basic": s["basic"], "Per Day": s["gratuity_daily"],
              "Days": s["gratuity_days"], "Gratuity To Date": s["gratuity"], "Basis": basis(s)}
             for i, s in enumerate(d["rows"], 1)]
+    if emp_no.strip() and rows:
+        r = rows[0]
+        s = d["rows"][0]
+        # One person: the working, line by line, rather than a register.
+        rows = [{"Item": "Employee", "Detail": f"{r['Emp. Code']} {r['Employee Name']} - {r['Company']}"},
+                {"Item": "Joining date", "Detail": r["Joining Date"]},
+                {"Item": "Service", "Detail": f"{s['years']:.2f} years"},
+                {"Item": "Basic wage", "Detail": f"{s['basic']:,.2f}"},
+                {"Item": "A day's basic (basic x 12 / 365)", "Detail": f"{s['gratuity_daily']:,.2f}"},
+                {"Item": "Days accrued (21 a year first 5 years, 30 after)", "Detail": f"{s['gratuity_days']:.1f}"},
+                {"Item": "Basis", "Detail": r["Basis"]},
+                {"Item": "Gratuity to date", "Detail": f"{s['gratuity']:,.2f}"},
+                {"Item": "Working", "Detail": s.get("gratuity_why") or "-"}]
+        return rows, f"End of Service Gratuity - {s['name']}", f"As at {_dubai_today():%d %b %Y}   |   UAE labour law, article 51"
     sub = (f"{len(rows)} staff   |   Liability {sum(r['Gratuity To Date'] for r in rows):,.2f}"
            f"   |   21 / 30 days' basic a year, basic x 12 / 365 a day   |   As at {_dubai_today():%d %b %Y}")
     return rows, "End of Service Gratuity", sub
 
 
 @app.get("/export/payroll/gratuity")
-def export_gratuity(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+def export_gratuity(token: str, emp_no: str = "", format: str = "pdf", db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _gratuity_parts(db)
-    return _hr_file(title, rows, sub, format, GRATUITY_MONEY, "Gratuity")
+    rows, title, sub = _gratuity_parts(db, emp_no)
+    return _hr_file(title, rows, sub, format, [] if emp_no else GRATUITY_MONEY, "Gratuity")
 
 
 @app.get("/export/payroll/gratuity/view")
-def view_gratuity(token: str, db: Session = Depends(get_db)):
+def view_gratuity(token: str, emp_no: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _gratuity_parts(db)
-    url = f"/export/payroll/gratuity?token={t}"
+    rows, title, sub = _gratuity_parts(db, emp_no)
+    url = f"/export/payroll/gratuity?emp_no={quote(emp_no)}&token={t}"
+    if emp_no:
+        return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[], orientation="portrait")
     return _preview_page(title, sub, rows, url, url, money_cols=GRATUITY_MONEY, total_cols=["Gratuity To Date"])
 
 

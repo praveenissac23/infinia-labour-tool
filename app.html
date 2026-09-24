@@ -11509,6 +11509,8 @@ function hrReportUrl(which) {
     hrCycleName(document.getElementById("hr-items-month").value))}`;
   if (which === "increments") return `/export/payroll/increments?emp_no=${encodeURIComponent(
     document.getElementById("hr-inc-filter").value)}`;
+  if (which === "gratuity") return `/export/payroll/gratuity?emp_no=${encodeURIComponent(
+    document.getElementById("hr-grat-emp").value)}`;
   if (which === "documents")
     return `/export/payroll/documents?within=${document.getElementById("hr-doc-within").value}`;
   return `/export/payroll/${which}?`;
