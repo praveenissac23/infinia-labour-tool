@@ -117,6 +117,11 @@
   .hr-cycle textarea.hr-rem:focus { outline: none; border-color: var(--red); background: white; }
   .hr-todate { color: #2E7D32; }
   tr.hr-held td { color: #A8A29A !important; background: #FAFAF9 !important; }
+  .hr-dlg { position: fixed; inset: 0; background: rgba(30,24,20,.42); z-index: 2500; display: flex;
+            align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto; }
+  .hr-dlg-box { background: white; border-radius: 12px; padding: 22px 24px; width: 100%; max-width: 980px;
+                box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  .hr-dlg-h { font-size: 16px; font-weight: 700; margin: 0 0 14px; }
   .hr-file-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;
                   padding-bottom: 12px; border-bottom: 1px solid #EFEBE4; }
   .hr-file-name { font-size: 18px; font-weight: 700; color: #222; }
@@ -2640,8 +2645,10 @@
                 <button class="btn btn-dark" onclick="previewHr('staff')">Preview</button>
                 <button class="btn btn-gray" onclick="downloadHr('staff','pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadHr('staff','excel')">Export to Excel</button>
+                <div class="hr-cb-spacer"></div>
+                <button class="btn btn-primary" onclick="hrNewStaff()">+ New staff</button>
               </div>
-              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+              <div class="grid-wrap" style="max-height:70vh; margin-top:10px;">
                 <table class="hr-grid">
                   <thead><tr>
                     <th style="width:6%;">Code</th><th class="txt" style="width:17%;">Name</th>
@@ -2656,8 +2663,13 @@
                 </table>
               </div>
             </div>
-            <div class="card" id="hr-staff-edit" style="display:none;">
-              <h2 id="hr-staff-edit-title">Edit staff</h2>
+          <!-- ---- Loans ----------------------------------------------->
+
+        <!-- Staff record dialog: new, or editing one person -->
+        <div id="hr-dlg" class="hr-dlg" style="display:none;" onclick="if (event.target === this) hrCloseDlg()">
+          <div class="hr-dlg-box">
+            <div id="hr-staff-edit" style="display:none;">
+              <h2 id="hr-staff-edit-title" class="hr-dlg-h">Edit staff</h2>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <label class="hr-field"><span>Designation</span><input type="text" id="hr-e-designation" style="width:170px;"></label>
                 <label class="hr-field"><span>Company</span><select id="hr-e-company" style="width:170px;"></select></label>
@@ -2678,12 +2690,12 @@
                   <option value="staff">Office staff statement</option><option value="local">Local staff statement</option>
                 </select></label>
                 <button class="btn btn-primary" onclick="saveStaffEdit()">Save</button>
-                <button class="btn btn-gray" onclick="closeStaffEdit()">Cancel</button>
+                <button class="btn btn-gray" onclick="hrCloseDlg()">Cancel</button>
               </div>
               <p style="font-size:12px; color:#888; margin:8px 0 0;">A rise belongs under Increments, where its date and reason are kept. Change basic or allowance here only to correct a figure.</p>
             </div>
-            <div class="card">
-              <h2>New staff member</h2>
+            <div id="hr-staff-new" style="display:none;">
+              <h2 class="hr-dlg-h">New staff member</h2>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <label class="hr-field"><span>Staff code *</span><input type="text" id="hr-n-code" style="width:100px;"></label>
                 <label class="hr-field"><span>Full name *</span><input type="text" id="hr-n-name" style="width:210px;"></label>
@@ -2702,6 +2714,7 @@
                   <option value="staff">Office staff statement</option><option value="local">Local staff statement</option>
                 </select></label>
                 <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
+                <button class="btn btn-gray" onclick="hrCloseDlg()">Cancel</button>
               </div>
               <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:12px;
                            border-top:1px solid #EFEBE4; align-items:center; font-size:12.5px; color:#666;">
@@ -2829,7 +2842,8 @@
             </div>
           </div>
 
-          <!-- ---- Loans ----------------------------------------------->
+          </div>
+        </div>
           <div class="hr-pane" id="hrpane-loans" style="display:none;">
             <div class="card">
               <h2 id="hr-loan-form-title">Record a loan</h2>
@@ -11601,10 +11615,26 @@ function renderStaff() {
     HR_COMPANIES.map(c => c.short_name || c.name).join(", ") || "none yet";
 }
 
+function hrOpenDlg(which) {
+  document.getElementById("hr-staff-edit").style.display = which === "edit" ? "" : "none";
+  document.getElementById("hr-staff-new").style.display = which === "new" ? "" : "none";
+  document.getElementById("hr-dlg").style.display = "flex";
+  hrNoDropdowns();
+}
+function hrCloseDlg() { document.getElementById("hr-dlg").style.display = "none"; }
+function hrNewStaff() {
+  hrOpenDlg("new");
+  setTimeout(() => document.getElementById("hr-n-code").focus(), 50);
+}
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && document.getElementById("hr-dlg") &&
+      document.getElementById("hr-dlg").style.display !== "none") hrCloseDlg();
+});
+
 function editStaff(emp_no) {
   const s = HR_STAFF.find(x => x.emp_no === emp_no);
   if (!s) return;
-  document.getElementById("hr-staff-edit").style.display = "";
+  hrOpenDlg("edit");
   document.getElementById("hr-staff-edit").dataset.emp = emp_no;
   document.getElementById("hr-staff-edit-title").textContent = `${s.name} (${s.emp_no})`;
   document.getElementById("hr-e-designation").value = s.designation || "";
@@ -11618,7 +11648,6 @@ function editStaff(emp_no) {
   document.getElementById("hr-e-pension").value = s.pension || 0;
   document.getElementById("hr-e-group").value = s.pay_group || "staff";
   hrSchemeChanged();
-  document.getElementById("hr-staff-edit").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function hrSchemeChanged() {
@@ -11626,9 +11655,7 @@ function hrSchemeChanged() {
     document.getElementById("hr-e-scheme").value === "pension" ? "" : "none";
 }
 
-function closeStaffEdit() {
-  document.getElementById("hr-staff-edit").style.display = "none";
-}
+function closeStaffEdit() { hrCloseDlg(); }
 
 async function saveStaffEdit() {
   const emp_no = document.getElementById("hr-staff-edit").dataset.emp;
@@ -11669,6 +11696,7 @@ async function addStaff() {
       pay_route: v("hr-n-route"), pay_group: v("hr-n-group") }) });
     ["hr-n-code", "hr-n-name", "hr-n-designation", "hr-n-joined", "hr-n-gross",
      "hr-n-basic", "hr-n-allowance"].forEach(id => document.getElementById(id).value = "");
+    hrCloseDlg();
     await loadStaff();
     hrMsg("ok", "Added to the staff register.");
   } catch (e) { hrMsg("err", errText(e)); }
