@@ -167,6 +167,29 @@ setTimeout(async()=>{
       "lpo-plot","lpo-location","lpo-scope"].every(id => d.getElementById(id).placeholder));
   ok("opening a new order raises no error", errsSince(n).length===0);
 
+  // The material box pointed at a chip list on another screen, not a
+  // datalist, so nothing was ever offered - every material had to be
+  // spelled out from memory against a catalogue of thousands.
+  const mdl = d.getElementById("material-list-all");
+  ok("the order's material box has the catalogue behind it",
+     !!mdl && mdl.querySelectorAll("option").length > 0
+     && d.querySelector("#lpo-lines input").getAttribute("list") === "material-list-all");
+
+  // The rate lookup redraws the lines 350ms after a keystroke, which
+  // threw away the box being typed into. The name had to be clicked
+  // back into after every second or third letter.
+  const first = d.querySelector("#lpo-lines input");
+  first.focus(); first.value = "cem";
+  first.dispatchEvent(new w.Event("input", { bubbles: true }));
+  first.setSelectionRange(3, 3);
+  await wait(900);                      // past the lookup and its redraw
+  const now = d.querySelector("#lpo-lines input");
+  ok("typing a material keeps the cursor in the box",
+     d.activeElement === now && now.value === "cem" && now.selectionStart === 3);
+
+  // Picking a whole entry off the list, and every hint fitting its box,
+  // both need real layout - they are checked in tests/lpo_form_test.js.
+
   console.log(errs.length ? "\nPAGE ERRORS:\n - "+errs.join("\n - ") : "\nno page errors");
   console.log(fail ? `\n${fail} FAILURE(S)` : "\nSWEEP CLEAN");
   process.exit(fail?1:0);

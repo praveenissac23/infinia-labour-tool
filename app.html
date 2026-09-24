@@ -196,8 +196,12 @@
               padding: 10px 12px 9px; }
   .lpo-side h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .6px;
                  text-transform: uppercase; color: #8C2F26; }
-  .lpo-side .field label { font-size: 10.5px; }
+  .lpo-side .field label { font-size: 10.5px; white-space: nowrap; }
   .lpo-side input, .lpo-side select { font-size: 13px; }
+  /* A hint chopped in half reads as a bug. If a box is ever squeezed
+     narrower than its hint, the hint tapers off rather than being cut
+     mid-letter, and the full text is on the box as a tooltip. */
+  .lpo-side input::placeholder, #lpo-lines input::placeholder { text-overflow: ellipsis; }
   .lpo-hint { margin: 7px 0 0; font-size: 11px; color: #8A8681; line-height: 1.35; }
   .store-tile { min-width: 0; border: 1px solid #E7CEC9; border-radius: 10px;
                 padding: 16px 18px; cursor: pointer; background: #FDF6F5; position: relative;
@@ -1470,7 +1474,7 @@
                 <div class="form-row" style="gap:10px; flex-wrap:wrap;">
                   <div class="field" style="flex:1 1 210px; min-width:190px;"><label>Supplier</label>
                     <input type="text" id="lpo-supplier" list="lpo-supplier-list" style="width:100%;"
-                           placeholder="Start typing the trader's name" oninput="onLpoSupplier()">
+                           placeholder="Start typing a name" oninput="onLpoSupplier()">
                     <datalist id="lpo-supplier-list"></datalist>
                     <datalist id="site-list"></datalist></div>
                   <div class="field" style="flex:0 0 160px;"><label>Their TRN</label>
@@ -1479,12 +1483,12 @@
                 <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:6px;">
                   <div class="field" style="flex:1 1 150px; min-width:130px;"><label>Their contact person</label>
                     <input type="text" id="lpo-sup-contact" style="width:100%;"
-                           placeholder="Who we deal with there"></div>
+                           placeholder="Person we deal with"></div>
                   <div class="field" style="flex:0 0 140px;"><label>Their mobile</label>
                     <input type="text" id="lpo-sup-phone" style="width:100%;" placeholder="05x xxx xxxx"></div>
                   <div class="field" style="flex:1 1 180px; min-width:160px;"><label>Their email</label>
                     <input type="text" id="lpo-sup-email" style="width:100%;"
-                           placeholder="Where the order is sent"></div>
+                           placeholder="name@company.ae"></div>
                 </div>
                 <div id="lpo-supplier-note" style="font-size:11.5px; color:#888; margin-top:6px;"></div>
                 <p class="lpo-hint">Filled in from the supplier list. Change it here if their man or
@@ -1500,7 +1504,7 @@
                     </select></div>
                   <div class="field" style="flex:0 0 140px;"><label>Our mobile</label>
                     <input type="text" id="lpo-mobile" style="width:100%;"
-                           placeholder="Number they ring us on"></div>
+                           placeholder="05x xxx xxxx"></div>
                   <div class="field" style="flex:0 0 140px;"><label>Plot no</label>
                     <input type="text" id="lpo-plot" style="width:100%;" placeholder="e.g. 347-4803"></div>
                 </div>
@@ -1510,7 +1514,7 @@
                            placeholder="Site to deliver to" oninput="onLpoSite()"></div>
                   <div class="field" style="flex:1 1 190px; min-width:160px;"><label>Job scope</label>
                     <input type="text" id="lpo-scope" style="width:100%;"
-                           placeholder="What the material is for"></div>
+                           placeholder="What it is for"></div>
                 </div>
                 <p class="lpo-hint">This is the Infinia side of the order &mdash; the name and number
                    printed for the supplier to call.</p>
@@ -1520,8 +1524,12 @@
             <h2 style="margin-top:16px;">Materials</h2>
             <p style="font-size:12px; color:#888; margin:0 0 8px;">
               The last rate paid is shown beside each line. A rate above it is flagged before the order goes out.</p>
+            <!-- Ten columns on a narrow laptop crushed the material name
+                 down to a few letters. The table keeps a floor and the
+                 wrapper scrolls sideways instead, so every column stays
+                 usable rather than all of them being unusable. -->
             <div class="grid-wrap">
-              <table>
+              <table style="min-width:1000px;">
                 <thead><tr>
                   <th style="width:3%;">#</th>
                   <th style="width:29%;">Material</th>
@@ -9260,6 +9268,10 @@ async function downloadLpo(id, fmt) {
 }
 
 async function newLpo() {
+  // The material picker is a datalist of the whole catalogue, and an
+  // order can be raised without ever opening the store screens - so the
+  // catalogue is loaded here rather than assumed to be in hand.
+  try { await loadStoreItems(); } catch (e) { /* the box still takes free text */ }
   const n = await apiCall("/store/purchase/next-no");
   lpoDefaults = n;
   lpoEditingId = null;
@@ -9297,6 +9309,7 @@ function closeLpoForm() {
 // same order rather than raising a new one.
 async function editLpo(id) {
   switchScreen("purchase");
+  try { await loadStoreItems(); } catch (e) {}
   try {
     const o = await apiCall(`/store/purchase/orders/${id}`);
     if (o.status === "cancelled") {
@@ -9447,21 +9460,28 @@ function removeLpoLine(i) { lpoLines.splice(i, 1); renderLpoLines(); }
 
 function onLpoLineField(i, field, value) {
   lpoLines[i][field] = value;
-  if (field === "description") { lookupLpoRate(i); renderLpoTotals(); return; }
+  if (field === "description") {
+    // The picker lists materials as "CODE - Name", which is how you
+    // find one among three thousand. The order should print the name,
+    // so the code is dropped the moment a whole entry is chosen - and
+    // only then, or it would fight somebody mid-word.
+    const picked = (storeItems || []).find(
+      x => `${x.code} - ${x.name}`.toLowerCase() === value.trim().toLowerCase());
+    if (picked) {
+      lpoLines[i].description = picked.name;
+      lpoLines[i].item_id = picked.id;
+      if (!lpoLines[i].unit) lpoLines[i].unit = picked.unit || "";
+      renderLpoLines();
+    }
+    lookupLpoRate(i);
+    renderLpoTotals();
+    return;
+  }
   // Qty and rate change the line's amount and whether it is above what
   // was paid last time - both are in the row, so the row is redrawn.
-  // Focus and caret are put back, or typing a rate would jump away
-  // after the first character.
+  // renderLpoLines keeps the cursor where it was.
   if (field === "qty" || field === "rate" || field === "tax_pct") {
-    const active = document.activeElement;
-    const pos = active && active.selectionStart;
     renderLpoLines();
-    const cols = { qty: 3, rate: 5, tax_pct: 6 };
-    const again = document.querySelectorAll("#lpo-lines tr")[i];
-    if (again) {
-      const box = again.querySelectorAll("input")[{ qty: 2, rate: 4, tax_pct: 5 }[field]];
-      if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (e) {} }
-    }
     return;
   }
   renderLpoTotals();
@@ -9501,6 +9521,21 @@ function lookupLpoRate(i) {
 
 function renderLpoLines() {
   const body = document.getElementById("lpo-lines");
+  // Redrawing the lines throws away the box being typed into, and with
+  // it the cursor. The rate lookup fires 350ms after a keystroke and
+  // redraws, so typing a material name lost focus mid-word and had to
+  // be clicked back into. Note where the cursor is first and put it
+  // back afterwards - for every box on the line, not only the numbers,
+  // because the next redraw added will otherwise break this again.
+  const was = document.activeElement;
+  let mark = null;
+  if (was && body.contains(was)) {
+    const row = was.closest("tr");
+    const rows = [...body.querySelectorAll("tr")];
+    mark = { row: rows.indexOf(row),
+             box: [...row.querySelectorAll("input")].indexOf(was),
+             from: was.selectionStart, to: was.selectionEnd };
+  }
   body.innerHTML = lpoLines.map((l, i) => {
     const qty = parseFloat(l.qty) || 0, rate = parseFloat(l.rate) || 0;
     let lastCell = '<span style="color:#bbb;">first time</span>';
@@ -9517,7 +9552,8 @@ function renderLpoLines() {
     }
     return `<tr>
       <td>${i + 1}</td>
-      <td><input type="text" list="store-item-list" value="${(l.description || "").replace(/"/g, "&quot;")}"
+      <td><input type="text" list="material-list-all" placeholder="e.g. cement"
+            value="${(l.description || "").replace(/"/g, "&quot;")}"
             oninput="onLpoLineField(${i}, 'description', this.value)" style="width:100%;"
             title="${(l.description || "").replace(/"/g, "&quot;")}"></td>
       <td><input type="text" value="${(l.description2 || "").replace(/"/g, "&quot;")}" placeholder="e.g. price/week" title="Printed small under the material name. Optional."
@@ -9531,6 +9567,14 @@ function renderLpoLines() {
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
     </tr>`;
   }).join("");
+  if (mark && mark.row >= 0 && mark.box >= 0) {
+    const row = body.querySelectorAll("tr")[mark.row];
+    const box = row && row.querySelectorAll("input")[mark.box];
+    if (box) {
+      box.focus();
+      try { box.setSelectionRange(mark.from, mark.to); } catch (e) {}
+    }
+  }
   renderLpoTotals();
 }
 
