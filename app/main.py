@@ -2346,6 +2346,31 @@ def _backup_json(b) -> dict:
     return json.loads(_backup_text(b.data))
 
 
+def _without_password_hashes(data: dict) -> dict:
+    """A backup with the stored passwords taken out of it.
+
+    They are of no use in a restore - existing logins are kept, and a
+    login that has to be recreated comes back with its name, role and
+    permissions and needs a fresh password - so a file that leaves the
+    server should not carry them. What is kept on the server keeps
+    them; only the copy somebody downloads is stripped.
+    """
+    data["users"] = [{**u, "hashed_password": ""} for u in data.get("users", [])]
+    return data
+
+
+# Who may hold a complete copy of the company. A backup carries every
+# worker's pay and every login, so it goes only to the accounts that are
+# allowed to see pay inside the app anyway.
+BACKUP_SCREENS = ("approvals", "masterdata", "adjustments", "reports", "livecard")
+
+
+def _require_backup_reader(user):
+    if not any(s in effective_permissions(user) for s in BACKUP_SCREENS):
+        raise HTTPException(status_code=403,
+            detail="Only office and admin accounts can download a full backup.")
+
+
 def _coerce_row(model, row):
     """A JSON row back into the types its columns expect - dates and
     times come out of JSON as strings."""
@@ -2704,17 +2729,13 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
     # machines that are allowed to see pay anyway. A site engineer or
     # store keeper holding a copy would undo the salary privacy the rest
     # of the app enforces.
-    perms = effective_permissions(user)
     # Only someone who can already see pay in the app gets a file that
     # carries every salary. Approvals marks the office desk; the payroll
     # screens mark an admin. A site engineer, or a store keeper whose
     # login is office in name but store-only in permissions, is not
     # handed one.
-    if not any(s in perms for s in ("approvals", "masterdata", "adjustments", "reports", "livecard")):
-        raise HTTPException(status_code=403,
-            detail="Only office and admin accounts can download a full backup.")
-    data = build_backup_data(db)
-    data["users"] = [{**u, "hashed_password": ""} for u in data.get("users", [])]
+    _require_backup_reader(user)
+    data = _without_password_hashes(build_backup_data(db))
     data["downloaded_by"] = user.username
     body = json.dumps(data, default=str)
     # Keep one snapshot a day on the server as well, so the two copies
@@ -2749,12 +2770,23 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
 
 @app.get("/backup/{backup_id}/download")
 def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
+    """One stored snapshot, for whoever may already see pay.
+
+    This is the same complete copy of the company that
+    /backup/latest/download hands out, and it was handed to anyone
+    signed in: a site engineer or store keeper with a download token
+    could take every salary, every login and the audit log with them.
+    The gate its twin has always carried belongs here too, and so does
+    taking the stored passwords out on the way.
+    """
     user = auth.get_download_user_from_token(token, db)
+    _require_backup_reader(user)
     b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
     if not b:
         raise HTTPException(status_code=404, detail="Backup not found.")
     log_action(db, user.id, "download_backup", f"backup #{backup_id}")
-    buf = io.BytesIO(_backup_text(b.data).encode("utf-8"))
+    body = json.dumps(_without_password_hashes(_backup_json(b)), default=str)
+    buf = io.BytesIO(body.encode("utf-8"))
     ts = b.created_at.date().isoformat()
     return StreamingResponse(
         buf, media_type="application/json",

@@ -147,6 +147,43 @@ try:
 except Exception as e:
     ck('rebuilt-server restore readable', False, f"{e} :: {res.stdout[-200:]} {res.stderr[-200:]}")
 
+# ---- A backup is the whole company, so not everyone may take one ----
+# /backup/latest/download had always checked. /backup/{id}/download,
+# which hands out the same complete copy, checked nothing: a site
+# engineer with a download token took every salary, every login and the
+# audit log with them. Both routes share one gate now, and one rule
+# about the stored passwords.
+db = database.SessionLocal()
+db.add(models.User(username='sitelad', hashed_password=auth.hash_password('p'),
+                   full_name='Site Engineer', role='site'))
+db.commit(); db.close()
+SITE = {'Authorization': 'Bearer ' + c.post(
+    '/auth/login', data={'username': 'sitelad', 'password': 'p'}).json()['access_token']}
+
+stored = c.get('/backup/list', headers=H).json()
+stored = stored if isinstance(stored, list) else stored.get('backups', [])
+bid = stored[0]['id'] if stored else None
+ck('there is a stored backup to test against', bid is not None)
+
+site_dl = c.post('/auth/download-token', headers=SITE).json().get('token', '')
+ck('a site engineer can still mint a download token', bool(site_dl))
+for route in (f'/backup/{bid}/download', '/backup/latest/download'):
+    r = c.get(f'{route}?token={site_dl}')
+    ck(f'a site engineer is refused {route}', r.status_code == 403,
+       f'{r.status_code} {r.text[:120]}')
+
+admin_dl = c.post('/auth/download-token', headers=H).json().get('token', '')
+for route in (f'/backup/{bid}/download', '/backup/latest/download'):
+    r = c.get(f'{route}?token={admin_dl}')
+    ck(f'an admin still gets {route}', r.status_code == 200, r.status_code)
+    if r.status_code != 200:
+        continue
+    d = json.loads(r.content.decode('utf-8'))
+    ck(f'{route} is still a complete copy', len(d.get('tables', [])) > 10,
+       len(d.get('tables', [])))
+    left = [u['username'] for u in d.get('users', []) if u.get('hashed_password')]
+    ck(f'{route} carries no stored passwords', not left, left)
+
 print()
 print('BACKUP COMPLETE AND RESTORABLE' if not FAIL else f'{len(FAIL)} PROBLEM(S): {FAIL}')
 sys.exit(1 if FAIL else 0)
