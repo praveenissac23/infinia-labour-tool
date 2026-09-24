@@ -9216,10 +9216,10 @@ def _statement_rows(lines, consolidated=False, progress=None):
             "Add / Ded.": adj,
             "Absent Ded.": l["deduction"],
             "Loan": l["loan_deduction"],
-            "Net Pay": l["net_pay"],
+            # While the month runs the sheet shows what has been earned so
+            # far in place of the month's net pay.
+            "Salary To Date" if running else "Net Pay": l.get("to_date", 0) if running else l["net_pay"],
         })
-        if running:
-            r["To Date"] = l.get("to_date", 0)
         if pensions:
             r["Pension"] = l.get("pension") or 0
         r["Remark"] = l["remarks"] or l["deduction_note"] or ""
@@ -9227,7 +9227,7 @@ def _statement_rows(lines, consolidated=False, progress=None):
     return out
 
 
-STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "To Date", "Pension"]
+STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "Salary To Date", "Pension"]
 
 
 def _route_line(by_route):
