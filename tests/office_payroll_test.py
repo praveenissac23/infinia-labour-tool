@@ -529,8 +529,9 @@ for label, base in PAPERS:
 
 # The statement is the one that has to read like the sheet it replaces.
 pv = c.get(f"/export/payroll/statement/view?run_id={run['id']}&token={DL}").text
-for want in ('Fix Allown.', 'Salary Payable', 'Loan / Reimb.', 'Leave Salary',
-             'Net Pay', 'Taxi / Other Bills', 'Absent / Other Ded.'):
+for gone in ('Sr.', 'Salary Paid', 'Basic Salary', 'Fix Allown.', 'Leave Salary'):
+    ck(f'the statement no longer carries "{gone}"', f'>{gone}<' not in pv)
+for want in ('Gross Salary', 'Add / Ded.', 'Absent Ded.', 'Salary Payable', 'Loan', 'Net Pay'):
     ck(f'the statement keeps the column "{want}"', want in pv)
 for want in ('86,609.50', 'WPS TOTAL', 'BANK TRANSFER', 'CASH SALARY TOTAL'):
     ck(f'and prints {want}', want in pv, want)

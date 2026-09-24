@@ -8490,10 +8490,13 @@ def _auto_remark(items, absent_note, loan):
         text = i.notes if (i.notes and not (i.source or "").startswith("leave:")) else label
         if i.category in ("leave_salary", "air_ticket"):
             text = label
-        if text not in parts:
-            parts.append(text)
+        # The screen shows additions and deductions as one figure, so the
+        # remark says what made it up - "Leave salary 7,000.00".
+        amt = f"{i.amount:,.2f}"
+        text = text if amt in text else f"{text} {'-' if i.direction == 'deduct' else ''}{amt}"
+        parts.append(text)
     if loan:
-        parts.append("Loan reimbursement")
+        parts.append(f"Loan {loan:,.2f}")
     if absent_note:
         parts.append(absent_note)
     return "; ".join(parts)
@@ -8705,6 +8708,14 @@ def _run_dict(r, db):
     # evenly across the calendar month; absences, additions and
     # deductions count as recorded. The loan instalment comes off at the
     # month end, so it is left out of the running figure.
+    for l in lines:
+        left = 0.0
+        for ln in (db.query(models.StaffLoan).options(joinedload(models.StaffLoan.repayments))
+                     .filter(models.StaffLoan.employee_id == l["employee_id"]).all()):
+            left += (ln.amount or 0) - sum(x.amount or 0 for x in ln.repayments)
+        l["loan_balance"] = round(max(left, 0), 2)
+        l["adjust"] = round(l["other_allowance"] + l["leave_salary"] + l["air_ticket"]
+                            - l["statutory"], 2)
     a, b = _staff_month_bounds(r.month_year)
     today = _dubai_today()
     days = (b - a).days + 1
@@ -9041,30 +9052,29 @@ def _dmy(d):
 
 
 def _statement_rows(lines, consolidated=False):
-    """The salary statement, laid out as the signed sheet lays it out.
+    """The salary statement, the same columns as the salary sheet on screen.
 
-    The keys are the headings themselves rather than field names, so what
-    prints is "Fix Allown." and not "Fix Allown" or "allowance" - this
-    sheet goes to the bank and to the staff, and it should read the way
-    the one before it read.
+    One salary figure, one column for everything in Additions & Deductions
+    (leave salary and tickets included - the remark names each one), the
+    absence deduction, the loan, and net pay. Salary + Add / Ded - Absent
+    = Salary Payable; Salary Payable - Loan = Net Pay, on every row.
     """
     out = []
     # The pension column appears only on a statement that has any - the
     # local staff one - and sits after net pay, because it is not in it.
     pensions = any(l.get("pension") for l in lines)
-    for i, l in enumerate(lines, 1):
-        r = {"Sr.": i, "Emp. Code": l["emp_no"], "Employee Name": l["name"],
-             "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-",
-             "Salary Paid": "Monthly"}
+    for l in lines:
+        adj = round(l["other_allowance"] + l["leave_salary"] + l["air_ticket"] - l["statutory"], 2)
+        r = {"Emp. Code": l["emp_no"], "Employee Name": l["name"],
+             "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-"}
         if consolidated:
             r["Company"] = l.get("company", "")
         r.update({
-            "Basic Salary": l["basic"], "Fix Allown.": l["allowance"],
-            "Taxi / Other Bills": l["other_allowance"],
-            "Absent / Other Ded.": round(l["deduction"] + l["statutory"], 2),
-            "Salary Payable": l["payable"],
-            "Loan / Reimb.": l["loan_deduction"],
-            "Leave Salary": round(l["leave_salary"] + l["air_ticket"], 2),
+            "Gross Salary": l["fixed_salary"],
+            "Add / Ded.": adj,
+            "Absent Ded.": l["deduction"],
+            "Salary Payable": round(l["fixed_salary"] + adj - l["deduction"], 2),
+            "Loan": l["loan_deduction"],
             "Net Pay": l["net_pay"],
         })
         if pensions:
@@ -9074,9 +9084,8 @@ def _statement_rows(lines, consolidated=False):
     return out
 
 
-STATEMENT_MONEY = ["Basic Salary", "Fix Allown.", "Taxi / Other Bills",
-                   "Absent / Other Ded.", "Salary Payable", "Loan / Reimb.",
-                   "Leave Salary", "Net Pay", "Pension"]
+STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Salary Payable",
+                   "Loan", "Net Pay", "Pension"]
 
 
 def _route_line(by_route):

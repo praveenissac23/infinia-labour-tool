@@ -2478,17 +2478,16 @@
             <div class="card">
               <h2>Salary Cycle</h2>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Company</span><select id="hr-run-company" style="width:200px;"></select></label>
-                <label class="hr-field"><span>Statement</span><select id="hr-run-group" style="width:190px;" title="Which statement">
+                <label class="hr-field"><span>Company</span><select id="hr-run-company" style="width:200px;" onchange="openPayrollCycle()"></select></label>
+                <label class="hr-field"><span>Statement</span><select id="hr-run-group" style="width:190px;" title="Which statement" onchange="openPayrollCycle()">
                   <option value="staff">Office staff</option>
                   <option value="local">Local &amp; household staff</option>
                 </select></label>
-                <label class="hr-field"><span>Month</span><input type="month" id="hr-run-month" style="width:160px;"></label>
-                <button class="btn btn-primary" onclick="openPayrollCycle()">Open cycle</button>
+                <label class="hr-field"><span>Month</span><input type="month" id="hr-run-month" style="width:160px;" onchange="openPayrollCycle()"></label>
+
                 <span style="font-size:12px; color:#888;">
-                  Opening a month fills every figure already on file - salary, the deductions
-                  the leave register implies, the instalment due. Only the month's own
-                  exceptions are typed.</span>
+                  Pick a company and month and the sheet loads, filled from everything on file -
+                  salary, absences, additions and deductions, and each loan's instalment.</span>
               </div>
               <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
                 <label style="font-size:12px; font-weight:bold; color:#555;">Saved cycles</label>
@@ -2521,20 +2520,17 @@
               <div class="grid-wrap" style="max-height:56vh;">
                 <table id="hr-run-table" class="hr-grid hr-cycle">
                   <thead><tr>
-                    <th style="width:4.5%;">Code</th>
-                    <th class="txt" style="width:11%;">Employee</th>
-                    <th class="num" style="width:8%;">Basic</th>
-                    <th class="num" style="width:8%;">Fix Allown.</th>
-                    <th class="num" style="width:7%;">Taxi / Other</th>
-                    <th class="num" style="width:7%;">Absent Ded.</th>
-                    <th class="num" style="width:6%;">Other Ded.</th>
-                    <th class="num" style="width:8.5%;">Salary Payable</th>
-                    <th class="num" style="width:6.5%;">Loan</th>
-                    <th class="num" style="width:7%;">Leave Salary</th>
-                    <th class="num" style="width:7%;">Air Ticket</th>
-                    <th class="num" style="width:8.5%;">Net Pay</th>
+                    <th style="width:5%;">Code</th>
+                    <th class="txt" style="width:16%;">Employee</th>
+                    <th class="num" style="width:9%;">Basic</th>
+                    <th class="num" style="width:9%;">Fix Allown.</th>
+                    <th class="num" style="width:9%;">Add / Ded.</th>
+                    <th class="num" style="width:8.5%;">Absent Ded.</th>
+                    <th class="num" style="width:10%;">Salary Payable</th>
+                    <th class="num" style="width:9%;">Loan</th>
+                    <th class="num" style="width:10.5%;">Net Pay</th>
                     <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
-                    <th class="txt" style="width:11%;">Remark</th>
+                    <th class="txt" style="width:14%;">Remark</th>
                   </tr></thead>
                   <tbody id="hr-run-body"></tbody>
                   <tfoot id="hr-run-foot"></tfoot>
@@ -11028,6 +11024,8 @@ async function loadHrScreen() {
   }
   await loadRunList();
   hrTab(localStorage.getItem("infinia_hr_tab") || "payroll");
+  // The current month for the first company is on screen straight away.
+  if (!HR_RUN) await openPayrollCycle();
 }
 
 // ---- Salary cycle ----------------------------------------------------
@@ -11044,7 +11042,7 @@ async function loadRunList() {
 async function openPayrollCycle() {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
-  if (!month || !company_id) { hrMsg("warn", "Pick a company and a month."); return; }
+  if (!month || !company_id) return;
   try {
     const group = document.getElementById("hr-run-group").value || "staff";
     HR_RUN = await apiCall("/employees/payroll/runs", {
@@ -11052,8 +11050,12 @@ async function openPayrollCycle() {
     renderRun();
     await loadRunList();
     document.getElementById("hr-run-pick").value = HR_RUN.id;
-    hrMsg("ok", `${month} is open for ${HR_RUN.company_short}.`);
-  } catch (e) { hrMsg("err", errText(e)); }
+    showStatus("hr-status", "ok", "");
+    document.getElementById("hr-status").style.display = "none";
+  } catch (e) {
+    HR_RUN = null; renderRun();
+    hrMsg("warn", errText(e));
+  }
 }
 
 async function loadPayrollRun(id) {
@@ -11090,6 +11092,35 @@ function runCell(l, field, locked) {
       oninput="recalcLine(${l.id})" onfocus="hrAmtFocus(this)" onblur="hrAmtBlur(this)"
       title="${l.loan_edited ? "Changed on this sheet" : "The instalment due - type over it to take a different amount this month"}"
       ${l.loan_edited ? 'style="border-color:#D9A441;"' : ""}></td>`;
+}
+
+// What a line pays before the loan: salary, less absence, plus or minus
+// everything in Additions & Deductions (leave salary and tickets included).
+function hrAdjust(l) {
+  return (l.other_allowance || 0) + (l.leave_salary || 0) + (l.air_ticket || 0) - (l.statutory || 0);
+}
+function hrPayable(l) { return (l.fixed_salary || 0) - (l.deduction || 0) + hrAdjust(l); }
+
+function hrAdjCell(l, locked) {
+  const v = hrAdjust(l);
+  const txt = !v ? '<span class="hr-nil">-</span>'
+            : `<span style="color:${v > 0 ? "#2E7D32" : "#B03A2E"}">${v > 0 ? "+" : "-"}${hrMoney(Math.abs(v))}</span>`;
+  return `<td class="num${locked ? "" : " hr-from"}" title="From Additions &amp; Deductions - see the remark"
+    ${locked ? "" : `onclick="hrTab('items')"`}>${txt}</td>`;
+}
+
+// The instalment the loan's terms set, already on the row; a box to type
+// over it only for someone who has a loan running.
+function hrLoanCell(l, locked) {
+  const v = Number(l.loan_deduction || 0);
+  const bal = l.loan_balance ? `<span class="sub">balance ${hrMoney(l.loan_balance)}</span>` : "";
+  if (locked || (!l.loan_balance && !v))
+    return `<td class="num">${v ? hrMoney(v) : '<span class="hr-nil">-</span>'}${locked ? "" : bal}</td>`;
+  return `<td class="num"><input type="text" inputmode="decimal" class="hr-cell hr-amt"
+      data-line="${l.id}" data-field="loan_deduction" value="${hrBox(v)}" placeholder="0"
+      oninput="recalcLine(${l.id})" onfocus="hrAmtFocus(this)" onblur="hrAmtBlur(this)"
+      title="${l.loan_edited ? "Changed on this sheet" : "The instalment the loan terms set - type over it to take a different amount this month"}"
+      ${l.loan_edited ? 'style="border-color:#D9A441;"' : ""}>${bal}</td>`;
 }
 
 // Typing is easier without the commas; they come back when the box is left.
@@ -11144,13 +11175,10 @@ function renderRun() {
         ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}</td>
       <td class="num">${hrMoney(l.basic)}</td>
       <td class="num">${hrMoney(l.allowance)}</td>
-      ${runCell(l, "other_allowance", locked)}
+      ${hrAdjCell(l, locked)}
       ${runCell(l, "deduction", locked)}
-      ${runCell(l, "statutory", locked)}
-      <td class="num strong" id="hr-payable-${l.id}">${hrMoney(l.payable)}</td>
-      ${runCell(l, "loan_deduction", locked)}
-      ${runCell(l, "leave_salary", locked)}
-      ${runCell(l, "air_ticket", locked)}
+      <td class="num strong" id="hr-payable-${l.id}">${hrMoney(hrPayable(l))}</td>
+      ${hrLoanCell(l, locked)}
       <td class="num net" id="hr-net-${l.id}">${hrMoney(l.net_pay)}${r.progress && r.progress.running
         ? `<span class="sub hr-todate" title="Earned up to ${hrDate(r.progress.as_of)}">to date ${hrMoney(l.to_date)}</span>` : ""}</td>
       ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
@@ -11181,13 +11209,14 @@ function renderRun() {
 function renderRunFoot() {
   const sum = f => HR_RUN.lines.reduce((a, l) => a + Number(l[f] || 0), 0);
   const pension = HR_RUN.lines.some(l => l.pension);
-  const cells = ["basic", "allowance", "other_allowance", "deduction", "statutory",
-                 "payable", "loan_deduction", "leave_salary", "air_ticket", "net_pay"]
-                .concat(pension ? ["pension"] : []);
+  const tot = fn => HR_RUN.lines.reduce((a, l) => a + fn(l), 0);
+  const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
+                 tot(hrPayable), sum("loan_deduction"), sum("net_pay")]
+                .concat(pension ? [sum("pension")] : []);
   document.getElementById("hr-run-foot").innerHTML =
     `<tr class="hr-foot">
        <td colspan="2" class="txt">TOTAL - ${HR_RUN.lines.length} staff</td>
-       ${cells.map(f => `<td class="num">${hrMoney(sum(f))}</td>`).join("")}
+       ${cells.map(v => `<td class="num">${hrMoney(v)}</td>`).join("")}
        <td></td></tr>`;
 }
 
@@ -11203,7 +11232,7 @@ function recalcLine(id) {
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
   // Pension is printed beside net pay, never added into it.
   l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
-  document.getElementById(`hr-payable-${id}`).textContent = hrMoney(l.payable);
+  document.getElementById(`hr-payable-${id}`).textContent = hrMoney(hrPayable(l));
   document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
   const routes = {};
