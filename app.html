@@ -96,6 +96,53 @@
             border: 1px solid #E7CEC9; border-bottom: none; }
   .hr-tab:hover { background: #FAEBE8; color: #5F2E27; }
   .hr-tab.active { background: var(--red); color: white; border-color: var(--red); }
+  /* The HR tables. Headings may wrap - a column of figures does not need
+     to be as wide as the words over it - and every column has a set
+     width, so a sheet of fourteen columns fits a laptop screen instead
+     of pushing Net Pay off the right-hand edge. */
+  .hr-grid { table-layout: fixed; }
+  .hr-grid th { white-space: normal; line-height: 1.25; padding: 8px 6px; vertical-align: bottom; }
+  .hr-grid td { padding: 7px 6px; }
+  .hr-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .hr-grid .txt { text-align: left; }
+  .hr-grid .strong { font-weight: 600; }
+  .hr-grid .net { font-weight: 700; }
+  .hr-grid .muted, .hr-nil { color: #A8A29A; }
+  .hr-grid .sub { display: block; font-size: 11px; color: #8A8178; margin-top: 1px; }
+  .hr-cycle td { padding: 5px 4px; font-size: 12.5px; }
+  .hr-cycle th { padding: 8px 4px; }
+  .hr-cycle td.txt { line-height: 1.25; }
+  .hr-cycle input.hr-amt, .hr-cycle input.hr-rem {
+     width: 100%; box-sizing: border-box; padding: 4px 4px; font-size: 12px;
+     border: 1px solid #E4E0DB; border-radius: 4px; background: #FFFDFB; }
+  .hr-cycle input.hr-amt { text-align: right; font-variant-numeric: tabular-nums; }
+  .hr-cycle input.hr-amt:focus, .hr-cycle input.hr-rem:focus {
+     outline: none; border-color: var(--red); background: white; }
+  .hr-remark { font-size: 12px; color: #555; }
+  .hr-tag { display: inline-block; margin-left: 4px; padding: 0 5px; font-size: 10.5px;
+            border-radius: 3px; background: #EEF2F7; color: #4A5A70; vertical-align: 1px; }
+  .hr-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11.5px;
+              border-radius: 10px; vertical-align: 2px; font-weight: 600; }
+  .hr-badge.ok { background: #E3F1E5; color: #2E7D32; }
+  .hr-badge.draft { background: #FFF3CD; color: #8a6d1a; }
+  .hr-route { display: inline-block; margin-right: 26px; }
+  .hr-route b { font-size: 11.5px; letter-spacing: .3px; color: #6B7075; margin-right: 4px; }
+  tr.hr-foot td { background: #F7F4EE !important; font-weight: 700; border-top: 2px solid #E6E2DA;
+                  font-size: 11.5px; white-space: nowrap; padding-left: 2px; padding-right: 4px; }
+  /* A row's standing is painted on its cells, not the row: the app's
+     zebra striping paints the cells of every other row, and a colour on
+     the row itself vanished under it on alternate lines. */
+  tr.hr-bad td { background: #FBE9E6 !important; }
+  tr.hr-warn td { background: #FFF6DA !important; }
+  tr.hr-soft td { background: #FBF8F3 !important; }
+  tr.hr-first td { border-top: 2px solid #E6E2DA; }
+  td.hr-d-expired { background: #FBE9E6 !important; color: #A33A2B; font-weight: 600; }
+  td.hr-d-urgent { background: #FFF1CC !important; color: #7A5B0F; font-weight: 600; }
+  td.hr-d-soon { background: #FFF9E8 !important; }
+  td.hr-d { cursor: pointer; }
+  td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
+  .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
+  .hr-field > span { font-size: 11px; font-weight: 700; color: #6B7075; letter-spacing: .2px; }
 
   .grid-wrap { background: white; border-radius: 8px; border: 1px solid #E8E8E8; overflow: auto; max-height: 60vh; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -404,6 +451,16 @@
     .cell-input.comments { width: 100px; }
 
     .viewing-label { margin-left: 0; width: 100%; }
+
+    /* HR: a labelled box stacks its label over the box, so the phone
+       rule that stretches boxes along the row would squash them flat
+       inside it. Each labelled field takes the full width instead. */
+    .form-row .hr-field { flex: 1 1 100%; }
+    .form-row .hr-field > input, .form-row .hr-field > select { flex: none; width: 100% !important; }
+    /* The HR tables keep their shape and scroll sideways on a phone,
+       rather than squeezing fourteen columns into four hundred pixels. */
+    .hr-grid { min-width: 720px; }
+    .hr-cycle { min-width: 1080px; }
   }
 
   /* ---- Dashboard ---- */
@@ -2399,15 +2456,13 @@
           <div class="hr-pane" id="hrpane-payroll">
             <div class="card">
               <h2>Salary Cycle</h2>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <label style="font-size:12px; font-weight:bold; color:#555;">Company</label>
-                <select id="hr-run-company" style="width:210px;"></select>
-                <select id="hr-run-group" style="width:170px;" title="Which statement">
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Company</span><select id="hr-run-company" style="width:200px;"></select></label>
+                <label class="hr-field"><span>Statement</span><select id="hr-run-group" style="width:190px;" title="Which statement">
                   <option value="staff">Office staff</option>
                   <option value="local">Local &amp; household staff</option>
-                </select>
-                <label style="font-size:12px; font-weight:bold; color:#555;">Month</label>
-                <input type="month" id="hr-run-month" style="width:160px;">
+                </select></label>
+                <label class="hr-field"><span>Month</span><input type="month" id="hr-run-month" style="width:160px;"></label>
                 <button class="btn btn-primary" onclick="openPayrollCycle()">Open cycle</button>
                 <span style="font-size:12px; color:#888;">
                   Opening a month fills every figure already on file - salary, the deductions
@@ -2437,21 +2492,22 @@
                 </span>
               </div>
               <div class="grid-wrap" style="max-height:56vh;">
-                <table id="hr-run-table">
+                <table id="hr-run-table" class="hr-grid hr-cycle">
                   <thead><tr>
-                    <th style="width:6%;">Code</th>
-                    <th style="width:15%; text-align:left;">Employee</th>
-                    <th style="width:7%;">Basic</th>
-                    <th style="width:7%;">Fix Allown.</th>
-                    <th style="width:8%;">Taxi / Other</th>
-                    <th style="width:8%;">Absent Ded.</th>
-                    <th style="width:7%;">Other Ded.</th>
-                    <th style="width:8%;">Salary Payable</th>
-                    <th style="width:7%;">Loan</th>
-                    <th style="width:8%;">Leave Salary</th>
-                    <th style="width:7%;">Air Ticket</th>
-                    <th style="width:8%;">Net Pay</th>
-                    <th style="width:14%; text-align:left;">Remark</th>
+                    <th style="width:4.5%;">Code</th>
+                    <th class="txt" style="width:12%;">Employee</th>
+                    <th class="num" style="width:8%;">Basic</th>
+                    <th class="num" style="width:8%;">Fix Allown.</th>
+                    <th class="num" style="width:7%;">Taxi / Other</th>
+                    <th class="num" style="width:7%;">Absent Ded.</th>
+                    <th class="num" style="width:6%;">Other Ded.</th>
+                    <th class="num" style="width:8.5%;">Salary Payable</th>
+                    <th class="num" style="width:6.5%;">Loan</th>
+                    <th class="num" style="width:7%;">Leave Salary</th>
+                    <th class="num" style="width:5.5%;">Air Ticket</th>
+                    <th class="num" style="width:8.5%;">Net Pay</th>
+                    <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
+                    <th class="txt" style="width:11.5%;">Remark</th>
                   </tr></thead>
                   <tbody id="hr-run-body"></tbody>
                   <tfoot id="hr-run-foot"></tfoot>
@@ -2468,91 +2524,84 @@
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
                 Everyone paid a monthly figure. Gratuity is worked out from the joining
                 date and the basic on file - 21 days a year for the first five years and
-                30 after, as the UAE labour law sets it - and moves on its own as service
-                lengthens.</p>
+                30 after, as UAE labour law sets it - and grows on its own as service
+                lengthens. Click a name to change the record.</p>
               <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
                 <label style="font-size:12px; font-weight:bold; color:#555;">Company</label>
-                <select id="hr-staff-company" style="width:200px;" onchange="renderStaff()"></select>
-                <input type="text" id="hr-staff-search" placeholder="Code or name" style="width:190px;" oninput="renderStaff()">
+                <select id="hr-staff-company" style="width:190px;" onchange="renderStaff()"></select>
+                <input type="text" id="hr-staff-search" placeholder="Search code or name" style="width:190px;" oninput="renderStaff()">
                 <button class="btn btn-dark" onclick="previewHr('staff')">Preview</button>
                 <button class="btn btn-gray" onclick="downloadHr('staff','pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadHr('staff','excel')">Export to Excel</button>
-                <span style="display:inline-flex; gap:8px; margin-left:14px; padding-left:14px;
-                             border-left:1px solid #E4E0DB;">
-                  <input type="text" id="hr-company-name" placeholder="New company name" style="width:190px;">
-                  <input type="text" id="hr-company-short" placeholder="Short name" style="width:120px;">
-                  <button class="btn btn-gray" onclick="addCompany()">Add company</button>
-                </span>
               </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                <table>
+                <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:7%;">Code</th><th style="width:16%; text-align:left;">Name</th>
-                    <th style="width:11%;">Company</th><th style="width:12%;">Designation</th>
-                    <th style="width:9%;">Joined</th><th style="width:6%;">Years</th>
-                    <th style="width:8%;">Basic</th><th style="width:8%;">Fix Allown.</th>
-                    <th style="width:8%;">Gross</th><th style="width:9%;">Gratuity</th>
-                    <th style="width:6%;">Paid by</th>
+                    <th style="width:6%;">Code</th><th class="txt" style="width:17%;">Name</th>
+                    <th class="txt" style="width:11%;">Company</th><th class="txt" style="width:12%;">Designation</th>
+                    <th style="width:9%;">Joined</th><th style="width:7%;">Service</th>
+                    <th class="num" style="width:8%;">Basic</th><th class="num" style="width:8%;">Fix Allown.</th>
+                    <th class="num" style="width:8%;">Gross</th><th class="num" style="width:9%;">Gratuity to date</th>
+                    <th style="width:5%;">Paid by</th>
                   </tr></thead>
                   <tbody id="hr-staff-body"></tbody>
                   <tfoot id="hr-staff-foot"></tfoot>
                 </table>
               </div>
             </div>
-            <div class="card">
-              <h2>New staff member</h2>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" id="hr-n-code" placeholder="Staff code *" style="width:110px;">
-                <input type="text" id="hr-n-name" placeholder="Full name *" style="width:220px;">
-                <select id="hr-n-company" style="width:170px;"></select>
-                <input type="text" id="hr-n-designation" placeholder="Designation" style="width:160px;">
-                <input type="date" id="hr-n-joined" style="width:150px;" title="Joining date *">
-              </div>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px; align-items:center;">
-                <input type="number" id="hr-n-gross" placeholder="Monthly salary *" style="width:150px;"
-                       step="0.01" oninput="hrSplitNew()">
-                <input type="number" id="hr-n-basic" placeholder="Basic" style="width:110px;" step="0.01">
-                <input type="number" id="hr-n-allowance" placeholder="Fix allowance" style="width:130px;" step="0.01">
-                <select id="hr-n-route" style="width:150px;">
-                  <option value="wps">Paid by WPS</option>
-                  <option value="bank">Bank transfer</option>
-                  <option value="cash">Cash</option>
-                </select>
-                <select id="hr-n-group" style="width:190px;">
-                  <option value="staff">Office staff statement</option>
-                  <option value="local">Local &amp; household statement</option>
-                </select>
-                <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
-                <span style="font-size:12px; color:#888;">The salary is split 40 / 60 as it is typed; change either figure if the contract says otherwise.</span>
-              </div>
-            </div>
             <div class="card" id="hr-staff-edit" style="display:none;">
               <h2 id="hr-staff-edit-title">Edit staff</h2>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap;">
-                <input type="text" id="hr-e-designation" placeholder="Designation" style="width:170px;">
-                <select id="hr-e-company" style="width:180px;"></select>
-                <input type="date" id="hr-e-joined" style="width:150px;" title="Joining date">
-                <input type="number" id="hr-e-basic" placeholder="Basic" style="width:110px;" step="0.01">
-                <input type="number" id="hr-e-allowance" placeholder="Fix allowance" style="width:130px;" step="0.01">
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Designation</span><input type="text" id="hr-e-designation" style="width:170px;"></label>
+                <label class="hr-field"><span>Company</span><select id="hr-e-company" style="width:170px;"></select></label>
+                <label class="hr-field"><span>Joining date</span><input type="date" id="hr-e-joined" style="width:150px;"></label>
+                <label class="hr-field"><span>Basic</span><input type="number" id="hr-e-basic" style="width:110px;" step="0.01"></label>
+                <label class="hr-field"><span>Fix allowance</span><input type="number" id="hr-e-allowance" style="width:120px;" step="0.01"></label>
+                <label class="hr-field"><span>Paid by</span><select id="hr-e-route" style="width:140px;">
+                  <option value="wps">WPS</option><option value="bank">Bank transfer</option><option value="cash">Cash</option>
+                </select></label>
               </div>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px; align-items:center;">
-                <select id="hr-e-route" style="width:150px;">
-                  <option value="wps">Paid by WPS</option>
-                  <option value="bank">Bank transfer</option>
-                  <option value="cash">Cash</option>
-                </select>
-                <input type="text" id="hr-e-iban" placeholder="IBAN" style="width:230px;">
-                <select id="hr-e-scheme" style="width:190px;" onchange="hrSchemeChanged()">
-                  <option value="gratuity">End of service gratuity</option>
-                  <option value="pension">GPSSA pension</option>
-                </select>
-                <input type="number" id="hr-e-pension" placeholder="Pension / month" style="width:150px; display:none;" step="0.01">
-                <select id="hr-e-group" style="width:190px;">
-                  <option value="staff">Office staff statement</option>
-                  <option value="local">Local &amp; household statement</option>
-                </select>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:8px; align-items:flex-end;">
+                <label class="hr-field"><span>IBAN</span><input type="text" id="hr-e-iban" style="width:230px;"></label>
+                <label class="hr-field"><span>End of service</span><select id="hr-e-scheme" style="width:190px;" onchange="hrSchemeChanged()">
+                  <option value="gratuity">Gratuity</option><option value="pension">GPSSA pension (national)</option>
+                </select></label>
+                <label class="hr-field" id="hr-e-pension-f"><span>Pension / month</span><input type="number" id="hr-e-pension" style="width:130px;" step="0.01"></label>
+                <label class="hr-field"><span>Paid on</span><select id="hr-e-group" style="width:190px;">
+                  <option value="staff">Office staff statement</option><option value="local">Local &amp; household statement</option>
+                </select></label>
                 <button class="btn btn-primary" onclick="saveStaffEdit()">Save</button>
                 <button class="btn btn-gray" onclick="closeStaffEdit()">Cancel</button>
+              </div>
+              <p style="font-size:12px; color:#888; margin:8px 0 0;">A rise belongs under Increments, where its date and reason are kept. Change basic or allowance here only to correct a figure.</p>
+            </div>
+            <div class="card">
+              <h2>New staff member</h2>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff code *</span><input type="text" id="hr-n-code" style="width:100px;"></label>
+                <label class="hr-field"><span>Full name *</span><input type="text" id="hr-n-name" style="width:210px;"></label>
+                <label class="hr-field"><span>Company *</span><select id="hr-n-company" style="width:160px;"></select></label>
+                <label class="hr-field"><span>Designation</span><input type="text" id="hr-n-designation" style="width:150px;"></label>
+                <label class="hr-field"><span>Joining date *</span><input type="date" id="hr-n-joined" style="width:150px;"></label>
+              </div>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:8px; align-items:flex-end;">
+                <label class="hr-field"><span>Monthly salary *</span><input type="number" id="hr-n-gross" style="width:130px;" step="0.01" oninput="hrSplitNew()"></label>
+                <label class="hr-field"><span>Basic (40%)</span><input type="number" id="hr-n-basic" style="width:110px;" step="0.01"></label>
+                <label class="hr-field"><span>Fix allowance (60%)</span><input type="number" id="hr-n-allowance" style="width:130px;" step="0.01"></label>
+                <label class="hr-field"><span>Paid by</span><select id="hr-n-route" style="width:130px;">
+                  <option value="wps">WPS</option><option value="bank">Bank transfer</option><option value="cash">Cash</option>
+                </select></label>
+                <label class="hr-field"><span>Paid on</span><select id="hr-n-group" style="width:190px;">
+                  <option value="staff">Office staff statement</option><option value="local">Local &amp; household statement</option>
+                </select></label>
+                <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
+              </div>
+              <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:12px;
+                           border-top:1px solid #EFEBE4; align-items:center; font-size:12.5px; color:#666;">
+                Companies: <b id="hr-company-list" style="color:#333;"></b>
+                <input type="text" id="hr-company-name" placeholder="New company, full name" style="width:210px; margin-left:12px;">
+                <input type="text" id="hr-company-short" placeholder="Short name" style="width:120px;">
+                <button class="btn btn-gray" onclick="addCompany()">Add company</button>
               </div>
             </div>
           </div>
@@ -2562,30 +2611,30 @@
             <div class="card">
               <h2>Staff Loans</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                A balance is never stored - it is the amount lent less everything recovered,
-                worked out fresh each time, so the ledger and the balance cannot drift apart.
-                Approving a salary cycle is what records that month's instalment.</p>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" id="hr-loan-emp" placeholder="Staff code" style="width:120px;">
-                <input type="number" id="hr-loan-amount" placeholder="Amount" style="width:120px;" step="0.01">
-                <input type="date" id="hr-loan-date" style="width:150px;" title="Taken on">
-                <input type="number" id="hr-loan-instalment" placeholder="Monthly" style="width:110px;" step="0.01">
-                <input type="text" id="hr-loan-terms" placeholder="Agreed reimbursement terms" style="width:260px;">
+                The balance is the amount lent less everything recovered, worked out fresh
+                each time. Approving a salary cycle records that month's instalment; money
+                paid back any other way goes in with Record repayment.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff code</span><input type="text" id="hr-loan-emp" style="width:100px;"></label>
+                <label class="hr-field"><span>Amount lent</span><input type="text" inputmode="decimal" id="hr-loan-amount" style="width:120px;"></label>
+                <label class="hr-field"><span>Taken on</span><input type="date" id="hr-loan-date" style="width:150px;"></label>
+                <label class="hr-field"><span>Monthly from salary</span><input type="text" inputmode="decimal" id="hr-loan-instalment" style="width:130px;" placeholder="0 = not from salary"></label>
+                <label class="hr-field"><span>Agreed terms</span><input type="text" id="hr-loan-terms" style="width:250px;"></label>
                 <button class="btn btn-primary" onclick="addLoan()">Record loan</button>
               </div>
-              <div class="form-row" style="gap:8px; margin-top:10px;">
+              <div class="form-row" style="gap:8px; margin-top:12px;">
                 <button class="btn btn-dark" onclick="previewHr('loans')">Preview</button>
                 <button class="btn btn-gray" onclick="downloadHr('loans','pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadHr('loans','excel')">Export to Excel</button>
               </div>
               <div class="grid-wrap" style="max-height:58vh; margin-top:10px;">
-                <table>
+                <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:7%;">Code</th><th style="width:17%; text-align:left;">Name</th>
-                    <th style="width:9%;">Taken on</th><th style="width:10%;">Loan</th>
-                    <th style="width:10%;">Repaid</th><th style="width:10%;">Balance</th>
-                    <th style="width:8%;">Monthly</th><th style="width:19%; text-align:left;">Terms</th>
-                    <th style="width:10%;">Repayment</th>
+                    <th style="width:7%;">Code</th><th class="txt" style="width:18%;">Name</th>
+                    <th style="width:10%;">Taken on</th><th class="num" style="width:10%;">Lent</th>
+                    <th class="num" style="width:10%;">Recovered</th><th class="num" style="width:10%;">Balance</th>
+                    <th class="num" style="width:8%;">Monthly</th><th class="txt" style="width:13%;">Terms</th>
+                    <th style="width:14%;"></th>
                   </tr></thead>
                   <tbody id="hr-loan-body"></tbody>
                   <tfoot id="hr-loan-foot"></tfoot>
@@ -2599,24 +2648,21 @@
             <div class="card">
               <h2>Staff Leave</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Whether a day costs anything is a decision, not a rule - mark it unpaid and
-                the next cycle opened for that month proposes the deduction by itself, at
-                the gross over thirty, dropped to whole dirhams.</p>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" id="hr-leave-emp" placeholder="Staff code" style="width:120px;">
-                <input type="date" id="hr-leave-date" style="width:150px;">
-                <select id="hr-leave-portion" style="width:120px;">
-                  <option value="full">Full day</option><option value="half">Half day</option>
-                </select>
-                <select id="hr-leave-paid" style="width:130px;">
-                  <option value="yes">Paid</option><option value="no">Unpaid</option>
-                </select>
-                <input type="text" id="hr-leave-reason" placeholder="Reason" style="width:170px;">
-                <label style="font-size:12px; color:#555;">
-                  <input type="checkbox" id="hr-leave-cert"> Certificate</label>
+                Mark a day unpaid and the cycle opened for that month proposes the deduction
+                by itself - the gross over thirty, dropped to whole dirhams.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff code</span><input type="text" id="hr-leave-emp" style="width:100px;"></label>
+                <label class="hr-field"><span>Date</span><input type="date" id="hr-leave-date" style="width:150px;"></label>
+                <label class="hr-field"><span>Day</span><select id="hr-leave-portion" style="width:110px;">
+                  <option value="full">Full day</option><option value="half">Half day</option></select></label>
+                <label class="hr-field"><span>Pay</span><select id="hr-leave-paid" style="width:110px;">
+                  <option value="yes">Paid</option><option value="no">Unpaid</option></select></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="hr-leave-reason" style="width:170px;" placeholder="Sick, annual, absent..."></label>
+                <label style="font-size:12px; color:#555; padding-bottom:8px;">
+                  <input type="checkbox" id="hr-leave-cert"> Certificate given</label>
                 <button class="btn btn-primary" onclick="addLeave()">Record leave</button>
               </div>
-              <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
+              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center;">
                 <label style="font-size:12px; font-weight:bold; color:#555;">Month</label>
                 <input type="month" id="hr-leave-month" style="width:160px;" onchange="loadLeave()">
                 <button class="btn btn-dark" onclick="previewHr('leave')">Preview</button>
@@ -2625,12 +2671,12 @@
                 <span id="hr-leave-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:58vh; margin-top:10px;">
-                <table>
+                <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:8%;">Code</th><th style="width:22%; text-align:left;">Staff</th>
-                    <th style="width:12%;">Date</th><th style="width:11%;">Portion</th>
-                    <th style="width:10%;">Paid</th><th style="width:20%; text-align:left;">Reason</th>
-                    <th style="width:10%;">Certificate</th><th style="width:7%;"></th>
+                    <th style="width:8%;">Code</th><th class="txt" style="width:24%;">Staff</th>
+                    <th style="width:12%;">Date</th><th style="width:10%;">Day</th>
+                    <th style="width:9%;">Pay</th><th class="txt" style="width:20%;">Reason</th>
+                    <th style="width:9%;">Certificate</th><th style="width:8%;"></th>
                   </tr></thead>
                   <tbody id="hr-leave-body"></tbody>
                 </table>
@@ -2642,34 +2688,43 @@
           <div class="hr-pane" id="hrpane-docs" style="display:none;">
             <div class="card">
               <h2>Document Expiry</h2>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" id="hr-doc-emp" placeholder="Staff or labour code" style="width:160px;">
-                <select id="hr-doc-kind" style="width:170px;"></select>
-                <input type="text" id="hr-doc-number" placeholder="Number" style="width:170px;">
-                <input type="date" id="hr-doc-issued" style="width:150px;" title="Issued on">
-                <input type="date" id="hr-doc-expires" style="width:150px;" title="Expires on">
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Office staff and labour together, one line a person. Click any date to renew
+                or correct it - a renewal is simply the new expiry date.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
+                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" style="width:170px;"></select></label>
+                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
+                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
+                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
                 <button class="btn btn-primary" onclick="addDocument()">Save document</button>
               </div>
-              <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
-                <select id="hr-doc-within" style="width:190px;" onchange="loadDocuments()">
-                  <option value="-1">Everything on file</option>
-                  <option value="30">Expiring within 30 days</option>
-                  <option value="90">Expiring within 90 days</option>
-                  <option value="0">Already expired</option>
+              <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                <select id="hr-doc-within" style="width:190px;" onchange="renderDocuments()">
+                  <option value="-1">Everyone on file</option>
+                  <option value="30">Something due in 30 days</option>
+                  <option value="90">Something due in 90 days</option>
+                  <option value="0">Something already expired</option>
                 </select>
+                <select id="hr-doc-who" style="width:150px;" onchange="renderDocuments()">
+                  <option value="all">Office and labour</option>
+                  <option value="staff">Office staff</option>
+                  <option value="labour">Labour</option>
+                </select>
+                <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
                 <button class="btn btn-dark" onclick="previewHr('documents')">Preview</button>
                 <button class="btn btn-gray" onclick="downloadHr('documents','pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadHr('documents','excel')">Export to Excel</button>
                 <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                <table>
+                <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:8%;">Code</th><th style="width:20%; text-align:left;">Name</th>
-                    <th style="width:13%;">Document</th><th style="width:15%;">Number</th>
-                    <th style="width:10%;">Issued</th><th style="width:10%;">Expires</th>
-                    <th style="width:8%;">Days left</th><th style="width:11%;">Standing</th>
-                    <th style="width:5%;"></th>
+                    <th style="width:8%;">Code</th><th class="txt" style="width:25%;">Name</th>
+                    <th style="width:15%;">Emirates ID</th><th style="width:15%;">Visa / Labour card</th>
+                    <th style="width:15%;">Passport</th><th class="txt" style="width:9%;">Other</th>
+                    <th style="width:13%;">Standing</th>
                   </tr></thead>
                   <tbody id="hr-doc-body"></tbody>
                 </table>
@@ -2682,29 +2737,33 @@
             <div class="card">
               <h2>Increments</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                An increment dated ahead is held until its month comes round, then applied
-                the moment that cycle is opened. Raising the allowance and leaving the basic
-                where it is keeps gratuity on the contract basic - which is the house rule
-                here, and the reason the two figures drift apart over the years.</p>
-              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" id="hr-inc-emp" placeholder="Staff code" style="width:120px;">
-                <input type="date" id="hr-inc-date" style="width:150px;" title="Effective from">
-                <input type="number" id="hr-inc-amount" placeholder="Increase" style="width:120px;" step="0.01">
-                <select id="hr-inc-where" style="width:210px;">
-                  <option value="allowance">Onto the allowance</option>
-                  <option value="basic">Onto the basic</option>
+                Each person's salary from joining, with every rise and what it came to. A rise
+                dated ahead waits for its month and is applied when that cycle is opened. By
+                house rule a rise goes onto the allowance and the basic stays, which keeps
+                gratuity where it is.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff code</span><input type="text" id="hr-inc-emp" style="width:100px;"></label>
+                <label class="hr-field"><span>Effective from</span><input type="date" id="hr-inc-date" style="width:150px;"></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;"></label>
+                <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:220px;">
+                  <option value="allowance">Allowance (house rule)</option>
+                  <option value="basic">The basic</option>
                   <option value="split">Split 40 / 60</option>
-                </select>
-                <input type="text" id="hr-inc-reason" placeholder="Reason" style="width:220px;">
+                </select></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="hr-inc-reason" style="width:210px;"></label>
                 <button class="btn btn-primary" onclick="addIncrement()">Record increment</button>
               </div>
+              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center;">
+                <input type="text" id="hr-inc-search" placeholder="Search code or name" style="width:190px;" oninput="renderIncrements()">
+              </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                <table>
+                <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:9%;">Code</th><th style="width:20%; text-align:left;">Name</th>
-                    <th style="width:11%;">Effective</th><th style="width:10%;">Kind</th>
-                    <th style="width:10%;">Basic</th><th style="width:10%;">Allowance</th>
-                    <th style="width:10%;">Increase</th><th style="width:20%; text-align:left;">Reason</th>
+                    <th style="width:7%;">Code</th><th class="txt" style="width:18%;">Name</th>
+                    <th style="width:11%;">From</th><th style="width:9%;">Change</th>
+                    <th class="num" style="width:9%;">Increase</th>
+                    <th class="num" style="width:9%;">Basic</th><th class="num" style="width:9%;">Allowance</th>
+                    <th class="num" style="width:10%;">Salary</th><th class="txt" style="width:18%;">Reason</th>
                   </tr></thead>
                   <tbody id="hr-inc-body"></tbody>
                 </table>
@@ -10775,6 +10834,21 @@ let HR_RUNS = [];
 
 function hrMsg(kind, text) { showStatus("hr-status", kind, text); }
 
+// 13 Sep 2026 - the way the statements and the trackers write a date.
+const HR_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function hrDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return `${parseInt(d, 10)} ${HR_MON[parseInt(m, 10) - 1]} ${y}`;
+}
+// 4.09 years reads as "4 y 1 m": service is counted in years and months.
+function hrService(years) {
+  const m = Math.floor((Number(years) || 0) * 12 + 1e-6);
+  const y = Math.floor(m / 12), r = m % 12;
+  return y ? `${y} y ${r} m` : `${r} m`;
+}
+function hrCap(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
+
 function hrMoney(v) {
   const n = Number(v || 0);
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -10865,16 +10939,48 @@ async function loadPayrollRun(id) {
   if (!id) { document.getElementById("hr-run-card").style.display = "none"; return; }
   try {
     HR_RUN = await apiCall(`/employees/payroll/runs/${id}`);
+    // The pickers above follow the cycle on screen, so they never say
+    // September while August is open underneath them.
+    document.getElementById("hr-run-month").value = hrCycleValue(HR_RUN.month_year);
+    document.getElementById("hr-run-company").value = HR_RUN.company_id;
+    document.getElementById("hr-run-group").value = HR_RUN.group || "staff";
     renderRun();
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
+// A figure the accountant types. Shown as it prints - 7,000.00, not
+// 7000.00 - and left blank when nothing was entered, so the handful of
+// exceptions in a month stand out instead of hiding among forty zeros.
+// Once the month is approved the box goes and the figure is plain text:
+// a locked sheet should not look as though it can be typed in.
 function runCell(l, field, locked) {
-  return `<td><input type="number" step="0.01" class="hr-cell" data-line="${l.id}"
-      data-field="${field}" value="${Number(l[field] || 0).toFixed(2)}"
-      oninput="recalcLine(${l.id})" ${locked ? "disabled" : ""}
-      style="width:100%; text-align:right; border:1px solid #E4E0DB; border-radius:4px;
-             padding:3px 5px; font-size:12.5px;"></td>`;
+  const v = Number(l[field] || 0);
+  if (locked) return `<td class="num">${v ? hrMoney(v) : '<span class="hr-nil">-</span>'}</td>`;
+  return `<td class="num"><input type="text" inputmode="decimal" class="hr-cell hr-amt"
+      data-line="${l.id}" data-field="${field}" value="${hrBox(v)}" placeholder="-"
+      oninput="recalcLine(${l.id})" onfocus="hrAmtFocus(this)" onblur="hrAmtBlur(this)"></td>`;
+}
+
+// Typing is easier without the commas; they come back when the box is left.
+function hrAmtFocus(el) { el.value = el.value.replace(/,/g, ""); el.select(); }
+function hrAmtBlur(el) { el.value = hrBox(hrNum(el.value)); }
+// Inside a box a round figure is written without its .00 - 3,000 rather
+// than 3,000.00 - so it fits a narrow column; pence still show (315.50).
+function hrBox(v) {
+  const n = Number(v || 0);
+  if (!n) return "";
+  return Number.isInteger(n) ? n.toLocaleString("en-US")
+       : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function hrNum(v) { const n = parseFloat(String(v || "").replace(/,/g, "")); return isNaN(n) ? 0 : n; }
+
+function hrRoutes(routes) {
+  const name = { wps: "WPS TOTAL", bank: "BANK TRANSFER", cash: "CASH SALARY TOTAL" };
+  const order = { wps: 0, bank: 1, cash: 2 };
+  return Object.entries(routes || {})
+    .sort((a, b) => (order[a[0]] ?? 9) - (order[b[0]] ?? 9))
+    .map(([k, v]) => `<span class="hr-route"><b>${name[k] || k.toUpperCase()}</b> ${hrMoney(v)}</span>`)
+    .join("");
 }
 
 function renderRun() {
@@ -10883,39 +10989,43 @@ function renderRun() {
   if (!r) { card.style.display = "none"; return; }
   card.style.display = "";
   const locked = r.status === "approved";
-  document.getElementById("hr-run-title").textContent =
-    `${r.company_short} - ${r.month_year}` + (locked ? "  (approved and locked)" : "  (draft)");
+  document.getElementById("hr-run-title").innerHTML =
+    `${escapeHtml(r.company_short)} - ${escapeHtml(r.month_year)}` +
+    (r.group === "local" ? " - local &amp; household" : "") +
+    ` <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>`;
   document.getElementById("hr-save-btn").style.display = locked ? "none" : "";
   document.getElementById("hr-approve-btn").style.display = locked ? "none" : "";
   document.getElementById("hr-reopen-btn").style.display = locked ? "" : "none";
   const notice = document.getElementById("hr-run-notice");
   if (r.notice) { notice.textContent = r.notice; notice.style.display = "block"; }
   else notice.style.display = "none";
+  const pension = r.lines.some(l => l.pension);
+  document.getElementById("hr-run-pension-h").style.display = pension ? "" : "none";
 
-  document.getElementById("hr-run-body").innerHTML = r.lines.map(l => `
+  document.getElementById("hr-run-body").innerHTML = r.lines.map(l => {
+    const remark = l.remarks || l.deduction_note || "";
+    return `
     <tr data-line="${l.id}">
       <td>${escapeHtml(l.emp_no)}</td>
-      <td style="text-align:left;">${escapeHtml(l.name)}</td>
-      <td style="text-align:right;">${hrMoney(l.basic)}</td>
-      <td style="text-align:right;">${hrMoney(l.allowance)}</td>
+      <td class="txt">${escapeHtml(l.name)}
+        ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}</td>
+      <td class="num">${hrMoney(l.basic)}</td>
+      <td class="num">${hrMoney(l.allowance)}</td>
       ${runCell(l, "other_allowance", locked)}
       ${runCell(l, "deduction", locked)}
       ${runCell(l, "statutory", locked)}
-      <td style="text-align:right; font-weight:600;" id="hr-payable-${l.id}">${hrMoney(l.payable)}</td>
+      <td class="num strong" id="hr-payable-${l.id}">${hrMoney(l.payable)}</td>
       ${runCell(l, "loan_deduction", locked)}
       ${runCell(l, "leave_salary", locked)}
       ${runCell(l, "air_ticket", locked)}
-      <td style="text-align:right; font-weight:700;" id="hr-net-${l.id}">${hrMoney(l.net_pay)}</td>
-      <td style="text-align:left;"><input type="text" class="hr-cell" data-line="${l.id}"
-          data-field="remarks" value="${escapeAttr(l.remarks || l.deduction_note || "")}" ${locked ? "disabled" : ""}
-          style="width:100%; border:1px solid #E4E0DB; border-radius:4px; padding:3px 5px;
-                 font-size:12.5px;"></td>
-    </tr>`).join("");
+      <td class="num net" id="hr-net-${l.id}">${hrMoney(l.net_pay)}</td>
+      ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
+      <td class="txt">${locked ? `<span class="hr-remark">${escapeHtml(remark)}</span>` :
+        `<input type="text" class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks"
+                value="${escapeAttr(remark)}" title="${escapeAttr(remark)}" oninput="recalcLine(${l.id})">`}</td>
+    </tr>`; }).join("");
   renderRunFoot();
-  document.getElementById("hr-run-routes").innerHTML = Object.entries(r.by_route || {})
-    .sort((a, b) => (a[0] === "wps" ? -1 : b[0] === "wps" ? 1 : a[0].localeCompare(b[0])))
-    .map(([k, v]) => `<b>${k === "wps" ? "WPS TOTAL" : k === "bank" ? "BANK TRANSFER" :
-      "CASH SALARY TOTAL"}:</b> ${hrMoney(v)}`).join("&nbsp; &nbsp;|&nbsp; &nbsp;");
+  document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route);
 }
 
 // The figures at the foot are the figures in the rows added up, worked
@@ -10923,12 +11033,14 @@ function renderRun() {
 // moment it is typed instead of after a save.
 function renderRunFoot() {
   const sum = f => HR_RUN.lines.reduce((a, l) => a + Number(l[f] || 0), 0);
+  const pension = HR_RUN.lines.some(l => l.pension);
   const cells = ["basic", "allowance", "other_allowance", "deduction", "statutory",
-                 "payable", "loan_deduction", "leave_salary", "air_ticket", "net_pay"];
+                 "payable", "loan_deduction", "leave_salary", "air_ticket", "net_pay"]
+                .concat(pension ? ["pension"] : []);
   document.getElementById("hr-run-foot").innerHTML =
-    `<tr style="background:#FBF8F6; font-weight:700;">
-       <td colspan="2" style="text-align:left;">TOTAL - ${HR_RUN.lines.length} staff</td>
-       ${cells.map(f => `<td style="text-align:right;">${hrMoney(sum(f))}</td>`).join("")}
+    `<tr class="hr-foot">
+       <td colspan="2" class="txt">TOTAL - ${HR_RUN.lines.length} staff</td>
+       ${cells.map(f => `<td class="num">${hrMoney(sum(f))}</td>`).join("")}
        <td></td></tr>`;
 }
 
@@ -10939,7 +11051,7 @@ function recalcLine(id) {
   const l = HR_RUN.lines.find(x => x.id === id);
   if (!l) return;
   document.querySelectorAll(`.hr-cell[data-line="${id}"]`).forEach(el => {
-    l[el.dataset.field] = el.type === "number" ? Number(el.value || 0) : el.value;
+    l[el.dataset.field] = el.dataset.field === "remarks" ? el.value : hrNum(el.value);
   });
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
   // Pension is printed beside net pay, never added into it.
@@ -10948,14 +11060,9 @@ function recalcLine(id) {
   document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
   const routes = {};
-  HR_RUN.lines.forEach(x => {
-    routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay;
-  });
+  HR_RUN.lines.forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
   HR_RUN.by_route = routes;
-  document.getElementById("hr-run-routes").innerHTML = Object.entries(routes)
-    .sort((a, b) => (a[0] === "wps" ? -1 : b[0] === "wps" ? 1 : a[0].localeCompare(b[0])))
-    .map(([k, v]) => `<b>${k === "wps" ? "WPS TOTAL" : k === "bank" ? "BANK TRANSFER" :
-      "CASH SALARY TOTAL"}:</b> ${hrMoney(v)}`).join("&nbsp; &nbsp;|&nbsp; &nbsp;");
+  document.getElementById("hr-run-routes").innerHTML = hrRoutes(routes);
 }
 
 async function savePayrollRun() {
@@ -11071,29 +11178,35 @@ function renderStaff() {
   const rows = HR_STAFF.filter(s =>
     (!co || String(s.company_id) === co) &&
     (!q || `${s.emp_no} ${s.name}`.toLowerCase().includes(q)));
+  const route = { wps: "WPS", bank: "Bank", cash: "Cash" };
   document.getElementById("hr-staff-body").innerHTML = rows.map(s => `
     <tr>
       <td>${escapeHtml(s.emp_no)}</td>
-      <td style="text-align:left;"><a href="#" onclick="editStaff('${escapeAttr(s.emp_no)}');return false;"
+      <td class="txt"><a href="#" onclick="editStaff('${escapeAttr(s.emp_no)}');return false;"
           style="color:var(--red); text-decoration:none;">${escapeHtml(s.name)}</a></td>
-      <td>${escapeHtml(s.company)}</td><td>${escapeHtml(s.designation)}</td>
-      <td>${s.joined_on ? escapeHtml(s.joined_on) : "-"}</td>
-      <td style="text-align:right;">${s.years.toFixed(2)}</td>
-      <td style="text-align:right;">${hrMoney(s.basic)}</td>
-      <td style="text-align:right;">${hrMoney(s.allowance)}</td>
-      <td style="text-align:right;">${hrMoney(s.gross)}</td>
-      <td style="text-align:right;">${s.scheme === "pension" ? "pension" : hrMoney(s.gratuity)}</td>
-      <td>${escapeHtml((s.pay_route || "wps").toUpperCase())}</td>
+      <td class="txt">${escapeHtml(s.company)}${s.pay_group === "local" ? '<span class="sub">Local statement</span>' : ""}</td>
+      <td class="txt">${escapeHtml(s.designation)}</td>
+      <td>${s.joined_on ? hrDate(s.joined_on) : '<span class="hr-nil">not on file</span>'}</td>
+      <td>${s.joined_on ? hrService(s.years) : '<span class="hr-nil">-</span>'}</td>
+      ${s.gross ? `<td class="num">${hrMoney(s.basic)}</td><td class="num">${hrMoney(s.allowance)}</td>
+                   <td class="num strong">${hrMoney(s.gross)}</td>`
+                : `<td colspan="3" class="hr-nil">salary not on file</td>`}
+      <td class="num">${s.scheme === "pension" ? '<span class="hr-nil">GPSSA</span>' :
+                        !s.joined_on ? '<span class="hr-nil">-</span>' :
+                        s.gratuity ? hrMoney(s.gratuity) : '<span class="hr-nil">under 1 year</span>'}</td>
+      <td>${route[s.pay_route] || escapeHtml(s.pay_route)}</td>
     </tr>`).join("") ||
-    `<tr><td colspan="11" style="color:#888; padding:14px;">No staff on file yet.</td></tr>`;
+    `<tr><td colspan="11" class="hr-nil" style="padding:14px;">No staff on file yet.</td></tr>`;
   const sum = f => rows.reduce((a, s) => a + Number(s[f] || 0), 0);
   document.getElementById("hr-staff-foot").innerHTML = rows.length
-    ? `<tr style="background:#FBF8F6; font-weight:700;">
-         <td colspan="6" style="text-align:left;">TOTAL - ${rows.length} staff</td>
-         <td style="text-align:right;">${hrMoney(sum("basic"))}</td>
-         <td style="text-align:right;">${hrMoney(sum("allowance"))}</td>
-         <td style="text-align:right;">${hrMoney(sum("gross"))}</td>
-         <td style="text-align:right;">${hrMoney(sum("gratuity"))}</td><td></td></tr>` : "";
+    ? `<tr class="hr-foot">
+         <td colspan="6" class="txt">TOTAL - ${rows.length} staff</td>
+         <td class="num">${hrMoney(sum("basic"))}</td>
+         <td class="num">${hrMoney(sum("allowance"))}</td>
+         <td class="num">${hrMoney(sum("gross"))}</td>
+         <td class="num">${hrMoney(sum("gratuity"))}</td><td></td></tr>` : "";
+  document.getElementById("hr-company-list").textContent =
+    HR_COMPANIES.map(c => c.short_name || c.name).join(", ") || "none yet";
 }
 
 function editStaff(emp_no) {
@@ -11117,7 +11230,7 @@ function editStaff(emp_no) {
 }
 
 function hrSchemeChanged() {
-  document.getElementById("hr-e-pension").style.display =
+  document.getElementById("hr-e-pension-f").style.display =
     document.getElementById("hr-e-scheme").value === "pension" ? "" : "none";
 }
 
@@ -11188,27 +11301,28 @@ async function loadLoans() {
   let d;
   try { d = await apiCall("/employees/loans"); }
   catch (e) { hrMsg("err", errText(e)); return; }
-  const rows = d.rows || [];
+  const rows = (d.rows || []).slice().sort((a, b) =>
+    (a.closed - b.closed) || String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
   document.getElementById("hr-loan-body").innerHTML = rows.map(l => `
-    <tr${l.closed ? ' style="color:#999;"' : ""}>
-      <td>${escapeHtml(l.emp_no)}</td><td style="text-align:left;">${escapeHtml(l.name)}</td>
-      <td>${escapeHtml(l.taken_on)}</td>
-      <td style="text-align:right;">${hrMoney(l.amount)}</td>
-      <td style="text-align:right;">${hrMoney(l.repaid)}</td>
-      <td style="text-align:right; font-weight:700;">${hrMoney(l.balance)}</td>
-      <td style="text-align:right;">${hrMoney(l.instalment)}</td>
-      <td style="text-align:left;">${escapeHtml(l.terms)}</td>
-      <td>${l.closed ? "closed" :
+    <tr${l.closed ? ' class="hr-soft"' : ""}>
+      <td>${escapeHtml(l.emp_no)}</td><td class="txt">${escapeHtml(l.name)}</td>
+      <td>${hrDate(l.taken_on)}</td>
+      <td class="num">${hrMoney(l.amount)}</td>
+      <td class="num">${hrMoney(l.repaid)}</td>
+      <td class="num net">${l.closed ? '<span class="hr-nil">closed</span>' : hrMoney(l.balance)}</td>
+      <td class="num">${l.instalment ? hrMoney(l.instalment) : '<span class="hr-nil">-</span>'}</td>
+      <td class="txt">${escapeHtml(l.terms)}</td>
+      <td>${l.closed ? "" :
         `<button class="btn btn-gray" style="padding:3px 9px; font-size:12px;"
-                 onclick="repayLoan(${l.id}, ${l.balance})">Record</button>`}</td>
+                 onclick="repayLoan(${l.id}, ${l.balance})">Record repayment</button>`}</td>
     </tr>`).join("") ||
-    `<tr><td colspan="9" style="color:#888; padding:14px;">No loans on file.</td></tr>`;
+    `<tr><td colspan="9" class="hr-nil" style="padding:14px;">No loans on file.</td></tr>`;
   document.getElementById("hr-loan-foot").innerHTML = rows.length
-    ? `<tr style="background:#FBF8F6; font-weight:700;">
-         <td colspan="3" style="text-align:left;">TOTAL</td>
-         <td style="text-align:right;">${hrMoney(d.total_lent)}</td>
-         <td style="text-align:right;">${hrMoney(rows.reduce((a, l) => a + l.repaid, 0))}</td>
-         <td style="text-align:right;">${hrMoney(d.total_outstanding)}</td>
+    ? `<tr class="hr-foot">
+         <td colspan="3" class="txt">TOTAL</td>
+         <td class="num">${hrMoney(d.total_lent)}</td>
+         <td class="num">${hrMoney(rows.reduce((a, l) => a + l.repaid, 0))}</td>
+         <td class="num">${hrMoney(d.total_outstanding)}</td>
          <td colspan="3"></td></tr>` : "";
 }
 
@@ -11216,8 +11330,8 @@ async function addLoan() {
   const v = id => document.getElementById(id).value;
   try {
     await apiCall("/employees/loans", { method: "POST", body: JSON.stringify({
-      emp_no: v("hr-loan-emp").trim(), amount: Number(v("hr-loan-amount") || 0),
-      taken_on: v("hr-loan-date"), instalment: Number(v("hr-loan-instalment") || 0),
+      emp_no: v("hr-loan-emp").trim(), amount: hrNum(v("hr-loan-amount")),
+      taken_on: v("hr-loan-date"), instalment: hrNum(v("hr-loan-instalment")),
       terms: v("hr-loan-terms").trim() }) });
     ["hr-loan-emp", "hr-loan-amount", "hr-loan-instalment", "hr-loan-terms"]
       .forEach(id => document.getElementById(id).value = "");
@@ -11227,11 +11341,12 @@ async function addLoan() {
 }
 
 async function repayLoan(id, balance) {
-  const amount = prompt(`How much came back?  (${hrMoney(balance)} outstanding)`, balance);
+  const amount = prompt(`How much came back outside the salary?\n` +
+                        `(${hrMoney(balance)} outstanding)`, balance);
   if (amount === null) return;
   try {
     await apiCall(`/employees/loans/${id}/repay`, { method: "POST", body: JSON.stringify({
-      amount: Number(amount), source: "cash" }) });
+      amount: hrNum(amount), source: "cash" }) });
     await loadLoans();
     hrMsg("ok", "Repayment recorded.");
   } catch (e) { hrMsg("err", errText(e)); }
@@ -11244,20 +11359,22 @@ async function loadLeave() {
   let d;
   try { d = await apiCall(`/employees/leave?month_year=${encodeURIComponent(month)}`); }
   catch (e) { hrMsg("err", errText(e)); return; }
-  const rows = d.rows || [];
+  const rows = (d.rows || []).slice().sort((a, b) =>
+    a.on_date.localeCompare(b.on_date) || String(a.emp_no).localeCompare(String(b.emp_no)));
   document.getElementById("hr-leave-count").textContent =
-    `${rows.length} event(s), ${d.days} day(s), ${d.unpaid_days} unpaid`;
+    `${rows.length} entr${rows.length === 1 ? "y" : "ies"} - ${d.days} day(s), ` +
+    `${d.unpaid_days} unpaid`;
   document.getElementById("hr-leave-body").innerHTML = rows.map(l => `
-    <tr${l.paid ? "" : ' style="background:#FDF0EE;"'}>
-      <td>${escapeHtml(l.emp_no)}</td><td style="text-align:left;">${escapeHtml(l.name)}</td>
-      <td>${escapeHtml(l.on_date)}</td><td>${l.half ? "Half day" : "Full day"}</td>
-      <td>${l.paid ? "Paid" : "Unpaid"}</td>
-      <td style="text-align:left;">${escapeHtml(l.reason)}</td>
-      <td>${l.certificate ? "Yes" : "-"}</td>
+    <tr${l.paid ? "" : ' class="hr-bad"'}>
+      <td>${escapeHtml(l.emp_no)}</td><td class="txt">${escapeHtml(l.name)}</td>
+      <td>${hrDate(l.on_date)}</td><td>${l.half ? "Half day" : "Full day"}</td>
+      <td>${l.paid ? "Paid" : "<b>Unpaid</b>"}</td>
+      <td class="txt">${escapeHtml(hrCap(l.reason))}</td>
+      <td>${l.certificate ? "Yes" : '<span class="hr-nil">-</span>'}</td>
       <td><button class="btn btn-danger" style="padding:3px 9px; font-size:12px;"
                   onclick="deleteLeave(${l.id})">Remove</button></td>
     </tr>`).join("") ||
-    `<tr><td colspan="8" style="color:#888; padding:14px;">Nothing recorded for ${escapeHtml(month)}.</td></tr>`;
+    `<tr><td colspan="8" class="hr-nil" style="padding:14px;">Nothing recorded for ${escapeHtml(month)}.</td></tr>`;
 }
 
 async function addLeave() {
@@ -11284,88 +11401,176 @@ async function deleteLeave(id) {
 }
 
 // ---- Documents -------------------------------------------------------
+// One row a person, one column a document - the way the tracker has
+// always been kept - rather than a row per document, which spread one
+// man over three lines and put his passport a page away from his visa.
 
-const HR_DOC_TINT = { expired: "#FDF0EE", urgent: "#FFF3CD", soon: "#FBF8F6", valid: "" };
-const HR_DOC_WORD = { expired: "Expired", urgent: "Due within 30 days",
-                      soon: "Due within 90 days", valid: "Valid" };
+let HR_DOCS = [];
+const HR_DOC_RANK = { expired: 0, urgent: 1, soon: 2, valid: 3 };
+const HR_DOC_WORD = { expired: "Expired", urgent: "Due in 30 days",
+                      soon: "Due in 90 days", valid: "Valid" };
 
 async function loadDocuments() {
+  try { HR_DOCS = (await apiCall("/employees/documents")).rows || []; }
+  catch (e) { hrMsg("err", errText(e)); return; }
+  renderDocuments();
+}
+
+function hrDocCell(x) {
+  if (!x) return `<td class="hr-nil">-</td>`;
+  const n = x.days_left;
+  const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago`
+             : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
+  return `<td class="hr-d hr-d-${x.status}" onclick="hrEditDoc(${x.id})"
+              title="Click to renew or correct">${hrDate(x.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>`;
+}
+
+function renderDocuments() {
   const within = parseInt(document.getElementById("hr-doc-within").value, 10);
-  let d;
-  try {
-    d = await apiCall("/employees/documents" + (within < 0 ? "" : `?within=${within}`));
-  } catch (e) { hrMsg("err", errText(e)); return; }
-  const rows = d.rows || [];
-  const c = d.counts || {};
+  const who = document.getElementById("hr-doc-who").value;
+  const q = (document.getElementById("hr-doc-search").value || "").toLowerCase().trim();
+  const people = {};
+  for (const x of HR_DOCS) {
+    const p = people[x.employee_id] = people[x.employee_id] ||
+      { emp_no: x.emp_no, name: x.name, company: x.company, staff: x.staff, docs: {}, other: [] };
+    const col = x.kind === "labour_card" ? "visa" : x.kind;
+    if (["eid", "visa", "passport"].includes(col)) {
+      // Visa and labour card share a column, as they do on the tracker;
+      // if both are on file the one expiring first is the one shown.
+      if (!p.docs[col] || (x.days_left ?? 1e9) < (p.docs[col].days_left ?? 1e9)) p.docs[col] = x;
+    } else p.other.push(x);
+  }
+  let rows = Object.values(people).map(p => {
+    const all = Object.values(p.docs).concat(p.other);
+    p.soonest = Math.min(...all.map(x => x.days_left ?? 1e9));
+    p.worst = all.reduce((w, x) => HR_DOC_RANK[x.status] < HR_DOC_RANK[w] ? x.status : w, "valid");
+    return p;
+  });
+  rows = rows.filter(p =>
+    (who === "all" || (who === "staff") === !!p.staff) &&
+    (!q || `${p.emp_no} ${p.name}`.toLowerCase().includes(q)) &&
+    (within < 0 || (within === 0 ? p.worst === "expired" : p.soonest <= within)));
+  rows.sort((a, b) => a.soonest - b.soonest ||
+    String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
+  const count = k => rows.filter(p => p.worst === k).length;
   document.getElementById("hr-doc-count").textContent =
-    `${c.expired || 0} expired, ${c.urgent || 0} due within 30 days, ${c.soon || 0} within 90`;
-  document.getElementById("hr-doc-body").innerHTML = rows.map(x => `
-    <tr${HR_DOC_TINT[x.status] ? ` style="background:${HR_DOC_TINT[x.status]};"` : ""}>
-      <td>${escapeHtml(x.emp_no)}</td><td style="text-align:left;">${escapeHtml(x.name)}</td>
-      <td>${escapeHtml(x.kind_label)}</td><td>${escapeHtml(x.number) || "-"}</td>
-      <td>${escapeHtml(x.issued_on) || "-"}</td><td>${escapeHtml(x.expires_on) || "-"}</td>
-      <td style="text-align:right;">${x.days_left === null ? "-" : x.days_left}</td>
-      <td>${HR_DOC_WORD[x.status] || ""}</td>
-      <td><button class="btn btn-danger" style="padding:3px 9px; font-size:12px;"
-                  onclick="deleteDocument(${x.id})">Remove</button></td>
+    `${rows.length} people - ${count("expired")} with something expired, ` +
+    `${count("urgent")} due in 30 days, ${count("soon")} in 90`;
+  document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
+    <tr>
+      <td>${escapeHtml(p.emp_no)}</td>
+      <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}
+        ${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
+      ${hrDocCell(p.docs.eid)}${hrDocCell(p.docs.visa)}${hrDocCell(p.docs.passport)}
+      <td class="txt">${p.other.map(x => `<span class="hr-d hr-d-${x.status}" style="display:block; padding:1px 3px;"
+          onclick="hrEditDoc(${x.id})">${escapeHtml(x.kind_label)}: ${hrDate(x.expires_on)}</span>`).join("") ||
+          '<span class="hr-nil">-</span>'}</td>
+      <td class="hr-d-${p.worst === "valid" ? "" : p.worst}">${HR_DOC_WORD[p.worst]}</td>
     </tr>`).join("") ||
-    `<tr><td colspan="9" style="color:#888; padding:14px;">Nothing on file.</td></tr>`;
+    `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nothing matches.</td></tr>`;
+}
+
+// Clicking a date puts that document into the form above, ready for the
+// new expiry to be typed - renewing is changing the date, nothing more.
+function hrEditDoc(id) {
+  const x = HR_DOCS.find(d => d.id === id);
+  if (!x) return;
+  document.getElementById("hr-doc-emp").value = x.emp_no;
+  document.getElementById("hr-doc-kind").value = x.kind;
+  document.getElementById("hr-doc-number").value = x.number || "";
+  document.getElementById("hr-doc-issued").value = x.issued_on || "";
+  document.getElementById("hr-doc-expires").value = x.expires_on || "";
+  const box = document.getElementById("hr-doc-editing");
+  box.dataset.id = id;
+  box.innerHTML = `Editing <b>${escapeHtml(x.kind_label)}</b> for ${escapeHtml(x.name)}
+    <a href="#" onclick="deleteDocument(${id});return false;" style="color:var(--red); margin-left:10px;">Remove it</a>
+    <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
+  box.style.display = "";
+  document.getElementById("hr-doc-expires").focus();
+  document.getElementById("hrpane-docs").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hrClearDoc() {
+  ["hr-doc-emp", "hr-doc-number", "hr-doc-issued", "hr-doc-expires"]
+    .forEach(id => document.getElementById(id).value = "");
+  const box = document.getElementById("hr-doc-editing");
+  box.style.display = "none"; box.dataset.id = "";
 }
 
 async function addDocument() {
   const v = id => document.getElementById(id).value;
   try {
     await apiCall("/employees/documents", { method: "POST", body: JSON.stringify({
+      id: parseInt(document.getElementById("hr-doc-editing").dataset.id || "", 10) || undefined,
       emp_no: v("hr-doc-emp").trim(), kind: v("hr-doc-kind"),
       number: v("hr-doc-number").trim(), issued_on: v("hr-doc-issued"),
       expires_on: v("hr-doc-expires") }) });
-    ["hr-doc-emp", "hr-doc-number"].forEach(id => document.getElementById(id).value = "");
+    hrClearDoc();
     await loadDocuments();
     hrMsg("ok", "Document saved.");
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
 async function deleteDocument(id) {
-  if (!confirm("Remove this document?")) return;
+  if (!confirm("Remove this document from the file?")) return;
   try {
     await apiCall(`/employees/documents/${id}`, { method: "DELETE" });
+    hrClearDoc();
     await loadDocuments();
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
 // ---- Increments ------------------------------------------------------
+// Each person's salary story in order - what he joined on, then every
+// rise and what it brought him to - grouped together, rather than every
+// rise in the company shuffled by date.
 
+let HR_INCS = [];
 async function loadIncrements() {
-  let d;
-  try { d = await apiCall("/employees/increments"); }
+  try { HR_INCS = (await apiCall("/employees/increments")).rows || []; }
   catch (e) { hrMsg("err", errText(e)); return; }
-  document.getElementById("hr-inc-body").innerHTML = (d.rows || []).map(r => `
-    <tr${r.future ? ' style="background:#FFF3CD;"' : ""}>
-      <td>${escapeHtml(r.emp_no)}</td><td style="text-align:left;">${escapeHtml(r.name)}</td>
-      <td>${escapeHtml(r.effective_on)}${r.future ? " (due)" : ""}</td>
-      <td>${escapeHtml(r.kind)}</td>
-      <td style="text-align:right;">${hrMoney(r.basic)}</td>
-      <td style="text-align:right;">${hrMoney(r.allowance)}</td>
-      <td style="text-align:right;">${hrMoney(r.amount)}</td>
-      <td style="text-align:left;">${escapeHtml(r.reason)}</td>
-    </tr>`).join("") ||
-    `<tr><td colspan="8" style="color:#888; padding:14px;">Nothing recorded yet.</td></tr>`;
+  renderIncrements();
+}
+
+function renderIncrements() {
+  const q = (document.getElementById("hr-inc-search").value || "").toLowerCase().trim();
+  const rows = HR_INCS.filter(r => !q || `${r.emp_no} ${r.name}`.toLowerCase().includes(q))
+    .sort((a, b) => String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true })
+                    || a.effective_on.localeCompare(b.effective_on));
+  const kind = { joining: "Joined", increment: "Increment", correction: "Correction" };
+  let last = null;
+  document.getElementById("hr-inc-body").innerHTML = rows.map(r => {
+    const first = r.emp_no !== last; last = r.emp_no;
+    const cls = [first ? "hr-first" : "", r.future ? "hr-warn" : ""].filter(Boolean).join(" ");
+    return `
+    <tr${cls ? ` class="${cls}"` : ""}>
+      <td>${first ? escapeHtml(r.emp_no) : ""}</td>
+      <td class="txt">${first ? escapeHtml(r.name) : ""}</td>
+      <td>${hrDate(r.effective_on)}${r.future ? '<span class="sub">not yet due</span>' : ""}</td>
+      <td>${kind[r.kind] || hrCap(r.kind)}</td>
+      <td class="num">${r.amount ? (r.amount > 0 ? "+" : "") + hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
+      <td class="num">${hrMoney(r.basic)}</td>
+      <td class="num">${hrMoney(r.allowance)}</td>
+      <td class="num strong">${hrMoney(r.gross)}</td>
+      <td class="txt">${escapeHtml(r.reason)}</td>
+    </tr>`; }).join("") ||
+    `<tr><td colspan="9" class="hr-nil" style="padding:14px;">Nothing recorded yet.</td></tr>`;
 }
 
 async function addIncrement() {
   const v = id => document.getElementById(id).value;
-  const amount = Number(v("hr-inc-amount") || 0);
+  const amount = hrNum(v("hr-inc-amount"));
   const where = v("hr-inc-where");
   const to_basic = where === "basic" ? amount : where === "split" ? Math.round(amount * 40) / 100 : 0;
   try {
-    await apiCall("/employees/increments", { method: "POST", body: JSON.stringify({
+    const r = await apiCall("/employees/increments", { method: "POST", body: JSON.stringify({
       emp_no: v("hr-inc-emp").trim(), effective_on: v("hr-inc-date"),
       amount, to_basic, reason: v("hr-inc-reason").trim() }) });
     ["hr-inc-emp", "hr-inc-amount", "hr-inc-reason"]
       .forEach(id => document.getElementById(id).value = "");
     await loadIncrements();
     await loadStaff();
-    hrMsg("ok", "Increment recorded.");
+    hrMsg("ok", r.detail || "Increment recorded.");
   } catch (e) { hrMsg("err", errText(e)); }
 }
 

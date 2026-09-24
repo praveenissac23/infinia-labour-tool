@@ -149,9 +149,8 @@ const CYCLE_MONTH = '2026-08';
   ck('approving locks the sheet',
      await p.evaluate(() => HR_RUN.status) === 'approved',
      await p.evaluate(() => HR_RUN.status));
-  ck('the cells go read-only when it is locked',
-     await p.evaluate(() =>
-       [...document.querySelectorAll('.hr-cell')].every(c => c.disabled)));
+  ck('a locked sheet shows figures, not boxes to type in',
+     await p.evaluate(() => document.querySelectorAll('#hr-run-body input').length === 0));
   ck('Save and Approve give way to Reopen',
      await p.locator('#hr-reopen-btn').isVisible() &&
      !(await p.locator('#hr-approve-btn').isVisible()));
@@ -168,9 +167,8 @@ const CYCLE_MONTH = '2026-08';
        const d = await apiCall('/employees/loans');
        return d.rows.find(l => l.emp_no === 'BT001').balance;
      }) === 2400);
-  ck('and the cells can be typed in again',
-     await p.evaluate(() =>
-       [...document.querySelectorAll('.hr-cell')].every(c => !c.disabled)));
+  ck('and the boxes come back when it is reopened',
+     await p.evaluate(() => document.querySelectorAll('#hr-run-body input.hr-amt').length > 0));
 
   // ---- Every register carries the four buttons -------------------------
   const PANES = {
@@ -228,6 +226,47 @@ const CYCLE_MONTH = '2026-08';
   ck('and the three foot totals',
      body.includes('WPS TOTAL'), body.slice(0, 200));
 
+  // ---- It reads properly -----------------------------------------------
+  // Net pay and the remark were pushed off the right-hand edge on a
+  // laptop screen, a row's colour vanished on every other line under the
+  // zebra striping, and dates read 2026-09-13.
+  for (const w of [1280, 1440, 1920]) {
+    await p.setViewportSize({ width: w, height: 1000 });
+    await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(300);
+    const [sw, cw] = await p.evaluate(() => {
+      const g = document.querySelector('#hr-run-card .grid-wrap'); return [g.scrollWidth, g.clientWidth]; });
+    ck(`at ${w}px the whole salary sheet fits, Net Pay and Remark included`, sw <= cw + 1, `${sw} > ${cw}`);
+    const clash = await p.evaluate(() => [...document.querySelectorAll('#hr-run-foot td, #hr-run-body td.num')]
+      .filter(td => td.scrollWidth > td.clientWidth + 1).length);
+    ck(`at ${w}px no figure spills out of its cell`, clash === 0, clash);
+  }
+  await p.setViewportSize({ width: 1500, height: 1000 });
+  await p.evaluate("hrTab('leave')"); await p.waitForTimeout(400);
+  await p.fill('#hr-leave-month', CYCLE_MONTH);
+  await p.evaluate('loadLeave()'); await p.waitForTimeout(900);
+  ck('an unpaid day is coloured whichever line it falls on',
+     await p.evaluate(() => [...document.querySelectorAll('#hr-leave-body tr.hr-bad td')]
+       .every(td => getComputedStyle(td).backgroundColor !== 'rgb(252, 252, 252)')));
+  ck('dates read the way the statements write them',
+     !/\d{4}-\d{2}-\d{2}/.test(await p.locator('#hrpane-leave tbody').textContent()));
+  await p.evaluate(async () => {
+    await apiCall('/employees/documents', { method: 'POST', body: JSON.stringify({
+      emp_no: 'BT001', kind: 'passport', expires_on: '2026-01-01' }) });
+    await apiCall('/employees/documents', { method: 'POST', body: JSON.stringify({
+      emp_no: 'BT001', kind: 'eid', expires_on: '2030-01-01' }) });
+  });
+  await p.evaluate("hrTab('docs')"); await p.waitForTimeout(1000);
+  ck('each person is one line on the document tracker',
+     await p.evaluate(() => [...document.querySelectorAll('#hr-doc-body tr')]
+       .filter(tr => tr.textContent.includes('TEST ONE')).length) === 1);
+  ck('an expired document is marked on its own date',
+     await p.evaluate(() => [...document.querySelectorAll('#hr-doc-body tr')]
+       .find(tr => tr.textContent.includes('TEST ONE')).querySelectorAll('td.hr-d-expired').length) >= 1);
+  await p.evaluate(() => { const tr = [...document.querySelectorAll('#hr-doc-body tr')]
+       .find(tr => tr.textContent.includes('TEST ONE')); tr.querySelector('td.hr-d-expired').click(); });
+  ck('clicking a date puts it in the form for renewal',
+     (await p.inputValue('#hr-doc-emp')) === 'BT001' && (await p.inputValue('#hr-doc-kind')) === 'passport');
+
   // ---- On a phone -------------------------------------------------------
   const ph = await b.newPage({ viewport: { width: 430, height: 900 } });
   ph.on('pageerror', e => errs.push('phone: ' + String(e).slice(0, 160)));
@@ -240,6 +279,11 @@ const CYCLE_MONTH = '2026-08';
   await ph.evaluate("switchScreen('hrpayroll')");
   await ph.waitForTimeout(1800);
   ck('the screen opens on a phone', await ph.locator('#screen-hrpayroll').isVisible());
+  await ph.evaluate("hrTab('docs')"); await ph.waitForTimeout(700);
+  ck('on a phone every labelled box is tall enough to type in',
+     await ph.evaluate(() => [...document.querySelectorAll('#hrpane-docs .hr-field input')]
+       .every(i => i.getBoundingClientRect().height >= 30)));
+  await ph.evaluate("hrTab('payroll')"); await ph.waitForTimeout(300);
   ck('and the tabs wrap rather than run off the side',
      await ph.evaluate(() => {
        const t = document.querySelector('.hr-tabs');

@@ -366,7 +366,7 @@ def col_fractions(rows, cols, money_cols=None, total_cols=None):
     """
     if not cols:
         return []
-    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
+    money_like = ((lambda k: k in set(money_cols)) if money_cols is not None else _is_money)
     # The totals line is part of the table and has to be measured with
     # it. A column of figures none of which reaches a thousand still
     # adds up to one that does, and the sum was the cell that broke: the
@@ -375,7 +375,7 @@ def col_fractions(rows, cols, money_cols=None, total_cols=None):
     # it was appearing as "TOT" over "AL" above a two-character Sr.
     totals_row = {}
     if rows:
-        adding = set(total_cols) if total_cols else {c for c in cols if money_like(c)}
+        adding = set(total_cols) if total_cols is not None else {c for c in cols if money_like(c)}
         for c in cols:
             if c not in adding:
                 continue
@@ -1512,7 +1512,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
         wb.save(buf); buf.seek(0); return buf
 
     cols = list(rows[0].keys())
-    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
+    money_like = ((lambda k: k in set(money_cols)) if money_cols is not None else _is_money)
     # The same one alignment per column the PDF uses, heading included.
     aligns = {k: col_align(k, rows) for k in cols}
     excel_align = {"L": "left", "C": "center", "R": "right"}
@@ -1527,7 +1527,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     r += 1
 
     numeric_totals = {k: 0 for k in cols
-                      if (k in set(total_cols) if total_cols else money_like(k))}
+                      if (k in set(total_cols) if total_cols is not None else money_like(k))}
     for row in rows:
         for i, k in enumerate(cols, start=1):
             v = row.get(k, "")
@@ -1632,7 +1632,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     # rest are guessed from the column name. A payroll column called
     # "Net Pay" is money and no amount of guessing from the word will
     # say so.
-    money_like = ((lambda k: k in set(money_cols)) if money_cols else _is_money)
+    money_like = ((lambda k: k in set(money_cols)) if money_cols is not None else _is_money)
     # One alignment per column, and the heading takes the same one, so a
     # centred heading never sits over a left-hand column again.
     aligns = {k: col_align(k, rows) for k in cols}
@@ -1646,7 +1646,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     data = [[Paragraph(_store_label(k), pickh[aligns[k]]) for k in cols]]
     # Which columns add up at the foot: the money ones unless the caller
     # says otherwise (a payroll report totals its days and hours too).
-    totals = {k: 0 for k in cols if (k in set(total_cols) if total_cols else money_like(k))}
+    totals = {k: 0 for k in cols if (k in set(total_cols) if total_cols is not None else money_like(k))}
     for row in rows:
         line = []
         for k in cols:

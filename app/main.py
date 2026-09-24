@@ -6747,7 +6747,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # headings read as headings rather than as the field names behind
     # them ("Given to", not "given_to").
     aligns = {c: export_web.col_align(c, rows) for c in cols}
-    money_set = (set(money_cols) if money_cols
+    money_set = (set(money_cols) if money_cols is not None
                  else {c for c in cols if export_web._is_money(c)})
     klass = {"L": "l", "C": "c", "R": "r"}
     # The same column widths the printed copy uses, so a material name
@@ -6781,7 +6781,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # up, everything else stays blank rather than showing a sum of
     # quantities in different units.
     foot = ""
-    total_set = set(total_cols) if total_cols else money_set
+    total_set = set(total_cols) if total_cols is not None else money_set
     if rows and total_set:
         sums = {c: sum(r.get(c) or 0 for r in rows
                        if isinstance(r.get(c), (int, float))) for c in cols if c in total_set}
@@ -8523,26 +8523,66 @@ def view_leave(token: str, month_year: str = "", db: Session = Depends(get_db)):
     t = quote(auth.create_view_token(user.username), safe="")
     rows, title, sub = _leave_parts(db, month_year)
     url = f"/export/payroll/leave?month_year={quote(month_year)}&token={t}"
-    return _preview_page(title, sub, rows, url, url)
+    return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
 
 # ---- Documents ---------------------------------------------------------
 
 def _document_parts(db, days):
+    """One line a person, one column a document - the tracker's layout.
+
+    `days` narrows to people with something expiring within that many
+    days (0: something already expired); negative or None is everyone.
+    """
     days = None if days is None or days < 0 else days
-    d = list_documents(within=days, db=db, user=None)
-    rows = [{"Sr.": i, "Emp. Code": x["emp_no"], "Employee Name": x["name"],
-             "Document": x["kind_label"], "Number": x["number"] or "-",
-             "Issued": _dmy(_as_date(x["issued_on"])) if x["issued_on"] else "-",
-             "Expires": _dmy(_as_date(x["expires_on"])) if x["expires_on"] else "-",
-             "Days Left": x["days_left"] if x["days_left"] is not None else "-",
-             "Standing": DOC_STANDING[x["status"]], "Remark": x["notes"] or "-"}
-            for i, x in enumerate(d["rows"], 1)]
-    c = d["counts"]
-    sub = (f"{len(rows)} document(s)   |   {c['expired']} expired, "
-           f"{c['urgent']} due within 30 days, {c['soon']} within 90   |   "
+    d = list_documents(db=db, user=None)
+    people = {}
+    for x in d["rows"]:
+        p = people.setdefault(x["employee_id"], {"x": x, "cols": {}, "other": []})
+        col = "visa" if x["kind"] == "labour_card" else x["kind"]
+        if col in ("eid", "visa", "passport"):
+            have = p["cols"].get(col)
+            if not have or (x["days_left"] if x["days_left"] is not None else 10**6) < \
+                           (have["days_left"] if have["days_left"] is not None else 10**6):
+                p["cols"][col] = x
+        else:
+            p["other"].append(x)
+    rank = {"expired": 0, "urgent": 1, "soon": 2, "valid": 3}
+
+    def cell(x):
+        if not x:
+            return "-"
+        n = x["days_left"]
+        tail = ("" if n is None or n > 90 else
+                f" (expired {-n}d)" if n < 0 else f" ({n}d)")
+        return _dmy(_as_date(x["expires_on"])) + tail
+
+    rows = []
+    for p in people.values():
+        docs = list(p["cols"].values()) + p["other"]
+        soonest = min((x["days_left"] for x in docs if x["days_left"] is not None),
+                      default=10**6)
+        worst = min((x["status"] for x in docs), key=lambda k: rank[k], default="valid")
+        if days is not None and (worst != "expired" if days == 0 else soonest > days):
+            continue
+        x = p["x"]
+        rows.append((soonest, x["emp_no"], {
+            "Emp. Code": x["emp_no"], "Employee Name": x["name"],
+            "Staff": "Office" if x["staff"] else "Labour",
+            "Emirates ID": cell(p["cols"].get("eid")),
+            "Visa / Labour Card": cell(p["cols"].get("visa")),
+            "Passport": cell(p["cols"].get("passport")),
+            "Other": ", ".join(f"{o['kind_label']} {cell(o)}" for o in p["other"]) or "-",
+            "Standing": DOC_STANDING[worst]}))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    out = []
+    for i, (_, _, r) in enumerate(rows, 1):
+        out.append({"Sr.": i, **r})
+    counts = {k: sum(1 for r in out if r["Standing"] == DOC_STANDING[k]) for k in rank}
+    sub = (f"{len(out)} people   |   {counts['expired']} with something expired, "
+           f"{counts['urgent']} due within 30 days, {counts['soon']} within 90   |   "
            f"As at {_dubai_today():%d %b %Y}")
-    return rows, "Document Expiry Tracker", sub
+    return out, "Document Expiry Tracker", sub
 
 
 @app.get("/export/payroll/documents")
@@ -8560,7 +8600,7 @@ def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
     t = quote(auth.create_view_token(user.username), safe="")
     rows, title, sub = _document_parts(db, within)
     url = f"/export/payroll/documents?within={within}&token={t}"
-    return _preview_page(title, sub, rows, url, url)
+    return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
 
 # ---- The staff register, with what each man has earned in gratuity -----
