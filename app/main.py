@@ -19,6 +19,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse, HTMLResponse
+from html import escape
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from openpyxl import Workbook, load_workbook
@@ -5502,7 +5503,7 @@ def export_lpo_report(token: str, format: str = "excel", group_by: str = "order"
                        measures: str = "orders,sub_total,vat,total",
                        date_from: str = "", date_to: str = "", supplier: str = "",
                        site: str = "", material: str = "", status: str = "issued",
-                       db: Session = Depends(get_db)):
+                       inline: bool = False, db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     data = lpo_report(group_by=group_by, measures=measures, date_from=date_from, date_to=date_to,
                       supplier=supplier, site=site, material=material, status=status,
@@ -5528,7 +5529,8 @@ def export_lpo_report(token: str, format: str = "excel", group_by: str = "order"
     if format == "pdf":
         buf = export_web.build_store_report_pdf(title, rows, subtitle)
         return StreamingResponse(buf, media_type="application/pdf",
-            headers={"Content-Disposition": "attachment; filename=Purchase_Report.pdf"})
+            headers={"Content-Disposition":
+                     f"{'inline' if inline else 'attachment'}; filename=Purchase_Report.pdf"})
     buf = export_web.build_store_report_excel(title, rows, subtitle)
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -6057,9 +6059,178 @@ def _lpo_html(o):
       </div>"""
 
 
+def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str):
+    """A report on screen before it is a file.
+
+    The rows themselves, as a table, with the two downloads above them -
+    so checking a figure costs a look rather than a file to find and
+    delete afterwards. Written out rather than embedding the PDF: a
+    phone, and a browser without a PDF plugin, both show a blank frame,
+    and a preview that shows nothing is worse than no preview at all.
+    """
+    cols = list(rows[0].keys()) if rows else []
+    numeric = {c for c in cols
+               if all(isinstance(r.get(c), (int, float)) for r in rows)}
+    head = "".join(f'<th class="{"r" if c in numeric else ""}">{escape(str(c))}</th>' for c in cols)
+    body = "".join(
+        "<tr>" + "".join(
+            f'<td class="{"r" if c in numeric else ""}">'
+            + escape("" if r.get(c) is None else str(r.get(c))).replace("\n", "<br>")
+            + "</td>" for c in cols) + "</tr>"
+        for r in rows)
+    empty = '<p class="none">Nothing to show.</p>' if not rows else ""
+    return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+          background:#F1EFEA; color:#1F2429; }}
+  .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
+          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:2; }}
+  .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
+  .bar .who {{ font-size:12.5px; color:#666; }}
+  a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
+           padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
+           background:#FDF4F3; color:#8C2F26; }}
+  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  .sheet {{ margin:16px; background:white; border:1px solid #DDD; border-radius:6px;
+            overflow:auto; }}
+  table {{ width:100%; border-collapse:collapse; font-size:12.5px; }}
+  th {{ background:#2E3238; color:white; padding:8px 10px; text-align:left;
+        font-size:11.5px; letter-spacing:.3px; position:sticky; top:0; }}
+  td {{ border-bottom:1px solid #EEE; padding:7px 10px; vertical-align:top; }}
+  th.r, td.r {{ text-align:right; }}
+  tr:nth-child(even) td {{ background:#FCFBFA; }}
+  .none {{ padding:26px; color:#777; font-size:13px; text-align:center; }}
+  @media print {{ .bar {{ position:static; }} a.btn {{ display:none; }}
+                  .sheet {{ margin:0; border:0; }} }}
+</style></head><body>
+  <div class="bar">
+    <h1>{escape(title)}</h1>
+    <span class="who">{subtitle}</span>
+    <span style="margin-left:auto;"></span>
+    <a class="btn dark" href="{pdf_url}&amp;format=pdf">Download PDF</a>
+    <a class="btn" href="{excel_url}&amp;format=excel">Download Excel</a>
+  </div>
+  <div class="sheet">{empty or f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'}</div>
+</body></html>""")
+
+
+@app.get("/export/store/report/view")
+def view_store_report(kind: str = "stock", date_from: str = None, date_to: str = None,
+                       q: str = "", token: str = None, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    extra = f"&kind={quote(kind, safe='')}"
+    for k, v in (("date_from", date_from), ("date_to", date_to), ("q", q)):
+        if v:
+            extra += f"&{k}={quote(str(v), safe='')}"
+    if kind.startswith("mr_"):
+        data = material_request_report(kind=kind[3:], db=db, user=None)
+    else:
+        data = store_report(kind=kind, date_from=date_from, date_to=date_to, db=db, user=None)
+    rows = []
+    for r in data["rows"]:
+        r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        if isinstance(r.get("by_site"), dict):
+            per = r.pop("by_site")
+            r["at_which_sites"] = "\n".join(f"{loc}: {_clean_export_qty(q)}"
+                                             for loc, q in sorted(per.items())) or "-"
+        rows.append(r)
+    if q.strip():
+        needle = q.strip().lower()
+        rows = [r for r in rows if needle in " ".join(str(v) for v in r.values()).lower()]
+    url = f"/export/store/report?token={t}{extra}"
+    label = kind.replace("mr_", "").replace("_", " ").title()
+    return _preview_page(f"{label} report",
+                         (f"{date_from or 'the start'} to {date_to or 'today'}"
+                          if (date_from or date_to) else f"As at {_dubai_today():%d %b %Y}"),
+                         rows, url, url)
+
+
+@app.get("/export/store/purchase-report/view")
+def view_lpo_report(token: str, group_by: str = "order",
+                     measures: str = "orders,sub_total,vat,total",
+                     date_from: str = "", date_to: str = "", supplier: str = "",
+                     site: str = "", material: str = "", status: str = "issued",
+                     db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    extra = f"&group_by={quote(group_by, safe='')}&measures={quote(measures, safe='')}" \
+            f"&status={quote(status, safe='')}"
+    for k, v in (("date_from", date_from), ("date_to", date_to), ("supplier", supplier),
+                 ("site", site), ("material", material)):
+        if v:
+            extra += f"&{k}={quote(str(v), safe='')}"
+    bits = []
+    if date_from or date_to:
+        bits.append(f"{date_from or 'the start'} to {date_to or 'today'}")
+    for label, v in (("supplier", supplier), ("site", site), ("material", material)):
+        if v:
+            bits.append(f"{label}: {v}")
+    data = lpo_report(group_by=group_by, measures=measures, date_from=date_from,
+                      date_to=date_to, supplier=supplier, site=site, material=material,
+                      status=status, db=db, user=_SystemUser())
+    rows = []
+    for r in data["rows"]:
+        row = {data["group_label"]: r["label"]}
+        if group_by == "order":
+            row["Date"] = r["date"]
+            row["Supplier"] = r["supplier"]
+            row["Project location"] = r["site"]
+        for m in data["measures"]:
+            row[m["label"]] = r[m["key"]]
+        rows.append(row)
+    url = f"/export/store/purchase-report?token={t}{extra}"
+    return _preview_page(f"Purchase orders by {LPO_GROUPS.get(group_by, 'order').lower()}",
+                         " &middot; ".join(bits), rows, url, url)
+
+
+@app.get("/export/store/rental/view")
+def view_rental_report(token: str, location: str = None, supplier: str = "",
+                        db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    # A download token lasts a minute, far too short for buttons on a
+    # page somebody is reading, so the page carries one of its own.
+    t = quote(auth.create_view_token(user.username), safe="")
+    extra = ""
+    if location is not None:
+        extra += f"&location={quote(location, safe='')}"
+    if supplier.strip():
+        extra += f"&supplier={quote(supplier.strip(), safe='')}"
+    where = ("Central store" if location == CENTRAL else location) if location is not None else "Everywhere"
+    rows = _rental_report_rows(db, location=location, supplier=supplier)
+    total = sum(r["Quantity on rent"] for r in rows)
+    url = f"/export/store/rental?token={t}{extra}"
+    return _preview_page("Rental Materials On Rent",
+                         f"{where} &middot; {len(rows)} line(s), {total:g} item(s) on rent",
+                         rows, url, url)
+
+
+@app.get("/export/store/return/{return_id}/view")
+def view_hire_return(return_id: int, token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    r = db.query(models.HireReturn).filter(models.HireReturn.id == return_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Return note not found.")
+    t = quote(auth.create_view_token(user.username), safe="")
+    note = _return_dict(r, db)
+    lines = [{"Material": l["description"], "Unit": l["unit"],
+              "On rent": l["qty_on_hire"], "Returned": l["qty_returned"],
+              "Short": l["qty_short"], "Reason": (l["short_reason"] or "").title(),
+              "Still on rent": l["still_on_hire"], "Remark": l["notes"]}
+             for l in note["lines"]]
+    url = f"/export/store/return/{r.id}?token={t}"
+    return _preview_page(r.ref,
+                         f"{r.supplier_name or ''} &middot; "
+                         f"{r.return_date.strftime('%d %b %Y') if r.return_date else ''} "
+                         f"&middot; {r.status}", lines, url, url)
+
+
 @app.get("/export/store/rental")
 def export_rental_report(token: str, format: str = "pdf", location: str = None,
-                          supplier: str = "", db: Session = Depends(get_db)):
+                          supplier: str = "", inline: bool = False,
+                          db: Session = Depends(get_db)):
     """The rental picture as paper: what is on rent, from whom, standing
     where, taken on what date, and how many days it has been out."""
     auth.get_download_user_from_token(token, db)
@@ -6081,8 +6252,9 @@ def export_rental_report(token: str, format: str = "pdf", location: str = None,
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": "attachment; filename=rental-materials.xlsx"})
     buf = export_web.build_store_report_pdf(title, rows, sub)
+    disp = "inline" if inline else "attachment"
     return StreamingResponse(buf, media_type="application/pdf",
-                             headers={"Content-Disposition": "attachment; filename=rental-materials.pdf"})
+                             headers={"Content-Disposition": f"{disp}; filename=rental-materials.pdf"})
 
 
 @app.get("/export/store/return/{return_id}")
@@ -6223,7 +6395,8 @@ def signature_status(user: models.User = Depends(require_screen("approvals"))):
 @app.get("/export/store/report")
 def export_store_report(kind: str = "stock", format: str = "excel",
                          date_from: str = None, date_to: str = None,
-                         q: str = "", token: str = None, db: Session = Depends(get_db)):
+                         q: str = "", token: str = None, inline: bool = False,
+                         db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     # Material-request reports live under a different builder to the
     # stock ones, but both export through the same formatter.
@@ -6265,8 +6438,9 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ext = "xlsx"
     name = f"{kind}_{date.today().isoformat()}.{ext}"
+    how = "inline" if (inline and format == "pdf") else "attachment"
     return StreamingResponse(buf, media_type=media,
-                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
+                              headers={"Content-Disposition": f'{how}; filename="{name}"'})
 
 
 @app.get("/export/store/request/{req_id}")

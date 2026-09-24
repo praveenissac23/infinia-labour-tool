@@ -1588,6 +1588,7 @@
               <option value="all">Including cancelled</option>
               <option value="cancelled">Cancelled only</option>
             </select>
+            <button class="btn btn-primary" onclick="exportLpoReport('view')">Preview</button>
             <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportLpoReport('pdf')">Export PDF</button>
           </div>
@@ -1765,6 +1766,7 @@
                 <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
                   <div class="field"><label>Where</label>
                     <select id="rent-where" style="width:190px;" onchange="refreshOnHire()"></select></div>
+                  <button class="btn btn-primary" onclick="exportRental('view')">Preview</button>
                   <button class="btn btn-dark" onclick="exportRental('pdf')">Export PDF</button>
                   <button class="btn btn-dark" onclick="exportRental('excel')">Export Excel</button>
                 </div>
@@ -2148,6 +2150,7 @@
                     <label>From</label><input type="date" id="store-date-from" onchange="loadStore()">
                     <label>To</label><input type="date" id="store-date-to" onchange="loadStore()">
                   </span>
+                  <button class="btn btn-primary" onclick="exportStore('view')">Preview</button>
                   <button class="btn btn-dark" onclick="exportStore('excel')">Export Excel</button>
                   <button class="btn btn-dark" onclick="exportStore('pdf')">Export PDF</button>
                 </div>
@@ -5217,7 +5220,11 @@ async function exportRental(fmt) {
   }
   const picked = rentWhere();
   const q = picked === "__all__" ? "" : `&location=${encodeURIComponent(picked)}`;
-  window.open(`${API}/export/store/rental?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}${q}`, "_blank");
+  // Preview opens the report in a tab with both downloads above it, so
+  // a figure can be checked without a file to find and delete after.
+  const path = fmt === "view" ? "/export/store/rental/view" : "/export/store/rental";
+  const f = fmt === "view" ? "" : `&format=${fmt}`;
+  window.open(`${API}${path}?token=${encodeURIComponent(cachedDownloadToken)}${f}${q}`, "_blank");
 }
 
 // Rows are appended rather than the table redrawn, so adding a second
@@ -5322,6 +5329,7 @@ async function refreshReturnList() {
       <td${r.total_short ? ' style="color:#C0392B; font-weight:600;"' : ""}>${r.total_short ? num(r.total_short) : "-"}</td>
       <td>${pill(r.status)}${r.received_by ? `<div style="font-size:11px; color:#888;">${r.received_by}</div>` : ""}</td>
       <td style="text-align:right; white-space:nowrap;">
+        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'view')">Preview</button>
         <button class="btn btn-gray" onclick="printReturn(${r.id}, 'pdf')">PDF</button>
         <button class="btn btn-gray" onclick="printReturn(${r.id}, 'excel')">Excel</button>
         ${r.status !== "confirmed" && r.status !== "cancelled"
@@ -5337,7 +5345,9 @@ async function printReturn(id, fmt) {
     showStatus("rn-list-status", "err", "Could not prepare the download - check the connection.");
     return;
   }
-  window.open(`${API}/export/store/return/${id}?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}`, "_blank");
+  const path = fmt === "view" ? `/export/store/return/${id}/view` : `/export/store/return/${id}`;
+  const f = fmt === "view" ? "" : `&format=${fmt}`;
+  window.open(`${API}${path}?token=${encodeURIComponent(cachedDownloadToken)}${f}`, "_blank");
 }
 
 async function newReturnNote(supplierId) {
@@ -5634,34 +5644,10 @@ async function loadStoreHome() {
                   cell: r => `<td class="num-col">${r.at_sites ? num(r.at_sites) : '<span class="zero">0</span>'}</td>` },
       total:    { t: "Total held", w: "11%",
                   cell: r => `<td class="num-col">${r.total ? `<strong>${num(r.total)}</strong>` : '<span class="zero">0</span>'}</td>` },
-      whose:    { t: "Owner", w: "15%", cell: r => {
-                    const h = hireByCode[r.code];
-                    if (!h || !h.hired) return `<td style="font-size:12px; color:#888;">ours</td>`;
-                    const names = Object.keys(h.hired_from || {});
-                    // A name already in brackets - "(no supplier set)" -
-                    // must not be wrapped in another pair.
-                    const one = names[0] || "";
-                    const who = names.length === 1
-                      ? (one.startsWith("(") ? one.slice(1, -1) : one)
-                      : `${names.length} suppliers`;
-                    const full = names.map(n => `${n}: ${h.hired_from[n]}`).join(", ");
-                    return `<td style="font-size:12px;" title="${full.replace(/"/g, "&quot;")}">
-                      ${h.owned ? `${num(h.owned)} ours` : ""}
-                      ${h.owned ? "<br>" : ""}<span style="color:#8A6100; font-weight:600;">${num(h.hired)} rented</span>
-                      <span style="color:#888;"> (${who})</span></td>`;
-                  } },
       flag:     { t: "", w: "11%",
                   cell: r => `<td>${r.low ? '<span style="color:#C0392B; font-size:11.5px; font-weight:600;">low</span>' : ""}</td>` },
     };
-    // Whose it is only earns a column once something is actually on
-    // hire - a store that never hires should not be asked the question.
-    const hireByCode = {};
-    (storeStockCache || []).forEach(s => {
-      if (s.rented) hireByCode[s.code] = { owned: s.owned, hired: s.rented, hired_from: s.rented_from };
-    });
-    const anyHired = Object.keys(hireByCode).length > 0;
-    const homeKeys = orderColumns("home-stock",
-      Object.keys(COLS).filter(k => k !== "whose" || anyHired));
+    const homeKeys = orderColumns("home-stock", Object.keys(COLS));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
     body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
@@ -7987,7 +7973,9 @@ async function exportStore(fmt) {
   const view = document.getElementById("store-view").value;
   const from = document.getElementById("store-date-from").value;
   const to = document.getElementById("store-date-to").value;
-  let url = `${API}/export/store/report?kind=${view}&format=${fmt}&token=${encodeURIComponent(cachedDownloadToken)}`;
+  const path = fmt === "view" ? "/export/store/report/view" : "/export/store/report";
+  let url = `${API}${path}?kind=${view}&token=${encodeURIComponent(cachedDownloadToken)}`
+          + (fmt === "view" ? "" : `&format=${fmt}`);
   if (from) url += `&date_from=${from}`;
   if (to) url += `&date_to=${to}`;
   // The download is the screen: whatever the search box has narrowed
@@ -9024,7 +9012,9 @@ function onLprMeasure() {
 async function exportLpoReport(fmt) {
   if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
   if (!cachedDownloadToken) { showStatus("lpr-status", "err", "Could not prepare the download."); return; }
-  window.open(`${API}/export/store/purchase-report?token=${encodeURIComponent(cachedDownloadToken)}&format=${fmt}&${lprParams()}`, "_blank");
+  const path = fmt === "view" ? "/export/store/purchase-report/view" : "/export/store/purchase-report";
+  const f = fmt === "view" ? "" : `&format=${fmt}`;
+  window.open(`${API}${path}?token=${encodeURIComponent(cachedDownloadToken)}${f}&${lprParams()}`, "_blank");
 }
 
 
