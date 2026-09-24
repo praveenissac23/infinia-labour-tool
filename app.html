@@ -143,6 +143,13 @@
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
   .hr-mini { padding: 3px 9px !important; font-size: 12px !important; }
+  .hr-progress { border: 1px solid #EADFD2; background: #FCF9F4; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+  .hr-progress-top { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; color: #555; }
+  .hr-progress-top b { color: #222; }
+  .hr-bar { height: 8px; background: #EFE7DC; border-radius: 5px; margin: 8px 0 6px; overflow: hidden; }
+  .hr-bar > div { height: 100%; background: var(--red); border-radius: 5px; }
+  .hr-progress-note { font-size: 11.5px; color: #8A8178; }
+  .hr-todate { color: #2E7D32 !important; font-weight: 600; }
   .hr-from { cursor: pointer; }
   .hr-from:hover { background: #F7F1E8 !important; }
   tr.hr-detail > td { background: #FBF8F3 !important; padding: 10px 14px 14px !important; }
@@ -2493,6 +2500,7 @@
             <div class="card" id="hr-run-card" style="display:none;">
               <h2 id="hr-run-title">Cycle</h2>
               <div id="hr-run-notice" class="status-msg warn" style="display:none;"></div>
+              <div id="hr-run-progress" class="hr-progress" style="display:none;"></div>
               <p id="hr-run-help" style="font-size:12px; color:#888; margin:0 0 10px;">
                 The sheet fills itself from Absence and Additions &amp; Deductions every time it is
                 opened - change a figure there and it follows here. Only the loan instalment and the
@@ -11143,7 +11151,8 @@ function renderRun() {
       ${runCell(l, "loan_deduction", locked)}
       ${runCell(l, "leave_salary", locked)}
       ${runCell(l, "air_ticket", locked)}
-      <td class="num net" id="hr-net-${l.id}">${hrMoney(l.net_pay)}</td>
+      <td class="num net" id="hr-net-${l.id}">${hrMoney(l.net_pay)}${r.progress && r.progress.running
+        ? `<span class="sub hr-todate" title="Earned up to ${hrDate(r.progress.as_of)}">to date ${hrMoney(l.to_date)}</span>` : ""}</td>
       ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
       <td class="txt">${locked ? `<span class="hr-remark">${escapeHtml(remark)}</span>` :
         `<input type="text" class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks"
@@ -11151,6 +11160,19 @@ function renderRun() {
     </tr>`; }).join("");
   renderRunFoot();
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route);
+  // The month so far, as the labour live card shows it: how far in we
+  // are, and what the staff have earned up to today.
+  const pg = document.getElementById("hr-run-progress");
+  const p = r.progress;
+  if (p && p.running) {
+    pg.style.display = "";
+    pg.innerHTML = `<div class="hr-progress-top"><b>${escapeHtml(r.month_year)} in progress</b>
+        <span>Day ${p.day} of ${p.days} - to ${hrDate(p.as_of)}</span>
+        <span>Earned so far <b>${hrMoney(p.to_date)}</b> of ${hrMoney(r.totals.net_pay + r.totals.loan_deduction)} for the month</span></div>
+      <div class="hr-bar"><div style="width:${p.pct}%"></div></div>
+      <div class="hr-progress-note">"To date" under each net pay is the salary earned up to today, less absences recorded,
+        plus additions entered so far. The loan instalment comes off at the month end.</div>`;
+  } else pg.style.display = "none";
 }
 
 // The figures at the foot are the figures in the rows added up, worked

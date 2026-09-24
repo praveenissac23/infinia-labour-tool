@@ -8700,6 +8700,23 @@ def _run_dict(r, db):
     by_route = {}
     for l in lines:
         by_route[l["pay_route"]] = round(by_route.get(l["pay_route"], 0) + l["net_pay"], 2)
+    # How far into the month we are, and what each person has earned so
+    # far - the office's version of the labour live card. Salary accrues
+    # evenly across the calendar month; absences, additions and
+    # deductions count as recorded. The loan instalment comes off at the
+    # month end, so it is left out of the running figure.
+    a, b = _staff_month_bounds(r.month_year)
+    today = _dubai_today()
+    days = (b - a).days + 1
+    done = 0 if today < a else days if today > b else (today - a).days + 1
+    for l in lines:
+        earned = round(l["fixed_salary"] * done / days, 2)
+        l["earned_to_date"] = earned
+        l["to_date"] = round(earned - l["deduction"] - l["statutory"] + l["other_allowance"]
+                             + l["leave_salary"] + l["air_ticket"], 2)
+    progress = {"day": done, "days": days, "pct": round(done * 100 / days),
+                "running": 0 < done < days, "as_of": min(max(today, a), b).isoformat(),
+                "to_date": round(sum(l["to_date"] for l in lines), 2)}
     return {
         "id": r.id, "month_year": r.month_year, "group": r.group,
         "company_id": r.company_id,
@@ -8707,7 +8724,7 @@ def _run_dict(r, db):
         "company_short": (r.company.short_name or r.company.name) if r.company else "",
         "status": r.status,
         "approved_on": r.approved_on.isoformat() if r.approved_on else "",
-        "notes": r.notes or "", "lines": lines,
+        "notes": r.notes or "", "lines": lines, "progress": progress,
         "totals": {
             "fixed_salary": round(sum(l["fixed_salary"] for l in lines), 2),
             "deduction": round(sum(l["deduction"] + l["statutory"] for l in lines), 2),
