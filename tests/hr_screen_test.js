@@ -318,9 +318,9 @@ const CYCLE_MONTH = '2026-08';
   ck('the staff register lists the two',
      (await p.locator('#hr-staff-body tr').count()) >= 2);
   await p.evaluate("hrTab('gratuity')"); await p.waitForTimeout(900);
-  ck('the gratuity tab shows what each has earned',
-     (await p.locator('#hr-grat-foot').textContent()).includes('TOTAL LIABILITY'),
-     await p.locator('#hr-grat-foot').textContent());
+  ck('the gratuity tab opens on one person with the working',
+     (await p.locator('#hr-grat-view').textContent()).includes('Gratuity working'),
+     (await p.locator('#hr-grat-view').textContent()).slice(0, 120));
   await p.evaluate("hrTab('increments')"); await p.waitForTimeout(900);
   const incId = await p.evaluate(() => HR_INCS.find(r => r.emp_no === 'BT001').id);
   await p.evaluate(i => hrIncEdit(i), incId);

@@ -7483,6 +7483,24 @@ def add_staff(payload: dict = Body(...), db: Session = Depends(get_db),
     return save_staff(emp_no, payload, db=db, user=user)
 
 
+@app.get("/employees/staff/{emp_no}/file")
+def staff_file(emp_no: str, db: Session = Depends(get_db), user: models.User = HR):
+    """Everything on file for one person, on one page: salary and its
+    history, loans, absence, and the gratuity working."""
+    e = _staff_by_code(db, emp_no)
+    loans = [l for l in list_loans(db=db, user=user)["rows"] if l["emp_no"] == e.emp_no]
+    leave = [r for r in list_leave(month_year="", emp_no=e.emp_no, db=db, user=user)["rows"]]
+    hist = sorted(list_increments(emp_no=e.emp_no, db=db, user=user)["rows"],
+                  key=lambda r: r["effective_on"])
+    return {"staff": _staff_dict(e, db), "gratuity": gratuity_detail(e, db),
+            "loans": loans, "loan_total": round(sum(l["amount"] for l in loans), 2),
+            "loan_repaid": round(sum(l["repaid"] for l in loans), 2),
+            "loan_balance": round(sum(l["balance"] for l in loans if not l["closed"]), 2),
+            "leave": leave, "leave_days": round(sum(r["days_total"] for r in leave), 2),
+            "unpaid_days": round(sum(r["unpaid_days"] for r in leave), 2),
+            "history": hist}
+
+
 @app.put("/employees/staff/{emp_no}")
 def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
                 user: models.User = HR):

@@ -117,6 +117,19 @@
   .hr-cycle textarea.hr-rem:focus { outline: none; border-color: var(--red); background: white; }
   .hr-todate { color: #2E7D32; }
   tr.hr-held td { color: #A8A29A !important; background: #FAFAF9 !important; }
+  .hr-file-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;
+                  padding-bottom: 12px; border-bottom: 1px solid #EFEBE4; }
+  .hr-file-name { font-size: 18px; font-weight: 700; color: #222; }
+  .hr-file-net { text-align: right; }
+  .hr-file-net > span { display: block; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #8A8178; }
+  .hr-file-net > b { display: block; font-size: 24px; color: #2E7D32; margin: 2px 0; }
+  .hr-file-net > span:last-child { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .hr-file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; margin-top: 14px; }
+  .hr-file-grid h3 { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #6B7075; margin: 0 0 8px; }
+  .hr-steps { display: grid; grid-template-columns: 1fr auto; gap: 5px 16px; font-size: 13px; }
+  .hr-kv { display: contents; } .hr-kv span { color: #666; } .hr-kv b { text-align: right; font-variant-numeric: tabular-nums; }
+  .hr-kv b .net { color: #2E7D32; font-size: 15px; }
+  @media (max-width: 900px) { .hr-file-grid { grid-template-columns: 1fr; } }
   tr.hr-held td .hr-todate { color: #A8A29A; }
   .hr-dd { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px;
            font-weight: 600; background: white; min-width: 190px; }
@@ -2902,33 +2915,17 @@
             </div>
           </div>
 
-          <!-- ---- Gratuity -------------------------------------------->
+          <!-- ---- Gratuity: one person at a time ----------------------->
           <div class="hr-pane" id="hrpane-gratuity" style="display:none;">
             <div class="card">
-              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
-                <h2 style="margin:0 12px 0 0;">End of service gratuity</h2>
+              <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <label class="hr-field"><span>Staff member</span><select id="hr-grat-emp" class="hr-staff-pick" style="width:260px;" onchange="renderGratuity()"></select></label>
+                <div class="hr-cb-spacer"></div>
                 <button class="btn btn-dark" onclick="previewHr('gratuity')">Preview</button>
                 <button class="btn btn-gray" onclick="downloadHr('gratuity','pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadHr('gratuity','excel')">Export to Excel</button>
               </div>
-              <p style="font-size:12px; color:#888; margin:8px 0 10px;">
-                UAE labour law: 21 days' basic wage a year for the first five years and 30 days a year
-                after, once a year has been served, on the basic only, capped at two years' basic. A day
-                is basic &times; 12 &divide; 365. Unpaid absence does not count as service. Nationals are on
-                GPSSA and staff paid in cash are not entitled.</p>
-              <div class="grid-wrap" style="max-height:62vh;">
-                <table class="hr-grid">
-                  <thead><tr>
-                    <th style="width:7%;">Code</th><th class="txt" style="width:19%;">Name</th>
-                    <th class="txt" style="width:10%;">Company</th><th style="width:10%;">Joined</th>
-                    <th style="width:8%;">Service</th><th class="num" style="width:8%;">Basic</th>
-                    <th class="num" style="width:8%;">Per day</th><th class="num" style="width:8%;">Days</th>
-                    <th class="num" style="width:10%;">Gratuity to date</th><th class="txt" style="width:12%;">Basis</th>
-                  </tr></thead>
-                  <tbody id="hr-grat-body"></tbody>
-                  <tfoot id="hr-grat-foot"></tfoot>
-                </table>
-              </div>
+              <div id="hr-grat-view" style="margin-top:14px;"></div>
             </div>
           </div>
 
@@ -12383,31 +12380,76 @@ async function deleteDocument(id) {
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
-// ---- Gratuity ---------------------------------------------------------
+// ---- Gratuity: one person's whole file --------------------------------
 
+let HR_GRAT = null;
 async function loadGratuity() {
+  const sel = document.getElementById("hr-grat-emp");
+  if (!sel.value && HR_STAFF.length) sel.value = HR_STAFF.slice().sort((a, b) =>
+    String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }))[0].emp_no;
+  renderGratuity();
+}
+
+async function renderGratuity() {
+  const code = document.getElementById("hr-grat-emp").value;
+  const box = document.getElementById("hr-grat-view");
+  if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
   let d;
-  try { d = await apiCall("/employees/staff"); } catch (e) { hrMsg("err", errText(e)); return; }
-  const rows = (d.rows || []).slice().sort((a, b) =>
-    String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
-  const basis = s => s.scheme === "pension" ? "GPSSA pension" : s.scheme === "none" ? "Not entitled" :
-                     !s.joined_on ? "No joining date" : s.gratuity ? "Accruing" : "Under 1 year";
-  document.getElementById("hr-grat-body").innerHTML = rows.map(s => `
-    <tr${s.gratuity ? "" : ' class="hr-soft"'} title="${escapeAttr(s.gratuity_why || "")}">
-      <td>${escapeHtml(s.emp_no)}</td><td class="txt">${escapeHtml(s.name)}</td>
-      <td class="txt">${escapeHtml(s.company)}</td>
-      <td>${s.joined_on ? hrDate(s.joined_on) : '<span class="hr-nil">-</span>'}</td>
-      <td>${s.joined_on ? hrService(s.years) : '<span class="hr-nil">-</span>'}</td>
-      <td class="num">${hrMoney(s.basic)}</td>
-      <td class="num">${s.gratuity ? hrMoney(s.gratuity_daily) : '<span class="hr-nil">-</span>'}</td>
-      <td class="num">${s.gratuity ? s.gratuity_days : '<span class="hr-nil">-</span>'}</td>
-      <td class="num net">${s.gratuity ? hrMoney(s.gratuity) : '<span class="hr-nil">-</span>'}</td>
-      <td class="txt">${basis(s)}</td>
-    </tr>`).join("") || `<tr><td colspan="10" class="hr-nil" style="padding:14px;">No staff on file.</td></tr>`;
-  const total = rows.reduce((a, s) => a + (s.gratuity || 0), 0);
-  document.getElementById("hr-grat-foot").innerHTML = `<tr class="hr-foot">
-    <td colspan="8" class="txt">TOTAL LIABILITY - ${rows.filter(s => s.gratuity).length} staff accruing</td>
-    <td class="num">${hrMoney(total)}</td><td></td></tr>`;
+  try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
+  catch (e) { hrMsg("err", errText(e)); return; }
+  HR_GRAT = d;
+  const s = d.staff, g = d.gratuity;
+  const kv = (k, v) => `<div class="hr-kv"><span>${k}</span><b>${v}</b></div>`;
+  const route = { wps: "WPS", bank: "Bank transfer", cash: "Cash" };
+  const step = `<div class="hr-steps">
+      ${kv("Joined", s.joined_on ? hrDate(s.joined_on) : "not on file")}
+      ${kv("Service", s.joined_on ? hrService(s.years) : "-")}
+      ${kv("Unpaid days (not service)", g.unpaid_days ? g.unpaid_days : "none")}
+      ${kv("Service counted", s.joined_on ? `${g.years.toFixed(2)} years` : "-")}
+      ${kv("Basic wage", hrMoney(s.basic))}
+      ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}
+      ${kv("Days accrued (21 a year, 30 after 5)", g.days ? g.days.toFixed(1) : "-")}
+      ${kv("Gratuity to date", `<span class="net">${hrMoney(g.amount)}</span>`)}
+    </div>
+    <div class="hr-nil" style="margin-top:6px;">${escapeHtml(g.why || "")}${g.capped ? " (capped at two years' basic)" : ""}</div>`;
+  const loans = d.loans.length ? `<table class="hr-grid hr-sub"><thead><tr>
+      <th style="width:16%;">Taken on</th><th class="num" style="width:16%;">Lent</th><th class="num" style="width:16%;">Recovered</th>
+      <th class="num" style="width:16%;">Balance</th><th class="txt">Terms</th></tr></thead><tbody>
+      ${d.loans.map(l => `<tr><td>${hrDate(l.taken_on)}</td><td class="num">${hrMoney(l.amount)}</td><td class="num">${hrMoney(l.repaid)}</td>
+        <td class="num net">${hrMoney(l.balance)}</td><td class="txt">${escapeHtml(l.terms)}</td></tr>`).join("")}
+      <tr class="hr-foot"><td class="txt">TOTAL</td><td class="num">${hrMoney(d.loan_total)}</td><td class="num">${hrMoney(d.loan_repaid)}</td>
+        <td class="num">${hrMoney(d.loan_balance)}</td><td></td></tr></tbody></table>` : '<div class="hr-nil">No loans.</div>';
+  const leave = d.leave.length ? `<table class="hr-grid hr-sub"><thead><tr>
+      <th style="width:14%;">Type</th><th style="width:22%;">Date(s)</th><th class="num" style="width:10%;">Days</th>
+      <th style="width:22%;">Pay</th><th class="num" style="width:14%;">Leave salary</th><th class="num" style="width:12%;">Ticket</th></tr></thead><tbody>
+      ${d.leave.map(r => `<tr${r.unpaid_days ? ' class="hr-bad"' : ""}><td>${escapeHtml(r.kind_label)}</td><td>${hrSpan(r)}</td>
+        <td class="num">${r.half ? "Half" : r.days_total}</td><td>${escapeHtml(r.pay)}</td>
+        <td class="num">${r.leave_salary ? hrMoney(r.leave_salary) : "-"}</td><td class="num">${r.air_ticket ? hrMoney(r.air_ticket) : "-"}</td></tr>`).join("")}
+      </tbody></table>` : '<div class="hr-nil">No absence recorded.</div>';
+  const hist = `<table class="hr-grid hr-sub"><thead><tr>
+      <th style="width:18%;">From</th><th style="width:16%;">Change</th><th class="num" style="width:14%;">Increase</th>
+      <th class="num" style="width:14%;">Basic</th><th class="num" style="width:14%;">Allowance</th><th class="num" style="width:14%;">Salary</th></tr></thead><tbody>
+      ${d.history.map(r => `<tr><td>${hrDate(r.effective_on)}${r.future ? " (due)" : ""}</td><td>${hrCap(r.kind)}</td>
+        <td class="num">${r.amount ? "+" + hrMoney(r.amount) : "-"}</td><td class="num">${hrMoney(r.basic)}</td>
+        <td class="num">${hrMoney(r.allowance)}</td><td class="num strong">${hrMoney(r.gross)}</td></tr>`).join("") ||
+        '<tr><td colspan="6" class="hr-nil">No history.</td></tr>'}</tbody></table>`;
+  box.innerHTML = `
+    <div class="hr-file-head">
+      <div><div class="hr-file-name">${escapeHtml(s.name)}</div>
+        <div class="hr-nil">${escapeHtml(s.emp_no)} &middot; ${escapeHtml(s.designation || "")} &middot; ${escapeHtml(s.company)} &middot; paid by ${route[s.pay_route] || s.pay_route}</div></div>
+      <div class="hr-file-net"><span>Gratuity to date</span><b>${g.entitled && s.joined_on ? hrMoney(g.amount) : "-"}</b>
+        <span>${g.entitled ? (s.joined_on ? (g.amount ? "" : "under one year's service") : "no joining date") : escapeHtml(g.why)}</span></div>
+    </div>
+    <div class="hr-file-grid">
+      <section><h3>Salary</h3>
+        <div class="hr-steps">${kv("Basic", hrMoney(s.basic))}${kv("Fix allowance", hrMoney(s.allowance))}${kv("Gross", hrMoney(s.gross))}
+        ${kv("Contract basic", hrMoney(s.contract_basic))}${kv("Statement", s.pay_group === "local" ? "Local staff" : "Office staff")}
+        ${kv("End of service", s.scheme === "pension" ? "GPSSA pension" : s.scheme === "none" ? "Not entitled" : "Gratuity")}</div></section>
+      <section><h3>Gratuity working (UAE labour law, art. 51)</h3>${step}</section>
+      <section><h3>Loans</h3>${loans}</section>
+      <section><h3>Absence and leave (${d.leave_days} days, ${d.unpaid_days} deducted)</h3>${leave}</section>
+      <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
+    </div>`;
 }
 
 // ---- Increments ------------------------------------------------------
