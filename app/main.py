@@ -9186,7 +9186,6 @@ def _statement_rows(lines, consolidated=False):
             "Gross Salary": l["fixed_salary"],
             "Add / Ded.": adj,
             "Absent Ded.": l["deduction"],
-            "Salary Payable": round(l["fixed_salary"] + adj - l["deduction"], 2),
             "Loan": l["loan_deduction"],
             "Net Pay": l["net_pay"],
         })
@@ -9197,8 +9196,7 @@ def _statement_rows(lines, consolidated=False):
     return out
 
 
-STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Salary Payable",
-                   "Loan", "Net Pay", "Pension"]
+STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "Pension"]
 
 
 def _route_line(by_route):

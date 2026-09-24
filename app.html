@@ -2600,11 +2600,10 @@
                     <th class="num" style="width:7%;">Fix Allown.</th>
                     <th class="num" style="width:9%;">Add / Ded.</th>
                     <th class="num" style="width:8.5%;">Absent Ded.</th>
-                    <th class="num" style="width:10%;">Salary Payable</th>
                     <th class="num" style="width:9%;">Loan</th>
                     <th class="num" style="width:10.5%;">Net Pay</th>
                     <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
-                    <th class="txt" style="width:18%;">Remark</th>
+                    <th class="txt" style="width:24%;">Remark</th>
                   </tr></thead>
                   <tbody id="hr-run-body"></tbody>
                   <tfoot id="hr-run-foot"></tfoot>
@@ -11349,7 +11348,6 @@ function renderRun() {
       <td class="num">${hrMoney(l.allowance)}</td>
       ${hrAdjCell(l, locked)}
       ${runCell(l, "deduction", locked)}
-      <td class="num strong" id="hr-payable-${l.id}">${hrMoney(hrPayable(l))}</td>
       ${hrLoanCell(l, locked)}
       <td class="num net" id="hr-net-${l.id}" title="${r.progress && r.progress.running ? `Earned to ${hrDate(r.progress.as_of)}; ${hrMoney(l.net_pay)} for the full month` : ""}">${
         r.progress && r.progress.running ? `<span class="hr-todate">${hrMoney(l.to_date)}</span>` : hrMoney(l.net_pay)}</td>
@@ -11375,7 +11373,7 @@ function renderRunFoot() {
   const pension = HR_RUN.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
-                 tot(hrPayable), sum("loan_deduction"), sum("net_pay")]
+                 sum("loan_deduction"), sum("net_pay")]
                 .concat(pension ? [sum("pension")] : []);
   document.getElementById("hr-run-foot").innerHTML =
     `<tr class="hr-foot">
@@ -11396,7 +11394,6 @@ function recalcLine(id) {
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
   // Pension is printed beside net pay, never added into it.
   l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
-  document.getElementById(`hr-payable-${id}`).textContent = hrMoney(hrPayable(l));
   if (!(HR_RUN.progress && HR_RUN.progress.running))
     document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
