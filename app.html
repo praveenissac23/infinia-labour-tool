@@ -11859,7 +11859,7 @@ function renderLoans() {
       <td class="num">${l.instalment ? hrMoney(l.instalment) : '<span class="hr-nil">-</span>'}</td>
       <td class="txt">${escapeHtml(l.terms)}</td>
       <td style="white-space:nowrap;">
-        <button class="btn btn-gray hr-mini" onclick="hrLoanToggle(${l.id})">${open ? "Close" : "Repayments (" + l.repayments.length + ")"}</button>
+        <button class="btn btn-gray hr-mini" onclick="hrLoanToggle(${l.id})">${open ? "Close" : "History"}</button>
         <button class="btn btn-gray hr-mini" onclick="hrLoanEdit(${l.id})">Edit</button></td>
     </tr>`;
     if (!open) return main;
