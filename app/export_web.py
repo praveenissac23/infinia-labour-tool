@@ -9,6 +9,7 @@ regenerated-card layout (Employee info fields, full 1-31 day grid,
 Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
+import base64
 import io
 import os
 import tempfile
@@ -59,6 +60,19 @@ def _fit_box(path, max_w_mm, max_h_mm):
 # One PNG beside this module; the same image the app shows top-left.
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 LOGO_W_MM, LOGO_H_MM = 42, 7.1          # 995x168 px, scaled to a neat header
+
+
+def logo_data_uri():
+    """The same logo, inline, for a preview drawn as a web page.
+
+    A preview is meant to be the paper on screen, so it carries the
+    letterhead too. Inlined rather than linked because the preview
+    opens on its own tab with no session behind it."""
+    try:
+        with open(LOGO_PATH, "rb") as fh:
+            return "data:image/png;base64," + base64.b64encode(fh.read()).decode()
+    except Exception:
+        return ""
 
 
 def _logo_image(width_mm=None):
@@ -1992,6 +2006,18 @@ def _return_rows(note: dict):
     return rows
 
 
+def _day(v):
+    """A date the way it is read out loud: 24 Sep 2026, not 2026-09-24.
+
+    Stored ISO, printed plainly - and the same on the screen preview, so
+    the sheet that is checked is the sheet that comes out."""
+    s = str(v or "")
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d %b %Y")
+    except Exception:
+        return s
+
+
 def _n(v):
     """A quantity as people write it: 12 not 12.0, 12.5 kept."""
     v = float(v or 0)
@@ -2055,7 +2081,7 @@ def build_hire_return_pdf(note: dict):
                                ("Attention", note.get("received_by") or ""),
                                ("Returned from", note.get("from_location") or "Central store")])
     right = box("RETURN DETAILS", [("Note No", note.get("ref")),
-                                   ("Date", note.get("return_date")),
+                                   ("Date", _day(note.get("return_date"))),
                                    ("Driver", note.get("driver")),
                                    ("Vehicle", note.get("vehicle"))])
     hdr = Table([[left, right]], colWidths=[W * 0.5, W * 0.5])
@@ -2178,7 +2204,7 @@ def build_hire_return_excel(note: dict):
     ws["A1"].font = Font(bold=True, size=14)
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    pairs = [("Note No", note.get("ref", "")), ("Date", note.get("return_date", "")),
+    pairs = [("Note No", note.get("ref", "")), ("Date", _day(note.get("return_date"))),
              ("Supplier", note.get("supplier", "")),
              ("Returned from", note.get("from_location") or "Central store"),
              ("Driver", note.get("driver", "")), ("Vehicle", note.get("vehicle", ""))]

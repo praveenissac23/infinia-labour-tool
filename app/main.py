@@ -6099,6 +6099,172 @@ def _lpo_html(o):
       </div>"""
 
 
+def _return_note_html(note: dict, pdf_url: str, excel_url: str):
+    """The return note preview: the printed page itself, not a summary.
+
+    A preview that shows a different document from the one that prints
+    is worse than useless - it is checked, approved, and then something
+    else comes out of the printer. So this draws the same sheet the PDF
+    builder draws: the same letterhead, the same two header boxes, the
+    same eight columns with their totals row, the same warning lines,
+    and the same two empty signature boxes for the driver and the
+    supplier to sign by hand.
+    """
+    def n(v):
+        v = float(v or 0)
+        return str(int(v)) if abs(v - int(v)) < 1e-9 else f"{v:,.2f}"
+
+    def e(v):
+        return escape("" if v is None else str(v))
+
+    lines = note.get("lines") or []
+    tot_hire = sum(float(l.get("qty_on_hire") or 0) for l in lines)
+    tot_ret = sum(float(l.get("qty_returned") or 0) for l in lines)
+    tot_short = sum(float(l.get("qty_short") or 0) for l in lines)
+    tot_bal = tot_hire - tot_ret - tot_short
+
+    body = []
+    for i, l in enumerate(lines, 1):
+        short = float(l.get("qty_short") or 0)
+        bal = (float(l.get("qty_on_hire") or 0) - float(l.get("qty_returned") or 0) - short)
+        remark = " / ".join(x for x in (
+            (l.get("short_reason") or "").title() if short else "", l.get("notes") or "") if x)
+        body.append(
+            f'<tr><td>{i}</td><td>{e(l.get("description"))}</td><td>{e(l.get("unit"))}</td>'
+            f'<td class="r">{n(l.get("qty_on_hire"))}</td>'
+            f'<td class="r b">{n(l.get("qty_returned"))}</td>'
+            f'<td class="r{" short" if short else ""}">{n(short) if short else "-"}</td>'
+            f'<td class="r">{n(bal) if bal > 1e-9 else "-"}</td>'
+            f'<td class="sm">{e(remark)}</td></tr>')
+    if not lines:
+        body.append('<tr><td colspan="8" class="none">No materials on this note.</td></tr>')
+
+    warn = ""
+    if tot_short:
+        warn += (f'<p class="warn">{n(tot_short)} item(s) recorded as not returned. '
+                 "Signing below confirms this quantity as agreed by both parties.</p>")
+    if tot_bal > 1e-9:
+        warn += (f'<p class="rest">{n(tot_bal)} item(s) remain on hire and are not '
+                 "part of this return.</p>")
+    notes_html = ""
+    if (note.get("notes") or "").strip():
+        notes_html = ('<div class="notes"><div class="lbl">Notes</div>'
+                      + "".join(f"<div>{e(ln.strip())}</div>"
+                                for ln in str(note["notes"]).splitlines() if ln.strip())
+                      + "</div>")
+
+    def pair(k, v):
+        return (f'<tr><th>{e(k)}</th><td>{e(v) if str(v or "").strip() else "-"}</td></tr>')
+
+    date_txt = note.get("return_date") or ""
+    try:
+        date_txt = datetime.strptime(date_txt[:10], "%Y-%m-%d").strftime("%d %b %Y")
+    except Exception:
+        pass
+    left = "".join([pair("Supplier", note.get("supplier")),
+                    pair("Attention", note.get("received_by")),
+                    pair("Returned from", note.get("from_location") or "Central store")])
+    right = "".join([pair("Note No", note.get("ref")), pair("Date", date_txt),
+                     pair("Driver", note.get("driver")), pair("Vehicle", note.get("vehicle"))])
+    logo = export_web.logo_data_uri()
+    logo_html = f'<img src="{logo}" alt="Infinia">' if logo else "<b>INFINIA CONTRACTING L.L.C</b>"
+
+    return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{e(note.get('ref') or 'Return Note')}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ margin:0; background:#F1EFEA; color:#1F2429;
+          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
+  .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
+          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:2; }}
+  .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
+  .bar .who {{ font-size:12.5px; color:#666; }}
+  a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
+           padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
+           background:#FDF4F3; color:#8C2F26; }}
+  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  .sheet {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm; margin:16px auto;
+            background:white; padding:10mm 12mm; box-sizing:border-box;
+            box-shadow:0 1px 6px rgba(0,0,0,.14); font-size:8.5pt; }}
+  .band {{ display:flex; align-items:center; border:0.6px solid #8C8C8C; }}
+  .band > div {{ padding:6px 8px; }}
+  .band .lg {{ width:32%; }} .band .lg img {{ width:58mm; max-width:100%; display:block; }}
+  .band .ad {{ width:30%; font-size:8pt; line-height:1.35; }}
+  .band .ti {{ width:38%; text-align:right; font-size:13pt; }}
+  .hdr {{ display:flex; gap:9px; margin-top:7px; }}
+  .hdr > div {{ flex:1 1 0; min-width:0; }}
+  .cap {{ background:#2E3238; color:white; font-size:8pt; font-weight:bold; padding:3px 6px; }}
+  .kv {{ width:100%; border-collapse:collapse; border:0.5px solid #8C8C8C; }}
+  .kv th {{ text-align:left; font-weight:normal; color:#3B3F44; font-size:8pt;
+            padding:2px 6px; width:36%; vertical-align:top; }}
+  .kv td {{ font-weight:bold; font-size:8pt; padding:2px 6px; vertical-align:top; }}
+  table.items {{ width:100%; border-collapse:collapse; margin-top:9px; }}
+  table.items th {{ background:#2E3238; color:white; font-size:7.5pt; padding:3.5px 4px;
+                    border:0.4px solid #8C8C8C; text-align:left; }}
+  table.items td {{ border:0.4px solid #8C8C8C; padding:3.5px 4px; vertical-align:top;
+                    font-size:8.5pt; }}
+  table.items th.r, table.items td.r {{ text-align:right; }}
+  td.b {{ font-weight:bold; }} td.short {{ font-weight:bold; color:#C0392B; }}
+  td.sm {{ font-size:8pt; color:#3B3F44; }}
+  td.none {{ text-align:center; color:#777; padding:16px; }}
+  tr.tot td {{ background:#EFEBE6; font-weight:bold; font-size:9pt; }}
+  tr.tot td.short {{ color:#C0392B; }}
+  p.warn {{ font-weight:bold; color:#C0392B; font-size:8.5pt; margin:6px 0 0; }}
+  p.rest {{ color:#3B3F44; font-size:8.5pt; margin:6px 0 0; }}
+  .notes {{ margin-top:8px; font-size:8.5pt; }}
+  .notes .lbl {{ color:#3B3F44; font-size:8pt; }}
+  .sigs {{ display:flex; gap:4%; margin-top:12px; }}
+  .sigs > div {{ width:48%; border:0.5px solid #8C8C8C; padding:6px; text-align:center; }}
+  .sigs .gap {{ height:15mm; }}
+  .sigs .cap2 {{ font-size:8pt; color:#3B3F44; }}
+  @media print {{
+    body {{ background:white; }} .bar {{ display:none; }}
+    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+  }}
+</style></head><body>
+  <div class="bar">
+    <h1>{e(note.get('ref') or 'Return Note')}</h1>
+    <span class="who">{e(note.get('supplier') or '')} &middot; {e(date_txt)}
+      &middot; {e(note.get('status') or '')}</span>
+    <span style="margin-left:auto;"></span>
+    <a class="btn dark" href="{pdf_url}&amp;format=pdf">Download PDF</a>
+    <a class="btn" href="{excel_url}&amp;format=excel">Download Excel</a>
+    <a class="btn" href="#" onclick="window.print();return false;">Print</a>
+  </div>
+  <div class="sheet">
+    <div class="band">
+      <div class="lg">{logo_html}</div>
+      <div class="ad">M09 Bin Bishr Building<br>Abu Hail,  Dubai , United Arab Emirates<br>
+        TRN 100602393900003</div>
+      <div class="ti">MATERIAL RETURN NOTE</div>
+    </div>
+    <div class="hdr">
+      <div><div class="cap">RETURNED TO</div><table class="kv">{left}</table></div>
+      <div><div class="cap">RETURN DETAILS</div><table class="kv">{right}</table></div>
+    </div>
+    <table class="items">
+      <thead><tr><th>#</th><th>Material</th><th>Unit</th><th class="r">On hire</th>
+        <th class="r">Returned</th><th class="r">Short</th><th class="r">Still on hire</th>
+        <th>Reason / remarks</th></tr></thead>
+      <tbody>{''.join(body)}
+        <tr class="tot"><td></td><td>TOTAL</td><td></td>
+          <td class="r">{n(tot_hire)}</td><td class="r">{n(tot_ret)}</td>
+          <td class="r{' short' if tot_short else ''}">{n(tot_short) if tot_short else '-'}</td>
+          <td class="r">{n(tot_bal) if tot_bal > 1e-9 else '-'}</td><td></td></tr>
+      </tbody>
+    </table>
+    {warn}{notes_html}
+    <div class="sigs">
+      <div>For Infinia Contracting LLC<div class="gap"></div>
+        <div class="cap2">Name, signature &amp; date</div></div>
+      <div>For {e(note.get('supplier') or 'the supplier')}<div class="gap"></div>
+        <div class="cap2">Name, signature &amp; stamp</div>
+        <div class="cap2">Date: ______________</div></div>
+    </div>
+  </div>
+</body></html>""")
+
+
 def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str):
     """A report on screen before it is a file.
 
@@ -6254,17 +6420,8 @@ def view_hire_return(return_id: int, token: str, db: Session = Depends(get_db)):
     if not r:
         raise HTTPException(status_code=404, detail="Return note not found.")
     t = quote(auth.create_view_token(user.username), safe="")
-    note = _return_dict(r, db)
-    lines = [{"Material": l["description"], "Unit": l["unit"],
-              "On rent": l["qty_on_hire"], "Returned": l["qty_returned"],
-              "Short": l["qty_short"], "Reason": (l["short_reason"] or "").title(),
-              "Still on rent": l["still_on_hire"], "Remark": l["notes"]}
-             for l in note["lines"]]
     url = f"/export/store/return/{r.id}?token={t}"
-    return _preview_page(r.ref,
-                         f"{r.supplier_name or ''} &middot; "
-                         f"{r.return_date.strftime('%d %b %Y') if r.return_date else ''} "
-                         f"&middot; {r.status}", lines, url, url)
+    return _return_note_html(_return_dict(r, db), url, url)
 
 
 @app.get("/export/store/rental")

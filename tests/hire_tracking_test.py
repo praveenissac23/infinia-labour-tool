@@ -148,6 +148,25 @@ ck('the note prints as a PDF for the driver',
 xl = c.get(f"/export/store/return/{note['id']}?token={t}&format=excel")
 ck('and as an Excel copy', xl.status_code == 200 and len(xl.content) > 3000, xl.status_code)
 
+# The preview is the sheet that prints, not a summary of it. A preview
+# showing something else is checked, approved, and then something else
+# comes out of the printer - so it carries the letterhead, both header
+# boxes, every line, the totals and the two empty signature boxes.
+pv = c.get(f"/export/store/return/{note['id']}/view?token={t}")
+ck('the note previews on screen', pv.status_code == 200, pv.status_code)
+body = pv.text
+ck('the preview is the printed sheet, letterhead and all',
+   'MATERIAL RETURN NOTE' in body and 'RETURNED TO' in body
+   and 'RETURN DETAILS' in body, body[:200])
+ck('with every line on the note, not just the first',
+   body.count('<tr><td>1</td>') == 1 and '<tr><td>2</td>' in body
+   and std['name'] in body and ldg['name'] in body, len(body))
+ck('the totals agree with the note', '256' in body and '<td class="r short">10' in body, None)
+ck('the date reads as it does on the paper', '01 Sep 2026' in body, None)
+ck('and both signature boxes are there, empty for hand signing',
+   'Name, signature &amp; date' in body and 'Name, signature &amp; stamp' in body
+   and 'signature.png' not in body, None)
+
 # ---- The signed copy comes back --------------------------------------
 cf = c.post(f"/store/returns/{note['id']}/confirm",
             json={'received_by': 'Biju', 'confirmed_on': '2026-09-02'}, headers=H)
