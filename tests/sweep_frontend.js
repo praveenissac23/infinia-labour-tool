@@ -83,7 +83,9 @@ setTimeout(async()=>{
   // Expand a row, per-line decisions
   n=errs.length; click(d.querySelector("#mreq-list tbody tr[onclick]")); await wait(100);
   const lineBtns=[...d.querySelectorAll('[id^="mr-detail-"] button')].map(b=>b.textContent.trim());
-  ok("detail shows per-line Approve/Reject/Undo/Print/Delete", ["Approve","Reject","Undo","Print","Delete"].every(t=>lineBtns.includes(t)));
+  // Preview, not Print: the button opens the request as the sheet it
+  // prints as, and Print is on that page beside PDF and Excel.
+  ok("detail shows per-line Approve/Reject/Undo/Preview/Delete", ["Approve","Reject","Undo","Preview","Delete"].every(t=>lineBtns.includes(t)));
   const lb=[...d.querySelectorAll('[id^="mr-detail-"] button')].find(b=>b.textContent.trim()==="Approve");
   click(lb); await wait(300); ok("per-line Approve runs without error", errsSince(n).length===0);
   const rb=[...d.querySelectorAll('[id^="mr-detail-"] button')].find(b=>b.textContent.trim()==="Reject");
@@ -189,6 +191,27 @@ setTimeout(async()=>{
 
   // Picking a whole entry off the list, and every hint fitting its box,
   // both need real layout - they are checked in tests/lpo_form_test.js.
+
+  // ---- A report you cannot look at first ----------------------------
+  // Reports arrived one screen at a time and only some grew a preview,
+  // so checking a figure meant downloading a file, opening it, and
+  // deleting it again. Every button that produces a report must have a
+  // Preview beside it; the preview is where PDF, Excel and Print live.
+  const wantsPreview = /export|download|combine|reminder|^excel$|^pdf$/i;
+  const noPreview = [];
+  [...d.querySelectorAll("button")].forEach(btn => {
+    const label = (btn.textContent || "").trim();
+    if (!wantsPreview.test(label)) return;
+    // A blank form to fill in and bring back is not a report.
+    if (/template|import/i.test(label)) return;
+    const near = [...btn.parentElement.querySelectorAll("button")]
+      .map(x => (x.textContent || "").trim());
+    if (!near.some(x => /preview/i.test(x))) {
+      noPreview.push(((btn.closest(".screen") || {}).id || "?") + " -> " + label);
+    }
+  });
+  ok("every report button has a Preview beside it"
+     + (noPreview.length ? ": " + noPreview.join("; ") : ""), noPreview.length === 0);
 
   console.log(errs.length ? "\nPAGE ERRORS:\n - "+errs.join("\n - ") : "\nno page errors");
   console.log(fail ? `\n${fail} FAILURE(S)` : "\nSWEEP CLEAN");

@@ -1957,6 +1957,114 @@ def export_pdf(month_year: str, token: str, emp_no: str = "", db: Session = Depe
     )
 
 
+@app.get("/export/{month_year}/cards/view")
+def view_salary_cards(month_year: str, token: str, emp_no: str = "",
+                       db: Session = Depends(get_db)):
+    """The salary cards on screen, exactly as they print.
+
+    One card per A4 page, the same info block, the same 31-day grid in
+    the same status colours, the same day and money totals and the same
+    final figure - written out in HTML rather than shown as a PDF in a
+    frame, which a phone and a plugin-less browser both draw blank.
+    """
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    q = (db.query(models.EmployeeSummary)
+           .options(joinedload(models.EmployeeSummary.adjustments))
+           .filter(models.EmployeeSummary.month_year == month_year))
+    if emp_no.strip():
+        q = q.filter(models.EmployeeSummary.emp_no == emp_no.strip())
+    summaries = q.order_by(models.EmployeeSummary.emp_no).all()
+    if not summaries:
+        raise HTTPException(status_code=404,
+            detail=("No data found for this worker in this cycle." if emp_no.strip()
+                    else "No data found for this cycle."))
+    cards = []
+    for sm in summaries:
+        rows = db.query(models.DailyRow).filter(
+            and_(models.DailyRow.emp_no == sm.emp_no,
+                 models.DailyRow.month_year == month_year)).all()
+        cards.append(export_web.salary_card_html(sm, rows))
+    who = (f"{summaries[0].emp_name} ({summaries[0].emp_no})" if emp_no.strip()
+           else f"{len(summaries)} worker(s)")
+    base = f"/export/{quote(month_year, safe='')}"
+    tail = f"?token={t}" + (f"&emp_no={quote(emp_no.strip(), safe='')}" if emp_no.strip() else "")
+    return _cards_page(f"Salary Card{'' if emp_no.strip() else 's'}",
+                        f"{who}  |  Wage cycle {month_year}",
+                        cards, f"{base}/pdf{tail}", f"{base}/excel{tail}")
+
+
+def _cards_page(title, subtitle, cards, pdf_url, excel_url):
+    """The card pages wrapped in the same bar every preview carries."""
+    logo = export_web.logo_data_uri()
+    logo_html = f'<img src="{logo}" alt="Infinia">' if logo else ""
+    sheets = "".join(
+        f'<div class="page"><div class="mark">{logo_html}</div>'
+        f'<div class="head"><div class="co">INFINIA CONTRACTING LLC</div>'
+        f'<div class="ti">{escape(title)}</div></div>{c}</div>'
+        for c in cards)
+    return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ margin:0; background:#F1EFEA; color:#1F2429;
+          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
+  .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
+          padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:5; }}
+  .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
+  .bar .who {{ font-size:12.5px; color:#666; }}
+  a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
+           padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
+           background:#FDF4F3; color:#8C2F26; }}
+  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  .page {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm; margin:16px auto;
+           background:white; padding:8mm; box-sizing:border-box;
+           box-shadow:0 1px 6px rgba(0,0,0,.14); page-break-after:always; }}
+  .mark img {{ width:42mm; display:block; }}
+  .mark {{ min-height:11mm; }}
+  .head {{ text-align:center; margin-top:-7mm; margin-bottom:5px; }}
+  .head .co {{ font-size:13pt; font-weight:bold; }}
+  .head .ti {{ font-size:10pt; font-weight:bold; margin-top:2px; }}
+  table {{ border-collapse:collapse; }}
+  .info {{ margin:0 auto 6px; background:#D8D8D8; }}
+  .info th, .info td {{ border:0.5px solid #B0B0B0; padding:3px 6px;
+                        font-size:11.5px; text-align:left; }}
+  .info th {{ font-weight:bold; }}
+  .grid {{ width:100%; font-size:9px; }}
+  .grid th {{ background:#{export_web.BRAND_RED}; color:white; font-weight:bold; }}
+  .grid th, .grid td {{ border:0.4px solid #B0B0B0; padding:1.5px 3px; text-align:center; }}
+  .grid tbody tr:nth-child(even) td {{ background:#F7F7F7; }}
+  .office {{ background:#BFBFBF; border:0.5px solid #B0B0B0; text-align:center;
+             font-weight:bold; font-size:10.5px; padding:4px; margin-top:4px; }}
+  .foot {{ display:flex; gap:10px; justify-content:center; align-items:flex-start;
+           margin-top:6px; flex-wrap:wrap; }}
+  .days, .money {{ background:#D8D8D8; }}
+  .days th, .days td, .money th, .money td {{ border:0.5px solid #B0B0B0;
+      padding:3px 5px; font-size:10.5px; }}
+  .days th, .money th {{ text-align:left; font-weight:bold; }}
+  .days td, .money td {{ text-align:right; }}
+  .final th {{ background:#{export_web.BRAND_BLACK}; color:white; font-size:8pt;
+               padding:7px 10px; text-align:center; }}
+  .final td {{ font-size:13.5pt; font-weight:bold; text-align:center; padding:7px 10px;
+               border:0.5px solid #B0B0B0; }}
+  @media print {{
+    body {{ background:white; }} .bar {{ display:none; }}
+    .page {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    @page {{ size:A4 portrait; margin:10mm; }}
+  }}
+</style></head><body>
+  <div class="bar">
+    <h1>{escape(title)}</h1>
+    <span class="who">{escape(subtitle)}</span>
+    <span style="margin-left:auto;"></span>
+    <a class="btn dark" href="{pdf_url}">Download PDF</a>
+    <a class="btn" href="{excel_url}">Download Excel</a>
+    <a class="btn" href="#" onclick="window.print();return false;">Print</a>
+  </div>
+  {sheets}
+</body></html>""")
+
+
 def _get_summary_pairs(month_year: str, db: Session):
     summaries = (
         db.query(models.EmployeeSummary)
@@ -2040,21 +2148,6 @@ def export_report_table(month_year: str, token: str, columns: str, format: str, 
 
 def _report_table_heading(month_year):
     return "Salary Report", f"Wage cycle {month_year}"
-
-
-@app.get("/export/{month_year}/report-table/view")
-def view_report_table(month_year: str, token: str, columns: str,
-                       db: Session = Depends(get_db)):
-    """The Report Builder's table as the sheet that prints."""
-    user = auth.get_download_user_from_token(token, db)
-    t = quote(auth.create_view_token(user.username), safe="")
-    data = export_report_table(month_year=month_year, token=token, columns=columns,
-                               format="rows", db=db)
-    rows, money = data["rows"], data["money_cols"]
-    title, sub = _report_table_heading(month_year)
-    url = (f"/export/{quote(month_year, safe='')}/report-table?token={t}"
-           f"&columns={quote(columns, safe='')}")
-    return _preview_page(title, sub, rows, url, url, money_cols=money)
 
 
 @app.get("/export/{month_year}/excel-separate")
@@ -5225,6 +5318,53 @@ def export_suppliers(token: str, db: Session = Depends(get_db)):
         headers={"Content-Disposition": "attachment; filename=Infinia_Suppliers.xlsx"})
 
 
+def _employee_report_rows(db):
+    """The workforce as a list to read and hand over.
+
+    The Export Master Data sheet beside it is the round-trip file the
+    importer reads back, so it keeps its bare headings; this is the one
+    to print."""
+    rows = []
+    for e in db.query(models.Employee).order_by(models.Employee.emp_no).all():
+        if not e.active:
+            continue
+        rows.append({"emp_no": e.emp_no, "name": e.name,
+                      "trade": e.trade or "-",
+                      "company": e.company or "Infinia",
+                      "pay_type": (e.pay_type or "daily").title(),
+                      "total_salary": float(e.total_salary or 0),
+                      "joined": e.joined_on.isoformat() if getattr(e, "joined_on", None) else "-"})
+    return rows
+
+
+@app.get("/export/employees/report")
+def export_employee_report(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+    auth.get_download_user_from_token(token, db)
+    rows = _employee_report_rows(db)
+    title = "Workforce List"
+    sub = f"{len(rows)} worker(s)  |  As at {_dubai_today():%d %b %Y}"
+    money = ["total_salary"]
+    if format == "excel":
+        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Infinia_Workforce.xlsx"})
+    buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money)
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=Infinia_Workforce.pdf"})
+
+
+@app.get("/export/employees/report/view")
+def view_employee_report(token: str, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows = _employee_report_rows(db)
+    url = f"/export/employees/report?token={t}"
+    return _preview_page("Workforce List",
+                         f"{len(rows)} worker(s)  |  As at {_dubai_today():%d %b %Y}",
+                         rows, url, url, money_cols=["total_salary"])
+
+
 def _supplier_report_rows(db):
     """The trader list as a report to read, rather than the bare sheet
     that goes back in through the importer."""
@@ -6084,8 +6224,12 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
            border-bottom:1px solid #E2E0DC; }}
   .cancelled {{ background:#FBE0DE; color:#C0392B; font-size:12px; font-weight:700;
                 padding:3px 8px; border-radius:4px; }}
-  .sheet {{ max-width:820px; margin:18px auto 40px; background:white; padding:22px 26px;
-            border:1px solid #DDD; border-radius:6px; font-size:12.5px; }}
+  /* The order prints on a portrait A4, so it is shown on one - what is
+     checked on screen is the sheet that comes out of the printer. */
+  .sheet {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm;
+            margin:16px auto; background:white; padding:12mm 12mm;
+            box-sizing:border-box; box-shadow:0 1px 6px rgba(0,0,0,.14);
+            font-size:12.5px; }}
   .head {{ display:flex; justify-content:space-between; align-items:flex-start;
            border:1px solid #999; padding:10px 12px; }}
   .co {{ display:flex; align-items:center; gap:16px; }}
@@ -6113,7 +6257,11 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .sig {{ border:1px solid #999; margin-top:10px; padding:8px; text-align:center;
           font-size:11.5px; color:#333; }}
   .sigbox {{ height:52px; }}
-  @media print {{ .bar {{ display:none; }} .sheet {{ border:0; margin:0; max-width:none; }} }}
+  @media print {{
+    body {{ background:white; }} .bar {{ display:none; }}
+    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:0; }}
+    @page {{ size:A4 portrait; margin:10mm; }}
+  }}
 </style></head><body>
   <div class="bar">
     <h1>{o.ref}</h1>
@@ -6123,6 +6271,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <span style="margin-left:auto;"></span>
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
+    <a class="btn" href="#" onclick="window.print();return false;">Print</a>
     <a class="btn wa" id="wa-share" href="https://web.whatsapp.com/" target="_blank" rel="noopener">Share on WhatsApp</a>
     {map_btn}
   </div>
@@ -6511,7 +6660,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 
 
 def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str,
-                   money_cols=None):
+                   money_cols=None, orientation=None):
     """A report on screen, drawn as the sheet that prints.
 
     The same landscape page, the same Infinia letterhead, the same red
@@ -6532,6 +6681,10 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     money_set = (set(money_cols) if money_cols
                  else {c for c in cols if export_web._is_money(c)})
     klass = {"L": "l", "C": "c", "R": "r"}
+    # The same column widths the printed copy uses, so a material name
+    # is not crushed beside an inch of white space under "Unit".
+    fracs = export_web.col_fractions(rows, cols)
+    cgroup = "".join(f'<col style="width:{f * 100:.2f}%">' for f in fracs)
     head = "".join(f'<th class="{klass[aligns[c]]}">'
                    f'{escape(export_web._store_label(c))}</th>' for c in cols)
 
@@ -6571,12 +6724,15 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # The page stands up or lies on its side exactly as the printed copy
     # will, decided from the same data by the same rule - so the preview
     # is not portrait while the file that comes out is landscape.
-    facing = export_web.choose_orientation(rows, cols)
+    # Usually decided from the shape of the report; a document that
+    # prints to a fixed page says which, so the two cannot disagree.
+    facing = orientation or export_web.choose_orientation(rows, cols)
     page_w, page_h = ("297mm", "210mm") if facing == "landscape" else ("210mm", "297mm")
     logo = export_web.logo_data_uri()
     logo_html = (f'<img src="{logo}" alt="Infinia">' if logo else "")
     sheet = (empty or
-             f'<table><thead><tr>{head}</tr></thead><tbody>{body}{foot}</tbody></table>')
+             f'<table><colgroup>{cgroup}</colgroup>'
+             f'<thead><tr>{head}</tr></thead><tbody>{body}{foot}</tbody></table>')
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6602,10 +6758,13 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   .head .ti {{ font-size:10pt; font-weight:bold; margin-top:2px; }}
   .head .sub {{ font-size:8pt; color:#777; margin-top:2px; }}
   .sheet {{ margin-top:8px; overflow-x:auto; }}
-  table {{ width:100%; border-collapse:collapse; font-size:8.5pt; }}
+  table {{ width:100%; border-collapse:collapse; font-size:8.5pt;
+           table-layout:fixed; }}
   th {{ background:#{export_web.BRAND_RED}; color:white; font-weight:bold;
-        font-size:8pt; padding:4px 5px; border:0.4px solid #CCCCCC; }}
-  td {{ padding:4px 5px; border:0.4px solid #CCCCCC; vertical-align:middle; }}
+        font-size:8pt; padding:3px 4px; border:0.4px solid #CCCCCC;
+        word-wrap:break-word; }}
+  td {{ padding:3px 4px; border:0.4px solid #CCCCCC; vertical-align:middle;
+        word-wrap:break-word; overflow-wrap:anywhere; }}
   th.l, td.l {{ text-align:left; }}
   th.c, td.c {{ text-align:center; }}
   th.r, td.r {{ text-align:right; }}
@@ -6962,14 +7121,55 @@ def export_store_report(kind: str = "stock", format: str = "excel",
 
 
 @app.get("/export/store/request/{req_id}")
-def export_material_request(req_id: int, token: str = None, db: Session = Depends(get_db)):
+def export_material_request(req_id: int, token: str = None, format: str = "pdf",
+                             db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
+    if format == "excel":
+        rows, sub = _mr_report_rows(mr)
+        buf = export_web.build_store_report_excel(mr.ref, rows, sub)
+        return StreamingResponse(
+            buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{mr.ref}.xlsx"'})
     buf = export_web.build_material_request_pdf(_mr_out(mr))
     return StreamingResponse(buf, media_type="application/pdf",
                               headers={"Content-Disposition": f'attachment; filename="{mr.ref}.pdf"'})
+
+
+def _mr_report_rows(mr):
+    """One request's lines as a report, for the preview and the sheet."""
+    d = _mr_out(mr)
+    rows = [{"material": l.get("description") or l.get("item_name") or "-",
+              "qty_requested": l.get("qty_requested") or 0,
+              "unit": l.get("unit") or "-",
+              "qty_approved": l.get("qty_approved") or 0,
+              "qty_received": l.get("qty_received") or 0,
+              "purpose": l.get("purpose") or "-",
+              "status": (l.get("status") or "-").title()}
+            for l in (d.get("lines") or [])]
+    bits = [f"Site {d.get('site') or '-'}", f"Asked by {d.get('requested_by') or '-'}"]
+    if d.get("requested_on"):
+        bits.append(export_web._day(d["requested_on"]))
+    if d.get("needed_by"):
+        bits.append("needed by " + export_web._day(d["needed_by"]))
+    bits.append((d.get("status") or "").title())
+    return rows, "  |  ".join(b for b in bits if b)
+
+
+@app.get("/export/store/request/{req_id}/view")
+def view_material_request(req_id: int, token: str = None, db: Session = Depends(get_db)):
+    """A request as the sheet that prints."""
+    user = auth.get_download_user_from_token(token, db)
+    t = quote(auth.create_view_token(user.username), safe="")
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    rows, sub = _mr_report_rows(mr)
+    url = f"/export/store/request/{mr.id}?token={t}"
+    # The request prints on a portrait page, so it previews on one.
+    return _preview_page(mr.ref, sub, rows, url, url, orientation="portrait")
 
 
 @app.get("/permissions/screens")

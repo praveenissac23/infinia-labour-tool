@@ -1021,6 +1021,7 @@
                 Import Data
                 <input type="file" id="md-import-file" accept=".xlsx" style="display:none;" onchange="importEmployeeFile(this)">
               </label>
+              <button class="btn btn-dark" onclick="previewWorkforce()">Preview</button>
               <button class="btn btn-dark" onclick="exportEmployeeData()">Export Master Data</button>
               <span style="font-size:12px; color:#888;">Download the template, fill it in, then re-upload it here to add or update many employees at once.</span>
             </div>
@@ -1190,6 +1191,7 @@
             <div class="card" style="flex:1; min-width:260px;">
               <h2>Combine to One File</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">Every worker's full salary card in a single file for this cycle.</p>
+              <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('view')">Preview</button>
               <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel')">Combine to Excel</button>
               <button class="btn btn-dark" style="width:100%;" onclick="exportCombineCards('pdf')">Combine to PDF</button>
             </div>
@@ -1206,6 +1208,7 @@
                      style="width:100%; margin-bottom:8px;" autocomplete="off">
               <datalist id="combine-emp-list"></datalist>
               <div style="display:flex; gap:8px;">
+                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('view')">Preview</button>
                 <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('excel')">Excel</button>
                 <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('pdf')">PDF</button>
               </div>
@@ -1290,6 +1293,7 @@
             <label>Search:</label>
             <input type="text" id="livecard-search" placeholder="Employee No or Name" oninput="renderLiveCardWorkerList()">
             <span style="margin-left:auto; display:flex; gap:8px;">
+              <button class="btn btn-dark" onclick="exportLiveCard('view')">Preview</button>
               <button class="btn btn-dark" onclick="exportLiveCard('excel')">Excel</button>
               <button class="btn btn-dark" onclick="exportLiveCard('pdf')">PDF</button>
             </span>
@@ -3635,6 +3639,14 @@ function downloadEmployeeTemplate() {
   const url = `${API}/employees/template?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
   showStatus("md-status", "ok", "Opening the employee template - check your downloads or the new tab.");
+}
+
+// The workforce as paper. Export Master Data beside it is the
+// round-trip sheet the importer reads back, so it stays bare; this is
+// the one to print and hand over.
+async function previewWorkforce() {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  window.open(`${API}/export/employees/report/view?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
 function exportEmployeeData() {
@@ -7454,7 +7466,7 @@ async function loadRequests() {
                   ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
                   ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
                   <div style="margin-top:12px; display:flex; gap:8px;">
-                    <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Print</button>
+                    <button class="btn btn-dark" onclick="event.stopPropagation(); downloadRequestPdf(${r.id})">Preview</button>
                     <button class="btn btn-danger" onclick="event.stopPropagation(); deleteRequest(${r.id}, '${r.ref}')">Delete</button>
                   </div>
                 </td></tr>`;
@@ -8145,9 +8157,11 @@ async function deleteRequest(id, ref) {
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
 
+// Opens the request as the sheet it prints as, with PDF, Excel and
+// Print on it - rather than dropping a file into Downloads unseen.
 async function downloadRequestPdf(id) {
   if (!cachedDownloadToken) await refreshDownloadToken();
-  window.open(`${API}/export/store/request/${id}?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
+  window.open(`${API}/export/store/request/${id}/view?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
 async function exportStore(fmt) {
@@ -8687,8 +8701,15 @@ function exportCombineCards(fmt) {
     refreshDownloadToken();
     return;
   }
-  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}`;
+  // "view" shows the cards themselves, one page each, with PDF, Excel
+  // and Print on them - the same document, before it is a file.
+  const path = fmt === "view" ? "cards/view" : fmt;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}`;
   window.open(url, "_blank");
+  if (fmt === "view") {
+    showStatus("combine-status", "ok", `Opening the cards for ${cycle}.`);
+    return;
+  }
   const label = { "excel": "combined Excel", "pdf": "combined PDF",
                    "excel-separate": "separate Excel files (zip)", "pdf-separate": "separate PDF files (zip)" }[fmt] || fmt;
   showStatus("combine-status", "ok", `Opening ${label} for ${cycle} - check your downloads or the new tab.`);
@@ -8732,10 +8753,13 @@ function exportLiveCard(fmt) {
     refreshDownloadToken();
     return;
   }
-  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
+  const path = fmt === "view" ? "cards/view" : fmt;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
   window.open(url, "_blank");
   const who = (employees.find(e => e.emp_no === empNo) || {}).name || empNo;
-  showStatus("livecard-status", "ok", `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who} - check your downloads or the new tab.`);
+  showStatus("livecard-status", "ok",
+    fmt === "view" ? `Opening ${who}'s card.`
+                   : `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who} - check your downloads or the new tab.`);
 }
 
 function exportOneWorker(fmt) {
@@ -8752,9 +8776,12 @@ function exportOneWorker(fmt) {
     refreshDownloadToken();
     return;
   }
-  const url = `${API}/export/${encodeURIComponent(cycle)}/${fmt}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
+  const path = fmt === "view" ? "cards/view" : fmt;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}&emp_no=${encodeURIComponent(empNo)}`;
   window.open(url, "_blank");
-  showStatus("combine-status", "ok", `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who.name} - check your downloads or the new tab.`);
+  showStatus("combine-status", "ok",
+    fmt === "view" ? `Opening ${who.name}'s card.`
+                   : `Opening ${fmt === "pdf" ? "PDF" : "Excel"} card for ${who.name} - check your downloads or the new tab.`);
 }
 
 // ============ PURCHASE ORDERS ============

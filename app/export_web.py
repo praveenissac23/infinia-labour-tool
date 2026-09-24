@@ -232,6 +232,11 @@ STORE_LABELS = {
     "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
     "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
     "days_late": "Days late", "outstanding": "Still to come",
+    "total_salary": "Salary (AED)", "pay_type": "Paid", "company": "Company",
+    "joined": "Joined",
+    "material": "Material", "qty_requested": "Asked for",
+    "qty_approved": "Approved", "qty_received": "Received",
+    "purpose": "What for",
     "contact_person": "Contact person", "phone": "Mobile", "trn": "TRN",
     "payment_terms": "Payment terms", "email": "Email",
     "emp_no": "Worker No", "days_missing": "Days missing",
@@ -325,6 +330,42 @@ def choose_orientation(rows, cols=None):
 
 def _page_size(orientation):
     return landscape(A4) if orientation == "landscape" else A4
+
+
+def col_fractions(rows, cols):
+    """What share of the page each column should take.
+
+    Every column used to be given the same width - the page divided by
+    the number of columns - so "Unit" holding the word "pcs" was handed
+    as much paper as "Material", and a long material name wrapped onto
+    three lines beside an inch of white space. On a ten-column report
+    most of the sheet was margin.
+
+    Each column is measured instead: the longer of its heading and its
+    widest value, with a floor so a heading is never squeezed and a
+    ceiling so one long remark cannot eat the page. Whatever is left
+    over goes to the widest columns, which are the ones that wrap.
+
+    Returns a list of fractions summing to 1.
+    """
+    if not cols:
+        return []
+    want = []
+    for c in cols:
+        widest = 0
+        for r in rows:
+            v = r.get(c)
+            if v in (None, ""):
+                continue
+            text = str(v)
+            # A cell of several lines is as wide as its longest line.
+            widest = max(widest, max(len(x) for x in text.split("\n")))
+        head = len(_store_label(c))
+        # A heading wraps happily over two words, so it does not need
+        # its whole length - but it must not be crushed either.
+        want.append(max(min(widest, 46), min(head, 14), 4))
+    total = float(sum(want)) or 1.0
+    return [w / total for w in want]
 
 
 def print_ready(ws, orientation="landscape", header_row=None, last_col=None,
@@ -1457,9 +1498,19 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
     ws.auto_filter.ref = f"A{header_row}:{get_column_letter(len(cols))}{header_row + len(rows)}"
 
+    # Each column as wide as it needs, not as wide as the widest - a
+    # "Unit" column holding "pcs" took the same eleven characters as a
+    # material name, and the sheet ran off the side of the page for no
+    # reason. Multi-line cells are measured by their longest line.
     for i, k in enumerate(cols, start=1):
-        width = max(len(str(_store_label(k))) + 4, *(len(str(row.get(k, ""))) + 3 for row in rows))
-        ws.column_dimensions[get_column_letter(i)].width = min(max(width, 10), 40)
+        widest = 0
+        for row in rows:
+            v = row.get(k, "")
+            if v in (None, ""):
+                continue
+            widest = max(widest, max(len(x) for x in str(v).split("\n")))
+        width = max(len(str(_store_label(k))) + 2, widest + 2)
+        ws.column_dimensions[get_column_letter(i)].width = min(max(width, 6), 46)
     print_ready(ws, orientation or choose_orientation(rows, cols),
                 header_row=header_row, last_col=len(cols), last_row=r - 1, title=title)
 
@@ -1545,12 +1596,13 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
                                pick[aligns[k]])
                      for i, k in enumerate(cols)])
 
-    w = doc.width / len(cols)
-    tbl = Table(data, colWidths=[w] * len(cols), repeatRows=1)
+    tbl = Table(data, repeatRows=1,
+                colWidths=[doc.width * f for f in col_fractions(rows, cols)])
     style = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
              ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
              ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+             ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
              ("ROWBACKGROUNDS", (0, 1), (-1, -2 if totals else -1),
               [colors.white, colors.HexColor("#F7F7F7")])]
     if totals:
@@ -2539,9 +2591,7 @@ def build_hire_return_excel(note: dict):
     for col, w in zip("ABCDEFGH", (5, 34, 8, 10, 10, 9, 11, 28)):
         ws.column_dimensions[col].width = w
     ws.print_area = f"A1:H{sr + 5}"
-    ws.page_setup.orientation = "portrait"
-    ws.page_setup.fitToWidth = 1
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    print_ready(ws, "portrait", title="Material Return Note")
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
