@@ -121,6 +121,11 @@ const CYCLE_MONTH = '2026-08';
   await p.evaluate(m => { document.getElementById('hr-run-month').value = m; hrSyncBar(); }, CYCLE_MONTH);
   await p.evaluate('openPayrollCycle()');
   await p.waitForTimeout(1800);
+  // A month never opened before waits for the Open button.
+  if (await p.locator('#hr-run-empty button').isVisible()) {
+    await p.click('#hr-run-empty button');
+    await p.waitForTimeout(1800);
+  }
 
   ck('the cycle card appears', await p.locator('#hr-run-card').isVisible());
   ck('with a row for each of the two', await p.locator('#hr-run-body tr').count() === 2);

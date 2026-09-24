@@ -7897,6 +7897,17 @@ def repay_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(ge
         models.Employee.id == l.employee_id).first())
 
 
+def _loan_outstanding(db, employee_id):
+    """What this man still owes across every open loan."""
+    total = 0.0
+    for l in (db.query(models.StaffLoan)
+                .options(joinedload(models.StaffLoan.repayments))
+                .filter(models.StaffLoan.employee_id == employee_id,
+                         models.StaffLoan.closed == False).all()):  # noqa: E712
+        total += max((l.amount or 0) - sum(r.amount or 0 for r in l.repayments), 0)
+    return round(total, 2)
+
+
 def _loan_due(db, employee_id):
     """What the run should propose deducting from this man this month."""
     total = 0.0
@@ -8567,7 +8578,7 @@ def _items_for(db, e, month_year):
                                            models.PayItem.month_year == month_year).all()
 
 
-def _auto_remark(items, absent_note, loan):
+def _auto_remark(items, absent_note, loan, balance=None):
     parts = []
     for i in sorted(items, key=lambda i: (i.direction != "add", i.id)):
         label = PAY_CATEGORIES.get(i.direction, {}).get(i.category, i.category)
@@ -8580,7 +8591,12 @@ def _auto_remark(items, absent_note, loan):
         text = text if amt in text else f"{text} {'-' if i.direction == 'deduct' else ''}{amt}"
         parts.append(text)
     if loan:
-        parts.append(f"Loan {loan:,.2f}")
+        # What matters to the reader is what is still owed once this
+        # instalment comes off, so the remark carries the balance.
+        if balance is not None:
+            parts.append(f"Loan {loan:,.2f}, balance {balance:,.2f}")
+        else:
+            parts.append(f"Loan {loan:,.2f}")
     if absent_note:
         parts.append(absent_note)
     return "; ".join(parts)
@@ -8607,7 +8623,10 @@ def _fill_line(db, l, e, month_year, a, b):
     if not l.loan_edited:
         l.loan_deduction = _loan_due(db, e.id)
     if not l.remark_edited:
-        l.remarks = _auto_remark(items, l.deduction_note, l.loan_deduction)
+        owed = _loan_outstanding(db, e.id)
+        l.remarks = _auto_remark(items, l.deduction_note, l.loan_deduction,
+                                 round(max(owed - (l.loan_deduction or 0), 0), 2)
+                                 if l.loan_deduction else None)
     l.net_pay = _line_net(l)
 
 

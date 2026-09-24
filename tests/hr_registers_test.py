@@ -163,6 +163,8 @@ c.post('/employees/loans', json={'emp_no': 'T02', 'amount': 1500, 'taken_on': '2
 run, L = cycle()
 ck('a loan recorded after the cycle was opened still reaches it', L['T02']['loan_deduction'] == 500,
    L['T02']['loan_deduction'])
+ck('and the remark says what is left to pay after it', 'Loan 500.00, balance 1,000.00' in L['T02']['remarks'],
+   L['T02']['remarks'])
 r = c.put(f"/employees/payroll/runs/{run['id']}", json={'lines': [
     {'id': L['T02']['id'], 'loan_deduction': 0, 'remarks': 'Instalment skipped this month'}]}, headers=H)
 run, L = cycle()

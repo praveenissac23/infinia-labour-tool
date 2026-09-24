@@ -143,10 +143,11 @@ const ck = (m, cond, ctx) => {
   await p.click('#hr-grp-seg button[data-v="staff"]'); await p.waitForTimeout(900);
   const TABS = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs', 'gratuity'];
   let pressed = 0;
-  const pressAll = async (tab, label) => {
-    const n = await p.locator(`#hrpane-${tab} button:visible`).count();
+  const pressAll = async (tab, label, scope) => {
+    scope = scope || `#hrpane-${tab}`;
+    const n = await p.locator(`${scope} button:visible`).count();
     for (let i = 0; i < n; i++) {
-      const btn = p.locator(`#hrpane-${tab} button:visible`).nth(i);
+      const btn = p.locator(`${scope} button:visible`).nth(i);
       if (!(await btn.count())) break;
       const text = (await btn.textContent()).trim();
       if (/Approve|Discard|Reopen/.test(text)) continue;        // exercised on purpose below
@@ -156,6 +157,8 @@ const ck = (m, cond, ctx) => {
       pressed++;
       await p.waitForTimeout(700);
       if (await p.locator('.hr-ask').count()) await p.click('.hr-ask [data-a="no"]');
+      // The staff dialog is closed the way a person would close it.
+      if (await p.locator('#hr-dlg').isVisible()) { await p.evaluate('hrCloseDlg()'); await p.waitForTimeout(200); }
       await drain();
       if (refused.length > refusedBefore) {
         const said = (await p.locator('#hr-status').textContent()).trim();
@@ -181,12 +184,34 @@ const ck = (m, cond, ctx) => {
     if (tab === 'leave') { await p.fill('#hr-leave-month', '2026-08'); await p.evaluate('loadLeave()'); await p.waitForTimeout(800); }
     if (tab === 'items') { await p.fill('#hr-items-month', '2026-08'); await p.evaluate('loadItems()'); await p.waitForTimeout(800); }
     await p.evaluate(fn); await p.waitForTimeout(500);
+    // The staff record opens in its own dialog, so its buttons live there.
+    if (tab === 'staff') {
+      ck('the staff record opens in a dialog', await p.locator('#hr-dlg').isVisible());
+      const n = await p.locator('#hr-dlg button:visible').count();
+      for (let i = 0; i < n; i++) {
+        await p.evaluate(fn); await p.waitForTimeout(400);
+        const btn = p.locator('#hr-dlg button:visible').nth(i);
+        const text = (await btn.textContent()).trim();
+        await btn.click({ timeout: 3000 }).catch(e => errs.push(`staff dialog: "${text}" would not click`));
+        pressed++; await p.waitForTimeout(700);
+        if (await p.locator('.hr-ask').count()) await p.click('.hr-ask [data-a="no"]');
+        await drain();
+      }
+      if (await p.locator('#hr-dlg').isVisible()) await p.evaluate('hrCloseDlg()');
+      continue;
+    }
     await pressAll(tab, 'editing');
   }
 
   // ---- Approve, reopen, discard - on a scratch month ---------------------
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(800);
-  await p.evaluate(() => { document.getElementById('hr-run-month').value = '2027-03'; });
+  await p.click('#hr-grp-seg button[data-v="staff"]'); await p.waitForTimeout(900);
+  await p.evaluate(async () => { for (const r of (await apiCall('/employees/payroll/runs')).rows)
+    if (r.month_year === 'March 2027') await apiCall(`/employees/payroll/runs/${r.id}`, { method: 'DELETE' }); });
+  await p.evaluate('loadRunList()'); await p.waitForTimeout(600);
+  await p.evaluate(() => { const m = document.getElementById('hr-run-month');
+    if (![...m.options].some(o => o.value === '2027-03')) m.insertAdjacentHTML('beforeend', '<option value="2027-03">March 2027</option>');
+    m.value = '2027-03'; });
   await p.evaluate('openPayrollCycle()'); await p.waitForTimeout(1200);
   ck('a month not yet opened waits for its Open button', await p.locator('#hr-run-empty button').isVisible());
   await p.click('#hr-run-empty button'); await p.waitForTimeout(1500);
@@ -203,8 +228,8 @@ const ck = (m, cond, ctx) => {
      !(await apiCall('/employees/payroll/runs')).rows.some(r => r.month_year === 'March 2027' && r.company === 'Infinia')));
   await p.click('.hr-tab[data-tab="leave"]'); await p.waitForTimeout(500);
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(1500);
-  ck('after a discard, the tab opens the month afresh instead of a dead sheet',
-     await p.evaluate(() => !!HR_RUN && HR_RUN.status === 'draft'));
+  ck('after a discard, the tab offers the month afresh instead of a dead sheet',
+     await p.evaluate(() => !HR_RUN) && await p.locator('#hr-run-empty button').isVisible());
 
   await p.waitForTimeout(1500);
   console.log(`\n${pressed} buttons pressed`);

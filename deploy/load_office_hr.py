@@ -111,8 +111,8 @@ STAFF = [
     ("IC024", "FEBIYANS LUCAS",       "IC", "Project Engineer", "2025-12-19", 4000, 6000, "wps", "staff", "gratuity", 0),
     ("IC025", "PREENU ANNIE DANIEL",  "IC", "QS",               "2026-03-14", 2000, 3000, "wps", "staff", "gratuity", 0),
     # Paid in cash; the statement gives them no staff code, so these are ours.
-    ("IC101", "PREM RAJ",             "IC", "Staff (cash)",     "2025-09-08", 12000, 0, "cash", "staff", "gratuity", 0),
-    ("IC102", "MATHEW GEORGE",        "IC", "Staff (cash)",     "2026-06-18", 2500, 0, "cash", "staff", "gratuity", 0),
+    ("IC101", "PREM RAJ",             "IC", "Staff (cash)",     "2025-09-08", 12000, 0, "cash", "staff", "none", 0),
+    ("IC102", "MATHEW GEORGE",        "IC", "Staff (cash)",     "2026-06-18", 2500, 0, "cash", "staff", "none", 0),
     # Remuneration by bank transfer; no codes or joining dates on the sheet.
     ("IC201", "SHAJI MATHEW",         "IC", "Project Director", "", 20000, 0, "bank", "staff", "gratuity", 0),
     ("IC202", "NAVEEN MATHEW SHAJI",  "IC", "Manager",          "", 40000, 0, "bank", "staff", "gratuity", 0),
@@ -191,7 +191,10 @@ AUG_REMARKS = {
     "IC201": "Project Director's remuneration", "IC202": "Manager's remuneration",
     "IC203": "Manager's remuneration", "PI001": "ILOE DEDUCTION",
 }
-SIGNED = {"Infinia": {"wps": 86609.50, "bank": 100000.00, "cash": 14100.00},
+# The signed Infinia WPS statement is 86,609.50. Raji Mol and Saraswathi,
+# 1,500 each, were on the household statement that month and are carried
+# on the office statement from now on, so the rebuilt August is 3,000 more.
+SIGNED = {"Infinia": {"wps": 86609.50 + 3000.00, "bank": 100000.00, "cash": 14100.00},
           "Prime Infinia": {"wps": 17378.50}}
 
 # Office document tracker: code, EID, visa / labour card, passport.
@@ -358,6 +361,9 @@ def main_load():
         e = db.query(models.Employee).filter(models.Employee.emp_no == code).first()
         if e:
             kept += 1
+            # Staff paid in cash accrue no gratuity, whenever they were loaded.
+            if route == "cash" and (e.scheme or "gratuity") == "gratuity":
+                e.scheme = "none"; db.commit()
             continue
         e = models.Employee(emp_no=code, name=name, trade=desig, pay_type="fixed",
                             staff=True, active=True)

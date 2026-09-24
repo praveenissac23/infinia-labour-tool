@@ -2643,7 +2643,7 @@
                     <th class="num" style="width:9%;">Add / Ded.</th>
                     <th class="num" style="width:8.5%;">Absent Ded.</th>
                     <th class="num" style="width:9%;">Loan</th>
-                    <th class="num" style="width:10.5%;">Net Pay</th>
+                    <th class="num" style="width:10.5%;" id="hr-th-net">Net Pay</th>
                     <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
                     <th class="txt" style="width:24%;">Remark</th>
                   </tr></thead>
@@ -2686,7 +2686,7 @@
                 </table>
               </div>
             </div>
-          <!-- ---- Loans ----------------------------------------------->
+          </div>
 
         <!-- Staff record dialog: new, or editing one person -->
         <div id="hr-dlg" class="hr-dlg" style="display:none;" onclick="if (event.target === this) hrCloseDlg()">
@@ -2739,9 +2739,9 @@
                 <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
                 <button class="btn btn-gray" onclick="hrCloseDlg()">Cancel</button>
               </div>
-
             </div>
           </div>
+        </div>
 
           <!-- ---- Absence --------------------------------------------->
           <div class="hr-pane" id="hrpane-leave" style="display:none;">
@@ -2800,11 +2800,11 @@
               <div class="grid-wrap" style="max-height:58vh; margin-top:10px;">
                 <table class="hr-grid">
                   <thead><tr>
-                    <th style="width:7%;">Code</th><th class="txt" style="width:17%;">Staff</th>
-                    <th style="width:11%;">Type</th><th style="width:15%;">Date(s)</th>
-                    <th style="width:6%;">Days</th><th style="width:12%;">Pay</th>
+                    <th style="width:6%;">Code</th><th class="txt" style="width:16%;">Staff</th>
+                    <th style="width:11%;">Type</th><th style="width:13%;">Date(s)</th>
+                    <th style="width:5%;">Days</th><th style="width:12%;">Pay</th>
                     <th class="num" style="width:9%;">Deduction</th><th class="txt" style="width:13%;">Note</th>
-                    <th style="width:10%;"></th>
+                    <th style="width:15%;"></th>
                   </tr></thead>
                   <tbody id="hr-leave-body"></tbody>
                   <tfoot id="hr-leave-foot"></tfoot>
@@ -11337,7 +11337,7 @@ function hrAdjCell(l, locked) {
 // over it only for someone who has a loan running.
 function hrLoanCell(l, locked) {
   const v = Number(l.loan_deduction || 0);
-  const bal = l.loan_balance ? `<span class="sub">balance ${hrMoney(l.loan_balance)}</span>` : "";
+  const bal = l.loan_balance ? `<span class="sub">${hrMoney(l.loan_balance)} owed</span>` : "";
   if (locked || (!l.loan_balance && !v))
     return `<td class="num">${v ? hrMoney(v) : '<span class="hr-nil">-</span>'}${locked ? "" : bal}</td>`;
   return `<td class="num"><input type="text" inputmode="decimal" class="hr-cell hr-amt"
@@ -11362,10 +11362,12 @@ function hrBox(v) {
 }
 function hrNum(v) { const n = parseFloat(String(v || "").replace(/,/g, "")); return isNaN(n) ? 0 : n; }
 
-function hrRoutes(routes) {
+function hrRoutes(routes, running) {
   const name = { wps: "WPS TOTAL", bank: "BANK TRANSFER", cash: "CASH SALARY TOTAL" };
   const order = { wps: 0, bank: 1, cash: 2 };
-  return Object.entries(routes || {})
+  // While the month runs the rows show salary to date; the totals to be
+  // paid are still the full month's, and say so.
+  return (running ? `<span class="hr-route" style="color:#888;">FULL MONTH, TO PAY:</span>` : "") + Object.entries(routes || {})
     .sort((a, b) => (order[a[0]] ?? 9) - (order[b[0]] ?? 9))
     .map(([k, v]) => `<span class="hr-route"><b>${name[k] || k.toUpperCase()}</b> ${hrMoney(v)}</span>`)
     .join("");
@@ -11415,7 +11417,8 @@ function renderRun() {
                 oninput="recalcLine(${l.id}); hrGrow(this)" onchange="hrAutoSave()">${escapeHtml(remark)}</textarea>`}</td>
     </tr>`; }).join("");
   renderRunFoot();
-  document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route);
+  document.getElementById("hr-th-net").textContent = r.progress && r.progress.running ? "Salary To Date" : "Net Pay";
+  document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route, r.progress && r.progress.running);
   // The month so far, as the labour live card shows it: how far in we
   // are, and what the staff have earned up to today.
   document.getElementById("hr-run-progress").style.display = "none";
@@ -11458,7 +11461,7 @@ function recalcLine(id) {
   const routes = {};
   HR_RUN.lines.filter(x => !x.held).forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
   HR_RUN.by_route = routes;
-  document.getElementById("hr-run-routes").innerHTML = hrRoutes(routes);
+  document.getElementById("hr-run-routes").innerHTML = hrRoutes(routes, HR_RUN.progress && HR_RUN.progress.running);
 }
 
 // What is typed on the sheet is kept the moment the box is left, so
