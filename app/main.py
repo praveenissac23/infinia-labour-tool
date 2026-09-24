@@ -9188,7 +9188,7 @@ def _dmy(d):
     return d.strftime("%d-%b-%y") if d else "-"
 
 
-def _statement_rows(lines, consolidated=False):
+def _statement_rows(lines, consolidated=False, progress=None):
     """The salary statement, the same columns as the salary sheet on screen.
 
     One salary figure, one column for everything in Additions & Deductions
@@ -9200,6 +9200,9 @@ def _statement_rows(lines, consolidated=False):
     # The pension column appears only on a statement that has any - the
     # local staff one - and sits after net pay, because it is not in it.
     pensions = any(l.get("pension") for l in lines)
+    # While the month is still running the sheet also carries what has
+    # been earned so far, the way the screen does.
+    running = bool(progress and progress.get("running"))
     for l in lines:
         if l.get("held"):
             continue
@@ -9215,6 +9218,8 @@ def _statement_rows(lines, consolidated=False):
             "Loan": l["loan_deduction"],
             "Net Pay": l["net_pay"],
         })
+        if running:
+            r["To Date"] = l.get("to_date", 0)
         if pensions:
             r["Pension"] = l.get("pension") or 0
         r["Remark"] = l["remarks"] or l["deduction_note"] or ""
@@ -9222,7 +9227,7 @@ def _statement_rows(lines, consolidated=False):
     return out
 
 
-STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "Pension"]
+STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "To Date", "Pension"]
 
 
 def _route_line(by_route):
@@ -9246,8 +9251,11 @@ def _run_or_404(db, run_id):
 def _statement_parts(db, run_id):
     r = _run_or_404(db, run_id)
     d = _run_dict(r, db)
-    rows = _statement_rows(d["lines"])
+    rows = _statement_rows(d["lines"], progress=d.get("progress"))
     title = f"Salary Statement for {d['month_year']}"
+    p = d.get("progress") or {}
+    if p.get("running"):
+        title += f" (to {_dmy(_as_date(p['as_of']))})"
     sub = (f"{d['company']}   |   {len(rows)} staff"
            + (f" ({d['totals']['held']} held over)" if d['totals'].get('held') else "") + "   |   "
            f"{_route_line(d['by_route'])}"
