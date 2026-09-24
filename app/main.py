@@ -1521,21 +1521,24 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
     # preview, the printed copy and the spreadsheet are one document -
     # letterheaded, centred, and the right way up for the columns
     # picked.
-    rows, money = export_web.generic_result_rows(result_dict)
+    rows, money, totals = export_web.generic_result_rows(result_dict)
     title = "Monthly Payroll Report" if monthly else "Salary Report"
     sub = ((company or "Infinia and Prime Infinia") + "  |  " if monthly else "") + \
           (f"{export_web._day(date_from)} to {export_web._day(date_to)}"
            if (date_from and date_to) else f"Wage cycle {month_year}")
     if format == "rows":
-        return {"rows": rows, "money_cols": money, "title": title, "subtitle": sub}
+        return {"rows": rows, "money_cols": money, "total_cols": totals,
+                "title": title, "subtitle": sub}
     if format == "excel":
-        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money)
+        buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money,
+                                                  total_cols=totals)
         return StreamingResponse(
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Infinia_Report_{safe_name}.xlsx"},
         )
     elif format == "pdf":
-        buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money)
+        buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money,
+                                                total_cols=totals)
         fname = f"Infinia_Monthly_Report_{safe_name}.pdf" if monthly else f"Infinia_Report_{safe_name}.pdf"
         return StreamingResponse(
             buf, media_type="application/pdf",
@@ -1566,7 +1569,7 @@ def view_custom_report(month_year: str, token: str, data_source: str = "daily",
             extra += f"&{k}={quote(str(v), safe='')}"
     url = f"/export/{quote(month_year, safe='')}/custom-report?token={t}{extra}"
     return _preview_page(d["title"], d["subtitle"], d["rows"], url, url,
-                         money_cols=d["money_cols"])
+                         money_cols=d["money_cols"], total_cols=d["total_cols"])
 
 
 @app.get("/live-card/{emp_no}/{month_year}")
@@ -6660,7 +6663,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 
 
 def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str,
-                   money_cols=None, orientation=None):
+                   money_cols=None, orientation=None, total_cols=None):
     """A report on screen, drawn as the sheet that prints.
 
     The same landscape page, the same Infinia letterhead, the same red
@@ -6712,12 +6715,15 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # up, everything else stays blank rather than showing a sum of
     # quantities in different units.
     foot = ""
-    if rows and money_set:
+    total_set = set(total_cols) if total_cols else money_set
+    if rows and total_set:
         sums = {c: sum(r.get(c) or 0 for r in rows
-                       if isinstance(r.get(c), (int, float))) for c in cols if c in money_set}
+                       if isinstance(r.get(c), (int, float))) for c in cols if c in total_set}
+        def tot(c):
+            return f"{sums[c]:,.2f}" if c in money_set else export_web._clean_qty(sums[c])
         foot = ('<tr class="tot">' + "".join(
             f'<td class="{klass[aligns[c]]}">'
-            + (f"{sums[c]:,.2f}" if c in sums else ("TOTAL" if i == 0 else ""))
+            + (tot(c) if c in sums else ("TOTAL" if i == 0 else ""))
             + "</td>" for i, c in enumerate(cols)) + "</tr>")
 
     empty = '<p class="none">Nothing to show.</p>' if not rows else ""

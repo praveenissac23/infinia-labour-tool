@@ -130,6 +130,18 @@ def _excel_logo_header(ws, rows_to_reserve=4):
             fp = ws.freeze_panes
             col = "".join(ch for ch in fp if ch.isalpha()); row = int("".join(ch for ch in fp if ch.isdigit()))
             ws.freeze_panes = f"{col}{row + rows_to_reserve}" if row > 1 else None
+        # The print set-up is anchored to row numbers as well. Left
+        # behind, the print area stopped four rows short - the totals
+        # line never printed - and the "repeat these rows" pointed at
+        # the logo instead of the heading.
+        if ws.print_area:
+            from openpyxl.utils.cell import range_boundaries as _rb
+            c1, r1, c2, r2 = _rb(str(ws.print_area).split("!")[-1].replace("$", ""))
+            ws.print_area = (f"{get_column_letter(c1)}{r1}:"
+                             f"{get_column_letter(c2)}{r2 + rows_to_reserve}")
+        if ws.print_title_rows:
+            lo, hi = str(ws.print_title_rows).replace("$", "").split(":")
+            ws.print_title_rows = f"{lo}:{int(hi) + rows_to_reserve}"
         # Row heights were set for the old numbering; shift them too.
         heights = {r: ws.row_dimensions[r].height for r in list(ws.row_dimensions.keys())
                    if ws.row_dimensions[r].height}
@@ -1270,9 +1282,13 @@ def generic_result_rows(result_dict):
     Returns the rows and the names of the money columns.
     """
     cols = result_dict.get("columns") or []
-    def money(key):
+    def money(key, label=""):
+        # A column the app labels in dirhams is money whatever its key
+        # is called: "Absence Deduction (AED)" was being totalled as a
+        # count because its key is "deduction".
         k = key.lower()
-        return "cost" in k or "amount" in k or "salary" in k or "pay" in k
+        return ("(aed)" in label.lower() or "cost" in k or "amount" in k
+                or "salary" in k or "pay" in k or "deduction" in k)
     def numeric(key):
         k = key.lower()
         return not (k.startswith("dim_")
@@ -1289,7 +1305,14 @@ def generic_result_rows(result_dict):
             else:
                 row[label] = str(v) if v not in (None, "") else "-"
         rows.append(row)
-    return rows, [cdef["label"] for cdef in cols if money(cdef["key"])]
+    money_cols = [cdef["label"] for cdef in cols if money(cdef["key"], cdef["label"])]
+    # Every numeric column gets a total, as the report always had: days
+    # and hours as well as dirhams. The payroll clerk reads the OT hours
+    # total off the foot of the sheet.
+    total_cols = [cdef["label"] for cdef in cols
+                  if rows and all(isinstance(r.get(cdef["label"]), (int, float))
+                                  for r in rows)]
+    return rows, money_cols, total_cols
 
 
 def build_generic_result_pdf(result_dict, cycle_label, title=None, notes=None, subtitle=None):
@@ -1411,7 +1434,8 @@ def _esc(s):
 # ---------------------------------------------------------------------
 # STORE / INVENTORY EXPORTS
 # ---------------------------------------------------------------------
-def build_store_report_excel(title, rows, subtitle="", orientation=None, money_cols=None):
+def build_store_report_excel(title, rows, subtitle="", orientation=None, money_cols=None,
+                             total_cols=None):
     """
     Any store report as a formatted sheet: company header, report title,
     the period it covers, bordered auto-width columns, and a totals row
@@ -1461,7 +1485,8 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
         c.border = border
     r += 1
 
-    numeric_totals = {k: 0 for k in cols if money_like(k)}
+    numeric_totals = {k: 0 for k in cols
+                      if (k in set(total_cols) if total_cols else money_like(k))}
     for row in rows:
         for i, k in enumerate(cols, start=1):
             v = row.get(k, "")
@@ -1498,7 +1523,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
             c.border = border
             if isinstance(v, (int, float)):
-                c.number_format = '#,##0.00'
+                c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
 
     # Long reports stay usable: headers stay put while scrolling, and the
     # filter arrows let the office slice by site or type right in Excel.
@@ -1518,8 +1543,10 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             widest = max(widest, max(len(x) for x in str(v).split("\n")))
         width = max(len(str(_store_label(k))) + 2, widest + 2)
         ws.column_dimensions[get_column_letter(i)].width = min(max(width, 6), 46)
+    # r is the totals row when there is one, else one past the last row.
     print_ready(ws, orientation or choose_orientation(rows, cols),
-                header_row=header_row, last_col=len(cols), last_row=r - 1, title=title)
+                header_row=header_row, last_col=len(cols),
+                last_row=r if numeric_totals else r - 1, title=title)
 
     buf = io.BytesIO()
     for _ws in wb.worksheets:
@@ -1527,7 +1554,8 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     wb.save(buf); buf.seek(0); return buf
 
 
-def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_cols=None):
+def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_cols=None,
+                           total_cols=None):
     """A report as paper.
 
     The page stands up or lies on its side to suit the report: a short
@@ -1575,7 +1603,9 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     pickh = {"L": headL, "C": head, "R": headR}
     # Totals sit under their own column, centred with it.
     data = [[Paragraph(_store_label(k), pickh[aligns[k]]) for k in cols]]
-    totals = {k: 0 for k in cols if money_like(k)}
+    # Which columns add up at the foot: the money ones unless the caller
+    # says otherwise (a payroll report totals its days and hours too).
+    totals = {k: 0 for k in cols if (k in set(total_cols) if total_cols else money_like(k))}
     for row in rows:
         line = []
         for k in cols:
@@ -1599,7 +1629,9 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
             line.append(Paragraph(text, sty))
         data.append(line)
     if totals:
-        data.append([Paragraph(f"<b>{f'{totals[k]:,.2f}' if k in totals else ('TOTAL' if i == 0 else '')}</b>",
+        def tot(k):
+            return f"{totals[k]:,.2f}" if money_like(k) else _clean_qty(totals[k])
+        data.append([Paragraph(f"<b>{tot(k) if k in totals else ('TOTAL' if i == 0 else '')}</b>",
                                pick[aligns[k]])
                      for i, k in enumerate(cols)])
 

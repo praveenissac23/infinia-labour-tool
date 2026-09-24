@@ -9691,9 +9691,19 @@ function closeMatchList(soon) {
     matchFor = null; matchAt = -1; matchBox = null;
   };
   // A blur fires before the tap on a suggestion lands, so closing on
-  // blur has to wait long enough for the tap to be counted.
-  if (soon) setTimeout(go, 180); else go();
+  // blur has to wait long enough for the tap to be counted - and not
+  // at all while a finger is still on the list scrolling it.
+  if (soon) setTimeout(() => { if (!matchHolding) go(); }, 180); else go();
 }
+
+// A list left open after a scroll closes on the next tap anywhere
+// else - the way every dropdown does.
+document.addEventListener("pointerdown", (ev) => {
+  const list = document.getElementById("lpo-match");
+  if (!list) return;
+  if (list.contains(ev.target) || (matchBox && matchBox.contains(ev.target))) return;
+  closeMatchList();
+}, true);
 
 function materialMatches(text) {
   const q = (text || "").trim().toLowerCase();
@@ -9725,7 +9735,8 @@ function showMatches(box, i) {
   list.innerHTML = hits.map((it, n) => `
     <div class="match-row" data-n="${n}" data-id="${it.id}"
          onmousedown="pickMaterial(event, ${i}, ${it.id})"
-         ontouchstart="pickMaterial(event, ${i}, ${it.id})">
+         ontouchstart="matchTouchStart(event)"
+         ontouchend="matchTouchEnd(event, ${i}, ${it.id})">
       <span class="match-name">${it.name}</span>
       <span class="match-meta">${it.code}${it.unit ? " \u00b7 " + it.unit : ""}</span>
     </div>`).join("");
@@ -9757,6 +9768,30 @@ function placeMatchList(box) {
     list.style.bottom = (window.innerHeight - r.top + 2) + "px";
   }
 }
+
+// A finger on the list is either choosing a row or dragging the list
+// to see more of it. Picking on touchstart made every drag a choice,
+// so on a phone the list could not be scrolled past the first six.
+// The pick waits for the finger to lift, and only counts if it barely
+// moved.
+let matchTouch = null;         // where the finger landed
+let matchHolding = false;      // a finger is on the list right now
+function matchTouchStart(ev) {
+  const t = ev.touches && ev.touches[0];
+  matchTouch = t ? { x: t.clientX, y: t.clientY } : null;
+  // Touching the list takes focus off the box on a phone, and the blur
+  // would close the list under the finger. Hold it while touched.
+  matchHolding = true;
+}
+function matchTouchEnd(ev, i, itemId) {
+  const t = ev.changedTouches && ev.changedTouches[0];
+  const moved = !matchTouch || !t
+    || Math.abs(t.clientX - matchTouch.x) > 10 || Math.abs(t.clientY - matchTouch.y) > 10;
+  matchTouch = null;
+  matchHolding = false;
+  if (moved) return;               // a scroll, not a choice: leave it open
+  pickMaterial(ev, i, itemId);     // preventDefault here also stops the
+}                                  // synthesised mousedown picking twice
 
 function pickMaterial(ev, i, itemId) {
   // mousedown, not click: click lands after blur has already closed the
