@@ -2402,6 +2402,10 @@
               <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
                 <label style="font-size:12px; font-weight:bold; color:#555;">Company</label>
                 <select id="hr-run-company" style="width:210px;"></select>
+                <select id="hr-run-group" style="width:170px;" title="Which statement">
+                  <option value="staff">Office staff</option>
+                  <option value="local">Local &amp; household staff</option>
+                </select>
                 <label style="font-size:12px; font-weight:bold; color:#555;">Month</label>
                 <input type="month" id="hr-run-month" style="width:160px;">
                 <button class="btn btn-primary" onclick="openPayrollCycle()">Open cycle</button>
@@ -2495,6 +2499,33 @@
                 </table>
               </div>
             </div>
+            <div class="card">
+              <h2>New staff member</h2>
+              <div class="form-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+                <input type="text" id="hr-n-code" placeholder="Staff code *" style="width:110px;">
+                <input type="text" id="hr-n-name" placeholder="Full name *" style="width:220px;">
+                <select id="hr-n-company" style="width:170px;"></select>
+                <input type="text" id="hr-n-designation" placeholder="Designation" style="width:160px;">
+                <input type="date" id="hr-n-joined" style="width:150px;" title="Joining date *">
+              </div>
+              <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:6px; align-items:center;">
+                <input type="number" id="hr-n-gross" placeholder="Monthly salary *" style="width:150px;"
+                       step="0.01" oninput="hrSplitNew()">
+                <input type="number" id="hr-n-basic" placeholder="Basic" style="width:110px;" step="0.01">
+                <input type="number" id="hr-n-allowance" placeholder="Fix allowance" style="width:130px;" step="0.01">
+                <select id="hr-n-route" style="width:150px;">
+                  <option value="wps">Paid by WPS</option>
+                  <option value="bank">Bank transfer</option>
+                  <option value="cash">Cash</option>
+                </select>
+                <select id="hr-n-group" style="width:190px;">
+                  <option value="staff">Office staff statement</option>
+                  <option value="local">Local &amp; household statement</option>
+                </select>
+                <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
+                <span style="font-size:12px; color:#888;">The salary is split 40 / 60 as it is typed; change either figure if the contract says otherwise.</span>
+              </div>
+            </div>
             <div class="card" id="hr-staff-edit" style="display:none;">
               <h2 id="hr-staff-edit-title">Edit staff</h2>
               <div class="form-row" style="gap:8px; flex-wrap:wrap;">
@@ -2516,6 +2547,10 @@
                   <option value="pension">GPSSA pension</option>
                 </select>
                 <input type="number" id="hr-e-pension" placeholder="Pension / month" style="width:150px; display:none;" step="0.01">
+                <select id="hr-e-group" style="width:190px;">
+                  <option value="staff">Office staff statement</option>
+                  <option value="local">Local &amp; household statement</option>
+                </select>
                 <button class="btn btn-primary" onclick="saveStaffEdit()">Save</button>
                 <button class="btn btn-gray" onclick="closeStaffEdit()">Cancel</button>
               </div>
@@ -10782,6 +10817,7 @@ async function loadHrScreen() {
     `<option value="${c.id}">${escapeHtml(c.short_name || c.name)}</option>`).join("");
   document.getElementById("hr-run-company").innerHTML = opts;
   document.getElementById("hr-e-company").innerHTML = opts;
+  document.getElementById("hr-n-company").innerHTML = opts;
   document.getElementById("hr-staff-company").innerHTML =
     `<option value="">All companies</option>` + opts;
   document.getElementById("hr-doc-kind").innerHTML = Object.entries({
@@ -10815,8 +10851,9 @@ async function openPayrollCycle() {
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
   if (!month || !company_id) { hrMsg("warn", "Pick a company and a month."); return; }
   try {
+    const group = document.getElementById("hr-run-group").value || "staff";
     HR_RUN = await apiCall("/employees/payroll/runs", {
-      method: "POST", body: JSON.stringify({ month_year: month, company_id, group: "staff" }) });
+      method: "POST", body: JSON.stringify({ month_year: month, company_id, group }) });
     renderRun();
     await loadRunList();
     document.getElementById("hr-run-pick").value = HR_RUN.id;
@@ -10905,7 +10942,8 @@ function recalcLine(id) {
     l[el.dataset.field] = el.type === "number" ? Number(el.value || 0) : el.value;
   });
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
-  l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket + (l.pension || 0);
+  // Pension is printed beside net pay, never added into it.
+  l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
   document.getElementById(`hr-payable-${id}`).textContent = hrMoney(l.payable);
   document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
@@ -11073,6 +11111,7 @@ function editStaff(emp_no) {
   document.getElementById("hr-e-iban").value = s.iban || "";
   document.getElementById("hr-e-scheme").value = s.scheme || "gratuity";
   document.getElementById("hr-e-pension").value = s.pension || 0;
+  document.getElementById("hr-e-group").value = s.pay_group || "staff";
   hrSchemeChanged();
   document.getElementById("hr-staff-edit").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -11097,10 +11136,36 @@ async function saveStaffEdit() {
         joined_on: v("hr-e-joined"),
         basic: Number(v("hr-e-basic") || 0), allowance: Number(v("hr-e-allowance") || 0),
         pay_route: v("hr-e-route"), iban: v("hr-e-iban"),
-        scheme: v("hr-e-scheme"), pension: Number(v("hr-e-pension") || 0) }) });
+        scheme: v("hr-e-scheme"), pension: Number(v("hr-e-pension") || 0),
+        pay_group: v("hr-e-group") }) });
     closeStaffEdit();
     await loadStaff();
     hrMsg("ok", "Saved.");
+  } catch (e) { hrMsg("err", errText(e)); }
+}
+
+// New joiners start 40 / 60, so the split is offered as the salary is
+// typed; either half can still be changed before saving.
+function hrSplitNew() {
+  const g = Number(document.getElementById("hr-n-gross").value || 0);
+  document.getElementById("hr-n-basic").value = g ? (Math.round(g * 40) / 100).toFixed(2) : "";
+  document.getElementById("hr-n-allowance").value = g ? (g - Math.round(g * 40) / 100).toFixed(2) : "";
+}
+
+async function addStaff() {
+  const v = id => document.getElementById(id).value;
+  try {
+    await apiCall("/employees/staff", { method: "POST", body: JSON.stringify({
+      emp_no: v("hr-n-code").trim(), name: v("hr-n-name").trim(),
+      company_id: parseInt(v("hr-n-company"), 10) || null,
+      designation: v("hr-n-designation").trim(), joined_on: v("hr-n-joined"),
+      basic: Number(v("hr-n-basic") || 0), allowance: Number(v("hr-n-allowance") || 0),
+      contract_basic: Number(v("hr-n-basic") || 0),
+      pay_route: v("hr-n-route"), pay_group: v("hr-n-group") }) });
+    ["hr-n-code", "hr-n-name", "hr-n-designation", "hr-n-joined", "hr-n-gross",
+     "hr-n-basic", "hr-n-allowance"].forEach(id => document.getElementById(id).value = "");
+    await loadStaff();
+    hrMsg("ok", "Added to the staff register.");
   } catch (e) { hrMsg("err", errText(e)); }
 }
 

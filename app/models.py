@@ -84,6 +84,11 @@ class Employee(Base):
     # gratuity; everyone else accrues gratuity and pays no pension.
     scheme = Column(String, default="gratuity")    # gratuity | pension
     pension = Column(Float, default=0.0)           # the monthly GPSSA figure
+    # Which statement the person is paid on. "staff" is the monthly office
+    # payroll; "local" is the separate one processed early in the month -
+    # the nationals and the household staff. Kept apart from `scheme`
+    # because a maid is on the local statement but earns gratuity.
+    pay_group = Column(String, default="staff")    # staff | local
     probation_end = Column(Date, nullable=True)
     notice_days = Column(Integer, default=30)
 

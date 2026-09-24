@@ -529,6 +529,26 @@ def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
 # ---------------------------------------------------------------------
 # MASTER DATA - Employees
 # ---------------------------------------------------------------------
+def _labour(q):
+    """The labour side's view of the employee table.
+
+    Office staff are kept in the same table - one person, one record,
+    one set of documents and one end of service - but they are paid on
+    the office cycle and have no business on the attendance grid, the
+    salary cards or the labour import. Every labour query goes through
+    here so an accountant never turns up as a labourer marked absent.
+    """
+    return q.filter(or_(models.Employee.staff == False,  # noqa: E712
+                        models.Employee.staff.is_(None)))
+
+
+def _refuse_if_staff(existing):
+    if existing is not None and existing.staff:
+        raise HTTPException(status_code=400,
+            detail=f"{existing.emp_no} is office staff ({existing.name}). "
+                   "Change them under HR & Payroll.")
+
+
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
 def list_employees(active_only: bool = False, month_year: str = "", as_of: str = "",
                     db: Session = Depends(get_db),
@@ -539,7 +559,7 @@ def list_employees(active_only: bool = False, month_year: str = "", as_of: str =
     store keeper or site engineer can no longer read all 74 salaries."""
     perms = effective_permissions(user)
     may_see_pay = any(s in perms for s in ("masterdata", "adjustments", "livecard"))
-    q = db.query(models.Employee)
+    q = _labour(db.query(models.Employee))
     if active_only:
         q = q.filter(models.Employee.active == True)  # noqa: E712
     # Asked for a cycle, or for a date, the list is the workforce as it
@@ -576,6 +596,7 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     emp.trade = (emp.trade or "").strip()
     emp.pay_type = "fixed" if (emp.pay_type or "").strip().lower() == "fixed" else "daily"
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
+    _refuse_if_staff(existing)
     if existing:
         for field, value in emp.dict().items():
             setattr(existing, field, value)
@@ -641,6 +662,7 @@ def remove_employee(emp_no: str, purge: bool = False, db: Session = Depends(get_
     emp = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
+    _refuse_if_staff(emp)
 
     rows = db.query(models.DailyRow).filter(models.DailyRow.emp_no == emp_no).count()
     sums = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == emp_no).count()
@@ -712,7 +734,7 @@ def export_employees(token: str, db: Session = Depends(get_db)):
     re-import it straight back in without reshaping anything.
     """
     auth.get_download_user_from_token(token, db)
-    employees = db.query(models.Employee).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all()  # noqa: E712
+    employees = _labour(db.query(models.Employee)).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all()  # noqa: E712
     wb = Workbook()
     ws = wb.active
     ws.title = "Employees"
@@ -820,6 +842,10 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
         file_emp_nos.add(emp_no)
 
         existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        if existing is not None and existing.staff:
+            errors.append(f"{emp_no}: office staff ({existing.name}) - left alone; "
+                          "change them under HR & Payroll.")
+            continue
         if existing:
             if duplicate_handling == "skip":
                 skipped += 1
@@ -846,7 +872,7 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
     deactivated = 0
     if mode == "replace":
         active_not_in_file = (
-            db.query(models.Employee)
+            _labour(db.query(models.Employee))
             .filter(models.Employee.active == True, ~models.Employee.emp_no.in_(file_emp_nos))  # noqa: E712
             .all()
         )
@@ -1085,7 +1111,7 @@ def get_completion_status(month_year: str, mode: str = "cycle",
     else:
         cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
 
-    total_active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
+    total_active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).count()  # noqa: E712
     rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
         and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end,
              or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
@@ -1696,7 +1722,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="month_year must look like 'August 2026'.")
     cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
 
-    active_employees = [e for e in db.query(models.Employee)
+    active_employees = [e for e in _labour(db.query(models.Employee))
                           .filter(models.Employee.active == True).all()   # noqa: E712
                         if employed_during(e, cycle_start, cycle_end)]
     rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
@@ -4983,7 +5009,7 @@ def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
     for r in rows:
         dates_by_emp.setdefault(r.emp_no, set()).add(r.full_date)
 
-    employees = [e for e in db.query(models.Employee).filter(models.Employee.active == True).all()
+    employees = [e for e in _labour(db.query(models.Employee)).filter(models.Employee.active == True).all()
                  if employed_during(e, cycle_start, cycle_end)]
     workers = []
     for emp in sorted(employees, key=lambda e: e.emp_no):
@@ -5368,7 +5394,7 @@ def _employee_report_rows(db):
     importer reads back, so it keeps its bare headings; this is the one
     to print."""
     rows = []
-    for e in db.query(models.Employee).order_by(models.Employee.emp_no).all():
+    for e in _labour(db.query(models.Employee)).order_by(models.Employee.emp_no).all():
         if not e.active:
             continue
         rows.append({"emp_no": e.emp_no, "name": e.name,
@@ -7336,6 +7362,7 @@ def _staff_dict(e, db=None):
         "basic_pct": round((e.basic_salary or 0) / _gross(e) * 100, 1) if _gross(e) else 0,
         "pay_route": e.pay_route or "wps", "iban": e.iban or "",
         "scheme": e.scheme or "gratuity", "pension": round(e.pension or 0, 2),
+        "pay_group": e.pay_group or "staff",
         "probation_end": e.probation_end.isoformat() if e.probation_end else "",
         "notice_days": e.notice_days or 30,
         "terminated_on": e.terminated_on.isoformat() if e.terminated_on else "",
@@ -7359,6 +7386,35 @@ def list_staff(company_id: int = None, include_left: bool = False,
             "total_gratuity": round(sum(gratuity_for(e) for e in rows), 2)}
 
 
+@app.post("/employees/staff")
+def add_staff(payload: dict = Body(...), db: Session = Depends(get_db),
+               user: models.User = HR):
+    """A new member of the office staff.
+
+    Created here rather than in Master Data, which is the labour list:
+    office staff never appear on the attendance grid or the salary
+    cards, and a new accountant should not have to be added as a
+    labourer first and converted afterwards.
+    """
+    emp_no = str(payload.get("emp_no") or "").strip().upper()
+    name = str(payload.get("name") or "").strip().upper()
+    if not emp_no or not name:
+        raise HTTPException(status_code=400, detail="A staff code and a name are both needed.")
+    if db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first():
+        raise HTTPException(status_code=400,
+            detail=f"{emp_no} is already in use. Pick the next free code.")
+    if not payload.get("company_id"):
+        raise HTTPException(status_code=400, detail="Which company is he employed by?")
+    if not _as_date(payload.get("joined_on")):
+        raise HTTPException(status_code=400,
+            detail="A joining date is needed - service and gratuity run from it.")
+    e = models.Employee(emp_no=emp_no, name=name,
+                         trade=(payload.get("designation") or "").strip(),
+                         pay_type="fixed", staff=True, active=True)
+    db.add(e); db.commit()
+    return save_staff(emp_no, payload, db=db, user=user)
+
+
 @app.put("/employees/staff/{emp_no}")
 def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
                 user: models.User = HR):
@@ -7379,9 +7435,12 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
             raise HTTPException(status_code=400, detail="That company is not on file.")
         e.company_id = c.id
         e.company = c.short_name or c.name
-    for f in ("designation", "pay_route", "iban", "scheme"):
+    for f in ("designation", "pay_route", "iban", "scheme", "pay_group"):
         if f in payload:
             setattr(e, f, (payload.get(f) or "").strip())
+    if (e.pay_group or "staff") not in ("staff", "local"):
+        e.pay_group = "staff"
+    was = (round(e.basic_salary or 0, 2), round(e.allowance or 0, 2))
     for f, col in (("joined_on", "joined_on"), ("probation_end", "probation_end")):
         if f in payload:
             setattr(e, col, _as_date(payload.get(f)))
@@ -7392,9 +7451,29 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
     if "notice_days" in payload:
         e.notice_days = int(payload.get("notice_days") or 30)
     e.total_salary = _gross(e)
+    # A salary changed here, once there is a history, is a correction and
+    # is written into the history as one. Otherwise the next cycle opened
+    # would bring back the last figure the history holds and quietly undo
+    # the edit.
+    now = (round(e.basic_salary or 0, 2), round(e.allowance or 0, 2))
+    history = db.query(models.SalaryChange).filter(
+        models.SalaryChange.employee_id == e.id).all()
+    if history and now != was:
+        only_joining = all(h.kind == "joining" for h in history)
+        if only_joining:
+            # Nothing has happened since he joined: the joining figure
+            # itself was wrong, so it is put right rather than stacked on.
+            for h in history:
+                h.basic, h.allowance = now
+        else:
+            db.add(models.SalaryChange(
+                employee_id=e.id, effective_on=_dubai_today().replace(day=1),
+                kind="correction", basic=now[0], allowance=now[1],
+                amount=round(sum(now) - sum(was), 2),
+                reason=(payload.get("reason") or "Corrected on the staff record").strip(),
+                created_by=user.id))
     # A joining figure, so the salary history starts from something.
-    if e.joined_on and not db.query(models.SalaryChange).filter(
-            models.SalaryChange.employee_id == e.id).first():
+    if e.joined_on and not history:
         db.add(models.SalaryChange(
             employee_id=e.id, effective_on=e.joined_on, kind="joining",
             basic=e.basic_salary or 0, allowance=e.allowance or 0, amount=0,
@@ -7831,7 +7910,7 @@ def _staff_month_bounds(month_year: str):
     return d, nxt - timedelta(days=1)
 
 
-def _absence_deduction(db, e, month_year):
+def _absence_deduction(db, e, month_year, gross=None):
     """What the unpaid days that month cost him.
 
     A day is gross over thirty, dropped to whole dirhams, and a half
@@ -7855,16 +7934,67 @@ def _absence_deduction(db, e, month_year):
     portion = sum(d.portion or 1.0 for d in days)
     if not portion:
         return 0.0, ""
-    rate = float(int(_gross(e) / 30.0))
+    rate = float(int((_gross(e) if gross is None else gross) / 30.0))
     note = ", ".join(f"{d.on_date.strftime('%d %b')}{' (half)' if (d.portion or 1) < 1 else ''}"
                      for d in sorted(days, key=lambda d: d.on_date))
     return round(rate * portion, 2), note
 
 
+def _salary_as_of(db, e, day):
+    """Basic and allowance as they stood on a given day.
+
+    A cycle is paid at the salary in force that month, not at whatever
+    the record says today. Opening August after September's rise has
+    gone in must still give August's figure - otherwise re-running a
+    signed month quietly pays the rise a month early.
+    """
+    ch = (db.query(models.SalaryChange)
+            .filter(models.SalaryChange.employee_id == e.id,
+                     models.SalaryChange.effective_on <= day)
+            .order_by(models.SalaryChange.effective_on.desc(),
+                       models.SalaryChange.id.desc()).first())
+    if ch:
+        return round(ch.basic or 0, 2), round(ch.allowance or 0, 2)
+    return round(e.basic_salary or 0, 2), round(e.allowance or 0, 2)
+
+
+def _employed_in(e, a, b):
+    """On the books for at least one day of the month a..b."""
+    if e.joined_on and e.joined_on > b:
+        return False
+    if e.terminated_on and e.terminated_on < a:
+        return False
+    return True
+
+
+def _part_month(e, a, b, gross):
+    """The days of the month before he joined or after he left.
+
+    Charged the same way an unpaid day is - gross over thirty, dropped
+    to whole dirhams - so a man who starts on the 10th is proposed nine
+    days off his first salary, with the reason on the row. It is a
+    proposal like every other deduction: the accountant can change it.
+    """
+    out, notes = 0, []
+    if e.joined_on and a < e.joined_on <= b:
+        out += (e.joined_on - a).days
+        notes.append(f"joined {e.joined_on.strftime('%d %b')}")
+    if e.terminated_on and a <= e.terminated_on < b:
+        out += (b - e.terminated_on).days
+        notes.append(f"left {e.terminated_on.strftime('%d %b')}")
+    if not out:
+        return 0.0, ""
+    amount = min(float(int(gross / 30.0)) * out, gross)
+    return round(amount, 2), f"{' / '.join(notes).capitalize()} - {out} day(s) not employed"
+
+
 def _line_net(l):
+    # Pension is not in here. The one local-staff statement on file pays
+    # Khadija 6,000 net with her 700 pension in a column of its own, so
+    # it is carried on the line and printed, but never added to the pay.
     return round((l.fixed_salary or 0) - (l.deduction or 0) - (l.statutory or 0)
                  - (l.loan_deduction or 0) + (l.other_allowance or 0)
-                 + (l.leave_salary or 0) + (l.air_ticket or 0) + (l.pension or 0), 2)
+                 + (l.leave_salary or 0) + (l.air_ticket or 0), 2)
 
 
 def _line_dict(l, e):
@@ -7962,12 +8092,16 @@ def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
         return _run_dict(existing, db)
 
     brought = apply_due_increments(db)
+    a, b = _staff_month_bounds(month_year)
     q = db.query(models.Employee).filter(
         models.Employee.staff == True,  # noqa: E712
-        models.Employee.active == True,  # noqa: E712
         models.Employee.company_id == c.id)
+    # Everyone on the books for any part of the month, on this statement.
+    # A man who left in the month is still paid for it, so "active" is
+    # not the test; the dates are.
     people = [e for e in q.order_by(models.Employee.emp_no).all()
-              if (e.scheme or "gratuity") == ("pension" if group == "local" else "gratuity")]
+              if (e.pay_group or "staff") == group and _employed_in(e, a, b)
+              and (e.active or (e.terminated_on and e.terminated_on >= a))]
     if not people:
         raise HTTPException(status_code=400,
             detail=f"No {group} staff on file for {c.short_name or c.name}.")
@@ -7975,11 +8109,16 @@ def open_payroll_run(payload: dict = Body(...), db: Session = Depends(get_db),
                            status="draft", created_by=user.id)
     db.add(r); db.flush()
     for e in people:
-        ded, note = _absence_deduction(db, e, month_year)
+        basic, allow = _salary_as_of(db, e, b)
+        gross = round(basic + allow, 2)
+        ded, note = _absence_deduction(db, e, month_year, gross)
+        part, pnote = _part_month(e, a, b, gross)
+        ded = round(ded + part, 2)
+        note = "; ".join(x for x in (pnote, note and f"Absent {note}") if x)
         l = models.PayrollLine(
             run_id=r.id, employee_id=e.id,
-            basic=e.basic_salary or 0, allowance=e.allowance or 0,
-            fixed_salary=_gross(e), deduction=ded, deduction_note=note,
+            basic=basic, allowance=allow,
+            fixed_salary=gross, deduction=ded, deduction_note=note,
             loan_deduction=_loan_due(db, e.id), pension=e.pension or 0)
         l.net_pay = _line_net(l)
         db.add(l)
@@ -8204,6 +8343,9 @@ def _statement_rows(lines, consolidated=False):
     the one before it read.
     """
     out = []
+    # The pension column appears only on a statement that has any - the
+    # local staff one - and sits after net pay, because it is not in it.
+    pensions = any(l.get("pension") for l in lines)
     for i, l in enumerate(lines, 1):
         r = {"Sr.": i, "Emp. Code": l["emp_no"], "Employee Name": l["name"],
              "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-",
@@ -8218,15 +8360,17 @@ def _statement_rows(lines, consolidated=False):
             "Loan / Reimb.": l["loan_deduction"],
             "Leave Salary": round(l["leave_salary"] + l["air_ticket"], 2),
             "Net Pay": l["net_pay"],
-            "Remark": l["remarks"] or (l["deduction_note"] and f"Absent {l['deduction_note']}") or "",
         })
+        if pensions:
+            r["Pension"] = l.get("pension") or 0
+        r["Remark"] = l["remarks"] or l["deduction_note"] or ""
         out.append(r)
     return out
 
 
 STATEMENT_MONEY = ["Basic Salary", "Fix Allown.", "Taxi / Other Bills",
                    "Absent / Other Ded.", "Salary Payable", "Loan / Reimb.",
-                   "Leave Salary", "Net Pay"]
+                   "Leave Salary", "Net Pay", "Pension"]
 
 
 def _route_line(by_route):
@@ -8617,7 +8761,7 @@ def get_notifications(db: Session = Depends(get_db),
                     .filter(models.DailyRow.full_date == y,
                              or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
                     .count())
-        active = db.query(models.Employee).filter(models.Employee.active == True).count()  # noqa: E712
+        active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).count()  # noqa: E712
         if active and marked == 0:
             out.append({"id": f"att-none-{y}", "kind": "attendance",
                          "title": "No attendance saved for yesterday",

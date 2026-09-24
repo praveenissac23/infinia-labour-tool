@@ -106,8 +106,67 @@ for emp_no, name, joined, basic, allow, co, desig, route in STAFF:
         'basic': basic, 'allowance': allow, 'contract_basic': basic,
         'pay_route': route}, headers=H)
     assert r.status_code == 200, f'{emp_no}: {r.text[:200]}'
+# The two who joined Prime in September, put on file the way the screen
+# does it. They must not turn up in August.
+for code, name, joined, basic, allow, desig in (
+        ('PI005', 'Amal P K', '2026-09-10', 1200, 1800, 'Communication Asst'),
+        ('PI006', 'Anoop Subramanian', '2026-09-15', 5600, 8400, 'Senior QS')):
+    r = c.post('/employees/staff', json={
+        'emp_no': code, 'name': name, 'company_id': PI['id'], 'joined_on': joined,
+        'designation': desig, 'basic': basic, 'allowance': allow,
+        'contract_basic': basic, 'pay_route': 'wps'}, headers=H)
+    ck(f'{name} is added straight onto the staff register', r.status_code == 200, r.text[:200])
+ck('a staff code already in use is refused',
+   c.post('/employees/staff', json={'emp_no': 'PI005', 'name': 'X', 'company_id': PI['id'],
+                                    'joined_on': '2026-09-01'}, headers=H).status_code == 400)
+
+# A labourer, so the labour side has someone of its own.
+c.post('/employees', json={'emp_no': '5001', 'name': 'RAJAN', 'trade': 'Mason',
+                           'company': 'Infinia', 'total_salary': 1500, 'basic_salary': 900},
+       headers=H)
+
 staff = {s['emp_no']: s for s in c.get('/employees/staff', headers=H).json()['rows']}
-ck('all eighteen staff are on file', len(staff) == 18, len(staff))
+ck('all twenty staff are on file', len(staff) == 20, len(staff))
+
+# ---- None of them are labourers ----------------------------------------
+labour = [e['emp_no'] for e in c.get('/employees', headers=H).json()]
+ck('the labour list does not carry a single office name',
+   labour == ['5001'], labour)
+ck('the workforce report leaves them out too',
+   all(r['emp_no'] == '5001' for r in main._employee_report_rows(database.SessionLocal())))
+r = c.post('/employees', json={'emp_no': 'IC022', 'name': 'OVERWRITTEN', 'trade': 'Helper',
+                               'total_salary': 1, 'basic_salary': 1}, headers=H)
+ck('Master Data cannot overwrite an office record', r.status_code == 400, r.status_code)
+ck('and says where to go instead', 'HR & Payroll' in r.json().get('detail', ''), r.json())
+ck('Master Data cannot delete one either',
+   c.delete('/employees/IC022', headers=H).status_code == 400)
+
+# A labour import deactivates anyone not in the file. Office staff are
+# never in the labour file, so this used to switch every one of them off.
+import io, openpyxl
+wb = openpyxl.Workbook(); ws = wb.active
+tpl = c.get('/employees/template', headers=H)
+if tpl.status_code == 200:
+    hdr = [x.value for x in openpyxl.load_workbook(io.BytesIO(tpl.content)).active[1]]
+else:
+    hdr = ['Emp No', 'Name', 'Trade', 'Company', 'Total Salary', 'Basic Salary']
+ws.append(hdr)
+row = {h: '' for h in hdr}
+for h in hdr:
+    k = str(h).lower()
+    if 'no' in k: row[h] = '5001'
+    elif 'name' in k: row[h] = 'RAJAN'
+    elif 'trade' in k: row[h] = 'Mason'
+    elif 'total' in k: row[h] = 1500
+    elif 'basic' in k: row[h] = 900
+    elif 'company' in k: row[h] = 'Infinia'
+ws.append([row[h] for h in hdr])
+buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+r = c.post('/employees/import', data={'mode': 'replace', 'duplicate_handling': 'update'},
+           files={'file': ('labour.xlsx', buf.getvalue())}, headers=H)
+still = len(c.get('/employees/staff', headers=H).json()['rows'])
+ck('a labour import leaves every office record active', still == 20,
+   f'{r.status_code} {r.text[:160]} -> {still} active')
 ck('the 40/60 split came through on the WPS nine',
    all(abs(staff[k]['basic_pct'] - 40) < 0.05
        for k in staff if k.startswith('IC0') or k.startswith('PI')),
@@ -266,7 +325,8 @@ ck('CASH SALARY TOTAL comes to 14,100.00',
 prun = c.post('/employees/payroll/runs', json={
     'month_year': CYCLE, 'company_id': PI['id'], 'group': 'staff'}, headers=H).json()
 pl = {l['emp_no']: l for l in prun['lines']}
-ck('the Prime cycle opens with four rows', len(prun['lines']) == 4, len(prun['lines']))
+ck('the Prime cycle opens with four rows - not the two who joined in September',
+   len(prun['lines']) == 4, [l['emp_no'] for l in prun['lines']])
 ck("Syed's 133.00 and Sreekanth's 112.50 come up on their own",
    money(pl['PI002']['deduction'], 133.00) and money(pl['PI003']['deduction'], 112.50),
    (pl['PI002']['deduction'], pl['PI003']['deduction']))
@@ -307,7 +367,7 @@ ck('and Prime has nobody in cash', prun['by_route'].get('cash', 0) == 0, prun['b
 con = c.get(f'/employees/payroll/consolidated?month_year={CYCLE}', headers=H)
 ck('the consolidated sheet builds', con.status_code == 200, con.text[:200])
 con = con.json()
-ck('it carries all eighteen', len(con['rows']) == 18, len(con['rows']))
+ck('it carries the eighteen paid in August', len(con['rows']) == 18, len(con['rows']))
 ck('the WPS figure is 103,988.00, not the 93,187.00 that was signed off',
    money(con['by_route'].get('wps', 0), 103988.00), con['by_route'])
 ck('which is exactly the two statements added up',
@@ -375,6 +435,50 @@ ck('nor the leave register',
    c.get(f'/employees/leave?month_year={CYCLE}', headers=OFFICE).status_code == 403)
 ck('and she still has her own screens',
    c.get('/employees', headers=OFFICE).status_code == 200)
+
+# ======================================================================
+#  September: a rise, and two people who started part way through
+# ======================================================================
+r = c.post('/employees/increments', json={
+    'emp_no': 'IC022', 'effective_on': '2026-09-01', 'amount': 750,
+    'reason': 'Increment Sep-26'}, headers=H)
+ck("Shafeeq's September rise is recorded", r.status_code == 200, r.text[:160])
+ck('and goes on the allowance, with the basic left alone',
+   r.json().get('basic') == 2800 and r.json().get('allowance') == 4950, r.json())
+
+# August re-read after the rise is still August: the signed month does
+# not quietly pick up September's figure.
+again = c.get(f"/employees/payroll/runs/{run['id']}", headers=H).json()
+ck("August still pays Shafeeq 7,000", {l['emp_no']: l for l in again['lines']}['IC022']
+   ['fixed_salary'] == 7000)
+
+sep = c.post('/employees/payroll/runs', json={
+    'month_year': 'September 2026', 'company_id': PI['id'], 'group': 'staff'}, headers=H).json()
+sl = {l['emp_no']: l for l in sep['lines']}
+ck('September for Prime has all six', len(sl) == 6, sorted(sl))
+ck('Amal, from the 10th, is proposed nine days off: 900.00',
+   money(sl['PI005']['deduction'], 900.00), (sl['PI005']['deduction'], sl['PI005']['deduction_note']))
+ck('Anoop, from the 15th, fourteen days at 466: 6,524.00',
+   money(sl['PI006']['deduction'], 6524.00), (sl['PI006']['deduction'], sl['PI006']['deduction_note']))
+ck('and the row says why', 'joined 10 sep' in sl['PI005']['deduction_note'].lower(),
+   sl['PI005']['deduction_note'])
+ck('Syed carries his last 500 instalment', sl['PI002']['loan_deduction'] == 500,
+   sl['PI002']['loan_deduction'])
+
+isep = c.post('/employees/payroll/runs', json={
+    'month_year': 'September 2026', 'company_id': IC['id'], 'group': 'staff'}, headers=H).json()
+il = {l['emp_no']: l for l in isep['lines']}
+ck("September for Infinia pays Shafeeq 7,750", il['IC022']['fixed_salary'] == 7750,
+   il['IC022']['fixed_salary'])
+ck('with the basic still at 2,800', il['IC022']['basic'] == 2800, il['IC022']['basic'])
+
+# A salary corrected by hand on the staff record stays corrected.
+c.put('/employees/staff/IC024', json={'basic': 4000, 'allowance': 6100}, headers=H)
+c.post('/employees/payroll/runs', json={
+    'month_year': 'October 2026', 'company_id': IC['id'], 'group': 'staff'}, headers=H)
+f = {s['emp_no']: s for s in c.get('/employees/staff', headers=H).json()['rows']}['IC024']
+ck('a correction on the record survives the next cycle being opened',
+   f['allowance'] == 6100, f['allowance'])
 
 # ======================================================================
 #  The papers
