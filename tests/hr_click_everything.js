@@ -134,7 +134,7 @@ const ck = (m, cond, ctx) => {
   // page asks; the rest run for real.
   // The cycle bar: company, statement, month back and forward, month chips.
   await p.click('.hr-tab[data-tab="payroll"]'); await p.waitForTimeout(800);
-  for (const sel of ['#hr-co-seg button', '#hr-grp-seg button', '.hr-month-nav > button']) {
+  for (const sel of ['#hr-grp-seg button']) {
     const n = await p.locator(sel).count();
     for (let i = 0; i < n; i++) { await p.locator(sel).nth(i).click(); await p.waitForTimeout(900); }
   }

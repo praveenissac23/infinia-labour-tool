@@ -12,7 +12,8 @@ What it loads, and where each figure comes from:
                                    (AUG 26 salary statement, signed)
   * Amal P K and Anoop Subramanian, who joined Prime in September.
                                    (salary increment file)
-  * The 5 local and household staff, on their own statement.
+  * The 3 local staff on their own statement; the 2 household staff
+    with the office.
                                    (SEP 26 local staff statement,
                                     document tracker)
   * Each person's salary history - joining figure and every increment.
@@ -127,8 +128,8 @@ STAFF = [
     ("IC015", "KHADIJA FARIS ABDULLA", "IC", "Local staff",     "2024-12-01", 2400, 3600, "wps", "local", "pension", 700),
     ("IC018", "AYA ADIL",             "IC", "Local staff",      "2025-06-23", 2400, 3600, "wps", "local", "pension", 1175),
     ("IC026", "SARA ADIL",            "IC", "Local staff",      "2026-06-17", 2400, 3600, "wps", "local", "pension", 1410),
-    ("IC008", "RAJI MOL",             "IC", "Maid",             "", 0, 0, "wps", "local", "gratuity", 0),
-    ("IC028", "SARASWATHI",           "IC", "Maid",             "", 0, 0, "wps", "local", "gratuity", 0),
+    ("IC008", "RAJI MOL",             "IC", "Maid",             "", 0, 0, "wps", "staff", "gratuity", 0),
+    ("IC028", "SARASWATHI",           "IC", "Maid",             "", 0, 0, "wps", "staff", "gratuity", 0),
 ]
 
 # Salary history from the increment file: the joining gross, then each

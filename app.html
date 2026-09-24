@@ -116,6 +116,10 @@
      border: 1px solid #E4E0DB; border-radius: 4px; background: #FFFDFB; resize: none; overflow: hidden; font-family: inherit; }
   .hr-cycle textarea.hr-rem:focus { outline: none; border-color: var(--red); background: white; }
   .hr-todate { color: #2E7D32; }
+  tr.hr-held td { color: #A8A29A !important; background: #FAFAF9 !important; }
+  tr.hr-held td .hr-todate { color: #A8A29A; }
+  .hr-dd { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px;
+           font-weight: 600; background: white; min-width: 190px; }
   .hr-cycle input.hr-amt, .hr-cycle input.hr-rem {
      width: 100%; box-sizing: border-box; padding: 4px 4px; font-size: 12px;
      border: 1px solid #E4E0DB; border-radius: 4px; background: #FFFDFB; }
@@ -2541,23 +2545,18 @@
               <div class="hr-cb-row">
                 <div class="hr-cb-group">
                   <span class="hr-cb-label">Company</span>
-                  <div class="hr-seg" id="hr-co-seg"></div>
+                  <select id="hr-run-company" class="hr-dd" onchange="hrSyncBar(); openPayrollCycle()"></select>
                 </div>
                 <div class="hr-cb-group">
                   <span class="hr-cb-label">Statement</span>
                   <div class="hr-seg" id="hr-grp-seg">
                     <button data-v="staff" onclick="hrPickGroup('staff')">Office staff</button>
-                    <button data-v="local" onclick="hrPickGroup('local')">Local &amp; household</button>
+                    <button data-v="local" onclick="hrPickGroup('local')">Local staff</button>
                   </div>
                 </div>
                 <div class="hr-cb-group">
                   <span class="hr-cb-label">Month</span>
-                  <div class="hr-month-nav">
-                    <button onclick="hrStepMonth(-1)" title="Previous month" aria-label="Previous month">&#8249;</button>
-                    <label class="hr-month-label"><span id="hr-month-label"></span>
-                      <input type="month" id="hr-run-month" onchange="openPayrollCycle()" aria-label="Choose month"></label>
-                    <button onclick="hrStepMonth(1)" title="Next month" aria-label="Next month">&#8250;</button>
-                  </div>
+                  <select id="hr-run-month" class="hr-dd" onchange="hrSyncBar(); openPayrollCycle()"></select>
                 </div>
                 <div class="hr-cb-group" style="justify-content:flex-end;">
                   <span id="hr-month-state" class="hr-state"></span>
@@ -2567,7 +2566,6 @@
               </div>
 
               <!-- The choices themselves, kept for the code that reads them. -->
-              <select id="hr-run-company" hidden></select>
               <select id="hr-run-group" hidden><option value="staff">Office staff</option><option value="local">Local</option></select>
               <select id="hr-run-pick" hidden></select>
             </div>
@@ -2595,8 +2593,9 @@
               <div class="grid-wrap" style="max-height:56vh;">
                 <table id="hr-run-table" class="hr-grid hr-cycle">
                   <thead><tr>
+                    <th style="width:4%;" title="Include on this cycle">Pay</th>
                     <th style="width:5%;">Code</th>
-                    <th class="txt" style="width:16%;">Employee</th>
+                    <th class="txt" style="width:14%;">Employee</th>
                     <th class="num" style="width:7%;">Basic</th>
                     <th class="num" style="width:7%;">Fix Allown.</th>
                     <th class="num" style="width:9%;">Add / Ded.</th>
@@ -2666,7 +2665,7 @@
                 </select></label>
                 <label class="hr-field" id="hr-e-pension-f"><span>Pension / month</span><input type="number" id="hr-e-pension" style="width:130px;" step="0.01"></label>
                 <label class="hr-field"><span>Paid on</span><select id="hr-e-group" style="width:190px;">
-                  <option value="staff">Office staff statement</option><option value="local">Local &amp; household statement</option>
+                  <option value="staff">Office staff statement</option><option value="local">Local staff statement</option>
                 </select></label>
                 <button class="btn btn-primary" onclick="saveStaffEdit()">Save</button>
                 <button class="btn btn-gray" onclick="closeStaffEdit()">Cancel</button>
@@ -2690,7 +2689,7 @@
                   <option value="wps">WPS</option><option value="bank">Bank transfer</option><option value="cash">Cash</option>
                 </select></label>
                 <label class="hr-field"><span>Paid on</span><select id="hr-n-group" style="width:190px;">
-                  <option value="staff">Office staff statement</option><option value="local">Local &amp; household statement</option>
+                  <option value="staff">Office staff statement</option><option value="local">Local staff statement</option>
                 </select></label>
                 <button class="btn btn-primary" onclick="addStaff()">Add to staff</button>
               </div>
@@ -11103,10 +11102,11 @@ async function loadHrScreen() {
   hrNoDropdowns();
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  for (const id of ["hr-run-month", "hr-leave-month", "hr-items-month", "hr-item-month"]) {
+  for (const id of ["hr-leave-month", "hr-items-month", "hr-item-month"]) {
     const el = document.getElementById(id);
     if (el && !el.value) el.value = thisMonth;
   }
+  hrFillMonths();
   await loadRunList();
   // The salary tab opens the current month for the first company by
   // itself; any other tab leaves it for when the salary tab is shown.
@@ -11137,14 +11137,26 @@ function hrPickMonth(v) {
 
 // The bar shows what is chosen, and the months around it for this company
 // and statement: approved, in draft, or not started.
+function hrFillMonths() {
+  const sel = document.getElementById("hr-run-month");
+  const keep = sel.value || hrToday().slice(0, 7);
+  const now = new Date();
+  const opts = [];
+  for (let i = 1; i >= -18; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  if (!opts.includes(keep)) opts.push(keep);
+  sel.innerHTML = opts.map(v => `<option value="${v}">${hrCycleName(v)}</option>`).join("");
+  sel.value = keep;
+}
+
 function hrSyncBar() {
   const co = document.getElementById("hr-run-company").value;
   const grp = document.getElementById("hr-run-group").value || "staff";
   const month = document.getElementById("hr-run-month").value || hrToday().slice(0, 7);
-  document.getElementById("hr-co-seg").innerHTML = HR_COMPANIES.map(c =>
-    `<button class="${String(c.id) === String(co) ? "on" : ""}" onclick="hrPickCompany(${c.id})">${escapeHtml(c.short_name || c.name)}</button>`).join("");
   document.querySelectorAll("#hr-grp-seg button").forEach(b => b.classList.toggle("on", b.dataset.v === grp));
-  document.getElementById("hr-month-label").textContent = hrCycleName(month);
+
   const st = HR_RUN && HR_RUN.month_year === hrCycleName(month) ? HR_RUN.status : "";
   const el = document.getElementById("hr-month-state");
   el.className = "hr-state " + st;
@@ -11310,7 +11322,7 @@ function renderRun() {
   const locked = r.status === "approved";
   hrSyncBar();
   document.getElementById("hr-run-title").innerHTML =
-    `${escapeHtml(r.company_short)} &middot; ${r.group === "local" ? "Local &amp; household" : "Office staff"} &middot; ${escapeHtml(r.month_year)}` +
+    `${escapeHtml(r.company_short)} &middot; ${r.group === "local" ? "Local staff" : "Office staff"} &middot; ${escapeHtml(r.month_year)}` +
     ` <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>`;
   document.getElementById("hr-save-btn").style.display = locked ? "none" : "";
   document.getElementById("hr-approve-btn").style.display = locked ? "none" : "";
@@ -11326,7 +11338,10 @@ function renderRun() {
   document.getElementById("hr-run-body").innerHTML = r.lines.map(l => {
     const remark = l.remarks || l.deduction_note || "";
     return `
-    <tr data-line="${l.id}">
+    <tr data-line="${l.id}"${l.held ? ' class="hr-held"' : ""}>
+      <td>${locked ? (l.held ? '<span class="hr-nil">held</span>' : "&#10003;") :
+        `<input type="checkbox" ${l.held ? "" : "checked"} title="Untick to hold this salary over to a later month"
+                onchange="hrHold(${l.id}, !this.checked)">`}</td>
       <td>${escapeHtml(l.emp_no)}</td>
       <td class="txt">${escapeHtml(l.name)}
         ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}</td>
@@ -11355,15 +11370,16 @@ function renderRun() {
 // out here rather than fetched, so typing a bill changes the total the
 // moment it is typed instead of after a save.
 function renderRunFoot() {
-  const sum = f => HR_RUN.lines.reduce((a, l) => a + Number(l[f] || 0), 0);
+  const paid = HR_RUN.lines.filter(l => !l.held);
+  const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const pension = HR_RUN.lines.some(l => l.pension);
-  const tot = fn => HR_RUN.lines.reduce((a, l) => a + fn(l), 0);
+  const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
                  tot(hrPayable), sum("loan_deduction"), sum("net_pay")]
                 .concat(pension ? [sum("pension")] : []);
   document.getElementById("hr-run-foot").innerHTML =
     `<tr class="hr-foot">
-       <td colspan="2" class="txt">TOTAL - ${HR_RUN.lines.length} staff</td>
+       <td colspan="3" class="txt">TOTAL - ${HR_RUN.lines.filter(l => !l.held).length} staff${HR_RUN.lines.some(l => l.held) ? `, ${HR_RUN.lines.filter(l => l.held).length} held over` : ""}</td>
        ${cells.map(v => `<td class="num">${hrMoney(v)}</td>`).join("")}
        <td></td></tr>`;
 }
@@ -11385,7 +11401,7 @@ function recalcLine(id) {
     document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
   renderRunFoot();
   const routes = {};
-  HR_RUN.lines.forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
+  HR_RUN.lines.filter(x => !x.held).forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
   HR_RUN.by_route = routes;
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(routes);
 }
@@ -11422,6 +11438,14 @@ async function approvePayrollRun() {
     renderRun();
     await loadRunList();
     hrMsg("ok", `${HR_RUN.month_year} approved. ${hrMoney(HR_RUN.totals.net_pay)} to pay.`);
+  } catch (e) { hrMsg("err", errText(e)); }
+}
+
+async function hrHold(id, held) {
+  try {
+    HR_RUN = await apiCall(`/employees/payroll/runs/${HR_RUN.id}`, { method: "PUT",
+      body: JSON.stringify({ lines: [{ id, held }] }) });
+    renderRun();
   } catch (e) { hrMsg("err", errText(e)); }
 }
 
@@ -11726,7 +11750,7 @@ function hrSearchSelect(sel) {
 }
 
 function hrNoDropdowns() {
-  document.querySelectorAll("#screen-hrpayroll select:not([hidden])").forEach(sel => {
+  document.querySelectorAll("#screen-hrpayroll select:not([hidden]):not(.hr-dd)").forEach(sel => {
     if (sel.dataset.done) return;
     sel.dataset.done = "1";
     if (sel.classList.contains("hr-staff-pick")) hrSearchSelect(sel);

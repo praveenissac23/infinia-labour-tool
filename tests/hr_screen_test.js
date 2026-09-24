@@ -116,7 +116,7 @@ const CYCLE_MONTH = '2026-08';
   // ---- Opening a cycle fills itself in ---------------------------------
   await p.evaluate("hrTab('payroll')");
   await p.waitForTimeout(400);
-  await p.evaluate(() => hrPickCompany(HR_COMPANIES.find(c => c.short_name === 'BrowserCo').id));
+  await p.evaluate(() => { document.getElementById('hr-run-company').value = HR_COMPANIES.find(c => c.short_name === 'BrowserCo').id; });
   await p.waitForTimeout(800);
   await p.evaluate(m => { document.getElementById('hr-run-month').value = m; hrSyncBar(); }, CYCLE_MONTH);
   await p.evaluate('openPayrollCycle()');

@@ -8646,6 +8646,15 @@ def _migrate_hr(db):
         if not l.pay_rule:
             l.pay_rule = "paid" if l.paid else "unpaid"
         changed = True
+    if get_setting(db, "hr_household_on_office") != "1":
+        # Household staff are paid with the office; only the nationals on
+        # GPSSA stay on the early local statement.
+        for e in db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
+                                                  models.Employee.pay_group == "local").all():
+            if (e.scheme or "gratuity") != "pension":
+                e.pay_group = "staff"
+        put_setting(db, "hr_household_on_office", "1")
+        changed = True
     if get_setting(db, "hr_cash_no_gratuity") != "1":
         for e in db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
                                                   models.Employee.pay_route == "cash").all():
@@ -8772,7 +8781,8 @@ def _line_dict(l, e):
             "payable": round((l.fixed_salary or 0) + (l.other_allowance or 0)
                              - (l.deduction or 0) - (l.statutory or 0), 2),
             "net_pay": round(l.net_pay or 0, 2), "remarks": l.remarks or "",
-            "loan_edited": bool(l.loan_edited), "remark_edited": bool(l.remark_edited)}
+            "loan_edited": bool(l.loan_edited), "remark_edited": bool(l.remark_edited),
+            "held": bool(l.held)}
 
 
 def _run_dict(r, db):
@@ -8781,7 +8791,8 @@ def _run_dict(r, db):
              for l in sorted(r.lines, key=lambda l: (emps.get(l.employee_id).emp_no
                                                       if emps.get(l.employee_id) else ""))]
     by_route = {}
-    for l in lines:
+    paid = [l for l in lines if not l["held"]]
+    for l in paid:
         by_route[l["pay_route"]] = round(by_route.get(l["pay_route"], 0) + l["net_pay"], 2)
     # How far into the month we are, and what each person has earned so
     # far - the office's version of the labour live card. Salary accrues
@@ -8807,7 +8818,7 @@ def _run_dict(r, db):
                              + l["leave_salary"] + l["air_ticket"], 2)
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),
                 "running": 0 < done < days, "as_of": min(max(today, a), b).isoformat(),
-                "to_date": round(sum(l["to_date"] for l in lines), 2)}
+                "to_date": round(sum(l["to_date"] for l in paid), 2)}
     return {
         "id": r.id, "month_year": r.month_year, "group": r.group,
         "company_id": r.company_id,
@@ -8817,16 +8828,17 @@ def _run_dict(r, db):
         "approved_on": r.approved_on.isoformat() if r.approved_on else "",
         "notes": r.notes or "", "lines": lines, "progress": progress,
         "totals": {
-            "fixed_salary": round(sum(l["fixed_salary"] for l in lines), 2),
-            "deduction": round(sum(l["deduction"] + l["statutory"] for l in lines), 2),
-            "other_allowance": round(sum(l["other_allowance"] for l in lines), 2),
-            "loan_deduction": round(sum(l["loan_deduction"] for l in lines), 2),
-            "leave_salary": round(sum(l["leave_salary"] + l["air_ticket"] for l in lines), 2),
-            "pension": round(sum(l["pension"] for l in lines), 2),
-            "payable": round(sum(l["payable"] for l in lines), 2),
-            "basic": round(sum(l["basic"] for l in lines), 2),
-            "allowance": round(sum(l["allowance"] for l in lines), 2),
-            "net_pay": round(sum(l["net_pay"] for l in lines), 2),
+            "held": len([l for l in lines if l["held"]]),
+            "fixed_salary": round(sum(l["fixed_salary"] for l in paid), 2),
+            "deduction": round(sum(l["deduction"] + l["statutory"] for l in paid), 2),
+            "other_allowance": round(sum(l["other_allowance"] for l in paid), 2),
+            "loan_deduction": round(sum(l["loan_deduction"] for l in paid), 2),
+            "leave_salary": round(sum(l["leave_salary"] + l["air_ticket"] for l in paid), 2),
+            "pension": round(sum(l["pension"] for l in paid), 2),
+            "payable": round(sum(l["payable"] for l in paid), 2),
+            "basic": round(sum(l["basic"] for l in paid), 2),
+            "allowance": round(sum(l["allowance"] for l in paid), 2),
+            "net_pay": round(sum(l["net_pay"] for l in paid), 2),
         },
         "by_route": by_route,
     }
@@ -8951,6 +8963,8 @@ def save_payroll_run(run_id: int, payload: dict = Body(...), db: Session = Depen
                 l.loan_deduction, l.loan_edited = v, True
         if row.get("loan_reset"):
             l.loan_edited = False
+        if "held" in row:
+            l.held = bool(row.get("held"))
         if "remarks" in row:
             text = (row.get("remarks") or "").strip()
             if text != (l.remarks or ""):
@@ -8997,6 +9011,8 @@ def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models
     _refresh_run(db, r)
     _, month_end = _staff_month_bounds(r.month_year)
     for l in r.lines:
+        if l.held:
+            continue
         left = round(l.loan_deduction or 0, 2)
         if left <= 0.005:
             continue
@@ -9090,6 +9106,8 @@ def consolidated_statement(month_year: str = "", db: Session = Depends(get_db),
         for l in sorted(r.lines, key=lambda l: (emps.get(l.employee_id).emp_no
                                                  if emps.get(l.employee_id) else "")):
             e = emps.get(l.employee_id)
+            if l.held:
+                continue
             d = _line_dict(l, e)
             d["company"] = (r.company.short_name or r.company.name) if r.company else ""
             d["status"] = r.status
@@ -9157,6 +9175,8 @@ def _statement_rows(lines, consolidated=False):
     # local staff one - and sits after net pay, because it is not in it.
     pensions = any(l.get("pension") for l in lines)
     for l in lines:
+        if l.get("held"):
+            continue
         adj = round(l["other_allowance"] + l["leave_salary"] + l["air_ticket"] - l["statutory"], 2)
         r = {"Emp. Code": l["emp_no"], "Employee Name": l["name"],
              "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-"}
@@ -9204,7 +9224,8 @@ def _statement_parts(db, run_id):
     d = _run_dict(r, db)
     rows = _statement_rows(d["lines"])
     title = f"Salary Statement for {d['month_year']}"
-    sub = (f"{d['company']}   |   {len(rows)} staff   |   "
+    sub = (f"{d['company']}   |   {len(rows)} staff"
+           + (f" ({d['totals']['held']} held over)" if d['totals'].get('held') else "") + "   |   "
            f"{_route_line(d['by_route'])}"
            + ("" if d["status"] == "approved" else "   |   DRAFT"))
     return rows, title, sub

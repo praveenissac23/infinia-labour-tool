@@ -86,8 +86,9 @@ class Employee(Base):
     pension = Column(Float, default=0.0)           # the monthly GPSSA figure
     # Which statement the person is paid on. "staff" is the monthly office
     # payroll; "local" is the separate one processed early in the month -
-    # the nationals and the household staff. Kept apart from `scheme`
-    # because a maid is on the local statement but earns gratuity.
+    # the nationals, processed early. Household staff are paid with the
+    # office. Kept apart from `scheme`: a national on the office statement
+    # would still be on GPSSA.
     pay_group = Column(String, default="staff")    # staff | local
     probation_end = Column(Date, nullable=True)
     notice_days = Column(Integer, default=30)
@@ -844,6 +845,9 @@ class PayrollLine(Base):
     # refresh of the draft keeps his figure instead of the proposal.
     loan_edited = Column(Boolean, default=False)
     remark_edited = Column(Boolean, default=False)
+    # Not being paid on this cycle - away on vacation, say - so left off
+    # the totals and the statement, and picked up again next month.
+    held = Column(Boolean, default=False)
 
     deduction = Column(Float, default=0.0)         # absence and unpaid leave
     deduction_note = Column(String, default="")
