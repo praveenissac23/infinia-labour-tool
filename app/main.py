@@ -7308,7 +7308,9 @@ def _company_dict(c):
 
 
 @app.get("/employees/companies")
-def list_companies(db: Session = Depends(get_db), user: models.User = HR):
+def list_companies(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    # The names of the companies are on every card and order; any login
+    # may read them. Changing one is still HR business (below).
     rows = db.query(models.Company).order_by(models.Company.name).all()
     return [_company_dict(c) for c in rows]
 

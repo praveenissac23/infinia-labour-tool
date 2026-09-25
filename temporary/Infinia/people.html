@@ -760,17 +760,31 @@ async function preview(kind) { const u = reportUrl(kind); window.open(`${API}${u
 async function download(kind, format) { const u = reportUrl(kind); window.open(`${API}${u}&token=${await dl()}&format=${format}`, "_blank"); }
 
 
-// A browser holding an old copy of this page fetches the new one, once.
+// A phone or a laptop that keeps an old copy of this page runs old code
+// against a new server - a fixed fault stays broken for that one person.
+// So the page asks the server which build it is serving. If that is not
+// the build it loaded with, it fetches itself again - but only in the
+// first moments after opening, with nobody signed in and nothing typed,
+// so a reload can never cut across a sign-in or a form. Any later, a
+// bar at the top offers the refresh instead.
 (function checkBuild() {
+  const opened = Date.now();
   fetch(API + "/health", { cache: "no-store" }).then(r => r.json()).then(h => {
     if (!h || !h.build) return;
+    const build = String(h.build);
     const seen = localStorage.getItem("infinia_build");
-    localStorage.setItem("infinia_build", String(h.build));
-    if (seen === String(h.build)) sessionStorage.removeItem("infinia_reloaded");
-    if (seen && seen !== String(h.build) && !sessionStorage.getItem("infinia_reloaded")) {
-      sessionStorage.setItem("infinia_reloaded", "1");
-      location.reload();
-    }
+    localStorage.setItem("infinia_build", build);
+    if (seen === build) { sessionStorage.removeItem("infinia_reloaded"); return; }
+    if (!seen) return;
+    const typing = document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
+    const quiet = Date.now() - opened < 2500 && !sessionStorage.getItem("infinia_token") && !typing
+                  && !sessionStorage.getItem("infinia_reloaded");
+    if (quiet) { sessionStorage.setItem("infinia_reloaded", "1"); location.reload(); return; }
+    const bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:5000;background:#2E3238;color:#fff;padding:8px 14px;font-size:13px;display:flex;gap:12px;align-items:center;justify-content:center;";
+    bar.innerHTML = "The app has been updated. <button style=\"background:#C0392B;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer;\">Refresh now</button>";
+    bar.querySelector("button").onclick = () => location.reload();
+    document.body.appendChild(bar);
   }).catch(() => {});
 })();
 if (TOKEN) start(); else document.getElementById("login").style.display = "flex";
