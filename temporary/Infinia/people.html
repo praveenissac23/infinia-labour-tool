@@ -759,6 +759,20 @@ function reportUrl(kind) {
 async function preview(kind) { const u = reportUrl(kind); window.open(`${API}${u.replace("?", "/view?")}&token=${await dl()}`, "_blank"); }
 async function download(kind, format) { const u = reportUrl(kind); window.open(`${API}${u}&token=${await dl()}&format=${format}`, "_blank"); }
 
+
+// A browser holding an old copy of this page fetches the new one, once.
+(function checkBuild() {
+  fetch(API + "/health", { cache: "no-store" }).then(r => r.json()).then(h => {
+    if (!h || !h.build) return;
+    const seen = localStorage.getItem("infinia_build");
+    localStorage.setItem("infinia_build", String(h.build));
+    if (seen === String(h.build)) sessionStorage.removeItem("infinia_reloaded");
+    if (seen && seen !== String(h.build) && !sessionStorage.getItem("infinia_reloaded")) {
+      sessionStorage.setItem("infinia_reloaded", "1");
+      location.reload();
+    }
+  }).catch(() => {});
+})();
 if (TOKEN) start(); else document.getElementById("login").style.display = "flex";
 </script>
 </body>

@@ -254,6 +254,20 @@ async function saveAssign() {
     closeDlg("dlg-assign"); status("ok", "Applied."); await loadAll();
   } catch (e) { document.getElementById("assign-msg").textContent = errText(e); }
 }
+
+// A browser holding an old copy of this page fetches the new one, once.
+(function checkBuild() {
+  fetch(API + "/health", { cache: "no-store" }).then(r => r.json()).then(h => {
+    if (!h || !h.build) return;
+    const seen = localStorage.getItem("infinia_build");
+    localStorage.setItem("infinia_build", String(h.build));
+    if (seen === String(h.build)) sessionStorage.removeItem("infinia_reloaded");
+    if (seen && seen !== String(h.build) && !sessionStorage.getItem("infinia_reloaded")) {
+      sessionStorage.setItem("infinia_reloaded", "1");
+      location.reload();
+    }
+  }).catch(() => {});
+})();
 if (TOKEN) start(); else document.getElementById("login").style.display = "flex";
 </script>
 </body>
