@@ -155,16 +155,17 @@ async function login(ctx, user, pw, url) {
         await p.locator('#pg-tabs .pg-tab').nth(i).click(); await p.waitForTimeout(900);
         const a = await p.evaluate("document.querySelector('.screen.active') && document.querySelector('.screen.active').id");
         ck(`${name} (temporary): ${pg} › ${tabs[i]} shows ${a}`, !!a);
-        // On the reports page, open every sub-tab and read each preview.
+        // On the reports page, open every sub-tab: each shows its screen.
         if (pg === 'reporting') {
           const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
           for (let k = 0; k < subs.length; k++) {
-            await p.locator('#pg-sub .pg-subtab').nth(k).click(); await p.waitForTimeout(700);
-            if (await p.locator('#screen-pgreports.active').count() !== 1) continue;
-            await p.waitForFunction(() => document.getElementById('pg-frame-note').textContent === '', null, { timeout: 15000 }).catch(() => {});
-            const body = await p.frameLocator('#pg-preview').locator('body').innerText().catch(() => '');
-            ck(`${name} (temporary): preview ${tabs[i]} › ${subs[k]}`, !/\{"detail"|Internal Server Error|Not Found/.test(body) && body.length > 40, body.slice(0, 80));
-            if (name === 'assistant') ck(`assistant: that preview carries no office salary`, !SALARY_WORDS.test(body) || /Labour Register/.test(body), subs[k]);
+            await p.locator('#pg-sub .pg-subtab').nth(k).click(); await p.waitForTimeout(1100);
+            const sid = await p.evaluate("document.querySelector('.screen.active') && document.querySelector('.screen.active').id");
+            ck(`${name} (temporary): ${tabs[i]} › ${subs[k]} shows ${sid}`, !!sid);
+            if (name === 'assistant') {
+              const seen = await p.evaluate("document.querySelector('.screen.active').innerText");
+              ck(`assistant: ${tabs[i]} › ${subs[k]} carries no office salary`, !SALARY_WORDS.test(seen) || /Labour/.test(subs[k]) || sid === 'reports' || sid === 'combine', subs[k]);
+            }
           }
         }
       }

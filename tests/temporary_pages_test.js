@@ -13,7 +13,7 @@ const PAGES = {
   store: ['store', 'requests', 'approvals', 'purchase', 'followup', 'lporegister', 'suppliers'],
   reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'sites', 'logins', 'backup'], activity: ['activity'],
 };
-const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'pgreports', people: 'pgreports', storerep: 'pgreports' };
+const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store' };
 
 (async () => {
   const b = await chromium.launch();
@@ -48,33 +48,34 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
       }
     }
   }
-  // The reports hub: tabs inside tabs, every report previewed underneath.
+  // The reports page: tabs inside tabs, the working screen underneath.
   await p.goto(BASE + 'reporting.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
   ck('the reports page opens on Labour › Cycle report builder', await p.locator('#screen-reports.active').count() === 1 && (await p.locator('#pg-sub .pg-subtab.active').textContent()) === 'Cycle report builder');
-  const frameOk = async (label) => {
-    await p.waitForFunction(() => document.getElementById('pg-frame-note').textContent === '', null, { timeout: 15000 }).catch(() => {});
-    const f = p.frameLocator('#pg-preview');
-    const body = await f.locator('body').innerText().catch(() => '');
-    const bad = /\{"detail"|Internal Server Error|Not Found/.test(body) || body.length < 40;
-    ck(`hub preview: ${label}`, !bad, body.slice(0, 80));
-    return body;
-  };
+  const EXPECT = { office: '#screen-hrpayroll', people: '#screen-pgreports', storerep: '#screen-store' };
   for (const t of ['office', 'people', 'storerep']) {
-    await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(600);
+    await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(900);
     const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
     ck(`${t}: has sub-tabs (${subs.length})`, subs.length >= 3, subs);
     for (let i = 0; i < subs.length; i++) {
-      await p.locator('#pg-sub .pg-subtab').nth(i).click(); await p.waitForTimeout(700);
-      const onHub = await p.locator('#screen-pgreports.active').count() === 1;
-      if (!onHub) { ck(`${t} › ${subs[i]} opens its screen`, await p.locator('.screen.active').count() === 1); continue; }
+      await p.locator('#pg-sub .pg-subtab').nth(i).click(); await p.waitForTimeout(1200);
       ck(`${t} › ${subs[i]} is the active sub-tab`, (await p.locator('#pg-sub .pg-subtab.active').textContent()) === subs[i]);
-      await frameOk(`${t} › ${subs[i]}`);
+      const activeId = await p.evaluate("document.querySelector('.screen.active') && document.querySelector('.screen.active').id");
+      if (t === 'office') {
+        ck(`office › ${subs[i]} shows one HR pane, without the screen's own tab row`, activeId === 'screen-hrpayroll' && await p.locator('.hr-pane:visible').count() === 1 && await p.locator('.hr-tabs:visible').count() === 0, activeId);
+      } else if (t === 'people') {
+        await p.waitForFunction(() => !/Loading/.test(document.getElementById('pg-people-body').textContent), null, { timeout: 15000 }).catch(() => {});
+        const rows = await p.locator('#pg-people-body tr').count();
+        ck(`people › ${subs[i]} lists on screen (${rows} rows)`, activeId === 'screen-pgreports' && rows >= 1, rows);
+      } else if (['LPO register', 'Order follow-up', 'Suppliers'].includes(subs[i])) {
+        ck(`store › ${subs[i]} opens its screen`, ['screen-lporegister', 'screen-followup', 'screen-suppliers'].includes(activeId), activeId);
+      } else {
+        ck(`store › ${subs[i]} shows the report panel with its buttons`, activeId === 'screen-store' && await p.locator('#store-report-result:visible').count() === 1 && await p.locator('#store-report-result button:visible:has-text("Preview")').count() === 1, activeId);
+      }
     }
   }
-  await p.click('#pg-tabs .pg-tab[data-tab="people"]'); await p.waitForTimeout(600);
-  await p.click('#pg-opt-group button[data-v="office"]'); await p.waitForTimeout(600);
-  const off = await frameOk('people register, Office');
-  ck('the group switch reloads the preview', /Office/i.test(off));
+  await p.click('#pg-tabs .pg-tab[data-tab="people"]'); await p.waitForTimeout(900);
+  await p.click('#pg-opt-group button[data-v="office"]'); await p.waitForTimeout(1200);
+  ck('the group switch reloads the People list', (await p.locator('#pg-people-body').innerText()).includes('IC0'));
   await p.click('#pg-tabs .pg-tab[data-tab="labour"]'); await p.waitForTimeout(400);
   await p.locator('#pg-sub .pg-subtab', { hasText: 'Salary cards' }).click(); await p.waitForTimeout(800);
   ck('a Labour sub-tab opens that screen under the same tab', await p.locator('#screen-combine.active').count() === 1 && (await p.locator('#pg-tabs .pg-tab.active').textContent()) === 'Labour');

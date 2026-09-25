@@ -25,12 +25,13 @@ def tab(id, screen, label, right=None, show=None, subs=None):
     return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or [], "subs": subs or []}
 
 
-def sub(id, label, screen=None, right=None, report=None, opts=None):
-    """A second-level tab. Either a screen of the app, or a report whose
-    preview loads underneath the strip (report = export path, opts = the
-    inputs it takes: run, month, cycle, within, group, days, dates)."""
-    return {"id": id, "label": label, "screen": screen or "", "right": right or screen or "reports",
-            "report": report or "", "opts": opts or ""}
+def sub(id, label, screen=None, right=None, go=None, people=None, opts=None):
+    """A second-level tab: the working screen itself. screen = the app
+    screen to show, go = what to run once it is up (its own tab, its
+    report panel), people = a People list drawn on the hub with its
+    options (opts: group, days)."""
+    return {"id": id, "label": label, "screen": screen or ("pgreports" if people else ""), "right": right or screen or "reports",
+            "go": go or "", "people": people or "", "opts": opts or ""}
 
 
 PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local", "people_household"]
@@ -62,31 +63,30 @@ PAGES = {
             sub("cards", "Salary cards", screen="combine"),
             sub("check", "Check before you pay", screen="errorcheck"),
             sub("live", "Live card", screen="livecard")]),
-        tab("office", "pgreports", "Office payroll", "hrpayroll", subs=[
-            sub("statement", "Salary statement", right="hrpayroll", report="/export/payroll/statement", opts="run"),
-            sub("consolidated", "Consolidated statement", right="hrpayroll", report="/export/payroll/consolidated", opts="month"),
-            sub("leave", "Absence register", right="hrpayroll", report="/export/payroll/leave", opts="cycle"),
-            sub("items", "Additions & deductions", right="hrpayroll", report="/export/payroll/items", opts="cycle"),
-            sub("loans", "Loans register", right="hrpayroll", report="/export/payroll/loans"),
-            sub("increments", "Increments & salary history", right="hrpayroll", report="/export/payroll/increments"),
-            sub("staff", "Office staff register", right="hrpayroll", report="/export/payroll/staff"),
-            sub("gratuity", "Gratuity", right="hrpayroll", report="/export/payroll/gratuity"),
-            sub("documents", "Office document tracker", right="hrpayroll", report="/export/payroll/documents", opts="within")]),
+        tab("office", "hrpayroll", "Office payroll", "hrpayroll", subs=[
+            sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
+            sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),
+            sub("items", "Additions & deductions", screen="hrpayroll", go="hrTab('items')"),
+            sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
+            sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
+            sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
+            sub("docs", "Documents", screen="hrpayroll", go="hrTab('docs')"),
+            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
         tab("people", "pgreports", "People", PEOPLE_RIGHTS, subs=[
-            sub("register", "Register", right=PEOPLE_RIGHTS, report="/export/people/register", opts="group"),
-            sub("due", "Documents due", right=PEOPLE_RIGHTS, report="/export/people/documents-due", opts="days"),
-            sub("balances", "Leave balances", right=PEOPLE_RIGHTS, report="/export/people/leave", opts="group")]),
-        tab("storerep", "pgreports", "Store & purchasing", STORE_RIGHTS, subs=[
-            sub("stock", "Current stock", right=STORE_RIGHTS, report="/export/store/report?kind=stock"),
-            sub("by_site", "At sites", right=STORE_RIGHTS, report="/export/store/report?kind=by_site"),
-            sub("usage", "Consumption", right=STORE_RIGHTS, report="/export/store/report?kind=usage", opts="dates"),
-            sub("assets", "Assets", right=STORE_RIGHTS, report="/export/store/report?kind=assets"),
-            sub("issues", "Issue & return register", right=STORE_RIGHTS, report="/export/store/report?kind=issues", opts="dates"),
-            sub("lost", "Lost / damaged", right=STORE_RIGHTS, report="/export/store/report?kind=lost", opts="dates"),
-            sub("hired", "On rent now", right=STORE_RIGHTS, report="/export/store/report?kind=hired"),
-            sub("mr_open", "Open requests", right=STORE_RIGHTS, report="/export/store/report?kind=mr_open"),
-            sub("mr_history", "Request history", right=STORE_RIGHTS, report="/export/store/report?kind=mr_history"),
-            sub("suppliers", "Suppliers", right="approvals", report="/export/store/suppliers/report"),
+            sub("register", "Register", right=PEOPLE_RIGHTS, people="register", opts="group"),
+            sub("due", "Documents due", right=PEOPLE_RIGHTS, people="documents-due", opts="days"),
+            sub("balances", "Leave balances", right=PEOPLE_RIGHTS, people="leave", opts="group")]),
+        tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
+            sub("stock", "Current stock", screen="store", right=STORE_RIGHTS, go="pgStoreReport('stock')"),
+            sub("by_site", "At sites", screen="store", right=STORE_RIGHTS, go="pgStoreReport('by_site')"),
+            sub("usage", "Consumption", screen="store", right=STORE_RIGHTS, go="pgStoreReport('usage')"),
+            sub("assets", "Assets", screen="store", right=STORE_RIGHTS, go="pgStoreReport('assets')"),
+            sub("issues", "Issue & return register", screen="store", right=STORE_RIGHTS, go="pgStoreReport('issues')"),
+            sub("lost", "Lost / damaged", screen="store", right=STORE_RIGHTS, go="pgStoreReport('lost')"),
+            sub("hired", "On rent now", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
+            sub("mr_open", "Open requests", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_open')"),
+            sub("mr_history", "Request history", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_history')"),
+            sub("suppliers", "Suppliers", screen="suppliers", right="approvals"),
             sub("lpo", "LPO register", screen="lporegister", right="approvals"),
             sub("followup", "Order follow-up", screen="followup", right="requests")])]),
     "settings": ("Settings", [
@@ -139,19 +139,10 @@ CSS = """
   .pg-subtab { padding: 6px 12px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: #6A5C55; background: #F7F3EE; border: 1px solid #E4DCD2; border-radius: 6px; cursor: pointer; white-space: nowrap; }
   .pg-subtab:hover { background: #F1EAE3; }
   .pg-subtab.active { background: #2C2C2C; color: white; border-color: #2C2C2C; }
-  .pg-hub { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
-  .pg-repbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: white; border: 1px solid #E7E1DA; border-bottom: 0; border-radius: 8px 8px 0 0; }
-  .pg-repname { display: flex; flex-direction: column; min-width: 190px; }
-  .pg-repname strong { font-size: 14.5px; } .pg-repname small { color: #888; font-size: 12px; }
-  .pg-repopts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
-  .pg-repopts label { font-size: 12px; font-weight: 600; color: #666; }
-  .pg-repopts select, .pg-repopts input { height: 32px; padding: 0 8px; border: 1px solid #D5D9DE; border-radius: 6px; font-size: 12.5px; width: auto; max-width: 330px; margin: 0; }
-  .pg-repacts { display: flex; gap: 6px; }
-  .pg-repacts .btn { padding: 6px 12px; font-size: 12.5px; }
-  .pg-frame { position: relative; flex: 1; border: 1px solid #E7E1DA; border-radius: 0 0 8px 8px; background: white; overflow: hidden; }
-  .pg-frame iframe { width: 100%; height: 100%; border: 0; display: block; background: white; }
-  .pg-frame-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #888; font-size: 13px; background: white; pointer-events: none; }
-  .pg-frame-note:empty { display: none; }
+  /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
+  body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
+  body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
+  body.pg-subview #store-report-result { margin-top: 0; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
@@ -202,21 +193,23 @@ EARLY = """
 """
 
 HUB_HTML = """
-        <!-- ============ REPORTS HUB (temporary pages) ============ -->
+        <!-- ============ PEOPLE LISTS (reports page, temporary pages) ============ -->
         <div class="screen" id="screen-pgreports">
           <div class="status-msg" id="pgrep-status"></div>
-          <div class="pg-hub">
-            <div class="pg-repbar">
-              <div class="pg-repname"><strong id="pg-rep-title"></strong><small id="pg-rep-sub"></small></div>
-              <div class="pg-repopts" id="pg-repopts"></div>
-              <div class="pg-repacts">
-                <button class="btn btn-gray" onclick="pgRepPrint()">Print</button>
-                <button class="btn btn-gray" onclick="pgRepDownload('pdf')">PDF</button>
-                <button class="btn btn-gray" onclick="pgRepDownload('excel')">Excel</button>
-                <button class="btn btn-dark" onclick="pgRepOpen()">Open in new tab</button>
-              </div>
+          <div class="card">
+            <div class="form-row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+              <h2 id="pg-people-title" style="margin:0 12px 0 0;"></h2>
+              <span id="pg-people-opts"></span>
+              <div class="hr-cb-spacer"></div>
+              <button class="btn btn-dark" onclick="pgRepOpen()">Preview</button>
+              <button class="btn btn-gray" onclick="pgRepDownload('pdf')">Export to PDF</button>
+              <button class="btn btn-gray" onclick="pgRepDownload('excel')">Export to Excel</button>
+              <span id="pg-people-count" style="font-size:12px; color:#888;"></span>
             </div>
-            <div class="pg-frame"><iframe id="pg-preview" title="Report preview"></iframe><div class="pg-frame-note" id="pg-frame-note">Loading the preview&hellip;</div></div>
+            <p id="pg-people-sub" style="font-size:12px; color:#888; margin:6px 0 0;"></p>
+            <div class="grid-wrap" style="max-height:64vh; margin-top:10px;">
+              <table class="hr-grid"><thead id="pg-people-head"></thead><tbody id="pg-people-body"></tbody></table>
+            </div>
           </div>
         </div>
 """
@@ -265,6 +258,8 @@ switchScreen = function (name) {
     PG_SUB = PG_TAB.subs.find(sb => pgHas(sb.right) && (sb.screen || "pgreports") === name) || PG_SUB;
   pgApplyTab(); pgRenderTabs();
   if (name === "pgreports") pgHubLoad();
+  else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
+  else document.body.classList.remove("pg-subview");
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
@@ -370,7 +365,7 @@ if (!pgOn("dashboard") && !pgOn("attendance")) { loadDashboardCalendar = () => {
 if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
 if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 
-// ---- The reports hub: tabs inside tabs, the preview underneath ---------------
+// ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {
   const t = PG_TAB; if (!t) return;
   const sb = t.subs.find(x => x.id === id); if (!sb || !pgHas(sb.right)) return;
@@ -378,89 +373,81 @@ function pgSub(id) {
   location.hash = t.id + ":" + sb.id;
   const screen = sb.screen || "pgreports";
   const active = document.getElementById("screen-" + screen);
-  if (active && active.classList.contains("active")) { pgRenderTabs(); if (!sb.screen) pgRepShow(); return; }
-  switchScreen(screen);
+  if (!(active && active.classList.contains("active"))) { switchScreen(screen); return; }
+  pgRenderTabs();
+  pgSubGo();
+}
+// What a sub-tab does once its screen is up: its own tab, its report.
+function pgSubGo() {
+  const sb = PG_SUB; if (!sb) return;
+  document.body.classList.toggle("pg-subview", !!(PG_TAB && PG_TAB.subs.includes(sb) && (sb.go || sb.people)));
+  if (sb.people) { pgPeopleShow(); return; }
+  if (sb.go) setTimeout(() => { try { new Function(sb.go)(); } catch (e) { console.error(e); } }, 30);
+}
+function pgStoreReport(kind) {
+  storeGo("reports");
+  pickReport(kind, true);
 }
 function pgSeg(id) { const b = document.querySelector("#" + id + " button.on"); return b ? b.dataset.v : ""; }
 function pgSegHtml(id, choices, on) {
   return `<span class="pg-seg" id="${id}">` + choices.map(([v, l]) => `<button data-v="${v}" class="${v === on ? "on" : ""}" onclick="pgSegPick(this)">${l}</button>`).join("") + `</span>`;
 }
-function pgSegPick(b) { b.parentNode.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); pgRepShow(); }
-const PG_RUNS = { rows: null };
-async function pgHubLoad() {
-  refreshDownloadToken();
-  if (PG_RUNS.rows === null && pgHas("hrpayroll")) {
-    PG_RUNS.rows = [];
-    try { PG_RUNS.rows = (await apiCall("/employees/payroll/runs")).rows || []; }
-    catch (e) { showStatus("pgrep-status", "err", "Could not list the office cycles: " + errText(e)); }
-  }
-  pgRepShow();
+function pgSegPick(b) { b.parentNode.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); pgPeopleShow(); }
+function pgHubLoad() { refreshDownloadToken(); pgPeopleShow(); }
+
+// ---- People lists on the reports page ----------------------------------------
+const PG_GROUPS = [["labour", "Labour"], ["office", "Office"], ["local", "Local"], ["household", "Household"]];
+const pgCanGroup = g => CURRENT_ROLE === "admin" || MY_SCREENS.includes("people_" + g[0]);
+let PG_PEOPLE_DRAWN = "";
+function pgPeopleOpts(sb) {
+  if (sb.opts === "days") return pgSegHtml("pg-opt-days", [["30", "30 days"], ["90", "90 days"], ["180", "180 days"]], "90");
+  const g = PG_GROUPS.filter(pgCanGroup); if (sb.people === "register") g.push(["left", "Left"]);
+  return g.length ? pgSegHtml("pg-opt-group", g, g[0][0]) : "";
 }
-// The options a report takes, drawn once per report; a change reloads it.
-function pgRepOptions(sb) {
-  const ym = new Date().toISOString().slice(0, 7);
-  const runs = PG_RUNS.rows || [];
-  const groups = [["labour", "Labour"], ["office", "Office"], ["local", "Local"], ["household", "Household"]];
-  const can = g => CURRENT_ROLE === "admin" || MY_SCREENS.includes("people_" + g[0]);
-  switch (sb.opts) {
-    case "run": return runs.length
-      ? `<label>Cycle</label><select id="pg-opt-run" onchange="pgRepShow()">${runs.map(r => `<option value="${r.id}">${escapeHtml(r.company)} - ${escapeHtml(r.month_year)} (${r.status === "approved" ? "approved" : "draft"})</option>`).join("")}</select>`
-      : `<span class="muted" style="font-size:12px;">No office cycles yet</span>`;
-    case "month": { const months = [...new Set(runs.map(r => r.month_year))]; return months.length
-      ? `<label>Month</label><select id="pg-opt-month" onchange="pgRepShow()">${months.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("")}</select>`
-      : `<span class="muted" style="font-size:12px;">No office cycles yet</span>`; }
-    case "cycle": return `<label>Month</label><input type="month" id="pg-opt-cycle" value="${ym}" onchange="pgRepShow()">`;
-    case "within": return `<label>Expiring within</label><input type="number" id="pg-opt-within" value="90" style="width:70px;" onchange="pgRepShow()"> days`;
-    case "group": { const g = groups.filter(can); if (sb.id === "register") g.push(["left", "Left"]); return g.length ? pgSegHtml("pg-opt-group", g, g[0][0]) : ""; }
-    case "days": return pgSegHtml("pg-opt-days", [["30", "30 days"], ["90", "90 days"], ["180", "180 days"]], "90");
-    case "dates": return `<label>From</label><input type="date" id="pg-opt-from" onchange="pgRepShow()"><label>To</label><input type="date" id="pg-opt-to" onchange="pgRepShow()"><small class="muted" style="font-size:11.5px;">blank = everything</small>`;
-  }
-  return "";
+function pgPeopleQuery(sb) {
+  if (sb.opts === "days") return `days=${pgSeg("pg-opt-days")}&group=`;
+  return `group=${pgSeg("pg-opt-group")}`;
 }
-function pgRepQuery(sb) {
-  const v = id => (document.getElementById(id) || {}).value || "";
-  const q = [];
-  switch (sb.opts) {
-    case "run": if (!v("pg-opt-run")) return null; q.push("run_id=" + v("pg-opt-run")); break;
-    case "month": if (!v("pg-opt-month")) return null; q.push("month_year=" + encodeURIComponent(v("pg-opt-month"))); break;
-    case "cycle": q.push("month_year=" + encodeURIComponent(hrCycleName(v("pg-opt-cycle")))); break;
-    case "within": q.push("within=" + (v("pg-opt-within") || 90)); break;
-    case "group": q.push("group=" + pgSeg("pg-opt-group")); break;
-    case "days": q.push("days=" + pgSeg("pg-opt-days") + "&group="); break;
-    case "dates": if (v("pg-opt-from")) q.push("date_from=" + v("pg-opt-from")); if (v("pg-opt-to")) q.push("date_to=" + v("pg-opt-to")); break;
-  }
-  if (sb.id === "increments") q.push("emp_no=");
-  return q.join("&");
-}
-let PG_REP_DRAWN = "";
-async function pgRepShow() {
-  const sb = PG_SUB; if (!sb || sb.screen) return;
-  const [path, fixed] = sb.report.split("?");
-  document.getElementById("pg-rep-title").textContent = sb.label;
-  document.getElementById("pg-rep-sub").textContent = PG_TAB.label;
-  if (PG_REP_DRAWN !== sb.id) { document.getElementById("pg-repopts").innerHTML = pgRepOptions(sb); PG_REP_DRAWN = sb.id; }
-  const q = pgRepQuery(sb);
-  const note = document.getElementById("pg-frame-note"), frame = document.getElementById("pg-preview");
-  if (q === null) { frame.removeAttribute("src"); note.textContent = "Nothing to show yet - no office cycle has been opened."; return; }
-  note.textContent = "Loading the preview…";
-  const t = await hrToken();
-  const url = `${API}${path}/view?${[fixed, q].filter(Boolean).join("&")}${fixed || q ? "&" : ""}token=${t}`;
-  // The report's own button bar is not needed in here - the bar above
-  // does that - so it is hidden once the page is in.
-  frame.onload = () => {
-    note.textContent = "";
-    try { const d = frame.contentDocument; const st = d.createElement("style"); st.textContent = ".bar{display:none!important} body{background:white!important;padding-top:0!important}"; d.head.appendChild(st); } catch (e) {}
-  };
-  frame.src = url;
+const PG_COLS = {
+  register: [["emp_no", "Code"], ["name", "Name", "txt"], ["designation", "Designation", "txt"], ["company", "Company", "txt"], ["nationality", "Nationality", "txt"],
+             ["joined_on", "Joined"], ["service", "Service"], ["basic", "Basic", "num"], ["allowance", "Allowance", "num"], ["gross", "Gross", "num"],
+             ["pay_route", "Paid by"], ["soonest_expiry", "Next expiry"], ["leave_balance", "Leave bal.", "num"]],
+  "documents-due": [["emp_no", "Code"], ["name", "Name", "txt"], ["group_label", "Register", "txt"], ["kind_label", "Document", "txt"], ["number", "Number"],
+             ["issued_on", "Issued"], ["expires_on", "Expires"], ["days_left", "Days left", "num"], ["status", "Standing"]],
+  leave: [["emp_no", "Code"], ["name", "Name", "txt"], ["designation", "Designation", "txt"], ["company", "Company", "txt"], ["joined_on", "Joined"], ["service", "Service"],
+          ["rule", "Entitlement", "txt"], ["accrued", "Accrued", "num"], ["taken", "Taken", "num"], ["balance", "Balance", "num"], ["next_due", "Next due"], ["due_state", "Standing"]],
+};
+const PG_PATHS = { register: "/employees/people", "documents-due": "/employees/people/documents-due", leave: "/employees/people/leave-balances" };
+async function pgPeopleShow() {
+  const sb = PG_SUB; if (!sb || !sb.people) return;
+  document.getElementById("pg-people-title").textContent = sb.label;
+  if (PG_PEOPLE_DRAWN !== sb.id) { document.getElementById("pg-people-opts").innerHTML = pgPeopleOpts(sb); PG_PEOPLE_DRAWN = sb.id; }
+  const cols = PG_COLS[sb.people];
+  const head = document.getElementById("pg-people-head"), body = document.getElementById("pg-people-body");
+  head.innerHTML = "<tr>" + cols.map(c => `<th class="${c[2] || ""}">${c[1]}</th>`).join("") + "</tr>";
+  body.innerHTML = `<tr><td colspan="${cols.length}" class="empty-note">Loading…</td></tr>`;
+  const q = pgPeopleQuery(sb);
+  let d;
+  try { d = await apiCall(`${PG_PATHS[sb.people]}?${q}`); }
+  catch (e) { body.innerHTML = `<tr><td colspan="${cols.length}" class="empty-note">Could not load: ${escapeHtml(errText(e))}</td></tr>`; return; }
+  const rows = d.rows || [];
+  document.getElementById("pg-people-count").textContent = rows.length ? `${rows.length} row(s)` : "";
+  document.getElementById("pg-people-sub").textContent =
+    sb.people === "leave" && d.rule ? `Entitlement: ${d.rule[0]} days every ${d.rule[1]} months, as at ${isoLocal(new Date())}` :
+    sb.people === "documents-due" ? `Everything expiring within ${d.days} days, soonest first` : `As at ${isoLocal(new Date())}`;
+  const cell = (r, c) => { const v = r[c[0]]; if (v === null || v === undefined || v === "") return "-";
+    return c[2] === "num" && typeof v === "number" ? num(v) : escapeHtml(String(v)); };
+  body.innerHTML = rows.length
+    ? rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${cell(r, c)}</td>`).join("") + "</tr>").join("")
+    : `<tr><td colspan="${cols.length}" class="empty-note">Nothing to show.</td></tr>`;
 }
 async function pgRepUrl(format) {
-  const sb = PG_SUB; const [path, fixed] = sb.report.split("?"); const q = pgRepQuery(sb); if (q === null) return null;
-  const t = await hrToken(); const qs = [fixed, q].filter(Boolean).join("&");
-  return format === "view" ? `${API}${path}/view?${qs}${qs ? "&" : ""}token=${t}` : `${API}${path}?${qs}${qs ? "&" : ""}token=${t}&format=${format}`;
+  const sb = PG_SUB; if (!sb || !sb.people) return null;
+  const t = await hrToken(); const path = `/export/people/${sb.people}`; const q = pgPeopleQuery(sb);
+  return format === "view" ? `${API}${path}/view?${q}&token=${t}` : `${API}${path}?${q}&token=${t}&format=${format}`;
 }
 async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.open(u, "_blank"); }
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
-function pgRepPrint() { const f = document.getElementById("pg-preview"); try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { pgRepOpen(); } }
 </script>
 """
 
