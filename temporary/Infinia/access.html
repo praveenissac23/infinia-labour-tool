@@ -32,6 +32,9 @@
   .tabs { display: flex; gap: 6px; }
   .tab { padding: 8px 15px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 7px 7px 0 0; color: #8A6560; background: #FDF6F5; border: 1px solid #E7CEC9; border-bottom: none; }
   .tab.active { background: var(--red); color: white; border-color: var(--red); }
+  .subtabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 0 0; }
+  .subtab { padding: 6px 12px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: #6A5C55; background: #F7F3EE; border: 1px solid #E4DCD2; border-radius: 6px; cursor: pointer; }
+  .subtab.active { background: #2C2C2C; color: white; border-color: #2C2C2C; }
   .card { background: white; border-radius: 0 10px 10px 10px; border: 1px solid #E9EBEE; padding: 16px 20px; margin-bottom: 14px; }
   .card h2 { font-size: 16px; margin: 0 0 6px; } .muted { color: #888; font-size: 12px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
@@ -71,24 +74,28 @@
     <div class="logo"><b>∞</b> INFINIA</div>
     <div class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
     <div class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
-    <div class="nav-item" id="nav-people" onclick="location.href='people.html'">People</div>
+    <div class="nav-item" id="nav-people" onclick="location.href='people.html'">Staff</div>
     <div class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
     <div class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
     <div class="nav-item" onclick="location.href='reporting.html'">Reports</div>
-    <div class="nav-item" onclick="location.href='settings.html'">Settings</div>
-    <div class="nav-item" onclick="location.href='activity.html'">Activity Monitor</div>
-    <div class="nav-item active">Access</div>
-    <div class="nav-sub" data-tab="roles" onclick="setTab('roles')">Roles</div>
-    <div class="nav-sub" data-tab="users" onclick="setTab('users')">Logins</div>
+    <div class="nav-item active" onclick="location.href='settings.html'">Settings</div>
     <div class="nav-group">TEMPORARY BUILD</div>
     <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
     <div class="nav-sub" onclick="signOut()">Sign out</div>
   </div>
   <div class="main">
-    <div class="top"><h1>Access</h1><div class="who">Signed in as <b id="who-name"></b> · <span id="who-role"></span></div></div>
+    <div class="top"><h1>Settings</h1><div class="who">Signed in as <b id="who-name"></b> · <span id="who-role"></span></div></div>
     <div class="content">
       <div class="status" id="status"></div>
-      <div class="tabs"><span class="tab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="tab" data-tab="users" onclick="setTab('users')">Logins</span></div>
+      <div class="tabs">
+        <span class="tab" onclick="location.href='settings.html#general'">General</span>
+        <span class="tab" onclick="location.href='settings.html#companies'">Companies</span>
+        <span class="tab" onclick="location.href='settings.html#sites'">Sites &amp; engineers</span>
+        <span class="tab" onclick="location.href='settings.html#logins'">Logins</span>
+        <span class="tab" onclick="location.href='settings.html#backup'">Backup</span>
+        <span class="tab active">Access</span>
+      </div>
+      <div class="subtabs"><span class="subtab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="subtab" data-tab="users" onclick="setTab('users')">Logins &amp; their roles</span></div>
 
       <div class="card" id="pane-roles">
         <div class="row"><div><h2>Roles</h2><p class="muted" style="margin:0;">A role is a named set of rights - Assistant Accountant, Purchase Manager, Store Keeper. Give a login a role and it gets exactly those screens; change the role and every login that carries it changes with it.</p></div><span class="grow"></span><button class="btn btn-primary" onclick="openRole(null)">+ New role</button></div>
@@ -176,14 +183,14 @@ function signOut() { sessionStorage.removeItem("infinia_token"); TOKEN = null; l
 async function start() {
   try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
   catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); document.getElementById("login").style.display = "flex"; return; }
-  if (!ME.screens.includes("access")) { document.getElementById("login").style.display = "flex"; document.getElementById("login-error").textContent = "This page is not available to your login."; TOKEN = null; sessionStorage.removeItem("infinia_token"); return; }
+  if (ME.role !== "admin") { document.getElementById("login").style.display = "flex"; document.getElementById("login-error").textContent = "This page is not available to your login."; TOKEN = null; sessionStorage.removeItem("infinia_token"); return; }
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = ME.username; document.getElementById("who-role").textContent = ME.role;
   document.getElementById("nav-people").style.display = ME.screens.some(s => s.startsWith("people_")) ? "" : "none";
   await loadAll(); setTab("roles");
 }
 function setTab(t) {
-  document.querySelectorAll(".tab").forEach(el => el.classList.toggle("active", el.dataset.tab === t));
+  document.querySelectorAll(".subtab").forEach(el => el.classList.toggle("active", el.dataset.tab === t));
   document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
 }
 async function loadAll() {

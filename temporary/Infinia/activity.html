@@ -878,7 +878,6 @@
 <div class="pg-item " data-page="reports" onclick="location.href='reporting.html'">Reports</div>
 <div class="pg-item " data-page="settings" onclick="location.href='settings.html'">Settings</div>
 <div class="pg-item active" data-page="activity" onclick="location.href='activity.html'">Activity Monitor</div>
-<div class="pg-item " data-page="access" onclick="location.href='access.html'">Access</div>
 <div class="pg-group">TEMPORARY BUILD</div>
 <div class="pg-small" onclick="location.href='/app.html'">&larr; Back to the classic app</div>
 </div>
@@ -2671,6 +2670,7 @@
             <h2>Roles &amp; access</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Named sets of rights - Assistant Accountant, Store Keeper, Purchase Manager - and the logins that follow them. Give a login a role and it gets exactly those screens.</p>
             <button class="btn btn-primary" onclick="location.href='access.html'">Open roles &amp; access</button>
+            <p style="font-size:12px; color:#888; margin:10px 0 0;">Admin only - roles cannot carry this tab.</p>
           </div>
 
         </div>
@@ -12931,14 +12931,14 @@ async function addIncrement() {
 // decides whether the screen is here or on another page.
 const PAGE = {"key": "activity", "title": "Activity Monitor", "screens": ["activity"], "tabs": [{"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["settings"], "activity": ["activity"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
 const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "purchase": "store", "followup": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "activity", "monthly": "reports"};
-const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine"], "errorcheck": ["errorcheck"], "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["requests"], "approvals": ["approvals"], "purchase": ["approvals"], "followup": ["requests"], "lporegister": ["approvals"], "suppliers": ["approvals"], "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine"], "errorcheck": ["errorcheck"], "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["requests"], "approvals": ["approvals"], "purchase": ["approvals"], "followup": ["requests"], "lporegister": ["approvals"], "suppliers": ["approvals"], "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
-function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : MY_SCREENS.includes(r)); }
+function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
@@ -12964,6 +12964,7 @@ switchScreen = function (name) {
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
+  if (t.id === "access" && PAGE.key === "settings") { location.href = "access.html"; return; }
   if (t.subs.length) { PG_TAB = t; const first = t.subs.find(sb => pgHas(sb.right)); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;
@@ -13011,7 +13012,7 @@ firstScreenFor = function () {
     if (tb.subs.length) { PG_SUB = tb.subs.find(sb => pgHas(sb.right)) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
     return tb.screen;
   }
-  const pages = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity", "access"];
+  const pages = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity"];
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
     if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = (PAGE_FILE[pg] || pg) + ".html"; return PAGE.tabs[0].screen; }

@@ -754,6 +754,7 @@
   .dash-cal-day.future { background: #EDEDED; color: #9A9A9A; cursor: default; }
   .report-col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
   .report-col-picker label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+  .hr-all-co { margin-bottom: 18px; } .hr-all-co h3 { font-size: 14px; margin: 0 0 6px; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -2663,6 +2664,21 @@
             </div>
 
             <div class="card hr-empty" id="hr-run-empty" style="display:none;"></div>
+            <!-- Every company's sheet for the month, one after another, read-only:
+                 the consolidated view. Editing is done company by company. -->
+            <div class="card" id="hr-run-all" style="display:none;">
+              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <h2 id="hr-all-title" style="margin:0 12px 0 0;">All companies</h2>
+                <span id="hr-all-sub" style="font-size:12px; color:#888;"></span>
+                <div class="hr-cb-spacer"></div>
+                <button class="btn btn-dark" onclick="previewConsolidated()">Preview</button>
+                <button class="btn btn-gray" onclick="downloadConsolidated('pdf')">Export to PDF</button>
+                <button class="btn btn-gray" onclick="downloadConsolidated('excel')">Export to Excel</button>
+                <button class="btn btn-gray" onclick="window.print()">Print</button>
+              </div>
+              <p style="font-size:12px; color:#888; margin:6px 0 0;">To change a figure, pick that company above - its sheet opens for editing.</p>
+              <div id="hr-all-body" style="margin-top:12px;"></div>
+            </div>
             <div class="card" id="hr-run-card" style="display:none;">
               <h2 id="hr-run-title">Cycle</h2>
               <div id="hr-run-notice" class="status-msg warn" style="display:none;"></div>
@@ -11308,9 +11324,8 @@ async function loadHrScreen() {
   } catch (e) { HR_COMPANIES = []; }
   const opts = HR_COMPANIES.map(c =>
     `<option value="${c.id}">${escapeHtml(c.short_name || c.name)}</option>`).join("");
-  document.getElementById("hr-run-company").innerHTML = opts;
-  if (!document.getElementById("hr-run-company").value && HR_COMPANIES[0])
-    document.getElementById("hr-run-company").value = HR_COMPANIES[0].id;
+  document.getElementById("hr-run-company").innerHTML = `<option value="">All companies</option>` + opts;
+  if (!document.getElementById("hr-run-company").value) document.getElementById("hr-run-company").value = "";
   document.getElementById("hr-e-company").innerHTML = opts;
   document.getElementById("hr-n-company").innerHTML = opts;
   document.getElementById("hr-staff-company").innerHTML =
@@ -11408,7 +11423,9 @@ function openPayrollCycle() {
 async function hrOpenNow(force) {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
-  if (!month || !company_id) return;
+  if (!month) return;
+  if (!company_id) { HR_RUN = null; renderRun(); await hrOpenAll(month); return; }
+  document.getElementById("hr-run-all").style.display = "none";
   // Looking at a month is not opening it. A month with no cycle yet -
   // other than the current one - waits for the Open button, so stepping
   // back and forth through the calendar leaves nothing behind.
@@ -11545,6 +11562,7 @@ function renderRun() {
   const card = document.getElementById("hr-run-card");
   if (!r) { card.style.display = "none"; return; }
   card.style.display = "";
+  document.getElementById("hr-run-all").style.display = "none";
   const locked = r.status === "approved";
   hrSyncBar();
   document.getElementById("hr-run-title").innerHTML =
@@ -11752,6 +11770,64 @@ async function printStatement() {
   if (w) w.addEventListener("load", () => w.print());
 }
 
+// Every company's sheet for the month and statement, one table each with
+// its total, and the grand total - the consolidated statement on screen.
+async function hrOpenAll(month) {
+  const group = document.getElementById("hr-run-group").value || "staff";
+  document.getElementById("hr-run-empty").style.display = "none";
+  const card = document.getElementById("hr-run-all"); card.style.display = "";
+  document.getElementById("hr-all-title").textContent = `All companies \u00b7 ${group === "local" ? "Local staff" : "Office staff"} \u00b7 ${month}`;
+  const body = document.getElementById("hr-all-body");
+  body.innerHTML = '<div class="hr-nil" style="padding:10px;">Loading\u2026</div>';
+  if (!HR_RUNS.length) await loadRunList();
+  const runs = [];
+  for (const co of HR_COMPANIES) {
+    const short = co.short_name || co.name;
+    const r = HR_RUNS.find(x => x.month_year === month && x.company === short && (x.group || "staff") === group);
+    let full = null;
+    if (r) { try { full = await apiCall(`/employees/payroll/runs/${r.id}`); } catch (e) { full = null; } }
+    runs.push({ co, short, run: full });
+  }
+  const money = v => hrMoney(v);
+  let gPaid = 0, gHeld = 0; const gsum = { basic: 0, allowance: 0, adj: 0, deduction: 0, loan_deduction: 0, net_pay: 0 };
+  body.innerHTML = runs.map(({ co, short, run }) => {
+    if (!run) return `<div class="hr-all-co"><h3>${escapeHtml(short)} <span class="hr-nil">- ${escapeHtml(month)} not opened yet</span></h3></div>`;
+    const paid = run.lines.filter(l => !l.held), held = run.lines.length - paid.length;
+    const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
+    const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
+    gPaid += paid.length; gHeld += held;
+    for (const k of ["basic", "allowance", "deduction", "loan_deduction", "net_pay"]) gsum[k] += sum(k);
+    gsum.adj += adj;
+    const locked = run.status === "approved";
+    return `<div class="hr-all-co">
+      <h3>${escapeHtml(short)} <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>
+        <a href="#" onclick="document.getElementById('hr-run-company').value='${co.id}'; hrSyncBar(); openPayrollCycle(); return false;" style="font-size:12px; margin-left:10px; color:var(--red);">Open for editing</a></h3>
+      <div class="grid-wrap"><table class="hr-grid">
+        <thead><tr><th style="width:7%;">Code</th><th class="txt" style="width:22%;">Employee</th><th class="num">Basic</th><th class="num">Allowance</th>
+          <th class="num">Add / Ded.</th><th class="num">Absent Ded.</th><th class="num">Loan</th><th class="num">Net Pay</th><th class="txt" style="width:22%;">Remark</th></tr></thead>
+        <tbody>${run.lines.map(l => { const a = hrAdjust(l); return `<tr${l.held ? ' class="hr-held"' : ""}>
+          <td>${escapeHtml(l.emp_no)}</td><td class="txt">${escapeHtml(l.name)}${l.held ? ' <span class="hr-nil">held</span>' : ""}</td>
+          <td class="num">${money(l.basic)}</td><td class="num">${money(l.allowance)}</td>
+          <td class="num">${a ? (a > 0 ? "+" : "-") + money(Math.abs(a)) : '<span class="hr-nil">-</span>'}</td>
+          <td class="num">${l.deduction ? money(l.deduction) : '<span class="hr-nil">-</span>'}</td>
+          <td class="num">${l.loan_deduction ? money(l.loan_deduction) : '<span class="hr-nil">-</span>'}</td>
+          <td class="num net">${money(l.net_pay)}</td><td class="txt">${escapeHtml(l.remarks || l.deduction_note || "")}</td></tr>`; }).join("")}</tbody>
+        <tfoot><tr class="hr-foot"><td colspan="2" class="txt">${escapeHtml(short)} - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
+          <td class="num">${money(sum("basic"))}</td><td class="num">${money(sum("allowance"))}</td><td class="num">${adj ? money(adj) : "-"}</td>
+          <td class="num">${money(sum("deduction"))}</td><td class="num">${money(sum("loan_deduction"))}</td><td class="num">${money(sum("net_pay"))}</td><td></td></tr></tfoot>
+      </table></div></div>`;
+  }).join("") + (gPaid ? `<div class="grid-wrap" style="margin-top:8px;"><table class="hr-grid"><tfoot><tr class="hr-foot">
+      <td colspan="2" class="txt" style="width:29%;">GRAND TOTAL - ${gPaid} staff${gHeld ? `, ${gHeld} held over` : ""}</td>
+      <td class="num">${money(gsum.basic)}</td><td class="num">${money(gsum.allowance)}</td><td class="num">${gsum.adj ? money(gsum.adj) : "-"}</td>
+      <td class="num">${money(gsum.deduction)}</td><td class="num">${money(gsum.loan_deduction)}</td><td class="num">${money(gsum.net_pay)}</td><td style="width:22%;"></td></tr></tfoot></table></div>` : "");
+  document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${runs.length} companies opened`;
+  hrSyncBar();
+}
+async function downloadConsolidated(fmt) {
+  const month = hrCycleName(document.getElementById("hr-run-month").value);
+  if (!month) { hrMsg("warn", "Pick a month first."); return; }
+  window.open(`${API}/export/payroll/consolidated?month_year=${encodeURIComponent(month)}&format=${fmt}&token=${await hrToken()}`, "_blank");
+}
 async function previewConsolidated() {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   if (!month) { hrMsg("warn", "Pick a month first."); return; }

@@ -137,7 +137,6 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # One right per register, so a login can be given the
                # labour list without the office salaries.
                "people_labour", "people_office", "people_local", "people_household",
-               "access",
                # Not a screen but a right: who may record a receipt, an
                # issue, a return or a write-off. It was decided by role,
                # which made the store keeper's own job depend on which

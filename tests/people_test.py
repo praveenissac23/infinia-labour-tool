@@ -50,7 +50,8 @@ ck('nor the site login', c.get('/employees/people', headers=S).status_code == 40
 ck('nor the Access page', c.get('/permissions/roles', headers=O).status_code == 403)
 ck('admin can', c.get('/employees/people', headers=H).status_code == 200)
 ck('the new rights are known to the app', all(s in c.get('/permissions/screens', headers=H).json()['screens']
-                                                for s in ('people_labour', 'people_office', 'people_local', 'people_household', 'access')))
+                                                for s in ('people_labour', 'people_office', 'people_local', 'people_household')))
+ck('and access itself is not a right a role can carry', 'access' not in c.get('/permissions/screens', headers=H).json()['screens'])
 
 # ---- A company and a labourer from the OLD screens ------------------------
 co = c.post('/employees/companies', json={'name': 'INFINIA CONTRACTING L.L.C.', 'short_name': 'Infinia', 'code_prefix': 'IC'}, headers=H).json()

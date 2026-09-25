@@ -25,7 +25,7 @@ router = APIRouter()
 PEOPLE_RIGHTS = {"labour": "people_labour", "office": "people_office",
                  "local": "people_local", "household": "people_household"}
 PEOPLE = Depends(M.require_any_screen(*PEOPLE_RIGHTS.values()))
-ACCESS = Depends(M.require_screen("access"))
+ACCESS = Depends(auth.require_admin)   # roles and logins: admin only
 
 
 def allowed_groups(user):
@@ -717,7 +717,7 @@ SCREEN_LABELS = {
     "settings": "Settings", "activity": "Activity monitor", "hrpayroll": "Office HR & Payroll (office salaries)",
     "storekeeper": "Record stock in / out", "people_labour": "Labour register",
     "people_office": "Office staff register (office salaries)", "people_local": "Local staff register",
-    "people_household": "Household register", "access": "Roles & access",
+    "people_household": "Household register",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
@@ -728,7 +728,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Reports", ["reports"]),
-    ("Settings", ["settings", "access"]),
+    ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),
 ]
 

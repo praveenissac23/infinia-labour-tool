@@ -150,10 +150,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   for (const d of ['30', '180', '90']) { await p.click(`#due-days button[data-v="${d}"]`); pressed++; await p.waitForTimeout(500); }
   for (const g of ['labour', 'office', '']) { await p.click(`#due-group button[data-v="${g}"]`); pressed++; await p.waitForTimeout(500); }
   for (const text of ['Preview', 'Export to PDF', 'Export to Excel']) { await p.click(`#view-due button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
-  await p.click('.nav-sub[data-view="leave"]'); await p.waitForTimeout(900);
-  ck('Leave balances opens', await p.locator('#view-leave').isVisible() && await p.locator('#lv-body tr').count() > 0);
-  for (const g of ['office', 'local', 'household', 'labour']) { await p.click(`#lv-group button[data-v="${g}"]`); pressed++; await p.waitForTimeout(500); }
-  for (const text of ['Preview', 'Export to PDF', 'Export to Excel']) { await p.click(`#view-leave button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
+  ck('Leave balances is no longer a view of its own', await p.locator('.nav-sub[data-view="leave"]').count() === 0);
   ck('the six report buttons opened six tabs', newPages.length === 6, newPages.length);
   for (const pg of newPages) { await pg.waitForLoadState().catch(() => {}); ck(`opened: ${((await pg.url()).split('/export/')[1] || pg.url()).split('&token')[0]}`, !/"detail"/.test(await pg.content().catch(() => '"detail"'))); await pg.close().catch(() => {}); }
   newPages.length = 0;
@@ -167,7 +164,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   await p.fill('#r-name', 'Sweep Role'); await p.click('#r-rights input[value="attendance"]'); await p.click('#r-rights input[value="reports"]');
   await p.click('#dlg-role button:has-text("Save role")'); await p.waitForTimeout(900);
   ck('a role is made from ticks', (await p.locator('#roles-body').textContent()).includes('Sweep Role'));
-  await p.click('.tab[data-tab="users"]'); await p.waitForTimeout(300);
+  await p.click('.subtab[data-tab="users"]'); await p.waitForTimeout(300);
   ck('the logins tab lists the logins', await p.locator('#users-body tr').count() >= 1);
   await p.click('button:has-text("+ New login")'); await p.waitForTimeout(300);
   await p.fill('#u-username', 'sweepuser'); await p.fill('#u-full_name', 'Sweep User'); await p.fill('#u-password', 'sweep123');
@@ -179,7 +176,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   await rowU.locator('button:has-text("Role")').click(); await p.waitForTimeout(300);
   await p.click('#as-role button[data-v=""]'); await p.click('#dlg-assign button:has-text("Apply")'); await p.waitForTimeout(800);
   ck('a role can be taken off a login', (await p.locator('#users-body tr', { hasText: 'sweepuser' }).textContent()).includes('set by hand'));
-  await p.click('.tab[data-tab="roles"]'); await p.waitForTimeout(200);
+  await p.click('.subtab[data-tab="roles"]'); await p.waitForTimeout(200);
   await p.locator('#roles-body tr', { hasText: 'Sweep Role' }).locator('button:has-text("Delete")').click(); await p.waitForTimeout(200);
   ck('delete asks in the page', await p.locator('.ask').count() === 1);
   await p.click('.ask [data-a="yes"]'); await p.waitForTimeout(800);

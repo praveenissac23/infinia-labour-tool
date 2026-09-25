@@ -72,10 +72,9 @@ PAGES = {
             sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
             sub("docs", "Documents", screen="hrpayroll", go="hrTab('docs')"),
             sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
-        tab("people", "pgreports", "People", PEOPLE_RIGHTS, subs=[
+        tab("people", "pgreports", "Staff", PEOPLE_RIGHTS, subs=[
             sub("register", "Register", right=PEOPLE_RIGHTS, people="register", opts="group"),
-            sub("due", "Documents due", right=PEOPLE_RIGHTS, people="documents-due", opts="days"),
-            sub("balances", "Leave balances", right=PEOPLE_RIGHTS, people="leave", opts="group")]),
+            sub("due", "Documents due", right=PEOPLE_RIGHTS, people="documents-due", opts="days")]),
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
             sub("stock", "Current stock", screen="store", right=STORE_RIGHTS, go="pgStoreReport('stock')"),
             sub("by_site", "At sites", screen="store", right=STORE_RIGHTS, go="pgStoreReport('by_site')"),
@@ -95,18 +94,19 @@ PAGES = {
         tab("companies", "settings", "Companies", "settings", ["#companies-card"]),
         tab("sites", "settings", "Sites & engineers", "settings", ["#pg-sites-block"]),
         tab("logins", "settings", "Logins", "settings", ["#user-mgmt-card", "#pg-roles-card"]),
-        tab("backup", "settings", "Backup", "settings", ["#pg-backup-card"])]),
-    "activity": ("Activity Monitor", [tab("activity", "activity", "Activity monitor")]),
+        tab("backup", "settings", "Backup", "settings", ["#pg-backup-card"]),
+        tab("activity", "activity", "Activity monitor", "activity"),
+        tab("access", "settings", "Access", "__admin__", ["#pg-roles-card"])]),
 }
 # Screens without a tab of their own, reached from inside another.
 EXTRA = {"monthly": "reports"}
-ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity", "access"]
+ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
 FILE = {"reports": "reporting"}
 def fname(key): return FILE.get(key, key) + ".html"
-STANDALONE = {"people": ("People", ["people_labour", "people_office", "people_local", "people_household"]),
+STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local", "people_household"]),
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor"}
@@ -219,6 +219,7 @@ ROLES_CARD = """
             <h2>Roles &amp; access</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Named sets of rights - Assistant Accountant, Store Keeper, Purchase Manager - and the logins that follow them. Give a login a role and it gets exactly those screens.</p>
             <button class="btn btn-primary" onclick="location.href='access.html'">Open roles &amp; access</button>
+            <p style="font-size:12px; color:#888; margin:10px 0 0;">Admin only - roles cannot carry this tab.</p>
           </div>
 """
 
@@ -237,7 +238,7 @@ SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = %(file_json)s;
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
-function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : MY_SCREENS.includes(r)); }
+function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
@@ -263,6 +264,7 @@ switchScreen = function (name) {
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
+  if (t.id === "access" && PAGE.key === "settings") { location.href = "access.html"; return; }
   if (t.subs.length) { PG_TAB = t; const first = t.subs.find(sb => pgHas(sb.right)); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;

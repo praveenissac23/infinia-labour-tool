@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>People - Infinia</title>
+<title>Staff - Infinia</title>
 <style>
   :root { --red: #C0392B; --red-hover: #A5301F; --black: #2E3238; --darkgray: #3E434A;
           --silver: #C7CBD1; --lightgray: #F1EFEA; }
@@ -112,7 +112,7 @@
 
 <div id="login">
   <div class="login-box">
-    <h1>Infinia · People</h1>
+    <h1>Infinia · Staff</h1>
     <p>Sign in with your app login.</p>
     <input type="text" id="login-username" placeholder="Username" autocomplete="username">
     <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter') doLogin()">
@@ -126,22 +126,20 @@
     <div class="logo"><b>∞</b> INFINIA</div>
     <div class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
     <div class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
-    <div class="nav-item active">People</div>
+    <div class="nav-item active">Staff</div>
     <div class="nav-sub active" data-view="register" onclick="showView('register')">Register</div>
     <div class="nav-sub" data-view="due" onclick="showView('due')">Documents due</div>
-    <div class="nav-sub" data-view="leave" onclick="showView('leave')">Leave balances</div>
     <div class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
     <div class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
     <div class="nav-item" onclick="location.href='reporting.html'">Reports</div>
     <div class="nav-item" onclick="location.href='settings.html'">Settings</div>
-    <div class="nav-item" onclick="location.href='activity.html'">Activity Monitor</div>
     <div class="nav-item" id="nav-access" onclick="location.href='access.html'" style="display:none;">Access</div>
     <div class="nav-group">TEMPORARY BUILD</div>
     <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
     <div class="nav-sub" onclick="signOut()">Sign out</div>
   </div>
   <div class="main">
-    <div class="top"><h1 id="page-title">People</h1><div class="who">Signed in as <b id="who-name"></b> · <span id="who-role"></span></div></div>
+    <div class="top"><h1 id="page-title">Staff</h1><div class="who">Signed in as <b id="who-name"></b> · <span id="who-role"></span></div></div>
     <div class="content">
       <div class="status" id="status"></div>
 
@@ -465,7 +463,7 @@ async function start() {
     if (b.dataset.v && !ME.groups.includes(b.dataset.v)) b.remove();
   });
   if (!ME.groups.includes(P.leaveGroup)) { P.leaveGroup = ME.groups[0]; segSet(document.getElementById("lv-group"), P.leaveGroup); }
-  showView(localStorage.getItem("people_view") || "register");
+  showView((localStorage.getItem("people_view") || "register").replace("leave", "register"));
 }
 async function refreshDl() {
   try { DLTOKEN = (await apiCall("/auth/download-token", { method: "POST" })).token; } catch (e) {}
@@ -477,7 +475,7 @@ function showView(v) {
   P.view = v; localStorage.setItem("people_view", v);
   ["register", "due", "leave"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
   document.querySelectorAll(".nav-sub[data-view]").forEach(el => el.classList.toggle("active", el.dataset.view === v));
-  document.getElementById("page-title").textContent = { register: "People", due: "People · Documents due", leave: "People · Leave balances" }[v];
+  document.getElementById("page-title").textContent = { register: "Staff", due: "Staff · Documents due", leave: "Staff · Leave balances" }[v];
   if (v === "register") loadPeople(); if (v === "due") loadDue(); if (v === "leave") loadLeave();
 }
 

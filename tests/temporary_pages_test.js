@@ -11,9 +11,9 @@ const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['combine', 'errorcheck', 'hrpayroll'],
   store: ['store', 'requests', 'approvals', 'purchase', 'followup', 'lporegister', 'suppliers'],
-  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'sites', 'logins', 'backup'], activity: ['activity'],
+  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'sites', 'logins', 'backup', 'activity', 'access'],
 };
-const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store' };
+const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
 
 (async () => {
   const b = await chromium.launch();
@@ -24,7 +24,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   ck('a temporary page opens on the sign-in', await p.locator('#login-screen').isVisible());
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1500);
-  ck('the new menu has eight entries and the old one is hidden', await p.locator('.pg-side .pg-item:visible').count() === 9 && !(await p.locator('#legacy-sidebar').isVisible()));
+  ck('the new menu has seven entries and the old one is hidden', await p.locator('.pg-side .pg-item:visible').count() === 7 && !(await p.locator('#legacy-sidebar').isVisible()));
   ck('the dashboard has no tab strip (one screen)', !(await p.locator('#pg-tabs').isVisible()));
 
   for (const [page, screens] of Object.entries(PAGES)) {
@@ -34,6 +34,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
     if (screens.length > 1) {
       ck(`${page}.html: ${screens.length} tabs`, await p.locator('#pg-tabs .pg-tab').count() === screens.length, await p.locator('#pg-tabs').textContent());
       for (const s of screens) {
+        if (s === 'access') continue;   // goes to access.html - checked below
         await p.click(`#pg-tabs .pg-tab[data-tab="${s}"]`); await p.waitForTimeout(700);
         ck(`${page}.html: tab ${s} shows its screen`, await p.locator(`#screen-${SCREEN_OF[s] || s}.active`).count() === 1 && await p.locator(`#pg-tabs .pg-tab.active[data-tab="${s}"]`).count() === 1);
         if (SCREEN_OF[s] === 'settings') {
@@ -55,7 +56,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   for (const t of ['office', 'people', 'storerep']) {
     await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(900);
     const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
-    ck(`${t}: has sub-tabs (${subs.length})`, subs.length >= 3, subs);
+    ck(`${t}: has sub-tabs (${subs.length})`, subs.length >= 2, subs);
     for (let i = 0; i < subs.length; i++) {
       await p.locator('#pg-sub .pg-subtab').nth(i).click(); await p.waitForTimeout(1200);
       ck(`${t} › ${subs[i]} is the active sub-tab`, (await p.locator('#pg-sub .pg-subtab.active').textContent()) === subs[i]);
@@ -121,8 +122,10 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   ck('the dashboard store shortcuts land on the store page', p.url().includes('store.html#store:items') && await p.locator('#screen-store.active').count() === 1, p.url());
   await p.click('.pg-side .pg-item[data-page="people"]'); await p.waitForTimeout(1200);
   ck('People opens from the menu on the same sign-in', p.url().endsWith('people.html') && await p.locator('#shell').isVisible());
-  await p.click('.nav-item:has-text("Access")'); await p.waitForTimeout(1200);
-  ck('and Access', p.url().endsWith('access.html') && await p.locator('#shell').isVisible());
+  await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
+  ck('Settings has an Access tab for the admin', await p.locator('#pg-tabs .pg-tab[data-tab="access"]').count() === 1);
+  await p.click('#pg-tabs .pg-tab[data-tab="access"]'); await p.waitForTimeout(1500);
+  ck('and it opens the Access page under Settings', p.url().endsWith('access.html') && await p.locator('#shell').isVisible() && await p.locator('.tab.active:has-text("Access")').count() === 1);
 
   // A limited login: requests + dashboard only.
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(800);
@@ -148,6 +151,13 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   await p2.goto(BASE + 'payroll.html'); await p2.waitForTimeout(2500);
   ck('a page with nothing for that login sends it to one that has', !p2.url().includes('payroll.html'), p2.url());
   ck('no script errors for the limited login', errs2.length === 0, errs2.slice(0, 3));
+  await p2.goto(BASE + 'settings.html'); await p2.waitForSelector('#app-screen', { state: 'visible' }); await p2.waitForTimeout(1500);
+  const stabs = await p2.locator('#pg-tabs .pg-tab').allTextContents();
+  ck('a non-admin login with Settings gets no Access tab', !stabs.includes('Access'), stabs);
+  const rr = await p2.evaluate(async () => { try { await apiCall('/permissions/roles'); return 200; } catch (e) { return e.status; } });
+  ck('and the server refuses it the roles', rr === 403, rr);
+  await p2.goto(BASE + 'access.html'); await p2.waitForTimeout(1800);
+  ck('typing access.html gets "not available"', /not available/i.test(await p2.locator('#login-error').textContent()));
   await p2.close();
   await p.evaluate(async () => { const u = (await apiCall('/users')).find(x => x.username === 'tmp_req'); if (u) await apiCall(`/users/${u.id}`, { method: 'DELETE' }).catch(() => {}); });
   ck('no script errors, no pop-ups', errs.length === 0, errs.slice(0, 5));
