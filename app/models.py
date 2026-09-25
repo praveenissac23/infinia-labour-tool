@@ -34,6 +34,9 @@ class User(Base):
     # so existing users keep working unchanged. Admin ignores it and
     # always has everything.
     permissions = Column(Text, default="")  # "admin" | "staff"
+    # The named role (access_roles) these permissions were copied from,
+    # so changing the role can update every login that carries it.
+    access_role_id = Column(Integer, nullable=True)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -862,3 +865,109 @@ class PayrollLine(Base):
 
     run = relationship("PayrollRun", back_populates="lines")
     employee = relationship("Employee")
+
+
+# ---------------------------------------------------------------------
+# PEOPLE - the HR file kept beside the employee record
+#
+# Built on its own page first (temporary/Infinia/people.html) so it can
+# be tried without touching the screens the office uses every day. The
+# rule that makes that safe: nothing here copies a record. A person is
+# still one row in `employees`; what the app never kept about him -
+# passport, contacts, contract, housing - sits in one row here, keyed to
+# that employee. Both pages read and write the same employee row, so
+# there is nothing to merge when the page moves into the main app.
+# ---------------------------------------------------------------------
+class PeopleProfile(Base):
+    __tablename__ = "people_profiles"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, unique=True, index=True)
+    # Which register tab he is on. Empty means worked out from the
+    # employee record (labour / office / local); set only to put a
+    # maid or a driver on the household tab.
+    group = Column(String, default="")             # "" | labour | office | local | household
+
+    # Identity
+    date_of_birth = Column(Date, nullable=True)
+    gender = Column(String, default="")
+    nationality = Column(String, default="")
+    marital_status = Column(String, default="")
+    religion = Column(String, default="")
+    blood_group = Column(String, default="")
+    mobile = Column(String, default="")
+    personal_email = Column(String, default="")
+    work_email = Column(String, default="")
+    uae_address = Column(String, default="")
+    home_address = Column(String, default="")
+    home_phone = Column(String, default="")
+    emergency_name = Column(String, default="")
+    emergency_relation = Column(String, default="")
+    emergency_phone = Column(String, default="")
+
+    # Employment
+    department = Column(String, default="")
+    reports_to = Column(String, default="")
+    employment_type = Column(String, default="")   # limited | unlimited | part-time
+    contract_no = Column(String, default="")
+    contract_expiry = Column(Date, nullable=True)
+    mohre_no = Column(String, default="")
+    leaving_reason = Column(String, default="")
+    rehire = Column(String, default="")            # "" | yes | no
+
+    # Pay extras (the figures themselves stay on the employee record)
+    bank_name = Column(String, default="")
+    iloe = Column(String, default="")
+
+    # Housing and transport
+    accommodation = Column(String, default="")
+    room = Column(String, default="")
+    transport = Column(String, default="")
+
+    # Leave. The rule comes from the group - labour 60 days after two
+    # years, everyone else 30 days a year - unless a contract says
+    # otherwise, in which case it is written here.
+    leave_days = Column(Float, nullable=True)      # days per period, blank = group rule
+    leave_months = Column(Integer, nullable=True)  # period in months, blank = group rule
+    leave_opening = Column(Float, default=0.0)     # balance carried in from before the app
+    leave_opening_on = Column(Date, nullable=True) # the day that opening balance stood
+    ticket_every_years = Column(Integer, default=2)
+    last_ticket_on = Column(Date, nullable=True)
+
+    notes = Column(Text, default="")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class PeopleAsset(Base):
+    """Something handed to a person that comes back when he leaves."""
+    __tablename__ = "people_assets"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    item = Column(String, nullable=False)
+    tag = Column(String, default="")
+    issued_on = Column(Date, nullable=True)
+    returned_on = Column(Date, nullable=True)
+    condition = Column(String, default="")
+    notes = Column(String, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class AccessRole(Base):
+    """A named set of rights - Assistant Accountant, Store Keeper.
+
+    A login given a role gets the role's screens written into its own
+    permissions column, the same column the app has always read. So a
+    role is a convenience for setting many logins alike; the app's
+    checks are unchanged, and a login keeps working exactly as set even
+    if the role is later deleted.
+    """
+    __tablename__ = "access_roles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    screens = Column(Text, default="")             # comma-separated, like users.permissions
+    notes = Column(String, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

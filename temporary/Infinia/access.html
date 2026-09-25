@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Access - Infinia</title>
+<style>
+  :root { --red: #C0392B; --red-hover: #A5301F; --black: #2E3238; --darkgray: #3E434A; --silver: #C7CBD1; --lightgray: #F1EFEA; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Verdana, sans-serif; font-size: 13.5px; color: var(--black); background: var(--lightgray); }
+  button { font-family: inherit; cursor: pointer; } input, select { font-family: inherit; font-size: 13.5px; }
+  .btn { padding: 8px 14px; border: 1px solid transparent; border-radius: 7px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .btn-primary { background: var(--red); color: white; } .btn-primary:hover { background: var(--red-hover); }
+  .btn-dark, .btn-gray { background: #FDF6F5; color: #8A6560; border-color: #E7CEC9; } .btn-dark { color: #7A3B33; }
+  .btn-danger { background: #FDF0EE; color: var(--red); border-color: #E8C7C2; } .btn-sm { padding: 4px 9px; font-size: 12px; }
+  td .btn { margin: 2px; }
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-box { background: white; border-radius: 12px; padding: 30px 34px; width: 360px; box-shadow: 0 6px 24px rgba(0,0,0,.08); }
+  .login-box h1 { font-size: 18px; margin: 0 0 4px; } .login-box p { color: #888; font-size: 12.5px; margin: 0 0 16px; }
+  .login-box input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; margin-bottom: 10px; }
+  .login-box .err { color: var(--red); font-size: 12.5px; min-height: 18px; margin: 4px 0 8px; }
+  .shell { display: none; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--black); flex-shrink: 0; padding: 16px 0; }
+  .logo { margin: 0 16px 18px; background: white; border-radius: 6px; padding: 10px 14px; font-weight: 800; letter-spacing: 2px; font-size: 15px; } .logo b { color: var(--red); }
+  .nav-item { color: var(--silver); padding: 11px 20px; font-size: 13.5px; font-weight: bold; cursor: pointer; } .nav-item:hover { background: var(--darkgray); color: white; } .nav-item.active { background: var(--red); color: white; }
+  .nav-sub { color: #9DA3AA; padding: 8px 20px 8px 32px; font-size: 12.5px; cursor: pointer; } .nav-sub:hover { color: white; }
+  .nav-group { padding: 12px 20px 6px; font-size: 11px; letter-spacing: 1px; font-weight: 800; color: #F4BFB8; background: rgba(192,57,43,.28); margin-top: 8px; }
+  .main { flex: 1; min-width: 0; } .top { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px 10px; } .top h1 { font-size: 20px; margin: 0; }
+  .who { font-size: 13px; color: #777; } .who b { color: var(--black); } .content { padding: 0 24px 24px; }
+  .status { display: none; padding: 9px 12px; border-radius: 7px; font-size: 13px; margin: 0 0 10px; }
+  .status.warn { display: block; background: #FDF0EE; color: #A5301F; border: 1px solid #E8C7C2; } .status.ok { display: block; background: #E9F6EC; color: #1E7A3A; border: 1px solid #C9E8D1; }
+  .tabs { display: flex; gap: 6px; }
+  .tab { padding: 8px 15px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 7px 7px 0 0; color: #8A6560; background: #FDF6F5; border: 1px solid #E7CEC9; border-bottom: none; }
+  .tab.active { background: var(--red); color: white; border-color: var(--red); }
+  .card { background: white; border-radius: 0 10px 10px 10px; border: 1px solid #E9EBEE; padding: 16px 20px; margin-bottom: 14px; }
+  .card h2 { font-size: 16px; margin: 0 0 6px; } .muted { color: #888; font-size: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .row input[type=text], .row input[type=password] { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; }
+  .grow { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 8px; overflow: hidden; background: #FBF8F4; flex-wrap: wrap; }
+  .seg button { border: 0; background: transparent; padding: 7px 13px; font-size: 12.5px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; }
+  .seg button:last-child { border-right: 0; } .seg button.on { background: var(--red); color: white; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .pill.g { background: #E6F4EA; color: #1E7A3A; } .pill.y { background: #FFF3D6; color: #8A6100; } .pill.r { background: #FBE4E1; color: #A5301F; } .pill.b { background: #E3F0F7; color: #1F5F80; } .pill.gr { background: #EEE; color: #666; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-size: 11px; letter-spacing: .5px; color: #666; text-transform: uppercase; padding: 8px 6px; border-bottom: 1px solid #E4E0DB; background: #FAF8F5; }
+  td { padding: 7px 6px; border-bottom: 1px solid #F0EDE8; vertical-align: middle; } tbody tr:nth-child(even) td { background: #FCFBF9; }
+  .grid-wrap { overflow: auto; max-height: 70vh; border: 1px solid #E9EBEE; border-radius: 8px; }
+  .matrix td, .matrix th { text-align: center; } .matrix td:first-child, .matrix th:first-child, .matrix td:nth-child(2), .matrix th:nth-child(2) { text-align: left; }
+  .tick { color: #1E7A3A; font-weight: 800; } .cross { color: #C7C2BC; }
+  .rights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; margin: 8px 0; }
+  .rights label { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+  .dlg { position: fixed; inset: 0; background: rgba(30,24,20,.42); z-index: 2500; display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+  .dlg-box { background: white; border-radius: 12px; padding: 22px 24px; width: 100%; max-width: 820px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .dlg h3 { font-size: 16px; margin: 0 0 12px; }
+  .fld { display: inline-flex; flex-direction: column; gap: 3px; } .fld > span { font-size: 11px; font-weight: 700; color: #6B7075; }
+  .fld input { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; }
+  .ask { position: fixed; inset: 0; background: rgba(30,24,20,.38); z-index: 3000; display: flex; align-items: center; justify-content: center; }
+  .ask-box { background: white; border-radius: 12px; padding: 20px 22px 16px; max-width: 460px; width: 92%; } .ask-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="login"><div class="login-box"><h1>Infinia · Access</h1><p>Sign in with your app login.</p>
+  <input type="text" id="login-username" placeholder="Username"><input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter') doLogin()">
+  <div class="err" id="login-error"></div><button class="btn btn-primary" style="width:100%;" onclick="doLogin()">Sign in</button></div></div>
+
+<div class="shell" id="shell">
+  <div class="sidebar">
+    <div class="logo"><b>∞</b> INFINIA</div>
+    <div class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
+    <div class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
+    <div class="nav-item" id="nav-people" onclick="location.href='people.html'">People</div>
+    <div class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
+    <div class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
+    <div class="nav-item" onclick="location.href='reports.html'">Reports</div>
+    <div class="nav-item" onclick="location.href='settings.html'">Settings</div>
+    <div class="nav-item" onclick="location.href='activity.html'">Activity Monitor</div>
+    <div class="nav-item active">Access</div>
+    <div class="nav-sub" data-tab="roles" onclick="setTab('roles')">Roles</div>
+    <div class="nav-sub" data-tab="users" onclick="setTab('users')">Logins</div>
+    <div class="nav-group">TEMPORARY BUILD</div>
+    <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
+    <div class="nav-sub" onclick="signOut()">Sign out</div>
+  </div>
+  <div class="main">
+    <div class="top"><h1>Access</h1><div class="who">Signed in as <b id="who-name"></b> · <span id="who-role"></span></div></div>
+    <div class="content">
+      <div class="status" id="status"></div>
+      <div class="tabs"><span class="tab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="tab" data-tab="users" onclick="setTab('users')">Logins</span></div>
+
+      <div class="card" id="pane-roles">
+        <div class="row"><div><h2>Roles</h2><p class="muted" style="margin:0;">A role is a named set of rights - Assistant Accountant, Purchase Manager, Store Keeper. Give a login a role and it gets exactly those screens; change the role and every login that carries it changes with it.</p></div><span class="grow"></span><button class="btn btn-primary" onclick="openRole(null)">+ New role</button></div>
+        <div class="grid-wrap"><table class="matrix"><thead id="roles-head"></thead><tbody id="roles-body"></tbody></table></div>
+        <p class="muted">Settings is on every role - it is where anyone changes their own password. Admin logins always have everything and cannot be given a role.</p>
+      </div>
+
+      <div class="card" id="pane-users" style="display:none;">
+        <div class="row"><div><h2>Logins</h2><p class="muted" style="margin:0;">Who can sign in, and which role each follows. A login without a role keeps whatever rights it was given in the app's Settings.</p></div><span class="grow"></span><button class="btn btn-primary" onclick="openUser()">+ New login</button></div>
+        <div class="grid-wrap"><table><thead><tr><th>Login</th><th>Name</th><th>Type</th><th>Role</th><th>Screens</th><th>Status</th><th></th></tr></thead><tbody id="users-body"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dlg" id="dlg-role" onclick="if (event.target === this) closeDlg('dlg-role')">
+  <div class="dlg-box">
+    <h3 id="role-title">New role</h3>
+    <div class="row"><label class="fld"><span>Role name *</span><input type="text" id="r-name" style="width:260px;" placeholder="Assistant Accountant"></label>
+      <label class="fld"><span>Notes</span><input type="text" id="r-notes" style="width:360px;" placeholder="What this person does"></label></div>
+    <div class="row"><span class="muted">Screens this role may open:</span></div>
+    <div class="rights" id="r-rights"></div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveRole()">Save role</button><button class="btn btn-gray" onclick="closeDlg('dlg-role')">Cancel</button><span class="muted" id="role-msg"></span></div>
+  </div>
+</div>
+
+<div class="dlg" id="dlg-user" onclick="if (event.target === this) closeDlg('dlg-user')">
+  <div class="dlg-box" style="max-width:700px;">
+    <h3>New login</h3>
+    <div class="row"><label class="fld"><span>Username *</span><input type="text" id="u-username" style="width:180px;"></label>
+      <label class="fld"><span>Full name *</span><input type="text" id="u-full_name" style="width:240px;"></label>
+      <label class="fld"><span>Password *</span><input type="password" id="u-password" style="width:180px;"></label></div>
+    <div class="row"><span class="muted" style="width:90px;">Role *</span><span class="seg" id="u-role"></span></div>
+    <div class="row"><span class="muted" style="width:90px;">Works from</span><span class="seg" id="u-base"><button class="on" data-v="office">The office</button><button data-v="site">A site</button></span></div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveUser()">Create login</button><button class="btn btn-gray" onclick="closeDlg('dlg-user')">Cancel</button><span class="muted" id="user-msg"></span></div>
+  </div>
+</div>
+
+<div class="dlg" id="dlg-assign" onclick="if (event.target === this) closeDlg('dlg-assign')">
+  <div class="dlg-box" style="max-width:600px;">
+    <h3 id="assign-title">Role</h3>
+    <div class="row"><span class="seg" id="as-role"></span></div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveAssign()">Apply</button><button class="btn btn-gray" onclick="closeDlg('dlg-assign')">Cancel</button><span class="muted" id="assign-msg"></span></div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let TOKEN = sessionStorage.getItem("infinia_token") || null;
+let ME = null, ROLES = [], SCREENS = [], LABELS = {}, USERS = [], editingRole = null, assigning = null;
+function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function status(kind, text) { const el = document.getElementById("status"); el.className = "status " + (text ? kind : ""); el.textContent = text || ""; if (text && kind === "ok") setTimeout(() => { if (el.textContent === text) status("", ""); }, 4000); }
+function errText(e) { const d = e && e.body && e.body.detail; return typeof d === "string" ? d : (d ? JSON.stringify(d) : "Something went wrong."); }
+async function apiCall(path, options = {}) {
+  const headers = options.headers || {}; if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+  if (typeof options.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const res = await fetch(API + path, { ...options, headers });
+  if (!res.ok) { const body = await res.json().catch(() => ({})); throw { status: res.status, body }; }
+  return res.json();
+}
+function ask(message, okLabel = "Yes", danger = false) {
+  return new Promise(resolve => {
+    const wrap = document.createElement("div"); wrap.className = "ask";
+    wrap.innerHTML = `<div class="ask-box"><div class="ask-msg"></div><div class="ask-btns"><button class="btn btn-gray" data-a="no">Cancel</button><button class="btn ${danger ? "btn-danger" : "btn-primary"}" data-a="yes"></button></div></div>`;
+    wrap.querySelector(".ask-msg").textContent = message; wrap.querySelector('[data-a="yes"]').textContent = okLabel;
+    const done = v => { wrap.remove(); resolve(v); };
+    wrap.addEventListener("click", ev => { if (ev.target === wrap) done(false); const a = ev.target.dataset && ev.target.dataset.a; if (a) done(a === "yes"); });
+    document.body.appendChild(wrap);
+  });
+}
+function segSet(el, v) { el.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v ?? ""))); }
+function segGet(el) { const b = el.querySelector("button.on"); return b ? b.dataset.v : ""; }
+function segFill(el, opts, v) { el.innerHTML = opts.map(o => `<button type="button" data-v="${esc(o.v)}">${esc(o.l)}</button>`).join(""); el.querySelectorAll("button").forEach(b => b.onclick = () => segSet(el, b.dataset.v)); segSet(el, v); }
+document.querySelectorAll("#u-base button").forEach(b => b.onclick = () => segSet(b.parentElement, b.dataset.v));
+function openDlg(id) { document.getElementById(id).style.display = "flex"; } function closeDlg(id) { document.getElementById(id).style.display = "none"; }
+
+async function doLogin() {
+  const u = document.getElementById("login-username").value.trim(), p = document.getElementById("login-password").value; const err = document.getElementById("login-error"); err.textContent = "";
+  try { const res = await fetch(API + "/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ username: u, password: p }) });
+    if (!res.ok) { err.textContent = "Wrong username or password."; return; }
+    TOKEN = (await res.json()).access_token; sessionStorage.setItem("infinia_token", TOKEN); await start();
+  } catch (e) { err.textContent = "Could not reach the server."; }
+}
+function signOut() { sessionStorage.removeItem("infinia_token"); TOKEN = null; location.reload(); }
+async function start() {
+  try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
+  catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); document.getElementById("login").style.display = "flex"; return; }
+  if (!ME.screens.includes("access")) { document.getElementById("login").style.display = "flex"; document.getElementById("login-error").textContent = "This page is not available to your login."; TOKEN = null; sessionStorage.removeItem("infinia_token"); return; }
+  document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
+  document.getElementById("who-name").textContent = ME.username; document.getElementById("who-role").textContent = ME.role;
+  document.getElementById("nav-people").style.display = ME.screens.includes("people") ? "" : "none";
+  await loadAll(); setTab("roles");
+}
+function setTab(t) {
+  document.querySelectorAll(".tab").forEach(el => el.classList.toggle("active", el.dataset.tab === t));
+  document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
+}
+async function loadAll() {
+  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; USERS = (await apiCall("/permissions/roles/users")).rows; }
+  catch (e) { status("warn", errText(e)); }
+  renderRoles(); renderUsers();
+}
+const SHOWN = () => SCREENS.filter(s => s !== "settings");
+function renderRoles() {
+  document.getElementById("roles-head").innerHTML = `<tr><th>Role</th><th>Logins</th>${SHOWN().map(s => `<th title="${esc(s)}">${esc(LABELS[s] || s)}</th>`).join("")}<th></th></tr>`;
+  document.getElementById("roles-body").innerHTML = ROLES.map(r => `<tr><td><b>${esc(r.name)}</b>${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td>
+    <td>${r.members.length ? r.members.map(m => esc(m.username)).join(", ") : '<span class="cross">–</span>'}</td>
+    ${SHOWN().map(s => `<td>${r.screens.includes(s) ? '<span class="tick">✓</span>' : '<span class="cross">–</span>'}</td>`).join("")}
+    <td style="white-space:nowrap;"><button class="btn btn-gray btn-sm" onclick="openRole(${r.id})">Edit</button><button class="btn btn-danger btn-sm" onclick="removeRole(${r.id})">Delete</button></td></tr>`).join("")
+    || `<tr><td colspan="${SHOWN().length + 3}" class="muted">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
+}
+function renderUsers() {
+  document.getElementById("users-body").innerHTML = USERS.map(u => `<tr><td><b>${esc(u.username)}</b></td><td>${esc(u.full_name)}</td><td>${u.role === "admin" ? '<span class="pill r">admin</span>' : u.role === "site" ? '<span class="pill gr">site</span>' : '<span class="pill gr">office</span>'}</td>
+    <td>${u.role === "admin" ? '<span class="muted">everything</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">set by hand</span>'}</td>
+    <td class="muted">${u.role === "admin" ? "all" : u.screens.filter(s => s !== "settings").map(s => LABELS[s] || s).join(", ") || "none"}</td>
+    <td>${u.active ? '<span class="pill g">Active</span>' : '<span class="pill gr">Off</span>'}</td>
+    <td>${u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Role…</button>`}</td></tr>`).join("");
+}
+function openRole(id) {
+  const r = id ? ROLES.find(x => x.id === id) : null; editingRole = r ? r.id : null;
+  document.getElementById("role-title").textContent = r ? `Edit ${r.name}` : "New role";
+  document.getElementById("r-name").value = r ? r.name : ""; document.getElementById("r-notes").value = r ? r.notes : "";
+  document.getElementById("r-rights").innerHTML = SHOWN().map(s => `<label><input type="checkbox" value="${esc(s)}" ${r && r.screens.includes(s) ? "checked" : ""}> ${esc(LABELS[s] || s)}</label>`).join("");
+  document.getElementById("role-msg").textContent = ""; openDlg("dlg-role");
+}
+async function saveRole() {
+  const screens = [...document.querySelectorAll("#r-rights input:checked")].map(i => i.value);
+  try { await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: editingRole, name: document.getElementById("r-name").value, notes: document.getElementById("r-notes").value, screens }) });
+    closeDlg("dlg-role"); status("ok", "Role saved - every login that carries it now has these rights."); await loadAll();
+  } catch (e) { document.getElementById("role-msg").textContent = errText(e); }
+}
+async function removeRole(id) {
+  const r = ROLES.find(x => x.id === id);
+  if (!(await ask(`Delete the role ${r.name}? The ${r.members.length} login(s) carrying it keep the rights they have today; they just stop following the role.`, "Delete", true))) return;
+  try { await apiCall(`/permissions/roles/${id}`, { method: "DELETE" }); await loadAll(); } catch (e) { status("warn", errText(e)); }
+}
+function openUser() {
+  ["u-username", "u-full_name", "u-password"].forEach(id => document.getElementById(id).value = "");
+  segFill(document.getElementById("u-role"), ROLES.map(r => ({ v: r.id, l: r.name })), ROLES[0] ? ROLES[0].id : "");
+  document.getElementById("user-msg").textContent = ROLES.length ? "" : "Make a role first."; openDlg("dlg-user");
+}
+async function saveUser() {
+  try { await apiCall("/permissions/roles/new-user", { method: "POST", body: JSON.stringify({ username: document.getElementById("u-username").value, full_name: document.getElementById("u-full_name").value,
+      password: document.getElementById("u-password").value, role_id: parseInt(segGet(document.getElementById("u-role")), 10) || null, base: segGet(document.getElementById("u-base")) }) });
+    closeDlg("dlg-user"); status("ok", "Login created."); await loadAll(); setTab("users");
+  } catch (e) { document.getElementById("user-msg").textContent = errText(e); }
+}
+function openAssign(uid) {
+  const u = USERS.find(x => x.id === uid); assigning = uid;
+  document.getElementById("assign-title").textContent = `Role for ${u.username}`;
+  segFill(document.getElementById("as-role"), [{ v: "", l: "No role (set by hand)" }, ...ROLES.map(r => ({ v: r.id, l: r.name }))], u.access_role_id || "");
+  document.getElementById("assign-msg").textContent = ""; openDlg("dlg-assign");
+}
+async function saveAssign() {
+  try { await apiCall("/permissions/roles/assign", { method: "POST", body: JSON.stringify({ user_id: assigning, role_id: parseInt(segGet(document.getElementById("as-role")), 10) || null }) });
+    closeDlg("dlg-assign"); status("ok", "Applied."); await loadAll();
+  } catch (e) { document.getElementById("assign-msg").textContent = errText(e); }
+}
+if (TOKEN) start(); else document.getElementById("login").style.display = "flex";
+</script>
+</body>
+</html>

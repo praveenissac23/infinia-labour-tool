@@ -131,6 +131,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # by row through ten existing screens is not. Admin only
                # until the office staff who should have it are named.
                "hrpayroll",
+               # The People register and the Access page, built beside
+               # the app at /temporary/Infinia/ and tried by admin alone
+               # before anyone else is given them.
+               "people", "access",
                # Not a screen but a right: who may record a receipt, an
                # issue, a return or a write-off. It was decided by role,
                # which made the store keeper's own job depend on which
@@ -7594,7 +7598,9 @@ def _as_date(v):
 
 DOC_KINDS = {"eid": "Emirates ID", "visa": "Visa / labour card",
              "passport": "Passport", "labour_card": "Labour card",
-             "insurance": "Insurance", "contract": "Labour contract"}
+             "insurance": "Insurance", "contract": "Labour contract",
+             "medical": "Medical fitness", "driving": "Driving licence",
+             "certificate": "Certificate", "other": "Other document"}
 
 
 def _doc_dict(d, emp):
@@ -9949,3 +9955,10 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     log_action(db, user.id, "material_request_receive",
                f"{mr.ref}: {done} line(s) received on {when}")
     return {"ok": True, "received_lines": done, "status": mr.status, "warnings": errors}
+
+
+# ---------------------------------------------------------------------
+# PEOPLE and ACCESS - built beside the app; see people.py
+# ---------------------------------------------------------------------
+import people  # noqa: E402
+app.include_router(people.router)
