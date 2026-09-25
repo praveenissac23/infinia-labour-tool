@@ -3299,6 +3299,7 @@ function switchScreen(name) {
       // the same person is always the same spelling.
       const mrBy = document.getElementById("mr-by");
       if (mrBy) mrBy.innerHTML = requesterOptions();
+      if (!sites.length) showStatus("mreq-status", "err", "The site list could not be loaded - check the connection and press Ctrl+Shift+R.");
       // A sensible needed-by beats an empty box: a week out for normal
       // requests, changeable in one click, so nothing is saved undated.
       setNeededByDefault();
@@ -3349,7 +3350,7 @@ function switchScreen(name) {
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
       storeGo("home");
-    });
+    }).catch(e => showStatus("store-status", "err", "The store lists could not be loaded: " + errText(e) + " Press Ctrl+Shift+R to try again."));
   }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
   // Calendar follows the date actually being viewed, not today - viewing
@@ -3574,7 +3575,8 @@ function errText(e) {
     if (s === 422) return "The server could not read that request (422).";
     if (s >= 500) return `Something went wrong on the server (${s}). Check the service log.`;
     if (s) return `Request failed (${s}).`;
-    return "Could not reach the server - check the connection.";
+    const m = e && e.message ? ` (${e.message})` : "";
+    return "Could not reach the server, or the answer arrived broken - check the connection" + m + ".";
   }
   if (typeof d === "string") return d;
   if (Array.isArray(d)) {
