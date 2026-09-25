@@ -5,7 +5,13 @@ write-offs that were only a trial.
 Shows everything it is about to remove and waits for "yes" before it
 touches anything. Nothing else in the ledger is changed.
 
-    cd ~/infinia-labour-tool && python3 deploy/clear_test_returns.py RN-0005 RN-0006
+    cd ~/infinia-labour-tool && venv/bin/python deploy/clear_test_returns.py RN-0005 RN-0006
+    cd ~/infinia-labour-tool && venv/bin/python deploy/clear_test_returns.py --items ITM1221 ITM1222 ITM1223
+
+With --items, the codes named are materials to remove outright: the
+item, every stock movement of it, every return note line of it (and a
+note left with no lines), and it is unlinked from any request or order
+line that named it (the line keeps its description).
 
 Each reference named is a return note: the note, its lines, and every
 stock movement that note posted (returned and lost) are removed. On top
@@ -49,6 +55,7 @@ def _find_database_url():
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep_test_lost = "--no-test-lost" in sys.argv
+    items_mode = "--items" in sys.argv
     url = _find_database_url()
     if not url:
         sys.exit("Could not find DATABASE_URL. Run with it in front:  DATABASE_URL='...' python3 deploy/clear_test_returns.py RN-0005")
@@ -59,6 +66,8 @@ def main():
 
     db = sessionmaker(bind=create_engine(url))()
     print("Database:", re.sub(r"://([^:@/]+):[^@]*@", r"://\1:***@", url))
+    if items_mode:
+        return remove_items(db, models, [a.upper() for a in args])
     refs = [a.upper() for a in args]
     notes = db.query(models.HireReturn).filter(models.HireReturn.ref.in_(refs)).all() if refs else []
     missing = sorted(set(refs) - {n.ref for n in notes})
@@ -102,6 +111,57 @@ def main():
         db.delete(n)
     db.commit()
     print(f"Removed {len(notes)} return note(s) and {len(moves)} movement(s). Stock figures follow the ledger, so they are already right.")
+
+
+def remove_items(db, models, codes):
+    items = db.query(models.StoreItem).filter(models.StoreItem.code.in_(codes)).all()
+    missing = sorted(set(codes) - {i.code for i in items})
+    if missing:
+        print("Not found (skipped):", ", ".join(missing))
+    if not items:
+        print("Nothing to remove.")
+        return
+    ids = [i.id for i in items]
+    moves = db.query(models.StoreMovement).filter(models.StoreMovement.item_id.in_(ids)).order_by(models.StoreMovement.id).all()
+    rlines = db.query(models.HireReturnLine).filter(models.HireReturnLine.item_id.in_(ids)).all()
+    polines = db.query(models.PurchaseOrderLine).filter(models.PurchaseOrderLine.item_id.in_(ids)).all()
+    mrlines = db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.item_id.in_(ids)).all()
+    print("\nThis will remove:\n")
+    for i in items:
+        print(f"  Material {i.code} {i.name} ({i.item_type or ''}, {i.unit or ''})")
+    for m in moves:
+        print(f"  Movement #{m.id} {m.moved_on} {m.kind:<11} qty {m.qty} at {m.location or m.from_location or '-'} ref {m.reference or '-'} ({m.notes or ''})")
+    for l in rlines:
+        print(f"  Return note line on {l.ret.ref if l.ret else '?'}: {l.description} returned {l.qty_returned or 0}, short {l.qty_short or 0}")
+    empties = []
+    for l in rlines:
+        n = l.ret
+        if n and n not in empties and all(x in rlines for x in n.lines):
+            empties.append(n)
+    for n in empties:
+        print(f"  Return note {n.ref} ({n.status}) - nothing left on it")
+    for l in polines:
+        print(f"  Purchase order line kept, unlinked from the material: {l.description}")
+    for l in mrlines:
+        print(f"  Request line kept, unlinked from the material: {l.description}")
+    print()
+    if input("Type yes to remove these: ").strip().lower() != "yes":
+        print("Nothing changed.")
+        return
+    for l in polines:
+        l.item_id = None
+    for l in mrlines:
+        l.item_id = None
+    for m in moves:
+        db.delete(m)
+    for l in rlines:
+        db.delete(l)
+    for n in empties:
+        db.delete(n)
+    for i in items:
+        db.delete(i)
+    db.commit()
+    print(f"Removed {len(items)} material(s), {len(moves)} movement(s), {len(rlines)} return line(s), {len(empties)} return note(s).")
 
 
 if __name__ == "__main__":
