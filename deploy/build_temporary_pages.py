@@ -134,6 +134,18 @@ EARLY = """
     }
     var st = document.createElement("style"); st.id = "pg-early"; st.textContent = css;
     document.head.appendChild(st);
+    // The tab strip as this login last saw it on this page, drawn before
+    // the app's script runs, so the strip never appears empty and fills.
+    var tabs = null;
+    try { tabs = JSON.parse(localStorage.getItem("infinia_tabs:%(key)s") || "null"); } catch (e) {}
+    if (tabs && tabs.user === (sessionStorage.getItem("infinia_user") || "") && tabs.tabs.length > 1) {
+      document.addEventListener("DOMContentLoaded", function () {
+        var bar = document.getElementById("pg-tabs");
+        if (bar && !bar.children.length) bar.innerHTML = tabs.tabs.map(function (t) {
+          return '<span class="pg-tab ' + (t.id === want ? "active" : "") + '" data-tab="' + t.id + '">' + t.label + "</span>";
+        }).join("");
+      });
+    }
   } catch (e) {}
 })();
 </script>
@@ -265,6 +277,7 @@ firstScreenFor = function () {
 function pgRenderTabs() {
   const bar = document.getElementById("pg-tabs");
   const tabs = PAGE.tabs.filter(pgTabOk);
+  try { localStorage.setItem("infinia_tabs:" + PAGE.key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: tabs.map(t => ({ id: t.id, label: t.label })) })); } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const shown = [];
@@ -413,7 +426,7 @@ def build():
         screens = sorted({t["screen"] for t in tabs} | {s for s, k in EXTRA.items() if k == key})
         cfg = {"key": key, "title": title, "screens": screens, "tabs": tabs, "pages": pages_screens}
         tabmap = {t["id"]: t["screen"] for t in tabs}
-        early = EARLY % {"first": tabs[0]["id"], "tabmap": json.dumps(tabmap)}
+        early = EARLY % {"first": tabs[0]["id"], "tabmap": json.dumps(tabmap), "key": key}
         page = page.replace("</head>", early + "</head>", 1)
         script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),
                            "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
