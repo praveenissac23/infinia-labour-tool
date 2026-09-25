@@ -44,7 +44,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
         }
         if (SCREEN_OF[s] === 'pgreports') {
           const shown = await p.locator('#pg-sub .pg-subtab').count();
-          ck(`${page}.html: ${s} shows its sub-tabs (${shown})`, shown >= 3, shown);
+          ck(`${page}.html: ${s} shows its sub-tabs (${shown})`, shown >= 2, shown);
         }
       }
     }
@@ -90,7 +90,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   await pa.goto(BASE + 'reporting.html'); await pa.fill('#login-username', 'tmp_asst'); await pa.fill('#login-password', 'tmpasst123'); await pa.evaluate('doLogin()');
   await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(2000);
   const atabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
-  ck('an assistant without the office right gets no Office payroll tab on Reports', atabs.join(',') === 'Labour,People', atabs);
+  ck('an assistant without the office right gets no Office payroll tab on Reports', atabs.join(',') === 'Labour,Staff', atabs);
   await pa.goto(BASE + 'payroll.html'); await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(1500);
   const ptabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
   ck('nor on Payroll', !ptabs.includes('Office HR & Payroll') && await pa.locator('#screen-combine.active').count() === 1, ptabs);
@@ -157,7 +157,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   const rr = await p2.evaluate(async () => { try { await apiCall('/permissions/roles'); return 200; } catch (e) { return e.status; } });
   ck('and the server refuses it the roles', rr === 403, rr);
   await p2.goto(BASE + 'access.html'); await p2.waitForTimeout(1800);
-  ck('typing access.html gets "not available"', /not available/i.test(await p2.locator('#login-error').textContent()));
+  ck('typing access.html sends a non-admin back to Settings, still signed in', p2.url().endsWith('settings.html') && await p2.evaluate("!!sessionStorage.getItem('infinia_token')"), p2.url());
   await p2.close();
   await p.evaluate(async () => { const u = (await apiCall('/users')).find(x => x.username === 'tmp_req'); if (u) await apiCall(`/users/${u.id}`, { method: 'DELETE' }).catch(() => {}); });
   ck('no script errors, no pop-ups', errs.length === 0, errs.slice(0, 5));

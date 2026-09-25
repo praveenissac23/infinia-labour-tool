@@ -818,8 +818,12 @@
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var want = full.split(":")[0] || "general";
     var tabs = {"general": "settings", "companies": "settings", "sites": "settings", "logins": "settings", "backup": "settings", "activity": "activity", "access": "settings"};
+    // No tab in the address: the first tab this login had here last time.
+    var remembered = null;
+    try { remembered = JSON.parse(localStorage.getItem("infinia_tabs:settings") || "null"); } catch (e) {}
+    if (!full && remembered && remembered.user === (sessionStorage.getItem("infinia_user") || "") && remembered.tabs.length) full = remembered.tabs[0].id;
+    var want = full.split(":")[0] || "general";
     var screen = tabs[full] || tabs[want] || want;
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
@@ -13016,7 +13020,7 @@ async function addIncrement() {
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
 // decides whether the screen is here or on another page.
-const PAGE = {"key": "settings", "title": "Settings", "screens": ["activity", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"], "subs": []}, {"id": "companies", "screen": "settings", "label": "Companies", "right": "settings", "show": ["#companies-card"], "subs": []}, {"id": "sites", "screen": "settings", "label": "Sites & engineers", "right": "settings", "show": ["#pg-sites-block"], "subs": []}, {"id": "logins", "screen": "settings", "label": "Logins", "right": "settings", "show": ["#user-mgmt-card", "#pg-roles-card"], "subs": []}, {"id": "backup", "screen": "settings", "label": "Backup", "right": "settings", "show": ["#pg-backup-card"], "subs": []}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}, {"id": "access", "screen": "settings", "label": "Access", "right": "__admin__", "show": ["#pg-roles-card"], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
+const PAGE = {"key": "settings", "title": "Settings", "screens": ["activity", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"], "subs": []}, {"id": "companies", "screen": "settings", "label": "Companies", "right": "__admin__", "show": ["#companies-card"], "subs": []}, {"id": "sites", "screen": "settings", "label": "Sites & engineers", "right": "settings", "show": ["#pg-sites-block"], "subs": []}, {"id": "logins", "screen": "settings", "label": "Logins", "right": "__admin__", "show": ["#user-mgmt-card", "#pg-roles-card"], "subs": []}, {"id": "backup", "screen": "settings", "label": "Backup", "right": "__admin__", "show": ["#pg-backup-card"], "subs": []}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}, {"id": "access", "screen": "settings", "label": "Access", "right": "__admin__", "show": ["#pg-roles-card"], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
 const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "purchase": "store", "followup": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "settings", "monthly": "reports"};
 const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine"], "errorcheck": ["errorcheck"], "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["requests"], "approvals": ["approvals"], "purchase": ["approvals"], "followup": ["requests"], "lporegister": ["approvals"], "suppliers": ["approvals"], "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
@@ -13024,6 +13028,7 @@ SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "combine", "label": "Salary cards", "right": "combine"}, {"id": "errorcheck", "label": "Check before you pay", "right": "errorcheck"}, {"id": "hrpayroll", "label": "Office HR & Payroll", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Store / inventory", "right": "store"}, {"id": "requests", "label": "Material requests", "right": "requests"}, {"id": "approvals", "label": "Approvals", "right": "approvals"}, {"id": "purchase", "label": "Purchase orders", "right": "approvals"}, {"id": "followup", "label": "Order follow-up", "right": "requests"}, {"id": "lporegister", "label": "LPO register", "right": "approvals"}, {"id": "suppliers", "label": "Suppliers", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "errorcheck", "livecard"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local", "people_household"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies", "right": "__admin__"}, {"id": "sites", "label": "Sites & engineers", "right": "settings"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "backup", "label": "Backup", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}, {"id": "access", "label": "Access", "right": "__admin__"}]};
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
@@ -13109,7 +13114,14 @@ firstScreenFor = function () {
 function pgRenderTabs() {
   const bar = document.getElementById("pg-tabs");
   const tabs = PAGE.tabs.filter(pgTabOk);
-  try { localStorage.setItem("infinia_tabs:" + PAGE.key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: tabs.map(t => ({ id: t.id, label: t.label })) })); } catch (e) {}
+  // Remembered for every page at once, so the first visit to any page
+  // already paints the right first tab and screen.
+  try {
+    for (const [key, list] of Object.entries(ALL_TABS)) {
+      const ok = list.filter(pgTabOk);
+      localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label })) }));
+    }
+  } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");

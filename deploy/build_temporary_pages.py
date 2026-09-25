@@ -91,10 +91,10 @@ PAGES = {
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"]),
-        tab("companies", "settings", "Companies", "settings", ["#companies-card"]),
+        tab("companies", "settings", "Companies", "__admin__", ["#companies-card"]),
         tab("sites", "settings", "Sites & engineers", "settings", ["#pg-sites-block"]),
-        tab("logins", "settings", "Logins", "settings", ["#user-mgmt-card", "#pg-roles-card"]),
-        tab("backup", "settings", "Backup", "settings", ["#pg-backup-card"]),
+        tab("logins", "settings", "Logins", "__admin__", ["#user-mgmt-card", "#pg-roles-card"]),
+        tab("backup", "settings", "Backup", "__admin__", ["#pg-backup-card"]),
         tab("activity", "activity", "Activity monitor", "activity"),
         tab("access", "settings", "Access", "__admin__", ["#pg-roles-card"])]),
 }
@@ -159,8 +159,12 @@ EARLY = """
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var want = full.split(":")[0] || "%(first)s";
     var tabs = %(tabmap)s;
+    // No tab in the address: the first tab this login had here last time.
+    var remembered = null;
+    try { remembered = JSON.parse(localStorage.getItem("infinia_tabs:%(key)s") || "null"); } catch (e) {}
+    if (!full && remembered && remembered.user === (sessionStorage.getItem("infinia_user") || "") && remembered.tabs.length) full = remembered.tabs[0].id;
+    var want = full.split(":")[0] || "%(first)s";
     var screen = tabs[full] || tabs[want] || want;
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
@@ -237,6 +241,7 @@ SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = %(file_json)s;
+const ALL_TABS = %(all_tabs_json)s;
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
@@ -322,7 +327,14 @@ firstScreenFor = function () {
 function pgRenderTabs() {
   const bar = document.getElementById("pg-tabs");
   const tabs = PAGE.tabs.filter(pgTabOk);
-  try { localStorage.setItem("infinia_tabs:" + PAGE.key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: tabs.map(t => ({ id: t.id, label: t.label })) })); } catch (e) {}
+  // Remembered for every page at once, so the first visit to any page
+  // already paints the right first tab and screen.
+  try {
+    for (const [key, list] of Object.entries(ALL_TABS)) {
+      const ok = list.filter(pgTabOk);
+      localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label })) }));
+    }
+  } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");
@@ -523,7 +535,8 @@ def build():
         page = page.replace("</head>", early + "</head>", 1)
         script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),
                            "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
-                           "file_json": json.dumps(FILE)}
+                           "file_json": json.dumps(FILE),
+                           "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
         page = page.replace("</body>", script + "</body>", 1)
         with open(os.path.join(OUT, fname(key)), "w", encoding="utf-8") as f:
             f.write(page)

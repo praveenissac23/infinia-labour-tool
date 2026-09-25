@@ -443,9 +443,8 @@ async function start() {
   catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); document.getElementById("login").style.display = "flex"; return; }
   ME.groups = ["labour", "office", "local", "household"].filter(g => ME.role === "admin" || ME.screens.includes("people_" + g));
   if (!ME.groups.length) {
-    document.getElementById("login").style.display = "flex";
-    document.getElementById("login-error").textContent = "This page is not available to your login.";
-    TOKEN = null; sessionStorage.removeItem("infinia_token"); return;
+    // Not this login's page: back to the first page it has, still signed in.
+    location.replace("dashboard.html"); return;
   }
   document.getElementById("login").style.display = "none";
   document.getElementById("shell").style.display = "flex";
