@@ -155,10 +155,17 @@ async function login(ctx, user, pw, url) {
         await p.locator('#pg-tabs .pg-tab').nth(i).click(); await p.waitForTimeout(900);
         const a = await p.evaluate("document.querySelector('.screen.active') && document.querySelector('.screen.active').id");
         ck(`${name} (temporary): ${pg} › ${tabs[i]} shows ${a}`, !!a);
-        // On the reports page, press every visible Preview.
+        // On the reports page, open every sub-tab and read each preview.
         if (pg === 'reporting') {
-          const n = await p.locator('#screen-pgreports button:visible:has-text("Preview")').count();
-          for (let k = 0; k < n; k++) { await p.locator('#screen-pgreports button:visible:has-text("Preview")').nth(k).click(); await p.waitForTimeout(400); }
+          const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
+          for (let k = 0; k < subs.length; k++) {
+            await p.locator('#pg-sub .pg-subtab').nth(k).click(); await p.waitForTimeout(700);
+            if (await p.locator('#screen-pgreports.active').count() !== 1) continue;
+            await p.waitForFunction(() => document.getElementById('pg-frame-note').textContent === '', null, { timeout: 15000 }).catch(() => {});
+            const body = await p.frameLocator('#pg-preview').locator('body').innerText().catch(() => '');
+            ck(`${name} (temporary): preview ${tabs[i]} › ${subs[k]}`, !/\{"detail"|Internal Server Error|Not Found/.test(body) && body.length > 40, body.slice(0, 80));
+            if (name === 'assistant') ck(`assistant: that preview carries no office salary`, !SALARY_WORDS.test(body) || /Labour Register/.test(body), subs[k]);
+          }
         }
       }
     }

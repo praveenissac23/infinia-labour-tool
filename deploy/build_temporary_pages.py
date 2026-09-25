@@ -21,8 +21,20 @@ SRC = os.path.join(ROOT, "app.html")
 OUT = os.path.join(ROOT, "temporary", "Infinia")
 
 
-def tab(id, screen, label, right=None, show=None):
-    return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or []}
+def tab(id, screen, label, right=None, show=None, subs=None):
+    return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or [], "subs": subs or []}
+
+
+def sub(id, label, screen=None, right=None, report=None, opts=None):
+    """A second-level tab. Either a screen of the app, or a report whose
+    preview loads underneath the strip (report = export path, opts = the
+    inputs it takes: run, month, cycle, within, group, days, dates)."""
+    return {"id": id, "label": label, "screen": screen or "", "right": right or screen or "reports",
+            "report": report or "", "opts": opts or ""}
+
+
+PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local", "people_household"]
+STORE_RIGHTS = ["store", "approvals", "requests"]
 
 
 # page key -> (title, tabs)
@@ -45,11 +57,38 @@ PAGES = {
         tab("lporegister", "lporegister", "LPO register", "approvals"),
         tab("suppliers", "suppliers", "Suppliers", "approvals")]),
     "reports": ("Reports", [
-        tab("labour", "pgreports", "Labour", ["reports", "combine", "errorcheck", "livecard"], ["#pgrep-labour"]),
-        tab("office", "pgreports", "Office payroll", "hrpayroll", ["#pgrep-office"]),
-        tab("people", "pgreports", "People", ["people_labour", "people_office", "people_local", "people_household"], ["#pgrep-people"]),
-        tab("storerep", "pgreports", "Store & purchasing", ["store", "approvals", "requests"], ["#pgrep-store"]),
-        tab("builder", "reports", "Report builder", "reports")]),
+        tab("labour", "pgreports", "Labour", ["reports", "combine", "errorcheck", "livecard"], subs=[
+            sub("builder", "Cycle report builder", screen="reports"),
+            sub("cards", "Salary cards", screen="combine"),
+            sub("check", "Check before you pay", screen="errorcheck"),
+            sub("live", "Live card", screen="livecard")]),
+        tab("office", "pgreports", "Office payroll", "hrpayroll", subs=[
+            sub("statement", "Salary statement", right="hrpayroll", report="/export/payroll/statement", opts="run"),
+            sub("consolidated", "Consolidated statement", right="hrpayroll", report="/export/payroll/consolidated", opts="month"),
+            sub("leave", "Absence register", right="hrpayroll", report="/export/payroll/leave", opts="cycle"),
+            sub("items", "Additions & deductions", right="hrpayroll", report="/export/payroll/items", opts="cycle"),
+            sub("loans", "Loans register", right="hrpayroll", report="/export/payroll/loans"),
+            sub("increments", "Increments & salary history", right="hrpayroll", report="/export/payroll/increments"),
+            sub("staff", "Office staff register", right="hrpayroll", report="/export/payroll/staff"),
+            sub("gratuity", "Gratuity", right="hrpayroll", report="/export/payroll/gratuity"),
+            sub("documents", "Office document tracker", right="hrpayroll", report="/export/payroll/documents", opts="within")]),
+        tab("people", "pgreports", "People", PEOPLE_RIGHTS, subs=[
+            sub("register", "Register", right=PEOPLE_RIGHTS, report="/export/people/register", opts="group"),
+            sub("due", "Documents due", right=PEOPLE_RIGHTS, report="/export/people/documents-due", opts="days"),
+            sub("balances", "Leave balances", right=PEOPLE_RIGHTS, report="/export/people/leave", opts="group")]),
+        tab("storerep", "pgreports", "Store & purchasing", STORE_RIGHTS, subs=[
+            sub("stock", "Current stock", right=STORE_RIGHTS, report="/export/store/report?kind=stock"),
+            sub("by_site", "At sites", right=STORE_RIGHTS, report="/export/store/report?kind=by_site"),
+            sub("usage", "Consumption", right=STORE_RIGHTS, report="/export/store/report?kind=usage", opts="dates"),
+            sub("assets", "Assets", right=STORE_RIGHTS, report="/export/store/report?kind=assets"),
+            sub("issues", "Issue & return register", right=STORE_RIGHTS, report="/export/store/report?kind=issues", opts="dates"),
+            sub("lost", "Lost / damaged", right=STORE_RIGHTS, report="/export/store/report?kind=lost", opts="dates"),
+            sub("hired", "On rent now", right=STORE_RIGHTS, report="/export/store/report?kind=hired"),
+            sub("mr_open", "Open requests", right=STORE_RIGHTS, report="/export/store/report?kind=mr_open"),
+            sub("mr_history", "Request history", right=STORE_RIGHTS, report="/export/store/report?kind=mr_history"),
+            sub("suppliers", "Suppliers", right="approvals", report="/export/store/suppliers/report"),
+            sub("lpo", "LPO register", screen="lporegister", right="approvals"),
+            sub("followup", "Order follow-up", screen="followup", right="requests")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"]),
@@ -94,15 +133,25 @@ CSS = """
   /* One font across the pages, the one the office's own machines use. */
   body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
   body { font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
-  /* The reports hub: one list a tab, a report a row */
-  #screen-pgreports .card { max-width: 980px; }
-  #screen-pgreports .card h2 { font-size: 17px; margin-bottom: 2px; }
-  .pg-rep { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #F0EDE8; flex-wrap: wrap; }
-  .pg-rep:last-child { border-bottom: 0; }
-  .pg-rep .t { flex: 1; min-width: 200px; font-weight: 600; font-size: 14px; }
-  .pg-rep .t small { display: block; font-weight: normal; color: #888; font-size: 12px; margin-top: 1px; }
-  .pg-rep select, .pg-rep input[type=month], .pg-rep input[type=number] { height: 32px; padding: 0 8px; border: 1px solid #D5D9DE; border-radius: 6px; font-size: 12.5px; width: auto; max-width: 330px; flex: 0 0 auto; margin: 0; }
-  .pg-rep .btn { padding: 6px 12px; font-size: 12.5px; min-width: 64px; }
+  /* The reports hub: tabs inside tabs, the preview underneath */
+  .pg-sub { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 26px 0; background: white; border-bottom: 1px solid #E7E1DA; }
+  .pg-sub:empty { display: none; }
+  .pg-subtab { padding: 6px 12px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: #6A5C55; background: #F7F3EE; border: 1px solid #E4DCD2; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+  .pg-subtab:hover { background: #F1EAE3; }
+  .pg-subtab.active { background: #2C2C2C; color: white; border-color: #2C2C2C; }
+  .pg-hub { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
+  .pg-repbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: white; border: 1px solid #E7E1DA; border-bottom: 0; border-radius: 8px 8px 0 0; }
+  .pg-repname { display: flex; flex-direction: column; min-width: 190px; }
+  .pg-repname strong { font-size: 14.5px; } .pg-repname small { color: #888; font-size: 12px; }
+  .pg-repopts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .pg-repopts label { font-size: 12px; font-weight: 600; color: #666; }
+  .pg-repopts select, .pg-repopts input { height: 32px; padding: 0 8px; border: 1px solid #D5D9DE; border-radius: 6px; font-size: 12.5px; width: auto; max-width: 330px; margin: 0; }
+  .pg-repacts { display: flex; gap: 6px; }
+  .pg-repacts .btn { padding: 6px 12px; font-size: 12.5px; }
+  .pg-frame { position: relative; flex: 1; border: 1px solid #E7E1DA; border-radius: 0 0 8px 8px; background: white; overflow: hidden; }
+  .pg-frame iframe { width: 100%; height: 100%; border: 0; display: block; background: white; }
+  .pg-frame-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #888; font-size: 13px; background: white; pointer-events: none; }
+  .pg-frame-note:empty { display: none; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
@@ -118,9 +167,10 @@ EARLY = """
 (function () {
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
-    var want = (location.hash || "").slice(1).split(":")[0] || "%(first)s";
+    var full = (location.hash || "").slice(1);
+    var want = full.split(":")[0] || "%(first)s";
     var tabs = %(tabmap)s;
-    var screen = tabs[want] || want;
+    var screen = tabs[full] || tabs[want] || want;
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
     // The menu as this login last saw it, so it never draws in full and
@@ -155,40 +205,19 @@ HUB_HTML = """
         <!-- ============ REPORTS HUB (temporary pages) ============ -->
         <div class="screen" id="screen-pgreports">
           <div class="status-msg" id="pgrep-status"></div>
-            <div class="card" id="pgrep-labour">
-              <h2>Labour - attendance &amp; salary</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">The 26th-to-25th cycle: attendance, salary cards and the checks before paying.</p>
-              <div class="pg-rep"><span class="t">Cycle report builder<small>Any columns, any cycle, by company</small></span><button class="btn btn-dark" onclick="switchScreen('reports')">Open</button></div>
-              <div class="pg-rep"><span class="t">Salary cards<small>Per worker, for the cycle</small></span><button class="btn btn-dark" onclick="switchScreen('combine')">Open</button></div>
-              <div class="pg-rep"><span class="t">Check before you pay<small>Missing days, pay rule, odd hours</small></span><button class="btn btn-dark" onclick="switchScreen('errorcheck')">Open</button></div>
-              <div class="pg-rep"><span class="t">Live card<small>The cycle so far, per worker</small></span><button class="btn btn-dark" onclick="switchScreen('livecard')">Open</button></div>
+          <div class="pg-hub">
+            <div class="pg-repbar">
+              <div class="pg-repname"><strong id="pg-rep-title"></strong><small id="pg-rep-sub"></small></div>
+              <div class="pg-repopts" id="pg-repopts"></div>
+              <div class="pg-repacts">
+                <button class="btn btn-gray" onclick="pgRepPrint()">Print</button>
+                <button class="btn btn-gray" onclick="pgRepDownload('pdf')">PDF</button>
+                <button class="btn btn-gray" onclick="pgRepDownload('excel')">Excel</button>
+                <button class="btn btn-dark" onclick="pgRepOpen()">Open in new tab</button>
+              </div>
             </div>
-            <div class="card" id="pgrep-office">
-              <h2>Office payroll</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">Monthly statements and the registers behind them.</p>
-              <div class="pg-rep"><span class="t">Salary statement<small>One cycle, as signed</small></span><select id="pgrep-run" class="hr-dd"></select><span id="pgrep-run-btns"></span></div>
-              <div class="pg-rep"><span class="t">Consolidated statement<small>Every company, one month</small></span><select id="pgrep-month" class="hr-dd"></select><span id="pgrep-cons-btns"></span></div>
-              <div class="pg-rep"><span class="t">Absence register</span><input type="month" id="pgrep-leave-month"><span data-hr="leave"></span></div>
-              <div class="pg-rep"><span class="t">Additions &amp; deductions</span><input type="month" id="pgrep-items-month"><span data-hr="items"></span></div>
-              <div class="pg-rep"><span class="t">Loans register</span><span data-hr="loans"></span></div>
-              <div class="pg-rep"><span class="t">Increments &amp; salary history</span><span data-hr="increments"></span></div>
-              <div class="pg-rep"><span class="t">Office staff register</span><span data-hr="staff"></span></div>
-              <div class="pg-rep"><span class="t">Office document tracker<small>Expiring within</small></span><input type="number" id="pgrep-doc-within" value="90" style="width:70px;"> days <span data-hr="documents"></span></div>
-            </div>
-            <div class="card" id="pgrep-people">
-              <h2>People</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">Everyone on the books - labour, office, local, household.</p>
-              <div class="pg-rep"><span class="t">Register</span><span class="pg-seg" id="pgrep-reg-group"><button class="on" data-v="labour">Labour</button><button data-v="office">Office</button><button data-v="local">Local</button><button data-v="household">Household</button><button data-v="left">Left</button></span><span data-people="register"></span></div>
-              <div class="pg-rep"><span class="t">Documents due<small>Across every register</small></span><span class="pg-seg" id="pgrep-due-days"><button data-v="30">30 d</button><button class="on" data-v="90">90 d</button><button data-v="180">180 d</button></span><span data-people="documents-due"></span></div>
-              <div class="pg-rep"><span class="t">Leave balances</span><span class="pg-seg" id="pgrep-lv-group"><button class="on" data-v="labour">Labour</button><button data-v="office">Office</button><button data-v="local">Local</button><button data-v="household">Household</button></span><span data-people="leave"></span></div>
-            </div>
-            <div class="card" id="pgrep-store">
-              <h2>Store &amp; purchasing</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">Stock, movements, requests and orders.</p>
-              <div class="pg-rep"><span class="t">Store reports<small>Stock, purchases, usage, requests</small></span><button class="btn btn-dark" onclick="dashStoreGo('reports')">Open</button></div>
-              <div class="pg-rep"><span class="t">LPO register<small>Every purchase order raised</small></span><button class="btn btn-dark" onclick="switchScreen('lporegister')">Open</button></div>
-              <div class="pg-rep"><span class="t">Order follow-up<small>What is coming, from whom</small></span><button class="btn btn-dark" onclick="switchScreen('followup')">Open</button></div>
-            </div>
+            <div class="pg-frame"><iframe id="pg-preview" title="Report preview"></iframe><div class="pg-frame-note" id="pg-frame-note">Loading the preview&hellip;</div></div>
+          </div>
         </div>
 """
 
@@ -210,25 +239,36 @@ const PAGE = %(page_json)s;
 const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
+SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
+SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
+SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = %(file_json)s;
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : MY_SCREENS.includes(r)); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
-let PG_TAB = null;
+let PG_TAB = null, PG_SUB = null;
 
 const _switchScreen = switchScreen;
 switchScreen = function (name) {
   if (!PAGE.screens.includes(name)) { location.href = pgUrl(name) + "#" + name; return; }
+  // A login without the right is on its way to another page; nothing
+  // here should start loading (and being refused) in the meantime.
+  if (MY_SCREENS.length && !pgAllowed(name)) return;
   _switchScreen(name);
   const early = document.getElementById("pg-early"); if (early) early.remove();
-  if (!PG_TAB || PG_TAB.screen !== name) PG_TAB = PAGE.tabs.find(t => t.screen === name) || null;
+  const inSubs = PG_TAB && PG_TAB.subs.some(sb => sb.screen === name);
+  if (!inSubs && (!PG_TAB || PG_TAB.screen !== name))
+    PG_TAB = PAGE.tabs.find(t => t.screen === name) || PAGE.tabs.find(t => t.subs.some(sb => sb.screen === name)) || null;
+  if (PG_TAB && PG_TAB.subs.length && !(PG_SUB && PG_TAB.subs.includes(PG_SUB) && (PG_SUB.screen || "pgreports") === name))
+    PG_SUB = PG_TAB.subs.find(sb => pgHas(sb.right) && (sb.screen || "pgreports") === name) || PG_SUB;
   pgApplyTab(); pgRenderTabs();
   if (name === "pgreports") pgHubLoad();
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
+  if (t.subs.length) { PG_TAB = t; const first = t.subs.find(sb => pgHas(sb.right)); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;
   if (t.id !== t.screen) location.hash = t.id;
@@ -263,10 +303,18 @@ firstScreenFor = function () {
   const t = want ? pgTabFor(want) : null;
   if (t && pgTabOk(t)) {
     PG_TAB = t;
+    if (t.subs.length) {
+      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right)) || t.subs.find(sb => pgHas(sb.right)) || null;
+      return PG_SUB ? (PG_SUB.screen || "pgreports") : t.screen;
+    }
     if (t.screen === "store" && extra) setTimeout(() => storeGo(extra), 120);
     return t.screen;
   }
-  for (const tb of PAGE.tabs) if (pgTabOk(tb)) { PG_TAB = tb; return tb.screen; }
+  for (const tb of PAGE.tabs) if (pgTabOk(tb)) {
+    PG_TAB = tb;
+    if (tb.subs.length) { PG_SUB = tb.subs.find(sb => pgHas(sb.right)) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
+    return tb.screen;
+  }
   const pages = %(order_json)s;
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
@@ -280,6 +328,10 @@ function pgRenderTabs() {
   try { localStorage.setItem("infinia_tabs:" + PAGE.key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: tabs.map(t => ({ id: t.id, label: t.label })) })); } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
+  const sub = document.getElementById("pg-sub");
+  const subs = PG_TAB ? PG_TAB.subs.filter(sb => pgHas(sb.right)) : [];
+  sub.innerHTML = subs.map(sb =>
+    `<span class="pg-subtab ${PG_SUB && PG_SUB.id === sb.id ? "active" : ""}" data-sub="${sb.id}" onclick="pgSub('${sb.id}')">${sb.label}</span>`).join("");
   const shown = [];
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
     const ok = (PAGE.pages[el.dataset.page] || []).some(s => pgAllowed(s));
@@ -300,9 +352,11 @@ function pgRenderTabs() {
 const _applyScreenPermissions = applyScreenPermissions;
 applyScreenPermissions = async function () { await _applyScreenPermissions(); pgRenderTabs(); };
 window.addEventListener("hashchange", () => {
-  const want = (location.hash || "").slice(1).split(":")[0];
+  const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
-  if (t && !(PG_TAB && PG_TAB.id === t.id)) { PG_TAB = t; switchScreen(t.screen); }
+  if (!t) return;
+  if (t.subs.length) { const sb = t.subs.find(x => x.id === extra); if (sb && !(PG_SUB && PG_SUB.id === sb.id)) { PG_TAB = t; pgSub(sb.id); } return; }
+  if (!(PG_TAB && PG_TAB.id === t.id)) { PG_TAB = t; switchScreen(t.screen); }
 });
 
 // ---- Only the work this page needs at start-up --------------------------
@@ -311,60 +365,102 @@ window.addEventListener("hashchange", () => {
 // screens that is a wait for nothing, so they are skipped here.
 const pgOn = s => PAGE.screens.includes(s);
 if (!pgOn("attendance")) { loadDate = async () => {}; }
-if (!pgOn("dashboard")) { loadDashboardCalendar = () => {}; startDashboardClock = () => {}; }
+if (!pgOn("dashboard")) { startDashboardClock = () => {}; }
+if (!pgOn("dashboard") && !pgOn("attendance")) { loadDashboardCalendar = () => {}; }
 if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
 if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 
-// ---- The reports hub -------------------------------------------------------
-function pgBtns(preview, dl) {
-  return `<button class="btn btn-dark" onclick="${preview}">Preview</button><button class="btn btn-gray" onclick="${dl.replace("FMT", "pdf")}">PDF</button><button class="btn btn-gray" onclick="${dl.replace("FMT", "excel")}">Excel</button>`;
+// ---- The reports hub: tabs inside tabs, the preview underneath ---------------
+function pgSub(id) {
+  const t = PG_TAB; if (!t) return;
+  const sb = t.subs.find(x => x.id === id); if (!sb || !pgHas(sb.right)) return;
+  PG_SUB = sb;
+  location.hash = t.id + ":" + sb.id;
+  const screen = sb.screen || "pgreports";
+  const active = document.getElementById("screen-" + screen);
+  if (active && active.classList.contains("active")) { pgRenderTabs(); if (!sb.screen) pgRepShow(); return; }
+  switchScreen(screen);
 }
 function pgSeg(id) { const b = document.querySelector("#" + id + " button.on"); return b ? b.dataset.v : ""; }
-document.querySelectorAll("#screen-pgreports .pg-seg").forEach(seg => seg.querySelectorAll("button").forEach(b =>
-  b.onclick = () => seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b))));
-async function pgOpen(url, format) {
-  const t = await hrToken();
-  const sep = url.includes("?") ? "&" : "?";
-  if (format === "view") { const [path, q] = url.split("?"); window.open(`${API}${path}/view?${q ? q + "&" : ""}token=${t}`, "_blank"); }
-  else window.open(`${API}${url}${sep}token=${t}&format=${format}`, "_blank");
+function pgSegHtml(id, choices, on) {
+  return `<span class="pg-seg" id="${id}">` + choices.map(([v, l]) => `<button data-v="${v}" class="${v === on ? "on" : ""}" onclick="pgSegPick(this)">${l}</button>`).join("") + `</span>`;
 }
-function pgHrUrl(which) {
-  const m = v => encodeURIComponent(hrCycleName(v));
-  if (which === "leave") return `/export/payroll/leave?month_year=${m(document.getElementById("pgrep-leave-month").value)}`;
-  if (which === "items") return `/export/payroll/items?month_year=${m(document.getElementById("pgrep-items-month").value)}`;
-  if (which === "increments") return `/export/payroll/increments?emp_no=`;
-  if (which === "documents") return `/export/payroll/documents?within=${document.getElementById("pgrep-doc-within").value || 90}`;
-  return `/export/payroll/${which}`;
-}
-function pgPeopleUrl(kind) {
-  if (kind === "register") return `/export/people/register?group=${pgSeg("pgrep-reg-group")}`;
-  if (kind === "documents-due") return `/export/people/documents-due?days=${pgSeg("pgrep-due-days")}&group=`;
-  return `/export/people/leave?group=${pgSeg("pgrep-lv-group")}`;
-}
-let PG_HUB_DONE = false;
+function pgSegPick(b) { b.parentNode.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); pgRepShow(); }
+const PG_RUNS = { rows: null };
 async function pgHubLoad() {
   refreshDownloadToken();
-  if (PG_HUB_DONE) return;
-  PG_HUB_DONE = true;
-  const ym = new Date().toISOString().slice(0, 7);
-  document.getElementById("pgrep-leave-month").value = ym; document.getElementById("pgrep-items-month").value = ym;
-  document.querySelectorAll("#pgrep-office [data-hr]").forEach(el => { const w = el.dataset.hr;
-    el.innerHTML = pgBtns(`pgOpen(pgHrUrl('${w}'),'view')`, `pgOpen(pgHrUrl('${w}'),'FMT')`); });
-  document.querySelectorAll("#pgrep-people [data-people]").forEach(el => { const w = el.dataset.people;
-    el.innerHTML = pgBtns(`pgOpen(pgPeopleUrl('${w}'),'view')`, `pgOpen(pgPeopleUrl('${w}'),'FMT')`); });
-  if (pgHas("hrpayroll")) {
-    try {
-      const runs = (await apiCall("/employees/payroll/runs")).rows || [];
-      const sel = document.getElementById("pgrep-run");
-      sel.innerHTML = runs.map(r => `<option value="${r.id}">${escapeHtml(r.company)} - ${escapeHtml(r.month_year)} (${r.status === "approved" ? "approved" : "draft"})</option>`).join("") || "<option value=''>No cycles yet</option>";
-      const none = '<span class="muted" style="font-size:12px;">No cycles yet</span>';
-      document.getElementById("pgrep-run-btns").innerHTML = !runs.length ? none : pgBtns(`pgOpen('/export/payroll/statement?run_id='+document.getElementById('pgrep-run').value,'view')`, `pgOpen('/export/payroll/statement?run_id='+document.getElementById('pgrep-run').value,'FMT')`);
-      const months = [...new Set(runs.map(r => r.month_year))];
-      document.getElementById("pgrep-month").innerHTML = months.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("") || "<option value=''>No cycles yet</option>";
-      document.getElementById("pgrep-cons-btns").innerHTML = !runs.length ? none : pgBtns(`pgOpen('/export/payroll/consolidated?month_year='+encodeURIComponent(document.getElementById('pgrep-month').value),'view')`, `pgOpen('/export/payroll/consolidated?month_year='+encodeURIComponent(document.getElementById('pgrep-month').value),'FMT')`);
-    } catch (e) { showStatus("pgrep-status", "err", "Could not list the office cycles: " + errText(e)); }
+  if (PG_RUNS.rows === null && pgHas("hrpayroll")) {
+    PG_RUNS.rows = [];
+    try { PG_RUNS.rows = (await apiCall("/employees/payroll/runs")).rows || []; }
+    catch (e) { showStatus("pgrep-status", "err", "Could not list the office cycles: " + errText(e)); }
   }
+  pgRepShow();
 }
+// The options a report takes, drawn once per report; a change reloads it.
+function pgRepOptions(sb) {
+  const ym = new Date().toISOString().slice(0, 7);
+  const runs = PG_RUNS.rows || [];
+  const groups = [["labour", "Labour"], ["office", "Office"], ["local", "Local"], ["household", "Household"]];
+  const can = g => CURRENT_ROLE === "admin" || MY_SCREENS.includes("people_" + g[0]);
+  switch (sb.opts) {
+    case "run": return runs.length
+      ? `<label>Cycle</label><select id="pg-opt-run" onchange="pgRepShow()">${runs.map(r => `<option value="${r.id}">${escapeHtml(r.company)} - ${escapeHtml(r.month_year)} (${r.status === "approved" ? "approved" : "draft"})</option>`).join("")}</select>`
+      : `<span class="muted" style="font-size:12px;">No office cycles yet</span>`;
+    case "month": { const months = [...new Set(runs.map(r => r.month_year))]; return months.length
+      ? `<label>Month</label><select id="pg-opt-month" onchange="pgRepShow()">${months.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("")}</select>`
+      : `<span class="muted" style="font-size:12px;">No office cycles yet</span>`; }
+    case "cycle": return `<label>Month</label><input type="month" id="pg-opt-cycle" value="${ym}" onchange="pgRepShow()">`;
+    case "within": return `<label>Expiring within</label><input type="number" id="pg-opt-within" value="90" style="width:70px;" onchange="pgRepShow()"> days`;
+    case "group": { const g = groups.filter(can); if (sb.id === "register") g.push(["left", "Left"]); return g.length ? pgSegHtml("pg-opt-group", g, g[0][0]) : ""; }
+    case "days": return pgSegHtml("pg-opt-days", [["30", "30 days"], ["90", "90 days"], ["180", "180 days"]], "90");
+    case "dates": return `<label>From</label><input type="date" id="pg-opt-from" onchange="pgRepShow()"><label>To</label><input type="date" id="pg-opt-to" onchange="pgRepShow()"><small class="muted" style="font-size:11.5px;">blank = everything</small>`;
+  }
+  return "";
+}
+function pgRepQuery(sb) {
+  const v = id => (document.getElementById(id) || {}).value || "";
+  const q = [];
+  switch (sb.opts) {
+    case "run": if (!v("pg-opt-run")) return null; q.push("run_id=" + v("pg-opt-run")); break;
+    case "month": if (!v("pg-opt-month")) return null; q.push("month_year=" + encodeURIComponent(v("pg-opt-month"))); break;
+    case "cycle": q.push("month_year=" + encodeURIComponent(hrCycleName(v("pg-opt-cycle")))); break;
+    case "within": q.push("within=" + (v("pg-opt-within") || 90)); break;
+    case "group": q.push("group=" + pgSeg("pg-opt-group")); break;
+    case "days": q.push("days=" + pgSeg("pg-opt-days") + "&group="); break;
+    case "dates": if (v("pg-opt-from")) q.push("date_from=" + v("pg-opt-from")); if (v("pg-opt-to")) q.push("date_to=" + v("pg-opt-to")); break;
+  }
+  if (sb.id === "increments") q.push("emp_no=");
+  return q.join("&");
+}
+let PG_REP_DRAWN = "";
+async function pgRepShow() {
+  const sb = PG_SUB; if (!sb || sb.screen) return;
+  const [path, fixed] = sb.report.split("?");
+  document.getElementById("pg-rep-title").textContent = sb.label;
+  document.getElementById("pg-rep-sub").textContent = PG_TAB.label;
+  if (PG_REP_DRAWN !== sb.id) { document.getElementById("pg-repopts").innerHTML = pgRepOptions(sb); PG_REP_DRAWN = sb.id; }
+  const q = pgRepQuery(sb);
+  const note = document.getElementById("pg-frame-note"), frame = document.getElementById("pg-preview");
+  if (q === null) { frame.removeAttribute("src"); note.textContent = "Nothing to show yet - no office cycle has been opened."; return; }
+  note.textContent = "Loading the preview…";
+  const t = await hrToken();
+  const url = `${API}${path}/view?${[fixed, q].filter(Boolean).join("&")}${fixed || q ? "&" : ""}token=${t}`;
+  // The report's own button bar is not needed in here - the bar above
+  // does that - so it is hidden once the page is in.
+  frame.onload = () => {
+    note.textContent = "";
+    try { const d = frame.contentDocument; const st = d.createElement("style"); st.textContent = ".bar{display:none!important} body{background:white!important;padding-top:0!important}"; d.head.appendChild(st); } catch (e) {}
+  };
+  frame.src = url;
+}
+async function pgRepUrl(format) {
+  const sb = PG_SUB; const [path, fixed] = sb.report.split("?"); const q = pgRepQuery(sb); if (q === null) return null;
+  const t = await hrToken(); const qs = [fixed, q].filter(Boolean).join("&");
+  return format === "view" ? `${API}${path}/view?${qs}${qs ? "&" : ""}token=${t}` : `${API}${path}?${qs}${qs ? "&" : ""}token=${t}&format=${format}`;
+}
+async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.open(u, "_blank"); }
+async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
+function pgRepPrint() { const f = document.getElementById("pg-preview"); try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { pgRepOpen(); } }
 </script>
 """
 
@@ -377,7 +473,7 @@ def build():
     brand = m.group(1).strip()
     src = src.replace('<div class="sidebar">\n', '<div class="sidebar" id="legacy-sidebar">\n', 1)
     src = src.replace("</head>", CSS + "</head>", 1)
-    src = src.replace('<div class="content">\n', '<div class="pg-tabs" id="pg-tabs"></div>\n      <div class="content">\n', 1)
+    src = src.replace('<div class="content">\n', '<div class="pg-tabs" id="pg-tabs"></div>\n      <div class="pg-sub" id="pg-sub"></div>\n      <div class="content">\n', 1)
 
     # Settings, in parts: the cards get ids so a tab can show one part.
     src = src.replace('<div class="card">\n            <h2>Change Your Password</h2>',
@@ -405,6 +501,10 @@ def build():
             rights = t["right"] if isinstance(t["right"], list) else [t["right"]]
             have = right_of.get(t["screen"], [])
             right_of[t["screen"]] = sorted(set((have if isinstance(have, list) else [have]) + rights))
+            for sb in t["subs"]:
+                if sb["screen"]:
+                    page_of.setdefault(sb["screen"], key)
+                    right_of.setdefault(sb["screen"], sb["right"])
     for screen, key in EXTRA.items():
         page_of[screen] = key
         right_of[screen] = key
@@ -423,9 +523,13 @@ def build():
         side.append("</div>")
         page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
         page = page.replace("<title>", f"<title>{html.escape(title)} - ", 1)
-        screens = sorted({t["screen"] for t in tabs} | {s for s, k in EXTRA.items() if k == key})
+        screens = sorted({t["screen"] for t in tabs} | {sb["screen"] for t in tabs for sb in t["subs"] if sb["screen"]}
+                         | {s for s, k in EXTRA.items() if k == key})
         cfg = {"key": key, "title": title, "screens": screens, "tabs": tabs, "pages": pages_screens}
-        tabmap = {t["id"]: t["screen"] for t in tabs}
+        tabmap = {t["id"]: (next((sb["screen"] or "pgreports" for sb in t["subs"]), t["screen"]) if t["subs"] else t["screen"]) for t in tabs}
+        for t in tabs:
+            for sb in t["subs"]:
+                tabmap[t["id"] + ":" + sb["id"]] = sb["screen"] or "pgreports"
         early = EARLY % {"first": tabs[0]["id"], "tabmap": json.dumps(tabmap), "key": key}
         page = page.replace("</head>", early + "</head>", 1)
         script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),

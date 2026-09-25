@@ -11,9 +11,9 @@ const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['combine', 'errorcheck', 'hrpayroll'],
   store: ['store', 'requests', 'approvals', 'purchase', 'followup', 'lporegister', 'suppliers'],
-  reports: ['labour', 'office', 'people', 'storerep', 'builder'], settings: ['general', 'companies', 'sites', 'logins', 'backup'], activity: ['activity'],
+  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'sites', 'logins', 'backup'], activity: ['activity'],
 };
-const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'pgreports', office: 'pgreports', people: 'pgreports', storerep: 'pgreports', builder: 'reports' };
+const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'pgreports', people: 'pgreports', storerep: 'pgreports' };
 
 (async () => {
   const b = await chromium.launch();
@@ -42,32 +42,42 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
           ck(`${page}.html: ${s} shows only its part (${shown})`, shown === want, shown);
         }
         if (SCREEN_OF[s] === 'pgreports') {
-          const shown = await p.locator('#screen-pgreports > .card:visible').count();
-          ck(`${page}.html: ${s} shows one report list`, shown === 1, shown);
+          const shown = await p.locator('#pg-sub .pg-subtab').count();
+          ck(`${page}.html: ${s} shows its sub-tabs (${shown})`, shown >= 3, shown);
         }
       }
     }
   }
-  // The reports hub lists every report with working buttons.
+  // The reports hub: tabs inside tabs, every report previewed underneath.
   await p.goto(BASE + 'reporting.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
-  ck('the reports page opens on Labour, one section at a time', await p.locator('#screen-pgreports.active').count() === 1 && await p.locator('#screen-pgreports .card:visible').count() === 1);
-  await p.click('#pg-tabs .pg-tab[data-tab="office"]'); await p.waitForTimeout(500);
-  ck('the office statement picker lists the saved cycles', await p.locator('#pgrep-run option').count() >= 1);
-  const opened = [];
-  ctx.on('page', pg => opened.push(pg));
-  let hubBtns = 0;
-  for (const t of ['office', 'people']) {
-    await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(500);
-    const n = await p.locator('#screen-pgreports button:visible:has-text("Preview")').count(); hubBtns += n;
-    for (let i = 0; i < n; i++) { await p.locator('#screen-pgreports button:visible:has-text("Preview")').nth(i).click(); await p.waitForTimeout(500); }
+  ck('the reports page opens on Labour › Cycle report builder', await p.locator('#screen-reports.active').count() === 1 && (await p.locator('#pg-sub .pg-subtab.active').textContent()) === 'Cycle report builder');
+  const frameOk = async (label) => {
+    await p.waitForFunction(() => document.getElementById('pg-frame-note').textContent === '', null, { timeout: 15000 }).catch(() => {});
+    const f = p.frameLocator('#pg-preview');
+    const body = await f.locator('body').innerText().catch(() => '');
+    const bad = /\{"detail"|Internal Server Error|Not Found/.test(body) || body.length < 40;
+    ck(`hub preview: ${label}`, !bad, body.slice(0, 80));
+    return body;
+  };
+  for (const t of ['office', 'people', 'storerep']) {
+    await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(600);
+    const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
+    ck(`${t}: has sub-tabs (${subs.length})`, subs.length >= 3, subs);
+    for (let i = 0; i < subs.length; i++) {
+      await p.locator('#pg-sub .pg-subtab').nth(i).click(); await p.waitForTimeout(700);
+      const onHub = await p.locator('#screen-pgreports.active').count() === 1;
+      if (!onHub) { ck(`${t} › ${subs[i]} opens its screen`, await p.locator('.screen.active').count() === 1); continue; }
+      ck(`${t} › ${subs[i]} is the active sub-tab`, (await p.locator('#pg-sub .pg-subtab.active').textContent()) === subs[i]);
+      await frameOk(`${t} › ${subs[i]}`);
+    }
   }
-  await p.waitForTimeout(1500);
-  ck(`every Preview on the hub opened a page (${hubBtns})`, opened.length === hubBtns, opened.length);
-  for (const pg of opened) { await pg.waitForLoadState().catch(() => {}); const h = await pg.content().catch(() => '{"detail"'); ck(`hub preview: ${(pg.url().split('/export/')[1] || '').split('?')[0]}`, !/\{"detail"|Internal Server Error/.test(h) && h.length > 500); await pg.close().catch(() => {}); }
-  opened.length = 0;
+  await p.click('#pg-tabs .pg-tab[data-tab="people"]'); await p.waitForTimeout(600);
+  await p.click('#pg-opt-group button[data-v="office"]'); await p.waitForTimeout(600);
+  const off = await frameOk('people register, Office');
+  ck('the group switch reloads the preview', /Office/i.test(off));
   await p.click('#pg-tabs .pg-tab[data-tab="labour"]'); await p.waitForTimeout(400);
-  await p.click('#screen-pgreports button:visible:has-text("Open")'); await p.waitForTimeout(800);
-  ck('an Open button on the hub goes to that screen', await p.locator('#screen-reports.active').count() === 1);
+  await p.locator('#pg-sub .pg-subtab', { hasText: 'Salary cards' }).click(); await p.waitForTimeout(800);
+  ck('a Labour sub-tab opens that screen under the same tab', await p.locator('#screen-combine.active').count() === 1 && (await p.locator('#pg-tabs .pg-tab.active').textContent()) === 'Labour');
   // A login with labour reports but no office salary right sees no office tab anywhere.
   await p.evaluate(async () => {
     const users = await apiCall('/users'); let u = users.find(x => x.username === 'tmp_asst');
@@ -78,7 +88,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   await pa.goto(BASE + 'reporting.html'); await pa.fill('#login-username', 'tmp_asst'); await pa.fill('#login-password', 'tmpasst123'); await pa.evaluate('doLogin()');
   await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(2000);
   const atabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
-  ck('an assistant without the office right gets no Office payroll tab on Reports', atabs.join(',') === 'Labour,People,Report builder', atabs);
+  ck('an assistant without the office right gets no Office payroll tab on Reports', atabs.join(',') === 'Labour,People', atabs);
   await pa.goto(BASE + 'payroll.html'); await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(1500);
   const ptabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
   ck('nor on Payroll', !ptabs.includes('Office HR & Payroll') && await pa.locator('#screen-combine.active').count() === 1, ptabs);
