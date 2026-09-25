@@ -2890,9 +2890,18 @@ def delete_backup(backup_id: int, db: Session = Depends(get_db),
     return {"ok": True, "deleted": backup_id}
 
 
+def _app_build():
+    """The moment app.html last changed. A browser holding an older copy
+    of the page compares this with what it loaded and fetches afresh."""
+    try:
+        return int(os.path.getmtime(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app.html")))
+    except OSError:
+        return 0
+
+
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "build": _app_build()}
 
 
 # ---------------------------------------------------------------------

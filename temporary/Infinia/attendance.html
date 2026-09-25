@@ -11156,6 +11156,23 @@ async function restoreBackupById(id) {
   }
 }
 
+// A phone or a laptop that keeps an old copy of this page runs old code
+// against a new server - a fixed fault stays broken for that one person.
+// So the page asks the server which build it is serving and, if that is
+// not the build it loaded with, fetches itself again, once.
+(function checkBuild() {
+  fetch(API + "/health", { cache: "no-store" }).then(r => r.json()).then(h => {
+    if (!h || !h.build) return;
+    const seen = localStorage.getItem("infinia_build");
+    localStorage.setItem("infinia_build", String(h.build));
+    if (seen === String(h.build)) sessionStorage.removeItem("infinia_reloaded");
+    if (seen && seen !== String(h.build) && !sessionStorage.getItem("infinia_reloaded")) {
+      sessionStorage.setItem("infinia_reloaded", "1");
+      location.reload();
+    }
+  }).catch(() => {});
+})();
+
 // Auto-resume session if a token is already stored
 (function tryResume() {
   const saved = sessionStorage.getItem("infinia_token");
