@@ -22,8 +22,25 @@ import models, auth
 from database import get_db
 
 router = APIRouter()
-PEOPLE = Depends(M.require_screen("people"))
+PEOPLE_RIGHTS = {"labour": "people_labour", "office": "people_office",
+                 "local": "people_local", "household": "people_household"}
+PEOPLE = Depends(M.require_any_screen(*PEOPLE_RIGHTS.values()))
 ACCESS = Depends(M.require_screen("access"))
+
+
+def allowed_groups(user):
+    """The registers this login may see. Office salaries are on the office
+    register; a login without that right never gets those rows, on any
+    list, file or report."""
+    if user is None or user.role == "admin":
+        return set(PEOPLE_RIGHTS)
+    perms = M.effective_permissions(user)
+    return {g for g, r in PEOPLE_RIGHTS.items() if r in perms}
+
+
+def _may(user, group):
+    if group not in allowed_groups(user):
+        raise HTTPException(status_code=403, detail=f"Not available to this login: the {GROUPS.get(group, group)} register.")
 
 GROUPS = {"labour": "Labour", "office": "Office staff", "local": "Local staff",
           "household": "Household"}
@@ -220,9 +237,12 @@ def list_people(group: str = "", include_left: bool = False, q: str = "",
         docs.setdefault(d.employee_id, []).append(d)
     rows, counts = [], {k: 0 for k in GROUPS}
     counts["left"] = 0
+    mine = allowed_groups(user)
     for e in db.query(models.Employee).order_by(models.Employee.emp_no).all():
         p = profs.get(e.id)
         g = group_of(e, p)
+        if g not in mine:
+            continue
         left = not e.active or (e.terminated_on and e.terminated_on <= today)
         if left:
             counts["left"] += 1
@@ -241,7 +261,7 @@ def list_people(group: str = "", include_left: bool = False, q: str = "",
         if q.strip() and q.strip().lower() not in f"{e.emp_no} {e.name} {e.designation or ''} {e.trade or ''}".lower():
             continue
         rows.append(_row(db, e, p, docs, today))
-    return {"rows": rows, "counts": counts, "groups": GROUPS}
+    return {"rows": rows, "counts": counts, "groups": GROUPS, "allowed": sorted(mine)}
 
 
 @router.get("/employees/people/documents-due")
@@ -255,7 +275,7 @@ def documents_due(days: int = 90, group: str = "", db: Session = Depends(get_db)
         if not e or not e.active or not d.expires_on:
             continue
         g = group_of(e, profs.get(e.id))
-        if group and g != group:
+        if (group and g != group) or g not in allowed_groups(user):
             continue
         left = (d.expires_on - today).days
         if left > days:
@@ -275,7 +295,7 @@ def leave_balances(group: str = "labour", db: Session = Depends(get_db), user: m
     for e in db.query(models.Employee).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all():  # noqa: E712
         p = profs.get(e.id)
         g = group_of(e, p)
-        if group and g != group:
+        if (group and g != group) or g not in allowed_groups(user):
             continue
         lv = leave_state(db, e, p, g, today)
         rows.append({"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
@@ -289,6 +309,7 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
     e = _by_code(db, emp_no)
     p = _profile(db, e)
     g = group_of(e, p)
+    _may(user, g)
     today = M._dubai_today()
     docs = {}
     for d in db.query(models.EmployeeDocument).filter(models.EmployeeDocument.employee_id == e.id).all():
@@ -353,6 +374,7 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     g = (payload.get("group") or "").strip().lower()
     if g not in GROUPS:
         raise HTTPException(status_code=400, detail="Which register - labour, office, local or household?")
+    _may(user, g)
     emp_no = str(payload.get("emp_no") or "").strip().upper()
     name = str(payload.get("name") or "").strip().upper()
     if not emp_no or not name:
@@ -401,6 +423,7 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
     e = _by_code(db, emp_no)
     p = _profile(db, e, create=True)
     before = group_of(e, p)
+    _may(user, before)
     prof = payload.get("profile") or {}
     emp = payload.get("employee") or {}
     # Register tab.
@@ -410,6 +433,7 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
             raise HTTPException(status_code=400,
                 detail="Labour and monthly-paid staff are paid differently. A person cannot be moved "
                        "between the labour register and the others here.")
+        _may(user, g)
         p.group = g
         e.pay_group = "local" if g == "local" else "staff"
     if "name" in emp and str(emp["name"]).strip():
@@ -470,6 +494,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
     person has attendance, a salary card, a cycle or a loan he is part of
     the books and is marked as left instead of removed."""
     e = _by_code(db, emp_no)
+    _may(user, group_of(e, _profile(db, e)))
     ties = []
     if db.query(models.DailyRow).filter(models.DailyRow.employee_id == e.id).first():
         ties.append("attendance")
@@ -495,6 +520,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
 def add_asset(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
               user: models.User = PEOPLE):
     e = _by_code(db, emp_no)
+    _may(user, group_of(e, _profile(db, e)))
     item = (payload.get("item") or "").strip()
     if not item:
         raise HTTPException(status_code=400, detail="What was issued?")
@@ -539,8 +565,8 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db), user: models.User
 REGISTER_MONEY = ["Basic", "Allowance", "Gross"]
 
 
-def _register_parts(db, group, company_id=None):
-    d = list_people(group=group, include_left=(group == "left"), company_id=company_id, db=db, user=None)
+def _register_parts(db, group, company_id=None, user=None):
+    d = list_people(group=group, include_left=(group == "left"), company_id=company_id, db=db, user=user)
     rows = [{"Code": r["emp_no"], "Name": r["name"], "Designation": r["designation"] or "-",
              "Company": r["company"], "Nationality": r["nationality"] or "-",
              "Joined": M._dmy(M._as_date(r["joined_on"])) if r["joined_on"] else "-",
@@ -603,16 +629,16 @@ def _file_parts(db, emp_no, user):
     return rows, f"Personal File - {p['emp_no']} {p['name']}", f"{p['designation']} · {p['company']} · As at {M._dubai_today():%d %b %Y}"
 
 
-def _due_parts(db, days, group):
-    d = documents_due(days=days, group=group, db=db, user=None)
+def _due_parts(db, days, group, user=None):
+    d = documents_due(days=days, group=group, db=db, user=user)
     rows = [{"Register": r["group_label"], "Code": r["emp_no"], "Name": r["name"], "Document": r["kind_label"],
              "Number": r["number"] or "-", "Expires": M._dmy(M._as_date(r["expires_on"])),
              "Days": r["days_left"], "Company": r["company"]} for r in d["rows"]]
     return rows, f"Documents Due Within {days} Days", f"{len(rows)} document(s)   |   As at {M._dubai_today():%d %b %Y}"
 
 
-def _leave_parts(db, group):
-    d = leave_balances(group=group, db=db, user=None)
+def _leave_parts(db, group, user=None):
+    d = leave_balances(group=group, db=db, user=user)
     rows = [{"Code": r["emp_no"], "Name": r["name"], "Designation": r["designation"] or "-",
              "Joined": M._dmy(M._as_date(r["joined_on"])) if r["joined_on"] else "-", "Service": r["service"] or "-",
              "Rule": r["rule"], "Accrued": f"{r['accrued']:g}", "Taken": f"{r['taken']:g}",
@@ -624,20 +650,25 @@ def _leave_parts(db, group):
 
 def _reader(token, db):
     user = auth.get_download_user_from_token(token, db)
-    if "people" not in M.effective_permissions(user):
+    if not allowed_groups(user):
         raise HTTPException(status_code=403, detail="Not available to this login.")
     return user
 
 
 def _report(kind, db, user, group="", emp_no="", days=90, company_id=None):
     if kind == "register":
-        return _register_parts(db, group, company_id), REGISTER_MONEY
+        if group in GROUPS:
+            _may(user, group)
+        return _register_parts(db, group, company_id, user), REGISTER_MONEY
     if kind == "file":
         return _file_parts(db, emp_no, user), []
     if kind == "documents-due":
-        return _due_parts(db, days, group), []
+        if group:
+            _may(user, group)
+        return _due_parts(db, days, group, user), []
     if kind == "leave":
-        return _leave_parts(db, group), []
+        _may(user, group)
+        return _leave_parts(db, group, user), []
     raise HTTPException(status_code=404, detail="No such report.")
 
 
@@ -675,18 +706,31 @@ def _role_dict(r, db):
 def list_roles(db: Session = Depends(get_db), user: models.User = ACCESS):
     return {"rows": [_role_dict(r, db) for r in db.query(models.AccessRole).order_by(models.AccessRole.name).all()],
             "screens": M.ALL_SCREENS, "role_defaults": M.ROLE_DEFAULTS,
-            "labels": SCREEN_LABELS}
+            "labels": SCREEN_LABELS, "pages": RIGHT_PAGES}
 
 
 SCREEN_LABELS = {
-    "dashboard": "Dashboard", "attendance": "Daily attendance", "masterdata": "Master data (labour)",
-    "reports": "Reports / summaries", "combine": "Salary cards", "adjustments": "Adjustments",
+    "dashboard": "Dashboard", "attendance": "Daily attendance", "masterdata": "Labour master data",
+    "reports": "Labour reports", "combine": "Salary cards", "adjustments": "Salary adjustments",
     "livecard": "Live card", "store": "Store / inventory", "requests": "Material requests",
-    "approvals": "Approvals, orders, LPOs, suppliers", "errorcheck": "Check before you pay",
-    "settings": "Settings", "activity": "Activity monitor", "hrpayroll": "HR & Payroll (office)",
-    "storekeeper": "Record stock in / out", "people": "People (temporary page)",
-    "access": "Access (temporary page)",
+    "approvals": "Approvals, orders, LPO register, suppliers", "errorcheck": "Check before you pay",
+    "settings": "Settings", "activity": "Activity monitor", "hrpayroll": "Office HR & Payroll (office salaries)",
+    "storekeeper": "Record stock in / out", "people_labour": "Labour register",
+    "people_office": "Office staff register (office salaries)", "people_local": "Local staff register",
+    "people_household": "Household register", "access": "Roles & access",
 }
+# The rights as the pages and tabs show them, so a role is ticked the
+# way the app is laid out.
+RIGHT_PAGES = [
+    ("Dashboard", ["dashboard"]),
+    ("Attendance", ["attendance", "livecard", "masterdata"]),
+    ("People", ["people_labour", "people_office", "people_local", "people_household"]),
+    ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
+    ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
+    ("Reports", ["reports"]),
+    ("Settings", ["settings", "access"]),
+    ("Activity Monitor", ["activity"]),
+]
 
 
 def _apply_role(db, u, r):

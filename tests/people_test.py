@@ -50,7 +50,7 @@ ck('nor the site login', c.get('/employees/people', headers=S).status_code == 40
 ck('nor the Access page', c.get('/permissions/roles', headers=O).status_code == 403)
 ck('admin can', c.get('/employees/people', headers=H).status_code == 200)
 ck('the new rights are known to the app', all(s in c.get('/permissions/screens', headers=H).json()['screens']
-                                                for s in ('people', 'access')))
+                                                for s in ('people_labour', 'people_office', 'people_local', 'people_household', 'access')))
 
 # ---- A company and a labourer from the OLD screens ------------------------
 co = c.post('/employees/companies', json={'name': 'INFINIA CONTRACTING L.L.C.', 'short_name': 'Infinia', 'code_prefix': 'IC'}, headers=H).json()
@@ -202,6 +202,23 @@ for kind, extra in (('register', '&group=labour'), ('register', '&group=office')
 t2 = c.post('/auth/download-token', headers=O).json()['token']
 ck('a login without the right cannot open the reports either', c.get(f'/export/people/register?token={t2}&group=labour').status_code == 403)
 
+# ---- One right per register: office salaries stay with those given them ----
+uid_o = next(u['id'] for u in c.get('/users', headers=H).json() if u['username'] == 'office')
+c.post(f'/users/{uid_o}/permissions', json={'permissions': 'dashboard,people_labour,settings'}, headers=H)
+LO = tok('office')
+d = c.get('/employees/people', headers=LO).json()
+ck('a labour-only login opens People and sees labour alone', d['allowed'] == ['labour'] and all(r['group'] == 'labour' for r in d['rows']) and len(d['rows']) >= 1, d.get('allowed'))
+ck('office staff are not even counted for it', d['counts']['office'] == 0, d['counts'])
+ck('an office file is refused outright', c.get('/employees/people/IC022', headers=LO).status_code == 403)
+ck('so is adding to the office register', c.post('/employees/people', json={'group': 'office', 'emp_no': 'IC099', 'name': 'X', 'company_id': co['id'], 'joined_on': '2026-01-01', 'basic': 1, 'allowance': 1}, headers=LO).status_code == 403)
+ck('documents due shows labour rows only', all(r['group'] == 'labour' for r in c.get('/employees/people/documents-due?days=3650', headers=LO).json()['rows']))
+ck('leave balances for office are refused', c.get('/employees/people/leave-balances?group=office', headers=LO).json()['rows'] == [])
+t3 = c.post('/auth/download-token', headers=LO).json()['token']
+ck('the office register report is refused', c.get(f'/export/people/register?token={t3}&group=office').status_code == 403)
+ck('an office person\'s file report is refused', c.get(f'/export/people/file?token={t3}&emp_no=IC022').status_code == 403)
+ck('the labour register report is allowed', c.get(f'/export/people/register?token={t3}&group=labour').status_code == 200)
+c.post(f'/users/{uid_o}/permissions', json={'permissions': ''}, headers=H)
+
 # ---- Access: named roles -----------------------------------------------------------------------
 r = c.post('/permissions/roles', json={'name': 'Assistant Accountant', 'screens': ['dashboard', 'attendance', 'masterdata', 'reports', 'combine', 'errorcheck']}, headers=H)
 ck('a role is made', r.status_code == 200 and 'settings' in r.json()['screens'], r.text[:150])
@@ -212,6 +229,7 @@ ck('a login is given the role', r.status_code == 200 and 'masterdata' in r.json(
 me = c.get('/permissions/me', headers=tok('office')).json()['screens']
 ck('and the OLD app sees exactly those rights - nothing new to read', 'masterdata' in me and 'store' not in me, me)
 ck('while People and Access stay closed to it', c.get('/employees/people', headers=tok('office')).status_code == 403)
+ck('the roles page lists rights by page and tab', any(pg == 'People' for pg, _ in c.get('/permissions/roles', headers=H).json()['pages']))
 r = c.post('/permissions/roles', json={'id': role['id'], 'name': 'Assistant Accountant', 'screens': ['dashboard', 'attendance', 'reports']}, headers=H)
 me = c.get('/permissions/me', headers=tok('office')).json()['screens']
 ck('changing the role changes every login that carries it', 'masterdata' not in me and 'attendance' in me, me)

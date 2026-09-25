@@ -45,8 +45,11 @@ PAGES = {
         tab("lporegister", "lporegister", "LPO register", "approvals"),
         tab("suppliers", "suppliers", "Suppliers", "approvals")]),
     "reports": ("Reports", [
-        tab("pgreports", "pgreports", "All reports", "reports"),
-        tab("reports", "reports", "Report builder")]),
+        tab("labour", "pgreports", "Labour", ["reports", "combine", "errorcheck", "livecard"], ["#pgrep-labour"]),
+        tab("office", "pgreports", "Office payroll", "hrpayroll", ["#pgrep-office"]),
+        tab("people", "pgreports", "People", ["people_labour", "people_office", "people_local", "people_household"], ["#pgrep-people"]),
+        tab("storerep", "pgreports", "Store & purchasing", ["store", "approvals", "requests"], ["#pgrep-store"]),
+        tab("builder", "reports", "Report builder", "reports")]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"]),
@@ -64,7 +67,8 @@ ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "se
 # called reports.html.
 FILE = {"reports": "reporting"}
 def fname(key): return FILE.get(key, key) + ".html"
-STANDALONE = {"people": ("People", "people"), "access": ("Access", "access")}
+STANDALONE = {"people": ("People", ["people_labour", "people_office", "people_local", "people_household"]),
+              "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor"}
 
@@ -87,19 +91,22 @@ CSS = """
   .pg-tab:hover { background: #FAEBE8; }
   .pg-tab.active { background: var(--red); color: white; border-color: var(--red); }
   .pg-tabs:empty { display: none; }
-  /* The reports hub */
-  .pg-hub { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-  .pg-hub .card { margin: 0; }
-  .pg-rep { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #F0EDE8; flex-wrap: wrap; }
+  /* One font across the pages, the one the office's own machines use. */
+  body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body { font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  /* The reports hub: one list a tab, a report a row */
+  #screen-pgreports .card { max-width: 980px; }
+  #screen-pgreports .card h2 { font-size: 17px; margin-bottom: 2px; }
+  .pg-rep { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #F0EDE8; flex-wrap: wrap; }
   .pg-rep:last-child { border-bottom: 0; }
-  .pg-rep .t { flex: 1; min-width: 160px; font-weight: 600; font-size: 13.5px; }
-  .pg-rep .t small { display: block; font-weight: normal; color: #888; font-size: 11.5px; }
+  .pg-rep .t { flex: 1; min-width: 200px; font-weight: 600; font-size: 14px; }
+  .pg-rep .t small { display: block; font-weight: normal; color: #888; font-size: 12px; margin-top: 1px; }
   .pg-rep select, .pg-rep input[type=month], .pg-rep input[type=number] { height: 32px; padding: 0 8px; border: 1px solid #D5D9DE; border-radius: 6px; font-size: 12.5px; width: auto; max-width: 330px; flex: 0 0 auto; margin: 0; }
-  .pg-rep .btn { padding: 5px 10px; font-size: 12px; }
+  .pg-rep .btn { padding: 6px 12px; font-size: 12.5px; min-width: 64px; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
-  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } .pg-hub { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } }
 </style>
 """
 
@@ -127,7 +134,6 @@ HUB_HTML = """
         <!-- ============ REPORTS HUB (temporary pages) ============ -->
         <div class="screen" id="screen-pgreports">
           <div class="status-msg" id="pgrep-status"></div>
-          <div class="pg-hub">
             <div class="card" id="pgrep-labour">
               <h2>Labour - attendance &amp; salary</h2>
               <p style="font-size:12px; color:#888; margin:0 0 8px;">The 26th-to-25th cycle: attendance, salary cards and the checks before paying.</p>
@@ -162,7 +168,6 @@ HUB_HTML = """
               <div class="pg-rep"><span class="t">LPO register<small>Every purchase order raised</small></span><button class="btn btn-dark" onclick="switchScreen('lporegister')">Open</button></div>
               <div class="pg-rep"><span class="t">Order follow-up<small>What is coming, from whom</small></span><button class="btn btn-dark" onclick="switchScreen('followup')">Open</button></div>
             </div>
-          </div>
         </div>
 """
 
@@ -186,7 +191,9 @@ const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
 const PAGE_FILE = %(file_json)s;
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
-function pgAllowed(screen) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(RIGHT_OF[screen] || screen); }
+function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : MY_SCREENS.includes(r)); }
+function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
+function pgTabOk(t) { return pgHas(t.right); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
 let PG_TAB = null;
 
@@ -231,12 +238,12 @@ dashStoreGo = function (panel) {
 firstScreenFor = function () {
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
-  if (t && pgAllowed(t.screen)) {
+  if (t && pgTabOk(t)) {
     PG_TAB = t;
     if (t.screen === "store" && extra) setTimeout(() => storeGo(extra), 120);
     return t.screen;
   }
-  for (const tb of PAGE.tabs) if (pgAllowed(tb.screen)) { PG_TAB = tb; return tb.screen; }
+  for (const tb of PAGE.tabs) if (pgTabOk(tb)) { PG_TAB = tb; return tb.screen; }
   const pages = %(order_json)s;
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
@@ -246,7 +253,7 @@ firstScreenFor = function () {
 };
 function pgRenderTabs() {
   const bar = document.getElementById("pg-tabs");
-  const tabs = PAGE.tabs.filter(t => pgAllowed(t.screen));
+  const tabs = PAGE.tabs.filter(pgTabOk);
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
@@ -269,11 +276,11 @@ window.addEventListener("hashchange", () => {
 // The app loads today's attendance grid, the dashboard calendar and the
 // live-card list before showing anything. On a page without those
 // screens that is a wait for nothing, so they are skipped here.
-const pgHas = s => PAGE.screens.includes(s);
-if (!pgHas("attendance")) { loadDate = async () => {}; }
-if (!pgHas("dashboard")) { loadDashboardCalendar = () => {}; startDashboardClock = () => {}; }
-if (!pgHas("livecard")) { renderLiveCardWorkerList = () => {}; }
-if (!pgHas("masterdata") && !pgHas("settings")) { renderMasterDataLists = () => {}; }
+const pgOn = s => PAGE.screens.includes(s);
+if (!pgOn("attendance")) { loadDate = async () => {}; }
+if (!pgOn("dashboard")) { loadDashboardCalendar = () => {}; startDashboardClock = () => {}; }
+if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
+if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 
 // ---- The reports hub -------------------------------------------------------
 function pgBtns(preview, dl) {
@@ -303,10 +310,6 @@ function pgPeopleUrl(kind) {
 }
 let PG_HUB_DONE = false;
 async function pgHubLoad() {
-  document.getElementById("pgrep-labour").style.display = ["reports", "combine", "errorcheck", "livecard"].some(pgAllowed) ? "" : "none";
-  document.getElementById("pgrep-office").style.display = pgAllowed("hrpayroll") ? "" : "none";
-  document.getElementById("pgrep-people").style.display = pgAllowed("people") ? "" : "none";
-  document.getElementById("pgrep-store").style.display = ["store", "approvals", "requests"].some(pgAllowed) ? "" : "none";
   refreshDownloadToken();
   if (PG_HUB_DONE) return;
   PG_HUB_DONE = true;
@@ -316,7 +319,7 @@ async function pgHubLoad() {
     el.innerHTML = pgBtns(`pgOpen(pgHrUrl('${w}'),'view')`, `pgOpen(pgHrUrl('${w}'),'FMT')`); });
   document.querySelectorAll("#pgrep-people [data-people]").forEach(el => { const w = el.dataset.people;
     el.innerHTML = pgBtns(`pgOpen(pgPeopleUrl('${w}'),'view')`, `pgOpen(pgPeopleUrl('${w}'),'FMT')`); });
-  if (pgAllowed("hrpayroll")) {
+  if (pgHas("hrpayroll")) {
     try {
       const runs = (await apiCall("/employees/payroll/runs")).rows || [];
       const sel = document.getElementById("pgrep-run");
@@ -366,13 +369,16 @@ def build():
         pages_screens[key] = sorted({t["screen"] for t in tabs})
         for t in tabs:
             page_of[t["screen"]] = key
-            right_of[t["screen"]] = t["right"]
+            rights = t["right"] if isinstance(t["right"], list) else [t["right"]]
+            have = right_of.get(t["screen"], [])
+            right_of[t["screen"]] = sorted(set((have if isinstance(have, list) else [have]) + rights))
     for screen, key in EXTRA.items():
         page_of[screen] = key
         right_of[screen] = key
     for key, (_, right) in STANDALONE.items():
-        pages_screens[key] = [key]
-        right_of[key] = right
+        pages_screens[key] = right if isinstance(right, list) else [key]
+        for r in (right if isinstance(right, list) else [right]):
+            right_of[r] = r
 
     for key, (title, tabs) in PAGES.items():
         side = ['<div class="pg-side">', brand]

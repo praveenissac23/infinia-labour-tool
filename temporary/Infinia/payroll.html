@@ -764,19 +764,22 @@
   .pg-tab:hover { background: #FAEBE8; }
   .pg-tab.active { background: var(--red); color: white; border-color: var(--red); }
   .pg-tabs:empty { display: none; }
-  /* The reports hub */
-  .pg-hub { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-  .pg-hub .card { margin: 0; }
-  .pg-rep { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #F0EDE8; flex-wrap: wrap; }
+  /* One font across the pages, the one the office's own machines use. */
+  body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body { font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  /* The reports hub: one list a tab, a report a row */
+  #screen-pgreports .card { max-width: 980px; }
+  #screen-pgreports .card h2 { font-size: 17px; margin-bottom: 2px; }
+  .pg-rep { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #F0EDE8; flex-wrap: wrap; }
   .pg-rep:last-child { border-bottom: 0; }
-  .pg-rep .t { flex: 1; min-width: 160px; font-weight: 600; font-size: 13.5px; }
-  .pg-rep .t small { display: block; font-weight: normal; color: #888; font-size: 11.5px; }
+  .pg-rep .t { flex: 1; min-width: 200px; font-weight: 600; font-size: 14px; }
+  .pg-rep .t small { display: block; font-weight: normal; color: #888; font-size: 12px; margin-top: 1px; }
   .pg-rep select, .pg-rep input[type=month], .pg-rep input[type=number] { height: 32px; padding: 0 8px; border: 1px solid #D5D9DE; border-radius: 6px; font-size: 12.5px; width: auto; max-width: 330px; flex: 0 0 auto; margin: 0; }
-  .pg-rep .btn { padding: 5px 10px; font-size: 12px; }
+  .pg-rep .btn { padding: 6px 12px; font-size: 12.5px; min-width: 64px; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
-  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } .pg-hub { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } }
 </style>
 
 <script>
@@ -2618,7 +2621,6 @@
         <!-- ============ REPORTS HUB (temporary pages) ============ -->
         <div class="screen" id="screen-pgreports">
           <div class="status-msg" id="pgrep-status"></div>
-          <div class="pg-hub">
             <div class="card" id="pgrep-labour">
               <h2>Labour - attendance &amp; salary</h2>
               <p style="font-size:12px; color:#888; margin:0 0 8px;">The 26th-to-25th cycle: attendance, salary cards and the checks before paying.</p>
@@ -2653,7 +2655,6 @@
               <div class="pg-rep"><span class="t">LPO register<small>Every purchase order raised</small></span><button class="btn btn-dark" onclick="switchScreen('lporegister')">Open</button></div>
               <div class="pg-rep"><span class="t">Order follow-up<small>What is coming, from whom</small></span><button class="btn btn-dark" onclick="switchScreen('followup')">Open</button></div>
             </div>
-          </div>
         </div>
         <div class="screen" id="screen-activity">
           <div class="toolbar">
@@ -12782,13 +12783,15 @@ async function addIncrement() {
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
 // decides whether the screen is here or on another page.
-const PAGE = {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "combine", "screen": "combine", "label": "Salary cards", "right": "combine", "show": []}, {"id": "errorcheck", "screen": "errorcheck", "label": "Check before you pay", "right": "errorcheck", "show": []}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office HR & Payroll", "right": "hrpayroll", "show": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["pgreports", "reports"], "settings": ["settings"], "activity": ["activity"], "people": ["people"], "access": ["access"]}};
+const PAGE = {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "combine", "screen": "combine", "label": "Salary cards", "right": "combine", "show": []}, {"id": "errorcheck", "screen": "errorcheck", "label": "Check before you pay", "right": "errorcheck", "show": []}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office HR & Payroll", "right": "hrpayroll", "show": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["pgreports", "reports"], "settings": ["settings"], "activity": ["activity"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
 const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "payroll", "store": "store", "requests": "store", "approvals": "store", "purchase": "store", "followup": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "activity", "monthly": "reports"};
-const RIGHT_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata", "combine": "combine", "errorcheck": "errorcheck", "hrpayroll": "hrpayroll", "store": "store", "requests": "requests", "approvals": "approvals", "purchase": "approvals", "followup": "requests", "lporegister": "approvals", "suppliers": "approvals", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "activity", "monthly": "reports", "people": "people", "access": "access"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine"], "errorcheck": ["errorcheck"], "hrpayroll": ["hrpayroll"], "store": ["store"], "requests": ["requests"], "approvals": ["approvals"], "purchase": ["approvals"], "followup": ["requests"], "lporegister": ["approvals"], "suppliers": ["approvals"], "pgreports": ["approvals", "combine", "errorcheck", "hrpayroll", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "reports": ["reports"], "settings": ["settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
 const PAGE_FILE = {"reports": "reporting"};
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
-function pgAllowed(screen) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(RIGHT_OF[screen] || screen); }
+function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : MY_SCREENS.includes(r)); }
+function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
+function pgTabOk(t) { return pgHas(t.right); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
 let PG_TAB = null;
 
@@ -12833,12 +12836,12 @@ dashStoreGo = function (panel) {
 firstScreenFor = function () {
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
-  if (t && pgAllowed(t.screen)) {
+  if (t && pgTabOk(t)) {
     PG_TAB = t;
     if (t.screen === "store" && extra) setTimeout(() => storeGo(extra), 120);
     return t.screen;
   }
-  for (const tb of PAGE.tabs) if (pgAllowed(tb.screen)) { PG_TAB = tb; return tb.screen; }
+  for (const tb of PAGE.tabs) if (pgTabOk(tb)) { PG_TAB = tb; return tb.screen; }
   const pages = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity", "access"];
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
@@ -12848,7 +12851,7 @@ firstScreenFor = function () {
 };
 function pgRenderTabs() {
   const bar = document.getElementById("pg-tabs");
-  const tabs = PAGE.tabs.filter(t => pgAllowed(t.screen));
+  const tabs = PAGE.tabs.filter(pgTabOk);
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
@@ -12871,11 +12874,11 @@ window.addEventListener("hashchange", () => {
 // The app loads today's attendance grid, the dashboard calendar and the
 // live-card list before showing anything. On a page without those
 // screens that is a wait for nothing, so they are skipped here.
-const pgHas = s => PAGE.screens.includes(s);
-if (!pgHas("attendance")) { loadDate = async () => {}; }
-if (!pgHas("dashboard")) { loadDashboardCalendar = () => {}; startDashboardClock = () => {}; }
-if (!pgHas("livecard")) { renderLiveCardWorkerList = () => {}; }
-if (!pgHas("masterdata") && !pgHas("settings")) { renderMasterDataLists = () => {}; }
+const pgOn = s => PAGE.screens.includes(s);
+if (!pgOn("attendance")) { loadDate = async () => {}; }
+if (!pgOn("dashboard")) { loadDashboardCalendar = () => {}; startDashboardClock = () => {}; }
+if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
+if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 
 // ---- The reports hub -------------------------------------------------------
 function pgBtns(preview, dl) {
@@ -12905,10 +12908,6 @@ function pgPeopleUrl(kind) {
 }
 let PG_HUB_DONE = false;
 async function pgHubLoad() {
-  document.getElementById("pgrep-labour").style.display = ["reports", "combine", "errorcheck", "livecard"].some(pgAllowed) ? "" : "none";
-  document.getElementById("pgrep-office").style.display = pgAllowed("hrpayroll") ? "" : "none";
-  document.getElementById("pgrep-people").style.display = pgAllowed("people") ? "" : "none";
-  document.getElementById("pgrep-store").style.display = ["store", "approvals", "requests"].some(pgAllowed) ? "" : "none";
   refreshDownloadToken();
   if (PG_HUB_DONE) return;
   PG_HUB_DONE = true;
@@ -12918,7 +12917,7 @@ async function pgHubLoad() {
     el.innerHTML = pgBtns(`pgOpen(pgHrUrl('${w}'),'view')`, `pgOpen(pgHrUrl('${w}'),'FMT')`); });
   document.querySelectorAll("#pgrep-people [data-people]").forEach(el => { const w = el.dataset.people;
     el.innerHTML = pgBtns(`pgOpen(pgPeopleUrl('${w}'),'view')`, `pgOpen(pgPeopleUrl('${w}'),'FMT')`); });
-  if (pgAllowed("hrpayroll")) {
+  if (pgHas("hrpayroll")) {
     try {
       const runs = (await apiCall("/employees/payroll/runs")).rows || [];
       const sel = document.getElementById("pgrep-run");

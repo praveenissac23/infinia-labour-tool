@@ -7,7 +7,7 @@
 <style>
   :root { --red: #C0392B; --red-hover: #A5301F; --black: #2E3238; --darkgray: #3E434A; --silver: #C7CBD1; --lightgray: #F1EFEA; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Segoe UI", Verdana, sans-serif; font-size: 13.5px; color: var(--black); background: var(--lightgray); }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; line-height: 1.45; color: var(--black); background: var(--lightgray); -webkit-font-smoothing: antialiased; }
   button { font-family: inherit; cursor: pointer; } input, select { font-family: inherit; font-size: 13.5px; }
   .btn { padding: 8px 14px; border: 1px solid transparent; border-radius: 7px; font-weight: 600; font-size: 13px; white-space: nowrap; }
   .btn-primary { background: var(--red); color: white; } .btn-primary:hover { background: var(--red-hover); }
@@ -48,8 +48,10 @@
   .grid-wrap { overflow: auto; max-height: 70vh; border: 1px solid #E9EBEE; border-radius: 8px; }
   .matrix td, .matrix th { text-align: center; } .matrix td:first-child, .matrix th:first-child, .matrix td:nth-child(2), .matrix th:nth-child(2) { text-align: left; }
   .tick { color: #1E7A3A; font-weight: 800; } .cross { color: #C7C2BC; }
-  .rights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; margin: 8px 0; }
-  .rights label { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+  .rights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; margin: 8px 0; }
+  .rights .rgroup { border: 1px solid #EEE9E3; border-radius: 8px; padding: 8px 12px; }
+  .rights .rpage { font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #8A6560; margin-bottom: 4px; }
+  .rights label { display: flex; gap: 8px; align-items: center; font-size: 13.5px; padding: 3px 0; }
   .dlg { position: fixed; inset: 0; background: rgba(30,24,20,.42); z-index: 2500; display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
   .dlg-box { background: white; border-radius: 12px; padding: 22px 24px; width: 100%; max-width: 820px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
   .dlg h3 { font-size: 16px; margin: 0 0 12px; }
@@ -136,7 +138,7 @@
 <script>
 const API = "";
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
-let ME = null, ROLES = [], SCREENS = [], LABELS = {}, USERS = [], editingRole = null, assigning = null;
+let ME = null, ROLES = [], SCREENS = [], LABELS = {}, PAGES = [], USERS = [], editingRole = null, assigning = null;
 function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function status(kind, text) { const el = document.getElementById("status"); el.className = "status " + (text ? kind : ""); el.textContent = text || ""; if (text && kind === "ok") setTimeout(() => { if (el.textContent === text) status("", ""); }, 4000); }
 function errText(e) { const d = e && e.body && e.body.detail; return typeof d === "string" ? d : (d ? JSON.stringify(d) : "Something went wrong."); }
@@ -177,7 +179,7 @@ async function start() {
   if (!ME.screens.includes("access")) { document.getElementById("login").style.display = "flex"; document.getElementById("login-error").textContent = "This page is not available to your login."; TOKEN = null; sessionStorage.removeItem("infinia_token"); return; }
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = ME.username; document.getElementById("who-role").textContent = ME.role;
-  document.getElementById("nav-people").style.display = ME.screens.includes("people") ? "" : "none";
+  document.getElementById("nav-people").style.display = ME.screens.some(s => s.startsWith("people_")) ? "" : "none";
   await loadAll(); setTab("roles");
 }
 function setTab(t) {
@@ -185,18 +187,24 @@ function setTab(t) {
   document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
 }
 async function loadAll() {
-  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; USERS = (await apiCall("/permissions/roles/users")).rows; }
+  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; USERS = (await apiCall("/permissions/roles/users")).rows; }
   catch (e) { status("warn", errText(e)); }
   renderRoles(); renderUsers();
 }
 const SHOWN = () => SCREENS.filter(s => s !== "settings");
+// Rights are listed the way the app is laid out: the page, then its tabs.
+const GROUPED = () => PAGES.length ? PAGES.map(([page, keys]) => [page, keys.filter(k => SCREENS.includes(k) && k !== "settings")]).filter(([, k]) => k.length) : [["All", SHOWN()]];
 function renderRoles() {
-  document.getElementById("roles-head").innerHTML = `<tr><th>Role</th><th>Logins</th>${SHOWN().map(s => `<th title="${esc(s)}">${esc(LABELS[s] || s)}</th>`).join("")}<th></th></tr>`;
+  const groups = GROUPED();
+  document.getElementById("roles-head").innerHTML =
+    `<tr><th rowspan="2" style="vertical-align:bottom;">Role</th><th rowspan="2" style="vertical-align:bottom;">Logins</th>${groups.map(([pg, keys]) => `<th colspan="${keys.length}" style="border-left:1px solid #E4E0DB; background:#F3EFEA;">${esc(pg)}</th>`).join("")}<th rowspan="2"></th></tr>` +
+    `<tr>${groups.flatMap(([, keys]) => keys.map((s, i) => `<th style="${i === 0 ? "border-left:1px solid #E4E0DB;" : ""} font-weight:600; text-transform:none; letter-spacing:0;">${esc(LABELS[s] || s)}</th>`)).join("")}</tr>`;
+  const cols = groups.reduce((n, [, k]) => n + k.length, 0);
   document.getElementById("roles-body").innerHTML = ROLES.map(r => `<tr><td><b>${esc(r.name)}</b>${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td>
     <td>${r.members.length ? r.members.map(m => esc(m.username)).join(", ") : '<span class="cross">–</span>'}</td>
-    ${SHOWN().map(s => `<td>${r.screens.includes(s) ? '<span class="tick">✓</span>' : '<span class="cross">–</span>'}</td>`).join("")}
+    ${groups.flatMap(([, keys]) => keys.map((s, i) => `<td style="${i === 0 ? "border-left:1px solid #E4E0DB;" : ""}">${r.screens.includes(s) ? '<span class="tick">✓</span>' : '<span class="cross">–</span>'}</td>`)).join("")}
     <td style="white-space:nowrap;"><button class="btn btn-gray btn-sm" onclick="openRole(${r.id})">Edit</button><button class="btn btn-danger btn-sm" onclick="removeRole(${r.id})">Delete</button></td></tr>`).join("")
-    || `<tr><td colspan="${SHOWN().length + 3}" class="muted">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
+    || `<tr><td colspan="${cols + 3}" class="muted">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
 }
 function renderUsers() {
   document.getElementById("users-body").innerHTML = USERS.map(u => `<tr><td><b>${esc(u.username)}</b></td><td>${esc(u.full_name)}</td><td>${u.role === "admin" ? '<span class="pill r">admin</span>' : u.role === "site" ? '<span class="pill gr">site</span>' : '<span class="pill gr">office</span>'}</td>
@@ -209,7 +217,8 @@ function openRole(id) {
   const r = id ? ROLES.find(x => x.id === id) : null; editingRole = r ? r.id : null;
   document.getElementById("role-title").textContent = r ? `Edit ${r.name}` : "New role";
   document.getElementById("r-name").value = r ? r.name : ""; document.getElementById("r-notes").value = r ? r.notes : "";
-  document.getElementById("r-rights").innerHTML = SHOWN().map(s => `<label><input type="checkbox" value="${esc(s)}" ${r && r.screens.includes(s) ? "checked" : ""}> ${esc(LABELS[s] || s)}</label>`).join("");
+  document.getElementById("r-rights").innerHTML = GROUPED().map(([pg, keys]) => `<div class="rgroup"><div class="rpage">${esc(pg)}</div>${keys.map(s =>
+    `<label><input type="checkbox" value="${esc(s)}" ${r && r.screens.includes(s) ? "checked" : ""}> ${esc(LABELS[s] || s)}</label>`).join("")}</div>`).join("");
   document.getElementById("role-msg").textContent = ""; openDlg("dlg-role");
 }
 async function saveRole() {
