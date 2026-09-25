@@ -5957,6 +5957,8 @@ function setUnitSelect(sel, unit) {
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
 const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports","hire","returns"];
+// A report asked for by name (a tab, a link) opens instead of Current stock.
+let STORE_REPORT_WANT = "";
 // A store door on the dashboard opens the store screen already on the
 // panel that was asked for, rather than dropping the person on the
 // store home to click again.
@@ -5987,7 +5989,8 @@ function storeGo(which) {
     updateReportBadges();
     // Current stock is what people come here for; showing it straight
     // away saves a click and makes the screen useful on arrival.
-    pickReport("stock", true);
+    pickReport(STORE_REPORT_WANT || "stock", true);
+    STORE_REPORT_WANT = "";
   }
   if (which === "other") setMvKind(null);
   if (which === "hire") loadHirePanel();
@@ -9037,8 +9040,13 @@ function filterStoreReport() {
     (q ? ` \u00b7 ${num(shown)} of ${num(total)} rows match "${q}"` : "");
 }
 
+let STORE_LOAD_SEQ = 0;
 async function loadStore() {
   const view = document.getElementById("store-view").value;
+  // Two reports asked for in quick succession: only the latest may draw,
+  // or a slow Current stock lands on top of the register picked after it.
+  const seq = ++STORE_LOAD_SEQ;
+  const stale = () => seq !== STORE_LOAD_SEQ;
   const from = document.getElementById("store-date-from").value;
   const to = document.getElementById("store-date-to").value;
   const head = document.getElementById("store-head");
@@ -9049,6 +9057,7 @@ async function loadStore() {
     // action buttons (approve / print / delete) that stock views don't.
     if (view.startsWith("mr_")) {
       const all = await apiCall("/store/requests");
+      if (stale()) return;
       const wanted = {
         mr_open: r => ["pending","approved","partial"].includes(r.status),
         mr_overdue: r => r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status),
@@ -9109,12 +9118,14 @@ async function loadStore() {
       // One site's holdings, straight from the stock ledger - the
       // question a site engineer actually asks.
       const stk = await apiCall(`/store/stock?location=${encodeURIComponent(siteOnly)}`);
+      if (stale()) return;
       d = { title: `What site ${siteOnly} is holding`,
             rows: stk.filter(s => (s.qty || 0) > 0)
                      .map(s => ({ code: s.code, name: s.name, unit: s.unit,
                                   item_type: s.item_type, qty: s.qty })) };
     } else {
       d = await apiCall(url);
+      if (stale()) return;
     }
     if (view === "stock") {
       // The give-out rows read what is on hand from storeStockCache,
@@ -9123,6 +9134,7 @@ async function loadStore() {
       // ledger replays on opening this one screen.
       if (!storeStockCache || !storeStockCache.length) {
         try { storeStockCache = await apiCall("/store/stock"); } catch (e) {}
+        if (stale()) return;
       }
     }
     document.getElementById("store-table-title").textContent = d.title;

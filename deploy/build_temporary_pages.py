@@ -387,8 +387,8 @@ function pgSubGo() {
   if (sb.go) setTimeout(() => { try { new Function(sb.go)(); } catch (e) { console.error(e); } }, 30);
 }
 function pgStoreReport(kind) {
+  STORE_REPORT_WANT = kind;
   storeGo("reports");
-  pickReport(kind, true);
 }
 function pgSeg(id) { const b = document.querySelector("#" + id + " button.on"); return b ? b.dataset.v : ""; }
 function pgSegHtml(id, choices, on) {
