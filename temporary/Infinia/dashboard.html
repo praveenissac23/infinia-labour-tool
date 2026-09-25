@@ -1282,9 +1282,8 @@
               <input type="text" id="md-emp-no" placeholder="Employee No">
               <input type="text" id="md-emp-name" placeholder="Name">
               <input type="text" id="md-emp-trade" placeholder="Trade">
-              <select id="md-emp-company" style="width:170px;" title="Which company employs this worker">
+              <select id="md-emp-company" style="width:170px;" title="Which company employs this worker" data-companies="pick">
                 <option value="Infinia">Infinia</option>
-                <option value="Prime Infinia">Prime Infinia</option>
               </select>
               <select id="md-emp-paytype" style="width:150px;"
                       title="Daily: paid per day worked, an absence costs the day and a day's deduction. Fixed: the whole month's salary, less one day per absence.">
@@ -1347,10 +1346,9 @@
               <select id="report-cycle" onchange="loadReports()"></select>
               <label style="font-size:13px;">Company:</label>
               <select id="report-company" onchange="loadReports()" style="width:180px;"
-                      title="Report on one company, or both together">
-                <option value="">Both companies</option>
+                      title="Report on one company, or all together" data-companies="all">
+                <option value="">All companies</option>
                 <option value="Infinia">Infinia</option>
-                <option value="Prime Infinia">Prime Infinia</option>
               </select>
             </span>
             <span id="report-range-wrap" style="display:none;">
@@ -1417,10 +1415,9 @@
             <label>Payroll cycle:</label>
             <select id="monthly-cycle" onchange="onMonthlyPick()"></select>
             <label style="font-size:13px;">Company:</label>
-            <select id="monthly-company" onchange="onMonthlyPick()" style="width:180px;">
-              <option value="">Both companies</option>
+            <select id="monthly-company" onchange="onMonthlyPick()" style="width:180px;" data-companies="all">
+              <option value="">All companies</option>
               <option value="Infinia">Infinia</option>
-              <option value="Prime Infinia">Prime Infinia</option>
             </select>
             <button class="btn btn-primary" onclick="saveAllMonthlyNotes()" title="Notes also save on their own as you leave each box">Save notes</button>
             <button class="btn btn-dark" onclick="exportReportTable('view')">Preview</button>
@@ -4335,9 +4332,7 @@ function renderMasterDataLists() {
   empBody.innerHTML = sorted.map(e => `
     <tr>
       <td>${e.emp_no}</td><td>${e.name}</td><td>${e.trade}</td>
-      <td>${(e.company || "Infinia") === "Prime Infinia"
-             ? '<span class="pill" style="background:#EDE7F6; color:#5E35B1;">Prime Infinia</span>'
-             : '<span class="pill" style="background:#E8F0FE; color:#1565C0;">Infinia</span>'}</td>
+      <td>${companyPill(e.company || "Infinia")}</td>
       <td>${(e.pay_type || "daily") === "fixed"
              ? '<span class="pill" style="background:#FFF3E0; color:#B26A00;">Fixed monthly</span>'
              : '<span class="pill" style="background:#EFEFEF; color:#555;">Daily wage</span>'}</td>
@@ -4640,7 +4635,33 @@ function peopleOptionsHtml(selected) {
 
 // The people lists are wanted on store screens that never load them
 // themselves, so they are fetched once and reused.
+// The companies on file fill every labour company dropdown, so a company
+// added under Settings is a choice on Master Data and the reports at once.
+let LABOUR_COMPANIES = [];
+const COMPANY_PILLS = [["#E8F0FE", "#1565C0"], ["#EDE7F6", "#5E35B1"], ["#E8F5E9", "#2E7D32"], ["#FFF3E0", "#B26A00"], ["#FCE4EC", "#AD1457"], ["#E0F7FA", "#00838F"]];
+function companyPill(name) {
+  const i = Math.max(0, LABOUR_COMPANIES.indexOf(name));
+  const [bg, fg] = COMPANY_PILLS[i % COMPANY_PILLS.length];
+  return `<span class="pill" style="background:${bg}; color:${fg};">${escapeHtml(name)}</span>`;
+}
+async function ensureCompanies() {
+  try {
+    const rows = await apiCall("/employees/companies") || [];
+    const names = rows.map(c => c.short_name || c.name).filter(Boolean);
+    if (!names.length) return;
+    // Infinia first - it is the default for a new worker - then the rest as listed.
+    names.sort((a, b) => (a === "Infinia" ? -1 : b === "Infinia" ? 1 : 0));
+    LABOUR_COMPANIES = names;
+    document.querySelectorAll("select[data-companies]").forEach(sel => {
+      const was = sel.value;
+      const all = sel.dataset.companies === "all" ? '<option value="">All companies</option>' : "";
+      sel.innerHTML = all + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+      if ([...sel.options].some(o => o.value === was)) sel.value = was;
+    });
+  } catch (e) { /* the built-in choices stay */ }
+}
 async function ensurePeople() {
+  await ensureCompanies();
   try {
     if (!sites || !sites.length) sites = await apiCall("/sites") || [];
   } catch (e) { sites = sites || []; }
@@ -12018,7 +12039,7 @@ async function saveCompany() {
       id: parseInt(v("co-id"), 10) || undefined, name: v("co-name"), short_name: v("co-short"),
       code_prefix: v("co-prefix"), trn: v("co-trn"), wps_id: v("co-wps") }) });
     const was = v("co-id");
-    coReset(); await loadCompanies();
+    coReset(); await loadCompanies(); await ensureCompanies();
     showStatus("settings-status", "ok", was ? "Company updated." : "Company added.");
   } catch (e) { showStatus("settings-status", "err", errText(e)); }
 }

@@ -863,6 +863,22 @@ def export_employees(token: str, db: Session = Depends(get_db)):
     )
 
 
+def _company_from_cell(db, cell: str) -> str:
+    """The company a sheet names, matched to the companies on file by
+    short name or full name (case and hyphens ignored); 'Prime' is Prime
+    Infinia; anything unknown is Infinia."""
+    key = (cell or "").strip().lower().replace("-", " ")
+    if not key:
+        return "Infinia"
+    if key == "prime":
+        key = "prime infinia"
+    for c in db.query(models.Company).all():
+        for n in (c.short_name, c.name):
+            if n and n.strip().lower().replace("-", " ") == key:
+                return c.short_name or c.name
+    return "Infinia"
+
+
 @app.post("/employees/import")
 async def import_employees(file: UploadFile = File(...), mode: str = Form("add_only"),
                             duplicate_handling: str = Form("skip"),
@@ -937,7 +953,7 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
         # choice and is honoured exactly.
         company_cell = str(get("company", "") or "").strip()
         company_stated = bool(company_cell)
-        company = "Prime Infinia" if company_cell.lower().replace("-", " ") in ("prime infinia", "prime") else "Infinia"
+        company = _company_from_cell(db, company_cell)
         # Pay Type follows the same rule: blank means not stated, so a
         # sheet without the column cannot turn a foreman back into a
         # day labourer on re-import.
