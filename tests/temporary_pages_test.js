@@ -129,6 +129,11 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   ck('and lands on requests', await p2.locator('#screen-requests.active').count() === 1);
   const menu = await p2.locator('.pg-side .pg-item:visible').allTextContents();
   ck('the menu shows only the pages it may open', menu.join(',') === 'Dashboard,Store & Purchasing,Reports,Settings', menu);
+  // Moving between pages, the menu never shows an entry this login may not open - not even for a frame.
+  const seenMenu = new Set();
+  await p2.goto(BASE + 'settings.html');
+  for (let i = 0; i < 30; i++) { seenMenu.add(await p2.evaluate(() => [...document.querySelectorAll('.pg-side .pg-item[data-page]')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden').map(e => e.dataset.page).join(',')).catch(() => 'nav')); await p2.waitForTimeout(50); }
+  ck('the menu never flashes entries the login lacks', [...seenMenu].every(v => v === 'nav' || v === '' || v === 'dashboard,store,reports,settings'), [...seenMenu]);
   await p2.goto(BASE + 'payroll.html'); await p2.waitForTimeout(2500);
   ck('a page with nothing for that login sends it to one that has', !p2.url().includes('payroll.html'), p2.url());
   ck('no script errors for the limited login', errs2.length === 0, errs2.slice(0, 3));

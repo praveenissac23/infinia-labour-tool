@@ -123,6 +123,15 @@ EARLY = """
     var screen = tabs[want] || want;
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
+    // The menu as this login last saw it, so it never draws in full and
+    // then trims itself once the server answers.
+    var menu = null;
+    try { menu = JSON.parse(localStorage.getItem("infinia_menu") || "null"); } catch (e) {}
+    if (menu && menu.user === (sessionStorage.getItem("infinia_user") || "")) {
+      css += ".pg-side .pg-item[data-page]{display:none}" + menu.pages.map(function (pg) { return ".pg-side .pg-item[data-page='" + pg + "']{display:block}"; }).join("");
+    } else {
+      css += ".pg-side .pg-item[data-page]{visibility:hidden}";
+    }
     var st = document.createElement("style"); st.id = "pg-early"; st.textContent = css;
     document.head.appendChild(st);
   } catch (e) {}
@@ -227,6 +236,8 @@ function pgApplyTab() {
   const keep = new Set(t.show.flatMap(sel => [...screen.querySelectorAll(sel)]));
   parts.forEach(el => el.classList.toggle("pg-hide", !keep.has(el) && ![...keep].some(k => el.contains(k))));
 }
+const _doLogout = doLogout;
+doLogout = function () { try { sessionStorage.removeItem("infinia_user"); } catch (e) {} return _doLogout.apply(this, arguments); };
 const _dashStoreGo = dashStoreGo;
 dashStoreGo = function (panel) {
   if (!PAGE.screens.includes("store")) { location.href = "store.html#store:" + panel; return; }
@@ -256,9 +267,18 @@ function pgRenderTabs() {
   const tabs = PAGE.tabs.filter(pgTabOk);
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
+  const shown = [];
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
-    el.style.display = (PAGE.pages[el.dataset.page] || []).some(s => pgAllowed(s)) ? "" : "none";
+    const ok = (PAGE.pages[el.dataset.page] || []).some(s => pgAllowed(s));
+    el.style.display = ok ? "block" : "none";
+    el.style.visibility = "visible";
+    if (ok) shown.push(el.dataset.page);
   });
+  // Remembered per login, for the next page's first frame.
+  try {
+    sessionStorage.setItem("infinia_user", CURRENT_USERNAME || "");
+    localStorage.setItem("infinia_menu", JSON.stringify({ user: CURRENT_USERNAME || "", pages: shown }));
+  } catch (e) {}
   if (!tabs.length) {
     document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
     document.getElementById("screen-title").textContent = "Not available to this login";
