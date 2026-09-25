@@ -3368,8 +3368,14 @@ function switchScreen(name) {
   if (name === "requests") {
     // The site and the requester's name are filled whether or not the
     // item list arrives - a form with nowhere to say who wants what for
-    // which site is no form at all.
-    loadStoreItems().catch(e => showStatus("mreq-status", "err", "Could not load the material list: " + errText(e))).then(() => {
+    // which site is no form at all. And they are filled only once the
+    // site and engineer lists are actually here: opened quickly on a
+    // phone, this screen used to be built before the app's start-up
+    // fetch had returned, from empty lists that nothing ever refilled.
+    Promise.all([
+      loadStoreItems().catch(e => showStatus("mreq-status", "err", "Could not load the material list: " + errText(e))),
+      ensurePeople(),
+    ]).then(() => {
       // "Central store" as the first option meant an unset dropdown
       // silently saved a request with no site, which printed as "-".
       // Make the choice explicit, and keep central store as a real,
@@ -3406,7 +3412,7 @@ function switchScreen(name) {
     document.getElementById("mv-date").value = isoLocal(new Date());
     document.getElementById("out-date").value = isoLocal(new Date());
     document.getElementById("in-date").value = isoLocal(new Date());
-    loadStoreItems().then(() => {
+    Promise.all([loadStoreItems(), ensurePeople()]).then(() => {
       const siteOpts = sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
       document.getElementById("mr-site").innerHTML = '<option value="">-- choose a site --</option>' +
         sites.map(s => `<option value="${s.code}">Site ${s.code}</option>`).join("") +
