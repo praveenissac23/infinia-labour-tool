@@ -3255,7 +3255,10 @@ function switchScreen(name) {
   if (name === "reports") loadReports();
   if (name === "livecard") preloadLiveCardDefault();
   if (name === "requests") {
-    loadStoreItems().then(() => {
+    // The site and the requester's name are filled whether or not the
+    // item list arrives - a form with nowhere to say who wants what for
+    // which site is no form at all.
+    loadStoreItems().catch(e => showStatus("mreq-status", "err", "Could not load the material list: " + errText(e))).then(() => {
       // "Central store" as the first option meant an unset dropdown
       // silently saved a request with no site, which printed as "-".
       // Make the choice explicit, and keep central store as a real,

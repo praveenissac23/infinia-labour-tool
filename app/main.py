@@ -3372,7 +3372,11 @@ def link_line_item(line_id: int, payload: schemas.LinkLineItemIn,
 
 @app.get("/store/items", response_model=list[schemas.StoreItemOut])
 def list_store_items(active_only: bool = True, db: Session = Depends(get_db),
-                      user: models.User = Depends(require_screen("store"))):
+                      user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
+    # Read by whoever raises or approves a request, not only the keeper:
+    # the request form is a list of these items. A login with the
+    # requests right and not the store right was refused here, and the
+    # form it opened had no materials, no site and no name to pick.
     q = db.query(models.StoreItem)
     if active_only:
         q = q.filter(models.StoreItem.active == True)  # noqa: E712
@@ -3621,7 +3625,7 @@ def deactivate_store_item(item_id: int, db: Session = Depends(get_db),
 
 @app.get("/store/stock")
 def store_stock(location: str = None, db: Session = Depends(get_db),
-                 user: models.User = Depends(require_screen("store"))):
+                 user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     """
     Stock on hand. Without a location, one row per item showing the
     central-store quantity, how much is out at sites, and the total -
