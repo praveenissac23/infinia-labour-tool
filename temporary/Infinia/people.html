@@ -331,6 +331,34 @@
   </div>
 </div>
 
+<!-- ---- Loan ------------------------------------------------------------ -->
+<div class="dlg" id="dlg-loan" onclick="if (event.target === this) closeDlg('dlg-loan')">
+  <div class="dlg-box" style="max-width:760px;">
+    <h3 id="loan-title">New loan</h3>
+    <p class="muted" style="margin:0 0 10px;">Written to the same loan register the salary cycle reads: the instalment comes off each month's salary from the next cycle, and the balance shows here, on the payroll Loans tab and on the statement remark.</p>
+    <div class="row">
+      <label class="fld"><span>Amount *</span><input type="number" id="l-amount" style="width:130px;" step="0.01"></label>
+      <label class="fld"><span>Taken on</span><input type="date" id="l-taken_on"></label>
+      <label class="fld"><span>Monthly instalment</span><input type="number" id="l-instalment" style="width:130px;" step="0.01"></label>
+      <label class="fld"><span>Terms</span><input type="text" id="l-terms" style="width:220px;" placeholder="e.g. 500 a month from October"></label>
+      <label class="fld"><span>Notes</span><input type="text" id="l-notes" style="width:200px;"></label>
+    </div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveLoan()">Record loan</button><button class="btn btn-gray" onclick="closeDlg('dlg-loan')">Cancel</button><span class="muted" id="loan-msg"></span></div>
+  </div>
+</div>
+<div class="dlg" id="dlg-repay" onclick="if (event.target === this) closeDlg('dlg-repay')">
+  <div class="dlg-box" style="max-width:640px;">
+    <h3 id="repay-title">Repayment</h3>
+    <p class="muted" style="margin:0 0 10px;">Money recovered outside payroll - cash back, or a settlement. Salary instalments are taken by the cycle itself when it is approved.</p>
+    <div class="row">
+      <label class="fld"><span>Amount *</span><input type="number" id="r-amount" style="width:130px;" step="0.01"></label>
+      <label class="fld"><span>Paid on</span><input type="date" id="r-paid_on"></label>
+      <label class="fld"><span>Notes</span><input type="text" id="r-notes" style="width:240px;"></label>
+    </div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveRepay()">Record</button><button class="btn btn-gray" onclick="closeDlg('dlg-repay')">Cancel</button><span class="muted" id="repay-msg"></span></div>
+  </div>
+</div>
+
 <!-- ---- Asset --------------------------------------------------------- -->
 <div class="dlg" id="dlg-asset" onclick="if (event.target === this) closeDlg('dlg-asset')">
   <div class="dlg-box" style="max-width:760px;">
@@ -528,8 +556,9 @@ function renderFile() {
           F.absence.map(a => [`${dmy(a.from)}${a.to && a.to !== a.from ? " - " + dmy(a.to) : ""}${a.half ? " (half)" : ""}`, a.kind_label || a.kind, a.days_total, a.why || a.pay || "", "$" + money(a.cost || 0)]), "Nothing recorded.")
         : `<p class="muted">For labour, days marked Leave on the attendance grid are the days taken.</p>`);
   else if (P.section === "money") {
-    body = `<div class="sec-h"><span class="lbl">Loans</span></div>` + table(["Taken", "Amount", "Terms", "Recovered", "Balance", "Status"],
-      F.loans.map(l => [dmy(l.taken_on), "$" + money(l.amount), l.terms || "", "$" + money(l.repaid), "$" + money(l.balance), l.closed ? '<span class="pill gr">Closed</span>' : '<span class="pill y">Running</span>']), p.group === "labour" ? "Loans are kept for monthly-paid staff." : "No loans.");
+    body = `<div class="sec-h"><span class="lbl">Loans</span>${p.group !== "labour" && ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openLoan()">+ Loan</button>` : ""}</div>` + table(["Taken", "Amount", "Terms", "Recovered", "Balance", "Status", ""],
+      F.loans.map(l => [dmy(l.taken_on), "$" + money(l.amount), l.terms || "", "$" + money(l.repaid), "$" + money(l.balance), l.closed ? '<span class="pill gr">Closed</span>' : '<span class="pill y">Running</span>',
+        l.closed || !ME.screens.includes("hrpayroll") ? "" : `<button class="btn btn-gray btn-sm" onclick="openRepay(${l.id})">Repayment</button>`]), p.group === "labour" ? "Loans are kept for monthly-paid staff." : "No loans.");
     if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary cycles</span></div>` + table(["Month", "Gross", "Add / Ded.", "Absent", "Loan", "Net", "Status"],
       F.cycles.map(c => [c.month_year, "$" + money(c.gross), "$" + money(c.adjust), "$" + money(c.absent), "$" + money(c.loan), "$" + money(c.net), c.held ? '<span class="pill gr">Held</span>' : c.status === "approved" ? '<span class="pill g">Paid</span>' : '<span class="pill y">Draft</span>']), "No cycles yet.");
     else body += `<div class="sec-h"><span class="lbl">Salary cards</span></div>` + table(["Month", "Present", "Absent", "Leave", "OT hrs", "Net"],
@@ -668,6 +697,27 @@ async function saveAsset() {
 async function removeAsset(id, label) {
   if (!(await ask(`Remove "${label}" from the list?`, "Remove", true))) return;
   try { await apiCall(`/employees/people/assets/${id}`, { method: "DELETE" }); await openPerson(P.current); } catch (e) { status("warn", errText(e)); }
+}
+
+// ---- Loans: the payroll register, entered from here too ------------------------
+let REPAY_LOAN = null;
+function openLoan() {
+  ["l-amount", "l-instalment", "l-terms", "l-notes"].forEach(id => setVal(id, "")); setVal("l-taken_on", new Date().toISOString().slice(0, 10));
+  document.getElementById("loan-title").textContent = "New loan · " + P.file.person.name; document.getElementById("loan-msg").textContent = ""; openDlg("dlg-loan");
+}
+async function saveLoan() {
+  const body = { emp_no: P.current, amount: getVal("l-amount"), taken_on: getVal("l-taken_on"), instalment: getVal("l-instalment"), terms: getVal("l-terms"), notes: getVal("l-notes") };
+  try { await apiCall("/employees/loans", { method: "POST", body: JSON.stringify(body) }); closeDlg("dlg-loan"); status("ok", "Loan recorded - it is on the payroll Loans tab too."); await openPerson(P.current); }
+  catch (e) { document.getElementById("loan-msg").textContent = errText(e); }
+}
+function openRepay(id) {
+  REPAY_LOAN = id; const l = P.file.loans.find(x => x.id === id);
+  document.getElementById("repay-title").textContent = `Repayment · loan of ${money(l.amount)} (balance ${money(l.balance)})`;
+  setVal("r-amount", ""); setVal("r-paid_on", new Date().toISOString().slice(0, 10)); setVal("r-notes", ""); document.getElementById("repay-msg").textContent = ""; openDlg("dlg-repay");
+}
+async function saveRepay() {
+  try { await apiCall(`/employees/loans/${REPAY_LOAN}/repay`, { method: "POST", body: JSON.stringify({ amount: getVal("r-amount"), paid_on: getVal("r-paid_on"), notes: getVal("r-notes") }) }); closeDlg("dlg-repay"); status("ok", "Repayment recorded."); await openPerson(P.current); }
+  catch (e) { document.getElementById("repay-msg").textContent = errText(e); }
 }
 
 // ---- Documents due / leave balances --------------------------------------------

@@ -35,7 +35,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('five register tabs', tabs.length === 5, tabs);
   let pressed = 0;
   const closeAll = async () => {
-    for (const id of ['dlg-edit', 'dlg-new', 'dlg-doc', 'dlg-asset']) if (await p.locator('#' + id).isVisible()) await p.evaluate(`closeDlg('${id}')`);
+    for (const id of ['dlg-edit', 'dlg-new', 'dlg-doc', 'dlg-asset', 'dlg-loan', 'dlg-repay']) if (await p.locator('#' + id).isVisible()) await p.evaluate(`closeDlg('${id}')`);
     if (await p.locator('.ask').count()) await p.click('.ask [data-a="no"]');
   };
   const newPages = [];
@@ -111,6 +111,20 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   await p.locator('#file tr', { hasText: 'Test laptop' }).locator('button:has-text("Remove")').click(); await p.waitForTimeout(200); await p.click('.ask [data-a="yes"]'); await p.waitForTimeout(900);
   ck('and taken off', !(await p.locator('#file').textContent()).includes('Test laptop'));
 
+  // A loan entered here is the payroll register's loan.
+  await p.click('#file .subtabs button[data-section="money"]'); await p.waitForTimeout(200);
+  await p.click('#file button:has-text("+ Loan")'); await p.waitForTimeout(300);
+  await p.fill('#l-amount', '1000'); await p.fill('#l-instalment', '100'); await p.fill('#l-terms', 'Sweep loan');
+  await p.click('#dlg-loan button:has-text("Record loan")'); await p.waitForTimeout(1200);
+  ck('a loan recorded on People shows on the file', (await p.locator('#file').textContent()).includes('Sweep loan'));
+  const reg = await p.evaluate(async c => (await apiCall('/employees/loans')).rows.find(l => l.emp_no === c && l.terms === 'Sweep loan'), code);
+  ck('and is on the payroll Loans register - entered once', !!reg && reg.amount === 1000 && reg.instalment === 100, reg);
+  await p.locator('#file tr', { hasText: 'Sweep loan' }).locator('button:has-text("Repayment")').click(); await p.waitForTimeout(300);
+  await p.fill('#r-amount', '250'); await p.click('#dlg-repay button:has-text("Record")'); await p.waitForTimeout(1200);
+  ck('a repayment brings the balance down here and there', (await p.evaluate(async id => (await apiCall('/employees/loans')).rows.find(l => l.id === id).balance, reg.id)) === 750
+     && (await p.locator('#file').textContent()).includes('750.00'));
+  await p.evaluate(async id => { for (const r of (await apiCall('/employees/loans')).rows.find(l => l.id === id).repayments) await apiCall(`/employees/loans/repayments/${r.id}`, { method: 'DELETE' }).catch(() => {}); await apiCall(`/employees/loans/${id}`, { method: 'DELETE' }).catch(() => {}); }, reg.id);
+
   // New person, then remove the test record through the OLD API so the data is left clean.
   await p.click('#view-register button:has-text("+ New person")'); await p.waitForTimeout(300);
   ck('New person opens in the page', await p.locator('#dlg-new').isVisible());
@@ -157,6 +171,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('the logins tab lists the logins', await p.locator('#users-body tr').count() >= 1);
   await p.click('button:has-text("+ New login")'); await p.waitForTimeout(300);
   await p.fill('#u-username', 'sweepuser'); await p.fill('#u-full_name', 'Sweep User'); await p.fill('#u-password', 'sweep123');
+  await p.click('#u-role button:has-text("Sweep Role")');
   await p.click('#dlg-user button:has-text("Create login")'); await p.waitForTimeout(900);
   ck('a login is created from the role', (await p.locator('#users-body').textContent()).includes('sweepuser'));
   const rowU = p.locator('#users-body tr', { hasText: 'sweepuser' });

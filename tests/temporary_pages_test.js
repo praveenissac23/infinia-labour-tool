@@ -11,8 +11,9 @@ const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['combine', 'errorcheck', 'hrpayroll'],
   store: ['store', 'requests', 'approvals', 'purchase', 'followup', 'lporegister', 'suppliers'],
-  reports: ['reports'], settings: ['settings'], activity: ['activity'],
+  reports: ['pgreports', 'reports'], settings: ['general', 'companies', 'sites', 'logins', 'backup'], activity: ['activity'],
 };
+const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings' };
 
 (async () => {
   const b = await chromium.launch();
@@ -28,16 +29,48 @@ const PAGES = {
 
   for (const [page, screens] of Object.entries(PAGES)) {
     await p.goto(BASE + page + '.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1500);
-    ck(`${page}.html opens on ${screens[0]}`, await p.locator(`#screen-${screens[0]}.active`).count() === 1, await p.locator('.screen.active').getAttribute('id'));
+    ck(`${page}.html opens on ${screens[0]}`, await p.locator(`#screen-${SCREEN_OF[screens[0]] || screens[0]}.active`).count() === 1, await p.locator('.screen.active').getAttribute('id'));
     ck(`${page}.html: its menu entry is lit`, await p.locator(`.pg-side .pg-item.active[data-page="${page}"]`).count() === 1);
     if (screens.length > 1) {
       ck(`${page}.html: ${screens.length} tabs`, await p.locator('#pg-tabs .pg-tab').count() === screens.length, await p.locator('#pg-tabs').textContent());
       for (const s of screens) {
         await p.click(`#pg-tabs .pg-tab[data-tab="${s}"]`); await p.waitForTimeout(700);
-        ck(`${page}.html: tab ${s} shows its screen`, await p.locator(`#screen-${s}.active`).count() === 1 && await p.locator(`#pg-tabs .pg-tab.active[data-tab="${s}"]`).count() === 1);
+        ck(`${page}.html: tab ${s} shows its screen`, await p.locator(`#screen-${SCREEN_OF[s] || s}.active`).count() === 1 && await p.locator(`#pg-tabs .pg-tab.active[data-tab="${s}"]`).count() === 1);
+        if (SCREEN_OF[s]) {
+          const shown = await p.locator('#screen-settings > .card:visible, #screen-settings > div[id]:visible').count();
+          const want = { general: 4, companies: 1, sites: 1, logins: 2, backup: 1 }[s];
+          ck(`${page}.html: ${s} shows only its part (${shown})`, shown === want, shown);
+        }
       }
     }
   }
+  // The reports hub lists every report with working buttons.
+  await p.goto(BASE + 'reports.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
+  ck('the hub opens first, with four sections', await p.locator('#screen-pgreports.active').count() === 1 && await p.locator('#screen-pgreports .card:visible').count() === 4);
+  ck('the office statement picker lists the saved cycles', await p.locator('#pgrep-run option').count() >= 1);
+  const opened = [];
+  ctx.on('page', pg => opened.push(pg));
+  const hubBtns = await p.locator('#screen-pgreports button:has-text("Preview")').count();
+  for (let i = 0; i < hubBtns; i++) { await p.locator('#screen-pgreports button:has-text("Preview")').nth(i).click(); await p.waitForTimeout(500); }
+  await p.waitForTimeout(1500);
+  ck(`every Preview on the hub opened a page (${hubBtns})`, opened.length === hubBtns, opened.length);
+  for (const pg of opened) { await pg.waitForLoadState().catch(() => {}); const h = await pg.content().catch(() => '{"detail"'); ck(`hub preview: ${(pg.url().split('/export/')[1] || '').split('?')[0]}`, !/\{"detail"|Internal Server Error/.test(h) && h.length > 500); await pg.close().catch(() => {}); }
+  opened.length = 0;
+  await p.click('#screen-pgreports button:has-text("Open")'); await p.waitForTimeout(800);
+  ck('an Open button on the hub goes to that screen', await p.locator('#screen-reports.active').count() === 1);
+  // No flicker: a resumed page never shows the sign-in box or the dashboard before its own screen.
+  const seen = new Set();
+  const tok = await p.evaluate(() => sessionStorage.getItem('infinia_token'));
+  const p3 = await ctx.newPage();
+  await p3.addInitScript(t => sessionStorage.setItem('infinia_token', t), tok);
+  await p3.goto(BASE + 'payroll.html#hrpayroll');
+  for (let i = 0; i < 25; i++) {
+    seen.add(await p3.evaluate(() => { const vis = el => !!(el && el.getClientRects().length); const l = document.getElementById('login-screen'); const a = [...document.querySelectorAll('.screen')].find(vis); return (vis(l) ? 'login' : '') + ':' + (a ? a.id : ''); }).catch(() => 'nav'));
+    await p3.waitForTimeout(60);
+  }
+  ck('a resumed page shows only its own screen from the first paint', [...seen].every(v => v === 'nav' || v === ':screen-hrpayroll' || v === ':'), [...seen]);
+  await p3.close();
+
   // Cross-page: a dashboard tile that names a screen on another page goes there.
   await p.goto(BASE + 'dashboard.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
   await p.evaluate("switchScreen('combine')"); await p.waitForTimeout(1800);
