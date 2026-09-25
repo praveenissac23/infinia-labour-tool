@@ -144,6 +144,16 @@
   .hr-cycle input.hr-amt { text-align: right; font-variant-numeric: tabular-nums; }
   .hr-cycle input.hr-amt:focus, .hr-cycle input.hr-rem:focus {
      outline: none; border-color: var(--red); background: white; }
+  /* Activity Monitor */
+  .act-grid td { vertical-align: top; padding: 9px 8px; }
+  .act-grid .act-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .act-grid .sub { display: block; font-size: 11px; color: #8A8178; margin-top: 1px; }
+  .act-grid .act-det { white-space: normal; word-break: break-word; color: #444; }
+  .act-grid tr.act-day td { background: #F3EFEA; font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #6A5C55; padding: 6px 8px; }
+  .act-grid tr.act-bad td { background: #FDF0EE; }
+  .act-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .act-pill.g { background: #E6F4EA; color: #1E7A3A; } .act-pill.y { background: #FFF3D6; color: #8A6100; } .act-pill.r { background: #FBE4E1; color: #A5301F; }
+  .act-pill.b { background: #E3F0F7; color: #1F5F80; } .act-pill.gr { background: #EEE; color: #666; }
   .hr-remark { font-size: 12px; color: #555; }
   .hr-tag { display: inline-block; margin-left: 4px; padding: 0 5px; font-size: 10.5px;
             border-radius: 3px; background: #EEF2F7; color: #4A5A70; vertical-align: 1px; }
@@ -2564,15 +2574,30 @@
 
         <!-- ============ ACTIVITY MONITOR SCREEN (admin only) ============ -->
         <div class="screen" id="screen-activity">
-          <div class="toolbar">
-            <button class="btn btn-primary" onclick="loadActivityLog()">Refresh</button>
-            <label>Search:</label>
-            <input type="text" id="activity-search" placeholder="User, action, or details" oninput="renderActivityLog()">
+          <div class="card">
+            <div class="form-row" style="gap:10px; align-items:center; flex-wrap:wrap; margin:0;">
+              <span class="hr-seg" id="act-days">
+                <button type="button" data-v="1" onclick="actSet('days','1')">Today</button>
+                <button type="button" data-v="7" class="on" onclick="actSet('days','7')">7 days</button>
+                <button type="button" data-v="30" onclick="actSet('days','30')">30 days</button>
+                <button type="button" data-v="0" onclick="actSet('days','0')">All</button>
+              </span>
+              <span class="hr-seg" id="act-group"><button type="button" data-v="" class="on" onclick="actSet('group','')">Everything</button></span>
+              <select id="act-user" class="hr-dd" style="width:200px;" onchange="loadActivityLog()"><option value="">Everyone</option></select>
+              <input type="text" id="activity-search" placeholder="Search details" style="width:220px;" oninput="actSearch()">
+              <span style="flex:1"></span>
+              <span id="act-count" style="font-size:12px; color:#888;"></span>
+              <button class="btn btn-dark" onclick="loadActivityLog()">Refresh</button>
+            </div>
           </div>
           <div class="card">
-            <div class="grid-wrap" style="max-height: 70vh;">
-              <table>
-                <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+            <div class="grid-wrap" style="max-height: 72vh;">
+              <table class="hr-grid act-grid">
+                <thead><tr>
+                  <th style="width:15%;">When</th><th class="txt" style="width:16%;">Who</th>
+                  <th style="width:12%;">Area</th><th class="txt" style="width:19%;">What</th>
+                  <th class="txt" style="width:38%;">Details</th>
+                </tr></thead>
                 <tbody id="activity-body"></tbody>
               </table>
             </div>
@@ -9139,37 +9164,62 @@ async function loadStore() {
 // ============ ACTIVITY MONITOR (admin only) ============
 let currentActivityLog = [];
 
+// The Activity Monitor: who did what, when, from where - newest first,
+// a day at a time, narrowed by period, area of the app, login or a word.
+const ACT = { days: "7", group: "", timer: null };
+function actSet(k, v) {
+  ACT[k] = v;
+  document.querySelectorAll(`#act-${k} button`).forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  loadActivityLog();
+}
+function actSearch() { clearTimeout(ACT.timer); ACT.timer = setTimeout(loadActivityLog, 250); }
 async function loadActivityLog() {
   const body = document.getElementById("activity-body");
-  body.innerHTML = `<tr><td colspan="4" class="empty-note">Loading...</td></tr>`;
-  currentActivityLog = await apiCall("/users/audit-log");
+  body.innerHTML = `<tr><td colspan="5" class="empty-note">Loading...</td></tr>`;
+  const q = (document.getElementById("activity-search").value || "").trim();
+  const u = document.getElementById("act-user").value;
+  let d;
+  try {
+    d = await apiCall(`/users/audit-log?days=${ACT.days}&group=${ACT.group}&username=${encodeURIComponent(u)}&q=${encodeURIComponent(q)}`);
+  } catch (e) { body.innerHTML = `<tr><td colspan="5" class="empty-note">${escapeHtml(errText(e))}</td></tr>`; return; }
+  currentActivityLog = d.rows || [];
+  // The area buttons and the login list, from what the server knows.
+  const seg = document.getElementById("act-group");
+  if (seg.children.length === 1 && d.groups) {
+    seg.innerHTML += d.groups.map(g => `<button type="button" data-v="${g.key}" onclick="actSet('group','${g.key}')">${escapeHtml(g.label)}</button>`).join("");
+    seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === ACT.group));
+  }
+  const sel = document.getElementById("act-user");
+  if (sel.options.length === 1 && d.users) {
+    sel.innerHTML += d.users.map(x => `<option value="${escapeHtml(x.username)}">${escapeHtml(x.full_name || x.username)}</option>`).join("");
+  }
   renderActivityLog();
 }
 
 function renderActivityLog() {
   const body = document.getElementById("activity-body");
-  const search = (document.getElementById("activity-search").value || "").trim().toLowerCase();
-  const filtered = search
-    ? currentActivityLog.filter(r =>
-        r.username.toLowerCase().includes(search) ||
-        r.full_name.toLowerCase().includes(search) ||
-        r.action.toLowerCase().includes(search) ||
-        (r.details || "").toLowerCase().includes(search))
-    : currentActivityLog;
-  if (!currentActivityLog.length) {
-    body.innerHTML = `<tr><td colspan="4" class="empty-note">No activity recorded yet.</td></tr>`;
-    return;
+  const rows = currentActivityLog;
+  document.getElementById("act-count").textContent = rows.length ? `${rows.length} entr${rows.length === 1 ? "y" : "ies"}${rows.length >= 500 ? " (latest 500)" : ""}` : "";
+  if (!rows.length) { body.innerHTML = `<tr><td colspan="5" class="empty-note">Nothing recorded for this choice.</td></tr>`; return; }
+  const today = isoLocal(new Date());
+  const yest = isoLocal(new Date(Date.now() - 86400000));
+  const dayName = iso => iso === today ? "Today" : iso === yest ? "Yesterday" : hrDate(iso);
+  const tone = { signin: "b", attendance: "g", labour: "g", office: "y", people: "b", store: "gr", purchasing: "gr", admin: "r", other: "gr" };
+  let lastDay = "", out = "";
+  for (const r of rows) {
+    const dt = r.created_at ? new Date(r.created_at) : null;
+    const day = dt ? isoLocal(dt) : "";
+    if (day !== lastDay) { out += `<tr class="act-day"><td colspan="5">${escapeHtml(dayName(day))}</td></tr>`; lastDay = day; }
+    const time = dt ? dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+    const failed = r.action === "login_failed";
+    out += `<tr${failed ? ' class="act-bad"' : ""}>
+      <td><span class="act-time">${time}</span><span class="sub">${escapeHtml(dayName(day) === "Today" || dayName(day) === "Yesterday" ? hrDate(day) : "")}</span></td>
+      <td class="txt"><b>${escapeHtml(r.full_name)}</b><span class="sub">${escapeHtml(r.username)}</span></td>
+      <td><span class="act-pill ${tone[r.group] || "gr"}">${escapeHtml(r.group_label)}</span></td>
+      <td class="txt">${escapeHtml(r.label)}</td>
+      <td class="txt act-det">${r.details ? escapeHtml(r.details) : '<span class="hr-nil">-</span>'}</td></tr>`;
   }
-  if (!filtered.length) {
-    body.innerHTML = `<tr><td colspan="4" class="empty-note">No activity matches "${search}".</td></tr>`;
-    return;
-  }
-  body.innerHTML = filtered.map(r => {
-    const when = new Date(r.created_at).toLocaleString(undefined, {
-      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-    });
-    return `<tr><td>${when}</td><td>${r.full_name} (${r.username})</td><td>${r.action}</td><td>${r.details || "-"}</td></tr>`;
-  }).join("");
+  body.innerHTML = out;
 }
 
 // ============ ERROR CHECK ============

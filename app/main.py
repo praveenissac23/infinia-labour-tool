@@ -16,7 +16,7 @@ import json
 from urllib.parse import quote
 
 import base64, gzip
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse, HTMLResponse
@@ -343,13 +343,32 @@ def log_action(db: Session, user_id, action: str, details: str = ""):
     db.commit()
 
 
+def _where_from(request):
+    """'from 37.245.1.2 - Chrome on Windows': the address nginx passes on
+    and a short reading of the browser string, for the activity log."""
+    if request is None:
+        return ""
+    ip = (request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
+          or (request.client.host if request.client else "") or "").split(",")[0].strip()
+    ua = request.headers.get("user-agent", "")
+    browser = ("Edge" if "Edg/" in ua else "Chrome" if "Chrome/" in ua else "Safari" if "Safari/" in ua
+               else "Firefox" if "Firefox/" in ua else "browser")
+    device = ("iPhone" if "iPhone" in ua else "Android" if "Android" in ua else "Mac" if "Macintosh" in ua
+              else "Windows" if "Windows" in ua else "device")
+    return f"from {ip or 'unknown address'} - {browser} on {device}"
+
+
 @app.post("/auth/login", response_model=schemas.TokenResponse)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not user.active or not auth.verify_password(form_data.password, user.hashed_password):
+        # A refused sign-in is logged under the login it named (when it
+        # exists), so "I cannot log in" can be read off the monitor.
+        if user:
+            log_action(db, user.id, "login_failed", f"wrong password {_where_from(request)}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     token = auth.create_access_token({"sub": user.username})
-    log_action(db, user.id, "login")
+    log_action(db, user.id, "login", _where_from(request))
     maybe_create_auto_backup(db)
     return schemas.TokenResponse(access_token=token, username=user.username,
                                   role=user.role, full_name=user.full_name)
@@ -514,25 +533,102 @@ def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
 # Activity screen has been empty there while working perfectly in
 # testing. /users is on that list and this is a log of what users did,
 # so it belongs there anyway.
+# What each logged action is called on the Activity Monitor, and which
+# part of the app it belongs to. An action not listed here is shown
+# with its name tidied up, so nothing is ever hidden.
+ACTION_GROUPS = {
+    "signin": ("Sign-ins", ["login", "login_failed", "change_password", "reset_password"]),
+    "attendance": ("Attendance", ["save_attendance", "clear_day", "monthly_note"]),
+    "labour": ("Labour & salary", ["save_employee", "import_employees", "deactivate_employee", "delete_employee",
+                                   "terminate_employee", "add_adjustment", "remove_adjustment", "rename_site",
+                                   "remove_site", "rename_engineer", "remove_engineer"]),
+    "office": ("Office payroll", ["payroll_opened", "payroll_approved", "payroll_reopened", "payroll_draft_removed",
+                                  "staff_saved", "increment_added", "salary_history_changed", "salary_history_removed",
+                                  "loan_added", "loan_changed", "loan_removed", "loan_repaid", "repayment_changed",
+                                  "repayment_removed", "leave_added", "leave_changed", "leave_removed",
+                                  "pay_item_added", "pay_item_changed", "pay_item_removed", "company_saved"]),
+    "people": ("People", ["person_added", "person_saved", "person_removed", "asset_issued", "document_saved",
+                          "document_deleted"]),
+    "store": ("Store", ["store_movement", "store_delete_movement", "store_save_item", "store_remove_item",
+                        "stock_added", "opening_stock", "stock_owner_corrected", "store_reset", "hire_in",
+                        "hire_return_raised", "hire_return_issued", "hire_return_edited", "hire_return_confirmed",
+                        "hire_return_cancelled", "stock_alert_email_failed"]),
+    "purchasing": ("Purchasing", ["material_request", "material_request_status", "material_request_receive",
+                                  "material_request_delete", "request_line_decision", "create_lpo", "edit_lpo",
+                                  "cancel_lpo", "import_suppliers"]),
+    "admin": ("Settings & access", ["create_user", "user_created", "delete_user", "set_permissions", "role_saved",
+                                    "role_deleted", "role_assigned", "save_company_settings", "upload_signature",
+                                    "create_backup", "download_backup", "restore_backup", "delete_backup",
+                                    "fresh_start"]),
+}
+ACTION_LABELS = {
+    "login": "Signed in", "login_failed": "Sign-in refused", "change_password": "Changed own password",
+    "reset_password": "Reset a password", "save_attendance": "Attendance saved", "clear_day": "Attendance day cleared",
+    "monthly_note": "Monthly note", "save_employee": "Worker saved", "import_employees": "Workers imported",
+    "deactivate_employee": "Worker deactivated", "delete_employee": "Worker removed", "terminate_employee": "Worker left",
+    "add_adjustment": "Salary adjustment added", "remove_adjustment": "Salary adjustment removed",
+    "payroll_opened": "Cycle opened", "payroll_approved": "Cycle approved & locked", "payroll_reopened": "Cycle reopened",
+    "payroll_draft_removed": "Draft cycle discarded", "staff_saved": "Staff record saved", "increment_added": "Increment recorded",
+    "salary_history_changed": "Salary history changed", "salary_history_removed": "Salary history removed",
+    "loan_added": "Loan recorded", "loan_changed": "Loan changed", "loan_removed": "Loan removed", "loan_repaid": "Loan repayment",
+    "repayment_changed": "Repayment changed", "repayment_removed": "Repayment removed", "leave_added": "Absence recorded",
+    "leave_changed": "Absence changed", "leave_removed": "Absence removed", "pay_item_added": "Addition / deduction added",
+    "pay_item_changed": "Addition / deduction changed", "pay_item_removed": "Addition / deduction removed",
+    "company_saved": "Company saved", "person_added": "Person added", "person_saved": "Person's file saved",
+    "person_removed": "Person removed", "asset_issued": "Item issued", "document_saved": "Document saved",
+    "document_deleted": "Document removed", "store_movement": "Stock moved", "store_delete_movement": "Stock movement deleted",
+    "store_save_item": "Material saved", "store_remove_item": "Material removed", "stock_added": "Stock received",
+    "opening_stock": "Opening stock", "stock_owner_corrected": "Stock corrected", "store_reset": "Store cleared",
+    "hire_in": "Hired item in", "hire_return_raised": "Hire return raised", "hire_return_issued": "Hire return issued",
+    "hire_return_edited": "Hire return edited", "hire_return_confirmed": "Hire return confirmed",
+    "hire_return_cancelled": "Hire return cancelled", "stock_alert_email_failed": "Stock alert email failed",
+    "material_request": "Material request raised", "material_request_status": "Request status changed",
+    "material_request_receive": "Delivery received", "material_request_delete": "Request deleted",
+    "request_line_decision": "Request line decided", "create_lpo": "Purchase order raised", "edit_lpo": "Purchase order edited",
+    "cancel_lpo": "Purchase order cancelled", "import_suppliers": "Suppliers imported", "create_user": "Login created",
+    "user_created": "Login created", "delete_user": "Login deleted", "set_permissions": "Rights changed",
+    "role_saved": "Role saved", "role_deleted": "Role deleted", "role_assigned": "Role assigned",
+    "save_company_settings": "Purchase settings saved", "upload_signature": "Signature uploaded",
+    "create_backup": "Backup taken", "download_backup": "Backup downloaded", "restore_backup": "Backup restored",
+    "delete_backup": "Backup deleted", "fresh_start": "Start fresh",
+}
+_ACTION_GROUP = {a: g for g, (_, acts) in ACTION_GROUPS.items() for a in acts}
+
+
 @app.get("/users/audit-log")
 @app.get("/audit-log")
-def list_audit_log(limit: int = 200, db: Session = Depends(get_db),
+def list_audit_log(limit: int = 500, group: str = "", username: str = "", days: int = 0,
+                    q: str = "", db: Session = Depends(get_db),
                     user: models.User = Depends(auth.require_admin)):
-    rows = (
-        db.query(models.AuditLog, models.User.username, models.User.full_name)
-        .outerjoin(models.User, models.AuditLog.user_id == models.User.id)
-        .order_by(models.AuditLog.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    return [
-        {
-            "id": log.id, "action": log.action, "details": log.details,
+    """Everything anyone did, newest first, with the filters the page
+    offers: a part of the app, one login, the last N days, a word."""
+    query = (db.query(models.AuditLog, models.User.username, models.User.full_name)
+               .outerjoin(models.User, models.AuditLog.user_id == models.User.id))
+    if username.strip():
+        query = query.filter(models.User.username == username.strip())
+    if days and days > 0:
+        query = query.filter(models.AuditLog.created_at >= datetime.now(timezone.utc) - timedelta(days=days))
+    if group and group in ACTION_GROUPS:
+        query = query.filter(models.AuditLog.action.in_(ACTION_GROUPS[group][1]))
+    if q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(or_(models.AuditLog.details.ilike(like), models.AuditLog.action.ilike(like),
+                                 models.User.username.ilike(like), models.User.full_name.ilike(like)))
+    rows = query.order_by(models.AuditLog.created_at.desc()).limit(min(limit, 2000)).all()
+    logins = db.query(models.User).order_by(models.User.username).all()
+    return {
+        "rows": [{
+            "id": log.id, "action": log.action,
+            "label": ACTION_LABELS.get(log.action, log.action.replace("_", " ").capitalize()),
+            "group": _ACTION_GROUP.get(log.action, "other"),
+            "group_label": ACTION_GROUPS.get(_ACTION_GROUP.get(log.action, ""), ("Other",))[0],
+            "details": log.details or "",
             "created_at": log.created_at.isoformat() if log.created_at else None,
-            "username": username or "unknown", "full_name": full_name or "Unknown",
-        }
-        for log, username, full_name in rows
-    ]
+            "username": uname or "unknown", "full_name": full_name or "Unknown",
+        } for log, uname, full_name in rows],
+        "groups": [{"key": k, "label": v[0]} for k, v in ACTION_GROUPS.items()],
+        "users": [{"username": u.username, "full_name": u.full_name} for u in logins],
+    }
 
 
 # ---------------------------------------------------------------------
