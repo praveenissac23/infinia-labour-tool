@@ -2410,6 +2410,14 @@
                     <span id="mv-to-wrap"><select id="mv-to"></select></span></div>
                   <div class="field"><label>Date</label>
                     <input type="date" id="mv-date"></div>
+                  <div class="field" id="mv-who-field"><label id="mv-who-label">Returned by</label>
+                    <input type="text" id="mv-who" placeholder="Who brought it back" list="people-list"></div>
+                  <div class="field" id="mv-cond-field"><label>Condition</label>
+                    <span class="hr-seg" id="mv-cond">
+                      <button type="button" data-v="Good" class="on" onclick="mvCond('Good')">Good</button>
+                      <button type="button" data-v="Damaged" onclick="mvCond('Damaged')">Damaged</button>
+                      <button type="button" data-v="Incomplete" onclick="mvCond('Incomplete')">Incomplete</button>
+                    </span></div>
                 </div>
                 <div class="field" style="max-width:620px;">
                   <label id="mv-notes-label">Note</label>
@@ -2443,6 +2451,7 @@
                 <div class="rep-tile" onclick="pickReport('by_site')"><b>At Sites</b><span>What each site is holding</span></div>
                 <div class="rep-tile" onclick="pickReport('usage')"><b>Consumption</b><span>What went out, to whom and when</span></div>
                 <div class="rep-tile" onclick="pickReport('assets')"><b>Assets</b><span>Owned equipment and where it is</span></div>
+                <div class="rep-tile" onclick="pickReport('issues')"><b>Issue &amp; Return Register</b><span>Every tool out to a site: who took it, when it came back, from whom, in what state</span></div>
                 <div class="rep-tile" onclick="pickReport('lost')"><b>Lost / Damaged</b><span>Written off, and where</span></div>
               </div>
 
@@ -6892,8 +6901,8 @@ function onItemTypeChange() {
 // the case rather than showing everything and hiding some of it badly.
 const MV_CASES = {
   return:   { title: "Material came back from a site",
-              hint: "Something was sent out and has now been returned to the central store.",
-              from: "Coming back from", to: null, note: "Note" },
+              hint: "Something was sent out and has now been returned to the central store. Say who brought it back and what state it is in - the issue & return register is built from this.",
+              from: "Coming back from", to: null, note: "Note", who: "Returned by" },
   transfer: { title: "Material moved between two sites",
               hint: "Material went straight from one site to another without passing through the store.",
               from: "Moving from", to: "Moving to", note: "Note" },
@@ -6932,8 +6941,12 @@ function onMvKindChange() {
   };
   show("mv-from-field", "mv-from-label", cfg.from);
   show("mv-to-field", "mv-to-label", cfg.to);
+  show("mv-who-field", "mv-who-label", cfg.who);
+  document.getElementById("mv-cond-field").style.display = cfg.who ? "" : "none";
   updateMvHint();
 }
+function mvCond(v) { document.querySelectorAll("#mv-cond button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); }
+function mvCondValue() { const b = document.querySelector("#mv-cond button.on"); return b ? b.dataset.v : ""; }
 
 // The number the keeper is about to act on: what the chosen place
 // actually holds of the chosen material. Stops returning 10 ladders
@@ -7108,19 +7121,22 @@ async function saveMovement() {
     qty: parseFloat(document.getElementById("mv-qty").value) || 0,
     from_location: ["return", "transfer", "lost"].includes(kind) ? document.getElementById("mv-from").value : "",
     location: ["in", "adjust", "lost"].includes(kind) ? "" : document.getElementById("mv-to").value,
-    incharge: document.getElementById("mv-incharge").value.trim(),
+    incharge: kind === "return" ? personName(document.getElementById("mv-who").value.trim()) : document.getElementById("mv-incharge").value.trim(),
     supplier: document.getElementById("mv-supplier").value.trim(),
     unit_cost: parseFloat(document.getElementById("mv-cost").value) || 0,
     reference: document.getElementById("mv-ref").value.trim(),
     notes: document.getElementById("mv-notes").value.trim(),
+    condition: kind === "return" ? mvCondValue() : "",
     moved_on: document.getElementById("mv-date").value || isoLocal(new Date()),
   };
   if (!body.item_id) { showStatus("store-status", "warn", "Pick an item."); return; }
   if (!body.qty) { showStatus("store-status", "warn", "Enter a quantity."); return; }
+  if (kind === "return" && !body.incharge) { showStatus("store-status", "warn", "Say who brought it back - the register records it."); document.getElementById("mv-who").focus(); return; }
   try {
     await apiCall("/store/movements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     showStatus("store-status", "ok", "Movement recorded.");
-    ["mv-qty","mv-incharge","mv-supplier","mv-cost","mv-ref","mv-notes"].forEach(id => document.getElementById(id).value = "");
+    ["mv-qty","mv-incharge","mv-supplier","mv-cost","mv-ref","mv-notes","mv-who"].forEach(id => document.getElementById(id).value = "");
+    mvCond("Good");
     await loadStore();
   } catch (e) { showStatus("store-status", "err", errText(e)); }
 }
@@ -9049,7 +9065,7 @@ function pickReport(kind, noScroll) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["usage", "lost"].includes(kind);
+  const needsDates = ["usage", "lost", "issues"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
@@ -9242,7 +9258,9 @@ async function loadStore() {
                    written_off: "Written off", qty: "Qty", name: "Material", code: "Code",
                    given_to: "Given to", incharge: "Given to", date: "Date", from: "From",
                    to: "To", reference: "Ref", notes: "Remarks", since: "Out since",
-                   last_arrived: "Last arrived" };
+                   last_arrived: "Last arrived", issued_on: "Issued on", site: "Site",
+                   returned_on: "Returned on", returned_by: "Returned by", qty_back: "Qty back",
+                   condition: "Condition", still_out: "Still out", days_out: "Days out" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
       keys.map(k => `<th ${dragAttrs(view, k)}>${label(k)}</th>`).join("");

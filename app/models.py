@@ -539,6 +539,8 @@ class StoreMovement(Base):
     unit_cost = Column(Float, default=0.0)
     reference = Column(String, default="")         # DO / invoice number
     notes = Column(Text, default="")
+    # On a return: the state it came back in - good, damaged, incomplete.
+    condition = Column(String, default="")
     moved_on = Column(Date, nullable=False, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -4624,6 +4624,63 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         _drop_empty(rows, "reference", "notes")
         return {"title": "Materials issued and moved", "rows": rows}
 
+    if kind == "issues":
+        # The issue-and-return register for tools and equipment: one line
+        # for every time something went out to a site - who took it, when
+        # - and against it what came back, when, from whom and in what
+        # state. Returns are matched to the oldest open issue of that
+        # material from that site, so a tape that went out in the morning
+        # and came back in the evening is one line, closed.
+        def tool(i):
+            return i and i.item_type in HELD_AT_SITE
+        out = []
+        for m in sorted(moves(["out"]), key=lambda m: (m.moved_on, m.id)):
+            i = items.get(m.item_id)
+            if not tool(i):
+                continue
+            out.append({"_item": i.id, "_site": m.location or "", "_left": float(m.qty or 0), "_back": 0.0,
+                        "issued_on": m.moved_on.isoformat() if m.moved_on else "", "code": i.code, "name": i.name,
+                        "unit": i.unit, "qty": round(m.qty, 2), "site": _place_label(m.location),
+                        "given_to": (m.incharge or "").strip() or "-", "returned_on": "", "returned_by": "",
+                        "qty_back": 0.0, "condition": "", "still_out": round(m.qty, 2), "days_out": 0,
+                        "notes": (m.notes or "").strip()})
+        for r in sorted(moves(["return"]), key=lambda m: (m.moved_on, m.id)):
+            i = items.get(r.item_id)
+            if not tool(i):
+                continue
+            left = float(r.qty or 0)
+            for o in out:
+                if left <= 1e-9:
+                    break
+                if o["_item"] != i.id or o["_site"] != (r.from_location or "") or o["_left"] <= 1e-9:
+                    continue
+                if r.moved_on and o["issued_on"] and r.moved_on.isoformat() < o["issued_on"]:
+                    continue
+                take = min(left, o["_left"])
+                o["_left"] -= take; o["_back"] += take; left -= take
+                o["returned_on"] = r.moved_on.isoformat() if r.moved_on else ""
+                o["returned_by"] = (r.incharge or "").strip() or o["returned_by"] or "-"
+                o["condition"] = (r.condition or "").strip() or o["condition"]
+                if r.notes:
+                    o["notes"] = ((o["notes"] + " / ") if o["notes"] else "") + "back: " + r.notes.strip()
+        today = _dubai_today()
+        rows = []
+        for o in out:
+            o["qty_back"] = round(o["_back"], 2)
+            o["still_out"] = round(o["_left"], 2)
+            end = date.fromisoformat(o["returned_on"]) if (o["returned_on"] and o["_left"] <= 1e-9) else today
+            start = date.fromisoformat(o["issued_on"]) if o["issued_on"] else today
+            o["days_out"] = max((end - start).days, 0)
+            for k in ("_item", "_site", "_left", "_back"):
+                o.pop(k, None)
+            rows.append(o)
+        rows.sort(key=lambda r: (r["still_out"] <= 0, r["issued_on"]), reverse=False)
+        rows.sort(key=lambda r: r["issued_on"], reverse=True)
+        rows.sort(key=lambda r: r["still_out"] <= 0)   # still out first
+        _drop_empty(rows, "notes", "condition")
+        return {"title": "Issue & return register - tools and equipment", "rows": rows,
+                "still_out": sum(1 for r in rows if r["still_out"] > 0)}
+
     if kind == "returnable":
         rows = []
         for (iid, loc), qty in stock.items():

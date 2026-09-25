@@ -264,6 +264,7 @@ class StoreMovementIn(BaseModel):
     unit_cost: float = 0.0
     reference: str = ""
     notes: str = ""
+    condition: str = ""
     moved_on: date
 
 
