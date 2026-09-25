@@ -59,6 +59,11 @@ PAGES = {
 # Screens without a tab of their own, reached from inside another.
 EXTRA = {"monthly": "reports"}
 ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity", "access"]
+# The file each page is served as. nginx sends any address containing
+# "reports" to the API (its rule is not anchored), so that page cannot be
+# called reports.html.
+FILE = {"reports": "reporting"}
+def fname(key): return FILE.get(key, key) + ".html"
 STANDALONE = {"people": ("People", "people"), "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor"}
@@ -179,7 +184,8 @@ const PAGE = %(page_json)s;
 const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
-function pgUrl(screen) { return (PAGE_OF[screen] || "dashboard") + ".html"; }
+const PAGE_FILE = %(file_json)s;
+function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgAllowed(screen) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(RIGHT_OF[screen] || screen); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
 let PG_TAB = null;
@@ -234,7 +240,7 @@ firstScreenFor = function () {
   const pages = %(order_json)s;
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
-    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = pg + ".html"; return PAGE.tabs[0].screen; }
+    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = (PAGE_FILE[pg] || pg) + ".html"; return PAGE.tabs[0].screen; }
   }
   return PAGE.tabs[0].screen;
 };
@@ -372,7 +378,7 @@ def build():
         side = ['<div class="pg-side">', brand]
         for pg in ORDER:
             label = LABELS.get(pg) or STANDALONE[pg][0]
-            side.append(f'<div class="pg-item {"active" if pg == key else ""}" data-page="{pg}" onclick="location.href=\'{pg}.html\'">{html.escape(label)}</div>')
+            side.append(f'<div class="pg-item {"active" if pg == key else ""}" data-page="{pg}" onclick="location.href=\'{fname(pg)}\'">{html.escape(label)}</div>')
         side.append('<div class="pg-group">TEMPORARY BUILD</div>')
         side.append('<div class="pg-small" onclick="location.href=\'/app.html\'">&larr; Back to the classic app</div>')
         side.append("</div>")
@@ -384,11 +390,12 @@ def build():
         early = EARLY % {"first": tabs[0]["id"], "tabmap": json.dumps(tabmap)}
         page = page.replace("</head>", early + "</head>", 1)
         script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),
-                           "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER)}
+                           "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
+                           "file_json": json.dumps(FILE)}
         page = page.replace("</body>", script + "</body>", 1)
-        with open(os.path.join(OUT, key + ".html"), "w", encoding="utf-8") as f:
+        with open(os.path.join(OUT, fname(key)), "w", encoding="utf-8") as f:
             f.write(page)
-        print(f"wrote temporary/Infinia/{key}.html  ({len(page) // 1024} KB)")
+        print(f"wrote temporary/Infinia/{fname(key)}  ({len(page) // 1024} KB)")
 
 
 if __name__ == "__main__":

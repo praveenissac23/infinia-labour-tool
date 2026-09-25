@@ -28,7 +28,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   ck('the dashboard has no tab strip (one screen)', !(await p.locator('#pg-tabs').isVisible()));
 
   for (const [page, screens] of Object.entries(PAGES)) {
-    await p.goto(BASE + page + '.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1500);
+    await p.goto(BASE + (page === 'reports' ? 'reporting' : page) + '.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1500);
     ck(`${page}.html opens on ${screens[0]}`, await p.locator(`#screen-${SCREEN_OF[screens[0]] || screens[0]}.active`).count() === 1, await p.locator('.screen.active').getAttribute('id'));
     ck(`${page}.html: its menu entry is lit`, await p.locator(`.pg-side .pg-item.active[data-page="${page}"]`).count() === 1);
     if (screens.length > 1) {
@@ -45,7 +45,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
     }
   }
   // The reports hub lists every report with working buttons.
-  await p.goto(BASE + 'reports.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
+  await p.goto(BASE + 'reporting.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
   ck('the hub opens first, with four sections', await p.locator('#screen-pgreports.active').count() === 1 && await p.locator('#screen-pgreports .card:visible').count() === 4);
   ck('the office statement picker lists the saved cycles', await p.locator('#pgrep-run option').count() >= 1);
   const opened = [];

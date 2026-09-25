@@ -820,7 +820,7 @@
 <div class="pg-item " data-page="people" onclick="location.href='people.html'">People</div>
 <div class="pg-item active" data-page="payroll" onclick="location.href='payroll.html'">Payroll</div>
 <div class="pg-item " data-page="store" onclick="location.href='store.html'">Store &amp; Purchasing</div>
-<div class="pg-item " data-page="reports" onclick="location.href='reports.html'">Reports</div>
+<div class="pg-item " data-page="reports" onclick="location.href='reporting.html'">Reports</div>
 <div class="pg-item " data-page="settings" onclick="location.href='settings.html'">Settings</div>
 <div class="pg-item " data-page="activity" onclick="location.href='activity.html'">Activity Monitor</div>
 <div class="pg-item " data-page="access" onclick="location.href='access.html'">Access</div>
@@ -12780,7 +12780,8 @@ const PAGE = {"key": "payroll", "title": "Payroll", "screens": ["combine", "erro
 const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "payroll", "store": "store", "requests": "store", "approvals": "store", "purchase": "store", "followup": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "activity", "monthly": "reports"};
 const RIGHT_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata", "combine": "combine", "errorcheck": "errorcheck", "hrpayroll": "hrpayroll", "store": "store", "requests": "requests", "approvals": "approvals", "purchase": "approvals", "followup": "requests", "lporegister": "approvals", "suppliers": "approvals", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "activity", "monthly": "reports", "people": "people", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
-function pgUrl(screen) { return (PAGE_OF[screen] || "dashboard") + ".html"; }
+const PAGE_FILE = {"reports": "reporting"};
+function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgAllowed(screen) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(RIGHT_OF[screen] || screen); }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
 let PG_TAB = null;
@@ -12835,7 +12836,7 @@ firstScreenFor = function () {
   const pages = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings", "activity", "access"];
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
-    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = pg + ".html"; return PAGE.tabs[0].screen; }
+    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = (PAGE_FILE[pg] || pg) + ".html"; return PAGE.tabs[0].screen; }
   }
   return PAGE.tabs[0].screen;
 };
