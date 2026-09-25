@@ -58,6 +58,7 @@ def main():
     import models
 
     db = sessionmaker(bind=create_engine(url))()
+    print("Database:", re.sub(r"://([^:@/]+):[^@]*@", r"://\1:***@", url))
     refs = [a.upper() for a in args]
     notes = db.query(models.HireReturn).filter(models.HireReturn.ref.in_(refs)).all() if refs else []
     missing = sorted(set(refs) - {n.ref for n in notes})
@@ -71,6 +72,12 @@ def main():
                   if (m.notes or "").strip().lower() == "test" and m not in moves]
     if not notes and not moves:
         print("Nothing to remove.")
+        allnotes = db.query(models.HireReturn).order_by(models.HireReturn.id).all()
+        print("Return notes on this database:", ", ".join(f"{n.ref} ({n.status})" for n in allnotes) or "none")
+        lost = db.query(models.StoreMovement).filter(models.StoreMovement.kind == "lost").all()
+        print("Lost/damaged movements:", len(lost))
+        for m in lost:
+            print(f"   #{m.id} {m.moved_on} qty {m.qty} at {m.location or '-'} ref {m.reference or '-'} notes {m.notes!r}")
         return
 
     items = {i.id: i for i in db.query(models.StoreItem).all()}
