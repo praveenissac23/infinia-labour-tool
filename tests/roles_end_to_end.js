@@ -138,8 +138,9 @@ async function login(ctx, user, pw, url) {
   const PAGES = ['dashboard', 'attendance', 'payroll', 'store', 'reporting', 'settings', 'activity'];
   for (const [name, cfg] of Object.entries(ROLES)) {
     const opened = [];
-    ctx.on('page', pg => opened.push(pg));
     const { p, errs, bad } = await login(ctx, name, cfg.pw, T + 'dashboard.html');
+    const onPage = pg => { if (pg !== p) opened.push(pg); };
+    ctx.on('page', onPage);
     const menu = await p.locator('.pg-side .pg-item:visible').allTextContents();
     ck(`${name} (temporary): menu ${menu.join(' · ')}`, menu.length > 0);
     if (name === 'assistant') ck('assistant (temporary): no office salary tab anywhere', true);
@@ -172,6 +173,7 @@ async function login(ctx, user, pw, url) {
       const gt = await p.locator('#tabs .tab').allTextContents();
       ck(`${name} (People): tabs ${gt.join(' · ')}`, name === 'chief' ? gt.length === 5 : (gt.length === 2 && gt[0].startsWith('Labour')), gt);
     }
+    ctx.off('page', onPage);
     ck(`${name} (temporary): no script errors, no pop-ups`, errs.length === 0, errs);
     ck(`${name} (temporary): no refused or failed calls`, bad.length === 0, bad);
     await p.close();

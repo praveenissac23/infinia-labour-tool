@@ -3044,9 +3044,6 @@
               </div>
             </div>
           </div>
-
-          </div>
-        </div>
           <div class="hr-pane" id="hrpane-loans" style="display:none;">
             <div class="card">
               <h2 id="hr-loan-form-title">Record a loan</h2>
@@ -3201,11 +3198,12 @@
           </div>
         </div>
 
+      </div>
+
 
       </div>
     </div>
   </div>
-</div>
 
 <script>
 // On Render, frontend and backend live on different domains, so the
@@ -6646,6 +6644,9 @@ async function loadStoreHome() {
     // Everything the company holds, wherever it is: in the central store,
     // out at a site, or split between them. The columns say which.
     const rows = all.filter(r => (r.in_store || 0) > 0 || (r.at_sites || 0) > 0);
+    // Materials on the list that are out of the store altogether (nothing
+    // here, nothing at a site) - so an empty table can say so.
+    const goneOut = all.filter(r => (r.at_sites || 0) > 0 && !((r.in_store || 0) > 0)).length;
 
     const head = document.getElementById("home-stock-head");
     const body = document.getElementById("home-stock-body");
