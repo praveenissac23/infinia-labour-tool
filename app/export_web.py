@@ -989,6 +989,8 @@ def salary_card_html(summary, rows):
         <tr><td style="background:#{final_bg}">AED {final:,.2f}</td></tr>
       </table>
     </div>
+    <table class="sign"><tr><th style="width:38%">VERIFIED BY</th><th style="width:27%">EMPLOYEE SIGNATURE</th><th>REMARKS</th></tr>
+      <tr><td></td><td></td><td></td></tr></table>
   </div>"""
 
 

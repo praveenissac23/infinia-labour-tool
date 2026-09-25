@@ -2195,6 +2195,9 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
              font-weight:bold; font-size:10.5px; padding:4px; margin-top:4px; }}
   .foot {{ display:flex; gap:10px; justify-content:center; align-items:flex-start;
            margin-top:6px; flex-wrap:wrap; }}
+  .sign {{ width:100%; margin-top:10px; }}
+  .sign th {{ font-size:8.5px; color:#5B6167; text-align:left; padding:3px 6px; border:0.5px solid #B0B0B0; background:#F4F4F4; }}
+  .sign td {{ height:34px; border:0.5px solid #B0B0B0; }}
   .days, .money {{ background:#D8D8D8; }}
   .days th, .days td, .money th, .money td {{ border:0.5px solid #B0B0B0;
       padding:3px 5px; font-size:10.5px; }}
