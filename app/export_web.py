@@ -10,6 +10,7 @@ Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
 import base64
+import contextvars
 import io
 import os
 import tempfile
@@ -1477,6 +1478,51 @@ def _esc(s):
 # ---------------------------------------------------------------------
 # STORE / INVENTORY EXPORTS
 # ---------------------------------------------------------------------
+# The order the reader arranged the columns in, and the column they
+# sorted by, on the preview: the API sets these from the download link
+# (?cols=a,b,c&sort=b:desc) so the file that comes out is the sheet they
+# were looking at.
+VIEW_PREFS = contextvars.ContextVar("view_prefs", default=None)
+
+
+def _sort_key(v):
+    if v is None or v == "":
+        return (1, 0, "")
+    if isinstance(v, bool):
+        return (0, 0, 1 if v else 0)
+    if isinstance(v, (int, float)):
+        return (0, 0, v)
+    t = str(v)
+    try:
+        return (0, 0, float(t.replace(",", "")))
+    except ValueError:
+        return (0, 1, t.lower())
+
+
+def apply_view_prefs(rows):
+    """Rows re-arranged and sorted as the preview was, when the download
+    link says so; untouched otherwise."""
+    prefs = VIEW_PREFS.get()
+    if not prefs or not rows:
+        return rows
+    cols = list(rows[0].keys())
+    order = [c for c in (prefs.get("cols") or []) if c in cols]
+    if order:
+        order += [c for c in cols if c not in order]
+    sort = prefs.get("sort") or ""
+    if sort:
+        key, _, direction = sort.partition(":")
+        if key in cols:
+            rows = sorted(rows, key=lambda r: _sort_key(r.get(key)), reverse=(direction == "desc"))
+            # A serial number counts the printed order, not the old one.
+            for c in cols:
+                if c.strip().lower().rstrip(".") in ("sr", "sr no", "s no", "sl", "sl no", "no", "#"):
+                    rows = [{**r, c: i + 1} for i, r in enumerate(rows)]
+    if order:
+        rows = [{c: r.get(c) for c in order} for r in rows]
+    return rows
+
+
 def build_store_report_excel(title, rows, subtitle="", orientation=None, money_cols=None,
                              total_cols=None):
     """
@@ -1485,6 +1531,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     for numeric money columns. Column set is taken from the data, so one
     function serves every report rather than one per report drifting apart.
     """
+    rows = apply_view_prefs(rows)
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
@@ -1605,6 +1652,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     one wastes less paper upright, a wide one is unreadable that way.
     Callers may force it; left alone, the data decides.
     """
+    rows = apply_view_prefs(rows)
     buf = io.BytesIO()
     orientation = orientation or choose_orientation(rows)
     doc = SimpleDocTemplate(buf, pagesize=_page_size(orientation),

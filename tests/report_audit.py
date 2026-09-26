@@ -1,3 +1,4 @@
+import re
 """Every report column must carry real data.
 
 Run: cd app && DATABASE_URL=sqlite:////tmp/ra.db python3 ../tests/report_audit.py
@@ -127,7 +128,9 @@ for k in ["stock", "usage", "by_site", "assets", "hired", "lost", "purchases", "
         "an A4 page": ("297mm" in pv.text) or ("210mm" in pv.text),
         "the report's own title": (c.get(f'/store/report?kind={k}', headers=K)
                                     .json().get("title", "") in pv.text),
-        "headings, not field names": "given_to" not in pv.text,
+        # Visible text only - the heading cells carry the field name as
+        # an attribute so the download can follow a re-ordered column.
+        "headings, not field names": "given_to" not in re.sub(r"<[^>]+>", " ", pv.text),
     }
     pv_bad += [f"{k}: no {w}" for w, ok in want.items() if not ok]
 print(("FAIL preview: " + "; ".join(pv_bad)) if pv_bad

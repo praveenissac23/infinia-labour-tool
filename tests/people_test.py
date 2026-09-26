@@ -230,7 +230,7 @@ ck('a login is given the role', r.status_code == 200 and 'masterdata' in r.json(
 me = c.get('/permissions/me', headers=tok('office')).json()['screens']
 ck('and the OLD app sees exactly those rights - nothing new to read', 'masterdata' in me and 'store' not in me, me)
 ck('while People and Access stay closed to it', c.get('/employees/people', headers=tok('office')).status_code == 403)
-ck('the roles page lists rights by page and tab', any(pg == 'People' for pg, _ in c.get('/permissions/roles', headers=H).json()['pages']))
+ck('the roles page lists rights by page and tab', any(pg == 'Staff' for pg, _ in c.get('/permissions/roles', headers=H).json()['pages']))
 r = c.post('/permissions/roles', json={'id': role['id'], 'name': 'Assistant Accountant', 'screens': ['dashboard', 'attendance', 'reports']}, headers=H)
 me = c.get('/permissions/me', headers=tok('office')).json()['screens']
 ck('changing the role changes every login that carries it', 'masterdata' not in me and 'attendance' in me, me)

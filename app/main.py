@@ -111,7 +111,18 @@ async def never_cache_api(request, call_next):
     Downloads (PDF, Excel, zip) are left alone - they are one-shot and
     the browser has no reason to cache them either way.
     """
-    response = await call_next(request)
+    # A download link from a preview may carry the column order and the
+    # sort the reader chose; the builders read them from here.
+    token = None
+    if request.url.path.startswith("/export/") and (request.query_params.get("cols") or request.query_params.get("sort")):
+        token = export_web.VIEW_PREFS.set({
+            "cols": [c for c in (request.query_params.get("cols") or "").split(",") if c],
+            "sort": request.query_params.get("sort") or ""})
+    try:
+        response = await call_next(request)
+    finally:
+        if token is not None:
+            export_web.VIEW_PREFS.reset(token)
     if not request.url.path.startswith("/export/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
@@ -6926,6 +6937,70 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 </body></html>""")
 
 
+_PREVIEW_JS = r"""
+<script>
+// Click a heading to sort by it (again to reverse); drag a heading to
+// move the column. The downloads follow: the PDF and the Excel copy
+// come out in the order and sort on screen. Remembered per report.
+(function () {
+  const table = document.querySelector(".page table"); if (!table) return;
+  const key = "rep-view:" + document.title;
+  const pdf = document.getElementById("dl-pdf"), xls = document.getElementById("dl-xls");
+  const base = { pdf: pdf.getAttribute("href"), xls: xls.getAttribute("href") };
+  let sort = { col: "", dir: "asc" };
+  const ths = () => [...table.querySelectorAll("thead th")];
+  const order = () => ths().map(th => th.dataset.col);
+  function links() {
+    const q = "&cols=" + encodeURIComponent(order().join(",")) + (sort.col ? "&sort=" + encodeURIComponent(sort.col + ":" + sort.dir) : "");
+    pdf.setAttribute("href", base.pdf + q); xls.setAttribute("href", base.xls + q);
+    try { localStorage.setItem(key, JSON.stringify({ cols: order(), sort })); } catch (e) {}
+  }
+  function moveCol(from, to) {
+    if (from === to) return;
+    for (const tr of table.querySelectorAll("tr")) {
+      const cells = [...tr.children]; if (cells.length <= Math.max(from, to)) continue;
+      const cell = cells[from]; cell.remove();
+      tr.insertBefore(cell, cells[to + (to > from ? 1 : 0)] || null);
+    }
+    const cg = table.querySelector("colgroup");
+    if (cg) { const cols = [...cg.children]; const c = cols[from]; c.remove(); cg.insertBefore(c, cols[to + (to > from ? 1 : 0)] || null); }
+  }
+  function applySort() {
+    const idx = order().indexOf(sort.col); ths().forEach(th => th.querySelector(".arr").textContent = "");
+    if (idx < 0) return;
+    ths()[idx].querySelector(".arr").textContent = sort.dir === "asc" ? "▲" : "▼";
+    const tb = table.tBodies[0]; const rows = [...tb.rows]; const tot = rows.filter(r => r.classList.contains("tot"));
+    const body = rows.filter(r => !r.classList.contains("tot"));
+    const val = r => { const v = r.cells[idx].dataset.s; if (v === "") return null; const n = Number(v); return isNaN(n) ? v.toLowerCase() : n; };
+    body.sort((a, b) => { const x = val(a), y = val(b); if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1;
+      const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true }); return sort.dir === "asc" ? c : -c; });
+    body.forEach(r => tb.appendChild(r)); tot.forEach(r => tb.appendChild(r));
+    // A serial number counts the order on screen.
+    const sr = order().findIndex(c => /^(sr|sr no|s no|sl|sl no|no|#)$/i.test(c.trim().replace(/\./g, "")));
+    if (sr >= 0) body.forEach((r, i) => { r.cells[sr].textContent = i + 1; r.cells[sr].dataset.s = i + 1; });
+  }
+  let drag = null;
+  ths().forEach(th => {
+    th.addEventListener("click", () => { if (drag && drag.moved) return; sort = { col: th.dataset.col, dir: sort.col === th.dataset.col && sort.dir === "asc" ? "desc" : "asc" }; applySort(); links(); });
+    th.addEventListener("dragstart", e => { drag = { from: order().indexOf(th.dataset.col), moved: false }; th.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", th.dataset.col); } catch (x) {} });
+    th.addEventListener("dragend", () => { th.classList.remove("dragging"); ths().forEach(t => t.classList.remove("drop-l", "drop-r")); setTimeout(() => { drag = null; }, 0); });
+    th.addEventListener("dragover", e => { if (!drag) return; e.preventDefault(); const r = th.getBoundingClientRect(); const right = e.clientX > r.left + r.width / 2; ths().forEach(t => t.classList.remove("drop-l", "drop-r")); th.classList.add(right ? "drop-r" : "drop-l"); });
+    th.addEventListener("drop", e => { if (!drag) return; e.preventDefault(); const r = th.getBoundingClientRect(); const right = e.clientX > r.left + r.width / 2;
+      let to = order().indexOf(th.dataset.col); if (right) to += 1; if (to > drag.from) to -= 1; moveCol(drag.from, to); drag.moved = true; links(); });
+  });
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    if (saved && Array.isArray(saved.cols)) {
+      saved.cols.forEach((c, i) => { const at = order().indexOf(c); if (at >= 0 && at !== i && i < order().length) moveCol(at, i); });
+      if (saved.sort && saved.sort.col) { sort = saved.sort; applySort(); }
+      links();
+    }
+  } catch (e) {}
+})();
+</script>
+"""
+
+
 def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url: str,
                    money_cols=None, orientation=None, total_cols=None):
     """A report on screen, drawn as the sheet that prints.
@@ -6952,8 +7027,19 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # is not crushed beside an inch of white space under "Unit".
     fracs = export_web.col_fractions(rows, cols, money_cols, total_cols)
     cgroup = "".join(f'<col style="width:{f * 100:.2f}%">' for f in fracs)
-    head = "".join(f'<th class="{klass[aligns[c]]}">'
-                   f'{escape(export_web._store_label(c))}</th>' for c in cols)
+    head = "".join(f'<th class="{klass[aligns[c]]}" data-col="{escape(c)}" draggable="true" title="Click to sort, drag to move">'
+                   f'<span class="lbl">{escape(export_web._store_label(c))}</span><span class="arr"></span></th>' for c in cols)
+
+    def raw(v):
+        # What a column sorts by: the number behind a figure, the date
+        # behind a day, the text otherwise.
+        if v is None or v == "" or isinstance(v, dict):
+            return ""
+        if isinstance(v, bool):
+            return "1" if v else "0"
+        if isinstance(v, (int, float)):
+            return repr(float(v))
+        return str(v)
 
     def show(c, v):
         if v is None or v == "":
@@ -6970,7 +7056,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
 
     body = "".join(
         "<tr>" + "".join(
-            f'<td class="{klass[aligns[c]]}">'
+            f'<td class="{klass[aligns[c]]}" data-s="{escape(raw(r.get(c)))}">'
             + escape(show(c, r.get(c))).replace("\n", "<br>")
             + "</td>" for c in cols) + "</tr>"
         for r in rows)
@@ -7032,7 +7118,13 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
            table-layout:fixed; }}
   th {{ background:#{export_web.BRAND_RED}; color:white; font-weight:bold;
         font-size:8pt; padding:3px 4px; border:0.4px solid #CCCCCC;
-        word-wrap:break-word; }}
+        word-wrap:break-word; cursor:pointer; user-select:none; position:relative; }}
+  th .arr {{ font-size:7pt; margin-left:3px; opacity:.9; }}
+  th.drop-l {{ box-shadow: inset 3px 0 0 #FFD54F; }} th.drop-r {{ box-shadow: inset -3px 0 0 #FFD54F; }}
+  th.dragging {{ opacity:.55; }}
+  .hint {{ font-size:11.5px; color:#999; margin-right:6px; }}
+  @media (max-width:1180px) {{ .hint {{ display:none; }} }}
+  @media print {{ .hint {{ display:none; }} th .arr {{ display:none; }} }}
   td {{ padding:3px 4px; border:0.4px solid #CCCCCC; vertical-align:middle;
         word-wrap:break-word; overflow-wrap:anywhere; }}
   th.l, td.l {{ text-align:left; }}
@@ -7051,8 +7143,9 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     <h1>{escape(title)}</h1>
     <span class="who">{subtitle}</span>
     <span style="margin-left:auto;"></span>
-    <a class="btn dark" href="{pdf_url}&amp;format=pdf">Download PDF</a>
-    <a class="btn" href="{excel_url}&amp;format=excel">Download Excel</a>
+    <span class="hint">Click a heading to sort, drag it to move a column - the PDF and Excel follow.</span>
+    <a class="btn dark" id="dl-pdf" href="{pdf_url}&amp;format=pdf">Download PDF</a>
+    <a class="btn" id="dl-xls" href="{excel_url}&amp;format=excel">Download Excel</a>
     <a class="btn" href="#" onclick="window.print();return false;">Print</a>
   </div>
   <div class="page">
@@ -7064,6 +7157,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     </div>
     <div class="sheet">{sheet}</div>
   </div>
+  </div>""" + _PREVIEW_JS + """
+
 </body></html>""")
 
 
