@@ -416,7 +416,6 @@ if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
 if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 if (!pgOn("reports")) { initReportColumnPicker = async () => {}; }
 if (!pgOn("settings")) { loadCompanySettings = async () => {}; refreshSignatureState = async () => {}; }
-if (!pgOn("masterdata") && !pgOn("reports") && !pgOn("monthly")) { ensureCompanies = async () => {}; }
 
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {

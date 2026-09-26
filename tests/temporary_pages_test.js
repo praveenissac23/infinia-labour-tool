@@ -49,6 +49,13 @@ const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchas
       }
     }
   }
+  // A company added under Settings is a choice on every company dropdown, straight away.
+  await p.evaluate(async () => apiCall('/employees/companies', { method: 'POST', body: JSON.stringify({ name: 'DROPDOWN CHECK LLC', short_name: 'DropCo', code_prefix: 'DC' }) }).catch(() => {}));
+  for (const [pg, tab, id] of [['reporting', '', 'report-company'], ['attendance', 'masterdata', 'md-emp-company'], ['payroll', 'hrpayroll', 'hr-run-company'], ['people', '', 'f-company']]) {
+    await p.goto(BASE + pg + '.html' + (tab ? '#' + tab : '')); await p.waitForTimeout(2500);
+    const opts = await p.locator('#' + id + ' option').allTextContents();
+    ck(`${pg} ${id} lists the new company`, opts.includes('DropCo'), opts);
+  }
   // The reports page: tabs inside tabs, the working screen underneath.
   await p.goto(BASE + 'reporting.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
   ck('the reports page opens on Labour › Cycle report builder', await p.locator('#screen-reports.active').count() === 1 && (await p.locator('#pg-sub .pg-subtab.active').textContent()) === 'Cycle report builder');

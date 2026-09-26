@@ -3432,6 +3432,7 @@ function switchScreen(name) {
   if (name === "masterdata") loadFormerWorkers();
   if (name === "hrpayroll") loadHrScreen();
   if (name === "settings") loadCompanies();
+  if (["masterdata", "reports", "monthly"].includes(name)) ensureCompanies().catch(() => {});
   if (name === "reports" || name === "monthly" || name === "settings" || name === "combine" || name === "masterdata") refreshDownloadToken();
   if (name === "combine") {
     filterCombineWorkers();
@@ -3579,6 +3580,9 @@ async function initApp() {
   // The rights arrive with the first wave, not a round trip later - the
   // screen the person is opening waits on nothing else.
   const permsEarly = apiCall("/permissions/me").catch(() => null);
+  // Every company dropdown (Master Data, report builder, monthly report)
+  // is filled from the companies on file, on every page, from the start.
+  ensureCompanies().catch(() => {});
   [employees, sites, engineers] = await Promise.all([
     apiCall("/employees?active_only=true"),
     apiCall("/sites"),
@@ -13305,7 +13309,6 @@ if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
 if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
 if (!pgOn("reports")) { initReportColumnPicker = async () => {}; }
 if (!pgOn("settings")) { loadCompanySettings = async () => {}; refreshSignatureState = async () => {}; }
-if (!pgOn("masterdata") && !pgOn("reports") && !pgOn("monthly")) { ensureCompanies = async () => {}; }
 
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {
