@@ -11477,7 +11477,13 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "block";
       initApp();
-    }).catch(() => sessionStorage.removeItem("infinia_token"));
+    }).catch(e => {
+      // Only a sign-in the server refuses ends it. A dropped or slow
+      // connection (a weak site network) tries again instead of throwing
+      // the person back to the sign-in box.
+      if (e && e.status === 401) sessionStorage.removeItem("infinia_token");
+      else setTimeout(tryResume, 2500);
+    });
   }
 })();
 // ======================================================================
@@ -13322,7 +13328,7 @@ function pgTab(id) {
 }
 // A sign-in that does not resume shows the sign-in box after all.
 if (sessionStorage.getItem("infinia_token"))
-  apiCall("/auth/me").catch(() => { const e = document.getElementById("pg-early"); if (e) e.remove(); });
+  apiCall("/auth/me").catch(e => { if (e && e.status === 401) { const el = document.getElementById("pg-early"); if (el) el.remove(); } });
 // A tab that shows part of a screen hides the rest of it.
 function pgApplyTab() {
   const t = PG_TAB; if (!t) return;

@@ -509,7 +509,14 @@ function applyMenu() {
 }
 async function start() {
   try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
-  catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); return; }
+  catch (e) {
+    // Only a sign-in the server has refused ends it. A request cut off
+    // because the page was left, or a dropped connection, must not sign
+    // the person out of the whole app (the frame shares the sign-in).
+    if (e && e.status === 401) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); }
+    else if (!window.PG_EMBED) setTimeout(start, 3000);
+    return;
+  }
   ME.groups = ["labour", "office", "local", "household"].filter(g => ME.role === "admin" || ME.screens.includes("people_" + g));
   if (!ME.groups.length) {
     // Not this login's page: back to the first page it has, still signed in.

@@ -11315,7 +11315,13 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "block";
       initApp();
-    }).catch(() => sessionStorage.removeItem("infinia_token"));
+    }).catch(e => {
+      // Only a sign-in the server refuses ends it. A dropped or slow
+      // connection (a weak site network) tries again instead of throwing
+      // the person back to the sign-in box.
+      if (e && e.status === 401) sessionStorage.removeItem("infinia_token");
+      else setTimeout(tryResume, 2500);
+    });
   }
 })();
 // ======================================================================

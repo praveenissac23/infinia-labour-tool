@@ -150,7 +150,7 @@ def loan_state(emp_id, month_year=None):
 
 
 c = TestClient(main.app)
-H = {'Authorization': 'Bearer ' + c.post('/auth/login', data={'username': 'admin', 'password': 'p'})
+H = {'Authorization': 'Bearer ' + c.post('/auth/login', data={'username': 'admin', 'password': os.environ.get('ADMIN_PW', 'p')})
      .json()['access_token']}
 
 

@@ -42,7 +42,7 @@ setTimeout(() => {
   // the exact class of bug that shipped a dead Send button.
   const missing = new Set();
   d.querySelectorAll("[onclick]").forEach(el => {
-    const m = (el.getAttribute("onclick") || "").match(/^\s*(\w+)\s*\(/);
+    const m = (el.getAttribute("onclick") || "").match(/^\s*(?!if\b|return\b)(\w+)\s*\(/);
     if (m && typeof w[m[1]] !== "function") missing.add(m[1]);
   });
   check("every onclick handler is a real function", missing.size === 0, [...missing].join(", "));

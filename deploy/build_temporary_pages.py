@@ -384,7 +384,7 @@ function pgTab(id) {
 }
 // A sign-in that does not resume shows the sign-in box after all.
 if (sessionStorage.getItem("infinia_token"))
-  apiCall("/auth/me").catch(() => { const e = document.getElementById("pg-early"); if (e) e.remove(); });
+  apiCall("/auth/me").catch(e => { if (e && e.status === 401) { const el = document.getElementById("pg-early"); if (el) el.remove(); } });
 // A tab that shows part of a screen hides the rest of it.
 function pgApplyTab() {
   const t = PG_TAB; if (!t) return;

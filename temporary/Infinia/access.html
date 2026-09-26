@@ -269,7 +269,14 @@ function applyMenu() {
 }
 async function start() {
   try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
-  catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); return; }
+  catch (e) {
+    // Only a sign-in the server has refused ends it. A request cut off
+    // because the page was left, or a dropped connection, must not sign
+    // the person out of the whole app (the frame shares the sign-in).
+    if (e && e.status === 401) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); }
+    else if (!window.PG_EMBED) setTimeout(start, 3000);
+    return;
+  }
   if (ME.role !== "admin") { if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("settings.html"); return; }   // admin only - back to Settings, still signed in
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username} (${ME.username})`;
