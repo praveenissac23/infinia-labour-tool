@@ -167,11 +167,14 @@ CSS = """
   #screen-hrpayroll .hr-tab { padding: 6px 14px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; }
   #screen-hrpayroll .hr-tab:hover { border-color: #D9B8B3; color: var(--red); background: white; }
   #screen-hrpayroll .hr-tab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
-  /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
-  body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
-  body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
-  body.pg-subview #store-home > .card:first-child { display: none; }
-  body.pg-subview #screen-store button[onclick="storeGo('home')"] { display: none; }
+  /* On these pages the sub-tabs are the navigation, from the first frame:
+     the store's own tiles, report picker and Back buttons, and the HR
+     screen's own tab row, are never drawn - not even for a moment. */
+  #screen-hrpayroll .hr-tabs { display: none !important; }
+  #store-reports > button, #store-reports > .card:first-of-type { display: none !important; }
+  #store-home > .card:first-child { display: none !important; }
+  #screen-store button[onclick="storeGo('home')"] { display: none !important; }
+  #store-report-result { margin-top: 0; }
   body.pg-subview #store-report-result { margin-top: 0; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
