@@ -11798,6 +11798,12 @@ async function hrOpenAll(month) {
     const r = HR_RUNS.find(x => x.month_year === month && x.company === short && (x.group || "staff") === group);
     let full = null;
     if (r) { try { full = await apiCall(`/employees/payroll/runs/${r.id}`); } catch (e) { full = null; } }
+    // The current month opens by itself, as it does for one company -
+    // earlier months wait to be opened deliberately.
+    else if (document.getElementById("hr-run-month").value === hrToday().slice(0, 7)) {
+      try { full = await apiCall("/employees/payroll/runs", { method: "POST", body: JSON.stringify({ month_year: month, company_id: co.id, group }) }); }
+      catch (e) { full = null; }
+    }
     runs.push({ co, short, run: full });
   }
   const money = v => hrMoney(v);
@@ -11833,6 +11839,7 @@ async function hrOpenAll(month) {
       <td class="num">${money(gsum.basic)}</td><td class="num">${money(gsum.allowance)}</td><td class="num">${gsum.adj ? money(gsum.adj) : "-"}</td>
       <td class="num">${money(gsum.deduction)}</td><td class="num">${money(gsum.loan_deduction)}</td><td class="num">${money(gsum.net_pay)}</td><td style="width:22%;"></td></tr></tfoot></table></div>` : "");
   document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${runs.length} companies opened`;
+  if (runs.some(r => r.run && !HR_RUNS.some(x => x.id === r.run.id))) await loadRunList();
   hrSyncBar();
 }
 async function downloadConsolidated(fmt) {

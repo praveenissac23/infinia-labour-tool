@@ -22,7 +22,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
 
   // ---- The gate -------------------------------------------------------------
   await p.goto(BASE + '/temporary/Infinia/people.html');
-  ck('the page is served at its temporary address', (await p.title()).includes('People'));
+  ck('the page is served at its temporary address', (await p.title()).includes('Staff'));
   ck('and shows a sign-in, nothing else', await p.locator('#login').isVisible() && !(await p.locator('#shell').isVisible()));
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'wrong'); await p.click('#login button'); await p.waitForTimeout(600);
   ck('a wrong password is refused in the page', (await p.locator('#login-error').textContent()).includes('Wrong'));
@@ -145,13 +145,13 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('a record added by mistake can be removed while nothing hangs off it', gone === true, gone);
 
   // ---- Documents due and leave balances ---------------------------------------------------
-  await p.click('.nav-sub[data-view="due"]'); await p.waitForTimeout(900);
+  await p.click('.viewtab[data-view="due"]'); await p.waitForTimeout(900);
   ck('Documents due opens', await p.locator('#view-due').isVisible() && (await p.locator('#due-count').textContent()).includes('document'));
   for (const d of ['30', '180', '90']) { await p.click(`#due-days button[data-v="${d}"]`); pressed++; await p.waitForTimeout(500); }
   for (const g of ['labour', 'office', '']) { await p.click(`#due-group button[data-v="${g}"]`); pressed++; await p.waitForTimeout(500); }
   for (const text of ['Preview', 'Export to PDF', 'Export to Excel']) { await p.click(`#view-due button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
-  ck('Leave balances is no longer a view of its own', await p.locator('.nav-sub[data-view="leave"]').count() === 0);
-  ck('the six report buttons opened six tabs', newPages.length === 6, newPages.length);
+  ck('Leave balances is no longer a view of its own', await p.locator('.viewtab[data-view="leave"]').count() === 0);
+  ck('the three report buttons opened three tabs', newPages.length === 3, newPages.length);
   for (const pg of newPages) { await pg.waitForLoadState().catch(() => {}); ck(`opened: ${((await pg.url()).split('/export/')[1] || pg.url()).split('&token')[0]}`, !/"detail"/.test(await pg.content().catch(() => '"detail"'))); await pg.close().catch(() => {}); }
   newPages.length = 0;
   const openBtn = p.locator('#lv-body button:has-text("Open")').first();
@@ -183,8 +183,8 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('and the role is gone', !(await p.locator('#roles-body').textContent()).includes('Sweep Role'));
   // The sweep login cannot open either page.
   const p2 = await (await b.newContext()).newPage();
-  await p2.goto(BASE + '/temporary/Infinia/people.html'); await p2.fill('#login-username', 'sweepuser'); await p2.fill('#login-password', 'sweep123'); await p2.click('#login button'); await p2.waitForTimeout(1200);
-  ck('a login without the right is turned away at the door', (await p2.locator('#login-error').textContent()).includes('not available') && !(await p2.locator('#shell').isVisible()));
+  await p2.goto(BASE + '/temporary/Infinia/people.html'); await p2.fill('#login-username', 'sweepuser'); await p2.fill('#login-password', 'sweep123'); await p2.click('#login button'); await p2.waitForTimeout(3000);
+  ck('a login without the right is sent to its own page, still signed in', !p2.url().endsWith('people.html') && await p2.evaluate("!!sessionStorage.getItem('infinia_token')"), p2.url());
   await p2.close();
   await p.evaluate(async () => { const u = (await apiCall('/users')).find(x => x.username === 'sweepuser'); if (u) await apiCall(`/users/${u.id}`, { method: 'DELETE' }).catch(() => {}); });
 

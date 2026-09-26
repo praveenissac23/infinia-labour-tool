@@ -134,11 +134,11 @@ CSS = """
   body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
   body { font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
   /* The reports hub: tabs inside tabs, the preview underneath */
-  .pg-sub { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 26px 0; background: white; border-bottom: 1px solid #E7E1DA; }
+  .pg-sub { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px 2px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
   .pg-sub:empty { display: none; }
-  .pg-subtab { padding: 6px 12px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: #6A5C55; background: #F7F3EE; border: 1px solid #E4DCD2; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-  .pg-subtab:hover { background: #F1EAE3; }
-  .pg-subtab.active { background: #2C2C2C; color: white; border-color: #2C2C2C; }
+  .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
+  .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
+  .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
   body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
   body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
@@ -543,5 +543,21 @@ def build():
         print(f"wrote temporary/Infinia/{fname(key)}  ({len(page) // 1024} KB)")
 
 
+def brand_hand_written():
+    """The hand-written pages carry the same logo as the generated ones."""
+    src = open(SRC, encoding="utf-8").read()
+    m = re.search(r'<div class="brand">(<img [^>]*>)</div>', src)
+    if not m:
+        return
+    img = m.group(1)
+    for name in ("people.html", "access.html"):
+        path = os.path.join(OUT, name)
+        page = open(path, encoding="utf-8").read()
+        new = re.sub(r'<div class="logo" id="pg-brand">.*?</div>', lambda _: f'<div class="logo" id="pg-brand">{img}</div>', page, count=1, flags=re.S)
+        if new != page:
+            open(path, "w", encoding="utf-8").write(new)
+
+
 if __name__ == "__main__":
     build()
+    brand_hand_written()

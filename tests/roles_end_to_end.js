@@ -126,7 +126,9 @@ async function login(ctx, user, pw, url) {
   ck('a loan is recorded on the payroll Loans tab (API)', loan && loan.amount === 3000, loan);
   await admin.evaluate("hrTab('loans')"); await admin.waitForTimeout(1200);
   ck('and is listed there', (await admin.locator('#hrpane-loans').textContent()).includes('E2E loan'));
-  await admin.evaluate("hrTab('payroll')"); await admin.waitForTimeout(2500);
+  await admin.evaluate("hrTab('payroll')"); await admin.waitForTimeout(3000);
+  ck('the all-companies view shows the instalment and balance', /balance 2,500\.00/.test(await admin.locator('#hr-all-body').textContent()));
+  await admin.evaluate(() => { document.getElementById('hr-run-company').value = HR_COMPANIES.find(c => c.short_name === 'Infinia').id; hrSyncBar(); return openPayrollCycle(); }); await admin.waitForTimeout(2500);
   const line = await admin.evaluate(() => HR_RUN && HR_RUN.lines.find(l => l.emp_no === 'IC023'));
   ck('the running cycle takes the 500 instalment with the balance in the remark', line && line.loan_deduction === 500 && /balance 2,500\.00/.test(line.remarks), line && [line.loan_deduction, line.remarks]);
   const pf = await admin.evaluate(async () => apiCall('/employees/people/IC023'));

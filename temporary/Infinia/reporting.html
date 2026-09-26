@@ -798,11 +798,11 @@
   body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
   body { font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
   /* The reports hub: tabs inside tabs, the preview underneath */
-  .pg-sub { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 26px 0; background: white; border-bottom: 1px solid #E7E1DA; }
+  .pg-sub { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px 2px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
   .pg-sub:empty { display: none; }
-  .pg-subtab { padding: 6px 12px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: #6A5C55; background: #F7F3EE; border: 1px solid #E4DCD2; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-  .pg-subtab:hover { background: #F1EAE3; }
-  .pg-subtab.active { background: #2C2C2C; color: white; border-color: #2C2C2C; }
+  .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
+  .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
+  .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
   body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
   body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
@@ -11918,6 +11918,12 @@ async function hrOpenAll(month) {
     const r = HR_RUNS.find(x => x.month_year === month && x.company === short && (x.group || "staff") === group);
     let full = null;
     if (r) { try { full = await apiCall(`/employees/payroll/runs/${r.id}`); } catch (e) { full = null; } }
+    // The current month opens by itself, as it does for one company -
+    // earlier months wait to be opened deliberately.
+    else if (document.getElementById("hr-run-month").value === hrToday().slice(0, 7)) {
+      try { full = await apiCall("/employees/payroll/runs", { method: "POST", body: JSON.stringify({ month_year: month, company_id: co.id, group }) }); }
+      catch (e) { full = null; }
+    }
     runs.push({ co, short, run: full });
   }
   const money = v => hrMoney(v);
@@ -11953,6 +11959,7 @@ async function hrOpenAll(month) {
       <td class="num">${money(gsum.basic)}</td><td class="num">${money(gsum.allowance)}</td><td class="num">${gsum.adj ? money(gsum.adj) : "-"}</td>
       <td class="num">${money(gsum.deduction)}</td><td class="num">${money(gsum.loan_deduction)}</td><td class="num">${money(gsum.net_pay)}</td><td style="width:22%;"></td></tr></tfoot></table></div>` : "");
   document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${runs.length} companies opened`;
+  if (runs.some(r => r.run && !HR_RUNS.some(x => x.id === r.run.id))) await loadRunList();
   hrSyncBar();
 }
 async function downloadConsolidated(fmt) {

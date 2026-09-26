@@ -724,7 +724,7 @@ SCREEN_LABELS = {
 RIGHT_PAGES = [
     ("Dashboard", ["dashboard"]),
     ("Attendance", ["attendance", "livecard", "masterdata"]),
-    ("People", ["people_labour", "people_office", "people_local", "people_household"]),
+    ("Staff", ["people_labour", "people_office", "people_local", "people_household"]),
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Reports", ["reports"]),
