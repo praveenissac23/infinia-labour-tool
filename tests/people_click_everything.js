@@ -163,7 +163,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   await p.click('button:has-text("+ New role")'); await p.waitForTimeout(300);
   await p.fill('#r-name', 'Sweep Role'); await p.click('#r-rights input[value="attendance"]'); await p.click('#r-rights input[value="reports"]');
   await p.click('#dlg-role button:has-text("Save role")'); await p.waitForTimeout(900);
-  ck('a role is made from ticks', (await p.locator('#roles-body').textContent()).includes('Sweep Role'));
+  ck('a role is made from ticks', (await p.locator('.matrix').textContent()).includes('Sweep Role'));
   await p.click('.subtab[data-tab="users"]'); await p.waitForTimeout(300);
   ck('the logins tab lists the logins', await p.locator('#users-body tr').count() >= 1);
   await p.click('button:has-text("+ New login")'); await p.waitForTimeout(300);
@@ -177,10 +177,10 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   await p.click('#as-role button[data-v=""]'); await p.click('#dlg-assign button:has-text("Apply")'); await p.waitForTimeout(800);
   ck('a role can be taken off a login', (await p.locator('#users-body tr', { hasText: 'sweepuser' }).textContent()).includes('set by hand'));
   await p.click('.subtab[data-tab="roles"]'); await p.waitForTimeout(200);
-  await p.locator('#roles-body tr', { hasText: 'Sweep Role' }).locator('button:has-text("Delete")').click(); await p.waitForTimeout(200);
+  await p.locator('#roles-head th.role', { hasText: 'Sweep Role' }).locator('a:has-text("Delete")').click(); await p.waitForTimeout(200);
   ck('delete asks in the page', await p.locator('.ask').count() === 1);
   await p.click('.ask [data-a="yes"]'); await p.waitForTimeout(800);
-  ck('and the role is gone', !(await p.locator('#roles-body').textContent()).includes('Sweep Role'));
+  ck('and the role is gone', !(await p.locator('.matrix').textContent()).includes('Sweep Role'));
   // The sweep login cannot open either page.
   const p2 = await (await b.newContext()).newPage();
   await p2.goto(BASE + '/temporary/Infinia/people.html'); await p2.fill('#login-username', 'sweepuser'); await p2.fill('#login-password', 'sweep123'); await p2.click('#login button'); await p2.waitForTimeout(3000);
