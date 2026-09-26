@@ -76,6 +76,16 @@
   .ask-box { background: white; border-radius: 12px; padding: 20px 22px 16px; max-width: 460px; width: 92%; } .ask-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>
 <script>
+// Inside the app (Staff menu, Settings > Access) this page is shown in a
+// frame: no menu, top bar or sign-in box of its own - the app around it
+// has those - so it appears in place with nothing flashing.
+window.PG_EMBED = /[?&]embed=1/.test(location.search);
+if (window.PG_EMBED) {
+  document.documentElement.classList.add("embed");
+  document.write('<style>.embed #login,.embed .sidebar,.embed .top,.embed #build-bar,.embed .content>.tabs{display:none!important}.embed .shell{display:flex!important;min-height:0}.embed body{background:transparent}.embed .content{padding:0 24px 24px}</style>');
+}
+</script>
+<script>
 // Drawn signed-in from the first frame: a signed-in user never sees the
 // sign-in box flash up while the page checks who they are, and the menu
 // shows only the pages this login had the last time, before the server
@@ -95,9 +105,9 @@
     var st = document.createElement("style"); st.id = "early-resume"; st.textContent = css; document.head.appendChild(st);
   } catch (e) {}
 })();
-function signInBox() { document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
+function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; } document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
 </script>
-<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "hrpayroll", "people_household", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_household", "people_labour", "people_local", "people_office"], "access": ["access"]};</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "hrpayroll", "people_household", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_household", "people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 <div id="login"><div class="login-box"><h1>Infinia · Access</h1><p>Sign in with your app login.</p>
@@ -225,7 +235,7 @@ function applyMenu() {
 async function start() {
   try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
   catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); return; }
-  if (ME.role !== "admin") { location.replace("settings.html"); return; }   // admin only - back to Settings, still signed in
+  if (ME.role !== "admin") { if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("settings.html"); return; }   // admin only - back to Settings, still signed in
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username} (${ME.username})`;
   applyMenu();
@@ -360,9 +370,10 @@ async function hardReload() {
   const u = new URL(location.href); u.searchParams.set("v", window.__newBuild || Date.now());
   location.replace(u.toString());
 }
-checkBuild();
-setInterval(() => { if (!document.hidden) checkBuild(); }, 120000);
+if (!window.PG_EMBED) checkBuild();
+if (!window.PG_EMBED) setInterval(() => { if (!document.hidden) checkBuild(); }, 120000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkBuild(); });
+window.pgRefresh = async () => { if (!ME) return start(); await loadAll(); };
 if (TOKEN) start(); else signInBox();
 </script>
 </body>

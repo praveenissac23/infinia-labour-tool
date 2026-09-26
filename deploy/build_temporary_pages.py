@@ -25,13 +25,13 @@ def tab(id, screen, label, right=None, show=None, subs=None):
     return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or [], "subs": subs or []}
 
 
-def sub(id, label, screen=None, right=None, go=None, people=None, opts=None):
+def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, show=None):
     """A second-level tab: the working screen itself. screen = the app
     screen to show, go = what to run once it is up (its own tab, its
     report panel), people = a People list drawn on the hub with its
     options (opts: group, days)."""
     return {"id": id, "label": label, "screen": screen or ("pgreports" if people else ""), "right": right or screen or "reports",
-            "go": go or "", "people": people or "", "opts": opts or ""}
+            "go": go or "", "people": people or "", "opts": opts or "", "show": show or []}
 
 
 PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local", "people_household"]
@@ -46,8 +46,9 @@ PAGES = {
         tab("livecard", "livecard", "Live card"),
         tab("masterdata", "masterdata", "Labour master data")]),
     "payroll": ("Payroll", [
-        tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck"], subs=[
-            sub("combine", "Salary cards", screen="combine"),
+        tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck", "adjustments"], subs=[
+            sub("combine", "Salary cards", screen="combine", right="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
+            sub("adjust", "Additions & deductions", screen="combine", right="adjustments", show=["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]),
             sub("errorcheck", "Check before you pay", screen="errorcheck")]),
         tab("hrpayroll", "hrpayroll", "Office payroll", "hrpayroll", subs=[
             sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
@@ -106,11 +107,13 @@ PAGES = {
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "__admin__", ["#companies-card", "#pg-sites-block"]),
         tab("logins", "settings", "Logins", "__admin__", ["#user-mgmt-card", "#pg-roles-card"]),
-        tab("access", "settings", "Access", "__admin__", ["#pg-roles-card"]),
+        tab("access", "pgaccess", "Access", "__admin__"),
         tab("activity", "activity", "Activity monitor", "activity")]),
 }
 # Screens without a tab of their own, reached from inside another.
 EXTRA = {"monthly": "reports"}
+# Pages held in a frame inside the app rather than written from app.html.
+VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local", "people_household"])])}
 ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
@@ -151,6 +154,10 @@ CSS = """
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
+  .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
+  #screen-pgstaff.active, #screen-pgaccess.active { margin: -20px -24px -20px; }
+  /* Rights are given through Access roles on these pages: no per-login screen picker. */
+  #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
   #hr-loan-instalment { min-width: 150px; }
   select.op-unit, select.mr-unit, select.mr-type, .mr-unit select { min-width: 128px !important; }
@@ -262,6 +269,12 @@ HUB_HTML = """
         </div>
 """
 
+FRAMES_HTML = """
+        <!-- Staff and Access, opened inside the app: loaded once, then shown instantly. -->
+        <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="people.html?embed=1" title="Staff"></iframe></div>
+        <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="access.html?embed=1" title="Access"></iframe></div>
+"""
+
 ROLES_CARD = """
           <div class="card" id="pg-roles-card">
             <h2>Roles &amp; access</h2>
@@ -282,10 +295,25 @@ let PAGE = %(page_json)s;
 // done here, in the same page: no reload, no fetching the app again, no
 // signing in again, and lists already fetched stay in memory.
 const ALL_PAGES = %(all_pages_json)s;
-const STANDALONE_PAGES = ["people", "access"];
+const STANDALONE_PAGES = ["access"];
 const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
+SCREEN_TITLES.pgstaff = "Staff";
+SCREEN_TITLES.pgaccess = "Access";
+// Staff and Access are their own pages, shown in a frame so going to them
+// is as quick as any other screen: loaded the first time (or quietly
+// beforehand), refreshed each time they are opened again.
+function pgFrame(id, refresh) {
+  const f = document.getElementById(id); if (!f) return;
+  const fit = () => { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - Math.max(top, 0)) + "px"; };
+  if (!f.getAttribute("src")) f.setAttribute("src", f.dataset.src);
+  else if (refresh) { try { f.contentWindow.pgRefresh && f.contentWindow.pgRefresh(); } catch (e) {} }
+  requestAnimationFrame(fit);
+}
+// A frame whose sign-in has run out asks the app to show its sign-in box.
+window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
+window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
@@ -336,12 +364,13 @@ switchScreen = function (name) {
     PG_SUB = PG_TAB.subs.find(sb => pgHas(sb.right) && (sb.screen || "pgreports") === name) || PG_SUB;
   pgApplyTab(); pgRenderTabs();
   if (name === "pgreports") pgHubLoad();
+  if (name === "pgstaff") pgFrame("pg-staff-frame", true);
+  if (name === "pgaccess") pgFrame("pg-access-frame", true);
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
-  if (t.id === "access" && PAGE.key === "settings") { location.href = "access.html"; return; }
   if (t.subs.length) { PG_TAB = t; const first = t.subs.find(sb => pgHas(sb.right)); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;
@@ -356,10 +385,13 @@ if (sessionStorage.getItem("infinia_token"))
 // A tab that shows part of a screen hides the rest of it.
 function pgApplyTab() {
   const t = PG_TAB; if (!t) return;
-  const screen = document.getElementById("screen-" + t.screen); if (!screen) return;
-  const parts = [...screen.children].filter(el => !el.classList.contains("status-msg"));
-  if (!t.show.length) { parts.forEach(el => el.classList.remove("pg-hide")); return; }
-  const keep = new Set(t.show.flatMap(sel => [...screen.querySelectorAll(sel)]));
+  const sb = PG_SUB && t.subs.includes(PG_SUB) && PG_SUB.show && PG_SUB.show.length ? PG_SUB : null;
+  const screen = document.getElementById("screen-" + (sb ? (sb.screen || t.screen) : t.screen)); if (!screen) return;
+  const show = sb ? sb.show : t.show;
+  if (sb) { const h = document.getElementById("screen-title"); if (h) h.textContent = sb.label; }
+  const parts = [...screen.children].filter(el => !el.classList.contains("status-msg") || (sb && show.some(q => el.matches(q))));
+  if (!show.length) { parts.forEach(el => el.classList.remove("pg-hide")); return; }
+  const keep = new Set(show.flatMap(sel => [...screen.querySelectorAll(sel)]));
   parts.forEach(el => el.classList.toggle("pg-hide", !keep.has(el) && ![...keep].some(k => el.contains(k))));
 }
 const _doLogout = doLogout;
@@ -377,7 +409,11 @@ dashStoreGo = function (panel) {
 // may open. A login with nothing on this page goes to the first page
 // it has.
 firstScreenFor = function () {
-  setTimeout(() => { PG_BOOTED = true; }, 0);
+  setTimeout(() => {
+    PG_BOOTED = true;
+    // Staff is loaded quietly in the background, so the first click shows it at once.
+    setTimeout(() => { if (pgAllowed("pgstaff") && document.getElementById("pg-staff-frame") && !document.getElementById("pg-staff-frame").getAttribute("src")) pgFrame("pg-staff-frame"); }, 1500);
+  }, 0);
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
   if (t && pgTabOk(t)) {
@@ -489,7 +525,7 @@ function pgSub(id) {
   const screen = sb.screen || "pgreports";
   const active = document.getElementById("screen-" + screen);
   if (!(active && active.classList.contains("active"))) { switchScreen(screen); return; }
-  pgRenderTabs();
+  pgApplyTab(); pgRenderTabs();
   pgSubGo();
 }
 // What a sub-tab does once its screen is up: its own tab, its report.
@@ -616,8 +652,18 @@ def build():
     s_end = src.index('id="screen-activity"')
     close = src.rindex('\n        </div>\n', s_start, s_end)
     src = src[:close] + "\n" + block + "\n" + ROLES_CARD + src[close:]
+    # Salary cards and their additions/deductions share a screen: ids so
+    # each sub-tab shows its own part.
+    c0 = src.index('id="screen-combine"')
+    tb = src.index('<div class="toolbar">', c0)
+    src = src[:tb] + '<div class="toolbar" id="pg-cards-bar">' + src[tb + len('<div class="toolbar">'):]
+    body = src.index('<div', src.index('id="combine-status"', c0) + 10)
+    if 'id=' not in src[body:body + 40]:
+        src = src[:body] + '<div id="pg-cards-body"' + src[body + 4:]
+    ab = src.index('<div class="toolbar">', src.index('Adjustments sit with the cards', c0) - 10)
+    src = src[:ab] + '<div class="toolbar" id="pg-adj-bar">' + src[ab + len('<div class="toolbar">'):]
     # The reports hub, a screen of its own.
-    src = src.replace('        <div class="screen" id="screen-activity">', HUB_HTML + '        <div class="screen" id="screen-activity">', 1)
+    src = src.replace('        <div class="screen" id="screen-activity">', HUB_HTML + FRAMES_HTML + '        <div class="screen" id="screen-activity">', 1)
 
     page_of, pages_screens, right_of = {}, {}, {}
     for key, (_, tabs) in PAGES.items():
@@ -644,6 +690,11 @@ def build():
         scr = sorted({t["screen"] for t in tabs} | {sb["screen"] for t in tabs for sb in t["subs"] if sb["screen"]}
                      | {s_ for s_, k in EXTRA.items() if k == key})
         ALL_CFG[key] = {"key": key, "title": title, "screens": scr, "tabs": tabs, "pages": pages_screens}
+    for key, (title, tabs) in VIRTUAL.items():
+        ALL_CFG[key] = {"key": key, "title": title, "screens": [t["screen"] for t in tabs], "tabs": tabs, "pages": pages_screens}
+        for t in tabs:
+            page_of[t["screen"]] = key
+            right_of[t["screen"]] = t["right"]
     for key, (title, tabs) in PAGES.items():
         side = ['<div class="pg-side">', brand]
         for pg in ORDER:

@@ -127,12 +127,13 @@ const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchas
   ck('and a screen on this page just switches tabs', p.url().endsWith('payroll.html#combine') && await p.locator('#screen-errorcheck.active').count() === 1);
   await p.evaluate("dashStoreGo('items')"); await p.waitForTimeout(1800);
   ck('the dashboard store shortcuts land on the store page', p.url().includes('store.html#items') && await p.locator('#screen-store.active').count() === 1 && await p.locator('#store-items').isVisible(), p.url());
-  await p.click('.pg-side .pg-item[data-page="people"]'); await p.waitForTimeout(1200);
-  ck('People opens from the menu on the same sign-in', p.url().endsWith('people.html') && await p.locator('#shell').isVisible());
+  await p.click('.pg-side .pg-item[data-page="people"]'); await p.waitForTimeout(2500);
+  ck('Staff opens in place from the menu on the same sign-in', p.url().endsWith('people.html') && await p.locator('#screen-pgstaff.active').count() === 1 && await p.frameLocator('#pg-staff-frame').locator('#shell').isVisible() && !(await p.frameLocator('#pg-staff-frame').locator('.sidebar').isVisible()));
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
   ck('Settings has an Access tab for the admin', await p.locator('#pg-tabs .pg-tab[data-tab="access"]').count() === 1);
   await p.click('#pg-tabs .pg-tab[data-tab="access"]'); await p.waitForTimeout(1500);
-  ck('and it opens the Access page under Settings', p.url().endsWith('access.html') && await p.locator('#shell').isVisible() && await p.locator('.tab.active:has-text("Access")').count() === 1);
+  await p.waitForTimeout(1000);
+  ck('and it opens the Access page in place under Settings', p.url().includes('settings.html') && await p.locator('#screen-pgaccess.active').count() === 1 && await p.frameLocator('#pg-access-frame').locator('#pane-roles').isVisible());
 
   // A limited login: requests + dashboard only.
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(800);
