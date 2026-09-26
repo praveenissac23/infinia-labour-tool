@@ -139,6 +139,11 @@ CSS = """
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
+  /* The HR screen's own tab row reads as second-level tabs, like every other page's. */
+  #screen-hrpayroll .hr-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 0 6px; margin: -6px 0 14px; border-bottom: 1px solid #E7E1DA; }
+  #screen-hrpayroll .hr-tab { padding: 6px 14px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  #screen-hrpayroll .hr-tab:hover { border-color: #D9B8B3; color: var(--red); background: white; }
+  #screen-hrpayroll .hr-tab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
   body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
   body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
