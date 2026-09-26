@@ -98,7 +98,7 @@ with TestClient(main.app) as c:
     names = [x.get("short_name") for x in g("/employees/companies").json()]
     ck("companies list has it (HR, Staff, Master Data, reports read this)", "XLEng" in names)
     # a labourer can be put on it, and the import recognises it
-    r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 900, "company": "XLEng"})
+    r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 900, "total_salary": 1300, "company": "XLEng"})
     ck("labourer saved on the new company", r.status_code == 200 and r.json().get("company") == "XLEng", r.text[:120])
     ck("staff page: labour register shows him on it", any(p["emp_no"] == "XL-01" and p["company"] == "XLEng" for p in g("/employees/people?group=labour").json()["rows"]))
     ck("attendance list shows him", any(e["emp_no"] == "XL-01" for e in g("/employees?active_only=true").json()))
@@ -117,7 +117,7 @@ with TestClient(main.app) as c:
     ck("master data shows the corrected name", emp is not None and emp["name"] == "XL SECOND CORRECTED", emp and emp["name"])
 
     # ---- 8. A labourer's rate changed on master data -> staff page ----------------------
-    r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 950, "company": "XLEng"})
+    r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 950, "total_salary": 1350, "company": "XLEng"})
     p = next(p for p in g("/employees/people?group=labour").json()["rows"] if p["emp_no"] == "XL-01")
     ck("staff page shows the new rate", round(p["basic"]) == 950, p["basic"])
 
@@ -143,6 +143,90 @@ with TestClient(main.app) as c:
     ck("stock: in the central store", stk is not None and round(stk.get("central", 0)) == 40, stk)
     rep = g("/store/report?kind=hired").json()
     ck("on-rent report lists it", any("XL Ledger" in str(r_.get("name", "")) for r_ in rep.get("rows", [])))
+
+
+    # ---- 12. Engineer added -> attendance choices ---------------------------------------
+    r = post("/engineers", {"name": "XL ENGINEER"})
+    ck("engineer accepted", r.status_code == 200, r.text[:120])
+    ck("engineer list (attendance reads this)", any(e["name"].upper() == "XL ENGINEER" for e in g("/engineers").json()))
+
+    # ---- 13. Attendance entered -> salary card, live card, reports, staff file ---------
+    # Days 1-25 of this month belong to this month's cycle (26th to 25th).
+    days = [date(today.year, today.month, d) for d in range(1, min(today.day, 25) + 1) if date(today.year, today.month, d).weekday() != 4][:4]
+    cyc = days[0].strftime("%B %Y")
+    r = post("/attendance/save", {"month_year": cyc, "rows": [
+        {"emp_no": "XL-01", "full_date": d.isoformat(), "am": "Present", "pm": "Present", "site": "977",
+         "engineer": "XL ENGINEER", "ot": 2, "bh": 0, "comments": "XL day"} for d in days]})
+    ck("attendance accepted", r.status_code == 200, r.text[:160])
+    day = g(f"/attendance/{days[0].isoformat()}").json()
+    row = next((x for x in (day.get("rows") if isinstance(day, dict) else day) if x.get("emp_no") == "XL-01"), None)
+    ck("daily attendance shows the day with site and engineer", row is not None and row.get("site") == "977" and (row.get("engineer") or "").upper() == "XL ENGINEER", row)
+    sm = next((x for x in g(f"/summaries/{cyc}").json() if x.get("emp_no") == "XL-01"), None)
+    ck("salary card: present days counted", sm is not None and sm.get("present_days") == len(days), sm and sm.get("present_days"))
+    ck("salary card: paid from his salary", sm is not None and (sm.get("final_salary") or 0) > 0, sm and sm.get("final_salary"))
+    ck("salary card: overtime counted", sm is not None and round(sm.get("ot_hours") or 0) == 2 * len(days), sm and sm.get("ot_hours"))
+    lc = g(f"/live-card/XL-01/{cyc}").json()
+    ck("live card agrees", isinstance(lc, dict) and round((lc.get("summary") or {}).get("present_days", -1)) == len(days), str(lc)[:160])
+    bysite = g(f"/summaries/{cyc}/by-site").json()
+    ck("site cost report has site 977 with his days", any(str(r_.get("site")) == "977" and round(r_.get("days_present") or 0) == len(days) for r_ in bysite.get("rows", [])), [r_ for r_ in bysite.get("rows", []) if str(r_.get("site")) == "977"])
+    pf = g("/employees/people/XL-01").json()
+    ck("staff file: the cycle is on his history", any(cy.get("month_year") == cyc for cy in pf["cycles"]), [cy.get("month_year") for cy in pf["cycles"]])
+    t = c.post("/auth/download-token", headers=H).json()["token"]
+    ck("salary card print carries site and engineer", all(x in c.get(f"/export/{cyc}/cards/view?token={t}&emp_no=XL-01").text for x in ("977", "XL ENGINEER")))
+
+    # ---- 14. Addition / deduction -> the cycle and the file -----------------------------
+    r = post("/employees/pay-items", {"emp_no": code, "month_year": month, "direction": "deduct", "category": "fine", "amount": 75, "notes": "XL fine"})
+    ck("deduction accepted", r.status_code == 200, r.text[:160])
+    run = post("/employees/payroll/runs", {"month_year": month, "company_id": co, "group": "staff"}).json()
+    line = next((l for l in run.get("lines", []) if l["emp_no"] == code), None)
+    ck("this month's cycle: the deduction is on the line", line is not None and "XL fine" in ((line.get("remarks") or "") + (line.get("deduction_note") or "")), line and (line.get("remarks"), line.get("deduction_note")))
+    ck("additions & deductions register lists it", any(x["emp_no"] == code and x["amount"] == 75 and x["notes"] == "XL fine" for x in g(f"/employees/pay-items?month_year={month}").json().get("rows", [])))
+
+    # ---- 15. Material request -> approvals -> order -> delivery -> stock ----------------
+    cem = post("/store/items", {"code": "XLC1", "name": "XL Cement 50kg", "item_type": "consumable", "unit": "bags", "category": "Cement"}).json()
+    mr = post("/store/requests", {"site": "977", "requested_by": "XL keeper", "urgency": "normal", "notes": "",
+              "lines": [{"item_id": cem["id"], "qty_requested": 30, "unit": "bags", "purpose": "XL slab", "description": "", "est_cost": 0, "notes": ""}]}).json()
+    ck("request raised", mr.get("status") == "pending", mr)
+    ck("approvals list shows it (the office sees it)", any(x["id"] == mr["id"] for x in g("/store/requests").json()))
+    ck("office is notified", any("request" in (n.get("title") or "").lower() for n in g("/notifications").json().get("notifications", [])))
+    L = mr["lines"][0]["id"]
+    c.post(f"/store/request-lines/{L}/decision", json={"decision": "approved"}, headers=H)
+    po = post("/store/purchase/orders", {"supplier_name": "XL Scaffold Hire LLC", "supplier_trn": "100200300400003", "supplier_contact": "Ravi",
+              "supplier_phone": "0501112233", "supplier_email": "hire@xl.ae", "contact_person": "XL", "mobile": "0500000000",
+              "job_scope": "XL slab", "project_location": "977", "request_id": mr["id"],
+              "lines": [{"item_id": cem["id"], "description": "XL Cement 50kg", "qty": 30, "unit": "bags", "rate": 17}]})
+    ck("purchase order raised against it", po.status_code == 200, po.text[:200])
+    po = po.json()
+    ol = g("/store/purchase/orders").json(); ol = ol.get("rows", []) if isinstance(ol, dict) else ol
+    ck("LPO register lists the order", any(o.get("id") == po.get("id") for o in ol))
+    cur = next(x for x in g("/store/requests").json() if x["id"] == mr["id"])
+    ck("the request knows it is ordered", cur["status"] in ("ordered", "approved", "partial") or cur["lines"][0].get("supplier"), cur["status"])
+    r = post(f"/store/requests/{mr['id']}/receive-bulk", {"supplier": "XL Scaffold Hire LLC", "reference": "XL-DO-9", "notes": "", "received_on": None, "lines": [{"line_id": L, "qty": 30}]})
+    ck("delivery booked in", r.status_code == 200, r.text[:160])
+    # Delivered straight to the site that asked: a consumable there is used, not held.
+    use = g("/store/report?kind=usage").json().get("rows", [])
+    ck("consumption report: 30 bags to site 977", any("XL Cement" in str(u_.get("name", "")) and "977" in str(u_.get("to", "")) and round(u_.get("qty", 0)) == 30 for u_ in use), [u_ for u_ in use if "XL Cement" in str(u_)][:2])
+    ck("movements ledger shows the receipt", any(m.get("reference") == "XL-DO-9" for m in g("/store/movements?limit=20").json()))
+    cur = next(x for x in g("/store/requests").json() if x["id"] == mr["id"])
+    ck("the request finishes itself", cur["status"] in ("delivered", "received"), cur["status"])
+    ck("purchase report carries the supplier", "xl scaffold" in str(g("/store/purchase/report").json()).lower())
+
+    # ---- 16. Material moved to a site -> at-sites report, consumption -------------------
+    r = post("/store/movements", {"item_id": item["id"], "kind": "out", "qty": 10, "from_location": "", "location": "977", "incharge": "XL WORKER", "moved_on": today.isoformat(), "notes": "XL out"})
+    ck("rented ledgers moved to site 977", r.status_code == 200, r.text[:160])
+    stk = next((x for x in g("/store/stock").json() if x["item_id"] == item["id"]), None)
+    ck("stock: 30 in the store, 10 at 977", stk is not None and round(stk.get("central") or 0) == 30 and round((stk.get("by_site") or {}).get("977", 0)) == 10, stk and (stk.get("central"), stk.get("by_site")))
+    bs = g("/store/report?kind=by_site").json().get("rows", [])
+    ck("at-sites report shows them at 977", any("XL Ledger" in str(b_) and "977" in str(b_) for b_ in bs))
+    held = [h for s_ in g("/store/hire").json().get("suppliers", []) for h in s_.get("items", []) if h.get("item_id") == item["id"]]
+    ck("still 40 on hire from the supplier, wherever they stand", held and round(held[0]["qty"]) == 40, held[:1])
+    ck("issue & return register shows the 10 out", any("XL Ledger" in str(x) and "977" in str(x) for x in g("/store/report?kind=issues").json().get("rows", [])))
+
+    # ---- 17. A labourer leaves -> gone from attendance, kept on the staff page ----------
+    r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 950, "total_salary": 1350, "company": "XLEng", "terminated_on": today.isoformat()})
+    ck("leaving date saved", r.status_code == 200, r.text[:120])
+    ck("attendance no longer offers him after today", not any(e["emp_no"] == "XL-01" and e.get("active", True) and not e.get("terminated_on") for e in g("/employees?active_only=true").json()))
+    ck("staff page keeps him under Left", any(p["emp_no"] == "XL-01" for p in g("/employees/people?group=left").json()["rows"]) or any(p["emp_no"] == "XL-01" and p.get("terminated_on") for p in g("/employees/people?group=labour&include_left=true").json()["rows"]))
 
     # ---- 11. An increment corrected, then removed -> everywhere back --------------------
     cid = inc[0]["id"] if inc else None

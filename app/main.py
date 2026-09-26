@@ -4612,6 +4612,24 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "given_to": (m.incharge or "").strip() or "-",
                           "reference": (m.reference or "").strip() or "-",
                           "notes": (m.notes or "").strip()})
+        # Delivered by the supplier straight to a site: it went there as
+        # surely as anything the store sent, and is used there. Without
+        # this a direct delivery showed on no report but the ledger.
+        for m in moves(["in"]):
+            if not (m.location or "").strip() or (m.location or "").strip() == CENTRAL:
+                continue
+            i_ = items.get(m.item_id)
+            if not i_:
+                continue
+            sent.append({"_id": m.id, "_item": i_.id, "_qty": float(m.qty or 0),
+                          "date": m.moved_on.isoformat() if m.moved_on else "",
+                          "code": i_.code, "name": i_.name, "unit": i_.unit,
+                          "qty": round(m.qty, 2),
+                          "from": ((m.supplier or "").strip() or "Supplier") + " (direct)",
+                          "to": _place_label(m.location),
+                          "given_to": (m.incharge or "").strip() or "-",
+                          "reference": (m.reference or "").strip() or "-",
+                          "notes": (m.notes or "").strip()})
 
         # What came back is not consumption. Material sent to the wrong
         # site and returned to the store never got used, so the issue
