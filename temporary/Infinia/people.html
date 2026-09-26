@@ -259,7 +259,7 @@
       <label class="fld" id="e-pension-f"><span>GPSSA / month</span><input type="number" id="e-pension" style="width:110px;" step="0.01"></label>
       <label class="fld"><span>ILOE</span><input type="text" id="e-iloe" style="width:140px;" placeholder="Enrolled · category"></label>
     </div>
-    <p class="muted" id="e-pay-note">Salary figures are not changed here. A rise for staff goes on the Increments register in the app; a labourer's rate is changed on Master Data. Both are dated and kept.</p>
+    <p class="muted" id="e-pay-note">Salary figures are not changed in this form: use + Increment (staff) or Change rate (labour) in the Pay section, so every change is dated and kept. Both are dated and kept.</p>
     <h4>Leave</h4>
     <div class="row">
       <label class="fld"><span>Days per period</span><input type="number" id="e-leave_days" style="width:100px;" placeholder="group rule"></label>
@@ -356,6 +356,19 @@
       <label class="fld"><span>Reason</span><input type="text" id="i-reason" style="width:240px;" placeholder="e.g. Annual review 2026"></label>
     </div>
     <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveInc()">Record increment</button><button class="btn btn-gray" onclick="closeDlg('dlg-inc')">Cancel</button><span class="muted" id="inc-msg" style="color:#B03A2E;"></span></div>
+  </div>
+</div>
+<div class="dlg" id="dlg-rate" onclick="if (event.target === this) closeDlg('dlg-rate')">
+  <div class="dlg-box" style="max-width:720px;">
+    <h3 id="rate-title">Change rate</h3>
+    <p class="muted" style="margin:0 0 10px;">The same record Master Data edits. Salary cards for cycles before the date keep the old rate; this cycle and later ones use the new one.</p>
+    <div class="row">
+      <label class="fld"><span>Monthly salary *</span><input type="number" id="rt-gross" style="width:130px;" step="0.01"></label>
+      <label class="fld"><span>Of which basic *</span><input type="number" id="rt-basic" style="width:130px;" step="0.01"></label>
+      <label class="fld"><span>From</span><input type="date" id="rt-effective_on"></label>
+      <label class="fld"><span>Reason</span><input type="text" id="rt-reason" style="width:220px;" placeholder="e.g. Rate review 2026"></label>
+    </div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveRate()">Save new rate</button><button class="btn btn-gray" onclick="closeDlg('dlg-rate')">Cancel</button><span class="muted" id="rate-msg" style="color:#B03A2E;"></span></div>
   </div>
 </div>
 <div class="dlg" id="dlg-repay" onclick="if (event.target === this) closeDlg('dlg-repay')">
@@ -556,7 +569,9 @@ function renderFile() {
       ${f("End of service", scheme)}${e.scheme === "pension" ? f("GPSSA / month", money(e.pension)) : f("Gratuity to date", F.gratuity.entitled ? money(F.gratuity.amount) : (F.gratuity.why || "—"))}${f("Contract basic (MOHRE)", e.contract_basic ? money(e.contract_basic) : "")}</div>`;
     if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary history (Increments register)</span>${ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openInc()">+ Increment</button>` : ""}</div>` + table(
       ["Effective", "Kind", "Basic", "Allowance", "Gross", "Reason"], F.salary_history.map(h => [dmy(h.effective_on), h.kind, "$" + money(h.basic), "$" + money(h.allowance), "$" + money(h.gross ?? (h.basic + h.allowance)), h.reason || ""]), "No history yet.");
-    body += `<p class="muted">Figures come from the same record the salary cycle reads. ${p.group === "labour" ? "A labourer's rate is changed on Master Data." : "A rise entered here is the same entry as on the payroll Increments tab - dated, with a reason, and on the salary cycle from its date."}</p>`;
+    if (p.group === "labour") body += `<div class="sec-h"><span class="lbl">Rate history</span>${(ME.role === "admin" || ME.screens.includes("masterdata")) ? `<button class="btn btn-primary btn-sm" onclick="openRate()">Change rate</button>` : ""}</div>` + table(
+      ["From", "", "Basic", "Allowance", "Monthly", "Change", "Reason"], (F.salary_history || []).map(h => [h.effective_on === "2000-01-01" ? "Earlier" : dmy(h.effective_on), h.kind === "rate" ? "New rate" : "Before", "$" + money(h.basic), "$" + money(h.allowance), "$" + money(h.gross), h.kind === "rate" ? "$" + (h.amount >= 0 ? "+" : "") + money(h.amount) : "", h.reason || ""]), "No change recorded yet - the rate on file has applied throughout.");
+    body += `<p class="muted">Figures come from the same record the salary cycle reads. ${p.group === "labour" ? "A new rate is the same change as on Master Data: each salary card is worked out at the rate in force for its cycle, so earlier cycles keep the rate they were paid at." : "A rise entered here is the same entry as on the payroll Increments tab - dated, with a reason, and on the salary cycle from its date."}</p>`;
   }
   else if (P.section === "documents") body = `<div class="sec-h"><span class="lbl">Documents on file</span><button class="btn btn-primary btn-sm" onclick="openDoc(null)">+ Document</button></div>` + table(
       ["Document", "Number", "Issued", "Expires", "Days left", "Notes", ""], F.documents.map(d => [d.kind_label, d.number || "", d.issued_on ? dmy(d.issued_on) : "", dmy(d.expires_on),
@@ -733,8 +748,19 @@ function openInc() {
 }
 async function saveInc() {
   const body = { emp_no: P.current, amount: getVal("i-amount"), effective_on: getVal("i-effective_on"), to_basic: getVal("i-to_basic") || 0, reason: getVal("i-reason") };
-  try { const r = await apiCall("/employees/increments", { method: "POST", body: JSON.stringify(body) }); closeDlg("dlg-inc"); status("ok", (r.detail || "Increment recorded.") + " It is on the payroll Increments tab too."); await openPerson(P.current); }
+  try { const r = await apiCall("/employees/increments", { method: "POST", body: JSON.stringify(body) }); closeDlg("dlg-inc"); status("ok", (r.detail || "Increment recorded.") + " It is on the payroll Increments tab too."); await loadPeople(); await openPerson(P.current); }
   catch (e) { document.getElementById("inc-msg").textContent = errText(e); }
+}
+function openRate() {
+  const p = P.file.person;
+  setVal("rt-gross", p.gross); setVal("rt-basic", p.basic); setVal("rt-reason", ""); setVal("rt-effective_on", new Date().toISOString().slice(0, 10));
+  document.getElementById("rt-effective_on").max = new Date().toISOString().slice(0, 10);
+  document.getElementById("rate-title").textContent = "Change rate · " + p.name; document.getElementById("rate-msg").textContent = ""; openDlg("dlg-rate");
+}
+async function saveRate() {
+  const employee = { gross: getVal("rt-gross"), basic: getVal("rt-basic"), effective_on: getVal("rt-effective_on"), reason: getVal("rt-reason") };
+  try { await apiCall(`/employees/people/${encodeURIComponent(P.current)}`, { method: "PUT", body: JSON.stringify({ employee }) }); closeDlg("dlg-rate"); status("ok", "New rate saved - it is on Master Data and this cycle's salary card too."); await loadPeople(); await openPerson(P.current); }
+  catch (e) { document.getElementById("rate-msg").textContent = errText(e); }
 }
 function openRepay(id) {
   REPAY_LOAN = id; const l = P.file.loans.find(x => x.id === id);

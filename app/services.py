@@ -111,8 +111,27 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
         cycle_days = (_ce - _cs).days + 1
     except Exception:
         cycle_days = 30
+    # The rate in force for this cycle: a labourer whose rate has been
+    # changed is paid each cycle at the rate that applied to it, so a rise
+    # does not repaint wages already paid. No recorded change - his rate
+    # on file, as always.
+    total_rate, basic_rate = employee.total_salary, employee.basic_salary
+    try:
+        if not employee.staff:
+            hist = (db.query(models.SalaryChange)
+                      .filter(models.SalaryChange.employee_id == employee.id,
+                              models.SalaryChange.kind.in_(("rate", "opening")))
+                      .order_by(models.SalaryChange.effective_on, models.SalaryChange.id).all())
+            if hist:
+                ce = locals().get("_ce")
+                upto = [h for h in hist if h.effective_on <= ce] if ce else hist
+                h = (upto or hist[:1])[-1]
+                basic_rate = float(h.basic or 0)
+                total_rate = round(float(h.basic or 0) + float(h.allowance or 0), 2)
+    except Exception:
+        total_rate, basic_rate = employee.total_salary, employee.basic_salary
     computed = de.recalculate_from_daily_rows(
-        rows, employee.total_salary, employee.basic_salary,
+        rows, total_rate, basic_rate,
         summary.allowances or 0.0, summary.other_deduction or 0.0,
         pay_type=(employee.pay_type or "daily"), cycle_days=cycle_days,
     )
@@ -128,7 +147,7 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
     summary.employee_id = employee.id
     summary.emp_name = employee.name
     summary.trade = employee.trade
-    summary.total_salary = employee.total_salary
+    summary.total_salary = total_rate
     summary.present_days = computed["present_days"]
     summary.absent_days = computed["absent_days"]
     summary.sick_days = computed["sick_days"]

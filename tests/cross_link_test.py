@@ -222,6 +222,97 @@ with TestClient(main.app) as c:
     ck("still 40 on hire from the supplier, wherever they stand", held and round(held[0]["qty"]) == 40, held[:1])
     ck("issue & return register shows the 10 out", any("XL Ledger" in str(x) and "977" in str(x) for x in g("/store/report?kind=issues").json().get("rows", [])))
 
+
+    # ---- 18. Lost / damaged -> stock, lost report, ledger --------------------------------
+    own = post("/store/items", {"code": "XLT1", "name": "XL Measuring Tape", "item_type": "returnable", "unit": "pcs", "category": "Tools"}).json()
+    post("/store/movements", {"item_id": own["id"], "kind": "in", "qty": 5, "location": "", "supplier": "XL Scaffold Hire LLC", "moved_on": today.isoformat(), "reference": "XL-IN-T", "notes": ""})
+    post("/store/movements", {"item_id": own["id"], "kind": "out", "qty": 2, "from_location": "", "location": "977", "incharge": "XL WORKER", "moved_on": today.isoformat(), "notes": ""})
+    r = post("/store/movements", {"item_id": own["id"], "kind": "lost", "qty": 1, "from_location": "977", "location": "977", "incharge": "XL WORKER", "moved_on": today.isoformat(), "notes": "XL damaged at site", "condition": "damaged"})
+    ck("a tape written off as damaged at 977", r.status_code == 200, r.text[:160])
+    stk = next((x for x in g("/store/stock").json() if x["item_id"] == own["id"]), {})
+    ck("stock: 3 in the store, 1 left at 977", round(stk.get("central") or 0) == 3 and round((stk.get("by_site") or {}).get("977", 0)) == 1, (stk.get("central"), stk.get("by_site")))
+    lost = g("/store/report?kind=lost").json().get("rows", [])
+    ck("lost / damaged report lists it, at 977", any("XL Measuring Tape" in str(l_) and "977" in str(l_) for l_ in lost), [l_ for l_ in lost if "XL" in str(l_)][:1])
+    iss = g("/store/report?kind=issues").json().get("rows", [])
+    ck("issue & return register: 2 out, still out after the loss accounted", any("XL Measuring Tape" in str(x) for x in iss))
+    ck("movements ledger shows the write-off", any(m.get("kind") == "lost" and "XL damaged" in (m.get("notes") or "") for m in g("/store/movements?limit=30").json()))
+    # a rented item short on its return note -> off hire, on the lost report
+    ret = post("/store/returns", {"supplier_id": sup.get("id"), "supplier_name": "XL Scaffold Hire LLC", "return_date": today.isoformat(), "from_location": "",
+              "lines": [{"item_id": item["id"], "description": "XL Ledger 2.0M", "unit": "pcs", "qty_on_hire": 40, "qty_returned": 25, "qty_short": 5, "short_reason": "lost"}]})
+    ck("return note written (25 back, 5 lost)", ret.status_code == 200, ret.text[:200])
+    rid = ret.json().get("id")
+    c.post(f"/store/returns/{rid}/issue", headers=H)
+    r = post(f"/store/returns/{rid}/confirm", {"received_by": "XL yard", "confirmed_on": today.isoformat()})
+    ck("return note confirmed", r.status_code == 200, r.text[:200])
+    held = [h for s_ in g("/store/hire").json().get("suppliers", []) for h in s_.get("items", []) if h.get("item_id") == item["id"]]
+    ck("on hire: 40 - 25 back - 5 lost = 10 still on hire", held and round(held[0]["qty"]) == 10, held[:1])
+    lost = g("/store/report?kind=lost").json().get("rows", [])
+    ck("lost report shows the 5 ledgers lost on the note", any("XL Ledger" in str(l_) for l_ in lost))
+
+    # ---- 19. LPO raised on its own for the store -> follow-up, arrival, stock ----------
+    before_n = len(g("/store/requests").json())
+    po2 = post("/store/purchase/orders", {"supplier_name": "XL Scaffold Hire LLC", "contact_person": "XL", "mobile": "0500000000",
+               "job_scope": "Store stock", "project_location": "Store",
+               "lines": [{"item_id": cem["id"], "description": "XL Cement 50kg", "qty": 50, "unit": "bags", "rate": 17}]})
+    ck("store LPO raised without a request", po2.status_code == 200, po2.text[:200])
+    po2 = po2.json()
+    ck("supplier details fetched from the supplier record (TRN)", po2.get("supplier_trn") == "100200300400003", po2.get("supplier_trn"))
+    ck("supplier details fetched (contact, phone, email)", po2.get("supplier_contact") == "Ravi" and po2.get("supplier_phone") == "0501112233" and po2.get("supplier_email") == "hire@xl.ae",
+       (po2.get("supplier_contact"), po2.get("supplier_phone"), po2.get("supplier_email")))
+    reqs = g("/store/requests").json()
+    linked = [x for x in reqs if po2.get("request_id") and x["id"] == po2["request_id"]]
+    ck("order follow-up tracks the store LPO", bool(linked) and linked[0]["lines"][0].get("supplier"), linked[:1] and linked[0].get("status"))
+    if linked:
+        L2 = linked[0]["lines"][0]["id"]
+        r = post(f"/store/requests/{linked[0]['id']}/receive-bulk", {"supplier": "XL Scaffold Hire LLC", "reference": "XL-DO-10", "notes": "", "received_on": None, "lines": [{"line_id": L2, "qty": 50}]})
+        ck("its delivery booked in from Material Arrived", r.status_code == 200, r.text[:160])
+        stk = next((x for x in g("/store/stock").json() if x["item_id"] == cem["id"]), {})
+        ck("stock: 50 bags in the central store", round(stk.get("central") or 0) == 50, stk.get("central"))
+        cur = next(x for x in g("/store/requests").json() if x["id"] == linked[0]["id"])
+        ck("the store LPO is closed once delivered", cur["status"] in ("delivered", "received"), cur["status"])
+
+    # ---- 20. Labour rate changed on the Staff page -> Master Data, cards, history ------
+    r = c.put("/employees/people/XL-02", json={"employee": {"basic": 1100, "allowance": 300, "effective_on": today.isoformat(), "reason": "XL rate review"}}, headers=H)
+    ck("labour rate change accepted on the Staff page", r.status_code == 200, r.text[:200])
+    emp = next((e for e in g("/employees?active_only=true").json() if e["emp_no"] == "XL-02"), {})
+    ck("master data shows the new rate (basic 1,100, total 1,400)", round(emp.get("basic_salary") or 0) == 1100 and round(emp.get("total_salary") or 0) == 1400, (emp.get("basic_salary"), emp.get("total_salary")))
+    pf = g("/employees/people/XL-02").json()
+    ck("staff file: rate history carries it", any(h.get("reason") == "XL rate review" for h in pf.get("salary_history", [])), pf.get("salary_history"))
+    # and a change made on Master Data is recorded the same way
+    post("/employees", {"emp_no": "XL-02", "name": "XL SECOND CORRECTED", "trade": "Mason", "basic_salary": 1150, "total_salary": 1450, "company": "XLEng"})
+    pf = g("/employees/people/XL-02").json()
+    ck("master data rate change is on the staff file history too", any(round(h.get("basic") or 0) == 1150 for h in pf.get("salary_history", [])), [h.get("basic") for h in pf.get("salary_history", [])])
+    # the salary card for the cycle is paid at the new rate
+    # today's labour cycle (26th to 25th) is the one the new rate applies to
+    cur_cyc = today.strftime("%B %Y") if today.day <= 25 else date(today.year + (today.month == 12), today.month % 12 + 1, 1).strftime("%B %Y")
+    post("/attendance/save", {"month_year": cur_cyc, "rows": [{"emp_no": "XL-02", "full_date": today.isoformat(), "am": "Present", "pm": "Present", "site": "977", "engineer": "XL ENGINEER", "ot": 0, "bh": 0, "comments": ""}]})
+    sm = next((x for x in g(f"/summaries/{cur_cyc}").json() if x.get("emp_no") == "XL-02"), {})
+    ck("this cycle's salary card is at the new rate", round(sm.get("total_salary") or 0) == 1450, (sm.get("basic_pay_input"), sm.get("total_salary")))
+
+    # ---- 21. Ticket allowance -> cycle, file; gratuity stays on basic ------------------
+    grat_before = g(f"/employees/people/{code}").json().get("gratuity", {})
+    r = post("/employees/pay-items", {"emp_no": code, "month_year": month, "direction": "add", "category": "air_ticket", "amount": 1800, "notes": "XL ticket"})
+    ck("air ticket allowance accepted", r.status_code == 200, r.text[:160])
+    run = post("/employees/payroll/runs", {"month_year": month, "company_id": co, "group": "staff"}).json()
+    line = next((l for l in run.get("lines", []) if l["emp_no"] == code), {})
+    ck("this month's cycle: ticket on the line and in net pay", round(line.get("air_ticket") or 0) == 1800, line.get("air_ticket"))
+    ck("staff file: the cycle shows it", any(round(cy.get("adjust") or 0) >= 1800 - 75 for cy in g(f"/employees/people/{code}").json().get("cycles", []) if cy.get("month_year") == month))
+    grat_after = g(f"/employees/people/{code}").json().get("gratuity", {})
+    ck("gratuity unchanged - UAE gratuity is on basic salary only", grat_before.get("amount") == grat_after.get("amount"), (grat_before.get("amount"), grat_after.get("amount")))
+    # labour: an allowance on the salary card shows on the card, the live card and the final figure
+    sm = next((x for x in g(f"/summaries/{cyc}").json() if x.get("emp_no") == "XL-02"), None)
+    if sm:
+        adj_total = lambda x: (x.get("final_salary") or 0) + sum((-a["amount"] if a["is_deduction"] else a["amount"]) for a in x.get("adjustments", []))
+        before_final = adj_total(sm)
+        r = post(f"/summaries/{sm['id']}/adjustments", {"description": "XL ticket allowance", "amount": 500, "is_deduction": False})
+        ck("labour allowance accepted on the salary card", r.status_code == 200, r.text[:160])
+        sm2 = next((x for x in g(f"/summaries/{cyc}").json() if x.get("emp_no") == "XL-02"), {})
+        ck("salary card: final salary to pay up by 500", round(adj_total(sm2) - before_final) == 500, (before_final, adj_total(sm2)))
+        lc = g(f"/live-card/XL-02/{cyc}").json()
+        ck("live card shows the allowance", "XL ticket allowance" in str(lc), str(lc)[:200])
+        t = c.post("/auth/download-token", headers=H).json()["token"]
+        ck("printed card shows the allowance", "XL ticket allowance" in c.get(f"/export/{cyc}/cards/view?token={t}&emp_no=XL-02").text)
+
     # ---- 17. A labourer leaves -> gone from attendance, kept on the staff page ----------
     r = post("/employees", {"emp_no": "XL-01", "name": "XL WORKER", "trade": "Helper", "basic_salary": 950, "total_salary": 1350, "company": "XLEng", "terminated_on": today.isoformat()})
     ck("leaving date saved", r.status_code == 200, r.text[:120])

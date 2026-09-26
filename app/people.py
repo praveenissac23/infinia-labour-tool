@@ -343,6 +343,15 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
                 "absent": round(l.deduction or 0, 2), "loan": round(l.loan_deduction or 0, 2),
                 "net": round(l.net_pay or 0, 2), "held": bool(l.held), "remarks": l.remarks or ""})
     else:
+        out["salary_history"] = [
+            {"effective_on": _d(h.effective_on), "kind": "rate" if h.kind == "rate" else "opening",
+             "basic": round(h.basic or 0, 2), "allowance": round(h.allowance or 0, 2),
+             "gross": round((h.basic or 0) + (h.allowance or 0), 2), "amount": round(h.amount or 0, 2),
+             "reason": h.reason or ""}
+            for h in (db.query(models.SalaryChange)
+                        .filter(models.SalaryChange.employee_id == e.id,
+                                models.SalaryChange.kind.in_(("rate", "opening")))
+                        .order_by(models.SalaryChange.effective_on.desc(), models.SalaryChange.id.desc()).all())]
         for s in (db.query(models.EmployeeSummary).filter(models.EmployeeSummary.employee_id == e.id).all()):
             out["cycles"].append({"month_year": s.month_year, "status": "card",
                                   "present": s.present_days, "absent_days": s.absent_days,
@@ -385,8 +394,8 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     if not joined:
         raise HTTPException(status_code=400, detail="A joining date is needed - service and leave run from it.")
     if g == "labour":
-        gross = float(payload.get("gross") or 0)
         basic = float(payload.get("basic") or 0)
+        gross = float(payload.get("gross") or 0) or round(basic + float(payload.get("allowance") or 0), 2)
         e = models.Employee(emp_no=emp_no, name=name, trade=(payload.get("designation") or "").strip(),
                             company=(payload.get("company") or "Infinia"), pay_type="daily",
                             total_salary=gross, basic_salary=basic, staff=False, active=True,
@@ -450,6 +459,26 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
     for f, col in EMPLOYEE_DATES:
         if f in emp:
             setattr(e, col, M._as_date(emp.get(f)))
+    # A labourer's rate, changed from his file: the same record Master Data
+    # edits, dated and kept as history, and his cards worked out again.
+    rate_changed = False
+    if not e.staff and any(k in emp for k in ("basic", "allowance", "gross")):
+        if not (user.role == "admin" or "masterdata" in M.effective_permissions(user)):
+            raise HTTPException(status_code=403, detail="Changing a labourer's rate needs the Master Data right.")
+        nb = float(emp["basic"]) if emp.get("basic") not in (None, "") else float(e.basic_salary or 0)
+        if emp.get("gross") not in (None, ""):
+            nt = float(emp["gross"])
+        elif emp.get("allowance") not in (None, ""):
+            nt = nb + float(emp["allowance"])
+        else:
+            nt = float(e.total_salary or 0)
+        if nb < 0 or nt < nb:
+            raise HTTPException(status_code=400, detail="The monthly salary cannot be less than the basic.")
+        when = M._as_date(emp.get("effective_on")) or M._dubai_today()
+        if when > M._dubai_today():
+            raise HTTPException(status_code=400, detail="A new rate starts today or earlier - enter it when it starts.")
+        rate_changed = M._record_labour_rate(db, e, nb, nt, when, emp.get("reason") or "Changed on the staff file", user.id)
+        e.basic_salary, e.total_salary = round(nb, 2), round(nt, 2)
     if "pension" in emp and e.staff:
         e.pension = float(emp.get("pension") or 0)
     if "notice_days" in emp:
@@ -484,6 +513,13 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
             r.am = r.pm = "Terminated"; r.site = ""; r.engineer = ""; r.ot = 0; r.bh = 0
         if after:
             db.commit()
+    if rate_changed:
+        import services
+        for (cycle,) in (db.query(models.EmployeeSummary.month_year)
+                           .filter(models.EmployeeSummary.emp_no == e.emp_no).distinct().all()):
+            services.recalculate_summary(db, e, cycle)
+        db.commit()
+        M.log_action(db, user.id, "labour_rate", f"{e.emp_no} {e.name}: rate {e.basic_salary:,.2f} basic, {e.total_salary:,.2f} a month")
     M.log_action(db, user.id, "person_saved", f"{e.emp_no} {e.name}: file updated")
     return person_file(emp_no, db=db, user=user)
 

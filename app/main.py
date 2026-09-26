@@ -72,6 +72,7 @@ def seed_on_startup():
         _grant_storekeeper_to_existing(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
+        _store_is_not_a_site(db)
         _migrate_hr(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
@@ -221,6 +222,24 @@ def _enforce_terminations(db):
     if fixed:
         db.commit()
         print(f"Corrected {fixed} day(s) recorded after a worker's leaving date")
+
+
+def _store_is_not_a_site(db):
+    """Stock top-ups for the central store were raised against "STORE",
+    and a delivery booked without choosing a place went to a 'site' of
+    that name. It is the central store: moved there, once, at start-up."""
+    moved = 0
+    for m in db.query(models.StoreMovement).filter(
+            (func.upper(models.StoreMovement.location) == "STORE") |
+            (func.upper(models.StoreMovement.from_location) == "STORE")).all():
+        if (m.location or "").upper() == "STORE":
+            m.location = ""
+        if (m.from_location or "").upper() == "STORE":
+            m.from_location = ""
+        moved += 1
+    if moved:
+        db.commit()
+        print(f"Moved {moved} stock movement(s) from 'STORE' to the central store")
 
 
 def _recalculate_all_summaries(db):
@@ -718,6 +737,10 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
     _refuse_if_staff(existing)
     if existing:
+        # A rate change is kept as history, so it shows on his staff file
+        # and cycles before it keep the rate they were paid at.
+        _record_labour_rate(db, existing, emp.basic_salary, emp.total_salary, _dubai_today(),
+                            "Changed on Master Data", user.id)
         for field, value in emp.dict().items():
             setattr(existing, field, value)
     else:
@@ -6309,8 +6332,8 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         supplier_ref=payload.supplier_ref or "",
         supplier_id=supplier.id if supplier else None,
         supplier_name=(supplier.name if supplier else payload.supplier_name).strip(),
-        supplier_address=payload.supplier_address or "",
-        supplier_trn=payload.supplier_trn or "",
+        supplier_address=(payload.supplier_address or (getattr(supplier, "address", "") if supplier else "") or ""),
+        supplier_trn=(payload.supplier_trn or (supplier.trn if supplier else "") or ""),
         supplier_email=(payload.supplier_email or (supplier.email if supplier else "") or ""),
         supplier_contact=(payload.supplier_contact
                           or (supplier.contact_person if supplier else "") or ""),
@@ -6352,6 +6375,31 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
                 mr.status = "ordered"
             sup_ids = {x.supplier_id for x in mr.lines if (x.status or "") != "rejected"}
             mr.supplier_id = supplier.id if (supplier and sup_ids == {supplier.id}) else None
+    # An order raised on its own - stock for the store, nobody's request -
+    # still has to be chased and booked in when it comes. It gets a store
+    # top-up request of its own, already ordered from this supplier, so it
+    # is on Order Follow-up and Material Arrived like every other order,
+    # and closes itself when the delivery is recorded.
+    if not payload.request_id and not payload.request_line_ids:
+        stock_lines = [l for l in payload.lines if l.item_id and (l.qty or 0) > 0]
+        if stock_lines:
+            mr = models.MaterialRequest(
+                ref=_next_mr_ref(db), site="STORE",
+                requested_by=(user.full_name or user.username or "").strip(),
+                urgency="normal", status="ordered", requested_on=_dubai_today(),
+                expected_on=payload.delivery_date,
+                supplier_id=supplier.id if supplier else None,
+                notes=f"Stock for the store, ordered on {o.ref}", created_by=user.id)
+            db.add(mr); db.flush()
+            for l in stock_lines:
+                it = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
+                db.add(models.MaterialRequestLine(
+                    request_id=mr.id, item_id=l.item_id,
+                    description=(l.description or (it.name if it else "")),
+                    qty_requested=l.qty, qty_approved=l.qty, unit=(l.unit or (it.unit if it else "pcs")),
+                    status="approved", supplier_id=supplier.id if supplier else None,
+                    purpose=f"Store stock - {o.ref}"))
+            o.request_id = mr.id
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
@@ -8091,6 +8139,29 @@ def add_increment(payload: dict = Body(...), db: Session = Depends(get_db),
     return {"ok": True, "applied": applied, "basic": new_basic, "allowance": new_allow,
             "detail": (f"{e.name}: {amount:,.2f} from {when.strftime('%d %b %Y')}."
                        + ("" if applied else " Dated ahead - it applies when that cycle comes."))}
+
+
+def _record_labour_rate(db, e, new_basic, new_total, when, reason, user_id):
+    """A labourer's rate, dated. The first change also records what he was
+    on before it, from his joining date, so cycles before the change keep
+    being worked out at the old rate - a rise never repaints wages already
+    paid."""
+    old_basic, old_total = float(e.basic_salary or 0), float(e.total_salary or 0)
+    new_basic, new_total = round(float(new_basic), 2), round(float(new_total), 2)
+    if abs(new_basic - old_basic) < 0.005 and abs(new_total - old_total) < 0.005:
+        return False
+    has = (db.query(models.SalaryChange)
+             .filter(models.SalaryChange.employee_id == e.id,
+                     models.SalaryChange.kind.in_(("rate", "opening"))).count())
+    if not has:
+        db.add(models.SalaryChange(employee_id=e.id, effective_on=e.joined_on or date(2000, 1, 1),
+                                   kind="opening", basic=old_basic, allowance=round(old_total - old_basic, 2),
+                                   amount=0, reason="Rate before the first recorded change", created_by=user_id))
+    db.add(models.SalaryChange(employee_id=e.id, effective_on=when or _dubai_today(), kind="rate",
+                               basic=new_basic, allowance=round(new_total - new_basic, 2),
+                               amount=round(new_total - old_total, 2), reason=(reason or "").strip(),
+                               created_by=user_id))
+    return True
 
 
 def apply_due_increments(db, upto=None):
@@ -10166,6 +10237,10 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     # and the keeper can say otherwise.
     where = payload.deliver_to if payload.deliver_to is not None else (mr.site or "")
     where = (where or "").strip()
+    # A stock top-up for the central store is raised against "STORE" - it
+    # goes into the central store, not to a site of that name.
+    if where.upper() in ("STORE", "CENTRAL STORE", CENTRAL_LABEL.upper()):
+        where = CENTRAL
     if where and where != CENTRAL:
         # Spelled as the site list spells it, so 904 and 904 are one
         # place rather than two columns in the stock report. A site not
