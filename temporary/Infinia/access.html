@@ -74,6 +74,31 @@
   .fld input { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; }
   .ask { position: fixed; inset: 0; background: rgba(30,24,20,.38); z-index: 3000; display: flex; align-items: center; justify-content: center; }
   .ask-box { background: white; border-radius: 12px; padding: 20px 22px 16px; max-width: 460px; width: 92%; } .ask-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+  .head h2 { margin: 0 0 3px; } .head p { margin: 0; } .head .btn { flex-shrink: 0; }
+  .foot { margin: 10px 0 0; }
+  .matrix thead th { position: sticky; top: 0; z-index: 2; }
+  .lbl { width: 70px; }
+  .matrix { width: auto; min-width: 0; }
+  #pane-roles .grid-wrap { width: fit-content; max-width: 100%; }
+  .matrix th.role .rname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .matrix th.rt, .matrix td.rt { width: 270px; min-width: 270px; padding-left: 14px; }
+  .matrix th.role, .matrix td.cb { width: 172px; min-width: 172px; }
+  .matrix th.role .rcount { font-size: 11.5px; color: #888; font-weight: normal; margin-top: 2px; }
+  .matrix th.role .racts { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+  .matrix th.role .racts button { border: 1px solid #E7CEC9; background: #FDF6F5; color: #8A6560; border-radius: 6px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; cursor: pointer; }
+  .matrix th.role .racts button.danger { color: var(--red); }
+  .matrix tr.pg td { background: #F6F2EE !important; font-size: 11px; font-weight: 800; letter-spacing: .6px; color: #7A6A62; text-transform: uppercase; padding: 7px 14px; }
+  .matrix td.cb { text-align: center; border-left: 1px solid #F0EDE8; }
+  .users { table-layout: fixed; }
+  .users th, .users td { padding: 10px 12px; }
+  .users td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .users .uname { font-weight: 700; color: var(--black); font-size: 13px; } .users .ufull { color: #888; font-size: 12px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; }
+  .users .scr { color: #666; } .users .more { color: #A0928A; font-weight: 600; }
+  .users th.act, .users td.act { text-align: right; overflow: visible; }
+  .users .scrl { display: flex; gap: 6px; min-width: 0; } .users .scrl .lst { overflow: hidden; text-overflow: ellipsis; min-width: 0; } .users .scrl .more { flex-shrink: 0; }
+  .users td.act .btn { margin: 0 0 0 6px; }
 </style>
 <script>
 // Inside the app (Staff menu, Settings > Access) this page is shown in a
@@ -82,7 +107,7 @@
 window.PG_EMBED = /[?&]embed=1/.test(location.search);
 if (window.PG_EMBED) {
   document.documentElement.classList.add("embed");
-  document.write('<style>.embed #login,.embed .sidebar,.embed .top,.embed #build-bar,.embed .content>.tabs{display:none!important}.embed .shell{display:flex!important;min-height:0}.embed body{background:transparent}.embed .content{padding:0 24px 24px}</style>');
+  document.write('<style>.embed #login,.embed .sidebar,.embed .top,.embed #build-bar,.embed .content>.tabs,.embed .subtabs{display:none!important}.embed .shell{display:flex!important;min-height:0}.embed body{background:transparent}.embed .content{padding:20px 24px 24px}</style>');
 }
 </script>
 <script>
@@ -138,17 +163,18 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
         <span class="tab active">Access</span>
         <span class="tab" onclick="location.href='settings.html#activity'">Activity monitor</span>
       </div>
-      <div class="subtabs"><span class="subtab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="subtab" data-tab="users" onclick="setTab('users')">Logins &amp; their roles</span></div>
+      <div class="subtabs"><span class="subtab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="subtab" data-tab="users" onclick="setTab('users')">Logins</span></div>
 
       <div class="card" id="pane-roles">
-        <div class="row"><div><h2>Roles</h2><p class="muted" style="margin:0;">A role is a named set of rights - Assistant Accountant, Purchase Manager, Store Keeper. Give a login a role and it gets exactly those screens; change the role and every login that carries it changes with it.</p></div><span class="grow"></span><button class="btn btn-primary" onclick="openRole(null)">+ New role</button></div>
+        <div class="head"><div><h2>Roles</h2><p class="muted">Tick what each role may open. A tick saves at once, and every login with that role follows it.</p></div><button class="btn btn-primary" onclick="openRole(null)">+ New role</button></div>
         <div class="grid-wrap"><table class="matrix"><thead id="roles-head"></thead><tbody id="roles-body"></tbody></table></div>
-        <p class="muted">Settings is on every role - it is where anyone changes their own password. Admin logins always have everything and cannot be given a role.</p>
+        <p class="muted foot">Admin logins always have everything. Settings is on every role, so anyone can change their own password.</p>
       </div>
 
       <div class="card" id="pane-users" style="display:none;">
-        <div class="row"><div><h2>Logins</h2><p class="muted" style="margin:0;">Who can sign in, and which role each follows. A login without a role keeps whatever rights it was given in the app's Settings.</p></div><span class="grow"></span><button class="btn btn-primary" onclick="openUser()">+ New login</button></div>
-        <div class="grid-wrap"><table><thead><tr><th>Login</th><th>Name</th><th>Type</th><th>Role</th><th>Screens</th><th>Status</th><th></th></tr></thead><tbody id="users-body"></tbody></table></div>
+        <div class="head"><div><h2>Logins</h2><p class="muted">Who can sign in and the role each follows. Rights are set on the role, under Access.</p></div><button class="btn btn-primary" onclick="openUser()">+ New login</button></div>
+        <div class="grid-wrap"><table class="users"><colgroup><col style="width:200px"><col style="width:88px"><col style="width:180px"><col><col style="width:84px"><col style="width:330px"></colgroup>
+          <thead><tr><th>Login</th><th>Type</th><th>Role</th><th>Can open</th><th>Status</th><th class="act"></th></tr></thead><tbody id="users-body"></tbody></table></div>
       </div>
     </div>
   </div>
@@ -167,13 +193,21 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
 
 <div class="dlg" id="dlg-user" onclick="if (event.target === this) closeDlg('dlg-user')">
   <div class="dlg-box" style="max-width:700px;">
-    <h3>New login</h3>
+    <h3 id="user-title">New login</h3>
     <div class="row"><label class="fld"><span>Username *</span><input type="text" id="u-username" style="width:180px;"></label>
       <label class="fld"><span>Full name *</span><input type="text" id="u-full_name" style="width:240px;"></label>
       <label class="fld"><span>Password *</span><input type="password" id="u-password" style="width:180px;"></label></div>
-    <div class="row"><span class="muted" style="width:90px;">Role *</span><span class="seg" id="u-role"></span></div>
-    <div class="row"><span class="muted" style="width:90px;">Works from</span><span class="seg" id="u-base"><button class="on" data-v="office">The office</button><button data-v="site">A site</button></span></div>
+    <div class="row"><span class="muted lbl">Type</span><span class="seg" id="u-base"><button class="on" data-v="office">Office</button><button data-v="site">Site</button><button data-v="admin">Admin</button></span></div>
+    <div class="row" id="u-role-row"><span class="muted lbl">Role *</span><span class="seg" id="u-role"></span></div>
     <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveUser()">Create login</button><button class="btn btn-gray" onclick="closeDlg('dlg-user')">Cancel</button><span class="muted" id="user-msg"></span></div>
+  </div>
+</div>
+
+<div class="dlg" id="dlg-pw" onclick="if (event.target === this) closeDlg('dlg-pw')">
+  <div class="dlg-box" style="max-width:440px;">
+    <h3 id="pw-title">Reset password</h3>
+    <div class="row"><label class="fld"><span>New password *</span><input type="password" id="pw-new" style="width:260px;" placeholder="At least 6 characters"></label></div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="savePw()">Set password</button><button class="btn btn-gray" onclick="closeDlg('dlg-pw')">Cancel</button><span class="muted" id="pw-msg"></span></div>
   </div>
 </div>
 
@@ -188,6 +222,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
 <script>
 const API = "";
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
+const VIEW = (location.search.match(/[?&]view=(users|roles)/) || [, "roles"])[1];
 let ME = null, ROLES = [], SCREENS = [], LABELS = {}, PAGES = [], USERS = [], editingRole = null, assigning = null;
 function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function status(kind, text) { const el = document.getElementById("status"); el.className = "status " + (text ? kind : ""); el.textContent = text || ""; if (text && kind === "ok") setTimeout(() => { if (el.textContent === text) status("", ""); }, 4000); }
@@ -211,7 +246,7 @@ function ask(message, okLabel = "Yes", danger = false) {
 }
 function segSet(el, v) { el.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v ?? ""))); }
 function segGet(el) { const b = el.querySelector("button.on"); return b ? b.dataset.v : ""; }
-function segFill(el, opts, v) { el.innerHTML = opts.map(o => `<button type="button" data-v="${esc(o.v)}">${esc(o.l)}</button>`).join(""); el.querySelectorAll("button").forEach(b => b.onclick = () => segSet(el, b.dataset.v)); segSet(el, v); }
+function segFill(el, opts, v, cb) { el.innerHTML = opts.map(o => `<button type="button" data-v="${esc(o.v)}">${esc(o.l)}</button>`).join(""); el.querySelectorAll("button").forEach(b => b.onclick = () => { segSet(el, b.dataset.v); if (cb) cb(); }); segSet(el, v); }
 document.querySelectorAll("#u-base button").forEach(b => b.onclick = () => segSet(b.parentElement, b.dataset.v));
 function openDlg(id) { document.getElementById(id).style.display = "flex"; } function closeDlg(id) { document.getElementById(id).style.display = "none"; }
 
@@ -239,7 +274,7 @@ async function start() {
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username} (${ME.username})`;
   applyMenu();
-  await loadAll(); setTab("roles");
+  await loadAll(); setTab(VIEW);
 }
 function setTab(t) {
   document.querySelectorAll(".subtab").forEach(el => el.classList.toggle("active", el.dataset.tab === t));
@@ -254,13 +289,13 @@ const SHOWN = () => SCREENS.filter(s => s !== "settings");
 // Rights are listed the way the app is laid out: the page, then its tabs.
 const GROUPED = () => PAGES.length ? PAGES.map(([page, keys]) => [page, keys.filter(k => SCREENS.includes(k) && k !== "settings")]).filter(([, k]) => k.length) : [["All", SHOWN()]];
 function renderRoles() {
-  // Rights down the side, roles across: a few columns however many
-  // rights there are, and a box to tick in every cell. A tick saves.
+  // Rights down the side, roles across; each role column a fixed width so
+  // a few roles sit together instead of stretching across the screen.
   const groups = GROUPED();
   document.getElementById("roles-head").innerHTML =
-    `<tr><th class="rt">Right</th>${ROLES.map(r => `<th class="role"><div class="rname">${esc(r.name)}</div>
-      <div class="rmeta">${r.members.length ? r.members.map(m => esc(m.username)).join(", ") : '<span class="muted">no logins yet</span>'}</div>
-      <div class="racts"><a href="#" onclick="openRole(${r.id});return false;">Edit</a> · <a href="#" class="danger" onclick="removeRole(${r.id});return false;">Delete</a></div></th>`).join("")}</tr>`;
+    `<tr><th class="rt">Right</th>${ROLES.map(r => `<th class="role" title="${esc(r.members.map(m => m.username).join(", "))}"><div class="rname">${esc(r.name)}</div>
+      <div class="rcount">${r.members.length ? r.members.length + (r.members.length === 1 ? " login" : " logins") : "no logins yet"}</div>
+      <div class="racts"><button onclick="openRole(${r.id})">Edit</button><button class="danger" onclick="removeRole(${r.id})">Delete</button></div></th>`).join("")}</tr>`;
   document.getElementById("roles-body").innerHTML = ROLES.length ? groups.map(([pg, keys]) =>
     `<tr class="pg"><td colspan="${ROLES.length + 1}">${esc(pg)}</td></tr>` +
     keys.map(s => `<tr><td class="rt">${esc(LABELS[s] || s)}</td>${ROLES.map(r =>
@@ -281,11 +316,33 @@ function tickRole(id, screen, on) {
   }, 400);
 }
 function renderUsers() {
-  document.getElementById("users-body").innerHTML = USERS.map(u => `<tr><td><b>${esc(u.username)}</b></td><td>${esc(u.full_name)}</td><td>${u.role === "admin" ? '<span class="pill r">admin</span>' : u.role === "site" ? '<span class="pill gr">site</span>' : '<span class="pill gr">office</span>'}</td>
-    <td>${u.role === "admin" ? '<span class="muted">everything</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">set by hand</span>'}</td>
-    <td class="muted">${u.role === "admin" ? "all" : u.screens.filter(s => s !== "settings").map(s => LABELS[s] || s).join(", ") || "none"}</td>
+  // One line per login: who, what type, which role, a short summary of what
+  // it opens (the full list on hover), and its actions together on the right.
+  const typ = u => u.role === "admin" ? '<span class="pill r">Admin</span>' : u.role === "site" ? '<span class="pill gr">Site</span>' : '<span class="pill gr">Office</span>';
+  const scr = u => {
+    if (u.role === "admin") return { text: "Everything", full: "Everything" };
+    const l = u.screens.filter(s => s !== "settings").map(s => LABELS[s] || s);
+    if (!l.length) return { text: "Nothing yet", full: "" };
+    return { text: `<div class="scrl"><span class="lst">${esc(l.slice(0, 2).join(", "))}</span>${l.length > 2 ? `<span class="more">+${l.length - 2} more</span>` : ""}</div>`, full: l.join(", ") };
+  };
+  document.getElementById("users-body").innerHTML = USERS.map(u => { const c = scr(u); return `<tr>
+    <td><div class="uname">${esc(u.username)}</div><div class="ufull">${esc(u.full_name || "")}</div></td>
+    <td>${typ(u)}</td>
+    <td>${u.role === "admin" ? '<span class="muted">Not needed</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">Custom rights</span>'}</td>
+    <td class="scr" title="${esc(c.full)}">${c.text}</td>
     <td>${u.active ? '<span class="pill g">Active</span>' : '<span class="pill gr">Off</span>'}</td>
-    <td>${u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Role…</button>`}</td></tr>`).join("");
+    <td class="act">${u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}</td></tr>`; }).join("");
+}
+let PW_USER = null;
+function openPw(uid) { const u = USERS.find(x => x.id === uid); PW_USER = uid; document.getElementById("pw-title").textContent = `New password for ${u.username}`; document.getElementById("pw-new").value = ""; document.getElementById("pw-msg").textContent = ""; openDlg("dlg-pw"); setTimeout(() => document.getElementById("pw-new").focus(), 50); }
+async function savePw() {
+  try { await apiCall(`/users/${PW_USER}/reset-password`, { method: "POST", body: JSON.stringify({ new_password: document.getElementById("pw-new").value }) }); closeDlg("dlg-pw"); status("ok", "Password changed."); }
+  catch (e) { document.getElementById("pw-msg").textContent = errText(e); }
+}
+async function removeUser(uid) {
+  const u = USERS.find(x => x.id === uid);
+  if (!(await ask(`Delete the login ${u.username}? They will not be able to sign in again. What they entered stays in the records.`, "Delete", true))) return;
+  try { await apiCall(`/users/${uid}`, { method: "DELETE" }); status("ok", `${u.username} removed.`); await loadAll(); } catch (e) { status("warn", errText(e)); }
 }
 function openRole(id) {
   const r = id ? ROLES.find(x => x.id === id) : null; editingRole = r ? r.id : null;
@@ -309,11 +366,20 @@ async function removeRole(id) {
 function openUser() {
   ["u-username", "u-full_name", "u-password"].forEach(id => document.getElementById(id).value = "");
   segFill(document.getElementById("u-role"), ROLES.map(r => ({ v: r.id, l: r.name })), ROLES[0] ? ROLES[0].id : "");
-  document.getElementById("user-msg").textContent = ROLES.length ? "" : "Make a role first."; openDlg("dlg-user");
+  segFill(document.getElementById("u-base"), [{ v: "office", l: "Office" }, { v: "site", l: "Site" }, { v: "admin", l: "Admin" }], "office", userTypeChanged);
+  userTypeChanged(); openDlg("dlg-user");
+}
+function userTypeChanged() {
+  const admin = segGet(document.getElementById("u-base")) === "admin";
+  document.getElementById("u-role-row").style.display = admin ? "none" : "";
+  document.getElementById("user-msg").textContent = admin ? "An admin login has every screen, including Settings and Access." : (ROLES.length ? "" : "Make a role first, under Access.");
 }
 async function saveUser() {
-  try { await apiCall("/permissions/roles/new-user", { method: "POST", body: JSON.stringify({ username: document.getElementById("u-username").value, full_name: document.getElementById("u-full_name").value,
-      password: document.getElementById("u-password").value, role_id: parseInt(segGet(document.getElementById("u-role")), 10) || null, base: segGet(document.getElementById("u-base")) }) });
+  const base = segGet(document.getElementById("u-base"));
+  const body = { username: document.getElementById("u-username").value, full_name: document.getElementById("u-full_name").value, password: document.getElementById("u-password").value };
+  try {
+    if (base === "admin") await apiCall("/users", { method: "POST", body: JSON.stringify({ ...body, role: "admin" }) });
+    else await apiCall("/permissions/roles/new-user", { method: "POST", body: JSON.stringify({ ...body, role_id: parseInt(segGet(document.getElementById("u-role")), 10) || null, base }) });
     closeDlg("dlg-user"); status("ok", "Login created."); await loadAll(); setTab("users");
   } catch (e) { document.getElementById("user-msg").textContent = errText(e); }
 }

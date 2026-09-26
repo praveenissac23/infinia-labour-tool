@@ -106,7 +106,7 @@ PAGES = {
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "__admin__", ["#companies-card", "#pg-sites-block"]),
-        tab("logins", "settings", "Logins", "__admin__", ["#user-mgmt-card", "#pg-roles-card"]),
+        tab("logins", "pglogins", "Logins", "__admin__"),
         tab("access", "pgaccess", "Access", "__admin__"),
         tab("activity", "activity", "Activity monitor", "activity")]),
 }
@@ -155,7 +155,7 @@ CSS = """
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
-  #screen-pgstaff.active, #screen-pgaccess.active { margin: -20px -24px -20px; }
+  #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
   #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
@@ -272,7 +272,8 @@ HUB_HTML = """
 FRAMES_HTML = """
         <!-- Staff and Access, opened inside the app: loaded once, then shown instantly. -->
         <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="people.html?embed=1" title="Staff"></iframe></div>
-        <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="access.html?embed=1" title="Access"></iframe></div>
+        <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="access.html?embed=1&view=roles" title="Access"></iframe></div>
+        <div class="screen" id="screen-pglogins"><iframe class="pg-embed" id="pg-logins-frame" data-src="access.html?embed=1&view=users" title="Logins"></iframe></div>
 """
 
 ROLES_CARD = """
@@ -301,6 +302,7 @@ const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
 SCREEN_TITLES.pgaccess = "Access";
+SCREEN_TITLES.pglogins = "Logins";
 // Staff and Access are their own pages, shown in a frame so going to them
 // is as quick as any other screen: loaded the first time (or quietly
 // beforehand), refreshed each time they are opened again.
@@ -313,7 +315,7 @@ function pgFrame(id, refresh) {
 }
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
-window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
+window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
@@ -366,6 +368,7 @@ switchScreen = function (name) {
   if (name === "pgreports") pgHubLoad();
   if (name === "pgstaff") pgFrame("pg-staff-frame", true);
   if (name === "pgaccess") pgFrame("pg-access-frame", true);
+  if (name === "pglogins") pgFrame("pg-logins-frame", true);
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
 };

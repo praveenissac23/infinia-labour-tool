@@ -173,11 +173,11 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('a login is created from the role', (await p.locator('#users-body').textContent()).includes('sweepuser'));
   const rowU = p.locator('#users-body tr', { hasText: 'sweepuser' });
   ck('and shows the role', (await rowU.textContent()).includes('Sweep Role'));
-  await rowU.locator('button:has-text("Role")').click(); await p.waitForTimeout(300);
+  await rowU.locator('button:has-text("Change role")').click(); await p.waitForTimeout(300);
   await p.click('#as-role button[data-v=""]'); await p.click('#dlg-assign button:has-text("Apply")'); await p.waitForTimeout(800);
-  ck('a role can be taken off a login', (await p.locator('#users-body tr', { hasText: 'sweepuser' }).textContent()).includes('set by hand'));
+  ck('a role can be taken off a login', (await p.locator('#users-body tr', { hasText: 'sweepuser' }).textContent()).includes('Custom rights'));
   await p.click('.subtab[data-tab="roles"]'); await p.waitForTimeout(200);
-  await p.locator('#roles-head th.role', { hasText: 'Sweep Role' }).locator('a:has-text("Delete")').click(); await p.waitForTimeout(200);
+  await p.locator('#roles-head th.role', { hasText: 'Sweep Role' }).locator('button:has-text("Delete")').click(); await p.waitForTimeout(200);
   ck('delete asks in the page', await p.locator('.ask').count() === 1);
   await p.click('.ask [data-a="yes"]'); await p.waitForTimeout(800);
   ck('and the role is gone', !(await p.locator('.matrix').textContent()).includes('Sweep Role'));
