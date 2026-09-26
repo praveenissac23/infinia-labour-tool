@@ -672,10 +672,19 @@ def build():
         with open(os.path.join(OUT, fname(key)), "w", encoding="utf-8") as f:
             f.write(page)
         print(f"wrote temporary/Infinia/{fname(key)}  ({len(page) // 1024} KB)")
+    menu_rights = {}
+    for pg, scr in pages_screens.items():
+        rights = set()
+        for sc in scr:
+            r = right_of.get(sc, sc)
+            rights.update(r if isinstance(r, list) else [r])
+        menu_rights[pg] = sorted(x for x in rights if x != "__admin__")
+    return menu_rights
 
 
-def brand_hand_written():
-    """The hand-written pages carry the same logo as the generated ones."""
+def brand_hand_written(menu_rights=None):
+    """The hand-written pages carry the same logo and the same menu rules
+    as the generated ones."""
     src = open(SRC, encoding="utf-8").read()
     src = _logo_to_file(src)
     m = re.search(r'<div class="brand">(<img [^>]*>)</div>', src)
@@ -686,10 +695,15 @@ def brand_hand_written():
         path = os.path.join(OUT, name)
         page = open(path, encoding="utf-8").read()
         new = re.sub(r'<div class="logo" id="pg-brand">.*?</div>', lambda _: f'<div class="logo" id="pg-brand">{img}</div>', page, count=1, flags=re.S)
+        if menu_rights is not None:
+            tag = f'<script id="pg-menu-rights">const PG_MENU_RIGHTS = {json.dumps(menu_rights)};</script>'
+            if 'id="pg-menu-rights"' in new:
+                new = re.sub(r'<script id="pg-menu-rights">.*?</script>', lambda _: tag, new, count=1, flags=re.S)
+            else:
+                new = new.replace("</head>", tag + "\n</head>", 1)
         if new != page:
             open(path, "w", encoding="utf-8").write(new)
 
 
 if __name__ == "__main__":
-    build()
-    brand_hand_written()
+    brand_hand_written(build())

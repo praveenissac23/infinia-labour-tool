@@ -75,6 +75,29 @@
   .ask { position: fixed; inset: 0; background: rgba(30,24,20,.38); z-index: 3000; display: flex; align-items: center; justify-content: center; }
   .ask-box { background: white; border-radius: 12px; padding: 20px 22px 16px; max-width: 460px; width: 92%; } .ask-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>
+<script>
+// Drawn signed-in from the first frame: a signed-in user never sees the
+// sign-in box flash up while the page checks who they are, and the menu
+// shows only the pages this login had the last time, before the server
+// answers. If the sign-in turns out to have expired, the box comes back.
+(function () {
+  try {
+    if (!sessionStorage.getItem("infinia_token")) return;
+    var css = ".resuming #login{display:none!important}.resuming .shell{display:flex!important}";
+    var menu = null;
+    try { menu = JSON.parse(localStorage.getItem("infinia_menu") || "null"); } catch (e) {}
+    if (menu && menu.user === (sessionStorage.getItem("infinia_user") || "")) {
+      css += ".resuming .sidebar .nav-item[data-page]{display:none}" + menu.pages.map(function (p) { return ".resuming .sidebar .nav-item[data-page='" + p + "']{display:block}"; }).join("");
+    } else {
+      css += ".resuming .sidebar .nav-item[data-page]{visibility:hidden}";
+    }
+    document.documentElement.classList.add("resuming");
+    var st = document.createElement("style"); st.id = "early-resume"; st.textContent = css; document.head.appendChild(st);
+  } catch (e) {}
+})();
+function signInBox() { document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
+</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "hrpayroll", "people_household", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_household", "people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 <div id="login"><div class="login-box"><h1>Infinia · Access</h1><p>Sign in with your app login.</p>
@@ -84,13 +107,13 @@
 <div class="shell" id="shell">
   <div class="sidebar">
     <div class="logo" id="pg-brand"><img src="logo-bb952b26.png" alt="Infinia Contracting"></div>
-    <div class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
-    <div class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
-    <div class="nav-item" id="nav-people" onclick="location.href='people.html'">Staff</div>
-    <div class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
-    <div class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
-    <div class="nav-item" onclick="location.href='reporting.html'">Reports</div>
-    <div class="nav-item active" onclick="location.href='settings.html'">Settings</div>
+    <div data-page="dashboard" class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
+    <div data-page="attendance" class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
+    <div data-page="people" class="nav-item" id="nav-people" onclick="location.href='people.html'">Staff</div>
+    <div data-page="payroll" class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
+    <div data-page="store" class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
+    <div data-page="reports" class="nav-item" onclick="location.href='reporting.html'">Reports</div>
+    <div data-page="settings" class="nav-item active" onclick="location.href='settings.html'">Settings</div>
     <div class="nav-group">TEMPORARY BUILD</div>
     <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
   </div>
@@ -190,13 +213,22 @@ async function doLogin() {
   } catch (e) { err.textContent = "Could not reach the server."; }
 }
 function signOut() { sessionStorage.removeItem("infinia_token"); TOKEN = null; location.reload(); }
+
+// The menu from this login's own rights, remembered for the next page's
+// first frame; then the first-frame style has done its job.
+function applyMenu() {
+  const may = pg => ME.role === "admin" || (PG_MENU_RIGHTS[pg] || []).some(r => ME.screens.includes(r));
+  const shown = [];
+  document.querySelectorAll(".sidebar .nav-item[data-page]").forEach(el => { const ok = may(el.dataset.page); el.style.display = ok ? "block" : "none"; el.style.visibility = "visible"; if (ok) shown.push(el.dataset.page); });
+  try { sessionStorage.setItem("infinia_user", ME.username || ""); localStorage.setItem("infinia_menu", JSON.stringify({ user: ME.username || "", pages: shown })); } catch (e) {}
+}
 async function start() {
   try { ME = await apiCall("/permissions/me"); Object.assign(ME, await apiCall("/auth/me")); }
-  catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); document.getElementById("login").style.display = "flex"; return; }
+  catch (e) { TOKEN = null; sessionStorage.removeItem("infinia_token"); signInBox(); return; }
   if (ME.role !== "admin") { location.replace("settings.html"); return; }   // admin only - back to Settings, still signed in
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username} (${ME.username})`;
-  document.getElementById("nav-people").style.display = ME.screens.some(s => s.startsWith("people_")) ? "" : "none";
+  applyMenu();
   await loadAll(); setTab("roles");
 }
 function setTab(t) {
@@ -331,7 +363,7 @@ async function hardReload() {
 checkBuild();
 setInterval(() => { if (!document.hidden) checkBuild(); }, 120000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkBuild(); });
-if (TOKEN) start(); else document.getElementById("login").style.display = "flex";
+if (TOKEN) start(); else signInBox();
 </script>
 </body>
 </html>
