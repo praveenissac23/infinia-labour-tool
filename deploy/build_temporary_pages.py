@@ -203,9 +203,13 @@ EARLY = """
     // No tab in the address: the first tab this login had here last time.
     var remembered = null;
     try { remembered = JSON.parse(localStorage.getItem("infinia_tabs:%(key)s") || "null"); } catch (e) {}
-    if (!full && remembered && remembered.user === (sessionStorage.getItem("infinia_user") || "") && remembered.tabs.length) full = remembered.tabs[0].id;
+    var mine = remembered && remembered.user === (sessionStorage.getItem("infinia_user") || "");
+    if (!full && mine && remembered.tabs.length) full = remembered.tabs[0].id;
     var want = full.split(":")[0] || "%(first)s";
     var screen = tabs[full] || tabs[want] || want;
+    // A page this login has nothing on: draw no screen at all - it is
+    // about to be taken to a page it does have.
+    if (mine && !remembered.tabs.length) screen = "__none__";
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
     // The menu as this login last saw it, so it never draws in full and
@@ -273,7 +277,12 @@ SCRIPT = """
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
 // decides whether the screen is here or on another page.
-const PAGE = %(page_json)s;
+let PAGE = %(page_json)s;
+// Every generated page carries the whole app, so moving between them is
+// done here, in the same page: no reload, no fetching the app again, no
+// signing in again, and lists already fetched stay in memory.
+const ALL_PAGES = %(all_pages_json)s;
+const STANDALONE_PAGES = ["people", "access"];
 const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
@@ -283,6 +292,29 @@ SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = %(file_json)s;
 const ALL_TABS = %(all_tabs_json)s;
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
+function pgFile(key) { return (PAGE_FILE[key] || key) + ".html"; }
+function pgKeyOfPath(path) {
+  const f = (path.split("/").pop() || "").replace(/\.html$/, "");
+  for (const [k, v] of Object.entries(PAGE_FILE)) if (v === f) return k;
+  return f || "dashboard";
+}
+// Go to another page of the app. push=false when answering Back/Forward.
+function pgGo(key, hash, push = true) {
+  if (STANDALONE_PAGES.includes(key) || !ALL_PAGES[key]) { location.href = pgFile(key) + (hash ? "#" + hash : ""); return; }
+  const same = PAGE.key === key;
+  PAGE = ALL_PAGES[key];
+  if (push) history.pushState({ pg: key }, "", pgFile(key) + (hash ? "#" + hash : ""));
+  document.title = PAGE.title + " - " + document.title.replace(/^.*? - /, "");
+  document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === key));
+  if (!same) { PG_TAB = null; PG_SUB = null; }
+  pgCatchUp();
+  switchScreen(firstScreenFor());
+  window.scrollTo(0, 0);
+}
+window.addEventListener("popstate", () => {
+  const key = pgKeyOfPath(location.pathname);
+  if (key !== PAGE.key && ALL_PAGES[key]) pgGo(key, (location.hash || "").slice(1), false);
+});
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
@@ -291,7 +323,7 @@ let PG_TAB = null, PG_SUB = null;
 
 const _switchScreen = switchScreen;
 switchScreen = function (name) {
-  if (!PAGE.screens.includes(name)) { location.href = pgUrl(name) + "#" + name; return; }
+  if (!PAGE.screens.includes(name)) { pgGo(PAGE_OF[name] || "dashboard", name); return; }
   // A login without the right is on its way to another page; nothing
   // here should start loading (and being refused) in the meantime.
   if (MY_SCREENS.length && !pgAllowed(name)) return;
@@ -334,8 +366,8 @@ const _doLogout = doLogout;
 doLogout = function () { try { sessionStorage.removeItem("infinia_user"); } catch (e) {} return _doLogout.apply(this, arguments); };
 const _dashStoreGo = dashStoreGo;
 dashStoreGo = function (panel) {
-  if (panel === "reports") { location.href = "reporting.html#storerep"; return; }
-  if (!PAGE.screens.includes("store")) { location.href = "store.html#" + panel; return; }
+  if (panel === "reports") { pgGo("reports", "storerep"); return; }
+  if (!PAGE.screens.includes("store")) { pgGo("store", panel); return; }
   // On the store page: the tab and sub-tab that hold that panel.
   const t = PAGE.tabs.find(x => x.subs.some(sb => sb.id === panel));
   if (t) { PG_TAB = t; pgSub(panel); return; }
@@ -345,6 +377,7 @@ dashStoreGo = function (panel) {
 // may open. A login with nothing on this page goes to the first page
 // it has.
 firstScreenFor = function () {
+  setTimeout(() => { PG_BOOTED = true; }, 0);
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
   if (t && pgTabOk(t)) {
@@ -366,7 +399,10 @@ firstScreenFor = function () {
   const pages = %(order_json)s;
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
-    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) { location.href = (PAGE_FILE[pg] || pg) + ".html"; return PAGE.tabs[0].screen; }
+    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) {
+      if (ALL_PAGES[pg]) { setTimeout(() => pgGo(pg, "", false) || history.replaceState({ pg }, "", pgFile(pg)), 0); return PAGE.tabs[0].screen; }
+      location.href = pgFile(pg); return PAGE.tabs[0].screen;
+    }
   }
   return PAGE.tabs[0].screen;
 };
@@ -419,13 +455,30 @@ window.addEventListener("hashchange", () => {
 // live-card list before showing anything. On a page without those
 // screens that is a wait for nothing, so they are skipped here.
 const pgOn = s => PAGE.screens.includes(s);
-if (!pgOn("attendance")) { loadDate = async () => {}; }
-if (!pgOn("dashboard")) { startDashboardClock = () => {}; }
-if (!pgOn("dashboard") && !pgOn("attendance")) { loadDashboardCalendar = () => {}; }
-if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
-if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
-if (!pgOn("reports")) { initReportColumnPicker = async () => {}; }
-if (!pgOn("settings")) { loadCompanySettings = async () => {}; refreshSignatureState = async () => {}; }
+let PG_BOOTED = false;
+const PG_LATER = {};
+function pgLazy(name, screens) {
+  const orig = window[name]; if (typeof orig !== "function") return;
+  window[name] = function (...args) {
+    if (!PG_BOOTED && !screens.some(pgOn)) { PG_LATER[name] = { orig, args, screens }; return Promise.resolve(); }
+    return orig.apply(this, args);
+  };
+}
+// Work skipped at start-up because this page had no use for it, done the
+// first time a page that does opens.
+function pgCatchUp() {
+  for (const [name, job] of Object.entries(PG_LATER)) {
+    if (job.screens.some(pgOn)) { delete PG_LATER[name]; try { const r = job.orig.apply(window, job.args); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+}
+pgLazy("loadDate", ["attendance"]);
+pgLazy("startDashboardClock", ["dashboard"]);
+pgLazy("loadDashboardCalendar", ["dashboard", "attendance"]);
+pgLazy("renderLiveCardWorkerList", ["livecard"]);
+pgLazy("renderMasterDataLists", ["masterdata", "settings"]);
+pgLazy("initReportColumnPicker", ["reports"]);
+pgLazy("loadCompanySettings", ["settings"]);
+pgLazy("refreshSignatureState", ["settings"]);
 
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {
@@ -518,8 +571,28 @@ async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window
 """
 
 
+def _logo_to_file(src):
+    """The logo is embedded in app.html as text, twice - 150 KB of every
+    page. On these pages it is one image file the browser keeps, so each
+    page is a third lighter to fetch."""
+    import base64, hashlib
+    big = [m for m in re.finditer(r'data:image/(png|jpeg);base64,([A-Za-z0-9+/=]+)', src) if len(m.group(2)) > 20000]
+    if not big:
+        return src
+    data = base64.b64decode(big[0].group(2))
+    ext = "png" if big[0].group(1) == "png" else "jpg"
+    name = f"logo-{hashlib.sha1(data).hexdigest()[:8]}.{ext}"   # a new logo gets a new name
+    with open(os.path.join(OUT, name), "wb") as f:
+        f.write(data)
+    for m in sorted(big, key=lambda m: -m.start()):
+        if base64.b64decode(m.group(2)) == data:
+            src = src[:m.start()] + name + src[m.end():]
+    return src
+
+
 def build():
     src = open(SRC, encoding="utf-8").read()
+    src = _logo_to_file(src)
     m = re.search(r'<div class="sidebar">\n(\s*<div class="brand">.*?</div>)\n', src)
     if not m:
         raise SystemExit("app.html: sidebar not found where expected")
@@ -566,11 +639,16 @@ def build():
         for r in (right if isinstance(right, list) else [right]):
             right_of[r] = r
 
+    ALL_CFG = {}
+    for key, (title, tabs) in PAGES.items():
+        scr = sorted({t["screen"] for t in tabs} | {sb["screen"] for t in tabs for sb in t["subs"] if sb["screen"]}
+                     | {s_ for s_, k in EXTRA.items() if k == key})
+        ALL_CFG[key] = {"key": key, "title": title, "screens": scr, "tabs": tabs, "pages": pages_screens}
     for key, (title, tabs) in PAGES.items():
         side = ['<div class="pg-side">', brand]
         for pg in ORDER:
             label = LABELS.get(pg) or STANDALONE[pg][0]
-            side.append(f'<div class="pg-item {"active" if pg == key else ""}" data-page="{pg}" onclick="location.href=\'{fname(pg)}\'">{html.escape(label)}</div>')
+            side.append(f'<div class="pg-item {"active" if pg == key else ""}" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
         side.append('<div class="pg-group">TEMPORARY BUILD</div>')
         side.append('<div class="pg-small" onclick="location.href=\'/app.html\'">&larr; Back to the classic app</div>')
         side.append("</div>")
@@ -588,6 +666,7 @@ def build():
         script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),
                            "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
                            "file_json": json.dumps(FILE),
+                           "all_pages_json": json.dumps(ALL_CFG),
                            "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
         page = page.replace("</body>", script + "</body>", 1)
         with open(os.path.join(OUT, fname(key)), "w", encoding="utf-8") as f:
@@ -598,6 +677,7 @@ def build():
 def brand_hand_written():
     """The hand-written pages carry the same logo as the generated ones."""
     src = open(SRC, encoding="utf-8").read()
+    src = _logo_to_file(src)
     m = re.search(r'<div class="brand">(<img [^>]*>)</div>', src)
     if not m:
         return

@@ -3202,7 +3202,7 @@ async function doLogin() {
 }
 
 function doLogout() {
-  try { sessionStorage.removeItem("infinia_user"); } catch (e) {}
+  try { sessionStorage.removeItem("infinia_user"); sessionStorage.removeItem("infinia_stock_home"); } catch (e) {}
   sessionStorage.removeItem("infinia_token");
   location.reload();
 }
@@ -6559,21 +6559,42 @@ function goDirectPurchase() {
   }, 600);
 }
 
+// The stock table is drawn at once from the figures last seen in this
+// browser tab, then redrawn when the fresh ones arrive - opening the store
+// never shows an empty table while the server answers.
+const STOCK_HOME_KEY = "infinia_stock_home";
 async function loadStoreHome() {
+  let shown = false;
+  try {
+    const c = JSON.parse(sessionStorage.getItem(STOCK_HOME_KEY) || "null");
+    if (c && c.user === (CURRENT_USERNAME || "") && Date.now() - c.at < 6 * 3600 * 1000) {
+      drawStoreHome(c.stock, c.stk); shown = true;
+      const note = document.getElementById("home-stats");
+      if (note) note.insertAdjacentHTML("afterbegin", '<span class="stat-chip" id="home-updating" style="color:#888;">Updating\u2026</span>');
+    }
+  } catch (e) {}
   try {
     // The detail drill-down needs the per-site breakdown and item ids
-    // from /store/stock, so fetch it alongside the summary. Requests
-    // ride along too, for the overview chips.
+    // from /store/stock, so fetch it alongside the summary.
     const fresh = storeStockCache && storeStockCache.__at && Date.now() - storeStockCache.__at < 5000;
     const [stock, stk] = await Promise.all([
       apiCall("/store/report?kind=stock"),
       fresh ? Promise.resolve(storeStockCache) : apiCall("/store/stock").catch(() => storeStockCache || []),
     ]);
-    storeStockCache = stk;
-    // The hire badge on the tile, so what is out on hire is visible
-    // without going looking for it. Quietly - the store home must not
-    // fail over a badge.
+    try { sessionStorage.setItem(STOCK_HOME_KEY, JSON.stringify({ user: CURRENT_USERNAME || "", at: Date.now(), stock, stk })); } catch (e) {}
+    drawStoreHome(stock, stk);
+    // The hire badge on the tile, quietly - the store must not fail over a badge.
     refreshOnHire().catch(() => {});
+  } catch (e) {
+    if (!shown) document.getElementById("home-stock-body").innerHTML =
+      `<tr><td class="empty-note">Could not load: ${errText(e)}</td></tr>`;
+    else { const u = document.getElementById("home-updating"); if (u) u.textContent = "Could not refresh - showing the last figures"; }
+  }
+}
+
+function drawStoreHome(stock, stk) {
+  try {
+    storeStockCache = stk;
     const all = stock.rows || [];
     // Everything the company holds, wherever it is: in the central store,
     // out at a site, or split between them. The columns say which.
@@ -6628,7 +6649,7 @@ async function loadStoreHome() {
         </td></tr>`).join("");
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
-      `<tr><td class="empty-note">Could not load: ${errText(e)}</td></tr>`;
+      `<tr><td class="empty-note">Could not show the stock: ${errText(e)}</td></tr>`;
   }
 }
 
