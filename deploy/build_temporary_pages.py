@@ -359,7 +359,7 @@ function pgRenderTabs() {
   }
 }
 const _applyScreenPermissions = applyScreenPermissions;
-applyScreenPermissions = async function () { await _applyScreenPermissions(); pgRenderTabs(); };
+applyScreenPermissions = async function (pre) { await _applyScreenPermissions(pre); pgRenderTabs(); };
 window.addEventListener("hashchange", () => {
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
@@ -378,6 +378,9 @@ if (!pgOn("dashboard")) { startDashboardClock = () => {}; }
 if (!pgOn("dashboard") && !pgOn("attendance")) { loadDashboardCalendar = () => {}; }
 if (!pgOn("livecard")) { renderLiveCardWorkerList = () => {}; }
 if (!pgOn("masterdata") && !pgOn("settings")) { renderMasterDataLists = () => {}; }
+if (!pgOn("reports")) { initReportColumnPicker = async () => {}; }
+if (!pgOn("settings")) { loadCompanySettings = async () => {}; refreshSignatureState = async () => {}; }
+if (!pgOn("masterdata") && !pgOn("reports") && !pgOn("monthly")) { ensureCompanies = async () => {}; }
 
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {

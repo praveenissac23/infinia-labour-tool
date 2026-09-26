@@ -84,6 +84,11 @@ def seed_on_startup():
 
 # Locked down to specific origins in production - wide open here only
 # for local dev/testing against a frontend running on a different port.
+# Compressed answers: a 250 KB report is 30 KB on the wire, which is the
+# difference between a screen that opens and one that stalls on a poor
+# connection.
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

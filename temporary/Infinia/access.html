@@ -25,15 +25,16 @@
   .nav-item { color: var(--silver); padding: 11px 20px; font-size: 13.5px; font-weight: bold; cursor: pointer; } .nav-item:hover { background: var(--darkgray); color: white; } .nav-item.active { background: var(--red); color: white; }
   .nav-sub { color: #9DA3AA; padding: 8px 20px 8px 32px; font-size: 12.5px; cursor: pointer; } .nav-sub:hover { color: white; }
   .nav-group { padding: 12px 20px 6px; font-size: 11px; letter-spacing: 1px; font-weight: 800; color: #F4BFB8; background: rgba(192,57,43,.28); margin-top: 8px; }
-  .main { flex: 1; min-width: 0; } .top { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px 10px; } .top h1 { font-size: 20px; margin: 0; }
+  .main { flex: 1; min-width: 0; } .top { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: white; border-bottom: 1px solid #eee; } .top h1 { font-size: 20px; margin: 0; }
+  .content { padding: 0 24px 24px; }
   .who { font-size: 13px; color: #777; display: flex; align-items: center; gap: 14px; }
   .signout { background: transparent; border: 1px solid #ccc; color: #555; padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; } .signout:hover { background: #f0f0f0; }
   .status { display: none; padding: 9px 12px; border-radius: 7px; font-size: 13px; margin: 0 0 10px; }
   .status.warn { display: block; background: #FDF0EE; color: #A5301F; border: 1px solid #E8C7C2; } .status.ok { display: block; background: #E9F6EC; color: #1E7A3A; border: 1px solid #C9E8D1; }
-  .tabs { display: flex; gap: 6px; }
+  .tabs { display: flex; gap: 6px; padding: 10px 24px 0; margin: 0 -24px; background: white; border-bottom: 1px solid #eee; }
   .tab { padding: 8px 15px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 7px 7px 0 0; color: #8A6560; background: #FDF6F5; border: 1px solid #E7CEC9; border-bottom: none; }
   .tab.active { background: var(--red); color: white; border-color: var(--red); }
-  .subtabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0 2px; margin: 0 -24px 14px; padding-left: 24px; padding-right: 24px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
+  .subtabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px 2px; margin: 0 -24px 16px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
   .subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; }
   .subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
@@ -51,7 +52,16 @@
   th { text-align: left; font-size: 11px; letter-spacing: .5px; color: #666; text-transform: uppercase; padding: 8px 6px; border-bottom: 1px solid #E4E0DB; background: #FAF8F5; }
   td { padding: 7px 6px; border-bottom: 1px solid #F0EDE8; vertical-align: middle; } tbody tr:nth-child(even) td { background: #FCFBF9; }
   .grid-wrap { overflow: auto; max-height: 70vh; border: 1px solid #E9EBEE; border-radius: 8px; }
-  .matrix td, .matrix th { text-align: center; } .matrix td:first-child, .matrix th:first-child, .matrix td:nth-child(2), .matrix th:nth-child(2) { text-align: left; }
+  .matrix { table-layout: fixed; }
+  .matrix th.rt, .matrix td.rt { text-align: left; width: 260px; }
+  .matrix th.role { text-align: center; vertical-align: top; text-transform: none; letter-spacing: 0; padding: 10px 8px; border-left: 1px solid #EEE9E3; }
+  .matrix th.role .rname { font-size: 13px; font-weight: 700; color: var(--black); }
+  .matrix th.role .rmeta { font-size: 11.5px; color: #777; margin-top: 2px; font-weight: normal; white-space: normal; }
+  .matrix th.role .racts { font-size: 11.5px; margin-top: 4px; font-weight: normal; } .matrix th.role .racts a { color: var(--red); text-decoration: none; } .matrix th.role .racts a.danger { color: #8A6560; }
+  .matrix tr.pg td { background: #F3EFEA; font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #8A6560; padding: 6px 8px; }
+  .matrix td.cb { text-align: center; border-left: 1px solid #F0EDE8; } .matrix td.cb label { display: block; cursor: pointer; padding: 2px 0; }
+  .matrix td.cb input { width: 16px; height: 16px; accent-color: var(--red); cursor: pointer; margin: 0; }
+  .matrix thead th { position: sticky; top: 0; z-index: 2; }
   .tick { color: #1E7A3A; font-weight: 800; } .cross { color: #C7C2BC; }
   .rights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; margin: 8px 0; }
   .rights .rgroup { border: 1px solid #EEE9E3; border-radius: 8px; padding: 8px 12px; }
@@ -203,16 +213,31 @@ const SHOWN = () => SCREENS.filter(s => s !== "settings");
 // Rights are listed the way the app is laid out: the page, then its tabs.
 const GROUPED = () => PAGES.length ? PAGES.map(([page, keys]) => [page, keys.filter(k => SCREENS.includes(k) && k !== "settings")]).filter(([, k]) => k.length) : [["All", SHOWN()]];
 function renderRoles() {
+  // Rights down the side, roles across: a few columns however many
+  // rights there are, and a box to tick in every cell. A tick saves.
   const groups = GROUPED();
   document.getElementById("roles-head").innerHTML =
-    `<tr><th rowspan="2" style="vertical-align:bottom;">Role</th><th rowspan="2" style="vertical-align:bottom;">Logins</th>${groups.map(([pg, keys]) => `<th colspan="${keys.length}" style="border-left:1px solid #E4E0DB; background:#F3EFEA;">${esc(pg)}</th>`).join("")}<th rowspan="2"></th></tr>` +
-    `<tr>${groups.flatMap(([, keys]) => keys.map((s, i) => `<th style="${i === 0 ? "border-left:1px solid #E4E0DB;" : ""} font-weight:600; text-transform:none; letter-spacing:0;">${esc(LABELS[s] || s)}</th>`)).join("")}</tr>`;
-  const cols = groups.reduce((n, [, k]) => n + k.length, 0);
-  document.getElementById("roles-body").innerHTML = ROLES.map(r => `<tr><td><b>${esc(r.name)}</b>${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td>
-    <td>${r.members.length ? r.members.map(m => esc(m.username)).join(", ") : '<span class="cross">–</span>'}</td>
-    ${groups.flatMap(([, keys]) => keys.map((s, i) => `<td style="${i === 0 ? "border-left:1px solid #E4E0DB;" : ""}">${r.screens.includes(s) ? '<span class="tick">✓</span>' : '<span class="cross">–</span>'}</td>`)).join("")}
-    <td style="white-space:nowrap;"><button class="btn btn-gray btn-sm" onclick="openRole(${r.id})">Edit</button><button class="btn btn-danger btn-sm" onclick="removeRole(${r.id})">Delete</button></td></tr>`).join("")
-    || `<tr><td colspan="${cols + 3}" class="muted">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
+    `<tr><th class="rt">Right</th>${ROLES.map(r => `<th class="role"><div class="rname">${esc(r.name)}</div>
+      <div class="rmeta">${r.members.length ? r.members.map(m => esc(m.username)).join(", ") : '<span class="muted">no logins yet</span>'}</div>
+      <div class="racts"><a href="#" onclick="openRole(${r.id});return false;">Edit</a> · <a href="#" class="danger" onclick="removeRole(${r.id});return false;">Delete</a></div></th>`).join("")}</tr>`;
+  document.getElementById("roles-body").innerHTML = ROLES.length ? groups.map(([pg, keys]) =>
+    `<tr class="pg"><td colspan="${ROLES.length + 1}">${esc(pg)}</td></tr>` +
+    keys.map(s => `<tr><td class="rt">${esc(LABELS[s] || s)}</td>${ROLES.map(r =>
+      `<td class="cb"><label><input type="checkbox" ${r.screens.includes(s) ? "checked" : ""} onchange="tickRole(${r.id}, '${s}', this.checked)"></label></td>`).join("")}</tr>`).join("")).join("")
+    : `<tr><td class="muted" style="padding:14px;">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
+}
+// A tick saves that role straight away; the row is greyed while it does.
+const TICK_TIMERS = {};
+function tickRole(id, screen, on) {
+  const r = ROLES.find(x => x.id === id); if (!r) return;
+  r.screens = on ? [...new Set([...r.screens, screen])] : r.screens.filter(x => x !== screen);
+  clearTimeout(TICK_TIMERS[id]);
+  TICK_TIMERS[id] = setTimeout(async () => {
+    try {
+      await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id, name: r.name, notes: r.notes || "", screens: r.screens }) });
+      status("ok", `${r.name} saved - every login with that role now has these rights.`);
+    } catch (e) { status("warn", errText(e)); await loadAll(); }
+  }, 400);
 }
 function renderUsers() {
   document.getElementById("users-body").innerHTML = USERS.map(u => `<tr><td><b>${esc(u.username)}</b></td><td>${esc(u.full_name)}</td><td>${u.role === "admin" ? '<span class="pill r">admin</span>' : u.role === "site" ? '<span class="pill gr">site</span>' : '<span class="pill gr">office</span>'}</td>

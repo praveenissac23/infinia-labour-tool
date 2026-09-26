@@ -3367,6 +3367,9 @@ function switchScreen(name) {
     document.getElementById("mv-date").value = isoLocal(new Date());
     document.getElementById("out-date").value = isoLocal(new Date());
     document.getElementById("in-date").value = isoLocal(new Date());
+    // The stock table on the home panel asks for its own figures the
+    // moment the screen opens, alongside the lists - not after them.
+    const homeEarly = loadStoreHome().catch(() => {});
     Promise.all([loadStoreItems(), ensurePeople()]).then(() => {
       const siteOpts = sites.map(s => `<option value="${s.code}">${s.code}</option>`).join("");
       document.getElementById("mr-site").innerHTML = '<option value="">-- choose a site --</option>' +
@@ -3431,6 +3434,9 @@ async function initApp() {
   // rather than after a failed save.
   document.getElementById("date-picker").max = today;
 
+  // The rights arrive with the first wave, not a round trip later - the
+  // screen the person is opening waits on nothing else.
+  const permsEarly = apiCall("/permissions/me").catch(() => null);
   [employees, sites, engineers] = await Promise.all([
     apiCall("/employees?active_only=true"),
     apiCall("/sites"),
@@ -3483,8 +3489,11 @@ async function initApp() {
     document.getElementById("nav-activity").style.display = "block";
   }
   // Runs last so it can hide anything the lines above turned on.
-  await applyScreenPermissions();
+  await applyScreenPermissions(permsEarly);
   applyNavGroups();          // restore which sections were left open
+  // The screen the person wants, before the extras below: its own
+  // requests go out first.
+  switchScreen(firstScreenFor());
 
   // Each of these stands on its own: one failing must never stop the
   // clock, the calendar or the screen the person actually wants. A
@@ -3523,10 +3532,6 @@ async function initApp() {
   if (MY_SCREENS.includes("attendance"))
     safely("calendar", () => loadDashboardCalendar(calendarMonthFor(new Date())));
 
-  // Everyone lands on the first tab they can see in the left pane.
-  // One rule, the same for every role, and the screen a person opens
-  // to is the screen at the top of their own menu.
-  switchScreen(firstScreenFor());
 }
 
 function firstScreenFor() {
@@ -6538,9 +6543,10 @@ async function loadStoreHome() {
     // The detail drill-down needs the per-site breakdown and item ids
     // from /store/stock, so fetch it alongside the summary. Requests
     // ride along too, for the overview chips.
+    const fresh = storeStockCache && storeStockCache.__at && Date.now() - storeStockCache.__at < 5000;
     const [stock, stk] = await Promise.all([
       apiCall("/store/report?kind=stock"),
-      apiCall("/store/stock").catch(() => storeStockCache || []),
+      fresh ? Promise.resolve(storeStockCache) : apiCall("/store/stock").catch(() => storeStockCache || []),
     ]);
     storeStockCache = stk;
     // The hire badge on the tile, so what is out on hire is visible
@@ -6914,6 +6920,7 @@ async function loadStoreItems(force) {
   ]);
   storeItems = items;
   storeStockCache = stock;
+  try { Object.defineProperty(storeStockCache, "__at", { value: Date.now(), enumerable: false, configurable: true }); } catch (e) {}
   storeItemsFetchedAt = Date.now();
   buildMaterialDatalist();
   // Returns, transfers and corrections all act on stock that exists
@@ -10824,9 +10831,9 @@ function applyKeeperVisibility() {
   });
 }
 
-async function applyScreenPermissions() {
+async function applyScreenPermissions(prefetched) {
   try {
-    const me = await apiCall("/permissions/me");
+    const me = (prefetched && await prefetched) || await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
