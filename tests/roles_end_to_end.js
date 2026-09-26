@@ -85,7 +85,7 @@ async function login(ctx, user, pw, url) {
       ck('chief: HR & Payroll is in the menu', items.some(i => /HR & Payroll/.test(i)));
       await p.evaluate("switchScreen('hrpayroll')"); await p.waitForTimeout(2500);
       ck('chief: the office cycle opens on all companies with figures', await p.locator('#hr-run-all').isVisible() && await p.locator('#hr-all-body tbody tr').count() > 5);
-      await p.evaluate(() => { document.getElementById('hr-run-company').value = HR_COMPANIES[0].id; hrSyncBar(); return openPayrollCycle(); }); await p.waitForTimeout(2000);
+      await p.evaluate(() => { document.getElementById('hr-run-company').value = HR_COMPANIES.find(c => c.short_name === 'Infinia').id; hrSyncBar(); return openPayrollCycle(); }); await p.waitForTimeout(2000);
       ck('chief: one company opens for editing', await p.locator('#hr-run-body tr').count() > 5);
     }
     if (name === 'keeper') {

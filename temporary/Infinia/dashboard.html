@@ -350,9 +350,7 @@
      Each group holds five, so the column count steps 5 -> 3 -> 1 and
      skips 4 and 2: those leave a single tile stranded on a row of its
      own, which is the raggedness this replaced. */
-  .store-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-  @media (max-width: 1150px) { .store-tiles { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 700px)  { .store-tiles { grid-template-columns: 1fr; } }
+  .store-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-rows: 1fr; gap: 12px; }
 
   /* An order has two sides - theirs and ours - and the form should show
      which is which without anybody having to work it out from the
@@ -579,7 +577,16 @@
   .dash-clock-card { background: white; border-radius: 10px; border: 1px solid #eee; padding: 34px; text-align: center; margin-bottom: 16px; }
   .dash-clock { font-size: 64px; font-weight: bold; color: var(--black); }
   .dash-clock-ampm { font-size: 15px; color: #888; margin-top: 4px; }
-  .dash-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  /* Tiles are laid out on a grid that fills the width with equal columns
+     (never narrower than a readable tile) and equal heights, so resizing
+     the window reflows whole tiles instead of stretching some and
+     squeezing others. */
+  .dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 520px) { .dash-tiles { grid-template-columns: 1fr; } }
+  .dash-tile { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  #dash-store-card > .dash-store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-top: 12px; }
+  #dash-store-card .store-tile { min-width: 0; width: auto; height: 100%; box-sizing: border-box; }
   .dash-tile { background: #FDF6F5; border: 1px solid #E7CEC9; border-radius: 10px; padding: 18px 16px;
                cursor: pointer; text-align: center; position: relative;
                transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease,
@@ -812,6 +819,7 @@
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
+  #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
   #hr-loan-instalment { min-width: 150px; }
   select.op-unit, select.mr-unit, select.mr-type, .mr-unit select { min-width: 128px !important; }
@@ -835,7 +843,19 @@
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
-  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } }
+  /* The content never gets squeezed: it takes whatever width is left. */
+  .main { min-width: 0; flex: 1; }
+  /* Narrow windows: the menu moves above the page as one scrollable row,
+     at the same width the page itself switches to its narrow layout. */
+  @media (max-width: 900px) {
+    .shell { flex-direction: column; }
+    .pg-side { width: 100%; display: flex; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; padding: 6px 8px; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
+    .pg-side .pg-item { flex-shrink: 0; padding: 9px 12px; border-radius: 6px; }
+    .pg-side .pg-group, .pg-side .brand, .pg-side .pg-small { display: none; }
+    .main { width: 100%; }
+    .pg-tabs, .pg-sub { padding-left: 12px; padding-right: 12px; overflow-x: auto; flex-wrap: nowrap; }
+    .pg-tab, .pg-subtab { flex-shrink: 0; }
+  }
 </style>
 
 <script>
@@ -1014,7 +1034,7 @@
                person cannot open it. -->
           <div class="card" id="dash-store-card">
             <h2 style="margin-bottom:4px;">Store &amp; Materials</h2>
-            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="dash-store-grid">
               <div class="store-tile keeper-only" data-screen="store" onclick="dashStoreGo('give')">
                 <div class="store-tile-t">Move Material</div>
                 <div class="store-tile-s">Store to a site, back again, or site to site</div>
@@ -1039,8 +1059,7 @@
                 <div class="store-tile-t">Returns &amp; Corrections</div>
                 <div class="store-tile-s">Came back, moved, or wrong number</div>
               </div>
-            </div>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+            
               <div class="store-tile" data-screen="store" onclick="dashStoreGo('items')">
                 <div class="store-tile-t">Material List</div>
                 <div class="store-tile-s">Add or change materials and tools</div>
@@ -11974,8 +11993,10 @@ async function hrOpenAll(month) {
     let full = null;
     if (r) { try { full = await apiCall(`/employees/payroll/runs/${r.id}`); } catch (e) { full = null; } }
     // The current month opens by itself, as it does for one company -
-    // earlier months wait to be opened deliberately.
-    else if (document.getElementById("hr-run-month").value === hrToday().slice(0, 7)) {
+    // earlier months wait to be opened deliberately. A company with
+    // nobody on this statement has no sheet to open.
+    else if (document.getElementById("hr-run-month").value === hrToday().slice(0, 7)
+             && (HR_STAFF || []).some(x => x.company_id === co.id && x.active !== false && !x.terminated_on && (x.pay_group || "staff") === group)) {
       try { full = await apiCall("/employees/payroll/runs", { method: "POST", body: JSON.stringify({ month_year: month, company_id: co.id, group }) }); }
       catch (e) { full = null; }
     }
@@ -11984,7 +12005,10 @@ async function hrOpenAll(month) {
   const money = v => hrMoney(v);
   let gPaid = 0, gHeld = 0; const gsum = { basic: 0, allowance: 0, adj: 0, deduction: 0, loan_deduction: 0, net_pay: 0 };
   body.innerHTML = runs.map(({ co, short, run }) => {
-    if (!run) return `<div class="hr-all-co"><h3>${escapeHtml(short)} <span class="hr-nil">- ${escapeHtml(month)} not opened yet</span></h3></div>`;
+    if (!run) {
+      const has = (HR_STAFF || []).some(x => x.company_id === co.id && (x.pay_group || "staff") === group);
+      return has ? `<div class="hr-all-co"><h3>${escapeHtml(short)} <span class="hr-nil">- ${escapeHtml(month)} not opened yet</span></h3></div>` : "";
+    }
     const paid = run.lines.filter(l => !l.held), held = run.lines.length - paid.length;
     const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
     const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
@@ -12013,7 +12037,8 @@ async function hrOpenAll(month) {
       <td colspan="2" class="txt" style="width:29%;">GRAND TOTAL - ${gPaid} staff${gHeld ? `, ${gHeld} held over` : ""}</td>
       <td class="num">${money(gsum.basic)}</td><td class="num">${money(gsum.allowance)}</td><td class="num">${gsum.adj ? money(gsum.adj) : "-"}</td>
       <td class="num">${money(gsum.deduction)}</td><td class="num">${money(gsum.loan_deduction)}</td><td class="num">${money(gsum.net_pay)}</td><td style="width:22%;"></td></tr></tfoot></table></div>` : "");
-  document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${runs.length} companies opened`;
+  const withStaff = runs.filter(r => r.run || (HR_STAFF || []).some(x => x.company_id === r.co.id && (x.pay_group || "staff") === group)).length;
+  document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${withStaff} companies opened`;
   if (runs.some(r => r.run && !HR_RUNS.some(x => x.id === r.run.id))) await loadRunList();
   hrSyncBar();
 }
@@ -13161,13 +13186,13 @@ async function addIncrement() {
 // decides whether the screen is here or on another page.
 const PAGE = {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
 const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "settings", "monthly": "reports"};
-const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
-const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "errorcheck", "livecard"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local", "people_household"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local", "people_household"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }

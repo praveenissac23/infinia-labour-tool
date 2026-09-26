@@ -77,11 +77,9 @@ PAGES = {
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
             sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
     "reports": ("Reports", [
-        tab("labour", "pgreports", "Labour", ["reports", "combine", "errorcheck", "livecard"], subs=[
+        tab("labour", "pgreports", "Labour", ["reports", "combine"], subs=[
             sub("builder", "Cycle report builder", screen="reports"),
-            sub("cards", "Salary cards", screen="combine"),
-            sub("check", "Check before you pay", screen="errorcheck"),
-            sub("live", "Live card", screen="livecard")]),
+            sub("cards", "Salary cards", screen="combine")]),
         tab("office", "hrpayroll", "Office payroll", "hrpayroll", subs=[
             sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
             sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),
@@ -102,11 +100,7 @@ PAGES = {
             sub("issues", "Issue & return register", screen="store", right=STORE_RIGHTS, go="pgStoreReport('issues')"),
             sub("lost", "Lost / damaged", screen="store", right=STORE_RIGHTS, go="pgStoreReport('lost')"),
             sub("hired", "On rent now", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
-            sub("mr_open", "Open requests", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_open')"),
-            sub("mr_history", "Request history", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_history')"),
-            sub("suppliers", "Suppliers", screen="suppliers", right="approvals"),
-            sub("lpo", "LPO register", screen="lporegister", right="approvals"),
-            sub("followup", "Order follow-up", screen="followup", right="requests")])]),
+            sub("mr_history", "Request history", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_history')")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
@@ -156,6 +150,7 @@ CSS = """
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
+  #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
   #hr-loan-instalment { min-width: 150px; }
   select.op-unit, select.mr-unit, select.mr-type, .mr-unit select { min-width: 128px !important; }
@@ -179,7 +174,19 @@ CSS = """
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
   .pg-seg button:last-child { border-right: 0; } .pg-seg button.on { background: var(--red); color: white; }
-  @media (max-width: 900px) { .pg-side { width: 100%; padding-bottom: 6px; } .pg-side .pg-item { display: inline-block; padding: 9px 12px; } .pg-side .pg-group, .pg-side .brand { display: none; } }
+  /* The content never gets squeezed: it takes whatever width is left. */
+  .main { min-width: 0; flex: 1; }
+  /* Narrow windows: the menu moves above the page as one scrollable row,
+     at the same width the page itself switches to its narrow layout. */
+  @media (max-width: 900px) {
+    .shell { flex-direction: column; }
+    .pg-side { width: 100%; display: flex; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; padding: 6px 8px; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
+    .pg-side .pg-item { flex-shrink: 0; padding: 9px 12px; border-radius: 6px; }
+    .pg-side .pg-group, .pg-side .brand, .pg-side .pg-small { display: none; }
+    .main { width: 100%; }
+    .pg-tabs, .pg-sub { padding-left: 12px; padding-right: 12px; overflow-x: auto; flex-wrap: nowrap; }
+    .pg-tab, .pg-subtab { flex-shrink: 0; }
+  }
 </style>
 """
 
