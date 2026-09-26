@@ -9,11 +9,11 @@ let fails = 0;
 const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + (ok ? '' : `  [${ctx}]`)); if (!ok) fails++; };
 const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
-  payroll: ['combine', 'errorcheck', 'hrpayroll'],
-  store: ['store', 'requests', 'approvals', 'purchase', 'followup', 'lporegister', 'suppliers'],
-  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'sites', 'logins', 'backup', 'activity', 'access'],
+  payroll: ['labourpay', 'hrpayroll'],
+  store: ['store', 'rentals', 'requests', 'purchasing'],
+  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
 };
-const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings', logins: 'settings', backup: 'settings', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
+const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'settings', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
 
 (async () => {
   const b = await chromium.launch();
@@ -39,7 +39,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
         ck(`${page}.html: tab ${s} shows its screen`, await p.locator(`#screen-${SCREEN_OF[s] || s}.active`).count() === 1 && await p.locator(`#pg-tabs .pg-tab.active[data-tab="${s}"]`).count() === 1);
         if (SCREEN_OF[s] === 'settings') {
           const shown = await p.locator('#screen-settings > .card:visible, #screen-settings > div[id]:visible').count();
-          const want = { general: 4, companies: 1, sites: 1, logins: 2, backup: 1 }[s];
+          const want = { general: 5, companies: 2, logins: 2 }[s];
           ck(`${page}.html: ${s} shows only its part (${shown})`, shown === want, shown);
         }
         if (SCREEN_OF[s] === 'pgreports') {
@@ -119,7 +119,7 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   await p.evaluate("switchScreen('errorcheck')"); await p.waitForTimeout(600);
   ck('and a screen on this page just switches tabs', p.url().endsWith('payroll.html#combine') && await p.locator('#screen-errorcheck.active').count() === 1);
   await p.evaluate("dashStoreGo('items')"); await p.waitForTimeout(1800);
-  ck('the dashboard store shortcuts land on the store page', p.url().includes('store.html#store:items') && await p.locator('#screen-store.active').count() === 1, p.url());
+  ck('the dashboard store shortcuts land on the store page', p.url().includes('store.html#items') && await p.locator('#screen-store.active').count() === 1 && await p.locator('#store-items').isVisible(), p.url());
   await p.click('.pg-side .pg-item[data-page="people"]'); await p.waitForTimeout(1200);
   ck('People opens from the menu on the same sign-in', p.url().endsWith('people.html') && await p.locator('#shell').isVisible());
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
@@ -139,7 +139,9 @@ const SCREEN_OF = { general: 'settings', companies: 'settings', sites: 'settings
   await p2.goto(BASE + 'store.html'); await p2.fill('#login-username', 'tmp_req'); await p2.fill('#login-password', 'tmpreq123'); await p2.evaluate('doLogin()');
   await p2.waitForSelector('#app-screen', { state: 'visible' }); await p2.waitForTimeout(2000);
   const tabs = await p2.locator('#pg-tabs .pg-tab').allTextContents();
-  ck('a requests-only login sees only its tabs on the store page', tabs.length === 2 && tabs.join(',') === 'Material requests,Order follow-up', tabs);
+  ck('a requests-only login sees only its tabs on the store page', tabs.length === 0 || tabs.join(',') === 'Requests', tabs);
+  const rsubs = await p2.locator('#pg-sub .pg-subtab').allTextContents();
+  ck('and only its sub-tabs', rsubs.join(',') === 'Material requests,Order follow-up', rsubs);
   ck('and lands on requests', await p2.locator('#screen-requests.active').count() === 1);
   const menu = await p2.locator('.pg-side .pg-item:visible').allTextContents();
   ck('the menu shows only the pages it may open', menu.join(',') === 'Dashboard,Store & Purchasing,Reports,Settings', menu);

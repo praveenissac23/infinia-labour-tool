@@ -135,7 +135,6 @@
     <div class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
     <div class="nav-item" onclick="location.href='reporting.html'">Reports</div>
     <div class="nav-item" onclick="location.href='settings.html'">Settings</div>
-    <div class="nav-item" id="nav-access" onclick="location.href='access.html'" style="display:none;">Access</div>
     <div class="nav-group">TEMPORARY BUILD</div>
     <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
   </div>
@@ -346,6 +345,19 @@
     <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveLoan()">Record loan</button><button class="btn btn-gray" onclick="closeDlg('dlg-loan')">Cancel</button><span class="muted" id="loan-msg"></span></div>
   </div>
 </div>
+<div class="dlg" id="dlg-inc" onclick="if (event.target === this) closeDlg('dlg-inc')">
+  <div class="dlg-box" style="max-width:720px;">
+    <h3 id="inc-title">Increment</h3>
+    <p class="muted" style="margin:0 0 10px;">Written to the payroll Increments register. By default it all goes to the allowance; move part of it to basic only when that was agreed - gratuity is worked out on the basic.</p>
+    <div class="row">
+      <label class="fld"><span>Rise per month *</span><input type="number" id="i-amount" style="width:130px;" step="0.01" placeholder="e.g. 500"></label>
+      <label class="fld"><span>From *</span><input type="date" id="i-effective_on"></label>
+      <label class="fld"><span>Of which to basic</span><input type="number" id="i-to_basic" style="width:130px;" step="0.01" placeholder="0"></label>
+      <label class="fld"><span>Reason</span><input type="text" id="i-reason" style="width:240px;" placeholder="e.g. Annual review 2026"></label>
+    </div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveInc()">Record increment</button><button class="btn btn-gray" onclick="closeDlg('dlg-inc')">Cancel</button><span class="muted" id="inc-msg" style="color:#B03A2E;"></span></div>
+  </div>
+</div>
 <div class="dlg" id="dlg-repay" onclick="if (event.target === this) closeDlg('dlg-repay')">
   <div class="dlg-box" style="max-width:640px;">
     <h3 id="repay-title">Repayment</h3>
@@ -451,7 +463,6 @@ async function start() {
   document.getElementById("login").style.display = "none";
   document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username || ""} (${ME.username || ""})`;
-  document.getElementById("nav-access").style.display = ME.screens.includes("access") ? "" : "none";
   try { COMPANIES = await apiCall("/employees/companies"); } catch (e) { COMPANIES = []; }
   const opts = COMPANIES.map(c => `<option value="${c.id}">${esc(c.short_name || c.name)}</option>`).join("");
   document.getElementById("f-company").innerHTML = `<option value="">All companies</option>` + opts;
@@ -543,9 +554,9 @@ function renderFile() {
       ${f("Basic", money(p.basic))}${f(p.group === "labour" ? "Allowance" : "Fix allowance", money(p.allowance))}${f("Gross", `<b>${money(p.gross)}</b>`)}${f("Pay type", p.group === "labour" ? (p.pay_type === "fixed" ? "Monthly (labour)" : "Daily rate") : `Monthly · ${p.pay_group === "local" ? "local" : "office"} statement`)}
       ${f("Paid by", p.pay_route.toUpperCase())}${f("Bank", pr.bank_name)}${f("IBAN", e.iban)}${f("ILOE", pr.iloe)}
       ${f("End of service", scheme)}${e.scheme === "pension" ? f("GPSSA / month", money(e.pension)) : f("Gratuity to date", F.gratuity.entitled ? money(F.gratuity.amount) : (F.gratuity.why || "—"))}${f("Contract basic (MOHRE)", e.contract_basic ? money(e.contract_basic) : "")}</div>`;
-    if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary history (Increments register)</span></div>` + table(
+    if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary history (Increments register)</span>${ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openInc()">+ Increment</button>` : ""}</div>` + table(
       ["Effective", "Kind", "Basic", "Allowance", "Gross", "Reason"], F.salary_history.map(h => [dmy(h.effective_on), h.kind, "$" + money(h.basic), "$" + money(h.allowance), "$" + money(h.gross ?? (h.basic + h.allowance)), h.reason || ""]), "No history yet.");
-    body += `<p class="muted">Figures come from the same record the salary cycle reads. ${p.group === "labour" ? "A labourer's rate is changed on Master Data." : "A rise goes through the Increments register in the app, dated and with a reason."}</p>`;
+    body += `<p class="muted">Figures come from the same record the salary cycle reads. ${p.group === "labour" ? "A labourer's rate is changed on Master Data." : "A rise entered here is the same entry as on the payroll Increments tab - dated, with a reason, and on the salary cycle from its date."}</p>`;
   }
   else if (P.section === "documents") body = `<div class="sec-h"><span class="lbl">Documents on file</span><button class="btn btn-primary btn-sm" onclick="openDoc(null)">+ Document</button></div>` + table(
       ["Document", "Number", "Issued", "Expires", "Days left", "Notes", ""], F.documents.map(d => [d.kind_label, d.number || "", d.issued_on ? dmy(d.issued_on) : "", dmy(d.expires_on),
@@ -715,6 +726,15 @@ async function saveLoan() {
   const body = { emp_no: P.current, amount: getVal("l-amount"), taken_on: getVal("l-taken_on"), instalment: getVal("l-instalment"), terms: getVal("l-terms"), notes: getVal("l-notes") };
   try { await apiCall("/employees/loans", { method: "POST", body: JSON.stringify(body) }); closeDlg("dlg-loan"); status("ok", "Loan recorded - it is on the payroll Loans tab too."); await openPerson(P.current); }
   catch (e) { document.getElementById("loan-msg").textContent = errText(e); }
+}
+function openInc() {
+  ["i-amount", "i-to_basic", "i-reason"].forEach(id => setVal(id, "")); setVal("i-effective_on", new Date().toISOString().slice(0, 10));
+  document.getElementById("inc-title").textContent = "Increment · " + P.file.person.name; document.getElementById("inc-msg").textContent = ""; openDlg("dlg-inc");
+}
+async function saveInc() {
+  const body = { emp_no: P.current, amount: getVal("i-amount"), effective_on: getVal("i-effective_on"), to_basic: getVal("i-to_basic") || 0, reason: getVal("i-reason") };
+  try { const r = await apiCall("/employees/increments", { method: "POST", body: JSON.stringify(body) }); closeDlg("dlg-inc"); status("ok", (r.detail || "Increment recorded.") + " It is on the payroll Increments tab too."); await openPerson(P.current); }
+  catch (e) { document.getElementById("inc-msg").textContent = errText(e); }
 }
 function openRepay(id) {
   REPAY_LOAN = id; const l = P.file.loans.find(x => x.id === id);

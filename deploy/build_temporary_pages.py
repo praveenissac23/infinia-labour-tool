@@ -46,17 +46,36 @@ PAGES = {
         tab("livecard", "livecard", "Live card"),
         tab("masterdata", "masterdata", "Labour master data")]),
     "payroll": ("Payroll", [
-        tab("combine", "combine", "Salary cards"),
-        tab("errorcheck", "errorcheck", "Check before you pay"),
-        tab("hrpayroll", "hrpayroll", "Office HR & Payroll")]),
+        tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck"], subs=[
+            sub("combine", "Salary cards", screen="combine"),
+            sub("errorcheck", "Check before you pay", screen="errorcheck")]),
+        tab("hrpayroll", "hrpayroll", "Office payroll", "hrpayroll", subs=[
+            sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
+            sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),
+            sub("items", "Additions & deductions", screen="hrpayroll", go="hrTab('items')"),
+            sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
+            sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
+            sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
+            sub("docs", "Documents", screen="hrpayroll", go="hrTab('docs')"),
+            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")])]),
     "store": ("Store & Purchasing", [
-        tab("store", "store", "Store / inventory"),
-        tab("requests", "requests", "Material requests"),
-        tab("approvals", "approvals", "Approvals"),
-        tab("purchase", "purchase", "Purchase orders", "approvals"),
-        tab("followup", "followup", "Order follow-up", "requests"),
-        tab("lporegister", "lporegister", "LPO register", "approvals"),
-        tab("suppliers", "suppliers", "Suppliers", "approvals")]),
+        tab("store", "store", "Stock", "store", subs=[
+            sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
+            sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
+            sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')"),
+            sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
+            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
+        tab("rentals", "store", "Rentals", "store", subs=[
+            sub("hire", "On rent", screen="store", right="store", go="pgStorePanel('hire')"),
+            sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
+        tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
+            sub("requests", "Material requests", screen="requests", right="requests"),
+            sub("approvals", "Approvals", screen="approvals", right="approvals"),
+            sub("followup", "Order follow-up", screen="followup", right="requests")]),
+        tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
+            sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
+            sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
+            sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
     "reports": ("Reports", [
         tab("labour", "pgreports", "Labour", ["reports", "combine", "errorcheck", "livecard"], subs=[
             sub("builder", "Cycle report builder", screen="reports"),
@@ -90,13 +109,11 @@ PAGES = {
             sub("followup", "Order follow-up", screen="followup", right="requests")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
-            ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card"]),
-        tab("companies", "settings", "Companies", "__admin__", ["#companies-card"]),
-        tab("sites", "settings", "Sites & engineers", "settings", ["#pg-sites-block"]),
+            ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
+        tab("companies", "settings", "Companies & sites", "__admin__", ["#companies-card", "#pg-sites-block"]),
         tab("logins", "settings", "Logins", "__admin__", ["#user-mgmt-card", "#pg-roles-card"]),
-        tab("backup", "settings", "Backup", "__admin__", ["#pg-backup-card"]),
-        tab("activity", "activity", "Activity monitor", "activity"),
-        tab("access", "settings", "Access", "__admin__", ["#pg-roles-card"])]),
+        tab("access", "settings", "Access", "__admin__", ["#pg-roles-card"]),
+        tab("activity", "activity", "Activity monitor", "activity")]),
 }
 # Screens without a tab of their own, reached from inside another.
 EXTRA = {"monthly": "reports"}
@@ -139,6 +156,12 @@ CSS = """
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
+  /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
+  #hr-loan-instalment { min-width: 150px; }
+  select.op-unit, select.mr-unit, select.mr-type, .mr-unit select { min-width: 128px !important; }
+  #hin-location, #rent-where { min-width: 132px; }
+  .mr-purpose, input[placeholder^="e.g. slab"] { min-width: 190px; }
+  #pw-new, #pw-confirm, #pw-old { min-width: 240px; }
   /* The HR screen's own tab row reads as second-level tabs, like every other page's. */
   #screen-hrpayroll .hr-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 0 6px; margin: -6px 0 14px; border-bottom: 1px solid #E7E1DA; }
   #screen-hrpayroll .hr-tab { padding: 6px 14px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; }
@@ -147,6 +170,8 @@ CSS = """
   /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
   body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
   body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
+  body.pg-subview #store-home > .card:first-child { display: none; }
+  body.pg-subview #screen-store button[onclick="storeGo('home')"] { display: none; }
   body.pg-subview #store-report-result { margin-top: 0; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
@@ -251,7 +276,7 @@ function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
-function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
+function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id) || PAGE.tabs.find(t => t.subs.some(sb => sb.id === id || sb.screen === id)); }
 let PG_TAB = null, PG_SUB = null;
 
 const _switchScreen = switchScreen;
@@ -299,7 +324,11 @@ const _doLogout = doLogout;
 doLogout = function () { try { sessionStorage.removeItem("infinia_user"); } catch (e) {} return _doLogout.apply(this, arguments); };
 const _dashStoreGo = dashStoreGo;
 dashStoreGo = function (panel) {
-  if (!PAGE.screens.includes("store")) { location.href = "store.html#store:" + panel; return; }
+  if (panel === "reports") { location.href = "reporting.html#storerep"; return; }
+  if (!PAGE.screens.includes("store")) { location.href = "store.html#" + panel; return; }
+  // On the store page: the tab and sub-tab that hold that panel.
+  const t = PAGE.tabs.find(x => x.subs.some(sb => sb.id === panel));
+  if (t) { PG_TAB = t; pgSub(panel); return; }
   _dashStoreGo(panel);
 };
 // Where to land: the tab in the address, else the first tab this login
@@ -311,10 +340,12 @@ firstScreenFor = function () {
   if (t && pgTabOk(t)) {
     PG_TAB = t;
     if (t.subs.length) {
-      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right)) || t.subs.find(sb => pgHas(sb.right)) || null;
+      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right))
+            || t.subs.find(sb => (sb.id === want || sb.screen === want) && t.id !== want && pgHas(sb.right))
+            || t.subs.find(sb => pgHas(sb.right)) || null;
+      if (PG_SUB && PG_SUB.go && /pgStorePanel\('([a-z]+)'\)/.test(PG_SUB.go)) STORE_PANEL_WANT = PG_SUB.go.match(/pgStorePanel\('([a-z]+)'\)/)[1];
       return PG_SUB ? (PG_SUB.screen || "pgreports") : t.screen;
     }
-    if (t.screen === "store" && extra) setTimeout(() => storeGo(extra), 120);
     return t.screen;
   }
   for (const tb of PAGE.tabs) if (pgTabOk(tb)) {
@@ -407,8 +438,12 @@ function pgSubGo() {
   if (sb.go) setTimeout(() => { try { new Function(sb.go)(); } catch (e) { console.error(e); } }, 30);
 }
 function pgStoreReport(kind) {
-  STORE_REPORT_WANT = kind;
+  STORE_REPORT_WANT = kind; STORE_PANEL_WANT = "reports";
   storeGo("reports");
+}
+function pgStorePanel(panel) {
+  STORE_PANEL_WANT = panel;
+  storeGo(panel);
 }
 function pgSeg(id) { const b = document.querySelector("#" + id + " button.on"); return b ? b.dataset.v : ""; }
 function pgSegHtml(id, choices, on) {

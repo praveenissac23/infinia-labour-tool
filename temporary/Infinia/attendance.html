@@ -812,6 +812,12 @@
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
+  /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
+  #hr-loan-instalment { min-width: 150px; }
+  select.op-unit, select.mr-unit, select.mr-type, .mr-unit select { min-width: 128px !important; }
+  #hin-location, #rent-where { min-width: 132px; }
+  .mr-purpose, input[placeholder^="e.g. slab"] { min-width: 190px; }
+  #pw-new, #pw-confirm, #pw-old { min-width: 240px; }
   /* The HR screen's own tab row reads as second-level tabs, like every other page's. */
   #screen-hrpayroll .hr-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 0 6px; margin: -6px 0 14px; border-bottom: 1px solid #E7E1DA; }
   #screen-hrpayroll .hr-tab { padding: 6px 14px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; }
@@ -820,6 +826,8 @@
   /* Under a sub-tab the screen's own tab row and report picker are the sub-tabs, so they go. */
   body.pg-subview #screen-hrpayroll .hr-tabs { display: none; }
   body.pg-subview #store-reports > button, body.pg-subview #store-reports > .card:first-of-type { display: none; }
+  body.pg-subview #store-home > .card:first-child { display: none; }
+  body.pg-subview #screen-store button[onclick="storeGo('home')"] { display: none; }
   body.pg-subview #store-report-result { margin-top: 0; }
   .pg-seg { display: inline-flex; border: 1px solid #E4DCD2; border-radius: 7px; overflow: hidden; background: #FBF8F4; }
   .pg-seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6A5C55; border-right: 1px solid #E4DCD2; cursor: pointer; }
@@ -3531,7 +3539,7 @@ function switchScreen(name) {
         employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.trade || "worker"}</option>`).join("");
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
-      storeGo("home");
+      storeGo(STORE_PANEL_WANT || "home"); STORE_PANEL_WANT = "";
     }).catch(e => showStatus("store-status", "err", "The store lists could not be loaded: " + errText(e) + " Press Ctrl+Shift+R to try again."));
   }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
@@ -6096,8 +6104,10 @@ function setUnitSelect(sel, unit) {
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
 const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports","hire","returns"];
-// A report asked for by name (a tab, a link) opens instead of Current stock.
+// A report asked for by name (a tab, a link) opens instead of Current stock,
+// and a panel asked for opens once the lists are in, instead of the home.
 let STORE_REPORT_WANT = "";
+let STORE_PANEL_WANT = "";
 // A store door on the dashboard opens the store screen already on the
 // panel that was asked for, rather than dropping the person on the
 // store home to click again.
@@ -13142,20 +13152,20 @@ async function addIncrement() {
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
 // decides whether the screen is here or on another page.
-const PAGE = {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": []}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": []}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "errorcheck", "hrpayroll"], "store": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
-const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "purchase": "store", "followup": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "settings", "monthly": "reports"};
-const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine"], "errorcheck": ["errorcheck"], "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["requests"], "approvals": ["approvals"], "purchase": ["approvals"], "followup": ["requests"], "lporegister": ["approvals"], "suppliers": ["approvals"], "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
+const PAGE = {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": []}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": []}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_office", "people_local", "people_household"], "access": ["access"]}};
+const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "settings": "settings", "activity": "settings", "monthly": "reports"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "errorcheck", "livecard", "people_household", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "settings": ["__admin__", "settings"], "activity": ["activity"], "monthly": "reports", "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "people_household": "people_household", "access": "access"};
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
-const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "combine", "label": "Salary cards", "right": "combine"}, {"id": "errorcheck", "label": "Check before you pay", "right": "errorcheck"}, {"id": "hrpayroll", "label": "Office HR & Payroll", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Store / inventory", "right": "store"}, {"id": "requests", "label": "Material requests", "right": "requests"}, {"id": "approvals", "label": "Approvals", "right": "approvals"}, {"id": "purchase", "label": "Purchase orders", "right": "approvals"}, {"id": "followup", "label": "Order follow-up", "right": "requests"}, {"id": "lporegister", "label": "LPO register", "right": "approvals"}, {"id": "suppliers", "label": "Suppliers", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "errorcheck", "livecard"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local", "people_household"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies", "right": "__admin__"}, {"id": "sites", "label": "Sites & engineers", "right": "settings"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "backup", "label": "Backup", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}, {"id": "access", "label": "Access", "right": "__admin__"}]};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "errorcheck", "livecard"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local", "people_household"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
 function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 function pgTabOk(t) { return pgHas(t.right); }
-function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id); }
+function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id) || PAGE.tabs.find(t => t.subs.some(sb => sb.id === id || sb.screen === id)); }
 let PG_TAB = null, PG_SUB = null;
 
 const _switchScreen = switchScreen;
@@ -13203,7 +13213,11 @@ const _doLogout = doLogout;
 doLogout = function () { try { sessionStorage.removeItem("infinia_user"); } catch (e) {} return _doLogout.apply(this, arguments); };
 const _dashStoreGo = dashStoreGo;
 dashStoreGo = function (panel) {
-  if (!PAGE.screens.includes("store")) { location.href = "store.html#store:" + panel; return; }
+  if (panel === "reports") { location.href = "reporting.html#storerep"; return; }
+  if (!PAGE.screens.includes("store")) { location.href = "store.html#" + panel; return; }
+  // On the store page: the tab and sub-tab that hold that panel.
+  const t = PAGE.tabs.find(x => x.subs.some(sb => sb.id === panel));
+  if (t) { PG_TAB = t; pgSub(panel); return; }
   _dashStoreGo(panel);
 };
 // Where to land: the tab in the address, else the first tab this login
@@ -13215,10 +13229,12 @@ firstScreenFor = function () {
   if (t && pgTabOk(t)) {
     PG_TAB = t;
     if (t.subs.length) {
-      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right)) || t.subs.find(sb => pgHas(sb.right)) || null;
+      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right))
+            || t.subs.find(sb => (sb.id === want || sb.screen === want) && t.id !== want && pgHas(sb.right))
+            || t.subs.find(sb => pgHas(sb.right)) || null;
+      if (PG_SUB && PG_SUB.go && /pgStorePanel\('([a-z]+)'\)/.test(PG_SUB.go)) STORE_PANEL_WANT = PG_SUB.go.match(/pgStorePanel\('([a-z]+)'\)/)[1];
       return PG_SUB ? (PG_SUB.screen || "pgreports") : t.screen;
     }
-    if (t.screen === "store" && extra) setTimeout(() => storeGo(extra), 120);
     return t.screen;
   }
   for (const tb of PAGE.tabs) if (pgTabOk(tb)) {
@@ -13311,8 +13327,12 @@ function pgSubGo() {
   if (sb.go) setTimeout(() => { try { new Function(sb.go)(); } catch (e) { console.error(e); } }, 30);
 }
 function pgStoreReport(kind) {
-  STORE_REPORT_WANT = kind;
+  STORE_REPORT_WANT = kind; STORE_PANEL_WANT = "reports";
   storeGo("reports");
+}
+function pgStorePanel(panel) {
+  STORE_PANEL_WANT = panel;
+  storeGo(panel);
 }
 function pgSeg(id) { const b = document.querySelector("#" + id + " button.on"); return b ? b.dataset.v : ""; }
 function pgSegHtml(id, choices, on) {

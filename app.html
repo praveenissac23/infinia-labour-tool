@@ -3406,7 +3406,7 @@ function switchScreen(name) {
         employees.map(e => `<option value="${e.emp_no} - ${e.name}">${e.trade || "worker"}</option>`).join("");
       if (!document.querySelectorAll("#mr-lines tr").length) addMrLine();
       if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
-      storeGo("home");
+      storeGo(STORE_PANEL_WANT || "home"); STORE_PANEL_WANT = "";
     }).catch(e => showStatus("store-status", "err", "The store lists could not be loaded: " + errText(e) + " Press Ctrl+Shift+R to try again."));
   }
   if (name === "dashboard") loadDashboardCalendar(calendarCycle.dash || calendarMonthFor(new Date()));
@@ -5971,8 +5971,10 @@ function setUnitSelect(sel, unit) {
 // Store sections. Only one is on screen at a time, so each task gets a
 // clean page instead of six forms stacked together.
 const STORE_PANELS = ["home","give","arrive","suppliers","items","other","reports","hire","returns"];
-// A report asked for by name (a tab, a link) opens instead of Current stock.
+// A report asked for by name (a tab, a link) opens instead of Current stock,
+// and a panel asked for opens once the lists are in, instead of the home.
 let STORE_REPORT_WANT = "";
+let STORE_PANEL_WANT = "";
 // A store door on the dashboard opens the store screen already on the
 // panel that was asked for, rather than dropping the person on the
 // store home to click again.
