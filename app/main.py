@@ -278,7 +278,19 @@ def employed_during(emp, cycle_start, cycle_end):
     past cycle still shows him, because what happened then did happen.
     """
     t = getattr(emp, "terminated_on", None)
-    return t is None or t >= cycle_start
+    j = getattr(emp, "joined_on", None)
+    # Nor is a man who joined after the cycle ended on its books: a worker
+    # added today gets no card for last month.
+    return (t is None or t >= cycle_start) and (j is None or j <= cycle_end)
+
+
+def on_books_on(emp, day):
+    """On the attendance grid for this day: employed in that day's pay
+    cycle, and already joined by that day (a new worker does not appear
+    on the days before he started)."""
+    b = pcyc.cycle_bounds_for(day)[:2]
+    j = getattr(emp, "joined_on", None)
+    return employed_during(emp, b[0], b[1]) and (j is None or j <= day)
 
 
 def _grant_storekeeper_to_existing(db):
@@ -715,6 +727,9 @@ def list_employees(active_only: bool = False, month_year: str = "", as_of: str =
     rows = q.order_by(models.Employee.emp_no).all()
     if bounds:
         rows = [e for e in rows if employed_during(e, bounds[0], bounds[1])]
+    if as_of and bounds:
+        day = date.fromisoformat(as_of)
+        rows = [e for e in rows if e.joined_on is None or e.joined_on <= day]
     if may_see_pay:
         return rows
     # terminated_on goes to everyone: it is not pay information, and the
@@ -742,9 +757,14 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
         _record_labour_rate(db, existing, emp.basic_salary, emp.total_salary, _dubai_today(),
                             "Changed on Master Data", user.id)
         for field, value in emp.dict().items():
+            if field == "joined_on" and value is None:
+                continue                          # not sent: keep the date on file
             setattr(existing, field, value)
     else:
-        existing = models.Employee(**emp.dict())
+        data = emp.dict()
+        if not data.get("joined_on"):
+            data["joined_on"] = _dubai_today()    # a new worker starts today unless a date is given
+        existing = models.Employee(**data)
         db.add(existing)
     db.commit()
     db.refresh(existing)
@@ -780,6 +800,26 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
         models.EmployeeSummary.emp_no == existing.emp_no
     ).distinct().all():
         services.recalculate_summary(db, existing, cycle)
+
+    # A leaving date entered after the next cycle's attendance had begun
+    # leaves him an empty card in a cycle he was never employed in - an
+    # extra zero line on those salary cards. Such a card goes; one with
+    # any pay or any addition/deduction on it is kept, whatever it says.
+    if existing.terminated_on:
+        dropped = []
+        for sm in db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == existing.emp_no).all():
+            try:
+                c_start = pcyc.cycle_bounds_for(datetime.strptime(f"25 {sm.month_year}", "%d %B %Y").date())[0]
+            except ValueError:
+                continue
+            if c_start > existing.terminated_on and not (sm.final_salary or 0) and not sm.adjustments \
+                    and not (sm.present_days or 0) and not (sm.ot_hours or 0) and not (sm.bh_hours or 0):
+                dropped.append(sm.month_year)
+                db.delete(sm)
+        if dropped:
+            db.commit()
+            log_action(db, user.id, "terminate_employee",
+                       f"{existing.emp_no}: empty card removed for {', '.join(dropped)} (after his leaving date)")
 
     log_action(db, user.id, "save_employee", f"{emp.emp_no} - {emp.name}")
     return existing
@@ -1277,12 +1317,8 @@ def get_completion_status(month_year: str, mode: str = "cycle",
     # began: he is not on the grid, so he could never be marked.
     active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).all()  # noqa: E712
     total_active = len(active)
-    expected_by_cycle = {}
     def expected_on(day):
-        cb = pcyc.cycle_bounds_for(day)[:2]
-        if cb not in expected_by_cycle:
-            expected_by_cycle[cb] = {e.emp_no for e in active if employed_during(e, cb[0], cb[1])}
-        return expected_by_cycle[cb]
+        return {e.emp_no for e in active if on_books_on(e, day)}
     rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
         and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end,
              or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
@@ -10202,11 +10238,15 @@ def get_notifications(db: Session = Depends(get_db),
     # ---- Attendance -------------------------------------------------
     if "attendance" in allowed:
         y = today - timedelta(days=1)
-        marked = (db.query(models.DailyRow)
-                    .filter(models.DailyRow.full_date == y,
-                             or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
-                    .count())
-        active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).count()  # noqa: E712
+        # The same workers as yesterday's grid: active and on the books in
+        # that cycle. Counting every active worker kept this warning up
+        # every day once a leaver dropped off the grid.
+        expected = {e.emp_no for e in _labour(db.query(models.Employee)).filter(models.Employee.active == True).all()  # noqa: E712
+                    if on_books_on(e, y)}
+        marked = len({r.emp_no for r in db.query(models.DailyRow.emp_no)
+                      .filter(models.DailyRow.full_date == y,
+                              or_(models.DailyRow.am != "", models.DailyRow.pm != "")).all()} & expected)
+        active = len(expected)
         if active and marked == 0:
             out.append({"id": f"att-none-{y}", "kind": "attendance",
                          "title": "No attendance saved for yesterday",

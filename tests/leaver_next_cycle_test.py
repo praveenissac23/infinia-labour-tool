@@ -56,5 +56,23 @@ with TestClient(main.app) as c:
     pd = {d["date"]: d for d in c.get(f"/attendance/completion/{plabel}?mode=cycle", headers=H).json()["days"]}.get(prev_day.isoformat(), {})
     ck("in the cycle he left in he is still expected", pd.get("total") == len(day) + 1, pd)
 
-print("A LEAVER NEVER BLOCKS THE NEXT CYCLE" if not fails else f"{fails} FAILED")
+    # ---- a new worker added today ------------------------------------
+    r = c.post("/employees", headers=H, json={"emp_no": "NJ-1", "name": "NEW JOINER", "trade": "HELPER", "total_salary": 1500, "basic_salary": 1000})
+    nj = r.json()
+    ck("a new worker gets today as his joining date", nj.get("joined_on") == today.isoformat(), nj)
+    if cs < today:
+        before = c.get(f"/employees?active_only=true&as_of={(today - timedelta(days=1)).isoformat()}", headers=H).json()
+        ck("he is not on yesterday's grid", all(e["emp_no"] != "NJ-1" for e in before))
+    ck("he is on today's grid", any(e["emp_no"] == "NJ-1" for e in c.get(f"/employees?active_only=true&as_of={today.isoformat()}", headers=H).json()))
+    pc = c.get(f"/employees?active_only=true&month_year={plabel}", headers=H).json()
+    ck("and not on last cycle's list (no card there)", all(e["emp_no"] != "NJ-1" for e in pc))
+    comp2 = {d["date"]: d for d in c.get(f"/attendance/completion/{month}?mode=cycle", headers=H).json()["days"]}
+    if cs < today:
+        yd = comp2.get((today - timedelta(days=1)).isoformat(), {})
+        ck("yesterday's calendar count does not expect him", yd.get("total") == len(day), yd)
+    # an edit that does not send the joining date keeps it
+    r = c.post("/employees", headers=H, json={"emp_no": "NJ-1", "name": "NEW JOINER", "trade": "MASON", "total_salary": 1600, "basic_salary": 1000})
+    ck("editing him without a date keeps his joining date", r.json().get("joined_on") == today.isoformat(), r.json())
+
+print("A LEAVER NEVER BLOCKS THE NEXT CYCLE, A JOINER NEVER REACHES BACK" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)

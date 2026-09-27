@@ -69,6 +69,17 @@
   .att-left .bulk-bar #bulk-ot, .att-left .bulk-bar #bulk-bh { flex: 0 0 50px; }
   @media (max-width: 1100px) { .att-left > .toolbar, .att-left .bulk-bar .row:first-child { flex-wrap: wrap; } }
   @media (max-width: 900px) { .att-head { grid-template-columns: 1fr; } .att-head > .att-cal { justify-self: start; } }
+  /* Fields with no style of their own look like every other field, not
+     like a bare browser box. :where() adds no weight, so any existing
+     rule for a particular field still wins. */
+  :where(input[type=text], input[type=search], input[type=number], input[type=password], input[type=email], input[type=tel], input:not([type])) {
+    height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font: inherit; font-size: 13px; background: #fff; box-sizing: border-box; }
+  :where(input[type=text], input[type=search], input[type=number], input[type=password], input[type=email], input[type=tel], input:not([type])):focus { outline: none; border-color: #C0392B; box-shadow: 0 0 0 3px rgba(192,57,43,.12); }
+  /* Master data: Edit and Remove side by side, so a row is one line high. */
+  #screen-masterdata td:last-child { white-space: nowrap; }
+  #screen-masterdata td:last-child .btn { margin: 2px 3px; }
+  /* Live card: the day rows as readable as the worker list beside them. */
+  #screen-livecard table td, #screen-livecard table th { padding-top: 6px; padding-bottom: 6px; }
   .bulk-bar { background: white; padding: 14px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
   .bulk-bar .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .bulk-bar select { width: 150px; flex: 0 0 auto; }
@@ -1240,6 +1251,10 @@
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
             </div>
             <div class="form-row" style="margin-top:8px; align-items:center; gap:8px;">
+              <label style="font-size:13px; color:#555;">Joined on:</label>
+              <input type="date" id="md-emp-joined" style="width:165px;"
+                     title="The day he started. Left empty for a new worker, it is today. He is on the attendance grid from this day.">
+              <span style="width:14px;"></span>
               <label style="font-size:13px; color:#555;">Last working day
                 <span style="color:#888;">(only if he has left the company)</span>:</label>
               <input type="date" id="md-emp-terminated" style="width:165px;"
@@ -1488,7 +1503,7 @@
         </div>
 
         <div class="screen" id="screen-errorcheck">
-          <div class="card" style="margin-top:14px;" id="payroll-check-card">
+          <div class="card" id="payroll-check-card">
             <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
               <h2 style="margin:0;">Check Before You Pay</h2>
               <select id="errcheck-cycle" onchange="loadErrorCheck()" style="width:180px;"></select>
@@ -3310,7 +3325,10 @@ function switchScreen(name) {
   // settled" stayed green on its panel and read as current every time
   // the screen was opened again, long after the return. Cleared on the
   // way in, before the loaders run, so a loader's own message survives.
+  // A message shown in the last two seconds is the loader's own (the
+  // page opening, a save just made) and stays.
   screen.querySelectorAll(".status-msg").forEach(el => {
+    if (el.dataset.at && Date.now() - Number(el.dataset.at) < 2000) return;
     el.className = "status-msg";
     el.textContent = "";
   });
@@ -3784,8 +3802,15 @@ async function loadDate(dateStr, preserveStatus) {
   attendanceStaff = dayStaff;
 
   rowData = {};
+  // A row with a site but no A.M/P.M is only a placeholder (the Sunday
+  // after a saved Saturday gets one on the server) - nobody has marked
+  // the day yet. It is shown like an unmarked day, pre-filled, keeping
+  // its site, and it counts as not yet saved.
+  const isMarked = r => r && (r.am || r.pm);
   dayStaff.forEach(emp => {
-    const r = byEmp[emp.emp_no];
+    const r0 = byEmp[emp.emp_no];
+    const r = isMarked(r0) ? r0 : null;
+    const ph = r0 && !r ? r0 : null;
     if (r) {
       rowData[emp.emp_no] = {
         am: r.am || "", pm: r.pm || "",
@@ -3818,11 +3843,11 @@ async function loadDate(dateStr, preserveStatus) {
       } else if (isSunday) {
         rowData[emp.emp_no] = {
           am: "Sunday", pm: "Sunday",
-          site: (last && last.site) || "", engineer: (last && last.engineer) || "",
+          site: (ph && ph.site) || (last && last.site) || "", engineer: (ph && ph.engineer) || (last && last.engineer) || "",
           ot: "", bh: "", comments: "",
         };
       } else {
-        rowData[emp.emp_no] = { am: "", pm: "", site: "", engineer: "", ot: "", bh: "", comments: "" };
+        rowData[emp.emp_no] = { am: "", pm: "", site: (ph && ph.site) || "", engineer: (ph && ph.engineer) || "", ot: "", bh: "", comments: "" };
       }
     }
   });
@@ -3830,12 +3855,22 @@ async function loadDate(dateStr, preserveStatus) {
   // Snapshot of exactly what the server had when this date was opened,
   // so the save message can report what YOU changed rather than how
   // many workers happen to have attendance on the day.
-  savedSnapshot = JSON.parse(JSON.stringify(rowData));
+  // Pre-filled rows (Sunday, Leave, Terminated) are NOT on the server
+  // yet, so they count as blank here - saving them is a change, and the
+  // message must say they were saved, not "no changes to save".
+  savedSnapshot = {};
+  dayStaff.forEach(emp => {
+    const r = isMarked(byEmp[emp.emp_no]) ? byEmp[emp.emp_no] : null;
+    savedSnapshot[emp.emp_no] = r
+      ? { am: r.am || "", pm: r.pm || "", site: r.site || "", engineer: r.engineer || "",
+          ot: r.ot ? String(r.ot) : "", bh: r.bh ? String(r.bh) : "", comments: r.comments || "" }
+      : { am: "", pm: "", site: "", engineer: "", ot: "", bh: "", comments: "" };
+  });
   // Pre-filled is not saved. Say so, or a screen full of Sunday rows
   // reads as a day already done and nobody presses Save.
-  const preSun = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Sunday").length;
-  const preLeave = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Leave").length;
-  const preGone = dayStaff.filter(e => !byEmp[e.emp_no] && rowData[e.emp_no].am === "Terminated").length;
+  const preSun = dayStaff.filter(e => !isMarked(byEmp[e.emp_no]) && rowData[e.emp_no].am === "Sunday").length;
+  const preLeave = dayStaff.filter(e => !isMarked(byEmp[e.emp_no]) && rowData[e.emp_no].am === "Leave").length;
+  const preGone = dayStaff.filter(e => !isMarked(byEmp[e.emp_no]) && rowData[e.emp_no].am === "Terminated").length;
   if (preSun || preLeave || preGone) {
     const parts = [];
     if (preSun) parts.push(`Sunday pre-filled for ${preSun} worker(s)`);
@@ -4152,6 +4187,7 @@ function mreqStatus(kind, text) {
 function showStatus(elId, kind, text) {
   const el = document.getElementById(elId);
   if (!kind) { el.className = "status-msg"; el.textContent = ""; return; }
+  el.dataset.at = Date.now();
   el.className = "status-msg " + kind;
   el.textContent = text;
 }
@@ -4201,7 +4237,11 @@ async function saveAttendance() {
   staff.forEach(emp => {
     const d = rowData[emp.emp_no];
     if (!d.am && !d.pm) {
-      rows.push({ emp_no: emp.emp_no, full_date: currentDate, am: "", pm: "", site: "", engineer: "", ot: 0, bh: 0, comments: "" });
+      // Sent with its site: a row that still has a site stays on the
+      // server as an unmarked placeholder; only a fully blank row is
+      // cleared. Sending the site as empty wiped every Sunday placeholder
+      // for the whole day on each save.
+      rows.push({ emp_no: emp.emp_no, full_date: currentDate, am: "", pm: "", site: d.site || "", engineer: d.engineer || "", ot: 0, bh: 0, comments: "" });
     }
   });
   } catch (e) {
@@ -4369,6 +4409,7 @@ function editEmployee(empNo) {
   document.getElementById("md-emp-company").value = emp.company || "Infinia";
   document.getElementById("md-emp-paytype").value = emp.pay_type || "daily";
   document.getElementById("md-emp-terminated").value = emp.terminated_on || "";
+  document.getElementById("md-emp-joined").value = emp.joined_on || "";
   document.getElementById("md-emp-total").value = emp.total_salary;
   document.getElementById("md-emp-basic").value = emp.basic_salary;
 }
@@ -4390,6 +4431,7 @@ async function saveEmployee() {
         company: document.getElementById("md-emp-company").value || "Infinia",
         pay_type: document.getElementById("md-emp-paytype").value || "daily",
         terminated_on: document.getElementById("md-emp-terminated").value || null,
+        joined_on: document.getElementById("md-emp-joined").value || null,
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
         active: true,
@@ -4400,6 +4442,7 @@ async function saveEmployee() {
     document.getElementById("md-emp-company").value = "Infinia";
     document.getElementById("md-emp-paytype").value = "daily";
     document.getElementById("md-emp-terminated").value = "";
+    document.getElementById("md-emp-joined").value = "";
     employees = await apiCall("/employees?active_only=true");
     employees.sort((a, b) => natCompare(a.emp_no, b.emp_no));
     renderMasterDataLists();

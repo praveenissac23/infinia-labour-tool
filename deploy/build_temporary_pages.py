@@ -86,7 +86,10 @@ PAGES = {
     "reports": ("Reports", [
         tab("labour", "pgreports", "Labour", ["reports", "combine"], subs=[
             sub("builder", "Cycle report builder", screen="reports"),
-            sub("cards", "Salary cards", screen="combine")]),
+            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
+            # Reports shows the card downloads only; the additions and
+            # deductions editor lives under Payroll.
+            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"])]),
         tab("office", "hrpayroll", "Office payroll", "hrpayroll", subs=[
             sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
             sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),
@@ -160,6 +163,8 @@ CSS = """
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
+  #monthly-report-btn, #screen-monthly .toolbar > button[onclick^="switchScreen('reports')"] { display: none !important; }
+  #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
   #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */

@@ -67,6 +67,7 @@ class EmployeeIn(BaseModel):
     company: str = "Infinia"
     pay_type: str = "daily"
     terminated_on: date | None = None
+    joined_on: date | None = None
     total_salary: float = 0.0
     basic_salary: float = 0.0
     active: bool = True
