@@ -1270,7 +1270,19 @@ def get_completion_status(month_year: str, mode: str = "cycle",
     else:
         cycle_start, cycle_end, _ = pcyc.cycle_bounds_for(parsed)
 
-    total_active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).count()  # noqa: E712
+    # Expected on a day = the workers on that day's grid: active, and on
+    # the books in that day's pay cycle (employed_during) - the same rule
+    # the attendance screen uses. Counting every active worker left a day
+    # red for ever when one of them had a leaving date before the cycle
+    # began: he is not on the grid, so he could never be marked.
+    active = _labour(db.query(models.Employee)).filter(models.Employee.active == True).all()  # noqa: E712
+    total_active = len(active)
+    expected_by_cycle = {}
+    def expected_on(day):
+        cb = pcyc.cycle_bounds_for(day)[:2]
+        if cb not in expected_by_cycle:
+            expected_by_cycle[cb] = {e.emp_no for e in active if employed_during(e, cb[0], cb[1])}
+        return expected_by_cycle[cb]
     rows = db.query(models.DailyRow.full_date, models.DailyRow.emp_no).filter(
         and_(models.DailyRow.full_date >= cycle_start, models.DailyRow.full_date <= cycle_end,
              or_(models.DailyRow.am != "", models.DailyRow.pm != ""))
@@ -1285,9 +1297,10 @@ def get_completion_status(month_year: str, mode: str = "cycle",
     days = []
     d = cycle_start
     while d <= cycle_end:
-        entered = len(counts_by_date.get(d, set()))
-        days.append({"date": d.isoformat(), "entered": entered, "total": total_active,
-                      "complete": total_active > 0 and entered >= total_active})
+        want = expected_on(d)
+        entered = len(counts_by_date.get(d, set()) & want)
+        days.append({"date": d.isoformat(), "entered": entered, "total": len(want),
+                      "complete": len(want) > 0 and entered >= len(want)})
         d += td(days=1)
     return {"cycle_start": cycle_start.isoformat(), "cycle_end": cycle_end.isoformat(),
             "total_active": total_active, "days": days}

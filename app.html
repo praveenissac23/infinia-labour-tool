@@ -53,6 +53,23 @@
   #search-box { width: 80ch; }
   .viewing-label { font-size: 13px; font-weight: bold; color: var(--red); margin-left: auto; }
 
+  /* Daily attendance header: date and tools on the left, the month
+     calendar beside both on the right - one block, both sides the same
+     height, so no gap opens above the grid. */
+  .att-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: stretch; margin-bottom: 14px; }
+  .att-left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .att-left > .toolbar, .att-left > .bulk-bar { margin-bottom: 0; }
+  .att-left > .bulk-bar { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .att-head > .att-cal { margin: 0; padding: 10px 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+  .att-left > .toolbar { flex-wrap: nowrap; }
+  .att-left > .toolbar #search-box { flex: 1 1 200px; min-width: 140px; max-width: 460px; width: auto; }
+  .att-left > .toolbar .viewing-label { margin-left: auto; white-space: nowrap; }
+  .att-left .bulk-bar .row:first-child { flex-wrap: nowrap; }
+  .att-left .bulk-bar select { width: auto; flex: 1 1 120px; min-width: 96px; max-width: 160px; }
+  .att-left .bulk-bar #bulk-comments { flex: 2 1 140px; min-width: 110px; width: auto; }
+  .att-left .bulk-bar #bulk-ot, .att-left .bulk-bar #bulk-bh { flex: 0 0 50px; }
+  @media (max-width: 1100px) { .att-left > .toolbar, .att-left .bulk-bar .row:first-child { flex-wrap: wrap; } }
+  @media (max-width: 900px) { .att-head { grid-template-columns: 1fr; } .att-head > .att-cal { justify-self: start; } }
   .bulk-bar { background: white; padding: 14px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 14px; }
   .bulk-bar .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .bulk-bar select { width: 150px; flex: 0 0 auto; }
@@ -1098,6 +1115,8 @@
         </div>
 
         <div class="screen" id="screen-attendance">
+          <div class="att-head">
+          <div class="att-left">
           <div class="toolbar">
             <label>Date:</label>
             <input type="date" id="date-picker" onchange="onDateChange()">
@@ -1105,8 +1124,7 @@
             <input type="text" id="search-box" placeholder="Employee No or Name" oninput="renderRows()">
             <span class="viewing-label" id="viewing-label"></span>
           </div>
-          <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:14px;">
-            <div class="bulk-bar" style="flex:1; margin-bottom:0;">
+            <div class="bulk-bar">
               <div class="row">
                 <select id="bulk-am"><option value="">A.M -</option></select>
                 <select id="bulk-pm"><option value="">P.M -</option></select>
@@ -1125,7 +1143,8 @@
                 <button class="btn btn-danger" onclick="openClearDayModal()">Clear Day</button>
               </div>
             </div>
-            <div class="card" style="padding:10px 14px; margin-bottom:0; flex-shrink:0;">
+          </div>
+            <div class="card att-cal">
               <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px;">
                 <button class="btn btn-dark" style="padding:1px 8px; font-size:11px;" onclick="shiftCalendarCycle('attendance', -1)">&#9664;</button>
                 <strong id="attendance-calendar-title" style="font-size:11.5px; min-width:120px; text-align:center;"></strong>
