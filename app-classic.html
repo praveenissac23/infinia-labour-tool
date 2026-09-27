@@ -358,6 +358,34 @@
   /* Site / engineer chips - compact, wrap across the card, and the
      whole block scrolls once it gets long instead of pushing the page
      down. Buttons live on the chip so there's no separate column. */
+  /* Sites and engineers: two tidy tables, the form only when adding or editing. */
+  .md-sites-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 1000px) { .md-sites-grid { grid-template-columns: 1fr; } }
+  .md-list-card { margin-bottom: 0; }
+  #companies-card.md-list-card { margin-bottom: 14px; }
+  .md-list-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+  .md-list-head h2 { margin: 0 0 3px; } .md-list-head p { margin: 0; font-size: 12px; color: #888; }
+  .md-list-head .btn { flex-shrink: 0; }
+  .md-count { font-size: 12px; font-weight: 600; color: #8A8178; background: #F4F1ED; border-radius: 10px; padding: 1px 8px; margin-left: 4px; vertical-align: middle; }
+  .md-form { background: #FBF9F7; border: 1px solid #EEE6DE; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  .md-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .md-form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .md-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: #666; }
+  .md-form-grid label.wide { grid-column: span 2; }
+  .md-form-grid input { width: 100%; }
+  .md-form-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .md-table-wrap { max-height: 440px; overflow: auto; border: 1px solid #EEE9E3; border-radius: 8px; }
+  .md-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .md-table th { position: sticky; top: 0; background: #FAF8F5; text-align: left; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: #666; padding: 9px 12px; border-bottom: 1px solid #E4E0DB; }
+  .md-table td { padding: 8px 12px; border-bottom: 1px solid #F0EDE8; vertical-align: middle; }
+  .md-table tr:hover td { background: #FCFAF8; }
+  .md-table th, .md-table td { text-align: left; }
+  .md-table td.code { font-weight: 700; color: #2E3238; }
+  .md-form-grid.co { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .md-table td.muted { color: #999; }
+  .md-table td.addr { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .md-table td.act { text-align: right; white-space: nowrap; width: 1%; }
+  .md-table td.act .btn { padding: 4px 10px; font-size: 12px; margin-left: 4px; }
   .md-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; padding: 2px; }
   .md-chip { display: inline-flex; align-items: center; gap: 4px; background: #F4F5F7;
              border: 1px solid #e2e2e2; border-radius: 14px; padding: 3px 4px 3px 11px; font-size: 12.5px; }
@@ -368,6 +396,7 @@
   .md-chip-btn:hover { background: #DDE0E4; color: #2E3238; }
   .md-chip-del:hover { background: var(--red); color: white; }
   .md-chip-count { font-size: 11.5px; color: #999; margin-top: 8px; }
+  .md-nil { color: #C4BDB5; }
 
   /* Big tap targets on the store home - one per task, so it's obvious
      what each does without reading a manual. */
@@ -1292,34 +1321,40 @@
               </table>
             </div>
           </div>
-          <div style="display:flex; gap:14px;">
-            <div class="card" style="flex:1;">
-              <h2>Add Site</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">
-                The plot number and the man in charge are printed on every purchase order for
-                this site - entered once here rather than typed on each order.</p>
-              <div class="form-row" style="flex-wrap:wrap; gap:8px;">
-                <input type="text" id="md-site-code" placeholder="Site code (e.g. 704)" style="width:150px;">
-                <input type="text" id="md-site-plot" placeholder="Plot no" style="width:170px;">
-                <input type="text" id="md-site-incharge" placeholder="In charge" style="width:150px;">
-                <input type="text" id="md-site-mobile" placeholder="His mobile" style="width:140px;">
+          <div class="md-sites-grid" id="pg-sites-block">
+            <div class="card md-list-card">
+              <div class="md-list-head">
+                <div><h2>Sites <span class="md-count" id="md-site-count"></span></h2>
+                  <p>Plot number, man in charge and delivery address print on every purchase order for the site.</p></div>
+                <button class="btn btn-primary" onclick="mdSiteForm(true)">+ Add site</button>
               </div>
-              <div class="form-row" style="flex-wrap:wrap; gap:8px; margin-top:6px;">
-                <input type="text" id="md-site-address" placeholder="Delivery address - printed on orders" style="flex:1; min-width:260px;">
-                <input type="text" id="md-site-map" placeholder="Google Maps link" style="width:230px;">
-                <button class="btn btn-primary" onclick="addSite()">Add / Update</button>
+              <div class="md-form" id="md-site-form" style="display:none;">
+                <div class="md-form-grid">
+                  <label><span>Site code *</span><input type="text" id="md-site-code" placeholder="e.g. 704"></label>
+                  <label><span>Plot no</span><input type="text" id="md-site-plot"></label>
+                  <label><span>In charge</span><input type="text" id="md-site-incharge"></label>
+                  <label><span>His mobile</span><input type="text" id="md-site-mobile"></label>
+                  <label class="wide"><span>Delivery address (printed on orders)</span><input type="text" id="md-site-address"></label>
+                  <label class="wide"><span>Google Maps link</span><input type="text" id="md-site-map"></label>
+                </div>
+                <div class="md-form-btns"><button class="btn btn-primary" onclick="addSite()">Save site</button>
+                  <button class="btn btn-gray" onclick="mdSiteForm(false)">Cancel</button></div>
               </div>
               <div id="md-site-list"></div>
             </div>
-            <div class="card" style="flex:1;">
-              <h2>Add Engineer</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 8px;">
-                His mobile goes on any purchase order raised from a request he made, so a
-                supplier can reach the man who asked for the material.</p>
-              <div class="form-row" style="gap:8px;">
-                <input type="text" id="md-eng-name" placeholder="Engineer name" style="width:190px;">
-                <input type="text" id="md-eng-mobile" placeholder="Mobile" style="width:150px;">
-                <button class="btn btn-primary" onclick="addEngineer()">Add / Update</button>
+            <div class="card md-list-card">
+              <div class="md-list-head">
+                <div><h2>Engineers <span class="md-count" id="md-eng-count"></span></h2>
+                  <p>His mobile goes on orders raised from his requests.</p></div>
+                <button class="btn btn-primary" onclick="mdEngForm(true)">+ Add engineer</button>
+              </div>
+              <div class="md-form" id="md-eng-form" style="display:none;">
+                <div class="md-form-grid two">
+                  <label><span>Name *</span><input type="text" id="md-eng-name"></label>
+                  <label><span>Mobile</span><input type="text" id="md-eng-mobile"></label>
+                </div>
+                <div class="md-form-btns"><button class="btn btn-primary" onclick="addEngineer()">Save engineer</button>
+                  <button class="btn btn-gray" onclick="mdEngForm(false)">Cancel</button></div>
               </div>
               <div id="md-eng-list"></div>
             </div>
@@ -2502,28 +2537,28 @@
             <label style="font-size:12px; color:#666; cursor:pointer;">
               <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
-          <div class="card" id="companies-card" style="display:none;">
-            <h2>Companies</h2>
-            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
-              The companies staff and labourers are employed by. Used across attendance, payroll and
-              the office HR section. Click a name to change its details.</p>
-            <div class="grid-wrap" style="max-height:30vh;">
-              <table class="hr-grid">
-                <thead><tr><th class="txt" style="width:34%;">Name</th><th style="width:14%;">Short name</th>
-                  <th style="width:10%;">Code prefix</th><th style="width:20%;">TRN</th><th style="width:22%;">WPS ID</th></tr></thead>
-                <tbody id="companies-body"></tbody>
-              </table>
+          <div class="card md-list-card" id="companies-card" style="display:none;">
+            <div class="md-list-head">
+              <div><h2>Companies <span class="md-count" id="co-count"></span></h2>
+                <p>The companies staff and labourers are employed by - used across attendance, payroll and the office HR section.</p></div>
+              <button class="btn btn-primary" onclick="coOpen()">+ Add company</button>
             </div>
-            <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-top:10px; align-items:flex-end;">
+            <div class="md-form" id="co-form" style="display:none;">
               <input type="hidden" id="co-id">
-              <label class="hr-field"><span>Full name *</span><input type="text" id="co-name" style="width:260px;"></label>
-              <label class="hr-field"><span>Short name</span><input type="text" id="co-short" style="width:130px;"></label>
-              <label class="hr-field"><span>Code prefix</span><input type="text" id="co-prefix" style="width:90px;" placeholder="IC"></label>
-              <label class="hr-field"><span>TRN</span><input type="text" id="co-trn" style="width:170px;"></label>
-              <label class="hr-field"><span>WPS ID</span><input type="text" id="co-wps" style="width:170px;"></label>
-              <button class="btn btn-primary" id="co-save" onclick="saveCompany()">Add company</button>
-              <button class="btn btn-gray" id="co-cancel" onclick="coReset()" style="display:none;">Cancel</button>
+              <div class="md-form-grid co">
+                <label class="wide"><span>Full name *</span><input type="text" id="co-name"></label>
+                <label><span>Short name</span><input type="text" id="co-short"></label>
+                <label><span>Code prefix</span><input type="text" id="co-prefix" placeholder="IC"></label>
+                <label><span>TRN</span><input type="text" id="co-trn"></label>
+                <label><span>WPS ID</span><input type="text" id="co-wps"></label>
+              </div>
+              <div class="md-form-btns"><button class="btn btn-primary" id="co-save" onclick="saveCompany()">Save company</button>
+                <button class="btn btn-gray" id="co-cancel" onclick="coReset()">Cancel</button></div>
             </div>
+            <div class="md-table-wrap"><table class="md-table">
+              <thead><tr><th>Name</th><th>Short name</th><th>Code prefix</th><th>TRN</th><th>WPS ID</th><th></th></tr></thead>
+              <tbody id="companies-body"></tbody>
+            </table></div>
           </div>
           <div class="card" id="company-card" style="display:none;">
             <h2>Store In-charge</h2>
@@ -2713,8 +2748,8 @@
             </div>
 
             <div class="card hr-empty" id="hr-run-empty" style="display:none;"></div>
-            <!-- Every company's sheet for the month, one after another, read-only:
-                 the consolidated view. Editing is done company by company. -->
+            <!-- Every company's sheet for the month, one after another, each
+                 editable in place: the consolidated view and the sheets in one. -->
             <div class="card" id="hr-run-all" style="display:none;">
               <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
                 <h2 id="hr-all-title" style="margin:0 12px 0 0;">All companies</h2>
@@ -2725,7 +2760,7 @@
                 <button class="btn btn-gray" onclick="downloadConsolidated('excel')">Export to Excel</button>
                 <button class="btn btn-gray" onclick="window.print()">Print</button>
               </div>
-              <p style="font-size:12px; color:#888; margin:6px 0 0;">To change a figure, pick that company above - its sheet opens for editing.</p>
+              <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
               <div id="hr-all-body" style="margin-top:12px;"></div>
             </div>
             <div class="card" id="hr-run-card" style="display:none;">
@@ -4353,27 +4388,37 @@ function renderMasterDataLists() {
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button></td>
     </tr>`).join("") : "");
 
-  // Compact chips that wrap across the width instead of one full-width
-  // row each - a long list of sites used to run down the page for
-  // screenfuls. Edit/Remove appear on the chip itself.
-  const chip = (label, onEdit, onRemove) => `
-    <span class="md-chip">
-      <span class="md-chip-label">${label}</span>
-      <button class="md-chip-btn" title="Rename" onclick="${onEdit}">&#9998;</button>
-      <button class="md-chip-btn md-chip-del" title="Remove" onclick="${onRemove}">&times;</button>
-    </span>`;
-
+  // Sites and engineers as tables: every detail on one line, Edit and
+  // Remove at the end of the row.
   const esc = v => String(v).replace(/'/g, "\\'");
+  const cell = v => v ? escapeHtml(v) : '<span class="md-nil">-</span>';
+  document.getElementById("md-site-count").textContent = sites.length || "";
+  document.getElementById("md-eng-count").textContent = engineers.length || "";
   document.getElementById("md-site-list").innerHTML = sites.length
-    ? `<div class="md-chip-wrap">${sites.map(s =>
-        chip(s.code, `editSite(${s.id}, '${esc(s.code)}')`, `removeSite(${s.id}, '${esc(s.code)}')`)
-      ).join("")}</div><div class="md-chip-count">${sites.length} site${sites.length === 1 ? "" : "s"}</div>`
-    : '<div class="empty-note">No sites yet.</div>';
+    ? `<div class="md-table-wrap"><table class="md-table"><thead><tr><th>Code</th><th>Plot no</th><th>In charge</th><th>Mobile</th><th>Delivery address</th><th>Map</th><th></th></tr></thead><tbody>${
+        [...sites].sort((x, y) => natCompare(x.code, y.code)).map(s => `<tr>
+          <td class="code">${escapeHtml(s.code)}</td><td>${cell(s.plot_no)}</td><td>${cell(s.incharge)}</td><td>${cell(s.incharge_mobile)}</td>
+          <td class="addr" title="${escapeAttr(s.address || "")}">${cell(s.address)}</td>
+          <td>${s.map_url ? `<a href="${escapeAttr(s.map_url)}" target="_blank" rel="noopener" style="color:var(--red);">Open</a>` : '<span class="md-nil">-</span>'}</td>
+          <td class="act"><button class="btn btn-gray" onclick="editSite(${s.id}, '${esc(s.code)}')">Edit</button><button class="btn btn-danger" onclick="removeSite(${s.id}, '${esc(s.code)}')">Remove</button></td></tr>`).join("")
+      }</tbody></table></div>`
+    : '<div class="empty-note">No sites yet - press + Add site.</div>';
   document.getElementById("md-eng-list").innerHTML = engineers.length
-    ? `<div class="md-chip-wrap">${engineers.map(e =>
-        chip(e.name, `editEngineer(${e.id}, '${esc(e.name)}')`, `removeEngineer(${e.id}, '${esc(e.name)}')`)
-      ).join("")}</div><div class="md-chip-count">${engineers.length} engineer${engineers.length === 1 ? "" : "s"}</div>`
-    : '<div class="empty-note">No engineers yet.</div>';
+    ? `<div class="md-table-wrap"><table class="md-table"><thead><tr><th>Name</th><th>Mobile</th><th></th></tr></thead><tbody>${
+        [...engineers].sort((x, y) => natCompare(x.name, y.name)).map(e => `<tr>
+          <td class="code">${escapeHtml(e.name)}</td><td>${cell(e.mobile)}</td>
+          <td class="act"><button class="btn btn-gray" onclick="editEngineer(${e.id}, '${esc(e.name)}')">Edit</button><button class="btn btn-danger" onclick="removeEngineer(${e.id}, '${esc(e.name)}')">Remove</button></td></tr>`).join("")
+      }</tbody></table></div>`
+    : '<div class="empty-note">No engineers yet - press + Add engineer.</div>';
+}
+// The add / edit forms open on + Add or Edit and close on Save or Cancel.
+function mdSiteForm(show) {
+  const f = document.getElementById("md-site-form"); f.style.display = show ? "" : "none";
+  if (show) { if (show === true) ["md-site-code", "md-site-plot", "md-site-incharge", "md-site-mobile", "md-site-address", "md-site-map"].forEach(id => document.getElementById(id).value = ""); document.getElementById("md-site-code").focus(); }
+}
+function mdEngForm(show) {
+  const f = document.getElementById("md-eng-form"); f.style.display = show ? "" : "none";
+  if (show) { if (show === true) ["md-eng-name", "md-eng-mobile"].forEach(id => document.getElementById(id).value = ""); document.getElementById("md-eng-name").focus(); }
 }
 
 // Removing a worker means two different things. Someone who has worked
@@ -4568,6 +4613,7 @@ async function addSite() {
   });
   ["md-site-code", "md-site-plot", "md-site-incharge", "md-site-mobile",
    "md-site-address", "md-site-map"].forEach(id => document.getElementById(id).value = "");
+  mdSiteForm(false);
   sites = await apiCall("/sites");
   renderMasterDataLists();
   refreshSiteList();
@@ -4678,6 +4724,7 @@ async function addEngineer() {
   });
   document.getElementById("md-eng-name").value = "";
   document.getElementById("md-eng-mobile").value = "";
+  mdEngForm(false);
   engineers = await apiCall("/engineers");
   renderMasterDataLists();
   populateSelect("bulk-engineer", engineers.map(e => e.name), "Engineer");
@@ -4695,9 +4742,9 @@ async function editSite(id, currentCode) {
     document.getElementById("md-site-mobile").value = s.incharge_mobile || "";
     document.getElementById("md-site-address").value = s.address || "";
     document.getElementById("md-site-map").value = s.map_url || "";
-    document.getElementById("md-site-code").focus();
+    mdSiteForm("edit");
     showStatus("md-status", "ok",
-      `Editing ${s.code} - change what you need and press Add / Update.`);
+      `Editing ${s.code} - change what you need and press Save site.`);
     return;
   }
   const newCode = prompt("Rename site:", currentCode);
@@ -4736,8 +4783,8 @@ async function editEngineer(id, currentName) {
   if (e) {
     document.getElementById("md-eng-name").value = e.name;
     document.getElementById("md-eng-mobile").value = e.mobile || "";
-    document.getElementById("md-eng-name").focus();
-    showStatus("md-status", "ok", `Editing ${e.name} - change what you need and press Add / Update.`);
+    mdEngForm("edit");
+    showStatus("md-status", "ok", `Editing ${e.name} - change what you need and press Save engineer.`);
     return;
   }
   const newName = prompt("Rename engineer:", currentName);
@@ -11427,6 +11474,12 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 let HR_COMPANIES = [];
 let HR_STAFF = [];
 let HR_RUN = null;
+// All companies at once, every sheet editable in place. HR_RUN is set to
+// whichever company's sheet is being typed in, so saving, loans, holds
+// and approval use exactly the same code as a single company's sheet.
+let HR_ALL_MODE = false;
+const HR_ALL_RUNS = {};
+function hrAllUse(id) { if (HR_ALL_RUNS[id]) HR_RUN = HR_ALL_RUNS[id]; }
 let HR_RUNS = [];
 
 function hrMsg(kind, text) { showStatus("hr-status", kind, text); }
@@ -11566,7 +11619,7 @@ function hrSyncBar() {
   const month = document.getElementById("hr-run-month").value || hrToday().slice(0, 7);
   document.querySelectorAll("#hr-grp-seg button").forEach(b => b.classList.toggle("on", b.dataset.v === grp));
 
-  const st = HR_RUN && HR_RUN.month_year === hrCycleName(month) ? HR_RUN.status : "";
+  const st = !HR_ALL_MODE && HR_RUN && HR_RUN.month_year === hrCycleName(month) ? HR_RUN.status : "";
   const el = document.getElementById("hr-month-state");
   el.className = "hr-state " + st;
   el.innerHTML = st === "approved" ? "<i></i>Approved &amp; locked" : st === "draft" ? "<i></i>Draft - not yet approved" : "";
@@ -11595,6 +11648,8 @@ async function hrOpenNow(force) {
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
   if (!month) return;
   if (!company_id) { HR_RUN = null; renderRun(); await hrOpenAll(month); return; }
+  HR_ALL_MODE = false;
+  document.getElementById("hr-all-body").innerHTML = "";   // one copy of each row on the page, never two
   document.getElementById("hr-run-all").style.display = "none";
   // Looking at a month is not opening it. A month with no cycle yet -
   // other than the current one - waits for the Open button, so stepping
@@ -11730,6 +11785,12 @@ function hrRoutes(routes, running) {
 function renderRun() {
   const r = HR_RUN;
   const card = document.getElementById("hr-run-card");
+  if (HR_ALL_MODE) {
+    card.style.display = "none";
+    if (r && document.querySelector(`#hr-all-body [data-run="${r.id}"]`)) { HR_ALL_RUNS[r.id] = r; hrAllRenderSection(r); }
+    hrSyncBar();
+    return;
+  }
   if (!r) { card.style.display = "none"; return; }
   card.style.display = "";
   document.getElementById("hr-run-all").style.display = "none";
@@ -11749,7 +11810,17 @@ function renderRun() {
   const pension = r.lines.some(l => l.pension);
   document.getElementById("hr-run-pension-h").style.display = pension ? "" : "none";
 
-  document.getElementById("hr-run-body").innerHTML = r.lines.map(l => {
+  document.getElementById("hr-run-body").innerHTML = hrRunRows(r);
+  renderRunFoot();
+  document.getElementById("hr-th-net").textContent = r.progress && r.progress.running ? "Salary To Date" : "Net Pay";
+  document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route, r.progress && r.progress.running);
+  document.getElementById("hr-run-progress").style.display = "none";
+  document.querySelectorAll("#hr-run-body textarea.hr-rem").forEach(hrGrow);
+}
+function hrRunRows(r) {
+  const locked = r.status === "approved";
+  const pension = r.lines.some(l => l.pension);
+  return r.lines.map(l => {
     const remark = l.remarks || l.deduction_note || "";
     return `
     <tr data-line="${l.id}"${l.held ? ' class="hr-held"' : ""}>
@@ -11771,29 +11842,25 @@ function renderRun() {
         `<textarea class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks" rows="1"
                 oninput="recalcLine(${l.id}); hrGrow(this)" onchange="hrAutoSave()">${escapeHtml(remark)}</textarea>`}</td>
     </tr>`; }).join("");
-  renderRunFoot();
-  document.getElementById("hr-th-net").textContent = r.progress && r.progress.running ? "Salary To Date" : "Net Pay";
-  document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route, r.progress && r.progress.running);
-  // The month so far, as the labour live card shows it: how far in we
-  // are, and what the staff have earned up to today.
-  document.getElementById("hr-run-progress").style.display = "none";
-  document.querySelectorAll("#hr-run-body textarea.hr-rem").forEach(hrGrow);
 }
 
 // The figures at the foot are the figures in the rows added up, worked
 // out here rather than fetched, so typing a bill changes the total the
 // moment it is typed instead of after a save.
 function renderRunFoot() {
-  const paid = HR_RUN.lines.filter(l => !l.held);
+  if (HR_ALL_MODE) { hrAllRenderFoot(HR_RUN); return; }
+  document.getElementById("hr-run-foot").innerHTML = hrRunFootHtml(HR_RUN);
+}
+function hrRunFootHtml(R) {
+  const paid = R.lines.filter(l => !l.held);
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
-  const pension = HR_RUN.lines.some(l => l.pension);
+  const pension = R.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
                  sum("loan_deduction"), sum("net_pay")]
                 .concat(pension ? [sum("pension")] : []);
-  document.getElementById("hr-run-foot").innerHTML =
-    `<tr class="hr-foot">
-       <td colspan="3" class="txt">TOTAL - ${HR_RUN.lines.filter(l => !l.held).length} staff${HR_RUN.lines.some(l => l.held) ? `, ${HR_RUN.lines.filter(l => l.held).length} held over` : ""}</td>
+  return `<tr class="hr-foot">
+       <td colspan="3" class="txt">TOTAL - ${R.lines.filter(l => !l.held).length} staff${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
        ${cells.map(v => `<td class="num">${hrMoney(v)}</td>`).join("")}
        <td></td></tr>`;
 }
@@ -11804,14 +11871,15 @@ function renderRunFoot() {
 function recalcLine(id) {
   const l = HR_RUN.lines.find(x => x.id === id);
   if (!l) return;
-  document.querySelectorAll(`.hr-cell[data-line="${id}"]`).forEach(el => {
+  const scope = HR_ALL_MODE ? (document.querySelector(`#hr-all-body [data-run="${HR_RUN.id}"]`) || document) : document.getElementById("hr-run-card");
+  scope.querySelectorAll(`.hr-cell[data-line="${id}"]`).forEach(el => {
     l[el.dataset.field] = el.dataset.field === "remarks" ? el.value : hrNum(el.value);
   });
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
   // Pension is printed beside net pay, never added into it.
   l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
-  if (!(HR_RUN.progress && HR_RUN.progress.running))
-    document.getElementById(`hr-net-${id}`).textContent = hrMoney(l.net_pay);
+  const netEl = scope.querySelector(`#hr-net-${id}`);
+  if (netEl && !(HR_RUN.progress && HR_RUN.progress.running)) netEl.textContent = hrMoney(l.net_pay);
   renderRunFoot();
   const routes = {};
   HR_RUN.lines.filter(x => !x.held).forEach(x => { routes[x.pay_route] = (routes[x.pay_route] || 0) + x.net_pay; });
@@ -11943,12 +12011,12 @@ async function printStatement() {
 // Every company's sheet for the month and statement, one table each with
 // its total, and the grand total - the consolidated statement on screen.
 async function hrOpenAll(month) {
+  HR_ALL_MODE = true;
+  document.getElementById("hr-run-body").innerHTML = "";   // one copy of each row on the page, never two
   const group = document.getElementById("hr-run-group").value || "staff";
   document.getElementById("hr-run-empty").style.display = "none";
-  const card = document.getElementById("hr-run-all"); card.style.display = "";
-  document.getElementById("hr-all-title").textContent = `All companies \u00b7 ${group === "local" ? "Local staff" : "Office staff"} \u00b7 ${month}`;
-  const body = document.getElementById("hr-all-body");
-  body.innerHTML = '<div class="hr-nil" style="padding:10px;">Loading\u2026</div>';
+  document.getElementById("hr-run-card").style.display = "none";
+  const card = document.getElementById("hr-run-all");
   if (!HR_RUNS.length) await loadRunList();
   const runs = [];
   for (const co of HR_COMPANIES) {
@@ -11966,46 +12034,92 @@ async function hrOpenAll(month) {
     }
     runs.push({ co, short, run: full });
   }
-  const money = v => hrMoney(v);
-  let gPaid = 0, gHeld = 0; const gsum = { basic: 0, allowance: 0, adj: 0, deduction: 0, loan_deduction: 0, net_pay: 0 };
+  // A month or group changed while this was loading: that newer call draws.
+  if (!HR_ALL_MODE || (document.getElementById("hr-run-group").value || "staff") !== group
+      || hrCycleName(document.getElementById("hr-run-month").value) !== month) return;
+  Object.keys(HR_ALL_RUNS).forEach(k => delete HR_ALL_RUNS[k]);
+  runs.forEach(x => { if (x.run) HR_ALL_RUNS[x.run.id] = x.run; });
+  const body = document.getElementById("hr-all-body");
+  // Built in full, then shown in one step - no empty card, no "Loading",
+  // no table growing into place.
   body.innerHTML = runs.map(({ co, short, run }) => {
     if (!run) {
       const has = (HR_STAFF || []).some(x => x.company_id === co.id && (x.pay_group || "staff") === group);
-      return has ? `<div class="hr-all-co"><h3>${escapeHtml(short)} <span class="hr-nil">- ${escapeHtml(month)} not opened yet</span></h3></div>` : "";
+      return has ? `<div class="hr-all-co"><h3>${escapeHtml(short)} <span class="hr-nil">- ${escapeHtml(month)} not opened yet</span>
+        <button class="btn btn-gray btn-sm" style="margin-left:10px;" onclick="hrAllOpen(${co.id})">Open ${escapeHtml(month)}</button></h3></div>` : "";
     }
-    const paid = run.lines.filter(l => !l.held), held = run.lines.length - paid.length;
-    const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
-    const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
-    gPaid += paid.length; gHeld += held;
-    for (const k of ["basic", "allowance", "deduction", "loan_deduction", "net_pay"]) gsum[k] += sum(k);
-    gsum.adj += adj;
-    const locked = run.status === "approved";
-    return `<div class="hr-all-co">
-      <h3>${escapeHtml(short)} <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>
-        <a href="#" onclick="document.getElementById('hr-run-company').value='${co.id}'; hrSyncBar(); openPayrollCycle(); return false;" style="font-size:12px; margin-left:10px; color:var(--red);">Open for editing</a></h3>
-      <div class="grid-wrap"><table class="hr-grid">
-        <thead><tr><th style="width:7%;">Code</th><th class="txt" style="width:22%;">Employee</th><th class="num">Basic</th><th class="num">Allowance</th>
-          <th class="num">Add / Ded.</th><th class="num">Absent Ded.</th><th class="num">Loan</th><th class="num">Net Pay</th><th class="txt" style="width:22%;">Remark</th></tr></thead>
-        <tbody>${run.lines.map(l => { const a = hrAdjust(l); return `<tr${l.held ? ' class="hr-held"' : ""}>
-          <td>${escapeHtml(l.emp_no)}</td><td class="txt">${escapeHtml(l.name)}${l.held ? ' <span class="hr-nil">held</span>' : ""}</td>
-          <td class="num">${money(l.basic)}</td><td class="num">${money(l.allowance)}</td>
-          <td class="num">${a ? (a > 0 ? "+" : "-") + money(Math.abs(a)) : '<span class="hr-nil">-</span>'}</td>
-          <td class="num">${l.deduction ? money(l.deduction) : '<span class="hr-nil">-</span>'}</td>
-          <td class="num">${l.loan_deduction ? money(l.loan_deduction) : '<span class="hr-nil">-</span>'}</td>
-          <td class="num net">${money(l.net_pay)}</td><td class="txt">${escapeHtml(l.remarks || l.deduction_note || "")}</td></tr>`; }).join("")}</tbody>
-        <tfoot><tr class="hr-foot"><td colspan="2" class="txt">${escapeHtml(short)} - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
-          <td class="num">${money(sum("basic"))}</td><td class="num">${money(sum("allowance"))}</td><td class="num">${adj ? money(adj) : "-"}</td>
-          <td class="num">${money(sum("deduction"))}</td><td class="num">${money(sum("loan_deduction"))}</td><td class="num">${money(sum("net_pay"))}</td><td></td></tr></tfoot>
-      </table></div></div>`;
-  }).join("") + (gPaid ? `<div class="grid-wrap" style="margin-top:8px;"><table class="hr-grid"><tfoot><tr class="hr-foot">
-      <td colspan="2" class="txt" style="width:29%;">GRAND TOTAL - ${gPaid} staff${gHeld ? `, ${gHeld} held over` : ""}</td>
-      <td class="num">${money(gsum.basic)}</td><td class="num">${money(gsum.allowance)}</td><td class="num">${gsum.adj ? money(gsum.adj) : "-"}</td>
-      <td class="num">${money(gsum.deduction)}</td><td class="num">${money(gsum.loan_deduction)}</td><td class="num">${money(gsum.net_pay)}</td><td style="width:22%;"></td></tr></tfoot></table></div>` : "");
+    return `<div class="hr-all-co" data-run="${run.id}" data-short="${escapeAttr(short)}"></div>`;
+  }).join("") + `<div class="grid-wrap" id="hr-all-grand" style="margin-top:8px;"></div>`;
+  runs.forEach(x => { if (x.run) hrAllRenderSection(x.run); });
+  hrAllRenderGrand();
+  document.getElementById("hr-all-title").textContent = `All companies · ${group === "local" ? "Local staff" : "Office staff"} · ${month}`;
   const withStaff = runs.filter(r => r.run || (HR_STAFF || []).some(x => x.company_id === r.co.id && (x.pay_group || "staff") === group)).length;
   document.getElementById("hr-all-sub").textContent = `${runs.filter(r => r.run).length} of ${withStaff} companies opened`;
+  card.style.display = "";
+  body.querySelectorAll("textarea.hr-rem").forEach(hrGrow);
   if (runs.some(r => r.run && !HR_RUNS.some(x => x.id === r.run.id))) await loadRunList();
   hrSyncBar();
 }
+// One company's sheet inside the all-companies view: the same rows,
+// boxes and totals as its own sheet, with its own Approve / Reopen.
+function hrAllRenderSection(run) {
+  const box = document.querySelector(`#hr-all-body [data-run="${run.id}"]`); if (!box) return;
+  const locked = run.status === "approved";
+  const pension = run.lines.some(l => l.pension);
+  const running = run.progress && run.progress.running;
+  box.innerHTML = `<h3>${escapeHtml(box.dataset.short || run.company_short)}
+      <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>
+      ${locked ? `<button class="btn btn-danger btn-sm" style="margin-left:10px;" onclick="hrAllUse(${run.id}); reopenPayrollRun()">Reopen</button>`
+               : `<button class="btn btn-gray btn-sm" style="margin-left:10px;" onclick="hrAllUse(${run.id}); approvePayrollRun()">Approve &amp; lock</button>`}
+    </h3>
+    ${run.notice ? `<div class="status-msg warn" style="display:block;">${escapeHtml(run.notice)}</div>` : ""}
+    <div class="grid-wrap"><table class="hr-grid hr-cycle">
+      <thead><tr><th style="width:4%;" title="Include on this cycle">Pay</th><th style="width:5%;">Code</th><th class="txt" style="width:14%;">Employee</th>
+        <th class="num" style="width:7%;">Basic</th><th class="num" style="width:7%;">Fix Allown.</th><th class="num" style="width:9%;">Add / Ded.</th>
+        <th class="num" style="width:8.5%;">Absent Ded.</th><th class="num" style="width:9%;">Loan</th>
+        <th class="num" style="width:10.5%;">${running ? "Salary To Date" : "Net Pay"}</th>${pension ? '<th class="num" style="width:6%;">Pension</th>' : ""}
+        <th class="txt" style="width:24%;">Remark</th></tr></thead>
+      <tbody>${hrRunRows(run)}</tbody>
+      <tfoot id="hr-all-foot-${run.id}">${hrRunFootHtml(run)}</tfoot>
+    </table></div>`;
+  box.querySelectorAll("textarea.hr-rem").forEach(hrGrow);
+  hrAllRenderGrand();
+}
+function hrAllRenderFoot(run) {
+  const f = document.getElementById(`hr-all-foot-${run.id}`);
+  if (f) f.innerHTML = hrRunFootHtml(run);
+  hrAllRenderGrand();
+}
+function hrAllRenderGrand() {
+  const el = document.getElementById("hr-all-grand"); if (!el) return;
+  const all = Object.values(HR_ALL_RUNS);
+  const paid = all.flatMap(r => r.lines.filter(l => !l.held)), held = all.reduce((a, r) => a + r.lines.filter(l => l.held).length, 0);
+  if (!paid.length) { el.innerHTML = ""; return; }
+  const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
+  const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
+  el.innerHTML = `<table class="hr-grid"><tfoot><tr class="hr-foot">
+      <td class="txt" style="width:23%;">GRAND TOTAL - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
+      <td class="num" style="width:7%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:7%;">${hrMoney(sum("allowance"))}</td>
+      <td class="num" style="width:9%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:8.5%;">${hrMoney(sum("deduction"))}</td>
+      <td class="num" style="width:9%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:10.5%;">${hrMoney(sum("net_pay"))}</td>
+      <td style="width:24%;"></td></tr></tfoot></table>`;
+}
+// Opening an earlier month for one company from the all-companies view.
+async function hrAllOpen(companyId) {
+  const month = hrCycleName(document.getElementById("hr-run-month").value);
+  const group = document.getElementById("hr-run-group").value || "staff";
+  try { await apiCall("/employees/payroll/runs", { method: "POST", body: JSON.stringify({ month_year: month, company_id: companyId, group }) }); }
+  catch (e) { hrMsg("warn", errText(e)); return; }
+  await loadRunList(); await hrOpenAll(month);
+}
+// Whatever is typed or clicked in a company's sheet works on that sheet.
+function hrAllWire() {
+  const body = document.getElementById("hr-all-body"); if (!body || body.dataset.wired) return;
+  body.dataset.wired = "1";
+  const pick = e => { const box = e.target.closest && e.target.closest("[data-run]"); if (box) hrAllUse(Number(box.dataset.run)); };
+  ["pointerdown", "focusin", "input", "change", "keydown", "click"].forEach(t => body.addEventListener(t, pick, true));
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hrAllWire); else hrAllWire();
 async function downloadConsolidated(fmt) {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   if (!month) { hrMsg("warn", "Pick a month first."); return; }
@@ -12154,11 +12268,13 @@ async function loadCompanies() {
   let rows;
   try { rows = await apiCall("/employees/companies"); } catch (e) { card.style.display = "none"; return; }
   card.style.display = "";
+  const nil = v => v ? escapeHtml(v) : '<span class="md-nil">-</span>';
+  document.getElementById("co-count").textContent = rows.length || "";
   document.getElementById("companies-body").innerHTML = rows.map(c => `
-    <tr><td class="txt"><a href="#" onclick="coEdit(${c.id});return false;" style="color:var(--red); text-decoration:none;">${escapeHtml(c.name)}</a></td>
-      <td>${escapeHtml(c.short_name || "-")}</td><td>${escapeHtml(c.code_prefix || "-")}</td>
-      <td>${escapeHtml(c.trn || "-")}</td><td>${escapeHtml(c.wps_id || "-")}</td></tr>`).join("") ||
-    `<tr><td colspan="5" class="hr-nil" style="padding:12px;">No companies yet.</td></tr>`;
+    <tr><td class="code">${escapeHtml(c.name)}</td><td>${nil(c.short_name)}</td><td>${nil(c.code_prefix)}</td>
+      <td>${nil(c.trn)}</td><td>${nil(c.wps_id)}</td>
+      <td class="act"><button class="btn btn-gray" onclick="coEdit(${c.id})">Edit</button></td></tr>`).join("") ||
+    `<tr><td colspan="6" class="md-nil" style="padding:12px;">No companies yet - press + Add company.</td></tr>`;
   window.__companies = rows;
 }
 function coEdit(id) {
@@ -12167,11 +12283,15 @@ function coEdit(id) {
   document.getElementById("co-name").value = c.name; document.getElementById("co-short").value = c.short_name || "";
   document.getElementById("co-prefix").value = c.code_prefix || ""; document.getElementById("co-trn").value = c.trn || "";
   document.getElementById("co-wps").value = c.wps_id || "";
-  document.getElementById("co-save").textContent = "Save changes"; document.getElementById("co-cancel").style.display = "";
+  document.getElementById("co-form").style.display = ""; document.getElementById("co-name").focus();
+}
+function coOpen() {
+  ["co-id", "co-name", "co-short", "co-prefix", "co-trn", "co-wps"].forEach(i => document.getElementById(i).value = "");
+  document.getElementById("co-form").style.display = ""; document.getElementById("co-name").focus();
 }
 function coReset() {
   ["co-id", "co-name", "co-short", "co-prefix", "co-trn", "co-wps"].forEach(i => document.getElementById(i).value = "");
-  document.getElementById("co-save").textContent = "Add company"; document.getElementById("co-cancel").style.display = "none";
+  document.getElementById("co-form").style.display = "none";
 }
 async function saveCompany() {
   const v = i => document.getElementById(i).value.trim();

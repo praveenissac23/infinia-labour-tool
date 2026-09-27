@@ -677,11 +677,12 @@ def build():
     src = src.replace('<div class="card">\n            <h2>Backup</h2>',
                       '<div class="card" id="pg-backup-card">\n            <h2>Backup</h2>', 1)
     # Sites and engineers move from Master Data to Settings.
-    start = src.index('          <div style="display:flex; gap:14px;">\n            <div class="card" style="flex:1;">\n              <h2>Add Site</h2>')
+    start = src.index('          <div class="md-sites-grid" id="pg-sites-block">')
     end = src.index('\n        </div>\n', start)
     block = src[start:end]
     src = src[:start] + src[end + 1:]
-    block = block.replace('<div style="display:flex; gap:14px;">', '<div style="display:flex; gap:14px;" id="pg-sites-block">', 1)
+    # the block already carries id="pg-sites-block"
+
     s_start = src.index('id="screen-settings"')
     s_end = src.index('id="screen-activity"')
     close = src.rindex('\n        </div>\n', s_start, s_end)
