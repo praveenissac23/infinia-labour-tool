@@ -4335,9 +4335,15 @@ function summariseErrors(errors) {
 }
 
 async function saveAttendance() {
+  // Saved from the same list the grid was drawn from: the workforce on
+  // that date. It used to walk every active worker, and one active man
+  // who was not on the day's grid (a leaving date already past) made
+  // the save stop dead - no request, no message, nothing saved.
+  const staff = ((attendanceStaff && attendanceStaff.length) ? attendanceStaff : employees).filter(emp => rowData[emp.emp_no]);
   const rows = [];
   let filledCount = 0;
-  employees.forEach(emp => {
+  try {
+  staff.forEach(emp => {
     const d = rowData[emp.emp_no];
     if (!d.am && !d.pm) return;
     filledCount++;
@@ -4348,12 +4354,16 @@ async function saveAttendance() {
       comments: d.comments,
     });
   });
-  employees.forEach(emp => {
+  staff.forEach(emp => {
     const d = rowData[emp.emp_no];
     if (!d.am && !d.pm) {
       rows.push({ emp_no: emp.emp_no, full_date: currentDate, am: "", pm: "", site: "", engineer: "", ot: 0, bh: 0, comments: "" });
     }
   });
+  } catch (e) {
+    showStatus("att-status", "err", "Could not prepare the save: " + (e && e.message ? e.message : e) + ". Nothing was saved - please tell the admin.");
+    return;
+  }
 
   try {
     const result = await apiCall("/attendance/save", {
@@ -4364,7 +4374,7 @@ async function saveAttendance() {
     // Report what actually CHANGED in this session, not how many
     // workers have attendance overall - saving after editing 3 rows
     // used to say "74 marked", which read like it had touched everyone.
-    const changed = employees.filter(emp => {
+    const changed = staff.filter(emp => {
       const before = savedSnapshot[emp.emp_no] || {};
       const now = rowData[emp.emp_no] || {};
       return ["am","pm","site","engineer","ot","bh","comments"]
