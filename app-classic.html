@@ -5154,7 +5154,17 @@ let monthlyNotes = {};              // emp_no -> note, for the cycle on screen
 let monthlyNotesLoadedFor = null;
 let monthlySaved = null;            // where the picker and radios stood before
 
+// The table is kept out of sight until the monthly version of it is
+// drawn, then shown once - otherwise the builder's table flashed in,
+// emptied to "loading" and redrew, three jumps in a third of a second.
 async function openMonthlyReport() {
+  if (monthlyMode) return;
+  const slot = document.getElementById("monthly-preview-slot");
+  if (slot) slot.style.visibility = "hidden";
+  try { await openMonthlyReportNow(); }
+  finally { if (slot) slot.style.visibility = ""; }
+}
+async function openMonthlyReportNow() {
   if (monthlyMode) return;
   monthlyMode = true;
   // Remember the builder as it stood, so Back returns to exactly that.
@@ -5204,7 +5214,10 @@ function closeMonthlyReport() {
   if (card && home && card.parentElement !== home) home.appendChild(card);
   const s = monthlySaved; monthlySaved = null;
   if (!s) { renderReportPreview(); return; }
+  // Out of sight until the builder's own table is back, then shown once.
+  if (card) card.style.visibility = "hidden";
   (async () => {
+    try {
     if (reportSource !== s.source) { reportSource = s.source; await initReportColumnPicker(true); }
     document.querySelectorAll('input[name="payview"]').forEach(r => { r.checked = r.value === s.payview; });
     document.querySelectorAll('#report-column-picker-id input[data-dim]').forEach(b => { b.checked = s.dims.includes(b.dataset.dim); });
@@ -5212,7 +5225,8 @@ function closeMonthlyReport() {
     reportColOrder = s.order;
     const modeEl = document.getElementById("report-mode");
     if (modeEl && modeEl.value !== s.mode) { modeEl.value = s.mode; onReportModeChange(); }
-    loadReports();
+    await loadReports();
+    } finally { if (card) card.style.visibility = ""; }
   })();
 }
 
@@ -5316,7 +5330,7 @@ async function loadReports() {
   if (mode === "cycle") {
     // Cycle mode ignores any dates left in the range boxes.
     dateFrom = ""; dateTo = "";
-    showStatus("report-status", "ok", `Showing the payroll cycle: ${cycleLabel(cycle)}`);
+    showStatus("report-status", null);   // the cycle box already says which cycle
   } else {
     if (!dateFrom || !dateTo) {
       showStatus("report-status", "warn", "Pick both a from and a to date.");
@@ -5328,7 +5342,7 @@ async function loadReports() {
       document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">No results.</td></tr>`;
       return;
     }
-    showStatus("report-status", "ok", `Showing ${dateFrom} to ${dateTo} - every day in this range, across whichever cycles it covers.`);
+    showStatus("report-status", null);   // the date boxes already say which days
   }
 
   const company = (document.getElementById("report-company") || {}).value || "";
