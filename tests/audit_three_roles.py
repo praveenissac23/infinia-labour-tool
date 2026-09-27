@@ -12,7 +12,7 @@ def audit(who):
         # port meant this list stayed empty and the audit caught nothing.
         pg.on('response', lambda r: bad.append((r.request.method, r.url.split('8032')[-1][:70], r.status)) if r.status>=400 and '8032' in r.url and '/auth/login' not in r.url else None)
         ctx.on('page', lambda np: np.close())
-        pg.goto('http://127.0.0.1:8032/app.html')
+        pg.goto('http://127.0.0.1:8032/app-classic.html')
         pg.fill('#login-username',who); pg.fill('#login-password','p'); pg.evaluate('doLogin()')
         pg.wait_for_selector('#app-screen', state='visible', timeout=15000); time.sleep(2)
         screens=pg.evaluate("[...document.querySelectorAll('.nav-item')].filter(n=>n.offsetParent).map(n=>n.getAttribute('data-target')||n.getAttribute('data-screen'))")

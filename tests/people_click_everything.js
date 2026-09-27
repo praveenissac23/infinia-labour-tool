@@ -21,7 +21,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   p.on('response', r => { if (r.status() >= 500) http.push(`${r.status()} ${r.url()}`); });
 
   // ---- The gate -------------------------------------------------------------
-  await p.goto(BASE + '/temporary/Infinia/people.html');
+  await p.goto(BASE + '/portal/people.html');
   ck('the page is served at its temporary address', (await p.title()).includes('Staff'));
   ck('and shows a sign-in, nothing else', await p.locator('#login').isVisible() && !(await p.locator('#shell').isVisible()));
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'wrong'); await p.click('#login button'); await p.waitForTimeout(600);
@@ -158,7 +158,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   if (await openBtn.count()) { await openBtn.click(); await p.waitForTimeout(900); ck('Open from a list lands on that person\'s Leave section', await p.locator('#view-register').isVisible() && await p.locator('#file .subtabs button[data-section="leave"].on').count() === 1); }
 
   // ---- Access page ---------------------------------------------------------------------------
-  await p.goto(BASE + '/temporary/Infinia/access.html'); await p.waitForSelector('#shell', { state: 'visible' }); await p.waitForTimeout(800);
+  await p.goto(BASE + '/portal/access.html'); await p.waitForSelector('#shell', { state: 'visible' }); await p.waitForTimeout(800);
   ck('the Access page opens on the same sign-in', await p.locator('#pane-roles').isVisible());
   await p.click('button:has-text("+ New role")'); await p.waitForTimeout(300);
   await p.fill('#r-name', 'Sweep Role'); await p.click('#r-rights input[value="attendance"]'); await p.click('#r-rights input[value="reports"]');
@@ -183,7 +183,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('and the role is gone', !(await p.locator('.matrix').textContent()).includes('Sweep Role'));
   // The sweep login cannot open either page.
   const p2 = await (await b.newContext()).newPage();
-  await p2.goto(BASE + '/temporary/Infinia/people.html'); await p2.fill('#login-username', 'sweepuser'); await p2.fill('#login-password', 'sweep123'); await p2.click('#login button'); await p2.waitForTimeout(3000);
+  await p2.goto(BASE + '/portal/people.html'); await p2.fill('#login-username', 'sweepuser'); await p2.fill('#login-password', 'sweep123'); await p2.click('#login button'); await p2.waitForTimeout(3000);
   ck('a login without the right is sent to its own page, still signed in', !p2.url().endsWith('people.html') && await p2.evaluate("!!sessionStorage.getItem('infinia_token')"), p2.url());
   await p2.close();
   await p.evaluate(async () => { const u = (await apiCall('/users')).find(x => x.username === 'sweepuser'); if (u) await apiCall(`/users/${u.id}`, { method: 'DELETE' }).catch(() => {}); });

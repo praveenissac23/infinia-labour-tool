@@ -3,7 +3,7 @@
 // closing, the page does not scroll underneath, typing filters, a click
 // picks, Enter picks, Escape closes, and the choice reaches the screen.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1366, height: 800 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));

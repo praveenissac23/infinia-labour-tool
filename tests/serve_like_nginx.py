@@ -65,6 +65,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self._is_api():
             return self._proxy()
+        # nginx: try_files $uri /app.html - no $uri/, so a folder address
+        # (including "/") or a missing file is answered with app.html.
+        local = self.translate_path(self.path)
+        if not os.path.isfile(local):
+            q = self.path.find("?")
+            self.path = "/app.html" + (self.path[q:] if q >= 0 else "")
         return super().do_GET()
 
     def _with_body(self):

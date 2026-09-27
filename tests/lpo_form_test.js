@@ -31,7 +31,7 @@ const ck = (m, cond, ctx) => {
   const open = async (width) => {
     const p = await b.newPage({ viewport: { width, height: 1000 } });
     p.on('pageerror', e => errs.push(`${width}px: ${String(e).slice(0, 160)}`));
-    await p.goto(BASE + '/app.html');
+    await p.goto(BASE + '/app-classic.html');
     await p.fill('#login-username', 'admin');
     await p.fill('#login-password', 'changeme123');
     await p.evaluate('doLogin()');

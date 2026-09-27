@@ -3,7 +3,7 @@
 // shows (in the app or the frame), the frame never shows its own menu, and
 // the screen is on the first frame after the click.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 const INIT = `
   window.__f = [];
   (function tick() {

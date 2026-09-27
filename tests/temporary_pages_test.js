@@ -4,7 +4,7 @@
 //
 // Run:  python3 tests/serve_like_nginx.py   then   node tests/temporary_pages_test.js
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 let fails = 0;
 const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + (ok ? '' : `  [${ctx}]`)); if (!ok) fails++; };
 const PAGES = {
@@ -122,18 +122,18 @@ const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchas
   // Cross-page: a dashboard tile that names a screen on another page goes there.
   await p.goto(BASE + 'dashboard.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
   await p.evaluate("switchScreen('combine')"); await p.waitForTimeout(1800);
-  ck('a screen on another page is opened on that page', p.url().endsWith('payroll.html#combine') && await p.locator('#screen-combine.active').count() === 1, p.url());
+  ck('a screen on another page is opened on that page', p.url().endsWith('/?p=payroll#combine') && await p.locator('#screen-combine.active').count() === 1, p.url());
   await p.evaluate("switchScreen('errorcheck')"); await p.waitForTimeout(600);
-  ck('and a screen on this page just switches tabs', p.url().endsWith('payroll.html#combine') && await p.locator('#screen-errorcheck.active').count() === 1);
+  ck('and a screen on this page just switches tabs', p.url().includes('/?p=payroll') && await p.locator('#screen-errorcheck.active').count() === 1);
   await p.evaluate("dashStoreGo('items')"); await p.waitForTimeout(1800);
-  ck('the dashboard store shortcuts land on the store page', p.url().includes('store.html#items') && await p.locator('#screen-store.active').count() === 1 && await p.locator('#store-items').isVisible(), p.url());
+  ck('the dashboard store shortcuts land on the store page', p.url().includes('/?p=store#items') && await p.locator('#screen-store.active').count() === 1 && await p.locator('#store-items').isVisible(), p.url());
   await p.click('.pg-side .pg-item[data-page="people"]'); await p.waitForTimeout(2500);
-  ck('Staff opens in place from the menu on the same sign-in', p.url().endsWith('people.html') && await p.locator('#screen-pgstaff.active').count() === 1 && await p.frameLocator('#pg-staff-frame').locator('#shell').isVisible() && !(await p.frameLocator('#pg-staff-frame').locator('.sidebar').isVisible()));
+  ck('Staff opens in place from the menu on the same sign-in', p.url().endsWith('/?p=people') && await p.locator('#screen-pgstaff.active').count() === 1 && await p.frameLocator('#pg-staff-frame').locator('#shell').isVisible() && !(await p.frameLocator('#pg-staff-frame').locator('.sidebar').isVisible()));
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
   ck('Settings has an Access tab for the admin', await p.locator('#pg-tabs .pg-tab[data-tab="access"]').count() === 1);
   await p.click('#pg-tabs .pg-tab[data-tab="access"]'); await p.waitForTimeout(1500);
   await p.waitForTimeout(1000);
-  ck('and it opens the Access page in place under Settings', p.url().includes('settings.html') && await p.locator('#screen-pgaccess.active').count() === 1 && await p.frameLocator('#pg-access-frame').locator('#pane-roles').isVisible());
+  ck('and it opens the Access page in place under Settings', p.url().includes('/?p=settings') && await p.locator('#screen-pgaccess.active').count() === 1 && await p.frameLocator('#pg-access-frame').locator('#pane-roles').isVisible());
 
   // A limited login: requests + dashboard only.
   await p.goto(BASE + 'settings.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(800);
@@ -167,7 +167,7 @@ const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchas
   const rr = await p2.evaluate(async () => { try { await apiCall('/permissions/roles'); return 200; } catch (e) { return e.status; } });
   ck('and the server refuses it the roles', rr === 403, rr);
   await p2.goto(BASE + 'access.html'); await p2.waitForTimeout(1800);
-  ck('typing access.html sends a non-admin back to Settings, still signed in', p2.url().endsWith('settings.html') && await p2.evaluate("!!sessionStorage.getItem('infinia_token')"), p2.url());
+  ck('typing access.html sends a non-admin back to Settings, still signed in', p2.url().endsWith('/?p=settings') && await p2.evaluate("!!sessionStorage.getItem('infinia_token')"), p2.url());
   await p2.close();
   await p.evaluate(async () => { const u = (await apiCall('/users')).find(x => x.username === 'tmp_req'); if (u) await apiCall(`/users/${u.id}`, { method: 'DELETE' }).catch(() => {}); });
   ck('no script errors, no pop-ups', errs.length === 0, errs.slice(0, 5));

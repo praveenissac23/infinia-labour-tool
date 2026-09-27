@@ -8,7 +8,7 @@ const { JSDOM } = require("jsdom");
 const fs = require("fs");
 const path = require("path");
 
-const html = fs.readFileSync(path.join(__dirname, "..", "app.html"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "..", "app-classic.html"), "utf8");
 let failures = 0;
 const check = (label, ok, extra) => {
   console.log((ok ? "PASS " : "FAIL ") + label + (ok || !extra ? "" : `  [${extra}]`));
@@ -16,7 +16,7 @@ const check = (label, ok, extra) => {
 };
 
 const dom = new JSDOM(html, {
-  runScripts: "dangerously", url: "http://localhost/",
+  runScripts: "dangerously", url: "http://localhost/app-classic.html",
   beforeParse(window) {
     window.fetch = async (url, opts) => ({ ok: true, status: 200, json: async () => {
       const u = String(url);

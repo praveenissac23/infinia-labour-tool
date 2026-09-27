@@ -160,16 +160,14 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
 
 <div class="shell" id="shell">
   <div class="sidebar">
-    <div class="logo" id="pg-brand"><img src="logo-bb952b26.png" alt="Infinia Contracting"></div>
-    <div data-page="dashboard" class="nav-item" onclick="location.href='dashboard.html'">Dashboard</div>
-    <div data-page="attendance" class="nav-item" onclick="location.href='attendance.html'">Attendance</div>
+    <div class="logo" id="pg-brand"><img src="/portal/logo-bb952b26.png" alt="Infinia Contracting"></div>
+    <div data-page="dashboard" class="nav-item" onclick="location.href='/'">Dashboard</div>
+    <div data-page="attendance" class="nav-item" onclick="location.href='/?p=attendance'">Attendance</div>
     <div data-page="people" class="nav-item active">Staff</div>
-    <div data-page="payroll" class="nav-item" onclick="location.href='payroll.html'">Payroll</div>
-    <div data-page="store" class="nav-item" onclick="location.href='store.html'">Store &amp; Purchasing</div>
-    <div data-page="reports" class="nav-item" onclick="location.href='reporting.html'">Reports</div>
-    <div data-page="settings" class="nav-item" onclick="location.href='settings.html'">Settings</div>
-    <div class="nav-group">TEMPORARY BUILD</div>
-    <div class="nav-sub" onclick="location.href='/app.html'">← Back to the classic app</div>
+    <div data-page="payroll" class="nav-item" onclick="location.href='/?p=payroll'">Payroll</div>
+    <div data-page="store" class="nav-item" onclick="location.href='/?p=store'">Store &amp; Purchasing</div>
+    <div data-page="reports" class="nav-item" onclick="location.href='/?p=reports'">Reports</div>
+    <div data-page="settings" class="nav-item" onclick="location.href='/?p=settings'">Settings</div>
   </div>
   <div class="main">
     <div class="top"><h1 id="page-title">Staff</h1><div class="who"><span id="who-name"></span> <button class="signout" onclick="signOut()">Sign out</button></div></div>
@@ -520,7 +518,7 @@ async function start() {
   ME.groups = ["labour", "office", "local", "household"].filter(g => ME.role === "admin" || ME.screens.includes("people_" + g));
   if (!ME.groups.length) {
     // Not this login's page: back to the first page it has, still signed in.
-    if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("dashboard.html"); return;
+    if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("/"); return;
   }
   document.getElementById("login").style.display = "none";
   document.getElementById("shell").style.display = "flex"; applyMenu();

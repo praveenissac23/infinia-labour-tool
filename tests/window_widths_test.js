@@ -5,10 +5,10 @@ const { chromium } = require('playwright');
 const S = require('os').tmpdir() + '/';
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await p.goto('http://127.0.0.1:8032/temporary/Infinia/dashboard.html'); await p.fill('#login-username','admin'); await p.fill('#login-password','changeme123'); await p.evaluate('doLogin(); 0'); await p.waitForTimeout(3000);
+  await p.goto('http://127.0.0.1:8032/portal/dashboard.html'); await p.fill('#login-username','admin'); await p.fill('#login-password','changeme123'); await p.evaluate('doLogin(); 0'); await p.waitForTimeout(3000);
   let bad = 0; const widths = [1920, 1680, 1440, 1366, 1280, 1180, 1100, 1024, 960, 900, 880, 820, 768, 700, 600, 480, 390, 360];
   for (const pg of ['dashboard', 'store', 'attendance', 'payroll', 'reporting', 'settings']) {
-    await p.goto(`http://127.0.0.1:8032/temporary/Infinia/${pg}.html`); await p.waitForTimeout(2200);
+    await p.goto(`http://127.0.0.1:8032/portal/${pg}.html`); await p.waitForTimeout(2200);
     const issues = [];
     for (const w of widths) {
       await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(250);
@@ -43,7 +43,7 @@ const S = require('os').tmpdir() + '/';
     console.log(`${issues.length ? 'FAIL' : 'PASS'} ${pg}: ${widths.length} widths${issues.length ? '\n   ' + [...new Set(issues)].slice(0, 6).join('\n   ') : ''}`);
     await p.setViewportSize({ width: 1440, height: 900 });
   }
-  for (const w of [1440, 1024, 820, 390]) { await p.goto('http://127.0.0.1:8032/temporary/Infinia/dashboard.html'); await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(1500); await p.screenshot({ path: S + `rs${w}.png`, fullPage: true }); }
+  for (const w of [1440, 1024, 820, 390]) { await p.goto('http://127.0.0.1:8032/portal/dashboard.html'); await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(1500); await p.screenshot({ path: S + `rs${w}.png`, fullPage: true }); }
   console.log(bad ? `${bad} page(s) with problems` : 'EVERY WIDTH LAYS OUT CLEANLY');
   await b.close();
 })();

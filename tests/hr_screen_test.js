@@ -29,7 +29,7 @@ const CYCLE_MONTH = '2026-08';
   const p = await b.newPage({ viewport: { width: 1500, height: 1000 } });
   p.on('pageerror', e => errs.push(String(e).slice(0, 200)));
 
-  await p.goto(BASE + '/app.html');
+  await p.goto(BASE + '/app-classic.html');
   await p.fill('#login-username', 'admin');
   await p.fill('#login-password', 'changeme123');
   await p.evaluate('doLogin()');
@@ -396,7 +396,7 @@ const CYCLE_MONTH = '2026-08';
   // ---- On a phone -------------------------------------------------------
   const ph = await b.newPage({ viewport: { width: 430, height: 900 } });
   ph.on('pageerror', e => errs.push('phone: ' + String(e).slice(0, 160)));
-  await ph.goto(BASE + '/app.html');
+  await ph.goto(BASE + '/app-classic.html');
   await ph.fill('#login-username', 'admin');
   await ph.fill('#login-password', 'changeme123');
   await ph.evaluate('doLogin()');
@@ -434,7 +434,7 @@ const CYCLE_MONTH = '2026-08';
   const rp = await b.newPage({ viewport: { width: 1400, height: 1000 } });
   const rerrs = [];
   rp.on('pageerror', e => rerrs.push(String(e).slice(0, 160)));
-  await rp.goto(BASE + '/app.html');
+  await rp.goto(BASE + '/app-classic.html');
   await rp.fill('#login-username', 'reception');
   await rp.fill('#login-password', 'reception123');
   await rp.evaluate('doLogin()');

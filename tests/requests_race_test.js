@@ -7,7 +7,7 @@ const ck = (l, ok, c) => { console.log((ok ? 'PASS ' : 'FAIL ') + l + (ok ? '' :
 (async () => {
   const b = await chromium.launch();
   const p = await b.newPage();
-  await p.goto('http://127.0.0.1:8032/app.html');
+  await p.goto('http://127.0.0.1:8032/app-classic.html');
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1200);
   await p.evaluate(async () => {
@@ -19,7 +19,7 @@ const ck = (l, ok, c) => { console.log((ok ? 'PASS ' : 'FAIL ') + l + (ok ? '' :
   // A slow line: the people lists take three seconds to arrive.
   const slow = await (await b.newContext()).newPage();
   await slow.route(/\/(sites|engineers|employees\?)/, async route => { await new Promise(r => setTimeout(r, 3000)); route.continue(); });
-  await slow.goto('http://127.0.0.1:8032/app.html');
+  await slow.goto('http://127.0.0.1:8032/app-classic.html');
   await slow.fill('#login-username', 'race_req'); await slow.fill('#login-password', 'racereq123'); await slow.evaluate('doLogin(); 0');
   await slow.waitForSelector('#app-screen', { state: 'visible' });
   // Tap Material Requests straight away, before the lists are back.

@@ -7,7 +7,7 @@ with sync_playwright() as p:
     b=p.chromium.launch(); ctx=b.new_context(viewport={'width':1500,'height':1000}, accept_downloads=True)
     pg=ctx.new_page(); errs=[]; pg.on('pageerror', lambda e: errs.append(str(e)[:120]))
     ctx.on('page', lambda np: np.close())
-    pg.goto('http://127.0.0.1:8032/app.html')
+    pg.goto('http://127.0.0.1:8032/app-classic.html')
     pg.fill('#login-username','admin'); pg.fill('#login-password','p'); pg.evaluate('doLogin()')
     pg.wait_for_selector('#app-screen', state='visible', timeout=15000); time.sleep(2)
 

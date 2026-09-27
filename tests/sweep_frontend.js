@@ -16,7 +16,7 @@ const REQS = [
 ];
 const errs = []; let fail = 0;
 const vc = new VirtualConsole(); vc.on("jsdomError", e => errs.push((e.detail && e.detail.message) || e.message));
-const dom = new JSDOM(fs.readFileSync("app.html","utf8"), { runScripts:"dangerously", url:"http://localhost/", virtualConsole: vc,
+const dom = new JSDOM(fs.readFileSync("app-classic.html","utf8"), { runScripts:"dangerously", url:"http://localhost/app-classic.html", virtualConsole: vc,
   beforeParse(w){
     w.fetch = async (u,o) => ({ ok:true, status:200, json: async () => {
       const s=String(u), m=(o&&o.method)||"GET";

@@ -34,7 +34,7 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   }, sel);
   const text = sel => p.evaluate(s => (document.querySelector(s) || {}).textContent || '', sel);
 
-  await p.goto('http://127.0.0.1:8032/app.html');
+  await p.goto('http://127.0.0.1:8032/app-classic.html');
   await p.fill('#login-username', 'admin');
   await p.fill('#login-password', 'changeme123');
   await p.evaluate(() => doLogin());

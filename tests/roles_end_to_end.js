@@ -17,7 +17,7 @@
 //    the statement remark and the loans report.
 const { chromium } = require('playwright');
 const BASE = 'http://127.0.0.1:8032';
-const T = BASE + '/temporary/Infinia/';
+const T = BASE + '/portal/';
 let fails = 0;
 const ck = (l, ok, c) => { console.log((ok ? 'PASS ' : 'FAIL ') + l + (ok ? '' : `  [${typeof c === 'string' ? c.slice(0, 200) : JSON.stringify(c || '').slice(0, 200)}]`)); if (!ok) fails++; };
 
@@ -34,7 +34,7 @@ async function login(ctx, user, pw, url) {
   p.on('pageerror', e => errs.push(String(e).slice(0, 160)));
   p.on('dialog', d => { errs.push('pop-up: ' + d.message().slice(0, 80)); d.dismiss(); });
   p.on('response', r => { const u = r.url().split('8032')[1] || r.url(); if (r.status() >= 400 && !/\/auth\/login/.test(u) && !p.probing) bad.push(`${r.status()} ${u.split('?')[0]}`); });
-  await p.goto(url || BASE + '/app.html');
+  await p.goto(url || BASE + '/app-classic.html');
   await p.fill('#login-username', user); await p.fill('#login-password', pw); await p.evaluate('doLogin(); 0');
   await p.waitForSelector('#app-screen', { state: 'visible', timeout: 15000 });
   await p.waitForTimeout(2500);

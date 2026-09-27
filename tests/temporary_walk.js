@@ -3,7 +3,9 @@
 // entries, tabs and screens are visible; anything visible that the login
 // does not end up with is a flicker. Every click is checked for landing.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+// The address each page lives at in the app: / for the dashboard, /?p=<page> for the rest.
+const canon = f => f === 'dashboard' ? '' : '?p=' + (f === 'reporting' ? 'reports' : f);
+const BASE = 'http://127.0.0.1:8032/portal/';
 const LOGINS = [[process.argv[2], process.argv[3]]];
 const PAGES = ['dashboard', 'attendance', 'people', 'payroll', 'store', 'reporting', 'settings'];
 const INIT = `
@@ -34,7 +36,7 @@ const INIT = `
     // walk every page this login has, then every page it has not
     for (const pg of PAGES) {
       const file = pg === 'reporting' ? 'reporting' : pg;
-      await p.goto(BASE + file + '.html'); await p.waitForTimeout(2500);
+      await p.goto(BASE.replace(/portal\/$/, '') + canon(file)); await p.waitForTimeout(2500);
       const landed = p.url().split('/').pop().split('#')[0];
       const frames = await p.evaluate('window.__frames');
       const finalMenu = new Set(await p.evaluate(() => [...document.querySelectorAll('.pg-side .pg-item[data-page]')].filter(e => e.style.display !== 'none' && e.style.visibility !== 'hidden').map(e => 'menu:' + e.dataset.page)));
@@ -50,16 +52,16 @@ const INIT = `
         for (const x of items) { if (x.startsWith('menu:') && !finalMenu.has(x)) stray.add(x); if (x.startsWith('tab:') && !finalTabs.has(x)) stray.add(x); if (x.startsWith('screen:') && x !== finalScreen) stray.add(x); }
       }
       const expectedHere = allowedMenu.has(pg === 'reporting' ? 'reports' : pg);
-      if (expectedHere) say(landed === file + '.html', `${user}: ${file}.html opens here (${finalScreen}, tabs ${[...finalTabs].map(t => t.slice(4)).join('/') || '-'})`, landed);
-      else say(landed !== file + '.html' || finalScreen, `${user}: ${file}.html not in menu -> sent to ${landed}`);
+      if (expectedHere) say(landed === canon(file), `${user}: ${file}.html opens here (${finalScreen}, tabs ${[...finalTabs].map(t => t.slice(4)).join('/') || '-'})`, landed);
+      else say(landed !== canon(file) || finalScreen, `${user}: ${file}.html not in menu -> sent to ${landed}`);
       say(stray.size === 0 && loginFlash === 0 && legacy === 0 && multiScreen === 0, `${user}: ${file}.html no flicker (${frames.length} frames)`, { stray: [...stray], loginFlash, legacy, multiScreen });
-      if (landed !== file + '.html') continue;
+      if (landed !== canon(file)) continue;
       // every tab, then every sub-tab
       const tabs = await p.locator('#pg-tabs .pg-tab').allTextContents();
       for (let i = 0; i < tabs.length; i++) {
         const before = p.url();
         await p.locator('#pg-tabs .pg-tab').nth(i).click(); await p.waitForTimeout(900);
-        if (p.url().split('/').pop().split('#')[0] !== file + '.html') { say(true, `${user}: ${file} > ${tabs[i]} -> ${p.url().split('/').pop()}`); await p.goto(before); await p.waitForTimeout(1500); continue; }
+        if (p.url().split('/').pop().split('#')[0] !== canon(file)) { say(true, `${user}: ${file} > ${tabs[i]} -> ${p.url().split('/').pop()}`); await p.goto(before); await p.waitForTimeout(1500); continue; }
         const active = await p.evaluate(() => { const s = document.querySelector('.screen.active'); return s && s.id; });
         say(!!active && await p.locator('#pg-tabs .pg-tab.active').textContent() === tabs[i], `${user}: ${file} > ${tabs[i]} shows ${active}`);
         const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
@@ -79,7 +81,7 @@ const INIT = `
       const shown = await p.evaluate(pg => { const e = document.querySelector(`.pg-side .pg-item[data-page="${pg}"]`); const r = e.getBoundingClientRect(); return { w: r.width, h: r.height, login: getComputedStyle(document.getElementById('login-screen')).display, app: getComputedStyle(document.getElementById('app-screen')).display }; }, pg);
       if (!shown.w) { say(false, `${user}: menu ${pg} not visible on dashboard.html`, shown); continue; }
       await p.click(`.pg-side .pg-item[data-page="${pg}"]`); await p.waitForTimeout(1500);
-      say(p.url().includes((pg === 'reports' ? 'reporting' : pg) + '.html'), `${user}: menu ${pg} -> ${p.url().split('/').pop()}`);
+      say(p.url().split('/').pop().split('#')[0] === canon(pg), `${user}: menu ${pg} -> ${p.url().split('/').pop()}`);
     }
     say(errs.length === 0, `${user}: no script errors`, errs.slice(0, 3));
     await ctx.close();

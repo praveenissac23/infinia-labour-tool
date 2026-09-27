@@ -4,7 +4,7 @@
 // showed the sign-in box. Also: a sign-in check that fails on a weak
 // connection must retry, not sign out.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 (async () => {
   const b = await chromium.launch(); let bad = 0;
   const p = await b.newPage();

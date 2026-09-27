@@ -1,8 +1,13 @@
-"""Build the temporary pages from app.html.
+"""Build the app (app.html, served at app.infinia.ae) from app-classic.html.
 
     python3 deploy/build_temporary_pages.py
 
-Each page under temporary/Infinia/ is the app itself - the same markup,
+app.html is GENERATED - edit app-classic.html and run this again.
+app.html is the whole app with every page in it; the page shown is picked
+from the address (app.infinia.ae/?p=store, /?p=payroll ...), so moving
+between pages never reloads. Staff and Access are their own small pages
+(portal/people.html, portal/access.html), shown inside it in a frame.
+It is the classic app itself - the same markup,
 the same script, the same server - with a menu of nine entries in place
 of seventeen and the old pages arranged as tabs. Nothing is rewritten:
 a page is app.html with its sidebar swapped, a few blocks moved, and a
@@ -17,8 +22,9 @@ import os, re, html, json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SRC = os.path.join(ROOT, "app.html")
-OUT = os.path.join(ROOT, "temporary", "Infinia")
+SRC = os.path.join(ROOT, "app-classic.html")
+OUT = os.path.join(ROOT, "portal")          # Staff, Access and the logo
+APP_OUT = os.path.join(ROOT, "app.html")     # the app itself
 
 
 def tab(id, screen, label, right=None, show=None, subs=None):
@@ -202,17 +208,31 @@ CSS = """
 # is the only one drawn from the first paint.
 EARLY = """
 <script>
+// Which page of the app this address is. app.infinia.ae/ is the dashboard,
+// /?p=store the store and so on. Old addresses still land on the right
+// page: app.html, /portal/store.html, /temporary/Infinia/payroll.html#tab.
+(function () {
+  var KEYS = %(keys)s;
+  var q = location.search.match(/[?&]p=([a-z]+)/), k = q ? q[1] : "", hash = location.hash;
+  if (!k) { var f = (location.pathname.split("/").pop() || "").replace(/\\.html$/, ""); k = f === "reporting" ? "reports" : f; }
+  if (k === "access") { k = "settings"; hash = "#access"; }
+  if (KEYS.indexOf(k) < 0) k = "dashboard";
+  window.PG_KEY = k;
+  var canon = (k === "dashboard" ? "/" : "/?p=" + k) + hash;
+  if (location.pathname + location.search + location.hash !== canon) { try { history.replaceState(null, "", canon); } catch (e) {} }
+})();
 (function () {
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var tabs = %(tabmap)s;
+    var TABMAPS = %(tabmaps)s, FIRST = %(firsts)s;
+    var tabs = TABMAPS[window.PG_KEY] || TABMAPS.dashboard;
     // No tab in the address: the first tab this login had here last time.
     var remembered = null;
-    try { remembered = JSON.parse(localStorage.getItem("infinia_tabs:%(key)s") || "null"); } catch (e) {}
+    try { remembered = JSON.parse(localStorage.getItem("infinia_tabs:" + window.PG_KEY) || "null"); } catch (e) {}
     var mine = remembered && remembered.user === (sessionStorage.getItem("infinia_user") || "");
     if (!full && mine && remembered.tabs.length) full = remembered.tabs[0].id;
-    var want = full.split(":")[0] || "%(first)s";
+    var want = full.split(":")[0] || FIRST[window.PG_KEY] || FIRST.dashboard;
     var screen = tabs[full] || tabs[want] || want;
     // A page this login has nothing on: draw no screen at all - it is
     // about to be taken to a page it does have.
@@ -233,7 +253,7 @@ EARLY = """
     // The tab strip as this login last saw it on this page, drawn before
     // the app's script runs, so the strip never appears empty and fills.
     var tabs = null;
-    try { tabs = JSON.parse(localStorage.getItem("infinia_tabs:%(key)s") || "null"); } catch (e) {}
+    try { tabs = JSON.parse(localStorage.getItem("infinia_tabs:" + window.PG_KEY) || "null"); } catch (e) {}
     if (tabs && tabs.user === (sessionStorage.getItem("infinia_user") || "") && tabs.tabs.length > 1) {
       document.addEventListener("DOMContentLoaded", function () {
         var bar = document.getElementById("pg-tabs");
@@ -271,16 +291,16 @@ HUB_HTML = """
 
 FRAMES_HTML = """
         <!-- Staff and Access, opened inside the app: loaded once, then shown instantly. -->
-        <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="people.html?embed=1" title="Staff"></iframe></div>
-        <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="access.html?embed=1&view=roles" title="Access"></iframe></div>
-        <div class="screen" id="screen-pglogins"><iframe class="pg-embed" id="pg-logins-frame" data-src="access.html?embed=1&view=users" title="Logins"></iframe></div>
+        <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="/portal/people.html?embed=1" title="Staff"></iframe></div>
+        <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="/portal/access.html?embed=1&view=roles" title="Access"></iframe></div>
+        <div class="screen" id="screen-pglogins"><iframe class="pg-embed" id="pg-logins-frame" data-src="/portal/access.html?embed=1&view=users" title="Logins"></iframe></div>
 """
 
 ROLES_CARD = """
           <div class="card" id="pg-roles-card">
             <h2>Roles &amp; access</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Named sets of rights - Assistant Accountant, Store Keeper, Purchase Manager - and the logins that follow them. Give a login a role and it gets exactly those screens.</p>
-            <button class="btn btn-primary" onclick="location.href='access.html'">Open roles &amp; access</button>
+            <button class="btn btn-primary" onclick="location.href='/?p=settings#access'">Open roles &amp; access</button>
             <p style="font-size:12px; color:#888; margin:10px 0 0;">Admin only - roles cannot carry this tab.</p>
           </div>
 """
@@ -291,11 +311,13 @@ SCRIPT = """
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
 // decides whether the screen is here or on another page.
-let PAGE = %(page_json)s;
 // Every generated page carries the whole app, so moving between them is
 // done here, in the same page: no reload, no fetching the app again, no
 // signing in again, and lists already fetched stay in memory.
 const ALL_PAGES = %(all_pages_json)s;
+let PAGE = ALL_PAGES[window.PG_KEY] || ALL_PAGES.dashboard;
+document.title = PAGE.title + " - Infinia App";
+document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === PAGE.key));
 const STANDALONE_PAGES = ["access"];
 const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
@@ -321,16 +343,20 @@ SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = %(file_json)s;
 const ALL_TABS = %(all_tabs_json)s;
-function pgUrl(screen) { const k = PAGE_OF[screen] || "dashboard"; return (PAGE_FILE[k] || k) + ".html"; }
-function pgFile(key) { return (PAGE_FILE[key] || key) + ".html"; }
-function pgKeyOfPath(path) {
-  const f = (path.split("/").pop() || "").replace(/\.html$/, "");
-  for (const [k, v] of Object.entries(PAGE_FILE)) if (v === f) return k;
-  return f || "dashboard";
+// One address for the whole app: app.infinia.ae/ is the dashboard and
+// app.infinia.ae/?p=<page> every other page; the tab follows after #.
+function pgFile(key) { return key === "dashboard" ? "/" : key === "access" ? "/?p=settings" : "/?p=" + key; }
+function pgUrl(screen) { return pgFile(PAGE_OF[screen] || "dashboard"); }
+function pgKeyFromUrl() {
+  const q = location.search.match(/[?&]p=([a-z]+)/);
+  const k = q ? q[1] : "dashboard";
+  return ALL_PAGES[k] ? k : "dashboard";
 }
+function pgKeyOfPath() { return pgKeyFromUrl(); }
 // Go to another page of the app. push=false when answering Back/Forward.
 function pgGo(key, hash, push = true) {
-  if (STANDALONE_PAGES.includes(key) || !ALL_PAGES[key]) { location.href = pgFile(key) + (hash ? "#" + hash : ""); return; }
+  if (key === "access") { pgGo("settings", "access", push); return; }
+  if (!ALL_PAGES[key]) key = "dashboard";
   const same = PAGE.key === key;
   PAGE = ALL_PAGES[key];
   if (push) history.pushState({ pg: key }, "", pgFile(key) + (hash ? "#" + hash : ""));
@@ -625,7 +651,7 @@ def _logo_to_file(src):
         f.write(data)
     for m in sorted(big, key=lambda m: -m.start()):
         if base64.b64decode(m.group(2)) == data:
-            src = src[:m.start()] + name + src[m.end():]
+            src = src[:m.start()] + "/portal/" + name + src[m.end():]
     return src
 
 
@@ -698,34 +724,37 @@ def build():
         for t in tabs:
             page_of[t["screen"]] = key
             right_of[t["screen"]] = t["right"]
-    for key, (title, tabs) in PAGES.items():
-        side = ['<div class="pg-side">', brand]
-        for pg in ORDER:
-            label = LABELS.get(pg) or STANDALONE[pg][0]
-            side.append(f'<div class="pg-item {"active" if pg == key else ""}" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
-        side.append('<div class="pg-group">TEMPORARY BUILD</div>')
-        side.append('<div class="pg-small" onclick="location.href=\'/app.html\'">&larr; Back to the classic app</div>')
-        side.append("</div>")
-        page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
-        page = page.replace("<title>", f"<title>{html.escape(title)} - ", 1)
-        screens = sorted({t["screen"] for t in tabs} | {sb["screen"] for t in tabs for sb in t["subs"] if sb["screen"]}
-                         | {s for s, k in EXTRA.items() if k == key})
-        cfg = {"key": key, "title": title, "screens": screens, "tabs": tabs, "pages": pages_screens}
-        tabmap = {t["id"]: (next((sb["screen"] or "pgreports" for sb in t["subs"]), t["screen"]) if t["subs"] else t["screen"]) for t in tabs}
+    tabmaps, firsts = {}, {}
+    for key, (title, tabs) in list(PAGES.items()) + list(VIRTUAL.items()):
+        tm = {t["id"]: (next((sb["screen"] or "pgreports" for sb in t["subs"]), t["screen"]) if t["subs"] else t["screen"]) for t in tabs}
         for t in tabs:
             for sb in t["subs"]:
-                tabmap[t["id"] + ":" + sb["id"]] = sb["screen"] or "pgreports"
-        early = EARLY % {"first": tabs[0]["id"], "tabmap": json.dumps(tabmap), "key": key}
-        page = page.replace("</head>", early + "</head>", 1)
-        script = SCRIPT % {"key": key, "page_json": json.dumps(cfg), "page_of_json": json.dumps(page_of),
-                           "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
-                           "file_json": json.dumps(FILE),
-                           "all_pages_json": json.dumps(ALL_CFG),
-                           "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
-        page = page.replace("</body>", script + "</body>", 1)
-        with open(os.path.join(OUT, fname(key)), "w", encoding="utf-8") as f:
-            f.write(page)
-        print(f"wrote temporary/Infinia/{fname(key)}  ({len(page) // 1024} KB)")
+                tm[t["id"] + ":" + sb["id"]] = sb["screen"] or "pgreports"
+        tabmaps[key], firsts[key] = tm, tabs[0]["id"]
+    side = ['<div class="pg-side">', brand]
+    for pg in ORDER:
+        label = LABELS.get(pg) or STANDALONE[pg][0]
+        side.append(f'<div class="pg-item {"active" if pg == "dashboard" else ""}" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
+    side.append("</div>")
+    page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
+    page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
+    early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts)}
+    page = page.replace("</head>", early + "</head>", 1)
+    script = SCRIPT % {"key": "app", "page_of_json": json.dumps(page_of),
+                       "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
+                       "file_json": json.dumps(FILE),
+                       "all_pages_json": json.dumps(ALL_CFG),
+                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
+    page = page.replace("</body>", script + "</body>", 1)
+    with open(APP_OUT, "w", encoding="utf-8") as f:
+        f.write(page)
+    print(f"wrote app.html  ({len(page) // 1024} KB)")
+    # The six separate pages of the earlier layout are gone: their old
+    # addresses fall through to app.html, which opens the same page.
+    for key in PAGES:
+        old = os.path.join(OUT, fname(key))
+        if os.path.exists(old):
+            os.remove(old)
     menu_rights = {}
     for pg, scr in pages_screens.items():
         rights = set()

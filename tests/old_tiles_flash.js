@@ -3,7 +3,7 @@
 // Store & Purchasing and Payroll from the menu, for admin and the store
 // keeper, recording every animation frame from the first paint.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 const INIT = `
   window.__bad = [];
   (function tick() {

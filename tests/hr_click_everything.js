@@ -58,7 +58,7 @@ const ck = (m, cond, ctx) => {
     }
   };
 
-  await p.goto(BASE + '/app.html');
+  await p.goto(BASE + '/app-classic.html');
   await p.fill('#login-username', 'admin');
   await p.fill('#login-password', 'changeme123');
   await p.evaluate('doLogin()');

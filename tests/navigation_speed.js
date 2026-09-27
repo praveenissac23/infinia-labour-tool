@@ -2,7 +2,7 @@
 // and on a poor connection, and whether the page reloads (a reload is the
 // white flash). Uses the menu the way a person does.
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8032/temporary/Infinia/';
+const BASE = 'http://127.0.0.1:8032/portal/';
 const READY = {
   store: () => document.querySelector('#home-stock-body tr') && !/Loading/.test(document.querySelector('#home-stock-body').textContent),
   attendance: () => document.querySelectorAll('#screen-attendance table tbody tr').length > 3,
