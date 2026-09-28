@@ -180,7 +180,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # issue, a return or a write-off. It was decided by role,
                # which made the store keeper's own job depend on which
                # role his login happened to carry.
-               "storekeeper"]
+               "storekeeper",
+               # Expiry Reminder: documents, NOCs, permits, licences - no pay.
+               "expiry"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -7771,6 +7773,13 @@ def view_material_request(req_id: int, token: str = None, db: Session = Depends(
 # within two cycles.
 
 HR = Depends(require_screen("hrpayroll"))
+# The expiry lists show no pay, so a login can be given them on their own.
+DOCS = Depends(require_any_screen("expiry", "hrpayroll"))
+
+
+def _require_docs_reader(user):
+    if not any(s in effective_permissions(user) for s in ("expiry", "hrpayroll")):
+        raise HTTPException(status_code=403, detail="Ask an admin for Expiry Reminder.")
 
 # Gratuity: 21 days' basic wage per year for the first five years, 30
 # days a year after that, on completion of one year. The figures the
@@ -8132,7 +8141,7 @@ def _doc_dict(d, emp):
 @app.get("/employees/documents")
 def list_documents(within: int = None, kind: str = "", q: str = "",
                     group: str = "", db: Session = Depends(get_db),
-                    user: models.User = HR):
+                    user: models.User = DOCS):
     """Every document on file, newest expiry first.
 
     `within` narrows to what expires in that many days - and always
@@ -8165,7 +8174,7 @@ def list_documents(within: int = None, kind: str = "", q: str = "",
 
 @app.post("/employees/documents")
 def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
-                   user: models.User = HR):
+                   user: models.User = DOCS):
     """Record or renew a document.
 
     Renewing is changing the expiry date here. The spreadsheet this
@@ -8212,7 +8221,7 @@ def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
 
 
 @app.delete("/employees/documents/{doc_id}")
-def delete_document(doc_id: int, db: Session = Depends(get_db), user: models.User = HR):
+def delete_document(doc_id: int, db: Session = Depends(get_db), user: models.User = DOCS):
     d = db.query(models.EmployeeDocument).filter(
         models.EmployeeDocument.id == doc_id).first()
     if not d:
@@ -8242,7 +8251,7 @@ def _expiry_dict(x):
 
 
 @app.get("/employees/expiries")
-def list_expiries(db: Session = Depends(get_db), user: models.User = HR):
+def list_expiries(db: Session = Depends(get_db), user: models.User = DOCS):
     rows = sorted((_expiry_dict(x) for x in db.query(models.CompanyExpiry).all()),
                   key=lambda r: (r["days_left"] if r["days_left"] is not None else 99999))
     used = sorted({r["category"] for r in rows if r["category"]} | set(EXPIRY_CATEGORIES))
@@ -8255,7 +8264,7 @@ def list_expiries(db: Session = Depends(get_db), user: models.User = HR):
 
 
 @app.post("/employees/expiries")
-def save_expiry(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = HR):
+def save_expiry(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = DOCS):
     item = str(payload.get("item") or "").strip()
     kind = str(payload.get("kind") or "").strip()
     if not item:
@@ -8282,7 +8291,7 @@ def save_expiry(payload: dict = Body(...), db: Session = Depends(get_db), user: 
 
 
 @app.delete("/employees/expiries/{xid}")
-def delete_expiry(xid: int, db: Session = Depends(get_db), user: models.User = HR):
+def delete_expiry(xid: int, db: Session = Depends(get_db), user: models.User = DOCS):
     x = db.get(models.CompanyExpiry, xid)
     if not x:
         raise HTTPException(status_code=404, detail="That item is not on file.")
@@ -10223,7 +10232,7 @@ def _expiry_parts(db, days):
 
 @app.get("/export/payroll/expiries")
 def export_expiries(token: str, within: int = -1, format: str = "pdf", db: Session = Depends(get_db)):
-    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    _require_docs_reader(auth.get_download_user_from_token(token, db))
     rows, title, sub = _expiry_parts(db, within)
     return _hr_file(title, rows, sub, format, [], "Expiry_Tracker")
 
@@ -10231,7 +10240,7 @@ def export_expiries(token: str, within: int = -1, format: str = "pdf", db: Sessi
 @app.get("/export/payroll/expiries/view")
 def view_expiries(token: str, within: int = -1, db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
-    _require_hr_reader(user)
+    _require_docs_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
     rows, title, sub = _expiry_parts(db, within)
     url = f"/export/payroll/expiries?within={within}&token={t}"
@@ -10241,7 +10250,7 @@ def view_expiries(token: str, within: int = -1, db: Session = Depends(get_db)):
 @app.get("/export/payroll/documents")
 def export_documents(token: str, within: int = -1, format: str = "pdf",
                       db: Session = Depends(get_db)):
-    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    _require_docs_reader(auth.get_download_user_from_token(token, db))
     rows, title, sub = _document_parts(db, within)
     return _hr_file(title, rows, sub, format, [], "Document_Tracker")
 
@@ -10249,7 +10258,7 @@ def export_documents(token: str, within: int = -1, format: str = "pdf",
 @app.get("/export/payroll/documents/view")
 def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
-    _require_hr_reader(user)
+    _require_docs_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
     rows, title, sub = _document_parts(db, within)
     url = f"/export/payroll/documents?within={within}&token={t}"

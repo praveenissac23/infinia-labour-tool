@@ -755,6 +755,7 @@ SCREEN_LABELS = {
     "settings": "Settings", "activity": "Activity monitor", "hrpayroll": "Office HR & Payroll (office salaries)",
     "storekeeper": "Record stock in / out", "people_labour": "Labour register",
     "people_office": "Office staff register incl. household (office salaries)", "people_local": "Local staff register",
+    "expiry": "Expiry reminder - documents, NOCs, permits, licences (no salaries)",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
@@ -764,6 +765,7 @@ RIGHT_PAGES = [
     ("Staff", ["people_labour", "people_office", "people_local"]),
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
+    ("Expiry Reminder", ["expiry"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),

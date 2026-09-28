@@ -1,4 +1,4 @@
-// Payroll > Office payroll > Documents: any kind of expiry. People get any
+// Expiry Reminder (its own page): any kind of expiry. People get any
 // document by name ("Other - type the name"); vehicles, licences and
 // anything else go on the second list, with free categories. Sorted by
 // what expires first, renew by clicking, preview / PDF / Excel.
@@ -8,14 +8,14 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const b = await chromium.launch(); let bad = 0;
   const ck = (n, ok, info) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(info)}`); };
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto(B + '/?p=payroll#hrpayroll'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
+  await p.goto(B + '/?p=expiry'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3500);
-  await p.locator('#pg-tabs .pg-tab', { hasText: 'Documents' }).click(); await p.waitForTimeout(2000);
+  await p.waitForTimeout(1500);
   const iso = n => { const d = new Date(Date.now() + 4 * 3600e3 + n * 864e5); return d.toISOString().slice(0, 10); };
   // a person's own named document
   await p.fill('#hr-doc-emp', 'IC001'); await p.selectOption('#hr-doc-kind', 'custom'); await p.waitForTimeout(200);
   ck('"Other - type the name" opens a name box', await p.locator('#hr-doc-custom').isVisible());
-  await p.fill('#hr-doc-custom', 'Safety card'); await p.fill('#hr-doc-expires', iso(20)); await p.click('#hrpane-docs button:has-text("Save document")'); await p.waitForTimeout(1500);
+  await p.fill('#hr-doc-custom', 'Safety card'); await p.fill('#hr-doc-expires', iso(20)); await p.click('#screen-expiry button:has-text("Save document")'); await p.waitForTimeout(1500);
   const named = await p.evaluate(() => HR_DOCS.find(x => x.emp_no === 'IC001' && x.kind_label === 'Safety card'));
   ck('a person can be given any document by name (Safety card, due in 20 days)', named && named.status === 'urgent', named);
   await p.screenshot({ path: SH + 'expiry-1-people.png' });
@@ -51,6 +51,19 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const st = await pop.evaluate(async () => { const a = document.querySelector('a[href*="expiries"]'); if (!a) return 'no link'; const r = await fetch(a.href); return r.status; });
   ck('the PDF downloads from the preview', st === 200, st);
   await pop.close();
+  // a login with only the Expiry Reminder right
+  const q = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  q.on('pageerror', e => errs.push(e.message));
+  await q.goto(B + '/'); await q.fill('#login-username', 'docsonly'); await q.fill('#login-password', 'docs12345'); await q.evaluate('doLogin()');
+  await q.waitForSelector('#app-screen', { state: 'visible' }); await q.waitForTimeout(2500);
+  const menu = await q.evaluate(() => [...document.querySelectorAll('.pg-side .pg-item')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
+  ck('a login given only Expiry Reminder sees just that page in the menu', menu.join('|') === 'Expiry Reminder', menu);
+  await q.click('.pg-side .pg-item[data-page="expiry"]'); await q.waitForTimeout(2000);
+  ck('and the people list opens for him', (await q.locator('#hr-doc-body tr').count()) > 3);
+  const pay = await q.evaluate(async () => { try { await apiCall('/employees/staff'); return 'open'; } catch (e) { return 'refused'; } });
+  ck('office salaries stay closed to him', pay === 'refused', pay);
+  await q.locator('#pg-sub .pg-subtab', { hasText: 'Company' }).click(); await q.waitForTimeout(1200);
+  ck('he sees the company documents too', (await q.locator('#hr-exp-body tr').count()) >= 7);
   ck('no script errors', errs.length === 0, errs);
   console.log(bad ? `${bad} FAILED` : 'ANY EXPIRY, ONE TRACKER');
   await b.close(); process.exit(bad ? 1 : 0);

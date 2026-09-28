@@ -978,7 +978,7 @@
 // /?p=store the store and so on. Old addresses still land on the right
 // page: app.html, /portal/store.html, /temporary/Infinia/payroll.html#tab.
 (function () {
-  var KEYS = ["dashboard", "attendance", "payroll", "store", "reports", "settings", "people"];
+  var KEYS = ["dashboard", "attendance", "payroll", "expiry", "store", "reports", "settings", "people"];
   var q = location.search.match(/[?&]p=([a-z]+)/), k = q ? q[1] : "", hash = location.hash;
   if (!k) { var f = (location.pathname.split("/").pop() || "").replace(/\.html$/, ""); k = f === "reporting" ? "reports" : f; }
   if (k === "access") { k = "settings"; hash = "#access"; }
@@ -991,7 +991,7 @@
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "documents": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll", "documents:people": "hrpayroll", "documents:company": "hrpayroll"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "petty": "pettycash", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "office": "hrpayroll", "people": "pgreports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "office:cycle": "hrpayroll", "office:leave": "hrpayroll", "office:items": "hrpayroll", "office:loans": "hrpayroll", "office:staff": "hrpayroll", "office:increments": "hrpayroll", "office:docs": "hrpayroll", "office:gratuity": "hrpayroll", "people:register": "pgreports", "people:due": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
+    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll"}, "expiry": {"expiry": "expiry", "expiry:people": "expiry", "expiry:company": "expiry"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "petty": "pettycash", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "office": "hrpayroll", "people": "pgreports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "office:cycle": "hrpayroll", "office:leave": "hrpayroll", "office:items": "hrpayroll", "office:loans": "hrpayroll", "office:staff": "hrpayroll", "office:increments": "hrpayroll", "office:gratuity": "hrpayroll", "people:register": "pgreports", "people:due": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "expiry": "expiry", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
     var tabs = TABMAPS[window.PG_KEY] || TABMAPS.dashboard;
     // No tab in the address: the first tab this login had here last time.
     var remembered = null;
@@ -1031,7 +1031,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="1b82445b3d86";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="de754f1534b1";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1058,6 +1058,7 @@
 <div class="pg-item " data-page="people" onclick="pgGo('people')">Staff</div>
 <div class="pg-item " data-page="payroll" onclick="pgGo('payroll')">Payroll</div>
 <div class="pg-item " data-page="store" onclick="pgGo('store')">Store &amp; Purchasing</div>
+<div class="pg-item " data-page="expiry" onclick="pgGo('expiry')">Expiry Reminder</div>
 <div class="pg-item " data-page="reports" onclick="pgGo('reports')">Reports</div>
 <div class="pg-item " data-page="settings" onclick="pgGo('settings')">Settings</div>
 </div>
@@ -2034,6 +2035,108 @@
 
         </div>
 
+        <!-- ============ EXPIRY REMINDER ============ -->
+        <div class="screen" id="screen-expiry">
+          <div class="status-msg" id="exp-status"></div>
+          <div class="card">
+              <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
+                <h2 style="margin:0;">Expiry tracker</h2>
+                <div class="pc-kind" id="hr-doc-mode">
+                  <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
+                  <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
+                </div>
+              </div>
+              <div id="hr-doc-people">
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Office staff and labour together, one line a person. Click any date to renew
+                or correct it - a renewal is simply the new expiry date. Any other document can be
+                added: pick "Other - type the name".</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
+                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
+                <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
+                <datalist id="hr-doc-custom-list"></datalist>
+                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
+                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
+                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
+                <button class="btn btn-primary" onclick="addDocument()">Save document</button>
+              </div>
+              <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                <select id="hr-doc-within" class="hr-dd" style="width:210px;" onchange="renderDocuments()">
+                  <option value="-1">Everyone on file</option>
+                  <option value="30">Something due in 30 days</option>
+                  <option value="90">Something due in 90 days</option>
+                  <option value="0">Something already expired</option>
+                </select>
+                <select id="hr-doc-who" class="hr-dd" style="width:170px;" onchange="renderDocuments()">
+                  <option value="all">Office and labour</option>
+                  <option value="staff">Office staff</option>
+                  <option value="labour">Labour</option>
+                </select>
+                <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
+                <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
+              </div>
+              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                <table class="hr-grid">
+                  <thead><tr>
+                    <th style="width:8%;">Code</th><th class="txt" style="width:25%;">Name</th>
+                    <th style="width:15%;">Emirates ID</th><th style="width:15%;">Visa / Labour card</th>
+                    <th style="width:15%;">Passport</th><th class="txt" style="width:9%;">Other</th>
+                    <th style="width:13%;">Standing</th>
+                  </tr></thead>
+                  <tbody id="hr-doc-body"></tbody>
+                </table>
+              </div>
+              </div>
+
+              <!-- Vehicles, licences and anything else that expires -->
+              <div id="hr-doc-company" style="display:none;">
+                <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                  NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
+                  certificate - any document with an expiry date. Type any category or document; new ones are remembered.
+                  Click a line to renew or correct it.</p>
+                <div class="hr-exp-form">
+                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" placeholder="e.g. NOC"></label>
+                  <datalist id="hr-exp-cat-list"></datalist>
+                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" placeholder="e.g. Villa 347 Sobha Hartland"></label>
+                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" placeholder="e.g. Developer NOC"></label>
+                  <datalist id="hr-exp-kind-list"></datalist>
+                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" placeholder="Optional"></label>
+                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued"></label>
+                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires"></label>
+                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" placeholder="Optional"></label>
+                  <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
+                </div>
+                <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+                <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
+                    <option value="-1">Everything on file</option>
+                    <option value="30">Due in 30 days</option>
+                    <option value="90">Due in 90 days</option>
+                    <option value="0">Already expired</option>
+                  </select>
+                  <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
+                  <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
+                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
+                  <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
+                </div>
+                <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                  <table class="hr-grid">
+                    <thead><tr>
+                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
+                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
+                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
+                    </tr></thead>
+                    <tbody id="hr-exp-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          
+        </div>
+
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
           <div class="card">
@@ -2983,7 +3086,6 @@
             <div class="hr-tab" data-tab="loans" onclick="hrTab('loans')">Loans</div>
             <div class="hr-tab" data-tab="staff" onclick="hrTab('staff')">Staff Register</div>
             <div class="hr-tab" data-tab="increments" onclick="hrTab('increments')">Increments</div>
-            <div class="hr-tab" data-tab="docs" onclick="hrTab('docs')">Documents</div>
             <div class="hr-tab" data-tab="gratuity" onclick="hrTab('gratuity')">Gratuity</div>
           </div>
           <div class="status-msg" id="hr-status"></div>
@@ -3313,105 +3415,6 @@
           </div>
 
           <!-- ---- Documents ------------------------------------------->
-          <div class="hr-pane" id="hrpane-docs" style="display:none;">
-            <div class="card">
-              <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
-                <h2 style="margin:0;">Expiry tracker</h2>
-                <div class="pc-kind" id="hr-doc-mode">
-                  <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
-                  <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
-                </div>
-              </div>
-              <div id="hr-doc-people">
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Office staff and labour together, one line a person. Click any date to renew
-                or correct it - a renewal is simply the new expiry date. Any other document can be
-                added: pick "Other - type the name".</p>
-              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
-                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
-                <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
-                <datalist id="hr-doc-custom-list"></datalist>
-                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
-                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
-                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
-                <button class="btn btn-primary" onclick="addDocument()">Save document</button>
-              </div>
-              <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
-              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                <select id="hr-doc-within" style="width:190px;" onchange="renderDocuments()">
-                  <option value="-1">Everyone on file</option>
-                  <option value="30">Something due in 30 days</option>
-                  <option value="90">Something due in 90 days</option>
-                  <option value="0">Something already expired</option>
-                </select>
-                <select id="hr-doc-who" style="width:150px;" onchange="renderDocuments()">
-                  <option value="all">Office and labour</option>
-                  <option value="staff">Office staff</option>
-                  <option value="labour">Labour</option>
-                </select>
-                <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
-                <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
-              </div>
-              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                <table class="hr-grid">
-                  <thead><tr>
-                    <th style="width:8%;">Code</th><th class="txt" style="width:25%;">Name</th>
-                    <th style="width:15%;">Emirates ID</th><th style="width:15%;">Visa / Labour card</th>
-                    <th style="width:15%;">Passport</th><th class="txt" style="width:9%;">Other</th>
-                    <th style="width:13%;">Standing</th>
-                  </tr></thead>
-                  <tbody id="hr-doc-body"></tbody>
-                </table>
-              </div>
-              </div>
-
-              <!-- Vehicles, licences and anything else that expires -->
-              <div id="hr-doc-company" style="display:none;">
-                <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                  NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
-                  certificate - any document with an expiry date. Type any category or document; new ones are remembered.
-                  Click a line to renew or correct it.</p>
-                <div class="hr-exp-form">
-                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" placeholder="e.g. NOC"></label>
-                  <datalist id="hr-exp-cat-list"></datalist>
-                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" placeholder="e.g. Villa 347 Sobha Hartland"></label>
-                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" placeholder="e.g. Developer NOC"></label>
-                  <datalist id="hr-exp-kind-list"></datalist>
-                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" placeholder="Optional"></label>
-                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued"></label>
-                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires"></label>
-                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" placeholder="Optional"></label>
-                  <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
-                </div>
-                <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
-                <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
-                    <option value="-1">Everything on file</option>
-                    <option value="30">Due in 30 days</option>
-                    <option value="90">Due in 90 days</option>
-                    <option value="0">Already expired</option>
-                  </select>
-                  <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
-                  <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
-                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
-                  <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
-                </div>
-                <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                  <table class="hr-grid">
-                    <thead><tr>
-                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
-                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
-                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
-                    </tr></thead>
-                    <tbody id="hr-exp-body"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- ---- Gratuity: one person at a time ----------------------->
           <div class="hr-pane" id="hrpane-gratuity" style="display:none;">
             <div class="card">
@@ -3635,7 +3638,7 @@ const SCREEN_TITLES = {
   errorcheck: "Check Before You Pay",
   livecard: "Live Card",
   settings: "Settings",
-  hrpayroll: "Office HR & Payroll",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
   activity: "Activity Monitor",
   store: "Store / Inventory",
   requests: "Material Requests",
@@ -3746,6 +3749,7 @@ function switchScreen(name) {
   if (name === "lporegister") loadLpoReport();
   if (name === "suppliers") loadSuppliersScreen();
   if (name === "pettycash") loadPettyCash();
+  if (name === "expiry") expOpen();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -11308,7 +11312,7 @@ const SCREEN_LABELS = {
   livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests",
   approvals: "Material Approvals", errorcheck: "Check Before You Pay",
   settings: "Settings", activity: "Activity Monitor",
-  hrpayroll: "Office HR & Payroll",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
   storekeeper: "Records stock in and out",
 };
@@ -11913,7 +11917,6 @@ function hrTab(which) {
   if (which === "loans") loadLoans();
   if (which === "leave") loadLeave();
   if (which === "items") loadItems();
-  if (which === "docs") loadDocuments();
   if (which === "gratuity") loadGratuity();
   if (which === "increments") loadIncrements();
 }
@@ -11931,7 +11934,8 @@ async function loadHrScreen() {
   document.getElementById("hr-n-company").innerHTML = opts;
   document.getElementById("hr-staff-company").innerHTML =
     `<option value="">All companies</option>` + opts;
-  document.getElementById("hr-doc-kind").innerHTML = Object.entries({
+  expFillKinds();
+  if (false) document.getElementById("hr-doc-kind").innerHTML = Object.entries({
     eid: "Emirates ID", visa: "Visa / labour card", passport: "Passport",
     labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract",
     medical: "Medical fitness", driving: "Driving licence", certificate: "Certificate"
@@ -13316,13 +13320,29 @@ async function hrItemDelete(id) {
 // man over three lines and put his passport a page away from his visa.
 
 let HR_DOCS = [];
+function expMsg(kind, text) { showStatus("exp-status", kind, text); }
+function expFillKinds() {
+  const k = document.getElementById("hr-doc-kind");
+  if (!k || k.options.length) return;
+  k.innerHTML = Object.entries({
+    eid: "Emirates ID", visa: "Visa / labour card", passport: "Passport",
+    labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract",
+    medical: "Medical fitness", driving: "Driving licence", certificate: "Certificate"
+  }).map(([v, t]) => `<option value="${v}">${t}</option>`).join("") + `<option value="custom">Other - type the name</option>`;
+}
+// Expiry Reminder, its own page: people's documents and the company's.
+function expOpen() {
+  expFillKinds();
+  const company = document.getElementById("hr-doc-company").style.display !== "none";
+  if (company) loadExpiries(); else loadDocuments();
+}
 const HR_DOC_RANK = { expired: 0, urgent: 1, soon: 2, valid: 3 };
 const HR_DOC_WORD = { expired: "Expired", urgent: "Due in 30 days",
                       soon: "Due in 90 days", valid: "Valid" };
 
 async function loadDocuments() {
   try { HR_DOCS = (await apiCall("/employees/documents")).rows || []; }
-  catch (e) { hrMsg("err", errText(e)); return; }
+  catch (e) { expMsg("err", errText(e)); return; }
   renderDocuments();
 }
 
@@ -13400,7 +13420,7 @@ function hrEditDoc(id) {
     <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
   box.style.display = "";
   document.getElementById("hr-doc-expires").focus();
-  document.getElementById("hrpane-docs").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("screen-expiry").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function hrClearDoc() {
@@ -13420,8 +13440,8 @@ async function addDocument() {
       expires_on: v("hr-doc-expires") }) });
     hrClearDoc();
     await loadDocuments();
-    hrMsg("ok", "Document saved.");
-  } catch (e) { hrMsg("err", errText(e)); }
+    expMsg("ok", "Document saved.");
+  } catch (e) { expMsg("err", errText(e)); }
 }
 
 function hrDocKindChanged() {
@@ -13438,10 +13458,10 @@ function hrDocMode(m) {
   document.querySelectorAll("#hr-doc-mode button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   document.getElementById("hr-doc-people").style.display = m === "people" ? "" : "none";
   document.getElementById("hr-doc-company").style.display = m === "company" ? "" : "none";
-  if (m === "company") loadExpiries();
+  if (m === "company") loadExpiries(); else loadDocuments();
 }
 async function loadExpiries() {
-  try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { hrMsg("err", errText(e)); return; }
+  try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { expMsg("err", errText(e)); return; }
   const opt = a => a.map(x => `<option value="${escapeAttr(x)}">`).join("");
   document.getElementById("hr-exp-cat-list").innerHTML = opt(HR_EXP.categories);
   document.getElementById("hr-exp-kind-list").innerHTML = opt(HR_EXP.kinds);
@@ -13493,13 +13513,13 @@ async function saveExpiry() {
   for (const [k, el] of Object.entries(HR_EXP_F)) body[k] = document.getElementById(el).value.trim();
   try {
     await apiCall("/employees/expiries", { method: "POST", body: JSON.stringify(body) });
-    hrClearExpiry(); await loadExpiries(); hrMsg("ok", "Saved.");
-  } catch (e) { hrMsg("err", errText(e)); }
+    hrClearExpiry(); await loadExpiries(); expMsg("ok", "Saved.");
+  } catch (e) { expMsg("err", errText(e)); }
 }
 async function deleteExpiry(id) {
   if (!await hrAsk("Remove this item from the expiry tracker?", "Remove", true)) return;
   try { await apiCall(`/employees/expiries/${id}`, { method: "DELETE" }); hrClearExpiry(); await loadExpiries(); }
-  catch (e) { hrMsg("err", errText(e)); }
+  catch (e) { expMsg("err", errText(e)); }
 }
 async function hrExpExport(kind) {
   const w = document.getElementById("hr-exp-within").value, t = await hrToken();
@@ -13513,7 +13533,7 @@ async function deleteDocument(id) {
     await apiCall(`/employees/documents/${id}`, { method: "DELETE" });
     hrClearDoc();
     await loadDocuments();
-  } catch (e) { hrMsg("err", errText(e)); }
+  } catch (e) { expMsg("err", errText(e)); }
 }
 
 // ---- Gratuity: one person's whole file --------------------------------
@@ -13541,7 +13561,7 @@ async function renderGratuity() {
   if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
   let d;
   try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
-  catch (e) { hrMsg("err", errText(e)); return; }
+  catch (e) { expMsg("err", errText(e)); return; }
   HR_GRAT = d;
   fsDraw();
   const s = d.staff, g = d.gratuity;
@@ -13797,7 +13817,7 @@ async function fsDraw() {
 
 async function fsOpen(kind) {
   const code = document.getElementById("hr-grat-emp").value;
-  if (!code) { hrMsg("warn", "Choose a staff member first."); return; }
+  if (!code) { expMsg("warn", "Choose a staff member first."); return; }
   const q = fsQuery(), t = await hrToken(), e = encodeURIComponent(code);
   const u = kind === "view" ? `/export/payroll/settlement/view?emp_no=${e}&${q}&token=${t}`
                             : `/export/payroll/settlement?emp_no=${e}&${q}&format=${kind}&token=${t}`;
@@ -14006,13 +14026,13 @@ async function addIncrement() {
 // Every generated page carries the whole app, so moving between them is
 // done here, in the same page: no reload, no fetching the app again, no
 // signing in again, and lists already fetched stay in memory.
-const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": []}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": []}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}, {"id": "documents", "screen": "hrpayroll", "label": "Documents", "right": "hrpayroll", "show": [], "subs": [{"id": "people", "label": "People", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('docs'); hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('docs'); hrDocMode('company')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "pettycash", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}]}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}]}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["store", "storekeeper", "approvals"], "show": [], "subs": []}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "hrpayroll", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}]}, {"id": "office", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "docs", "label": "Documents", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('docs')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}, {"id": "people", "screen": "pgreports", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "register", "label": "Register", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "register", "opts": "group", "show": []}, {"id": "due", "label": "Documents due", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "documents-due", "opts": "days", "show": []}]}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Consumption", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Issue & return register", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent now", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Request history", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"], "subs": []}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "__admin__", "show": ["#companies-card", "#pg-sites-block"], "subs": []}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "__admin__", "show": [], "subs": []}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "__admin__", "show": [], "subs": []}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
+const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": []}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": []}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "expiry": {"key": "expiry", "title": "Expiry Reminder", "screens": ["expiry"], "tabs": [{"id": "expiry", "screen": "expiry", "label": "Expiry reminder", "right": "expiry", "show": [], "subs": [{"id": "people", "label": "People", "screen": "expiry", "right": "expiry", "go": "hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "expiry", "right": "expiry", "go": "hrDocMode('company')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "pettycash", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}]}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}]}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["store", "storekeeper", "approvals"], "show": [], "subs": []}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "hrpayroll", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}]}, {"id": "office", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}, {"id": "people", "screen": "pgreports", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "register", "label": "Register", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "register", "opts": "group", "show": []}, {"id": "due", "label": "Documents due", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "documents-due", "opts": "days", "show": []}]}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Consumption", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Issue & return register", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent now", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Request history", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"], "subs": []}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "__admin__", "show": ["#companies-card", "#pg-sites-block"], "subs": []}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "__admin__", "show": [], "subs": []}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "__admin__", "show": [], "subs": []}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
 let PAGE = ALL_PAGES[window.PG_KEY] || ALL_PAGES.dashboard;
 document.title = PAGE.title + " - Infinia App";
 document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === PAGE.key));
 const STANDALONE_PAGES = ["access"];
-const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "pettycash": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "monthly": "reports", "settings": "settings", "pglogins": "settings", "pgaccess": "settings", "activity": "settings", "pgstaff": "people"};
-const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["adjustments", "combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "pettycash": ["approvals", "store", "storekeeper"], "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "monthly": "reports", "settings": ["__admin__", "settings"], "pglogins": ["__admin__"], "pgaccess": ["__admin__"], "activity": ["activity"], "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "access": "access", "pgstaff": ["people_labour", "people_office", "people_local"]};
+const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "expiry": "expiry", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "pettycash": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "monthly": "reports", "settings": "settings", "pglogins": "settings", "pgaccess": "settings", "activity": "settings", "pgstaff": "people"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["adjustments", "combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "expiry": ["expiry"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "pettycash": ["approvals", "store", "storekeeper"], "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "monthly": "reports", "settings": ["__admin__", "settings"], "pglogins": ["__admin__"], "pgaccess": ["__admin__"], "activity": ["activity"], "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "access": "access", "pgstaff": ["people_labour", "people_office", "people_local"]};
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
 SCREEN_TITLES.pgaccess = "Access";
@@ -14034,7 +14054,7 @@ SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
-const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}, {"id": "documents", "label": "Documents", "right": "hrpayroll"}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "petty", "label": "Petty cash", "right": ["store", "storekeeper", "approvals"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}], "expiry": [{"id": "expiry", "label": "Expiry reminder", "right": "expiry"}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "petty", "label": "Petty cash", "right": ["store", "storekeeper", "approvals"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
 // One address for the whole app: app.infinia.ae/ is the dashboard and
 // app.infinia.ae/?p=<page> every other page; the tab follows after #.
 function pgFile(key) { return key === "dashboard" ? "/" : key === "access" ? "/?p=settings" : "/?p=" + key; }
@@ -14153,7 +14173,7 @@ firstScreenFor = function () {
     if (tb.subs.length) { PG_SUB = tb.subs.find(sb => pgHas(sb.right)) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
     return tb.screen;
   }
-  const pages = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings"];
+  const pages = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "reports", "settings"];
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
     if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) {

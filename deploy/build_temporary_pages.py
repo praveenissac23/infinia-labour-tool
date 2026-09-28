@@ -63,12 +63,14 @@ PAGES = {
             sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
             sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
             sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
-            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
-        # Documents that expire - people's, and the company's own (NOCs,
-        # permits, licences, vehicles) - a tab of their own after Office payroll.
-        tab("documents", "hrpayroll", "Documents", "hrpayroll", subs=[
-            sub("people", "People", screen="hrpayroll", go="hrTab('docs'); hrDocMode('people')"),
-            sub("company", "Company & other documents", screen="hrpayroll", go="hrTab('docs'); hrDocMode('company')")])]),
+            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")])]),
+    # Documents that expire - people's, and the company's own (NOCs,
+    # permits, licences, vehicles) - on a page of their own, with a
+    # right of their own that shows no pay.
+    "expiry": ("Expiry Reminder", [
+        tab("expiry", "expiry", "Expiry reminder", "expiry", subs=[
+            sub("people", "People", screen="expiry", right="expiry", go="hrDocMode('people')"),
+            sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')")])]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -102,7 +104,6 @@ PAGES = {
             sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
             sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
             sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
-            sub("docs", "Documents", screen="hrpayroll", go="hrTab('docs')"),
             sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
         tab("people", "pgreports", "Staff", PEOPLE_RIGHTS, subs=[
             sub("register", "Register", right=PEOPLE_RIGHTS, people="register", opts="group"),
@@ -128,7 +129,7 @@ PAGES = {
 EXTRA = {"monthly": "reports"}
 # Pages held in a frame inside the app rather than written from app.html.
 VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
-ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings"]
+ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
@@ -137,7 +138,7 @@ def fname(key): return FILE.get(key, key) + ".html"
 STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local"]),
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
-          "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor"}
+          "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder"}
 
 CSS = """
 <style>

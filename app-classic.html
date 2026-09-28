@@ -1927,6 +1927,108 @@
 
         </div>
 
+        <!-- ============ EXPIRY REMINDER ============ -->
+        <div class="screen" id="screen-expiry">
+          <div class="status-msg" id="exp-status"></div>
+          <div class="card">
+              <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
+                <h2 style="margin:0;">Expiry tracker</h2>
+                <div class="pc-kind" id="hr-doc-mode">
+                  <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
+                  <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
+                </div>
+              </div>
+              <div id="hr-doc-people">
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                Office staff and labour together, one line a person. Click any date to renew
+                or correct it - a renewal is simply the new expiry date. Any other document can be
+                added: pick "Other - type the name".</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
+                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
+                <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
+                <datalist id="hr-doc-custom-list"></datalist>
+                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
+                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
+                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
+                <button class="btn btn-primary" onclick="addDocument()">Save document</button>
+              </div>
+              <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                <select id="hr-doc-within" class="hr-dd" style="width:210px;" onchange="renderDocuments()">
+                  <option value="-1">Everyone on file</option>
+                  <option value="30">Something due in 30 days</option>
+                  <option value="90">Something due in 90 days</option>
+                  <option value="0">Something already expired</option>
+                </select>
+                <select id="hr-doc-who" class="hr-dd" style="width:170px;" onchange="renderDocuments()">
+                  <option value="all">Office and labour</option>
+                  <option value="staff">Office staff</option>
+                  <option value="labour">Labour</option>
+                </select>
+                <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
+                <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
+              </div>
+              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                <table class="hr-grid">
+                  <thead><tr>
+                    <th style="width:8%;">Code</th><th class="txt" style="width:25%;">Name</th>
+                    <th style="width:15%;">Emirates ID</th><th style="width:15%;">Visa / Labour card</th>
+                    <th style="width:15%;">Passport</th><th class="txt" style="width:9%;">Other</th>
+                    <th style="width:13%;">Standing</th>
+                  </tr></thead>
+                  <tbody id="hr-doc-body"></tbody>
+                </table>
+              </div>
+              </div>
+
+              <!-- Vehicles, licences and anything else that expires -->
+              <div id="hr-doc-company" style="display:none;">
+                <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                  NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
+                  certificate - any document with an expiry date. Type any category or document; new ones are remembered.
+                  Click a line to renew or correct it.</p>
+                <div class="hr-exp-form">
+                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" placeholder="e.g. NOC"></label>
+                  <datalist id="hr-exp-cat-list"></datalist>
+                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" placeholder="e.g. Villa 347 Sobha Hartland"></label>
+                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" placeholder="e.g. Developer NOC"></label>
+                  <datalist id="hr-exp-kind-list"></datalist>
+                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" placeholder="Optional"></label>
+                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued"></label>
+                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires"></label>
+                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" placeholder="Optional"></label>
+                  <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
+                </div>
+                <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+                <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
+                    <option value="-1">Everything on file</option>
+                    <option value="30">Due in 30 days</option>
+                    <option value="90">Due in 90 days</option>
+                    <option value="0">Already expired</option>
+                  </select>
+                  <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
+                  <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
+                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
+                  <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
+                </div>
+                <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                  <table class="hr-grid">
+                    <thead><tr>
+                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
+                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
+                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
+                    </tr></thead>
+                    <tbody id="hr-exp-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          
+        </div>
+
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
           <div class="card">
@@ -2805,7 +2907,6 @@
             <div class="hr-tab" data-tab="loans" onclick="hrTab('loans')">Loans</div>
             <div class="hr-tab" data-tab="staff" onclick="hrTab('staff')">Staff Register</div>
             <div class="hr-tab" data-tab="increments" onclick="hrTab('increments')">Increments</div>
-            <div class="hr-tab" data-tab="docs" onclick="hrTab('docs')">Documents</div>
             <div class="hr-tab" data-tab="gratuity" onclick="hrTab('gratuity')">Gratuity</div>
           </div>
           <div class="status-msg" id="hr-status"></div>
@@ -3135,105 +3236,6 @@
           </div>
 
           <!-- ---- Documents ------------------------------------------->
-          <div class="hr-pane" id="hrpane-docs" style="display:none;">
-            <div class="card">
-              <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
-                <h2 style="margin:0;">Expiry tracker</h2>
-                <div class="pc-kind" id="hr-doc-mode">
-                  <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
-                  <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
-                </div>
-              </div>
-              <div id="hr-doc-people">
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                Office staff and labour together, one line a person. Click any date to renew
-                or correct it - a renewal is simply the new expiry date. Any other document can be
-                added: pick "Other - type the name".</p>
-              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
-                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
-                <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
-                <datalist id="hr-doc-custom-list"></datalist>
-                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
-                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
-                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
-                <button class="btn btn-primary" onclick="addDocument()">Save document</button>
-              </div>
-              <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
-              <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                <select id="hr-doc-within" style="width:190px;" onchange="renderDocuments()">
-                  <option value="-1">Everyone on file</option>
-                  <option value="30">Something due in 30 days</option>
-                  <option value="90">Something due in 90 days</option>
-                  <option value="0">Something already expired</option>
-                </select>
-                <select id="hr-doc-who" style="width:150px;" onchange="renderDocuments()">
-                  <option value="all">Office and labour</option>
-                  <option value="staff">Office staff</option>
-                  <option value="labour">Labour</option>
-                </select>
-                <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
-                <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
-              </div>
-              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                <table class="hr-grid">
-                  <thead><tr>
-                    <th style="width:8%;">Code</th><th class="txt" style="width:25%;">Name</th>
-                    <th style="width:15%;">Emirates ID</th><th style="width:15%;">Visa / Labour card</th>
-                    <th style="width:15%;">Passport</th><th class="txt" style="width:9%;">Other</th>
-                    <th style="width:13%;">Standing</th>
-                  </tr></thead>
-                  <tbody id="hr-doc-body"></tbody>
-                </table>
-              </div>
-              </div>
-
-              <!-- Vehicles, licences and anything else that expires -->
-              <div id="hr-doc-company" style="display:none;">
-                <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                  NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
-                  certificate - any document with an expiry date. Type any category or document; new ones are remembered.
-                  Click a line to renew or correct it.</p>
-                <div class="hr-exp-form">
-                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" placeholder="e.g. NOC"></label>
-                  <datalist id="hr-exp-cat-list"></datalist>
-                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" placeholder="e.g. Villa 347 Sobha Hartland"></label>
-                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" placeholder="e.g. Developer NOC"></label>
-                  <datalist id="hr-exp-kind-list"></datalist>
-                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" placeholder="Optional"></label>
-                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued"></label>
-                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires"></label>
-                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" placeholder="Optional"></label>
-                  <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
-                </div>
-                <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
-                <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
-                    <option value="-1">Everything on file</option>
-                    <option value="30">Due in 30 days</option>
-                    <option value="90">Due in 90 days</option>
-                    <option value="0">Already expired</option>
-                  </select>
-                  <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
-                  <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
-                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
-                  <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
-                </div>
-                <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
-                  <table class="hr-grid">
-                    <thead><tr>
-                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
-                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
-                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
-                    </tr></thead>
-                    <tbody id="hr-exp-body"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- ---- Gratuity: one person at a time ----------------------->
           <div class="hr-pane" id="hrpane-gratuity" style="display:none;">
             <div class="card">
@@ -3457,7 +3459,7 @@ const SCREEN_TITLES = {
   errorcheck: "Check Before You Pay",
   livecard: "Live Card",
   settings: "Settings",
-  hrpayroll: "Office HR & Payroll",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
   activity: "Activity Monitor",
   store: "Store / Inventory",
   requests: "Material Requests",
@@ -3568,6 +3570,7 @@ function switchScreen(name) {
   if (name === "lporegister") loadLpoReport();
   if (name === "suppliers") loadSuppliersScreen();
   if (name === "pettycash") loadPettyCash();
+  if (name === "expiry") expOpen();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -11130,7 +11133,7 @@ const SCREEN_LABELS = {
   livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests",
   approvals: "Material Approvals", errorcheck: "Check Before You Pay",
   settings: "Settings", activity: "Activity Monitor",
-  hrpayroll: "Office HR & Payroll",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
   storekeeper: "Records stock in and out",
 };
@@ -11735,7 +11738,6 @@ function hrTab(which) {
   if (which === "loans") loadLoans();
   if (which === "leave") loadLeave();
   if (which === "items") loadItems();
-  if (which === "docs") loadDocuments();
   if (which === "gratuity") loadGratuity();
   if (which === "increments") loadIncrements();
 }
@@ -11753,7 +11755,8 @@ async function loadHrScreen() {
   document.getElementById("hr-n-company").innerHTML = opts;
   document.getElementById("hr-staff-company").innerHTML =
     `<option value="">All companies</option>` + opts;
-  document.getElementById("hr-doc-kind").innerHTML = Object.entries({
+  expFillKinds();
+  if (false) document.getElementById("hr-doc-kind").innerHTML = Object.entries({
     eid: "Emirates ID", visa: "Visa / labour card", passport: "Passport",
     labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract",
     medical: "Medical fitness", driving: "Driving licence", certificate: "Certificate"
@@ -13138,13 +13141,29 @@ async function hrItemDelete(id) {
 // man over three lines and put his passport a page away from his visa.
 
 let HR_DOCS = [];
+function expMsg(kind, text) { showStatus("exp-status", kind, text); }
+function expFillKinds() {
+  const k = document.getElementById("hr-doc-kind");
+  if (!k || k.options.length) return;
+  k.innerHTML = Object.entries({
+    eid: "Emirates ID", visa: "Visa / labour card", passport: "Passport",
+    labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract",
+    medical: "Medical fitness", driving: "Driving licence", certificate: "Certificate"
+  }).map(([v, t]) => `<option value="${v}">${t}</option>`).join("") + `<option value="custom">Other - type the name</option>`;
+}
+// Expiry Reminder, its own page: people's documents and the company's.
+function expOpen() {
+  expFillKinds();
+  const company = document.getElementById("hr-doc-company").style.display !== "none";
+  if (company) loadExpiries(); else loadDocuments();
+}
 const HR_DOC_RANK = { expired: 0, urgent: 1, soon: 2, valid: 3 };
 const HR_DOC_WORD = { expired: "Expired", urgent: "Due in 30 days",
                       soon: "Due in 90 days", valid: "Valid" };
 
 async function loadDocuments() {
   try { HR_DOCS = (await apiCall("/employees/documents")).rows || []; }
-  catch (e) { hrMsg("err", errText(e)); return; }
+  catch (e) { expMsg("err", errText(e)); return; }
   renderDocuments();
 }
 
@@ -13222,7 +13241,7 @@ function hrEditDoc(id) {
     <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
   box.style.display = "";
   document.getElementById("hr-doc-expires").focus();
-  document.getElementById("hrpane-docs").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("screen-expiry").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function hrClearDoc() {
@@ -13242,8 +13261,8 @@ async function addDocument() {
       expires_on: v("hr-doc-expires") }) });
     hrClearDoc();
     await loadDocuments();
-    hrMsg("ok", "Document saved.");
-  } catch (e) { hrMsg("err", errText(e)); }
+    expMsg("ok", "Document saved.");
+  } catch (e) { expMsg("err", errText(e)); }
 }
 
 function hrDocKindChanged() {
@@ -13260,10 +13279,10 @@ function hrDocMode(m) {
   document.querySelectorAll("#hr-doc-mode button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   document.getElementById("hr-doc-people").style.display = m === "people" ? "" : "none";
   document.getElementById("hr-doc-company").style.display = m === "company" ? "" : "none";
-  if (m === "company") loadExpiries();
+  if (m === "company") loadExpiries(); else loadDocuments();
 }
 async function loadExpiries() {
-  try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { hrMsg("err", errText(e)); return; }
+  try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { expMsg("err", errText(e)); return; }
   const opt = a => a.map(x => `<option value="${escapeAttr(x)}">`).join("");
   document.getElementById("hr-exp-cat-list").innerHTML = opt(HR_EXP.categories);
   document.getElementById("hr-exp-kind-list").innerHTML = opt(HR_EXP.kinds);
@@ -13315,13 +13334,13 @@ async function saveExpiry() {
   for (const [k, el] of Object.entries(HR_EXP_F)) body[k] = document.getElementById(el).value.trim();
   try {
     await apiCall("/employees/expiries", { method: "POST", body: JSON.stringify(body) });
-    hrClearExpiry(); await loadExpiries(); hrMsg("ok", "Saved.");
-  } catch (e) { hrMsg("err", errText(e)); }
+    hrClearExpiry(); await loadExpiries(); expMsg("ok", "Saved.");
+  } catch (e) { expMsg("err", errText(e)); }
 }
 async function deleteExpiry(id) {
   if (!await hrAsk("Remove this item from the expiry tracker?", "Remove", true)) return;
   try { await apiCall(`/employees/expiries/${id}`, { method: "DELETE" }); hrClearExpiry(); await loadExpiries(); }
-  catch (e) { hrMsg("err", errText(e)); }
+  catch (e) { expMsg("err", errText(e)); }
 }
 async function hrExpExport(kind) {
   const w = document.getElementById("hr-exp-within").value, t = await hrToken();
@@ -13335,7 +13354,7 @@ async function deleteDocument(id) {
     await apiCall(`/employees/documents/${id}`, { method: "DELETE" });
     hrClearDoc();
     await loadDocuments();
-  } catch (e) { hrMsg("err", errText(e)); }
+  } catch (e) { expMsg("err", errText(e)); }
 }
 
 // ---- Gratuity: one person's whole file --------------------------------
@@ -13363,7 +13382,7 @@ async function renderGratuity() {
   if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
   let d;
   try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
-  catch (e) { hrMsg("err", errText(e)); return; }
+  catch (e) { expMsg("err", errText(e)); return; }
   HR_GRAT = d;
   fsDraw();
   const s = d.staff, g = d.gratuity;
@@ -13619,7 +13638,7 @@ async function fsDraw() {
 
 async function fsOpen(kind) {
   const code = document.getElementById("hr-grat-emp").value;
-  if (!code) { hrMsg("warn", "Choose a staff member first."); return; }
+  if (!code) { expMsg("warn", "Choose a staff member first."); return; }
   const q = fsQuery(), t = await hrToken(), e = encodeURIComponent(code);
   const u = kind === "view" ? `/export/payroll/settlement/view?emp_no=${e}&${q}&token=${t}`
                             : `/export/payroll/settlement?emp_no=${e}&${q}&format=${kind}&token=${t}`;
