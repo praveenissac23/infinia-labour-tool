@@ -207,6 +207,25 @@
   td.hr-d { cursor: pointer; }
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
+  .exp-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .exp-card { background: #fff; border: 1px solid #E8E2DA; border-radius: 12px; padding: 14px 16px; cursor: pointer; text-align: left;
+              font: inherit; transition: box-shadow .15s; }
+  .exp-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+  .exp-card b { display: block; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .exp-card span { font-size: 13px; color: #555; font-weight: 600; }
+  .exp-card small { display: block; font-size: 11.5px; color: #8A8178; margin-top: 2px; }
+  .exp-card.red b { color: #B7322A; } .exp-card.red.has { background: #FDF1EF; border-color: #F0C4BE; }
+  .exp-card.amber b { color: #9A6700; } .exp-card.amber.has { background: #FFF8E6; border-color: #F2DFA6; }
+  .exp-card.yellow b { color: #7A6A2A; }
+  .exp-card.grey b { color: #555; } .exp-card.grey.has { background: #F5F3F1; }
+  .exp-card.zero b { color: #2E7D32; }
+  .exp-card.on { outline: 2px solid #B7322A; outline-offset: -1px; }
+  .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .exp-mail-row > div { min-width: 190px; } .exp-mail-row .hr-nil { display: block; font-size: 11.5px; }
+  .exp-mail-row input { flex: 1 1 320px; height: 36px; }
+  .pg-side .pg-item .pg-badge { background: #fff !important; color: #C0392B !important; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 1px 7px; margin-left: 8px; display: inline-block; line-height: 16px; }
+  .pg-side .pg-item:not(.active) .pg-badge { background: #C0392B !important; color: #fff !important; }
+  @media (max-width: 900px) { .exp-cards { grid-template-columns: 1fr 1fr; } }
   .hr-exp-form { display: grid; grid-template-columns: 1fr 2fr 1.6fr 1fr; gap: 10px 12px; align-items: end; }
   .hr-exp-form .hr-field input { width: 100%; }
   .hr-exp-form > .btn { justify-self: start; height: 36px; }
@@ -1031,7 +1050,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="de754f1534b1";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="83cdfa53e4f4";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2038,6 +2057,7 @@
         <!-- ============ EXPIRY REMINDER ============ -->
         <div class="screen" id="screen-expiry">
           <div class="status-msg" id="exp-status"></div>
+          <div class="exp-cards" id="exp-cards"></div>
           <div class="card">
               <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
                 <h2 style="margin:0;">Expiry tracker</h2>
@@ -2063,11 +2083,13 @@
               </div>
               <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
               <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                <select id="hr-doc-within" class="hr-dd" style="width:210px;" onchange="renderDocuments()">
-                  <option value="-1">Everyone on file</option>
-                  <option value="30">Something due in 30 days</option>
-                  <option value="90">Something due in 90 days</option>
-                  <option value="0">Something already expired</option>
+                <select id="hr-doc-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderDocuments()">
+                  <option value="30" selected>Expired or due in 30 days</option>
+                  <option value="7">Expired or due in 7 days</option>
+                  <option value="0">Expired only</option>
+                  <option value="90">Expired or due in 90 days</option>
+                  <option value="missing">Missing documents</option>
+                  <option value="-1">Everyone</option>
                 </select>
                 <select id="hr-doc-who" class="hr-dd" style="width:170px;" onchange="renderDocuments()">
                   <option value="all">Office and labour</option>
@@ -2111,11 +2133,12 @@
                 </div>
                 <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
                 <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
-                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
-                    <option value="-1">Everything on file</option>
-                    <option value="30">Due in 30 days</option>
-                    <option value="90">Due in 90 days</option>
-                    <option value="0">Already expired</option>
+                  <select id="hr-exp-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderExpiries()">
+                    <option value="30" selected>Expired or due in 30 days</option>
+                    <option value="7">Expired or due in 7 days</option>
+                    <option value="0">Expired only</option>
+                    <option value="90">Expired or due in 90 days</option>
+                    <option value="-1">Everything</option>
                   </select>
                   <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
                   <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
@@ -2135,6 +2158,14 @@
               </div>
             </div>
           
+          <div class="card exp-mail">
+            <div class="exp-mail-row">
+              <div><b>Daily email at 8:00</b><span class="hr-nil" id="exp-mail-note"></span></div>
+              <input type="text" id="exp-mail-to" placeholder="e.g. praveen@infinia.ae, hr@infinia.ae">
+              <button class="btn btn-primary" onclick="expMailSave()">Save</button>
+              <button class="btn btn-gray" onclick="expMailTest()">Send now</button>
+            </div>
+          </div>
         </div>
 
         <!-- ============ PETTY CASH ============ -->
@@ -6210,6 +6241,8 @@ async function loadNotifications() {
   try {
     const d = await apiCall("/notifications");
     notifications = d.notifications || [];
+    const ex = notifications.find(n => n.kind === "expiry");
+    if (typeof expBadge === "function") expBadge(ex ? ex.count : 0);
   } catch (e) {
     notifications = [];
   }
@@ -6225,8 +6258,8 @@ async function loadNotifications() {
     // up - except anything genuinely urgent, which is worth saying at
     // once.
     toastReady = true;
-    const urgent = fresh.filter(n => n.kind === "late");
-    markSeen(fresh.filter(n => n.kind !== "late").map(n => n.id));
+    const urgent = fresh.filter(n => n.kind === "late" || n.kind === "expiry");
+    markSeen(fresh.filter(n => n.kind !== "late" && n.kind !== "expiry").map(n => n.id));
     if (urgent.length) showToasts(urgent);
     return;
   }
@@ -6268,6 +6301,8 @@ let notifQueue = [];
 let notifShowing = null;
 
 function showToasts(fresh) {
+  // Automated test browsers get no pop-ups unless a test asks for them.
+  if (navigator.webdriver && !window.__popups) { markSeen(fresh.map(n => n.id)); return; }
   notifQueue = notifQueue.concat(fresh.filter(
     n => !notifQueue.some(q => q.id === n.id) && (!notifShowing || notifShowing.id !== n.id)));
   markSeen(fresh.map(n => n.id));
@@ -13331,10 +13366,67 @@ function expFillKinds() {
   }).map(([v, t]) => `<option value="${v}">${t}</option>`).join("") + `<option value="custom">Other - type the name</option>`;
 }
 // Expiry Reminder, its own page: people's documents and the company's.
+let EXP_SUM = null;
 function expOpen() {
   expFillKinds();
   const company = document.getElementById("hr-doc-company").style.display !== "none";
+  expLoadSummary();
+  expMailLoad();
   if (company) loadExpiries(); else loadDocuments();
+}
+async function expLoadSummary() {
+  try { EXP_SUM = await apiCall("/employees/expiry/summary"); } catch (e) { return; }
+  const c = (k, cls, label, sub, n) => `<button type="button" class="exp-card ${cls}${n ? " has" : " zero"}" data-k="${k}" onclick="expCard('${k}')">
+      <b>${n}</b><span>${label}</span><small>${sub}</small></button>`;
+  document.getElementById("exp-cards").innerHTML =
+    c("expired", "red", "Expired", "renew now", EXP_SUM.expired) +
+    c("week", "amber", "Due in 7 days", "start renewal", EXP_SUM.week) +
+    c("month", "yellow", "Due in 8 to 30 days", "plan ahead", EXP_SUM.month) +
+    c("missing", "grey", "Missing documents", "people with nothing on file", EXP_SUM.missing);
+  expCardsMark();
+  expBadge(EXP_SUM.expired + EXP_SUM.week);
+  if (document.getElementById("hr-doc-within").value === "missing") renderDocuments();
+}
+// A counter picks the list: the same filter on both lists.
+function expCard(k) {
+  const v = { expired: "0", week: "7", month: "30", missing: "missing" }[k];
+  if (k === "missing") { hrDocMode("people"); if (typeof pgSub === "function") try { pgSub("people"); } catch (e) {} }
+  document.getElementById("hr-doc-within").value = v;
+  document.getElementById("hr-exp-within").value = k === "missing" ? "30" : v;
+  expCardsMark(); renderDocuments(); renderExpiries();
+}
+function expCardsMark() {
+  const company = document.getElementById("hr-doc-company").style.display !== "none";
+  const v = document.getElementById(company ? "hr-exp-within" : "hr-doc-within").value;
+  const k = { "0": "expired", "7": "week", "missing": "missing" }[v];
+  document.querySelectorAll(".exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+}
+function expBadge(n) {
+  const item = document.querySelector('.pg-side .pg-item[data-page="expiry"]'); if (!item) return;
+  let b = item.querySelector(".pg-badge");
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement("span"); b.className = "pg-badge"; item.appendChild(b); }
+  b.textContent = n;
+}
+async function expMailLoad() {
+  try {
+    const d = await apiCall("/employees/expiry/mail");
+    const inp = document.getElementById("exp-mail-to");
+    if (document.activeElement !== inp) inp.value = d.to || "";
+    document.getElementById("exp-mail-note").textContent = !d.configured
+      ? "Mail is not set up on the server yet - the bell reminder still works."
+      : d.last_sent ? `Last sent ${hrDate(d.last_sent)}` : "One summary a day, only when something needs attention.";
+  } catch (e) {}
+}
+async function expMailSave() {
+  try { await apiCall("/employees/expiry/mail", { method: "POST", body: JSON.stringify({ to: document.getElementById("exp-mail-to").value }) });
+        expMsg("ok", "Saved - the summary goes to these addresses every morning at 8:00."); expMailLoad(); }
+  catch (e) { expMsg("err", errText(e)); }
+}
+async function expMailTest() {
+  try { await apiCall("/employees/expiry/mail", { method: "POST", body: JSON.stringify({ to: document.getElementById("exp-mail-to").value }) });
+        const r = await apiCall("/employees/expiry/mail/test", { method: "POST" }); expMsg("ok", `Sent to ${r.to}.`); }
+  catch (e) { expMsg("err", errText(e)); }
 }
 const HR_DOC_RANK = { expired: 0, urgent: 1, soon: 2, valid: 3 };
 const HR_DOC_WORD = { expired: "Expired", urgent: "Due in 30 days",
@@ -13356,6 +13448,7 @@ function hrDocCell(x) {
 }
 
 function renderDocuments() {
+  if (document.getElementById("hr-doc-within").value === "missing") return expRenderMissing();
   const within = parseInt(document.getElementById("hr-doc-within").value, 10);
   const who = document.getElementById("hr-doc-who").value;
   const q = (document.getElementById("hr-doc-search").value || "").toLowerCase().trim();
@@ -13400,6 +13493,24 @@ function renderDocuments() {
     `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nothing matches.</td></tr>`;
 }
 
+// People with a document never entered - they can never be reminded
+// until it is. Click a line to put the code in the form.
+function expRenderMissing() {
+  const who = document.getElementById("hr-doc-who").value;
+  const q = (document.getElementById("hr-doc-search").value || "").toLowerCase().trim();
+  const rows = ((EXP_SUM && EXP_SUM.missing_people) || []).filter(p =>
+    (who === "all" || (who === "staff") === !!p.staff) && (!q || `${p.emp_no} ${p.name}`.toLowerCase().includes(q)));
+  document.getElementById("hr-doc-count").textContent = `${rows.length} people with a document missing`;
+  const cell = (p, label) => p.missing.includes(label) ? `<td class="hr-d hr-d-expired">Missing</td>` : `<td class="hr-nil">on file</td>`;
+  document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
+    <tr style="cursor:pointer;" onclick="document.getElementById('hr-doc-emp').value='${escapeAttr(p.emp_no)}'; document.getElementById('hr-doc-expires').focus();" title="Click to add the missing document">
+      <td>${escapeHtml(p.emp_no)}</td>
+      <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
+      ${cell(p, "Emirates ID")}${cell(p, "Visa / labour card")}${cell(p, "Passport")}<td class="hr-nil">-</td>
+      <td class="hr-d-expired">Missing</td></tr>`).join("") ||
+    `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nobody is missing a document.</td></tr>`;
+}
+
 // Clicking a date puts that document into the form above, ready for the
 // new expiry to be typed - renewing is changing the date, nothing more.
 function hrEditDoc(id) {
@@ -13439,7 +13550,7 @@ async function addDocument() {
       number: v("hr-doc-number").trim(), issued_on: v("hr-doc-issued"),
       expires_on: v("hr-doc-expires") }) });
     hrClearDoc();
-    await loadDocuments();
+    await loadDocuments(); expLoadSummary();
     expMsg("ok", "Document saved.");
   } catch (e) { expMsg("err", errText(e)); }
 }
@@ -13513,7 +13624,7 @@ async function saveExpiry() {
   for (const [k, el] of Object.entries(HR_EXP_F)) body[k] = document.getElementById(el).value.trim();
   try {
     await apiCall("/employees/expiries", { method: "POST", body: JSON.stringify(body) });
-    hrClearExpiry(); await loadExpiries(); expMsg("ok", "Saved.");
+    hrClearExpiry(); await loadExpiries(); expLoadSummary(); expMsg("ok", "Saved.");
   } catch (e) { expMsg("err", errText(e)); }
 }
 async function deleteExpiry(id) {

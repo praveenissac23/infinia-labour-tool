@@ -25,7 +25,7 @@ def configured() -> bool:
     return bool(os.environ.get("SMTP_HOST"))
 
 
-def send(to: str, subject: str, body: str) -> tuple[bool, str]:
+def send(to: str, subject: str, body: str, html: str = None) -> tuple[bool, str]:
     """Returns (sent, reason). Never raises: a stock movement must not
     fail because a mail server is down."""
     host = os.environ.get("SMTP_HOST")
@@ -41,6 +41,8 @@ def send(to: str, subject: str, body: str) -> tuple[bool, str]:
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")
 
     try:
         if os.environ.get("SMTP_SSL") == "1":

@@ -10528,6 +10528,24 @@ def get_notifications(db: Session = Depends(get_db),
                          "detail": f"{marked} of {active} workers marked",
                          "screen": "attendance", "when": y.isoformat(), "level": "info"})
 
+    # ---- Expiry Reminder: one line a day, never one per document -------
+    if "expiry" in allowed:
+        try:
+            import expiry as _ex
+            s = _ex.summary(db)
+            if s["expired"] or s["week"]:
+                bits = [f"{s['expired']} expired" if s["expired"] else "",
+                        f"{s['week']} due within 7 days" if s["week"] else "",
+                        f"{s['month']} within 30" if s["month"] else ""]
+                first = ", ".join(f"{i['who']} ({i['what']})" for i in s["attention"][:3])
+                out.append({"id": f"expiry-{today}-{s['expired']}-{s['week']}", "kind": "expiry",
+                            "title": "Expiries: " + ", ".join(b for b in bits if b),
+                            "detail": first + (f" and {len(s['attention']) - 3} more" if len(s["attention"]) > 3 else ""),
+                            "screen": "expiry", "when": today.isoformat(), "count": s["expired"] + s["week"],
+                            "level": "warn" if s["expired"] else "info"})
+        except Exception:
+            pass
+
     # Newest first within each urgency band
     order = {"warn": 0, "info": 1, "ok": 2}
     out.sort(key=lambda n: (order.get(n["level"], 3), n["when"]), reverse=False)
@@ -10667,3 +10685,10 @@ import settlement  # noqa: E402
 app.include_router(settlement.router)
 import pettycash  # noqa: E402
 app.include_router(pettycash.router)
+import expiry  # noqa: E402
+app.include_router(expiry.router)
+
+
+@app.on_event("startup")
+def _expiry_mail_start():
+    expiry.start()
