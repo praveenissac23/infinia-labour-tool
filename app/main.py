@@ -1531,6 +1531,39 @@ def list_summaries(month_year: str, as_of: str = None, db: Session = Depends(get
     return out
 
 
+@app.get("/summaries/{month_year}/full-cycle")
+def get_full_cycle(month_year: str, db: Session = Depends(get_db),
+                   user: models.User = Depends(auth.get_current_user)):
+    d = services.full_cycle_from(db, month_year)
+    cs, ce, _ = pcyc.cycle_bounds_for(datetime.strptime(f"25 {month_year}", "%d %B %Y").date())
+    today = _dubai_today()
+    return {"on": bool(d), "from": d.isoformat() if d else "", "early": cs <= today < ce,
+            "cycle_end": ce.isoformat()}
+
+
+@app.post("/summaries/{month_year}/full-cycle")
+def set_full_cycle(month_year: str, payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("combine"))):
+    """Pay the labour cycle before it ends: every card becomes the whole
+    cycle's salary - the days still to come count as working days until
+    attendance is marked on them. Undo puts the cards back to date."""
+    try:
+        cs, ce, _ = pcyc.cycle_bounds_for(datetime.strptime(f"25 {month_year}", "%d %B %Y").date())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Which cycle? Give it like \"October 2026\".")
+    on = bool(payload.get("on", True))
+    put_setting(db, services.full_cycle_key(month_year),
+                max(_dubai_today(), cs).isoformat() if on else "")
+    n = 0
+    for e in db.query(models.Employee).filter(models.Employee.staff != True).all():  # noqa: E712
+        has = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == e.emp_no,
+                                                      models.EmployeeSummary.month_year == month_year).first()
+        if has or (on and e.active and employed_during(e, cs, ce)):
+            services.recalculate_summary(db, e, month_year); n += 1
+    log_action(db, user.id, "labour_full_cycle", f"{month_year}: {'full salary' if on else 'back to date'} ({n} cards)")
+    return {"ok": True, "on": on, "cards": n}
+
+
 @app.get("/summaries/{month_year}/by-site")
 def summaries_by_site(month_year: str, date_from: str = None, date_to: str = None,
                        db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
@@ -9305,6 +9338,26 @@ def _line_dict(l, e):
             "held": bool(l.held)}
 
 
+def _full_month_key(month_year, group):
+    return f"hr_full_month:{month_year}:{group}"
+
+
+@app.post("/employees/payroll/full-month")
+def set_full_month(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = HR):
+    """Pay the whole month before it ends - every company's sheet of that
+    statement (office or local) for the month shows and prints the full
+    salary instead of the salary to date. Undo puts it back."""
+    month_year = (payload.get("month_year") or "").strip()
+    group = payload.get("group") if payload.get("group") in ("staff", "local") else "staff"
+    _staff_month_bounds(month_year)
+    on = bool(payload.get("on", True))
+    put_setting(db, _full_month_key(month_year, group), _dubai_today().isoformat() if on else "")
+    log_action(db, user.id, "payroll_full_month",
+               f"{month_year} {'office' if group == 'staff' else 'local'} staff: {'full month' if on else 'salary to date'}")
+    db.commit()
+    return {"ok": True, "month_year": month_year, "group": group, "on": on}
+
+
 def _run_dict(r, db):
     emps = {e.id: e for e in db.query(models.Employee).all()}
     lines = [_line_dict(l, emps.get(l.employee_id))
@@ -9336,8 +9389,14 @@ def _run_dict(r, db):
         l["earned_to_date"] = earned
         l["to_date"] = round(earned - l["deduction"] - l["statutory"] + l["other_allowance"]
                              + l["leave_salary"] + l["air_ticket"], 2)
+    # Paid early (the 1st is a holiday, or local staff before month end):
+    # once "Pay full month" is pressed, or the sheet is approved, every
+    # figure is the whole month's, never the salary to date.
+    full = bool(get_setting(db, _full_month_key(r.month_year, r.group or "staff"))) or r.status == "approved"
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),
-                "running": 0 < done < days, "as_of": min(max(today, a), b).isoformat(),
+                "running": 0 < done < days and not full, "full_month": full,
+                "full_month_on": get_setting(db, _full_month_key(r.month_year, r.group or "staff")),
+                "early": 0 < done < days, "as_of": min(max(today, a), b).isoformat(),
                 "to_date": round(sum(l["to_date"] for l in paid), 2)}
     return {
         "id": r.id, "month_year": r.month_year, "group": r.group,

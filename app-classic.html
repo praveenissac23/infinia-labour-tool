@@ -1475,7 +1475,9 @@
         <div class="screen" id="screen-combine">
           <div class="toolbar">
             <label>Cycle:</label>
-            <select id="combine-cycle"></select>
+            <select id="combine-cycle" onchange="labFullSync()"></select>
+            <button class="btn btn-primary" id="lab-full-btn" style="display:none; margin-left:auto;" onclick="labFullCycle()">Pay full salary now</button>
+            <span id="lab-full-note" style="font-size:12px; color:#8A8178;"></span>
           </div>
           <div class="status-msg" id="combine-status"></div>
           <div style="display:flex; gap:14px; flex-wrap:wrap;">
@@ -2766,6 +2768,7 @@
                 <h2 id="hr-all-title" style="margin:0 12px 0 0;">All companies</h2>
                 <span id="hr-all-sub" style="font-size:12px; color:#888;"></span>
                 <div class="hr-cb-spacer"></div>
+                <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
                 <button class="btn btn-dark" onclick="previewConsolidated()">Preview</button>
                 <button class="btn btn-gray" onclick="downloadConsolidated('pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadConsolidated('excel')">Export to Excel</button>
@@ -2785,6 +2788,7 @@
                 <button class="btn btn-gray" id="hr-approve-btn" onclick="approvePayrollRun()">Approve &amp; lock</button>
                 <button class="btn btn-danger" id="hr-reopen-btn" onclick="reopenPayrollRun()" style="display:none;">Reopen</button>
                 <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()">Discard draft</button>
+                <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
                 <span style="display:inline-flex; gap:8px; margin-left:18px; padding-left:18px;
                              border-left:1px solid #E4E0DB;">
                   <button class="btn btn-dark" onclick="previewStatement()">Preview</button>
@@ -3724,6 +3728,34 @@ function populateCycleSelects(currentCycle) {
     el.innerHTML = html;
     el.value = currentCycle;
   });
+  setTimeout(labFullSync, 0);
+}
+
+// Labour paid before the cycle ends: every card becomes the whole
+// cycle's salary. The days still to come count as working days until
+// attendance is marked on them; an absence marked later still comes off.
+async function labFullSync() {
+  const btn = document.getElementById("lab-full-btn"), note = document.getElementById("lab-full-note");
+  const cyc = (document.getElementById("combine-cycle") || {}).value;
+  if (!btn || !cyc) return;
+  let st;
+  try { st = await apiCall(`/summaries/${encodeURIComponent(cyc)}/full-cycle`); } catch (e) { btn.style.display = "none"; return; }
+  if (document.getElementById("combine-cycle").value !== cyc) return;
+  btn.style.display = st.early || st.on ? "" : "none";
+  btn.dataset.on = st.on ? "1" : "";
+  btn.textContent = st.on ? "Back to salary to date" : "Pay full salary now";
+  btn.className = "btn " + (st.on ? "btn-gray" : "btn-primary");
+  note.textContent = st.on ? `Full cycle salary - paid in advance from ${new Date(st.from + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : "";
+}
+async function labFullCycle() {
+  const cyc = document.getElementById("combine-cycle").value;
+  const on = !document.getElementById("lab-full-btn").dataset.on;
+  if (on && !await hrAsk(`Pay the full ${cyc} salary now? Every labour card becomes the whole cycle's salary; the days still to come count as working days (Sundays as Sunday). An absence marked on those days later still comes off.`, "Pay full salary")) return;
+  try {
+    const r = await apiCall(`/summaries/${encodeURIComponent(cyc)}/full-cycle`, { method: "POST", body: JSON.stringify({ on }) });
+    showStatus("combine-status", "ok", on ? `${cyc}: ${r.cards} cards on the full cycle salary.` : `${cyc}: cards back to the salary to date.`);
+  } catch (e) { showStatus("combine-status", "err", errText(e)); }
+  labFullSync();
 }
 
 // Formats a money value with thousands separators and 2 decimals:
@@ -11668,6 +11700,40 @@ function hrSyncBar() {
   const el = document.getElementById("hr-month-state");
   el.className = "hr-state " + st;
   el.innerHTML = st === "approved" ? "<i></i>Approved &amp; locked" : st === "draft" ? "<i></i>Draft - not yet approved" : "";
+  hrFullSync();
+}
+
+// Paying before the month ends - local staff around the 27th, or
+// everyone the day before when the 1st is a holiday. One press puts
+// every company's sheet of this statement on the whole month's salary
+// (not the salary to date); pressing again puts it back.
+function hrFullProgress() {
+  if (HR_ALL_MODE) { const r = Object.values(HR_ALL_RUNS)[0]; return r && r.progress; }
+  return HR_RUN && HR_RUN.progress;
+}
+function hrFullSync() {
+  const p = hrFullProgress();
+  const show = !!(p && (p.early || (p.full_month && p.full_month_on)));
+  document.querySelectorAll(".hr-full-btn").forEach(b => {
+    b.style.display = show ? "" : "none";
+    const on = !!(p && p.full_month_on);
+    b.textContent = on ? "Back to salary to date" : "Pay full month now";
+    b.className = "btn hr-full-btn " + (on ? "btn-gray" : "btn-primary");
+    b.dataset.on = on ? "1" : "";
+  });
+}
+async function hrFullMonth() {
+  const month = hrCycleName(document.getElementById("hr-run-month").value);
+  const group = document.getElementById("hr-run-group").value || "staff";
+  const on = !document.querySelector(".hr-full-btn").dataset.on;
+  const who = group === "local" ? "local staff" : "office staff";
+  if (on && !await hrAsk(`Pay the full ${month} salary now for all ${who}? Every company's ${who} sheet will show and print the whole month, not the salary to date. Absences recorded later this month still come off.`, "Pay full month")) return;
+  try {
+    await apiCall("/employees/payroll/full-month", { method: "POST", body: JSON.stringify({ month_year: month, group, on }) });
+    hrMsg("ok", on ? `${month}: ${who} on the full month's salary.` : `${month}: ${who} back to the salary to date.`);
+    HR_OPENING = HR_OPENING.then(() => hrOpenNow(true), () => hrOpenNow(true));
+    await HR_OPENING;
+  } catch (e) { hrMsg("err", errText(e)); }
 }
 
 async function loadRunList() {

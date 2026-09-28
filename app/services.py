@@ -71,6 +71,55 @@ def validate_row(am, pm, site, engineer, bh, comments, ot=None):
     return problems
 
 
+def full_cycle_key(month_year):
+    return f"labour_full_cycle:{month_year}"
+
+
+def full_cycle_from(db, month_year):
+    """The day "Pay full salary now" was pressed for this cycle, or None."""
+    from datetime import date as _date
+    row = db.query(models.Setting).filter(models.Setting.key == full_cycle_key(month_year)).first()
+    try:
+        return _date.fromisoformat(row.value) if row and row.value else None
+    except ValueError:
+        return None
+
+
+def with_days_paid_in_advance(db, employee, month_year, rows):
+    """Salary paid before the cycle ends is the whole cycle's.
+
+    Once the cycle is paid early, each day from that day to the cycle
+    end that has no attendance yet counts as a working day (a Sunday as
+    Sunday), so the card is the full salary. Nothing is written to the
+    attendance: the day is only assumed while it is empty. An absence
+    marked on it later is a real record, and comes off the card as usual.
+    Labour only; a man who has not joined yet or has left is not paid
+    for those days."""
+    from datetime import timedelta as _td
+    from types import SimpleNamespace
+    start = full_cycle_from(db, month_year)
+    if not start or employee.staff or not employee.active:
+        return rows
+    try:
+        from datetime import datetime as _dt
+        cs, ce, _ = pcyc.cycle_bounds_for(_dt.strptime(f"25 {month_year}", "%d %B %Y").date())
+    except Exception:
+        return rows
+    marked = {r.full_date for r in rows if (r.am or "").strip() or (r.pm or "").strip()}
+    rows = [r for r in rows if r.full_date in marked or r.full_date < start]
+    d = max(start, cs)
+    if employee.joined_on and employee.joined_on > d:
+        d = employee.joined_on
+    end = min(ce, employee.terminated_on) if employee.terminated_on else ce
+    while d <= end:
+        if d not in marked:
+            st = "Sunday" if d.weekday() == 6 else "Present"
+            rows.append(SimpleNamespace(full_date=d, am=st, pm=st, ot=0, bh=0, site="", engineer="",
+                                        comments="Paid in advance", emp_no=employee.emp_no))
+        d += _td(days=1)
+    return rows
+
+
 def recalculate_summary(db: Session, employee: models.Employee, month_year: str) -> models.EmployeeSummary:
     """
     Recomputes one employee's EmployeeSummary row for one cycle from
@@ -85,6 +134,8 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
                       models.DailyRow.month_year == month_year))
         .all()
     )
+
+    rows = with_days_paid_in_advance(db, employee, month_year, rows)
 
     summary = (
         db.query(models.EmployeeSummary)
