@@ -1050,7 +1050,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="c1c8167e0f13";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="55a9ec108e30";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -7896,8 +7896,11 @@ function onMaterialTyped(box) {
   const row = box.closest("tr");
   const hidden = row.querySelector('input[type=hidden]');
   const txt = box.value.trim().toLowerCase();
-  const hit = storeItems.find(i => `${i.code} - ${i.name}`.toLowerCase() === txt)
-           || storeItems.find(i => i.name.toLowerCase() === txt);
+  const siteRows = (box.classList.contains("ol-item-txt") && typeof fromStock !== "undefined" && fromStock)
+    ? fromStock.map(r => ({ id: r.item_id, code: r.code, name: r.name, unit: r.unit })) : [];
+  const pool = (storeItems || []).concat(siteRows);
+  const hit = pool.find(i => `${i.code} - ${i.name}`.toLowerCase() === txt)
+           || pool.find(i => (i.name || "").toLowerCase() === txt);
   hidden.value = hit ? hit.id : "";
   box.style.background = (txt && !hit) ? "#FFF4F2" : "";
   // If this material already has a type, show it rather than leaving
@@ -7993,7 +7996,7 @@ function addOutLine() {
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
-    <td>${materialPickerHtml("ol-item", "material-list-stock")}</td>
+    <td>${materialPickerHtml("ol-item", outListName())}</td>
     <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;" oninput="checkOutQty(this)"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td class="ol-atsite at-site none">-</td>
@@ -8057,18 +8060,57 @@ async function onMoveEnds() {
 // in for material that is not there.
 async function loadFromStock() {
   const from = (document.getElementById("out-from").value || "").trim();
-  if (!from) { fromStock = null; siteFromRecent = []; refreshHaveCells(); return; }
+  if (!from) { fromStock = null; siteFromRecent = []; applyOutList(); refreshHaveCells(); return; }
   try {
     const r = await apiCall(`/store/at-site?site=${encodeURIComponent(from)}`);
     fromStock = r.rows || [];
     siteFromRecent = r.recent || [];
   } catch (e) { fromStock = []; siteFromRecent = []; }
+  applyOutList();
   refreshHaveCells();
 }
 
 let siteFromRecent = [];
 
 let fromStock = null;          // null means the central store
+
+// The materials a line can name. From the store: what the store holds.
+// From a site: what that site holds (its scaffolding, tools, assets -
+// none of which are in the store) as well as what the store holds, so
+// consumables still work as before. Before, the list was always the
+// store's, and an asset standing at site 910 could not be typed at all.
+function outListName() {
+  return fromStock ? "material-list-from" : "material-list-stock";
+}
+function buildFromList() {
+  let dl = document.getElementById("material-list-from");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "material-list-from"; document.body.appendChild(dl); }
+  const from = (document.getElementById("out-from").value || "").trim();
+  const seen = new Set(), opts = [];
+  for (const r of (fromStock || [])) {
+    if (!(r.qty > 0) || seen.has(r.item_id)) continue;
+    const i = (storeItems || []).find(x => x.id === r.item_id) || { id: r.item_id, code: r.code, name: r.name, unit: r.unit };
+    seen.add(r.item_id);
+    opts.push(`<option value="${escapeAttr(i.code + " - " + i.name)}" label="${num(r.qty)} ${escapeAttr(r.unit || i.unit || "")} at site ${escapeAttr(from)}">`);
+  }
+  for (const st of (storeStockCache || [])) {
+    if (!((st.central || 0) > 0) || seen.has(st.item_id)) continue;
+    const i = (storeItems || []).find(x => x.id === st.item_id);
+    if (!i) continue;
+    seen.add(i.id);
+    opts.push(`<option value="${escapeAttr(i.code + " - " + i.name)}" label="${num(st.central)} ${escapeAttr(i.unit || "")} in store">`);
+  }
+  dl.innerHTML = opts.join("");
+}
+function applyOutList() {
+  const name = outListName();
+  if (fromStock) buildFromList();
+  const from = (document.getElementById("out-from").value || "").trim();
+  document.querySelectorAll("#out-lines .ol-item-txt").forEach(t => {
+    t.setAttribute("list", name);
+    t.placeholder = fromStock ? `Start typing - what is at site ${from} or in the store` : "Start typing - only what is in the store";
+  });
+}
 
 // Cement, sand, nails - the things that get used up. They are stock in
 // the central store and never stock at a site, so the site panels show
@@ -8320,16 +8362,26 @@ async function saveIssue() {
   if (!lines.length) { showStatus("store-status", "warn", "Add at least one material with a quantity."); return; }
   // Stop an over-issue before it reaches the server, with the exact
   // numbers: which material, how much was asked, how much exists.
+  // Checked against the place it is leaving: the store, or the site it
+  // comes from (checking a site move against the store stopped assets
+  // that are at the site but not in the store).
+  const fromSite = (document.getElementById("out-from").value || "").trim();
   const overs = lines.map(l => {
-    const s = (storeStockCache || []).find(x => x.item_id === l.item_id);
     const it = (storeItems || []).find(i => i.id === l.item_id);
+    if (fromSite) {
+      const h = (fromStock || []).find(r => r.item_id === l.item_id);
+      return h && l.qty > (h.qty || 0)
+        ? `${it ? it.name : "Item"} - asked ${num(l.qty)}, only ${num(h.qty || 0)} at site ${fromSite}` : null;
+    }
+    const s = (storeStockCache || []).find(x => x.item_id === l.item_id);
     return s && l.qty > (s.central || 0)
       ? `${it ? it.name : "Item"} - asked ${num(l.qty)}, only ${num(s.central || 0)} in central store`
       : null;
   }).filter(Boolean);
   if (overs.length) {
     showStatus("store-status", "warn",
-      "Not enough in the store. " + overs.join("; ") + ". Lower the quantity, or record the arrival first.");
+      (fromSite ? `Not enough at site ${fromSite}. ` : "Not enough in the store. ") + overs.join("; ") + ". Lower the quantity"
+      + (fromSite ? "." : ", or record the arrival first."));
     return;
   }
   let done = 0, failed = [];
