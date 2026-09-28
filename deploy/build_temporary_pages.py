@@ -753,8 +753,22 @@ def build():
                        "all_pages_json": json.dumps(ALL_CFG),
                        "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
     page = page.replace("</body>", script + "</body>", 1)
+    # A browser can keep an old app.html for a while after a deploy (no
+    # cache header on a static file). The page asks for the build it
+    # should be - a tiny file that is never cached - and, if it is older,
+    # refreshes its copy and reloads once.
+    import hashlib
+    build = hashlib.sha1(page.encode("utf-8")).hexdigest()[:12]
+    check = ('<script>(function(){var B="%s";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"})'
+             '.then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;'
+             'var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}'
+             'Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})])'
+             '.catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script>') % build
+    page = page.replace("</head>", check + "</head>", 1)
     with open(APP_OUT, "w", encoding="utf-8") as f:
         f.write(page)
+    with open(os.path.join(ROOT, "app-version.json"), "w") as f:
+        json.dump({"build": build}, f)
     print(f"wrote app.html  ({len(page) // 1024} KB)")
     # The six separate pages of the earlier layout are gone: their old
     # addresses fall through to app.html, which opens the same page.
