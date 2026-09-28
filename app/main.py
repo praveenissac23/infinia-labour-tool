@@ -7956,6 +7956,11 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
             setattr(e, f, (payload.get(f) or "").strip())
     if (e.pay_group or "staff") not in ("staff", "local"):
         e.pay_group = "staff"
+    if e.pay_group == "local" and (e.scheme or "gratuity") != "pension":
+        # The local statement is the nationals on GPSSA. Household and
+        # everyone else are paid on the office statement.
+        raise HTTPException(status_code=400, detail="The local staff statement is for UAE nationals on GPSSA "
+                            "pension. Household and other staff are paid on the office staff statement.")
     was = (round(e.basic_salary or 0, 2), round(e.allowance or 0, 2))
     for f, col in (("joined_on", "joined_on"), ("probation_end", "probation_end")):
         if f in payload:
@@ -9098,6 +9103,12 @@ def _refresh_run(db, r):
     if r.status == "approved":
         return
     a, b = _staff_month_bounds(r.month_year)
+    # Someone moved to the other statement leaves this draft.
+    for l in list(r.lines):
+        e = db.get(models.Employee, l.employee_id)
+        if e and (e.pay_group or "staff") != r.group:
+            db.delete(l)
+    db.flush(); db.refresh(r)
     have = {l.employee_id for l in r.lines}
     for e in (db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
                                                 models.Employee.company_id == r.company_id)
@@ -9154,6 +9165,15 @@ def _migrate_hr(db):
                     db.add(models.SalaryChange(employee_id=e.id, effective_on=e.joined_on, kind="joining",
                                                basic=600.0, allowance=900.0, amount=0, reason="On joining"))
         put_setting(db, "hr_household_on_office", "1")
+        changed = True
+    if get_setting(db, "hr_household_on_office_2") != "1":
+        # Again, after the household tab went: the housemaids had come
+        # back onto the local statement. Only GPSSA nationals stay there.
+        for e in db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
+                                                  models.Employee.pay_group == "local").all():
+            if (e.scheme or "gratuity") != "pension":
+                e.pay_group = "staff"
+        put_setting(db, "hr_household_on_office_2", "1")
         changed = True
     if get_setting(db, "hr_cash_no_gratuity") != "1":
         for e in db.query(models.Employee).filter(models.Employee.staff == True,  # noqa: E712
@@ -10415,3 +10435,5 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
 # ---------------------------------------------------------------------
 import people  # noqa: E402
 app.include_router(people.router)
+import settlement  # noqa: E402
+app.include_router(settlement.router)

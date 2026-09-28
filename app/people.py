@@ -442,6 +442,9 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
                 detail="Labour and monthly-paid staff are paid differently. A person cannot be moved "
                        "between the labour register and the others here.")
         _may(user, g)
+        if g == "local" and (e.scheme or "gratuity") != "pension":
+            raise HTTPException(status_code=400, detail="Local staff are UAE nationals on GPSSA pension. "
+                                "Household and other staff stay on the office register.")
         p.group = g
         e.pay_group = "local" if g == "local" else "staff"
     if "name" in emp and str(emp["name"]).strip():

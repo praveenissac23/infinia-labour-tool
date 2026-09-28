@@ -207,6 +207,17 @@
   td.hr-d { cursor: pointer; }
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
+  .fs-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+  .fs-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+  .fs-inputs .hr-field input, .fs-inputs .hr-field select { width: 100%; }
+  .fs-sum table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+  .fs-sum th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #666; padding: 6px 4px; border-bottom: 1px solid #ddd; }
+  .fs-sum td { padding: 5px 4px; border-bottom: 1px solid #eee; text-align: left; } .fs-sum td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .fs-sum tr.t td { font-weight: 700; border-top: 1.5px solid #333; border-bottom: none; }
+  .fs-net { display: flex; justify-content: space-between; align-items: center; background: #1f2d45; color: #fff; padding: 10px 14px; border-radius: 6px; margin: 4px 0 8px; }
+  .fs-net b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .fs-notes { margin: 0; padding-left: 18px; font-size: 12px; color: #777; }
+  @media (max-width: 900px) { .fs-grid { grid-template-columns: 1fr; } }
   .hr-mini { padding: 3px 9px !important; font-size: 12px !important; }
   /* The cycle bar */
   .hr-cyclebar { padding: 14px 18px 12px; }
@@ -3281,6 +3292,40 @@
                 <button class="btn btn-gray" onclick="downloadHr('gratuity','excel')">Export to Excel</button>
               </div>
               <div id="hr-grat-view" style="margin-top:14px;"></div>
+            </div>
+            <div class="card" id="hr-fs-card">
+              <div class="form-row" style="gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+                <h2 style="margin:0;">Final settlement</h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button class="btn btn-dark" onclick="fsOpen('view')">Preview</button>
+                  <button class="btn btn-gray" onclick="fsOpen('pdf')">Export to PDF</button>
+                  <button class="btn btn-gray" onclick="fsOpen('excel')">Export to Excel</button>
+                </div>
+              </div>
+              <p class="hr-nil" style="margin:6px 0 12px;">For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.</p>
+              <div class="fs-grid">
+                <div class="fs-inputs">
+                  <label class="hr-field"><span>Last working day</span><input type="date" id="fs-last" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Reason</span><select id="fs-reason" class="hr-dd" onchange="fsCalc()">
+                    <option value="resignation">Resignation</option><option value="termination">Termination by the company</option>
+                    <option value="end_of_contract">End of contract</option><option value="art44">Dismissal under Article 44</option>
+                    <option value="retirement">Retirement</option><option value="death">Death</option></select></label>
+                  <label class="hr-field"><span>Contract type</span><select id="fs-contract" class="hr-dd" onchange="fsCalc()">
+                    <option value="">From the file</option><option value="unlimited">Unlimited</option><option value="limited">Limited</option><option value="part-time">Part-time</option></select></label>
+                  <label class="hr-field"><span>Settlement date</span><input type="date" id="fs-settled" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Notice required (days)</span><input type="text" inputmode="decimal" id="fs-nreq" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Notice served (days)</span><input type="text" inputmode="decimal" id="fs-nsrv" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Unused leave (days)</span><input type="text" inputmode="decimal" id="fs-leave" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Unpaid salary days, last month</span><input type="text" inputmode="decimal" id="fs-sal" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Loan / advance balance</span><input type="text" inputmode="decimal" id="fs-loan" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Air ticket</span><input type="text" inputmode="decimal" id="fs-ticket" placeholder="0" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Other additions</span><input type="text" inputmode="decimal" id="fs-add" placeholder="0" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>For</span><input type="text" id="fs-add-note" placeholder="e.g. bonus" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>Other deductions</span><input type="text" inputmode="decimal" id="fs-ded" placeholder="0" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span>For</span><input type="text" id="fs-ded-note" placeholder="e.g. damaged laptop" oninput="fsCalc()"></label>
+                </div>
+                <div id="fs-result"><div class="hr-nil">Choose a staff member.</div></div>
+              </div>
             </div>
           </div>
 
@@ -13190,6 +13235,15 @@ async function deleteDocument(id) {
 let HR_GRAT = null;
 async function loadGratuity() {
   const sel = document.getElementById("hr-grat-emp");
+  // People who have left are the ones a settlement is usually for.
+  try {
+    const all = (await apiCall("/employees/staff?include_left=true")).rows || [];
+    const here = new Set(HR_STAFF.map(x => x.emp_no));
+    const left = all.filter(x => !here.has(x.emp_no));
+    sel.querySelectorAll("optgroup").forEach(o => o.remove());
+    if (left.length) sel.insertAdjacentHTML("beforeend", `<optgroup label="Left the company">${left.map(x =>
+      `<option value="${escapeAttr(x.emp_no)}">${escapeHtml(x.emp_no)} - ${escapeHtml(x.name)}</option>`).join("")}</optgroup>`);
+  } catch (e) { /* the current staff are enough */ }
   if (!sel.value && HR_STAFF.length) sel.value = HR_STAFF.slice().sort((a, b) =>
     String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }))[0].emp_no;
   renderGratuity();
@@ -13203,6 +13257,7 @@ async function renderGratuity() {
   try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
   catch (e) { hrMsg("err", errText(e)); return; }
   HR_GRAT = d;
+  fsDraw();
   const s = d.staff, g = d.gratuity;
   const kv = (k, v) => `<div class="hr-kv"><span>${k}</span><b>${v}</b></div>`;
   const route = { wps: "WPS", bank: "Bank transfer", cash: "Cash" };
@@ -13255,6 +13310,78 @@ async function renderGratuity() {
       <section><h3>Absence and leave (${d.leave_days} days, ${d.unpaid_days} deducted)</h3>${leave}</section>
       <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
     </div>`;
+}
+
+// ---- Final settlement -------------------------------------------------
+// One working for the staff member chosen above: drawn here as the
+// figures are typed, and as the paper (preview, PDF, Excel) from the
+// same query, so the two can never disagree.
+
+let FS_EMP = null, FS_TIMER = null, FS_SEQ = 0;
+const FS_FIELDS = { last_day: "fs-last", reason: "fs-reason", contract: "fs-contract", settled_on: "fs-settled",
+  notice_required: "fs-nreq", notice_served: "fs-nsrv", leave_days: "fs-leave", salary_days: "fs-sal",
+  loan: "fs-loan", ticket: "fs-ticket", other_add: "fs-add", other_add_note: "fs-add-note",
+  other_ded: "fs-ded", other_ded_note: "fs-ded-note" };
+
+function fsQuery() {
+  const q = new URLSearchParams();
+  for (const [k, id] of Object.entries(FS_FIELDS)) {
+    const v = String(document.getElementById(id).value || "").replace(/,/g, "").trim();
+    if (v !== "") q.set(k, v);
+  }
+  return q.toString();
+}
+
+function fsReset(code) {
+  // A different person: the typed figures belong to the last one.
+  FS_EMP = code;
+  for (const id of Object.values(FS_FIELDS)) {
+    const el = document.getElementById(id);
+    el.value = el.tagName === "SELECT" ? el.options[0].value : "";
+  }
+}
+
+function fsCalc() { clearTimeout(FS_TIMER); FS_TIMER = setTimeout(fsDraw, 250); }
+
+async function fsDraw() {
+  const code = document.getElementById("hr-grat-emp").value;
+  const box = document.getElementById("fs-result");
+  if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
+  if (code !== FS_EMP) fsReset(code);
+  const seq = ++FS_SEQ;
+  let d;
+  try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/settlement?${fsQuery()}`); }
+  catch (e) { if (seq === FS_SEQ) box.innerHTML = `<div class="hr-nil">${escapeHtml(errText(e))}</div>`; return; }
+  if (seq !== FS_SEQ) return;
+  const i = d.input, ph = (id, v) => { document.getElementById(id).placeholder = v; };
+  // What the record says, shown as the default until something is typed.
+  ph("fs-last", ""); if (!document.getElementById("fs-last").value) document.getElementById("fs-last").value = i.last_day;
+  ph("fs-nreq", i.notice_required); ph("fs-nsrv", i.notice_served);
+  ph("fs-leave", i.leave_days_auto); ph("fs-sal", i.salary_days_auto); ph("fs-loan", hrMoney(i.loan_auto));
+  const rows = (list, tot, label) => list.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="n">${hrMoney(r.amount)}</td></tr>`).join("")
+    + `<tr class="t"><td>${label}</td><td class="n">${hrMoney(tot)}</td></tr>`;
+  const g = d.gratuity, sv = d.service, sal = d.salary;
+  box.innerHTML = `<div class="fs-sum">
+    <div class="hr-steps" style="margin-bottom:12px;">
+      <div class="hr-kv"><span>Service</span><b>${escapeHtml(sv.text)} (${sv.counted.toLocaleString()} days counted${sv.unpaid ? `, ${sv.unpaid} unpaid out` : ""})</b></div>
+      <div class="hr-kv"><span>Basic / gross</span><b>${hrMoney(sal.basic)} / ${hrMoney(sal.gross)}</b></div>
+      <div class="hr-kv"><span>Daily basic (x 12 / 365)</span><b>${hrMoney(sal.day_basic)}</b></div>
+      <div class="hr-kv"><span>Gratuity</span><b>${g.amount ? `${g.first5.toFixed(3)} yrs x 21${g.after5 ? ` + ${g.after5.toFixed(3)} yrs x 30` : ""} days` : "none"}</b></div>
+      <div class="hr-kv"><span>Unused leave</span><b>${i.leave_days} days <span class="hr-nil">(${escapeHtml(i.leave_note)})</span></b></div>
+    </div>
+    <table><thead><tr><th>Payable</th><th style="text-align:right;">AED</th></tr></thead><tbody>${rows(d.payables, d.total_pay, "Gross payable")}</tbody></table>
+    <table><thead><tr><th>Deductions</th><th style="text-align:right;">AED</th></tr></thead><tbody>${rows(d.deductions, d.total_ded, "Total deductions")}</tbody></table>
+    <div class="fs-net"><span>${d.net >= 0 ? "Final settlement payable" : "Balance due from employee"}</span><b>AED ${hrMoney(Math.abs(d.net))}</b></div>
+    <ul class="fs-notes">${d.notes.map(n => `<li>${escapeHtml(n)}</li>`).join("")}</ul></div>`;
+}
+
+async function fsOpen(kind) {
+  const code = document.getElementById("hr-grat-emp").value;
+  if (!code) { hrMsg("warn", "Choose a staff member first."); return; }
+  const q = fsQuery(), t = await hrToken(), e = encodeURIComponent(code);
+  const u = kind === "view" ? `/export/payroll/settlement/view?emp_no=${e}&${q}&token=${t}`
+                            : `/export/payroll/settlement?emp_no=${e}&${q}&format=${kind}&token=${t}`;
+  window.open(API + u.replace("&&", "&"), "_blank");
 }
 
 // ---- Increments ------------------------------------------------------
