@@ -30,7 +30,6 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.screenshot({ path: SH + 'reminder-2-missing.png' });
   await p.locator('#hr-doc-body tr').first().click(); await p.waitForTimeout(200);
   ck('clicking a missing line puts his code in the form', (await p.inputValue('#hr-doc-emp')).length > 1);
-  ck('the daily email box shows the saved addresses', /infinia\.ae/.test(await p.inputValue('#exp-mail-to')));
   ck('no script errors', errs.length === 0, errs);
   console.log(bad ? `${bad} FAILED` : 'NOTHING SLIPS THROUGH');
   await b.close(); process.exit(bad ? 1 : 0);

@@ -2050,14 +2050,6 @@
               </div>
             </div>
           
-          <div class="card exp-mail">
-            <div class="exp-mail-row">
-              <div><b>Daily email at 8:00</b><span class="hr-nil" id="exp-mail-note"></span></div>
-              <input type="text" id="exp-mail-to" placeholder="e.g. praveen@infinia.ae, hr@infinia.ae">
-              <button class="btn btn-primary" onclick="expMailSave()">Save</button>
-              <button class="btn btn-gray" onclick="expMailTest()">Send now</button>
-            </div>
-          </div>
         </div>
 
         <!-- ============ PETTY CASH ============ -->
@@ -13192,7 +13184,6 @@ function expOpen() {
   expFillKinds();
   const company = document.getElementById("hr-doc-company").style.display !== "none";
   expLoadSummary();
-  expMailLoad();
   if (company) loadExpiries(); else loadDocuments();
 }
 async function expLoadSummary() {
