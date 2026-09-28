@@ -10,7 +10,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(B + '/?p=payroll#hrpayroll'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3500);
-  await p.locator('#pg-sub .pg-subtab', { hasText: 'Documents' }).click(); await p.waitForTimeout(2000);
+  await p.locator('#pg-tabs .pg-tab', { hasText: 'Documents' }).click(); await p.waitForTimeout(2000);
   const iso = n => { const d = new Date(Date.now() + 4 * 3600e3 + n * 864e5); return d.toISOString().slice(0, 10); };
   // a person's own named document
   await p.fill('#hr-doc-emp', 'IC001'); await p.selectOption('#hr-doc-kind', 'custom'); await p.waitForTimeout(200);
@@ -20,7 +20,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('a person can be given any document by name (Safety card, due in 20 days)', named && named.status === 'urgent', named);
   await p.screenshot({ path: SH + 'expiry-1-people.png' });
   // vehicles and others
-  await p.click('#hr-doc-mode button[data-m="company"]'); await p.waitForTimeout(1200);
+  await p.locator('#pg-sub .pg-subtab', { hasText: 'Company' }).click(); await p.waitForTimeout(1200);
   const add = async (cat, item, kind, num, exp, notes) => {
     await p.fill('#hr-exp-cat', cat); await p.fill('#hr-exp-item', item); await p.fill('#hr-exp-kind', kind);
     await p.fill('#hr-exp-number', num); await p.fill('#hr-exp-expires', exp); await p.fill('#hr-exp-notes', notes);

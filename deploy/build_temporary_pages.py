@@ -63,8 +63,12 @@ PAGES = {
             sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
             sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
             sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
-            sub("docs", "Documents", screen="hrpayroll", go="hrTab('docs')"),
-            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")])]),
+            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
+        # Documents that expire - people's, and the company's own (NOCs,
+        # permits, licences, vehicles) - a tab of their own after Office payroll.
+        tab("documents", "hrpayroll", "Documents", "hrpayroll", subs=[
+            sub("people", "People", screen="hrpayroll", go="hrTab('docs'); hrDocMode('people')"),
+            sub("company", "Company & other documents", screen="hrpayroll", go="hrTab('docs'); hrDocMode('company')")])]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -165,6 +169,7 @@ CSS = """
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
   #dash-store-card .store-tile[onclick="switchScreen('suppliers')"], #dash-store-card .store-tile[onclick="dashStoreGo('reports')"] { display: none !important; }
   #monthly-report-btn, #screen-monthly .toolbar > button[onclick^="switchScreen('reports')"] { display: none !important; }
+  #hr-doc-mode { display: none !important; }
   #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
   #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active { margin: -20px -24px -20px; }
