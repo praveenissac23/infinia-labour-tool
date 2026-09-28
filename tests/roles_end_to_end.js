@@ -22,7 +22,7 @@ let fails = 0;
 const ck = (l, ok, c) => { console.log((ok ? 'PASS ' : 'FAIL ') + l + (ok ? '' : `  [${typeof c === 'string' ? c.slice(0, 200) : JSON.stringify(c || '').slice(0, 200)}]`)); if (!ok) fails++; };
 
 const ROLES = {
-  chief: { role: 'office', perms: 'dashboard,attendance,masterdata,reports,combine,adjustments,livecard,errorcheck,hrpayroll,people_labour,people_office,people_local,people_household,settings', pw: 'chief12345' },
+  chief: { role: 'office', perms: 'dashboard,attendance,masterdata,reports,combine,adjustments,livecard,errorcheck,hrpayroll,people_labour,people_office,people_local,settings', pw: 'chief12345' },
   assistant: { role: 'office', perms: 'dashboard,attendance,masterdata,reports,combine,livecard,errorcheck,people_labour,settings', pw: 'asst12345' },
   keeper: { role: 'site', perms: 'dashboard,store,storekeeper,requests,settings', pw: 'keep12345' },
   siteeng: { role: 'site', perms: '', pw: 'site12345' },
@@ -183,7 +183,7 @@ async function login(ctx, user, pw, url) {
     if (name === 'assistant' || name === 'chief') {
       await p.goto(T + 'people.html'); await p.waitForSelector('#shell', { state: 'visible', timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1500);
       const gt = await p.locator('#tabs .tab').allTextContents();
-      ck(`${name} (People): tabs ${gt.join(' · ')}`, name === 'chief' ? gt.length === 5 : (gt.length === 2 && gt[0].startsWith('Labour')), gt);
+      ck(`${name} (People): tabs ${gt.join(' · ')}`, name === 'chief' ? (gt.length === 4 && !gt.some(t => /Household/.test(t))) : (gt.length === 2 && gt[0].startsWith('Labour')), gt);
     }
     ctx.off('page', onPage);
     ck(`${name} (temporary): no script errors, no pop-ups`, errs.length === 0, errs);

@@ -32,15 +32,16 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
 
   // ---- Register: every tab, every section --------------------------------------
   const tabs = await p.locator('#tabs .tab').allTextContents();
-  ck('five register tabs', tabs.length === 5, tabs);
+  ck('four register tabs (household is on office staff)', tabs.length === 4 && !tabs.some(t => /Household/.test(t)), tabs);
   let pressed = 0;
   const closeAll = async () => {
     for (const id of ['dlg-edit', 'dlg-new', 'dlg-doc', 'dlg-asset', 'dlg-loan', 'dlg-repay']) if (await p.locator('#' + id).isVisible()) await p.evaluate(`closeDlg('${id}')`);
     if (await p.locator('.ask').count()) await p.click('.ask [data-a="no"]');
   };
+  ck('there is no Household tab', await p.locator('#tabs .tab[data-tab="household"]').count() === 0);
   const newPages = [];
   ctx.on('page', pg => newPages.push(pg));
-  for (const tab of ['labour', 'office', 'local', 'household', 'left']) {
+  for (const tab of ['labour', 'office', 'local', 'left']) {
     await p.click(`#tabs .tab[data-tab="${tab}"]`); await p.waitForTimeout(900);
     const n = await p.locator('#list .person').count();
     ck(`${tab}: the tab opens (${n} listed)`, await p.locator(`#tabs .tab[data-tab="${tab}"].active`).count() === 1);

@@ -4,8 +4,8 @@
 
 Lists every login and whether it can see:
   * office payroll  (Office HR & Payroll - statements, loans, increments, gratuity, exports)
-  * office register (Staff > Office staff register, with salaries)
-  * local staff and household registers (their salaries)
+  * office register (Staff > Office staff register incl. household, with salaries)
+  * local staff register (their salaries)
   * labour pay      (Master data / live card / salary adjustments - labourers' wages)
 and where the right comes from (admin, the login's own ticks, or its role).
 """
@@ -27,7 +27,7 @@ from main import effective_permissions
 db = sessionmaker(bind=create_engine(url))()
 roles = {r.id: r for r in db.query(models.AccessRole).all()} if hasattr(models, "AccessRole") else {}
 COLS = [("hrpayroll", "OFFICE PAYROLL"), ("people_office", "OFFICE REGISTER"),
-        ("people_local", "LOCAL STAFF"), ("people_household", "HOUSEHOLD")]
+        ("people_local", "LOCAL STAFF")]
 LABOUR = ("masterdata", "adjustments", "livecard")
 
 rows = []

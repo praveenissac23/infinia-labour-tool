@@ -23,7 +23,7 @@ from database import get_db
 
 router = APIRouter()
 PEOPLE_RIGHTS = {"labour": "people_labour", "office": "people_office",
-                 "local": "people_local", "household": "people_household"}
+                 "local": "people_local"}
 PEOPLE = Depends(M.require_any_screen(*PEOPLE_RIGHTS.values()))
 ACCESS = Depends(auth.require_admin)   # roles and logins: admin only
 
@@ -42,13 +42,12 @@ def _may(user, group):
     if group not in allowed_groups(user):
         raise HTTPException(status_code=403, detail=f"Not available to this login: the {GROUPS.get(group, group)} register.")
 
-GROUPS = {"labour": "Labour", "office": "Office staff", "local": "Local staff",
-          "household": "Household"}
+# Household staff (maids, house drivers) are office staff: same register,
+# same right, same payroll.
+GROUPS = {"labour": "Labour", "office": "Office staff", "local": "Local staff"}
 # Annual leave: labour 60 calendar days after every two years of
 # service; everyone else 30 days after each year.
-LEAVE_RULES = {"labour": (60.0, 24), "office": (30.0, 12), "local": (30.0, 12),
-               "household": (30.0, 12)}
-HOUSEHOLD_WORDS = ("maid", "household", "housemaid", "nanny", "cook", "house driver")
+LEAVE_RULES = {"labour": (60.0, 24), "office": (30.0, 12), "local": (30.0, 12)}
 
 
 # ---- Who is on which register -------------------------------------------
@@ -68,8 +67,6 @@ def group_of(e, p=None):
         return "labour"
     if (e.pay_group or "staff") == "local":
         return "local"
-    if any(w in (e.designation or e.trade or "").lower() for w in HOUSEHOLD_WORDS):
-        return "household"
     return "office"
 
 
@@ -382,7 +379,7 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     pages see the same person the moment he is added."""
     g = (payload.get("group") or "").strip().lower()
     if g not in GROUPS:
-        raise HTTPException(status_code=400, detail="Which register - labour, office, local or household?")
+        raise HTTPException(status_code=400, detail="Which register - labour, office or local?")
     _may(user, g)
     emp_no = str(payload.get("emp_no") or "").strip().upper()
     name = str(payload.get("name") or "").strip().upper()
@@ -437,6 +434,8 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
     emp = payload.get("employee") or {}
     # Register tab.
     g = (payload.get("group") or "").strip().lower()
+    if g and g not in GROUPS:
+        raise HTTPException(status_code=400, detail="Which register - office or local? (Household staff are on the office register.)")
     if g and g != before:
         if (g == "labour") != (before == "labour"):
             raise HTTPException(status_code=400,
@@ -752,15 +751,14 @@ SCREEN_LABELS = {
     "approvals": "Approvals, orders, LPO register, suppliers", "errorcheck": "Check before you pay",
     "settings": "Settings", "activity": "Activity monitor", "hrpayroll": "Office HR & Payroll (office salaries)",
     "storekeeper": "Record stock in / out", "people_labour": "Labour register",
-    "people_office": "Office staff register (office salaries)", "people_local": "Local staff register",
-    "people_household": "Household register",
+    "people_office": "Office staff register incl. household (office salaries)", "people_local": "Local staff register",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
 RIGHT_PAGES = [
     ("Dashboard", ["dashboard"]),
     ("Attendance", ["attendance", "livecard", "masterdata"]),
-    ("Staff", ["people_labour", "people_office", "people_local", "people_household"]),
+    ("Staff", ["people_labour", "people_office", "people_local"]),
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Reports", ["reports"]),

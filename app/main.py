@@ -42,6 +42,27 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Infinia Labour Tool API")
 
 
+def _household_into_office(db):
+    """Household staff are on the office register now - one tab, one
+    right. Anyone set to the household tab moves to office staff, and the
+    old household right is taken off every login and role (it is not
+    turned into the office right: that one shows office salaries)."""
+    changed = False
+    for p in db.query(models.PeopleProfile).filter(models.PeopleProfile.group == "household").all():
+        p.group = "office"; changed = True
+    def strip(v):
+        parts = [x.strip() for x in (v or "").split(",") if x.strip()]
+        return ",".join(x for x in parts if x != "people_household"), "people_household" in parts
+    for u in db.query(models.User).all():
+        v, had = strip(u.permissions)
+        if had: u.permissions = v; changed = True
+    for r in db.query(models.AccessRole).all():
+        v, had = strip(r.screens)
+        if had: r.screens = v; changed = True
+    if changed:
+        db.commit()
+
+
 @app.on_event("startup")
 def seed_on_startup():
     """
@@ -73,6 +94,7 @@ def seed_on_startup():
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
         _store_is_not_a_site(db)
+        _household_into_office(db)
         _migrate_hr(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
@@ -153,7 +175,7 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # before anyone else is given them.
                # One right per register, so a login can be given the
                # labour list without the office salaries.
-               "people_labour", "people_office", "people_local", "people_household",
+               "people_labour", "people_office", "people_local",
                # Not a screen but a right: who may record a receipt, an
                # issue, a return or a write-off. It was decided by role,
                # which made the store keeper's own job depend on which

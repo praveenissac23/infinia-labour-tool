@@ -40,7 +40,7 @@ def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, sho
             "go": go or "", "people": people or "", "opts": opts or "", "show": show or []}
 
 
-PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local", "people_household"]
+PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local"]
 STORE_RIGHTS = ["store", "approvals", "requests"]
 
 
@@ -122,14 +122,14 @@ PAGES = {
 # Screens without a tab of their own, reached from inside another.
 EXTRA = {"monthly": "reports"}
 # Pages held in a frame inside the app rather than written from app.html.
-VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local", "people_household"])])}
+VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
 ORDER = ["dashboard", "attendance", "people", "payroll", "store", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
 FILE = {"reports": "reporting"}
 def fname(key): return FILE.get(key, key) + ".html"
-STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local", "people_household"]),
+STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local"]),
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor"}
@@ -585,7 +585,7 @@ function pgSegPick(b) { b.parentNode.querySelectorAll("button").forEach(x => x.c
 function pgHubLoad() { refreshDownloadToken(); pgPeopleShow(); }
 
 // ---- People lists on the reports page ----------------------------------------
-const PG_GROUPS = [["labour", "Labour"], ["office", "Office"], ["local", "Local"], ["household", "Household"]];
+const PG_GROUPS = [["labour", "Labour"], ["office", "Office"], ["local", "Local"]];
 const pgCanGroup = g => CURRENT_ROLE === "admin" || MY_SCREENS.includes("people_" + g[0]);
 let PG_PEOPLE_DRAWN = "";
 function pgPeopleOpts(sb) {

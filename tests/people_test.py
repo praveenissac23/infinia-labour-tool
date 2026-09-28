@@ -50,7 +50,8 @@ ck('nor the site login', c.get('/employees/people', headers=S).status_code == 40
 ck('nor the Access page', c.get('/permissions/roles', headers=O).status_code == 403)
 ck('admin can', c.get('/employees/people', headers=H).status_code == 200)
 ck('the new rights are known to the app', all(s in c.get('/permissions/screens', headers=H).json()['screens']
-                                                for s in ('people_labour', 'people_office', 'people_local', 'people_household')))
+                                                for s in ('people_labour', 'people_office', 'people_local'))
+                                                and 'people_household' not in c.get('/permissions/screens', headers=H).json()['screens'])
 ck('and access itself is not a right a role can carry', 'access' not in c.get('/permissions/screens', headers=H).json()['screens'])
 
 # ---- A company and a labourer from the OLD screens ------------------------
@@ -74,7 +75,7 @@ c.post('/employees/staff', json={'emp_no': 'IC015', 'name': 'KHADIJA FARIS', 'co
 c.post('/employees/staff', json={'emp_no': 'IC008', 'name': 'RAJI MOL', 'company_id': co['id'], 'designation': 'Maid',
                                  'joined_on': '2023-01-15', 'basic': 600, 'allowance': 900}, headers=H)
 counts = c.get('/employees/people', headers=H).json()['counts']
-ck('each lands on the right tab without anyone sorting them', counts == {'labour': 1, 'office': 1, 'local': 1, 'household': 1, 'left': 0}, counts)
+ck('each lands on the right tab without anyone sorting them (the maid on office staff)', counts == {'labour': 1, 'office': 2, 'local': 1, 'left': 0}, counts)
 
 # ---- The HR file: written on People, read back everywhere -------------------
 f = c.get('/employees/people/IC022', headers=H).json()
@@ -139,11 +140,10 @@ ck('a contract rule and an opening balance override the group rule', lv['rule_da
 bal = c.get('/employees/people/leave-balances?group=labour', headers=H).json()['rows']
 ck('the leave-balance list for labour', len(bal) == 1 and bal[0]['emp_no'] == '101' and bal[0]['taken'] == 10, bal)
 
-# ---- Household and the register tab -------------------------------------------
-r = c.put('/employees/people/IC008', json={'group': 'office'}, headers=H)
-ck('a maid can be moved to the office tab', r.status_code == 200 and r.json()['person']['group'] == 'office', r.text[:150])
+# ---- Household staff are office staff -------------------------------------------
+ck('a maid is on the office register', c.get('/employees/people/IC008', headers=H).json()['person']['group'] == 'office')
 r = c.put('/employees/people/IC008', json={'group': 'household'}, headers=H)
-ck('and back', r.json()['person']['group'] == 'household')
+ck('there is no household register to move her to', r.status_code == 400, r.text[:150])
 r = c.put('/employees/people/IC008', json={'group': 'labour'}, headers=H)
 ck('but never onto the labour register from here', r.status_code == 400, r.text[:150])
 r = c.put('/employees/people/IC015', json={'group': 'office'}, headers=H)
@@ -248,6 +248,22 @@ ck('the users list shows who follows which role', any(u['username'] == 'storeman
 # ---- Nothing else moved ------------------------------------------------------------------------------
 ck('the office document tracker still lists everything, new kinds included',
    {d['kind'] for d in c.get('/employees/documents', headers=H).json()['rows']} >= {'passport', 'medical', 'visa'})
+
+# ---- Live data from before the merge converts on restart ---------------------
+from database import SessionLocal
+import models as _m
+_db = SessionLocal()
+_e = _db.query(_m.Employee).filter(_m.Employee.emp_no == 'IC008').first()
+_p = _db.query(_m.PeopleProfile).filter(_m.PeopleProfile.employee_id == _e.id).first() or _m.PeopleProfile(employee_id=_e.id)
+_p.group = 'household'; _db.add(_p)
+_u = _db.query(_m.User).filter(_m.User.role != 'admin').first()
+if _u: _u.permissions = (_u.permissions or '') + ',people_household'
+_r = _m.AccessRole(name='Old Household Role', screens='dashboard,people_household'); _db.add(_r); _db.commit()
+main._household_into_office(_db); _db.expire_all()
+ck('on restart, someone on the old household tab moves to office staff', _db.query(_m.PeopleProfile).filter(_m.PeopleProfile.employee_id == _e.id).first().group == 'office')
+ck('and the old household right is taken off logins', not _u or 'people_household' not in (_db.query(_m.User).get(_u.id).permissions or ''))
+ck('and roles (not turned into the office-salary right)', _db.query(_m.AccessRole).filter(_m.AccessRole.name == 'Old Household Role').first().screens == 'dashboard')
+_db.close()
 
 print()
 if FAIL:
