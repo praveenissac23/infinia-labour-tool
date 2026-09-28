@@ -762,6 +762,24 @@ def list_employees(active_only: bool = False, month_year: str = "", as_of: str =
              "total_salary": 0, "basic_salary": 0} for e in rows]
 
 
+def norm_emp_no(code):
+    """A worker's code as it is kept: capitals, no spaces. "f- 771",
+    "F - 771" and "F-771 " are all F-771 - typed with a stray space, the
+    same man was once put on the books twice and paid twice."""
+    return re.sub(r"\s+", "", str(code or "")).upper()
+
+
+def find_by_code(db, code):
+    """The worker with this code - exactly, or the same code typed with
+    spaces or in small letters."""
+    code = str(code or "").strip()
+    e = db.query(models.Employee).filter(models.Employee.emp_no == code).first()
+    if e:
+        return e
+    n = norm_emp_no(code)
+    return next((x for x in db.query(models.Employee).all() if norm_emp_no(x.emp_no) == n), None)
+
+
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("masterdata"))):
@@ -771,7 +789,10 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     emp.name = (emp.name or "").strip()
     emp.trade = (emp.trade or "").strip()
     emp.pay_type = "fixed" if (emp.pay_type or "").strip().lower() == "fixed" else "daily"
-    existing = db.query(models.Employee).filter(models.Employee.emp_no == emp.emp_no).first()
+    existing = find_by_code(db, emp.emp_no)
+    emp.emp_no = existing.emp_no if existing else norm_emp_no(emp.emp_no)
+    if not emp.emp_no:
+        raise HTTPException(status_code=400, detail="A worker number is needed.")
     _refuse_if_staff(existing)
     if existing:
         # A rate change is kept as history, so it shows on his staff file
@@ -1033,7 +1054,7 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
             val = row[idx]
             return val if val is not None else default
 
-        emp_no = str(get("emp no")).strip()
+        emp_no = norm_emp_no(get("emp no"))
         name = str(get("name")).strip()
         if not emp_no or not name:
             errors.append(f"Row {row_idx}: missing Emp No or Name, skipped.")
@@ -1062,7 +1083,9 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
         pay_type = "fixed" if pay_cell.lower() in ("fixed", "fixed monthly", "monthly") else "daily"
         file_emp_nos.add(emp_no)
 
-        existing = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
+        existing = find_by_code(db, emp_no)
+        if existing is not None:
+            emp_no = existing.emp_no
         if existing is not None and existing.staff:
             errors.append(f"{emp_no}: office staff ({existing.name}) - left alone; "
                           "change them under HR & Payroll.")
@@ -2052,6 +2075,32 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                                    "Days entered": str(len(entered)),
                                    "Every missing day":
                                        ", ".join(d.strftime("%d %b") for d in missing)}})
+
+    # The same man twice: one code typed with a space ("F- 771" beside
+    # "F-771") puts him on the report twice and pays him twice.
+    paid_codes = {r.emp_no for r in rows}
+    emps_all = {e.emp_no: e for e in db.query(models.Employee).all()}
+    by_norm = {}
+    for c in paid_codes:
+        by_norm.setdefault(norm_emp_no(c), []).append(c)
+    for n, codes in by_norm.items():
+        if len(codes) > 1:
+            names = ", ".join(f"{c} ({(emps_all.get(c).name if emps_all.get(c) else '?')})" for c in sorted(codes))
+            out.append({"emp_no": " / ".join(sorted(codes)), "name": (emps_all.get(codes[0]).name if emps_all.get(codes[0]) else ""),
+                        "date": "-", "site": "-", "kind": "Same worker twice",
+                        "issue": f"One worker under {len(codes)} codes this cycle: {names}. He is on the report and paid twice.",
+                        "goto": "", "detail": {"Codes": names, "Fix": "Run deploy/fix_duplicate_codes.py, or ask for it to be merged"}})
+    by_name = {}
+    for c in paid_codes:
+        e = emps_all.get(c)
+        if e and (e.name or "").strip():
+            by_name.setdefault(" ".join(e.name.upper().split()), []).append(c)
+    for nm, codes in by_name.items():
+        if len(codes) > 1 and len({norm_emp_no(c) for c in codes}) > 1:
+            out.append({"emp_no": " / ".join(sorted(codes)), "name": nm, "date": "-", "site": "-",
+                        "kind": "Same name twice",
+                        "issue": f"{nm} appears under {', '.join(sorted(codes))}. Two men with one name, or one man entered twice?",
+                        "goto": "", "detail": {"Codes": ", ".join(sorted(codes))}})
 
     # Hours worked on a day nobody worked. Absent means the worker was
     # not there, so OT or BH against it is a contradiction - usually a
@@ -7924,11 +7973,11 @@ def add_staff(payload: dict = Body(...), db: Session = Depends(get_db),
     cards, and a new accountant should not have to be added as a
     labourer first and converted afterwards.
     """
-    emp_no = str(payload.get("emp_no") or "").strip().upper()
+    emp_no = norm_emp_no(payload.get("emp_no"))
     name = str(payload.get("name") or "").strip().upper()
     if not emp_no or not name:
         raise HTTPException(status_code=400, detail="A staff code and a name are both needed.")
-    if db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first():
+    if find_by_code(db, emp_no):
         raise HTTPException(status_code=400,
             detail=f"{emp_no} is already in use. Pick the next free code.")
     if not payload.get("company_id"):

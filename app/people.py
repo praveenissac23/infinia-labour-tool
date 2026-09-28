@@ -381,11 +381,11 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     if g not in GROUPS:
         raise HTTPException(status_code=400, detail="Which register - labour, office or local?")
     _may(user, g)
-    emp_no = str(payload.get("emp_no") or "").strip().upper()
+    emp_no = M.norm_emp_no(payload.get("emp_no"))
     name = str(payload.get("name") or "").strip().upper()
     if not emp_no or not name:
         raise HTTPException(status_code=400, detail="A code and a full name are both needed.")
-    if db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first():
+    if M.find_by_code(db, emp_no):
         raise HTTPException(status_code=400, detail=f"{emp_no} is already in use. Pick the next free code.")
     joined = M._as_date(payload.get("joined_on"))
     if not joined:
