@@ -12639,8 +12639,12 @@ function hrNoDropdowns() {
   document.querySelectorAll("#screen-hrpayroll select:not([hidden]):not(.hr-dd)").forEach(sel => {
     if (sel.dataset.done) return;
     sel.dataset.done = "1";
-    if (sel.classList.contains("hr-staff-pick")) hrSearchSelect(sel);
-    else hrSegmentSelect(sel);
+    if (sel.classList.contains("hr-staff-pick")) { hrSearchSelect(sel); return; }
+    // Two or three short choices read well as a switch; a longer list as
+    // a row of buttons is only clutter, so it stays a dropdown.
+    const words = [...sel.options].map(o => o.textContent.trim()).join("").length;
+    if (sel.options.length > 3 || words > 34) { sel.classList.add("hr-dd"); return; }
+    hrSegmentSelect(sel);
   });
 }
 
