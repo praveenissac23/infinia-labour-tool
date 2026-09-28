@@ -47,7 +47,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.evaluate(() => { const r = PC.rows.find(x => x.description === 'Diesel for generator'); pcEdit(r.id); });
   await p.screenshot({ path: SH + 'petty-2-editing.png' });
   await p.click('#pc-cancel');
-  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#screen-pettycash button:has-text("Preview")')]);
+  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#screen-pettycash .hr-menu-btn').then(() => p.click('#screen-pettycash .hr-menu-list button:has-text("Preview")'))]);
   await pop.waitForLoadState(); await pop.waitForTimeout(800);
   const txt = await pop.locator('.page').textContent();
   ck('preview: title, company, period, brought forward and in-hand agree', /PETTY CASH REGISTER/.test(txt) && /INFINIA CONTRACTING/.test(txt) && /September 2026/.test(txt) && /1,850\.00/.test(txt) && /5,800\.00/.test(txt));

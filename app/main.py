@@ -8226,8 +8226,8 @@ def delete_document(doc_id: int, db: Session = Depends(get_db), user: models.Use
 
 # ---- Company expiries: vehicles, licences, anything else --------------
 
-EXPIRY_CATEGORIES = ["Vehicle", "Trade licence", "Establishment card", "Insurance",
-                     "Tenancy / Ejari", "Equipment", "Other"]
+EXPIRY_CATEGORIES = ["Vehicle", "Trade licence", "Establishment card", "Insurance", "NOC", "Permit",
+                     "Site / project", "Tenancy / Ejari", "Equipment", "Certificate / approval", "Other"]
 
 
 def _expiry_dict(x):
@@ -8247,7 +8247,9 @@ def list_expiries(db: Session = Depends(get_db), user: models.User = HR):
                   key=lambda r: (r["days_left"] if r["days_left"] is not None else 99999))
     used = sorted({r["category"] for r in rows if r["category"]} | set(EXPIRY_CATEGORIES))
     kinds = sorted({r["kind"] for r in rows if r["kind"]} | {"Registration (Mulkiya)", "Insurance", "Trade licence",
-                                                            "Salik / road permit", "Tenancy contract", "Inspection certificate"})
+                "Salik / road permit", "Tenancy contract", "Inspection certificate", "NOC", "Developer NOC",
+                "DEWA NOC", "Civil Defence NOC", "Building permit", "Work permit", "Municipality permit",
+                "Road closure permit", "Access pass", "Chamber of Commerce", "Contractor classification"})
     return {"rows": rows, "categories": used, "kinds": kinds,
             "counts": {k: sum(1 for r in rows if r["status"] == k) for k in ("expired", "urgent", "soon", "valid")}}
 

@@ -207,6 +207,19 @@
   td.hr-d { cursor: pointer; }
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
+  .hr-exp-form { display: grid; grid-template-columns: 1fr 2fr 1.6fr 1fr; gap: 10px 12px; align-items: end; }
+  .hr-exp-form .hr-field input { width: 100%; }
+  .hr-exp-form > .btn { justify-self: start; height: 36px; }
+  @media (max-width: 900px) { .hr-exp-form { grid-template-columns: 1fr 1fr; } }
+  .hr-menu { position: relative; display: inline-block; }
+  .hr-menu-list { display: none; position: absolute; right: 0; top: calc(100% + 4px); min-width: 230px; background: #fff; z-index: 2500;
+                  border: 1px solid #E4E0DB; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.14); padding: 5px; }
+  .hr-menu.open .hr-menu-list { display: block; }
+  .hr-menu-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 11px; border-radius: 6px;
+                         font: 500 13.5px inherit; color: #2a2a2a; cursor: pointer; white-space: nowrap; }
+  .hr-menu-list button:hover { background: #F6F1EC; } .hr-menu-list button.danger { color: #C0392B; }
+  .hr-menu-list hr { border: 0; border-top: 1px solid #EEE; margin: 4px 2px; }
+  .hr-caret { font-size: 10px; margin-left: 2px; }
   .pc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
   .pc-title { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
   .pc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -2029,10 +2042,7 @@
                 <label class="pc-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
               </div>
               <div class="pc-btns">
-                <button class="btn btn-dark" onclick="pcExport('view')">Preview</button>
-                <button class="btn btn-gray" onclick="pcExport('pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="pcExport('excel')">Export to Excel</button>
-                <button class="btn btn-gray" onclick="pcExport('print')">Print</button>
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); pcExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); pcExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); pcExport('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); pcExport('print')">Print</button></div></div>
               </div>
             </div>
             <div class="pc-stats" id="pc-stats"></div>
@@ -3002,7 +3012,6 @@
                   <span id="hr-month-state" class="hr-state"></span>
                 </div>
                 <div class="hr-cb-spacer"></div>
-                <button class="btn btn-dark" onclick="previewConsolidated(true)">Consolidated statement</button>
               </div>
 
               <!-- The choices themselves, kept for the code that reads them. -->
@@ -3019,10 +3028,7 @@
                 <span id="hr-all-sub" style="font-size:12px; color:#888;"></span>
                 <div class="hr-cb-spacer"></div>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
-                <button class="btn btn-dark" onclick="previewConsolidated()">Preview</button>
-                <button class="btn btn-gray" onclick="downloadConsolidated('pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadConsolidated('excel')">Export to Excel</button>
-                <button class="btn btn-gray" onclick="printConsolidated()">Print</button>
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewConsolidated()">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadConsolidated('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadConsolidated('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); printConsolidated()">Print</button><hr><button type="button" class="" onclick="hrMenuClose(); previewConsolidated(true)">Consolidated statement (office + local)</button></div></div>
               </div>
               <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
               <div id="hr-all-body" style="margin-top:12px;"></div>
@@ -3037,15 +3043,10 @@
                 <button class="btn btn-primary" id="hr-save-btn" onclick="savePayrollRun()">Save</button>
                 <button class="btn btn-gray" id="hr-approve-btn" onclick="approvePayrollRun()">Approve &amp; lock</button>
                 <button class="btn btn-danger" id="hr-reopen-btn" onclick="reopenPayrollRun()" style="display:none;">Reopen</button>
-                <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()">Discard draft</button>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
-                <span style="display:inline-flex; gap:8px; margin-left:18px; padding-left:18px;
-                             border-left:1px solid #E4E0DB;">
-                  <button class="btn btn-dark" onclick="previewStatement()">Preview</button>
-                  <button class="btn btn-gray" onclick="downloadStatement('pdf')">Export to PDF</button>
-                  <button class="btn btn-gray" onclick="downloadStatement('excel')">Export to Excel</button>
-                  <button class="btn btn-gray" onclick="printStatement()">Print</button>
-                </span>
+                <div class="hr-cb-spacer"></div>
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewStatement()">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadStatement('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadStatement('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); printStatement()">Print</button><hr><button type="button" class="" onclick="hrMenuClose(); previewConsolidated(true)">Consolidated statement (office + local)</button><hr><button type="button" class="danger" onclick="hrMenuClose(); dropPayrollRun()">Discard this draft</button></div></div>
+                <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()" hidden>Discard draft</button>
               </div>
               <div class="grid-wrap" style="max-height:56vh;">
                 <table id="hr-run-table" class="hr-grid hr-cycle">
@@ -3317,7 +3318,7 @@
                 <h2 style="margin:0;">Expiry tracker</h2>
                 <div class="pc-kind" id="hr-doc-mode">
                   <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
-                  <button type="button" data-m="company" onclick="hrDocMode('company')">Vehicles, licences &amp; others</button>
+                  <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
                 </div>
               </div>
               <div id="hr-doc-people">
@@ -3349,9 +3350,7 @@
                   <option value="labour">Labour</option>
                 </select>
                 <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
-                <button class="btn btn-dark" onclick="previewHr('documents')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('documents','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('documents','excel')">Export to Excel</button>
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
                 <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
@@ -3370,19 +3369,19 @@
               <!-- Vehicles, licences and anything else that expires -->
               <div id="hr-doc-company" style="display:none;">
                 <p style="font-size:12px; color:#888; margin:0 0 10px;">
-                  Vehicle registration and insurance, the trade licence, a tenancy, an equipment certificate -
-                  anything with an expiry date. Type any category or document; new ones are remembered.
+                  NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
+                  certificate - any document with an expiry date. Type any category or document; new ones are remembered.
                   Click a line to renew or correct it.</p>
-                <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" style="width:130px;" placeholder="e.g. Vehicle"></label>
+                <div class="hr-exp-form">
+                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" placeholder="e.g. NOC"></label>
                   <datalist id="hr-exp-cat-list"></datalist>
-                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" style="width:220px;" placeholder="e.g. Toyota Hilux - Dubai P 12345"></label>
-                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" style="width:180px;" placeholder="e.g. Registration (Mulkiya)"></label>
+                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" placeholder="e.g. Villa 347 Sobha Hartland"></label>
+                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" placeholder="e.g. Developer NOC"></label>
                   <datalist id="hr-exp-kind-list"></datalist>
-                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" style="width:105px;" placeholder="Optional"></label>
-                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued" style="width:140px;"></label>
-                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires" style="width:140px;"></label>
-                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" style="width:130px;" placeholder="Optional"></label>
+                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" placeholder="Optional"></label>
+                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued"></label>
+                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires"></label>
+                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" placeholder="Optional"></label>
                   <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
                 </div>
                 <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
@@ -3395,9 +3394,7 @@
                   </select>
                   <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
                   <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
-                  <button class="btn btn-dark" onclick="hrExpExport('view')">Preview</button>
-                  <button class="btn btn-gray" onclick="hrExpExport('pdf')">Export to PDF</button>
-                  <button class="btn btn-gray" onclick="hrExpExport('excel')">Export to Excel</button>
+                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
                   <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
                 </div>
                 <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
@@ -3420,9 +3417,7 @@
               <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
                 <label class="hr-field"><span>Staff member</span><select id="hr-grat-emp" class="hr-staff-pick" style="width:260px;" onchange="renderGratuity()"></select></label>
                 <div class="hr-cb-spacer"></div>
-                <button class="btn btn-dark" onclick="previewHr('gratuity')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('gratuity','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('gratuity','excel')">Export to Excel</button>
+                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('gratuity')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('gratuity','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('gratuity','excel')">Download Excel</button></div></div>
               </div>
               <div id="hr-grat-view" style="margin-top:14px;"></div>
             </div>
@@ -3430,9 +3425,7 @@
               <div class="form-row" style="gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
                 <h2 style="margin:0;">Final settlement</h2>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  <button class="btn btn-dark" onclick="fsOpen('view')">Preview</button>
-                  <button class="btn btn-gray" onclick="fsOpen('pdf')">Export to PDF</button>
-                  <button class="btn btn-gray" onclick="fsOpen('excel')">Export to Excel</button>
+                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); fsOpen('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); fsOpen('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); fsOpen('excel')">Download Excel</button></div></div>
                 </div>
               </div>
               <p class="hr-nil" style="margin:6px 0 12px;">For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.</p>
@@ -13599,6 +13592,18 @@ async function renderGratuity() {
       <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
     </div>`;
 }
+
+// One "Print / Export" button with a short list, instead of a row of
+// Preview / PDF / Excel / Print buttons on every sheet.
+function hrMenuClose() { document.querySelectorAll(".hr-menu.open").forEach(m => m.classList.remove("open")); }
+function hrMenu(btn, ev) {
+  if (ev) ev.stopPropagation();
+  const m = btn.closest(".hr-menu"), was = m.classList.contains("open");
+  hrMenuClose();
+  if (!was) m.classList.add("open");
+}
+document.addEventListener("click", ev => { if (!ev.target.closest || !ev.target.closest(".hr-menu")) hrMenuClose(); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") hrMenuClose(); });
 
 // ---- Petty cash ---------------------------------------------------------
 // The store keeper enters each bill as he pays it on site, and each sum
