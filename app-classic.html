@@ -3136,13 +3136,23 @@
           <!-- ---- Documents ------------------------------------------->
           <div class="hr-pane" id="hrpane-docs" style="display:none;">
             <div class="card">
-              <h2>Document Expiry</h2>
+              <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
+                <h2 style="margin:0;">Expiry tracker</h2>
+                <div class="pc-kind" id="hr-doc-mode">
+                  <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
+                  <button type="button" data-m="company" onclick="hrDocMode('company')">Vehicles, licences &amp; others</button>
+                </div>
+              </div>
+              <div id="hr-doc-people">
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
                 Office staff and labour together, one line a person. Click any date to renew
-                or correct it - a renewal is simply the new expiry date.</p>
+                or correct it - a renewal is simply the new expiry date. Any other document can be
+                added: pick "Other - type the name".</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
-                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" style="width:170px;"></select></label>
+                <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
+                <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
+                <datalist id="hr-doc-custom-list"></datalist>
                 <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
                 <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
                 <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
@@ -3177,6 +3187,52 @@
                   </tr></thead>
                   <tbody id="hr-doc-body"></tbody>
                 </table>
+              </div>
+              </div>
+
+              <!-- Vehicles, licences and anything else that expires -->
+              <div id="hr-doc-company" style="display:none;">
+                <p style="font-size:12px; color:#888; margin:0 0 10px;">
+                  Vehicle registration and insurance, the trade licence, a tenancy, an equipment certificate -
+                  anything with an expiry date. Type any category or document; new ones are remembered.
+                  Click a line to renew or correct it.</p>
+                <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                  <label class="hr-field"><span>Category</span><input type="text" id="hr-exp-cat" list="hr-exp-cat-list" style="width:130px;" placeholder="e.g. Vehicle"></label>
+                  <datalist id="hr-exp-cat-list"></datalist>
+                  <label class="hr-field"><span>Item *</span><input type="text" id="hr-exp-item" style="width:220px;" placeholder="e.g. Toyota Hilux - Dubai P 12345"></label>
+                  <label class="hr-field"><span>Document / renewal *</span><input type="text" id="hr-exp-kind" list="hr-exp-kind-list" style="width:180px;" placeholder="e.g. Registration (Mulkiya)"></label>
+                  <datalist id="hr-exp-kind-list"></datalist>
+                  <label class="hr-field"><span>Number</span><input type="text" id="hr-exp-number" style="width:105px;" placeholder="Optional"></label>
+                  <label class="hr-field"><span>Issued on</span><input type="date" id="hr-exp-issued" style="width:140px;"></label>
+                  <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-exp-expires" style="width:140px;"></label>
+                  <label class="hr-field"><span>Notes</span><input type="text" id="hr-exp-notes" style="width:130px;" placeholder="Optional"></label>
+                  <button class="btn btn-primary" onclick="saveExpiry()">Save</button>
+                </div>
+                <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
+                <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+                  <select id="hr-exp-within" class="hr-dd" style="width:190px;" onchange="renderExpiries()">
+                    <option value="-1">Everything on file</option>
+                    <option value="30">Due in 30 days</option>
+                    <option value="90">Due in 90 days</option>
+                    <option value="0">Already expired</option>
+                  </select>
+                  <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
+                  <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
+                  <button class="btn btn-dark" onclick="hrExpExport('view')">Preview</button>
+                  <button class="btn btn-gray" onclick="hrExpExport('pdf')">Export to PDF</button>
+                  <button class="btn btn-gray" onclick="hrExpExport('excel')">Export to Excel</button>
+                  <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
+                </div>
+                <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                  <table class="hr-grid">
+                    <thead><tr>
+                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
+                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
+                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
+                    </tr></thead>
+                    <tbody id="hr-exp-body"></tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -11706,8 +11762,9 @@ async function loadHrScreen() {
     `<option value="">All companies</option>` + opts;
   document.getElementById("hr-doc-kind").innerHTML = Object.entries({
     eid: "Emirates ID", visa: "Visa / labour card", passport: "Passport",
-    labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract"
-  }).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+    labour_card: "Labour card", insurance: "Insurance", contract: "Labour contract",
+    medical: "Medical fitness", driving: "Driving licence", certificate: "Certificate"
+  }).map(([k, v]) => `<option value="${k}">${v}</option>`).join("") + `<option value="custom">Other - type the name</option>`;
 
   try { HR_STAFF = (await apiCall("/employees/staff")).rows || []; } catch (e) { HR_STAFF = []; }
   hrFillStaffPickers();
@@ -13154,7 +13211,10 @@ function hrEditDoc(id) {
   const x = HR_DOCS.find(d => d.id === id);
   if (!x) return;
   document.getElementById("hr-doc-emp").value = x.emp_no;
-  document.getElementById("hr-doc-kind").value = x.kind;
+  const known = [...document.getElementById("hr-doc-kind").options].some(o => o.value === x.kind);
+  document.getElementById("hr-doc-kind").value = known ? x.kind : "custom";
+  document.getElementById("hr-doc-custom").value = known ? "" : x.kind_label;
+  hrDocKindChanged();
   document.getElementById("hr-doc-number").value = x.number || "";
   document.getElementById("hr-doc-issued").value = x.issued_on || "";
   document.getElementById("hr-doc-expires").value = x.expires_on || "";
@@ -13169,7 +13229,7 @@ function hrEditDoc(id) {
 }
 
 function hrClearDoc() {
-  ["hr-doc-emp", "hr-doc-number", "hr-doc-issued", "hr-doc-expires"]
+  ["hr-doc-emp", "hr-doc-number", "hr-doc-issued", "hr-doc-expires", "hr-doc-custom"]
     .forEach(id => document.getElementById(id).value = "");
   const box = document.getElementById("hr-doc-editing");
   box.style.display = "none"; box.dataset.id = "";
@@ -13180,13 +13240,96 @@ async function addDocument() {
   try {
     await apiCall("/employees/documents", { method: "POST", body: JSON.stringify({
       id: parseInt(document.getElementById("hr-doc-editing").dataset.id || "", 10) || undefined,
-      emp_no: v("hr-doc-emp").trim(), kind: v("hr-doc-kind"),
+      emp_no: v("hr-doc-emp").trim(), kind: v("hr-doc-kind"), kind_label: v("hr-doc-custom").trim(),
       number: v("hr-doc-number").trim(), issued_on: v("hr-doc-issued"),
       expires_on: v("hr-doc-expires") }) });
     hrClearDoc();
     await loadDocuments();
     hrMsg("ok", "Document saved.");
   } catch (e) { hrMsg("err", errText(e)); }
+}
+
+function hrDocKindChanged() {
+  const custom = document.getElementById("hr-doc-kind").value === "custom";
+  document.getElementById("hr-doc-custom-f").style.display = custom ? "" : "none";
+  const names = [...new Set(HR_DOCS.filter(x => !["eid","visa","passport","labour_card","insurance","contract","medical","driving","certificate"].includes(x.kind)).map(x => x.kind_label))];
+  document.getElementById("hr-doc-custom-list").innerHTML = names.map(n => `<option value="${escapeAttr(n)}">`).join("");
+  if (custom) document.getElementById("hr-doc-custom").focus();
+}
+
+// ---- Vehicles, licences and anything else that expires ----------------
+let HR_EXP = { rows: [], categories: [], kinds: [] };
+function hrDocMode(m) {
+  document.querySelectorAll("#hr-doc-mode button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  document.getElementById("hr-doc-people").style.display = m === "people" ? "" : "none";
+  document.getElementById("hr-doc-company").style.display = m === "company" ? "" : "none";
+  if (m === "company") loadExpiries();
+}
+async function loadExpiries() {
+  try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { hrMsg("err", errText(e)); return; }
+  const opt = a => a.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  document.getElementById("hr-exp-cat-list").innerHTML = opt(HR_EXP.categories);
+  document.getElementById("hr-exp-kind-list").innerHTML = opt(HR_EXP.kinds);
+  const f = document.getElementById("hr-exp-catf"), keep = f.value;
+  const used = [...new Set(HR_EXP.rows.map(r => r.category).filter(Boolean))].sort();
+  f.innerHTML = `<option value="">All categories</option>` + used.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
+  f.value = used.includes(keep) ? keep : "";
+  renderExpiries();
+}
+function renderExpiries() {
+  const within = parseInt(document.getElementById("hr-exp-within").value, 10);
+  const cat = document.getElementById("hr-exp-catf").value;
+  const q = (document.getElementById("hr-exp-search").value || "").toLowerCase().trim();
+  const rows = HR_EXP.rows.filter(r => (!cat || r.category === cat) &&
+    (!q || `${r.item} ${r.number} ${r.kind} ${r.category}`.toLowerCase().includes(q)) &&
+    (within < 0 || (within === 0 ? r.status === "expired" : (r.days_left ?? 1e9) <= within)));
+  const c = k => rows.filter(r => r.status === k).length;
+  document.getElementById("hr-exp-count").textContent = `${rows.length} items - ${c("expired")} expired, ${c("urgent")} due in 30 days, ${c("soon")} in 90`;
+  document.getElementById("hr-exp-body").innerHTML = rows.map(r => {
+    const n = r.days_left;
+    const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago` : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
+    return `<tr style="cursor:pointer;" onclick="hrEditExpiry(${r.id})" title="Click to renew or correct">
+      <td class="txt">${escapeHtml(r.category)}</td><td class="txt"><b>${escapeHtml(r.item)}</b></td>
+      <td class="txt">${escapeHtml(r.kind)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
+      <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>
+      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}</td>
+      <td class="txt">${escapeHtml(r.notes) || '<span class="hr-nil">-</span>'}</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="hr-nil" style="padding:14px;">${HR_EXP.rows.length ? "Nothing matches." : "Nothing on file yet - add a vehicle, the trade licence, anything that expires."}</td></tr>`;
+}
+const HR_EXP_F = { category: "hr-exp-cat", item: "hr-exp-item", kind: "hr-exp-kind", number: "hr-exp-number",
+                   issued_on: "hr-exp-issued", expires_on: "hr-exp-expires", notes: "hr-exp-notes" };
+function hrEditExpiry(id) {
+  const r = HR_EXP.rows.find(x => x.id === id); if (!r) return;
+  for (const [k, el] of Object.entries(HR_EXP_F)) document.getElementById(el).value = r[k] || "";
+  const box = document.getElementById("hr-exp-editing");
+  box.dataset.id = id;
+  box.innerHTML = `Editing <b>${escapeHtml(r.kind)}</b> for ${escapeHtml(r.item)}
+    <a href="#" onclick="deleteExpiry(${id});return false;" style="color:var(--red); margin-left:10px;">Remove it</a>
+    <a href="#" onclick="hrClearExpiry();return false;" style="margin-left:10px;">Cancel</a>`;
+  box.style.display = "";
+  document.getElementById("hr-exp-expires").focus();
+}
+function hrClearExpiry() {
+  for (const el of Object.values(HR_EXP_F)) document.getElementById(el).value = "";
+  const box = document.getElementById("hr-exp-editing"); box.style.display = "none"; box.dataset.id = "";
+}
+async function saveExpiry() {
+  const body = { id: parseInt(document.getElementById("hr-exp-editing").dataset.id || "", 10) || undefined };
+  for (const [k, el] of Object.entries(HR_EXP_F)) body[k] = document.getElementById(el).value.trim();
+  try {
+    await apiCall("/employees/expiries", { method: "POST", body: JSON.stringify(body) });
+    hrClearExpiry(); await loadExpiries(); hrMsg("ok", "Saved.");
+  } catch (e) { hrMsg("err", errText(e)); }
+}
+async function deleteExpiry(id) {
+  if (!await hrAsk("Remove this item from the expiry tracker?", "Remove", true)) return;
+  try { await apiCall(`/employees/expiries/${id}`, { method: "DELETE" }); hrClearExpiry(); await loadExpiries(); }
+  catch (e) { hrMsg("err", errText(e)); }
+}
+async function hrExpExport(kind) {
+  const w = document.getElementById("hr-exp-within").value, t = await hrToken();
+  window.open(kind === "view" ? `${API}/export/payroll/expiries/view?within=${w}&token=${t}`
+                              : `${API}/export/payroll/expiries?within=${w}&format=${kind}&token=${t}`, "_blank");
 }
 
 async function deleteDocument(id) {

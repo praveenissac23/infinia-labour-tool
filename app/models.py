@@ -992,3 +992,23 @@ class PettyCash(Base):
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CompanyExpiry(Base):
+    """Anything else that expires - a vehicle's registration or
+    insurance, the trade licence, a tenancy, an equipment certificate.
+    Kept beside the people's documents, on the same screen, so one list
+    shows everything coming up; the category and the document are free
+    text, so a new kind needs no change to the app."""
+    __tablename__ = "company_expiries"
+    id = Column(Integer, primary_key=True)
+    category = Column(String, default="")      # Vehicle, Trade licence, Insurance ...
+    item = Column(String, default="")          # Toyota Hilux - Dubai P 12345
+    kind = Column(String, default="")          # Registration (Mulkiya), Insurance ...
+    number = Column(String, default="")
+    issued_on = Column(Date, nullable=True)
+    expires_on = Column(Date, nullable=True, index=True)
+    notes = Column(Text, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

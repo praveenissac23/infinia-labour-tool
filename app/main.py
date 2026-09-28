@@ -8069,7 +8069,7 @@ def _doc_dict(d, emp):
             "emp_no": emp.emp_no if emp else "", "name": emp.name if emp else "",
             "staff": bool(emp.staff) if emp else False,
             "company": (emp.company or "") if emp else "",
-            "kind": d.kind, "kind_label": DOC_KINDS.get(d.kind, d.kind.replace("_", " ").title()),
+            "kind": d.kind, "kind_label": DOC_KINDS.get(d.kind, d.kind.replace("_", " ").capitalize()),
             "number": d.number or "",
             "issued_on": d.issued_on.isoformat() if d.issued_on else "",
             "expires_on": d.expires_on.isoformat() if d.expires_on else "",
@@ -8129,9 +8129,12 @@ def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
     if not e:
         raise HTTPException(status_code=404, detail=f"No worker with number {emp_no}.")
     kind = (payload.get("kind") or "").strip().lower()
-    if kind not in DOC_KINDS:
-        raise HTTPException(status_code=400,
-            detail=f"Which document is it? One of: {', '.join(DOC_KINDS.values())}.")
+    if kind in ("custom", "") and str(payload.get("kind_label") or "").strip():
+        # Any other document, named as it is typed - "Tool licence",
+        # "Safety card" - kept under that name from then on.
+        kind = re.sub(r"[^a-z0-9]+", "_", str(payload["kind_label"]).strip().lower()).strip("_")[:40]
+    if not kind or kind == "custom":
+        raise HTTPException(status_code=400, detail="Which document is it? Pick one or type its name.")
     expires = _as_date(payload.get("expires_on"))
     if not expires:
         raise HTTPException(status_code=400,
@@ -8154,7 +8157,7 @@ def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
     d.notes = (payload.get("notes") or "").strip()
     db.commit(); db.refresh(d)
     log_action(db, user.id, "document_saved",
-               f"{e.emp_no} {DOC_KINDS[kind]} -> {expires.isoformat()}"
+               f"{e.emp_no} {DOC_KINDS.get(kind, kind.replace('_', ' ').title())} -> {expires.isoformat()}"
                + (f" (was {was.isoformat()})" if was and was != expires else ""))
     return _doc_dict(d, e)
 
@@ -8169,6 +8172,71 @@ def delete_document(doc_id: int, db: Session = Depends(get_db), user: models.Use
     db.delete(d); db.commit()
     log_action(db, user.id, "document_deleted",
                f"{emp.emp_no if emp else '?'} {DOC_KINDS.get(d.kind, d.kind)}")
+    return {"ok": True}
+
+
+# ---- Company expiries: vehicles, licences, anything else --------------
+
+EXPIRY_CATEGORIES = ["Vehicle", "Trade licence", "Establishment card", "Insurance",
+                     "Tenancy / Ejari", "Equipment", "Other"]
+
+
+def _expiry_dict(x):
+    days = (x.expires_on - _dubai_today()).days if x.expires_on else None
+    return {"id": x.id, "category": x.category or "", "item": x.item or "", "kind": x.kind or "",
+            "number": x.number or "", "issued_on": x.issued_on.isoformat() if x.issued_on else "",
+            "expires_on": x.expires_on.isoformat() if x.expires_on else "", "days_left": days,
+            "status": ("expired" if days is not None and days < 0 else
+                       "urgent" if days is not None and days <= 30 else
+                       "soon" if days is not None and days <= 90 else "valid"),
+            "notes": x.notes or ""}
+
+
+@app.get("/employees/expiries")
+def list_expiries(db: Session = Depends(get_db), user: models.User = HR):
+    rows = sorted((_expiry_dict(x) for x in db.query(models.CompanyExpiry).all()),
+                  key=lambda r: (r["days_left"] if r["days_left"] is not None else 99999))
+    used = sorted({r["category"] for r in rows if r["category"]} | set(EXPIRY_CATEGORIES))
+    kinds = sorted({r["kind"] for r in rows if r["kind"]} | {"Registration (Mulkiya)", "Insurance", "Trade licence",
+                                                            "Salik / road permit", "Tenancy contract", "Inspection certificate"})
+    return {"rows": rows, "categories": used, "kinds": kinds,
+            "counts": {k: sum(1 for r in rows if r["status"] == k) for k in ("expired", "urgent", "soon", "valid")}}
+
+
+@app.post("/employees/expiries")
+def save_expiry(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = HR):
+    item = str(payload.get("item") or "").strip()
+    kind = str(payload.get("kind") or "").strip()
+    if not item:
+        raise HTTPException(status_code=400, detail="What is it? e.g. Toyota Hilux - Dubai P 12345, or the trade licence.")
+    if not kind:
+        raise HTTPException(status_code=400, detail="Which document or renewal? e.g. Registration, Insurance.")
+    expires = _as_date(payload.get("expires_on"))
+    if not expires:
+        raise HTTPException(status_code=400, detail="An expiry date is the point of the record - it cannot be left empty.")
+    x = db.get(models.CompanyExpiry, int(payload["id"])) if payload.get("id") else None
+    if not x:
+        x = models.CompanyExpiry(created_by=user.id); db.add(x)
+    was = x.expires_on
+    x.category = str(payload.get("category") or "").strip()[:60] or "Other"
+    x.item, x.kind = item[:160], kind[:80]
+    x.number = str(payload.get("number") or "").strip()[:80]
+    x.issued_on = _as_date(payload.get("issued_on"))
+    x.expires_on = expires
+    x.notes = str(payload.get("notes") or "").strip()
+    db.commit(); db.refresh(x)
+    log_action(db, user.id, "expiry_saved", f"{x.category}: {x.item} {x.kind} -> {expires.isoformat()}"
+               + (f" (was {was.isoformat()})" if was and was != expires else ""))
+    return _expiry_dict(x)
+
+
+@app.delete("/employees/expiries/{xid}")
+def delete_expiry(xid: int, db: Session = Depends(get_db), user: models.User = HR):
+    x = db.get(models.CompanyExpiry, xid)
+    if not x:
+        raise HTTPException(status_code=404, detail="That item is not on file.")
+    log_action(db, user.id, "expiry_deleted", f"{x.category}: {x.item} {x.kind}")
+    db.delete(x); db.commit()
     return {"ok": True}
 
 
@@ -10081,6 +10149,42 @@ def _document_parts(db, days):
            f"{counts['urgent']} due within 30 days, {counts['soon']} within 90   |   "
            f"As at {_dubai_today():%d %b %Y}")
     return out, "Document Expiry Tracker", sub
+
+
+def _expiry_parts(db, days):
+    days = None if days is None or days < 0 else days
+    rows = list_expiries(db=db, user=None)["rows"]
+    if days is not None:
+        rows = [r for r in rows if r["status"] == "expired"] if days == 0 else \
+               [r for r in rows if r["days_left"] is not None and r["days_left"] <= days]
+    out = []
+    for i, r in enumerate(rows, 1):
+        n = r["days_left"]
+        out.append({"Sr.": i, "Category": r["category"], "Item": r["item"], "Document": r["kind"],
+                    "Number": r["number"] or "-", "Expires": _dmy(_as_date(r["expires_on"])),
+                    "Days Left": ("expired %dd" % -n) if n is not None and n < 0 else (n if n is not None else "-"),
+                    "Standing": DOC_STANDING[r["status"]], "Notes": r["notes"] or "-"})
+    c = lambda k: sum(1 for r in rows if r["status"] == k)
+    sub = (f"{len(out)} items   |   {c('expired')} expired, {c('urgent')} due within 30 days, {c('soon')} within 90"
+           f"   |   As at {_dubai_today():%d %b %Y}")
+    return out, "Company & Vehicle Expiry Tracker", sub
+
+
+@app.get("/export/payroll/expiries")
+def export_expiries(token: str, within: int = -1, format: str = "pdf", db: Session = Depends(get_db)):
+    _require_hr_reader(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _expiry_parts(db, within)
+    return _hr_file(title, rows, sub, format, [], "Expiry_Tracker")
+
+
+@app.get("/export/payroll/expiries/view")
+def view_expiries(token: str, within: int = -1, db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_hr_reader(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _expiry_parts(db, within)
+    url = f"/export/payroll/expiries?within={within}&token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
 
 @app.get("/export/payroll/documents")
