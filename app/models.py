@@ -973,3 +973,22 @@ class AccessRole(Base):
     screens = Column(Text, default="")             # comma-separated, like users.permissions
     notes = Column(String, default="")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PettyCash(Base):
+    """One line of the petty cash register: cash received from the
+    office, or a bill paid out of it on site. The balance is never
+    stored - it is everything received less everything paid, in date
+    order - so it cannot drift from the lines."""
+    __tablename__ = "petty_cash"
+    id = Column(Integer, primary_key=True)
+    on_date = Column(Date, nullable=False, index=True)
+    description = Column(String, default="")
+    supplier = Column(String, default="")
+    site = Column(String, default="")
+    received = Column(Float, default=0.0)
+    paid = Column(Float, default=0.0)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

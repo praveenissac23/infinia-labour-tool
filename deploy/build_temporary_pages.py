@@ -79,6 +79,7 @@ PAGES = {
             sub("requests", "Material requests", screen="requests", right="requests"),
             sub("approvals", "Approvals", screen="approvals", right="approvals"),
             sub("followup", "Order follow-up", screen="followup", right="requests")]),
+        tab("petty", "pettycash", "Petty cash", ["store", "storekeeper", "approvals"]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),

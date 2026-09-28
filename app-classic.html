@@ -206,6 +206,32 @@
   td.hr-d { cursor: pointer; }
   td.hr-d:hover { outline: 1px solid #D9B6B0; outline-offset: -1px; }
   .hr-field { display: inline-flex; flex-direction: column; gap: 2px; }
+  .pc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .pc-title { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .pc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pc-f { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 700; color: #555; letter-spacing: .03em; }
+  .pc-f input, .pc-f select { height: 36px; }
+  .pc-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 12px; }
+  .pc-stat { border: 1px solid #ECE6DF; border-radius: 8px; padding: 9px 12px; background: #FCFAF7; }
+  .pc-stat span { display: block; font-size: 11px; color: #8A8178; text-transform: uppercase; letter-spacing: .05em; }
+  .pc-stat b { font-size: 17px; font-variant-numeric: tabular-nums; } .pc-stat.hand b { color: #2E7D32; } .pc-stat.hand.neg b { color: #C0392B; }
+  .pc-form { display: grid; grid-template-columns: auto 140px minmax(180px, 2fr) minmax(150px, 1.4fr) 140px 120px auto; gap: 10px; align-items: end;
+             border-top: 1px solid #EEE; padding-top: 12px; }
+  .pc-form input, .pc-form select { width: 100%; }
+  .pc-kind { display: inline-flex; border: 1px solid #D5D9DE; border-radius: 7px; overflow: hidden; height: 36px; }
+  .pc-kind button { border: 0; background: #fff; padding: 0 12px; font: 600 12.5px inherit; color: #555; cursor: pointer; white-space: nowrap; }
+  .pc-kind button.on { background: #B7322A; color: #fff; }
+  .pc-go { flex-direction: row; gap: 6px; }
+  .pc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .pc-table th { text-align: center; } .pc-table th.l, .pc-table td.l { text-align: left; } .pc-table th.n, .pc-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .pc-table td { text-align: center; padding: 8px 10px; border-bottom: 1px solid #EFEFEF; }
+  .pc-table td.bal { font-weight: 700; } .pc-table td.neg { color: #C0392B; }
+  .pc-table tr.bf td { background: #FBF6F4; font-style: italic; color: #6b625a; }
+  .pc-table tr.edit td { background: #FFF8E6; }
+  .pc-table td .sub { display: block; font-size: 11px; color: #9a918a; }
+  .pc-table tfoot td { font-weight: 700; background: #F5F2EE; border-top: 1.5px solid #333; }
+  .pc-table .pc-act { white-space: nowrap; } .pc-table .pc-act button { margin-left: 4px; }
+  @media (max-width: 1100px) { .pc-form { grid-template-columns: 1fr 1fr; } .pc-kind, .pc-wide, .pc-go { grid-column: 1 / -1; } .pc-stats { grid-template-columns: 1fr 1fr; } }
   .fs-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; align-items: start; }
   .fs-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
   .fs-inputs .hr-field input, .fs-inputs .hr-field select { width: 100%; }
@@ -1888,6 +1914,53 @@
 
         </div>
 
+        <!-- ============ PETTY CASH ============ -->
+        <div class="screen" id="screen-pettycash">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title">
+                <h2 style="margin:0;">Petty cash register</h2>
+                <label class="pc-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
+              </div>
+              <div class="pc-btns">
+                <button class="btn btn-dark" onclick="pcExport('view')">Preview</button>
+                <button class="btn btn-gray" onclick="pcExport('pdf')">Export to PDF</button>
+                <button class="btn btn-gray" onclick="pcExport('excel')">Export to Excel</button>
+                <button class="btn btn-gray" onclick="pcExport('print')">Print</button>
+              </div>
+            </div>
+            <div class="pc-stats" id="pc-stats"></div>
+            <div class="status-msg" id="pc-status"></div>
+            <div class="pc-form" id="pc-form">
+              <div class="pc-kind">
+                <button type="button" class="on" data-k="paid" onclick="pcKind('paid')">Bill paid</button>
+                <button type="button" data-k="received" onclick="pcKind('received')">Cash received</button>
+              </div>
+              <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
+              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="200"></label>
+              <label class="pc-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off"></label>
+              <datalist id="pc-sup-list"></datalist>
+              <label class="pc-f pc-site"><span>Site</span><select id="pc-site"></select></label>
+              <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
+              <div class="pc-f pc-go">
+                <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
+                <button class="btn btn-gray" id="pc-cancel" onclick="pcReset()" style="display:none;">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div class="card pc-card">
+            <div class="grid-wrap">
+              <table class="pc-table">
+                <thead><tr><th style="width:92px;">Date</th><th class="l">Description</th><th class="l">Supplier / contact</th>
+                  <th style="width:70px;">Site</th><th class="n" style="width:120px;">Received (AED)</th><th class="n" style="width:120px;">Paid (AED)</th>
+                  <th class="n" style="width:130px;">Balance (AED)</th><th style="width:118px;"></th></tr></thead>
+                <tbody id="pc-body"></tbody>
+                <tfoot id="pc-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div class="screen" id="screen-suppliers">
           <!-- Supplier master -->
           <div class="card" id="supplier-card">
@@ -3445,6 +3518,7 @@ function switchScreen(name) {
   if (name === "purchase") loadPurchase();
   if (name === "lporegister") loadLpoReport();
   if (name === "suppliers") loadSuppliersScreen();
+  if (name === "pettycash") loadPettyCash();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -13204,6 +13278,128 @@ async function renderGratuity() {
       <section><h3>Absence and leave (${d.leave_days} days, ${d.unpaid_days} deducted)</h3>${leave}</section>
       <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
     </div>`;
+}
+
+// ---- Petty cash ---------------------------------------------------------
+// The store keeper enters each bill as he pays it on site, and each sum
+// he is given; the office sees the balance in hand the same day.
+
+let PC = null, PC_EDIT = null, PC_KIND = "paid", PC_SITES = null;
+function pcToday() { const d = new Date(Date.now() + 4 * 3600e3); return d.toISOString().slice(0, 10); }
+function pcMoney(v) { return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function pcDate(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }).replace("Sept", "Sep").replace(/ /g, "-"); }
+
+function pcKind(k) {
+  PC_KIND = k;
+  document.querySelectorAll(".pc-kind button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  document.getElementById("pc-amt-l").textContent = k === "paid" ? "Paid (AED)" : "Received (AED)";
+  document.getElementById("pc-sup-l").textContent = k === "paid" ? "Supplier / contact" : "From (e.g. Cash / ADCB)";
+  document.getElementById("pc-desc").placeholder = k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received";
+}
+
+async function loadPettyCash() {
+  const m = document.getElementById("pc-month");
+  if (!m.value) m.value = pcToday().slice(0, 7);
+  if (!document.getElementById("pc-date").value) document.getElementById("pc-date").value = pcToday();
+  document.getElementById("pc-date").max = pcToday();
+  if (!PC_SITES) {
+    try { PC_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { PC_SITES = []; }
+    document.getElementById("pc-site").innerHTML = `<option value="">Office / general</option>` +
+      PC_SITES.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
+  }
+  const want = m.value;
+  let d;
+  try { d = await apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}`); }
+  catch (e) { showStatus("pc-status", "err", errText(e)); return; }
+  if (m.value !== want) return;
+  PC = d; pcDraw();
+}
+
+function pcDraw() {
+  const d = PC;
+  const hand = d.closing;
+  document.getElementById("pc-stats").innerHTML = `
+    <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>
+    <div class="pc-stat"><span>Received this month</span><b>${pcMoney(d.received)}</b></div>
+    <div class="pc-stat"><span>Paid this month</span><b>${pcMoney(d.paid)}</b></div>
+    <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>Balance in hand</span><b>${pcMoney(hand)}</b></div>`;
+  const cell = v => v ? pcMoney(v) : "";
+  document.getElementById("pc-body").innerHTML =
+    `<tr class="bf"><td></td><td class="l">Balance brought forward</td><td></td><td></td><td></td><td></td>
+       <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
+    (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
+       <td class="l">${escapeHtml(r.description)}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
+       <td class="l">${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.site)}</td>
+       <td class="n">${cell(r.received)}</td><td class="n">${cell(r.paid)}</td>
+       <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
+       <td class="pc-act"><button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button></td></tr>`).join("")
+     || `<tr><td colspan="8" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
+  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="4" class="l">TOTAL</td><td class="n">${pcMoney(d.received)}</td>
+    <td class="n">${pcMoney(d.paid)}</td><td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
+  const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
+  document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");
+}
+
+function pcReset() {
+  PC_EDIT = null;
+  ["pc-desc", "pc-sup", "pc-amt"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("pc-site").value = "";
+  document.getElementById("pc-date").value = pcToday();
+  document.getElementById("pc-save").textContent = "Add";
+  document.getElementById("pc-cancel").style.display = "none";
+  if (PC) pcDraw();
+}
+
+function pcEdit(id) {
+  const r = PC.rows.find(x => x.id === id); if (!r) return;
+  PC_EDIT = id;
+  pcKind(r.received ? "received" : "paid");
+  document.getElementById("pc-date").value = r.date;
+  document.getElementById("pc-desc").value = r.description;
+  document.getElementById("pc-sup").value = r.supplier;
+  document.getElementById("pc-site").value = r.site;
+  document.getElementById("pc-amt").value = r.received || r.paid;
+  document.getElementById("pc-save").textContent = "Save changes";
+  document.getElementById("pc-cancel").style.display = "";
+  pcDraw();
+  document.getElementById("pc-desc").focus();
+}
+
+async function pcSave() {
+  const amt = document.getElementById("pc-amt").value.replace(/,/g, "").trim();
+  const body = { date: document.getElementById("pc-date").value, description: document.getElementById("pc-desc").value,
+                 supplier: document.getElementById("pc-sup").value, site: document.getElementById("pc-site").value,
+                 received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0 };
+  const btn = document.getElementById("pc-save"); btn.disabled = true;
+  try {
+    if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
+    else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
+    const was = PC_EDIT;
+    // Show the month the line went into.
+    document.getElementById("pc-month").value = body.date.slice(0, 7);
+    pcReset();
+    await loadPettyCash();
+    showStatus("pc-status", "ok", was ? "Saved." : `Added - balance in hand ${pcMoney(PC.closing)}.`);
+    document.getElementById("pc-desc").focus();
+  } catch (e) { showStatus("pc-status", "err", errText(e)); }
+  finally { btn.disabled = false; }
+}
+
+async function pcDelete(id) {
+  const r = PC.rows.find(x => x.id === id); if (!r) return;
+  if (!await hrAsk(`Remove "${r.description}" (${pcMoney(r.received || r.paid)}) from petty cash?`, "Remove", true)) return;
+  try { await apiCall(`/store/petty-cash/${id}`, { method: "DELETE" }); if (PC_EDIT === id) pcReset(); await loadPettyCash(); showStatus("pc-status", "ok", "Removed."); }
+  catch (e) { showStatus("pc-status", "err", errText(e)); }
+}
+
+async function pcExport(kind) {
+  const m = document.getElementById("pc-month").value || pcToday().slice(0, 7);
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  const t = encodeURIComponent(cachedDownloadToken || "");
+  const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?month=${m}&token=${t}`
+                                                : `${API}/export/store/petty-cash?month=${m}&format=${kind}&token=${t}`;
+  const w = window.open(u, "_blank");
+  if (kind === "print" && w) w.addEventListener("load", () => w.print());
 }
 
 // ---- Final settlement -------------------------------------------------

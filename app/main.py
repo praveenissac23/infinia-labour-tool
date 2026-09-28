@@ -10501,3 +10501,5 @@ import people  # noqa: E402
 app.include_router(people.router)
 import settlement  # noqa: E402
 app.include_router(settlement.router)
+import pettycash  # noqa: E402
+app.include_router(pettycash.router)
