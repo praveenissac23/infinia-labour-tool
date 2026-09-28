@@ -9595,7 +9595,7 @@ def reopen_payroll_run(run_id: int, db: Session = Depends(get_db), user: models.
 
 
 @app.get("/employees/payroll/consolidated")
-def consolidated_statement(month_year: str = "", db: Session = Depends(get_db),
+def consolidated_statement(month_year: str = "", group: str = "", db: Session = Depends(get_db),
                             user: models.User = HR):
     """Every company's cycle for one month, on one sheet.
 
@@ -9618,6 +9618,9 @@ def consolidated_statement(month_year: str = "", db: Session = Depends(get_db),
     runs = (db.query(models.PayrollRun).options(joinedload(models.PayrollRun.lines))
               .filter(models.PayrollRun.month_year == month_year)
               .order_by(models.PayrollRun.company_id, models.PayrollRun.id).all())
+    if group in ("staff", "local"):
+        # One statement across the companies: office staff or local staff.
+        runs = [r for r in runs if (r.group or "staff") == group]
     emps = {e.id: e for e in db.query(models.Employee).all()}
     rows, drafts = [], []
     for r in runs:
@@ -9776,10 +9779,11 @@ def view_payroll_statement(run_id: int, token: str, db: Session = Depends(get_db
                          money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
 
 
-def _consolidated_parts(db, month_year):
-    d = consolidated_statement(month_year=month_year, db=db, user=None)
+def _consolidated_parts(db, month_year, group=""):
+    d = consolidated_statement(month_year=month_year, group=group, db=db, user=None)
     rows = _statement_rows(d["rows"], consolidated=True)
-    title = "Consolidated Employee Salary Statement"
+    title = {"staff": "Office Staff Salary Statement - All Companies",
+             "local": "Local Staff Salary Statement - All Companies"}.get(group, "Consolidated Employee Salary Statement")
     sub = (f"{month_year}   |   {len(rows)} staff across "
            f"{len(d['companies'])} companies   |   {_route_line(d['by_route'])}"
            + (f"   |   DRAFT: {', '.join(d['draft_companies'])}"
@@ -9788,20 +9792,21 @@ def _consolidated_parts(db, month_year):
 
 
 @app.get("/export/payroll/consolidated")
-def export_consolidated(month_year: str, token: str, format: str = "pdf",
+def export_consolidated(month_year: str, token: str, format: str = "pdf", group: str = "",
                          db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _consolidated_parts(db, month_year)
-    return _hr_file(title, rows, sub, format, STATEMENT_MONEY, "Consolidated_Statement")
+    rows, title, sub = _consolidated_parts(db, month_year, group)
+    stem = {"staff": "Office_Staff_Statement", "local": "Local_Staff_Statement"}.get(group, "Consolidated_Statement")
+    return _hr_file(title, rows, sub, format, STATEMENT_MONEY, stem)
 
 
 @app.get("/export/payroll/consolidated/view")
-def view_consolidated(month_year: str, token: str, db: Session = Depends(get_db)):
+def view_consolidated(month_year: str, token: str, group: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _consolidated_parts(db, month_year)
-    url = f"/export/payroll/consolidated?month_year={quote(month_year)}&token={t}"
+    rows, title, sub = _consolidated_parts(db, month_year, group)
+    url = f"/export/payroll/consolidated?month_year={quote(month_year)}&group={quote(group)}&token={t}"
     return _preview_page(title, sub, rows, url, url,
                          money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
 

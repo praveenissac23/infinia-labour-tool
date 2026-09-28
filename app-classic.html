@@ -2750,7 +2750,7 @@
                   <span id="hr-month-state" class="hr-state"></span>
                 </div>
                 <div class="hr-cb-spacer"></div>
-                <button class="btn btn-dark" onclick="previewConsolidated()">Consolidated statement</button>
+                <button class="btn btn-dark" onclick="previewConsolidated(true)">Consolidated statement</button>
               </div>
 
               <!-- The choices themselves, kept for the code that reads them. -->
@@ -2769,7 +2769,7 @@
                 <button class="btn btn-dark" onclick="previewConsolidated()">Preview</button>
                 <button class="btn btn-gray" onclick="downloadConsolidated('pdf')">Export to PDF</button>
                 <button class="btn btn-gray" onclick="downloadConsolidated('excel')">Export to Excel</button>
-                <button class="btn btn-gray" onclick="window.print()">Print</button>
+                <button class="btn btn-gray" onclick="printConsolidated()">Print</button>
               </div>
               <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
               <div id="hr-all-body" style="margin-top:12px;"></div>
@@ -12165,16 +12165,21 @@ function hrAllWire() {
   ["pointerdown", "focusin", "input", "change", "keydown", "click"].forEach(t => body.addEventListener(t, pick, true));
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hrAllWire); else hrAllWire();
-async function downloadConsolidated(fmt) {
+// The buttons on the all-companies sheet follow the statement chosen
+// (office or local); the Consolidated statement button at the top is
+// every statement together.
+function hrAllGroup() { return document.getElementById("hr-run-group").value || "staff"; }
+async function hrConsolidatedUrl(view, fmt, group) {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
-  if (!month) { hrMsg("warn", "Pick a month first."); return; }
-  window.open(`${API}/export/payroll/consolidated?month_year=${encodeURIComponent(month)}&format=${fmt}&token=${await hrToken()}`, "_blank");
+  if (!month) { hrMsg("warn", "Pick a month first."); return ""; }
+  return `${API}/export/payroll/consolidated${view ? "/view" : ""}?month_year=${encodeURIComponent(month)}` +
+         (group ? `&group=${group}` : "") + (fmt ? `&format=${fmt}` : "") + `&token=${await hrToken()}`;
 }
-async function previewConsolidated() {
-  const month = hrCycleName(document.getElementById("hr-run-month").value);
-  if (!month) { hrMsg("warn", "Pick a month first."); return; }
-  window.open(`${API}/export/payroll/consolidated/view?month_year=${encodeURIComponent(month)}` +
-              `&token=${await hrToken()}`, "_blank");
+async function downloadConsolidated(fmt) { const u = await hrConsolidatedUrl(false, fmt, hrAllGroup()); if (u) window.open(u, "_blank"); }
+async function previewConsolidated(all) { const u = await hrConsolidatedUrl(true, "", all ? "" : hrAllGroup()); if (u) window.open(u, "_blank"); }
+async function printConsolidated() {
+  const u = await hrConsolidatedUrl(true, "", hrAllGroup()); if (!u) return;
+  const w = window.open(u, "_blank"); if (w) w.addEventListener("load", () => w.print());
 }
 
 // ---- Staff register --------------------------------------------------
