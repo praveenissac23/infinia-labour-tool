@@ -1348,6 +1348,10 @@
               </select>
               <input type="number" id="md-emp-total" placeholder="Total Salary">
               <input type="number" id="md-emp-basic" placeholder="Basic Salary">
+              <select id="md-rate-from" style="width:230px;" title="Only matters when the salary is changed">
+                <option value="current">New salary from this cycle</option>
+                <option value="previous">New salary from last cycle</option>
+              </select>
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
             </div>
             <div class="form-row" style="margin-top:8px; align-items:center; gap:8px;">
@@ -4707,6 +4711,7 @@ async function saveEmployee() {
         joined_on: document.getElementById("md-emp-joined").value || null,
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
+        rate_from: document.getElementById("md-rate-from").value || "current",
         active: true,
       }),
     });
@@ -4714,6 +4719,7 @@ async function saveEmployee() {
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("md-emp-company").value = "Infinia";
     document.getElementById("md-emp-paytype").value = "daily";
+    document.getElementById("md-rate-from").value = "current";
     document.getElementById("md-emp-terminated").value = "";
     document.getElementById("md-emp-joined").value = "";
     employees = await apiCall("/employees?active_only=true");

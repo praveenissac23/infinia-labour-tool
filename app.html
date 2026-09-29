@@ -1050,7 +1050,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b225d19a0236";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="43d1f7dde73d";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1494,6 +1494,10 @@
               </select>
               <input type="number" id="md-emp-total" placeholder="Total Salary">
               <input type="number" id="md-emp-basic" placeholder="Basic Salary">
+              <select id="md-rate-from" style="width:230px;" title="Only matters when the salary is changed">
+                <option value="current">New salary from this cycle</option>
+                <option value="previous">New salary from last cycle</option>
+              </select>
               <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
             </div>
             <div class="form-row" style="margin-top:8px; align-items:center; gap:8px;">
@@ -4886,6 +4890,7 @@ async function saveEmployee() {
         joined_on: document.getElementById("md-emp-joined").value || null,
         total_salary: parseFloat(document.getElementById("md-emp-total").value) || 0,
         basic_salary: parseFloat(document.getElementById("md-emp-basic").value) || 0,
+        rate_from: document.getElementById("md-rate-from").value || "current",
         active: true,
       }),
     });
@@ -4893,6 +4898,7 @@ async function saveEmployee() {
     ["md-emp-no", "md-emp-name", "md-emp-trade", "md-emp-total", "md-emp-basic"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("md-emp-company").value = "Infinia";
     document.getElementById("md-emp-paytype").value = "daily";
+    document.getElementById("md-rate-from").value = "current";
     document.getElementById("md-emp-terminated").value = "";
     document.getElementById("md-emp-joined").value = "";
     employees = await apiCall("/employees?active_only=true");

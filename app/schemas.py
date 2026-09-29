@@ -68,6 +68,8 @@ class EmployeeIn(BaseModel):
     pay_type: str = "daily"
     terminated_on: date | None = None
     joined_on: date | None = None
+    # Which cycle a changed rate starts in: "current" (default) or "previous".
+    rate_from: str | None = None
     total_salary: float = 0.0
     basic_salary: float = 0.0
     active: bool = True

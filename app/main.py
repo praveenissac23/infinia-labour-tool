@@ -799,14 +799,21 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     if existing:
         # A rate change is kept as history, so it shows on his staff file
         # and cycles before it keep the rate they were paid at.
-        _record_labour_rate(db, existing, emp.basic_salary, emp.total_salary, _dubai_today(),
-                            "Changed on Master Data", user.id)
+        # The new rate starts with this cycle, or - an increment agreed
+        # late - with the last one; cycles before it keep the old rate.
+        cs, _, _ = pcyc.cycle_bounds_for(_dubai_today())
+        start = pcyc.cycle_bounds_for(cs - timedelta(days=1))[0] if emp.rate_from == "previous" else cs
+        _record_labour_rate(db, existing, emp.basic_salary, emp.total_salary, start,
+                            "Changed on Master Data" + (" (from last cycle)" if emp.rate_from == "previous" else ""), user.id)
         for field, value in emp.dict().items():
+            if field == "rate_from":
+                continue
             if field == "joined_on" and value is None:
                 continue                          # not sent: keep the date on file
             setattr(existing, field, value)
     else:
         data = emp.dict()
+        data.pop("rate_from", None)
         if not data.get("joined_on"):
             data["joined_on"] = _dubai_today()    # a new worker starts today unless a date is given
         existing = models.Employee(**data)
