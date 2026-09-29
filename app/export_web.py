@@ -1861,7 +1861,13 @@ def build_lpo_pdf(po: dict):
     # own address, which the supplier already has. The room that frees
     # goes to what the order was missing: the project, the plot, and who
     # to call about it.
-    def box(title, rows, wide_label=0.40):
+    def box(title, rows, wide_label=None):
+        # The colons sit just after the longest label, so the values -
+        # a long email address above all - get the rest of the width.
+        if wide_label is None:
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+            longest = max((stringWidth(k.replace("&amp;", "&"), "Helvetica", 8) for k, _ in rows if k), default=60)
+            wide_label = min(max((longest + 16) / (W * 0.495), 0.22), 0.40)
         head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.495])
         head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2E3238")),
                                   ("LEFTPADDING", (0, 0), (-1, -1), 6),

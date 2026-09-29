@@ -6741,7 +6741,8 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .half table {{ width:100%; border-collapse:collapse; flex:1; }}
   .half td {{ vertical-align:top; }}
   .pairs td {{ padding:3px 8px; vertical-align:top; }}
-  .pairs .k {{ color:#444; width:44%; }} .pairs .v {{ font-weight:600; }}
+  .pairs .k {{ color:#444; width:1%; white-space:nowrap; padding-right:4px; }}
+  .pairs .v {{ font-weight:600; overflow-wrap:anywhere; }}
   table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; }}
   table.lines th {{ background:#7B1F1A; color:white; padding:6px; font-size:11.5px; }}
   table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
@@ -7089,8 +7090,8 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
   .cap {{ background:#2E3238; color:white; font-size:8pt; font-weight:bold; padding:3px 6px; }}
   .kv {{ width:100%; border-collapse:collapse; border:0.5px solid #8C8C8C; }}
   .kv th {{ text-align:left; font-weight:normal; color:#3B3F44; font-size:8pt;
-            padding:2px 6px; width:36%; vertical-align:top; }}
-  .kv td {{ font-weight:bold; font-size:8pt; padding:2px 6px; vertical-align:top; }}
+            padding:2px 4px 2px 6px; width:1%; white-space:nowrap; vertical-align:top; }}
+  .kv td {{ font-weight:bold; font-size:8pt; padding:2px 6px 2px 2px; vertical-align:top; overflow-wrap:anywhere; }}
   table.items {{ width:100%; border-collapse:collapse; margin-top:9px; }}
   table.items th {{ background:#2E3238; color:white; font-size:7.5pt; padding:3.5px 4px;
                     border:0.4px solid #8C8C8C; text-align:left; }}
