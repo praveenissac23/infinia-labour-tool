@@ -516,6 +516,12 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
             r.am = r.pm = "Terminated"; r.site = ""; r.engineer = ""; r.ot = 0; r.bh = 0
         if after:
             db.commit()
+        # His cards follow at once, and a later cycle's empty card goes.
+        import services
+        for (cycle,) in (db.query(models.EmployeeSummary.month_year)
+                           .filter(models.EmployeeSummary.emp_no == e.emp_no).distinct().all()):
+            services.recalculate_summary(db, e, cycle)
+        M.drop_leaver_cards(db)
     if rate_changed:
         import services
         for (cycle,) in (db.query(models.EmployeeSummary.month_year)

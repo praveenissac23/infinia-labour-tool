@@ -128,6 +128,7 @@ def seed_on_startup():
     try:
         _retire_staff_role(db)
         _grant_storekeeper_to_existing(db)
+        _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
         _store_is_not_a_site(db)
@@ -255,6 +256,46 @@ ROLE_DEFAULTS = {
     "site": ["dashboard", "attendance", "store", "requests", "settings"],
 }
 ROLES = list(ROLE_DEFAULTS)
+
+
+WORKING_MARKS = {"Present", "Absent", "Sick", "Medical", "Leave", "Half Day", "Half"}
+
+
+def _leaving_from_attendance(db, emp_nos=None, user_id=None):
+    """A labourer marked Terminated on the attendance, with no leaving date
+    on his record, has left: his leaving date becomes the day before the
+    first Terminated day after his last working day - so he drops off the
+    next cycle's grid, the live card and the salary cards, the same as if
+    the date had been typed on Master Data. A day marked Present (or any
+    working mark) after the Terminated days means it was not a leaving,
+    and nothing is changed. Clearing the date on Master Data undoes it."""
+    q = db.query(models.Employee).filter(models.Employee.terminated_on.is_(None))
+    if emp_nos:
+        q = q.filter(models.Employee.emp_no.in_(list(emp_nos)))
+    set_for = []
+    for e in q.all():
+        if e.staff:
+            continue
+        rows = (db.query(models.DailyRow).filter(models.DailyRow.emp_no == e.emp_no)
+                  .order_by(models.DailyRow.full_date).all())
+        if not rows:
+            continue
+        last_work = max((r.full_date for r in rows if (r.am or "") in WORKING_MARKS or (r.pm or "") in WORKING_MARKS), default=None)
+        term = [r.full_date for r in rows if r.am == "Terminated" and r.pm == "Terminated"
+                and (last_work is None or r.full_date > last_work)]
+        if not term:
+            continue
+        e.terminated_on = min(term) - timedelta(days=1)
+        set_for.append(f"{e.emp_no} {e.name} left {e.terminated_on}")
+    if set_for:
+        db.commit()
+        for x in set_for:
+            try:
+                log_action(db, user_id, "leaving_from_attendance", x + " (marked Terminated on the attendance)")
+            except Exception:
+                pass
+        print("Leaving date taken from the attendance: " + "; ".join(set_for))
+    return set_for
 
 
 def _enforce_terminations(db):
@@ -1528,6 +1569,12 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
 
     touched_cycles = set()
     for employee, row_in in to_process:
+        # Nothing is marked for a man after his leaving date - a whole-grid
+        # Sunday or holiday included. The day is stored as Terminated.
+        if row_in is not None and employee.terminated_on and row_in.full_date > employee.terminated_on:
+            row_in.am = row_in.pm = "Terminated"
+            row_in.site = row_in.engineer = ""
+            row_in.ot = row_in.bh = 0
         if row_in is not None:
             saved_row = services.upsert_daily_row(db, employee, row_in)
             services.auto_fill_sunday_from_saturday(db, employee, saved_row)
@@ -1543,6 +1590,14 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     for emp_no, month_year in touched_cycles:
         employee = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         services.recalculate_summary(db, employee, month_year)
+    marked_left = _leaving_from_attendance(db, {e for e, _ in touched_cycles}, user.id)
+    if marked_left:
+        _enforce_terminations(db)
+        for no in {x.split(" ")[0] for x in marked_left}:
+            w = db.query(models.Employee).filter(models.Employee.emp_no == no).first()
+            for (cyc,) in db.query(models.EmployeeSummary.month_year).filter(models.EmployeeSummary.emp_no == no).distinct().all():
+                services.recalculate_summary(db, w, cyc)
+        drop_leaver_cards(db)
     for month_year in {m for _, m in touched_cycles}:
         drop_leaver_cards(db, month_year)
 

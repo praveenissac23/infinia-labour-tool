@@ -135,6 +135,16 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
         .all()
     )
 
+    # A day after his last working day is not a working day, whatever the
+    # sheet says - a Sunday filled in for the whole grid, say. It counts as
+    # Terminated, so a leaver is never paid past his leaving date.
+    if getattr(employee, "terminated_on", None):
+        from types import SimpleNamespace
+        t = employee.terminated_on
+        rows = [SimpleNamespace(full_date=r.full_date, am="Terminated", pm="Terminated", ot=0, bh=0,
+                                site="", engineer="", comments=getattr(r, "comments", ""), emp_no=r.emp_no)
+                if r.full_date > t and ((r.am or "") != "Terminated" or (r.pm or "") != "Terminated") else r
+                for r in rows]
     rows = with_days_paid_in_advance(db, employee, month_year, rows)
 
     summary = (
