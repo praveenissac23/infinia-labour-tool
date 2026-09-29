@@ -336,7 +336,7 @@ function renderUsers() {
     <td>${u.role === "admin" ? '<span class="muted">Not needed</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">Custom rights</span>'}</td>
     <td class="scr" title="${esc(c.full)}">${c.text}</td>
     <td>${u.active ? '<span class="pill g">Active</span>' : '<span class="pill gr">Off</span>'}</td>
-    <td class="act">${u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}</td></tr>`; }).join("");
+    <td class="act">${u.username === (ME && ME.username) && u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}</td></tr>`; }).join("");
 }
 let PW_USER = null;
 function openPw(uid) { const u = USERS.find(x => x.id === uid); PW_USER = uid; document.getElementById("pw-title").textContent = `New password for ${u.username}`; document.getElementById("pw-new").value = ""; document.getElementById("pw-msg").textContent = ""; openDlg("dlg-pw"); setTimeout(() => document.getElementById("pw-new").focus(), 50); }
@@ -391,11 +391,19 @@ async function saveUser() {
 function openAssign(uid) {
   const u = USERS.find(x => x.id === uid); assigning = uid;
   document.getElementById("assign-title").textContent = `Role for ${u.username}`;
-  segFill(document.getElementById("as-role"), [{ v: "", l: "No role (set by hand)" }, ...ROLES.map(r => ({ v: r.id, l: r.name }))], u.access_role_id || "");
+  // Admin is offered alongside the roles: an existing login can be made
+  // an admin, and an admin can be put back on a role.
+  const opts = u.role === "admin"
+    ? [{ v: "admin", l: "Admin (everything)" }, ...ROLES.map(r => ({ v: r.id, l: r.name }))]
+    : [{ v: "", l: "No role (set by hand)" }, ...ROLES.map(r => ({ v: r.id, l: r.name })), { v: "admin", l: "Admin (everything)" }];
+  segFill(document.getElementById("as-role"), opts, u.role === "admin" ? "admin" : (u.access_role_id || ""));
   document.getElementById("assign-msg").textContent = ""; openDlg("dlg-assign");
 }
 async function saveAssign() {
-  try { await apiCall("/permissions/roles/assign", { method: "POST", body: JSON.stringify({ user_id: assigning, role_id: parseInt(segGet(document.getElementById("as-role")), 10) || null }) });
+  const pick = segGet(document.getElementById("as-role"));
+  const u = USERS.find(x => x.id === assigning);
+  if (pick === "admin" && u && u.role !== "admin" && !confirm(`Make ${u.username} an admin? An admin can open everything, including salaries, Settings and Access.`)) return;
+  try { await apiCall("/permissions/roles/assign", { method: "POST", body: JSON.stringify({ user_id: assigning, role_id: pick === "admin" ? "admin" : (parseInt(pick, 10) || null) }) });
     closeDlg("dlg-assign"); status("ok", "Applied."); await loadAll();
   } catch (e) { document.getElementById("assign-msg").textContent = errText(e); }
 }

@@ -846,9 +846,25 @@ def assign_role(payload: dict = Body(...), db: Session = Depends(get_db), user: 
     u = db.query(models.User).filter(models.User.id == payload.get("user_id")).first()
     if not u:
         raise HTTPException(status_code=404, detail="That login is not on file.")
-    if u.role == "admin":
-        raise HTTPException(status_code=400, detail="An admin always has everything - nothing to set.")
     rid = payload.get("role_id")
+    # Make an existing login an admin - or take admin away - here, so a
+    # person never needs a second login to be promoted. The last admin
+    # can never be demoted, and nobody demotes himself.
+    if rid == "admin":
+        if u.role != "admin":
+            u.role = "admin"
+            u.access_role_id = None
+            db.commit()
+            M.log_action(db, user.id, "made_admin", f"{u.username} is now an admin")
+        return {"ok": True, "screens": M.effective_permissions(u)}
+    if u.role == "admin":
+        if u.id == user.id:
+            raise HTTPException(status_code=400, detail="You cannot take admin away from your own login.")
+        if db.query(models.User).filter(models.User.role == "admin", models.User.id != u.id).count() == 0:
+            raise HTTPException(status_code=400, detail="This is the only admin. Make someone else an admin first.")
+        if not rid:
+            raise HTTPException(status_code=400, detail="Pick the role he should have instead of admin.")
+        u.role = "office"
     if not rid:
         u.access_role_id = None
         db.commit()
