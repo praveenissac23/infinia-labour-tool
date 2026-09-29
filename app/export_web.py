@@ -1867,14 +1867,14 @@ def build_lpo_pdf(po: dict):
         if wide_label is None:
             from reportlab.pdfbase.pdfmetrics import stringWidth
             longest = max((stringWidth(k.replace("&amp;", "&"), "Helvetica", 8) for k, _ in rows if k), default=60)
-            wide_label = min(max((longest + 16) / (W * 0.495), 0.22), 0.40)
+            wide_label = min(max((longest + 20) / (W * 0.495), 0.22), 0.40)
         head = Table([[P(title, 8, bold=True, colour="#FFFFFF")]], colWidths=[W * 0.495])
         head.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2E3238")),
                                   ("LEFTPADDING", (0, 0), (-1, -1), 6),
                                   ("TOPPADDING", (0, 0), (-1, -1), 3),
                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
         body = [[P(k, 8, colour="#3B3F44"),
-                 P("" if not k else (v if v not in ("", None) else "-"), 8, bold=True)]
+                 P("" if not k else f": {v if v not in ('', None) else ''}", 8, bold=True)]
                 for k, v in rows]
         t = Table(body, colWidths=[W * 0.495 * wide_label, W * 0.495 * (1 - wide_label)])
         t.setStyle(TableStyle([
@@ -2072,9 +2072,9 @@ def build_lpo_excel(po: dict):
     def pair(row, k1, v1, k2, v2):
         ws.cell(row=row, column=1, value=k1).font = Font(size=9, color="3B3F44")
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-        c = ws.cell(row=row, column=3, value=v1); c.font = Font(size=9, bold=True); c.alignment = L
+        c = ws.cell(row=row, column=3, value=f": {v1 or ''}" if k1 else v1); c.font = Font(size=9, bold=True); c.alignment = L
         ws.cell(row=row, column=4, value=k2).font = Font(size=9, color="3B3F44")
-        c2 = ws.cell(row=row, column=6, value=v2); c2.font = Font(size=9, bold=True); c2.alignment = L
+        c2 = ws.cell(row=row, column=6, value=f": {v2 or ''}" if k2 else v2); c2.font = Font(size=9, bold=True); c2.alignment = L
         ws.merge_cells(start_row=row, start_column=4, end_row=row, end_column=5)
         ws.merge_cells(start_row=row, start_column=6, end_row=row, end_column=7)
 
