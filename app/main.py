@@ -42,6 +42,43 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Infinia Labour Tool API")
 
 
+def drop_leaver_cards(db, month_year=None):
+    """A labourer who has left has no card in the cycles after he left.
+
+    A card is taken away only when it pays nothing - no working, rest,
+    holiday or sick day, no overtime, no addition or deduction - and
+    the man was not employed in that cycle: his leaving date is before
+    it, he has been taken off the list, or every day he has in it reads
+    Terminated. A card with anything on it stays, whatever it says.
+    Returns the cards removed, as "code cycle"."""
+    emps = {e.emp_no: e for e in db.query(models.Employee).all()}
+    q = db.query(models.EmployeeSummary)
+    if month_year:
+        q = q.filter(models.EmployeeSummary.month_year == month_year)
+    gone = []
+    for sm in q.all():
+        e = emps.get(sm.emp_no)
+        if e is not None and e.staff:
+            continue
+        try:
+            cs, ce, _ = pcyc.cycle_bounds_for(datetime.strptime(f"25 {sm.month_year}", "%d %B %Y").date())
+        except ValueError:
+            continue
+        paid = sum(float(getattr(sm, f) or 0) for f in (
+            "present_days", "sunday_days", "friday_days", "holiday_days", "sick_days",
+            "medical_days", "leave_days", "ot_hours", "bh_hours", "final_salary"))
+        if paid or sm.adjustments or (sm.absent_days or 0):
+            continue
+        left = (e is None or not e.active or not employed_during(e, cs, ce)
+                or ((sm.terminated_days or 0) > 0))
+        if left:
+            gone.append(f"{sm.emp_no} {sm.month_year}")
+            db.delete(sm)
+    if gone:
+        db.commit()
+    return gone
+
+
 def _household_into_office(db):
     """Household staff are on the office register now - one tab, one
     right. Anyone set to the household tab moves to office staff, and the
@@ -95,6 +132,7 @@ def seed_on_startup():
         _recalculate_all_summaries(db)
         _store_is_not_a_site(db)
         _household_into_office(db)
+        drop_leaver_cards(db)
         _migrate_hr(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
@@ -1505,6 +1543,8 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     for emp_no, month_year in touched_cycles:
         employee = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         services.recalculate_summary(db, employee, month_year)
+    for month_year in {m for _, m in touched_cycles}:
+        drop_leaver_cards(db, month_year)
 
     saved_count = len([r for e, r in to_process if r is not None])
     if saved_count or blocked:
@@ -1526,6 +1566,7 @@ def list_summaries(month_year: str, as_of: str = None, db: Session = Depends(get
     latest site in the whole cycle - lets Reports answer 'who was
     where as of a given date', not just 'as of cycle end'.
     """
+    drop_leaver_cards(db, month_year)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
@@ -2427,6 +2468,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
 
 
 def _get_summary_pairs(month_year: str, db: Session):
+    drop_leaver_cards(db, month_year)
     summaries = (
         db.query(models.EmployeeSummary)
         .options(joinedload(models.EmployeeSummary.adjustments))
