@@ -14,7 +14,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const tab = p.locator('#pg-tabs .pg-tab', { hasText: 'Petty cash' });
   ck('the store keeper sees a Petty cash tab in Store & Purchasing', await tab.count() === 1);
   await tab.click(); await p.waitForTimeout(2000);
-  ck('the address is /?p=store#petty', p.url().endsWith('/?p=store#petty'), p.url());
+  ck('the address is /?p=store#petty:site', p.url().endsWith('/?p=store#petty:site'), p.url());
   const add = async (kind, date, desc, sup, site, amt) => {
     await p.click(`.pc-kind button[data-k="${kind}"]`);
     await p.fill('#pc-date', date); await p.fill('#pc-desc', desc); await p.fill('#pc-sup', sup);

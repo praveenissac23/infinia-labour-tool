@@ -23,14 +23,35 @@ import models, auth, export_web
 from database import get_db
 
 router = APIRouter()
-RIGHTS = ("store", "storekeeper", "approvals")
+# Three cash boxes, each behind its own right (ticked on Settings >
+# Access): the site box the store keeper runs, the PRO's, and the
+# office's. A login sees only the boxes it is given - the site never
+# sees the PRO's, only the chief accountant sees the office's.
+BOOKS = {"site": ("Site petty cash", "petty_site"),
+         "pro": ("PRO petty cash", "petty_pro"),
+         "office": ("Office petty cash", "petty_office")}
+RIGHTS = tuple(r for _, r in BOOKS.values())
 PC = Depends(M.require_any_screen(*RIGHTS))
 COMPANY = "INFINIA CONTRACTING L.L.C."
 
 
-def _may(user):
-    if not any(r in M.effective_permissions(user) for r in RIGHTS):
-        raise HTTPException(status_code=403, detail="Petty cash is for the store and the office.")
+def _book(user, book):
+    """The box asked for, if this login may open it."""
+    book = (book or "site").strip().lower()
+    if book not in BOOKS:
+        raise HTTPException(status_code=400, detail="No such petty cash.")
+    if BOOKS[book][1] not in M.effective_permissions(user):
+        raise HTTPException(status_code=403, detail=f"You do not have access to {BOOKS[book][0]}.")
+    return book
+
+
+def _may(user, book="site"):
+    return _book(user, book)
+
+
+def _of_book(q, book):
+    col = models.PettyCash.book
+    return q.filter((col == book) | (col.is_(None)) | (col == "")) if book == "site" else q.filter(col == book)
 
 
 def _month_bounds(month):
@@ -49,11 +70,11 @@ def _money(v):
     return f"{v:,.2f}"
 
 
-def register(db, month):
+def register(db, month, book="site"):
     a, b = _month_bounds(month)
-    before = db.query(models.PettyCash).filter(models.PettyCash.on_date < a).all()
+    before = _of_book(db.query(models.PettyCash), book).filter(models.PettyCash.on_date < a).all()
     opening = round(sum((x.received or 0) - (x.paid or 0) for x in before), 2)
-    rows = (db.query(models.PettyCash)
+    rows = (_of_book(db.query(models.PettyCash), book)
               .filter(models.PettyCash.on_date >= a, models.PettyCash.on_date <= b)
               .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
@@ -71,15 +92,15 @@ def register(db, month):
         if r["paid"]:
             k = r["site"] or "Office / general"
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
-    return {"month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "from": a.isoformat(), "to": b.isoformat(),
+    return {"book": book, "book_label": BOOKS[book][0], "month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "from": a.isoformat(), "to": b.isoformat(),
             "opening": opening, "rows": out, "received": rec, "paid": paid,
             "closing": round(opening + rec - paid, 2),
             "by_site": [{"site": k, "paid": v} for k, v in sorted(by_site.items(), key=lambda kv: -kv[1])]}
 
 
 @router.get("/store/petty-cash")
-def list_petty_cash(month: str = "", db: Session = Depends(get_db), user: models.User = PC):
-    return register(db, month)
+def list_petty_cash(month: str = "", book: str = "site", db: Session = Depends(get_db), user: models.User = PC):
+    return register(db, month, _book(user, book))
 
 
 def _clean(payload):
@@ -110,10 +131,11 @@ def _clean(payload):
 
 @router.post("/store/petty-cash")
 def add_petty_cash(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PC):
-    x = models.PettyCash(**_clean(payload), created_by=user.id, updated_by=user.id)
+    book = _book(user, payload.get("book"))
+    x = models.PettyCash(**_clean(payload), book=book, created_by=user.id, updated_by=user.id)
     db.add(x); db.commit()
     M.log_action(db, user.id, "petty_cash_add",
-                 f"{x.on_date} {x.description} {'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
+                 f"{BOOKS[book][0]}: {x.on_date} {x.description} {'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
     return {"ok": True, "id": x.id}
 
 
@@ -122,6 +144,7 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
     x = db.get(models.PettyCash, pid)
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
+    _book(user, x.book or "site")
     for k, v in _clean(payload).items():
         setattr(x, k, v)
     x.updated_by = user.id
@@ -135,6 +158,7 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
     x = db.get(models.PettyCash, pid)
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
+    _book(user, x.book or "site")
     M.log_action(db, user.id, "petty_cash_delete", f"#{pid} {x.on_date} {x.description} {x.received or -x.paid}")
     db.delete(x); db.commit()
     return {"ok": True}
@@ -168,7 +192,7 @@ def _html(r, pdf_url, excel_url):
         f"<td class='n'>{m(rc)}</td><td class='n'>{m(pd)}</td><td class='n b{' neg' if bal < 0 else ''}'>{m(bal)}</td></tr>"
         for d, ds, s, st, rc, pd, bal, k in _lines(r))
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Petty Cash - {escape(r['label'])}</title><style>
+<title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
 .bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end}}
 .bar a,.bar button{{font:600 13px Arial;padding:8px 14px;border-radius:6px;border:1px solid #ddd;background:#fff;color:#222;text-decoration:none;cursor:pointer}}
@@ -191,7 +215,7 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
 </style></head><body>
 <div class="bar"><button onclick="print()">Print</button><a href="{escape(excel_url)}">Excel</a><a class="p" href="{escape(pdf_url)}">Download PDF</a></div>
 <div class="page">
- <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>PETTY CASH REGISTER</h1></div>
+ <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>
  <div class="wrap"><table><thead><tr>{''.join(f'<th>{c}</th>' for c in COLS)}</tr></thead><tbody>{body}</tbody>
  <tfoot><tr><td colspan="4" class="l">TOTAL</td><td class="n">{_money(r['received'])}</td><td class="n">{_money(r['paid'])}</td><td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
@@ -220,9 +244,9 @@ def _pdf(r):
     W = page[0] - 24 * mm
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=10 * mm, bottomMargin=10 * mm,
-                            title=f"Petty Cash - {r['label']}")
+                            title=f"{r['book_label']} - {r['label']}")
     logo = export_web._logo_image(42)
-    top = Table([[logo or P("INFINIA", bold), Paragraph("PETTY CASH REGISTER", ParagraphStyle("t", parent=bold, fontSize=15, leading=19, textColor=R, alignment=TA_RIGHT))]],
+    top = Table([[logo or P("INFINIA", bold), Paragraph(escape(r["book_label"].upper() + " REGISTER"), ParagraphStyle("t", parent=bold, fontSize=15, leading=19, textColor=R, alignment=TA_RIGHT))]],
                 colWidths=[W / 2, W / 2])
     top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.5, R),
                              ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
@@ -263,7 +287,7 @@ def _excel(r):
     for col, w in zip("ABCDEFG", (12, 38, 28, 10, 16, 16, 16)):
         ws.column_dimensions[col].width = w
     ws.merge_cells("A1:G1")
-    ws["A1"] = "PETTY CASH REGISTER"; ws["A1"].font = Font(bold=True, size=15, color=R)
+    ws["A1"] = r["book_label"].upper() + " REGISTER"; ws["A1"].font = Font(bold=True, size=15, color=R)
     ws.row_dimensions[1].height = 34
     try:
         from openpyxl.drawing.image import Image as XLImage
@@ -322,10 +346,10 @@ def _excel(r):
 
 
 @router.get("/export/store/petty-cash")
-def export_petty_cash(token: str, month: str = "", format: str = "pdf", db: Session = Depends(get_db)):
-    _may(auth.get_download_user_from_token(token, db))
-    r = register(db, month)
-    name = f"Petty_Cash_{r['month']}"
+def export_petty_cash(token: str, month: str = "", format: str = "pdf", book: str = "site", db: Session = Depends(get_db)):
+    book = _may(auth.get_download_user_from_token(token, db), book)
+    r = register(db, month, book)
+    name = f"{r['book_label'].replace(' ', '_')}_{r['month']}"
     if format == "excel":
         return StreamingResponse(_excel(r), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
@@ -334,10 +358,10 @@ def export_petty_cash(token: str, month: str = "", format: str = "pdf", db: Sess
 
 
 @router.get("/export/store/petty-cash/view", response_class=HTMLResponse)
-def view_petty_cash(token: str, month: str = "", db: Session = Depends(get_db)):
+def view_petty_cash(token: str, month: str = "", book: str = "site", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
-    _may(user)
-    r = register(db, month)
+    book = _may(user, book)
+    r = register(db, month, book)
     t = auth.create_view_token(user.username)
-    base = "/export/store/petty-cash?" + urlencode({"month": r["month"], "token": t})
+    base = "/export/store/petty-cash?" + urlencode({"month": r["month"], "book": book, "token": t})
     return HTMLResponse(_html(r, base + "&format=pdf", base + "&format=excel"))

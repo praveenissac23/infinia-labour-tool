@@ -217,9 +217,10 @@ window.HELP_GUIDES = [
       { say: "Type the TRN, email and payment terms.", el: "#sup-trn" },
       { say: "Press Save supplier.", el: "button[onclick='saveSupplier()']" }] },
   { id: "petty", area: "Purchasing", title: "How to enter petty cash (bill paid or cash received)",
-    words: "petty cash bill receipt expense cash paid received balance amal register",
+    words: "petty cash bill receipt expense cash paid received balance amal register pro office site",
     go: { page: "store", tab: "petty" },
     steps: [
+      { say: "Pick your cash box: Site, PRO or Office. You only see the boxes you are allowed.", el: ".pg-sub" },
       { say: "Choose 'Bill paid' or 'Cash received'.", el: ".pc-kind" },
       { say: "Put the date and what it was for.", el: "#pc-desc" },
       { say: "Type the shop / supplier and the site.", el: "#pc-sup" },
@@ -348,6 +349,12 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Logins are listed here. Add a new one with a username and password.", el: "#screen-pglogins" },
       { say: "Then open the Access tab and tick the pages he may open." }] },
+  { id: "petty-access", area: "Settings", title: "How to choose who sees PRO or Office petty cash",
+    words: "petty cash access permission pro office site chief accountant who can see",
+    go: { page: "settings", tab: "access" },
+    steps: [
+      { say: "Open the person's role here. Under Petty cash, tick only the boxes he may see: Site, PRO or Office.", el: "#screen-pgaccess" },
+      { say: "Save. He sees only those boxes; the others are hidden and locked." }] },
   { id: "password", area: "Settings", title: "How to change my password",
     words: "change password forgot reset my password",
     go: { page: "settings", tab: "general" },

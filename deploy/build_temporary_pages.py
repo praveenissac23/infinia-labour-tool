@@ -42,6 +42,7 @@ def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, sho
 
 PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local"]
 STORE_RIGHTS = ["store", "approvals", "requests"]
+PETTY_RIGHTS = ["petty_site", "petty_pro", "petty_office"]
 
 
 # page key -> (title, tabs)
@@ -85,7 +86,11 @@ PAGES = {
             sub("requests", "Material requests", screen="requests", right="requests"),
             sub("approvals", "Approvals", screen="approvals", right="approvals"),
             sub("followup", "Order follow-up", screen="followup", right="requests")]),
-        tab("petty", "pettycash", "Petty cash", ["store", "storekeeper", "approvals"]),
+        # One cash box per sub-tab, each behind its own right.
+        tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
+            sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),
+            sub("pro", "PRO", screen="pettycash", right="petty_pro", go="pcBook('pro')"),
+            sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')")]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),

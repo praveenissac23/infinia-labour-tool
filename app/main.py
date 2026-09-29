@@ -128,6 +128,7 @@ def seed_on_startup():
     try:
         _retire_staff_role(db)
         _grant_storekeeper_to_existing(db)
+        _grant_petty_site_to_existing(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -225,7 +226,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # role his login happened to carry.
                "storekeeper",
                # Expiry Reminder: documents, NOCs, permits, licences - no pay.
-               "expiry"]
+               "expiry",
+               # Petty cash: one right per cash box, so the site never
+               # sees the PRO's box and only the chief accountant the office's.
+               "petty_site", "petty_pro", "petty_office"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -256,8 +260,8 @@ ROLE_DEFAULTS = {
     # The office keeps the store, so it records stock in and out by
     # default - exactly what it could do before this became a permission.
     "office": ["dashboard", "store", "requests", "approvals", "reports", "errorcheck",
-               "settings", "storekeeper"],
-    "site": ["dashboard", "attendance", "store", "requests", "settings"],
+               "settings", "storekeeper", "petty_site"],
+    "site": ["dashboard", "attendance", "store", "requests", "settings", "petty_site"],
 }
 ROLES = list(ROLE_DEFAULTS)
 
@@ -427,6 +431,31 @@ def _grant_storekeeper_to_existing(db):
     db.commit()
     if granted:
         print(f"Kept stock in/out for {granted} existing login(s)")
+
+
+def _grant_petty_site_to_existing(db):
+    """Petty cash was one register open to the store and the office. It
+    is three boxes now, each with its own right; everyone who could open
+    the old register keeps it as Site petty cash (where its lines went).
+    PRO and Office petty cash start with admin alone. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "petty_site_backfilled").first():
+        return
+    old = {"store", "storekeeper", "approvals"}
+    n = 0
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        raw = (getattr(obj, field) or "").strip()
+        if not raw:
+            continue
+        perms = [x for x in raw.split(",") if x]
+        if old & set(perms) and "petty_site" not in perms:
+            perms.append("petty_site")
+            setattr(obj, field, ",".join(perms))
+            n += 1
+    db.add(models.Setting(key="petty_site_backfilled", value="1"))
+    db.commit()
+    if n:
+        print(f"Site petty cash kept for {n} login(s)/role(s)")
 
 
 def _retire_staff_role(db):

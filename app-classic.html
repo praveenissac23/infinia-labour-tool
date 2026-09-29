@@ -2063,7 +2063,7 @@
           <div class="card">
             <div class="pc-head">
               <div class="pc-title">
-                <h2 style="margin:0;">Petty cash register</h2>
+                <h2 style="margin:0;" id="pc-heading">Petty cash register</h2>
                 <label class="pc-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
               </div>
               <div class="pc-btns">
@@ -13651,7 +13651,21 @@ function pcKind(k) {
   document.getElementById("pc-desc").placeholder = k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received";
 }
 
+// Which cash box is open: site (store keeper), pro or office - each has
+// its own right, picked on the sub-tabs above.
+const PC_BOOKS = { site: "Site petty cash", pro: "PRO petty cash", office: "Office petty cash" };
+let PC_BOOK = "";
+function pcMayBook(b) { return typeof pgHas !== "function" || pgHas("petty_" + b); }
+function pcBook(b) {
+  if (!PC_BOOKS[b] || !pcMayBook(b)) return;
+  if (PC_BOOK !== b) { PC_BOOK = b; PC = null; if (typeof pcReset === "function") { PC_EDIT = null; } }
+  loadPettyCash();
+}
+
 async function loadPettyCash() {
+  if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
+  document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
+  const book = PC_BOOK;
   const m = document.getElementById("pc-month");
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("pc-date").value) document.getElementById("pc-date").value = pcToday();
@@ -13663,9 +13677,9 @@ async function loadPettyCash() {
   }
   const want = m.value;
   let d;
-  try { d = await apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}`); }
+  try { d = await apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}&book=${book}`); }
   catch (e) { showStatus("pc-status", "err", errText(e)); return; }
-  if (m.value !== want) return;
+  if (m.value !== want || book !== PC_BOOK) return;
   PC = d; pcDraw();
 }
 
@@ -13723,7 +13737,7 @@ async function pcSave() {
   const amt = document.getElementById("pc-amt").value.replace(/,/g, "").trim();
   const body = { date: document.getElementById("pc-date").value, description: document.getElementById("pc-desc").value,
                  supplier: document.getElementById("pc-sup").value, site: document.getElementById("pc-site").value,
-                 received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0 };
+                 received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0, book: PC_BOOK };
   const btn = document.getElementById("pc-save"); btn.disabled = true;
   try {
     if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
@@ -13741,7 +13755,7 @@ async function pcSave() {
 
 async function pcDelete(id) {
   const r = PC.rows.find(x => x.id === id); if (!r) return;
-  if (!await hrAsk(`Remove "${r.description}" (${pcMoney(r.received || r.paid)}) from petty cash?`, "Remove", true)) return;
+  if (!await hrAsk(`Remove "${r.description}" (${pcMoney(r.received || r.paid)}) from ${PC_BOOKS[PC_BOOK]}?`, "Remove", true)) return;
   try { await apiCall(`/store/petty-cash/${id}`, { method: "DELETE" }); if (PC_EDIT === id) pcReset(); await loadPettyCash(); showStatus("pc-status", "ok", "Removed."); }
   catch (e) { showStatus("pc-status", "err", errText(e)); }
 }
@@ -13750,8 +13764,8 @@ async function pcExport(kind) {
   const m = document.getElementById("pc-month").value || pcToday().slice(0, 7);
   if (!cachedDownloadToken) await refreshDownloadToken();
   const t = encodeURIComponent(cachedDownloadToken || "");
-  const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?month=${m}&token=${t}`
-                                                : `${API}/export/store/petty-cash?month=${m}&format=${kind}&token=${t}`;
+  const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?month=${m}&book=${PC_BOOK}&token=${t}`
+                                                : `${API}/export/store/petty-cash?month=${m}&book=${PC_BOOK}&format=${kind}&token=${t}`;
   const w = window.open(u, "_blank");
   if (kind === "print" && w) w.addEventListener("load", () => w.print());
 }

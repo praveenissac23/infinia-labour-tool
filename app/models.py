@@ -982,6 +982,9 @@ class PettyCash(Base):
     order - so it cannot drift from the lines."""
     __tablename__ = "petty_cash"
     id = Column(Integer, primary_key=True)
+    # Which cash box: site (the store keeper's), pro or office - each
+    # with its own right, so one holder never sees another's box.
+    book = Column(String, default="site", index=True)
     on_date = Column(Date, nullable=False, index=True)
     description = Column(String, default="")
     supplier = Column(String, default="")
