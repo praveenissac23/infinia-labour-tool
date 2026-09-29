@@ -5894,14 +5894,26 @@ function sortLiveCardList(key) {
   renderLiveCardWorkerList();
 }
 
+// Only the men on the books in the chosen cycle: a worker who left before
+// it started, or joins after it ends, has no card there to look at.
+function liveCardEmployees() {
+  const cyc = (document.getElementById("livecard-cycle") || {}).value || monthYearFor(new Date());
+  const d = parseMonthYear(cyc);
+  if (!d || isNaN(d)) return employees;
+  const iso = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  const start = iso(new Date(d.getFullYear(), d.getMonth() - 1, 26)), end = iso(new Date(d.getFullYear(), d.getMonth(), 25));
+  return employees.filter(e => !(e.terminated_on && e.terminated_on < start) && !(e.joined_on && e.joined_on > end));
+}
+
 function renderLiveCardWorkerList() {
   const body = document.getElementById("livecard-worker-body");
   const countEl = document.getElementById("lc-count");
   const search = (document.getElementById("livecard-search").value || "").trim().toLowerCase();
+  const onBooks = liveCardEmployees();
   const filtered = search
-    ? employees.filter(e => e.emp_no.toLowerCase().includes(search) || e.name.toLowerCase().includes(search))
-    : employees;
-  if (countEl) countEl.textContent = `(${filtered.length} of ${employees.length})`;
+    ? onBooks.filter(e => e.emp_no.toLowerCase().includes(search) || e.name.toLowerCase().includes(search))
+    : onBooks;
+  if (countEl) countEl.textContent = `(${filtered.length} of ${onBooks.length})`;
   const sorted = [...filtered].sort((a, b) => natCompare(a[lcSortKey], b[lcSortKey]) * lcSortDir);
   ["emp_no", "name"].forEach(k => {
     const el = document.getElementById("lc-sort-" + k);
@@ -5921,16 +5933,19 @@ function onLiveCardCycleChange() {
   // Re-fetch the currently selected worker's card for the newly chosen
   // cycle, so switching cycle shows that same worker's older data
   // rather than clearing the selection.
-  if (selectedLiveCardEmpNo) {
+  const onBooks = liveCardEmployees();
+  renderLiveCardWorkerList();
+  if (selectedLiveCardEmpNo && onBooks.some(e => e.emp_no === selectedLiveCardEmpNo)) {
     selectLiveCardWorker(selectedLiveCardEmpNo);
-  } else if (employees.length) {
-    selectLiveCardWorker(employees[0].emp_no);
+  } else if (onBooks.length) {
+    selectLiveCardWorker(onBooks[0].emp_no);
   }
 }
 
 function preloadLiveCardDefault() {
   if (selectedLiveCardEmpNo) return; // already have a selection, don't override it
-  if (employees.length) selectLiveCardWorker(employees[0].emp_no);
+  const onBooks = liveCardEmployees();
+  if (onBooks.length) selectLiveCardWorker(onBooks[0].emp_no);
 }
 
 async function selectLiveCardWorker(empNo) {
