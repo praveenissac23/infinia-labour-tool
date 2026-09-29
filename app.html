@@ -1050,7 +1050,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="f7faa33a4c75";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="bd6533c06f0b";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -11373,16 +11373,22 @@ async function saveLpo() {
       // Back to the register, where the order now reads as edited. The
       // corrected order is there to open or download whenever it is
       // wanted - saving a correction is not the moment to force it open.
-      lprFlash = `${r.ref} updated - it is marked edited on the register.`;
+      lprFlash = `${r.ref} updated - it is marked edited on the register.` + lpoSupNote(r);
       switchScreen("lporegister");
       return;
     }
     showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.` + lpoSupNote(r));
     await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
   }
+}
+
+// What the order taught the supplier list, said in one line.
+function lpoSupNote(r) {
+  const c = (r && r.supplier_updated) || [];
+  return c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "";
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============

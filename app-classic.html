@@ -11194,16 +11194,22 @@ async function saveLpo() {
       // Back to the register, where the order now reads as edited. The
       // corrected order is there to open or download whenever it is
       // wanted - saving a correction is not the moment to force it open.
-      lprFlash = `${r.ref} updated - it is marked edited on the register.`;
+      lprFlash = `${r.ref} updated - it is marked edited on the register.` + lpoSupNote(r);
       switchScreen("lporegister");
       return;
     }
     showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.`);
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.` + lpoSupNote(r));
     await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
   }
+}
+
+// What the order taught the supplier list, said in one line.
+function lpoSupNote(r) {
+  const c = (r && r.supplier_updated) || [];
+  return c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "";
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============

@@ -165,8 +165,12 @@ ck('and our man appears once, on our side only',
    vpv.text.count('Akhil') == 1, vpv.text.count('Akhil'))
 sup_after = [s for s in c.get('/store/suppliers', headers=H).json()
              if s['name'].startswith('Aasa')][0]
-ck('a supplier already on file is not rewritten by an order',
-   sup_after['contact_person'] == 'Faisal Rahman', sup_after['contact_person'])
+# The order is the latest word on the supplier (the purchase manager keeps
+# details on the LPO, not the list): the correction reaches the list, and
+# our own man never does.
+ck('a correction on the order updates the supplier list',
+   (sup_after['contact_person'], sup_after['phone'], sup_after['email']) == ('Nasir Ali', '0561234567', 'nasir@aasame.ae'), sup_after)
+ck('and our man never lands on the supplier', 'Akhil' not in (sup_after['contact_person'], sup_after['phone']), sup_after)
 
 # A trader new to the list learns from the first order raised on him.
 nu = c.post('/store/purchase/orders', json={

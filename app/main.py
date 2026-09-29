@@ -134,6 +134,10 @@ def seed_on_startup():
         _store_is_not_a_site(db)
         _household_into_office(db)
         drop_leaver_cards(db)
+        try:
+            _suppliers_from_old_lpos(db)
+        except Exception as e:  # never keep the app from starting over this
+            db.rollback(); print("suppliers from old LPOs:", e)
         _migrate_hr(db)
         already_seeded = db.query(models.Employee).count() > 0
     finally:
@@ -3644,6 +3648,68 @@ def _find_or_create_supplier(db, name, contact_person="", phone=""):
     return sup
 
 
+# What the purchase manager types on an order is the latest word on the
+# supplier: the supplier list takes it, so the list never has to be kept
+# up by hand. A box left empty on the order never blanks the list, and
+# the order's default terms ("Due on Receipt") only fill empty terms.
+LPO_SUPPLIER_FIELDS = (("trn", "supplier_trn", "TRN"), ("contact_person", "supplier_contact", "contact"),
+                       ("phone", "supplier_phone", "phone"), ("email", "supplier_email", "email"),
+                       ("address", "supplier_address", "address"), ("payment_terms", "terms", "terms"))
+
+
+def _supplier_from_lpo(db, supplier, src, user=None):
+    """Copy an order's supplier details onto the supplier record. src is
+    the order payload or a saved order. Returns what changed."""
+    if not supplier:
+        return []
+    changed = []
+    for field, attr, label in LPO_SUPPLIER_FIELDS:
+        v = " ".join(str(getattr(src, attr, "") or "").split()) if field != "address" else str(getattr(src, attr, "") or "").strip()
+        if not v:
+            continue
+        cur = (getattr(supplier, field, "") or "").strip()
+        if field == "payment_terms" and cur and v.lower() == "due on receipt":
+            continue
+        if field == "contact_person":
+            v = _proper_name(v)
+        if v != cur:
+            setattr(supplier, field, v)
+            changed.append(label)
+    if not supplier.active:
+        supplier.active = True
+        changed.append("back on the list")
+    return changed
+
+
+def _suppliers_from_old_lpos(db):
+    """Orders raised before the list learned from them: link each to its
+    supplier (creating it) and fill the supplier's empty boxes from its
+    most recent order. Only empty boxes - anything already on the list
+    stays as it is."""
+    changed = 0
+    orders = (db.query(models.PurchaseOrder).filter(models.PurchaseOrder.status != "cancelled")
+                .order_by(models.PurchaseOrder.id.desc()).all())
+    for o in orders:
+        sup = None
+        if o.supplier_id:
+            sup = db.query(models.Supplier).filter(models.Supplier.id == o.supplier_id).first()
+        if not sup and (o.supplier_name or "").strip():
+            sup = _find_or_create_supplier(db, o.supplier_name)
+            if sup:
+                o.supplier_id = sup.id
+                changed += 1
+        if not sup:
+            continue
+        for field, attr, _ in LPO_SUPPLIER_FIELDS:
+            v = str(getattr(o, attr, "") or "").strip()
+            if v and not (getattr(sup, field, "") or "").strip():
+                setattr(sup, field, _proper_name(v) if field == "contact_person" else v)
+                changed += 1
+    db.commit()
+    return changed
+
+
+
 @app.get("/store/suppliers")
 def list_suppliers(db: Session = Depends(get_db),
                     user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
@@ -6575,13 +6641,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
-    if supplier:
-        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms),
-                             ("email", payload.supplier_email),
-                             ("contact_person", payload.supplier_contact),
-                             ("phone", payload.supplier_phone)):
-            if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
-                setattr(supplier, field, value.strip())
+    sup_changed = _supplier_from_lpo(db, supplier, payload)
     n = _next_lpo_no(db)
     o = models.PurchaseOrder(
         po_no=n, ref=f"IC/LPO/{n}",
@@ -6663,8 +6723,9 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
                f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
-               + (f", {len(placed)} request line(s) marked ordered" if placed else ""))
-    return _lpo_dict(o)
+               + (f", {len(placed)} request line(s) marked ordered" if placed else "")
+               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else ""))
+    return {**_lpo_dict(o), "supplier_updated": sup_changed}
 
 
 @app.put("/store/purchase/orders/{order_id}")
@@ -6688,13 +6749,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
-    if supplier:
-        for field, value in (("trn", payload.supplier_trn), ("payment_terms", payload.terms),
-                             ("email", payload.supplier_email),
-                             ("contact_person", payload.supplier_contact),
-                             ("phone", payload.supplier_phone)):
-            if (value or "").strip() and not (getattr(supplier, field, "") or "").strip():
-                setattr(supplier, field, value.strip())
+    sup_changed = _supplier_from_lpo(db, supplier, payload)
 
     o.order_date = payload.order_date or o.order_date
     o.terms = payload.terms or "Due on Receipt"
@@ -6732,8 +6787,9 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
     db.commit()
     db.refresh(o)
-    log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))")
-    return _lpo_dict(o)
+    log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
+               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else ""))
+    return {**_lpo_dict(o), "supplier_updated": sup_changed}
 
 
 @app.post("/store/purchase/orders/{order_id}/cancel")
