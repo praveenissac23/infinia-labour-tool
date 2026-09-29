@@ -759,6 +759,21 @@ def build():
                        "all_pages_json": json.dumps(ALL_CFG),
                        "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
     page = page.replace("</body>", script + "</body>", 1)
+    # In-app help (portal/help): the guides, the list of step pictures and
+    # the code, each tagged with its own content hash so a changed guide
+    # reaches the browser straight away.
+    import hashlib as _h
+    def _v(rel):
+        try:
+            with open(os.path.join(ROOT, rel), "rb") as f:
+                return _h.sha1(f.read()).hexdigest()[:10]
+        except OSError:
+            return "0"
+    help_tags = (f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">\n'
+                 f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>\n'
+                 f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}"></script>\n'
+                 f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}"></script>\n')
+    page = page.replace("</body>", help_tags + "</body>", 1)
     # A browser can keep an old app.html for a while after a deploy (no
     # cache header on a static file). The page asks for the build it
     # should be - a tiny file that is never cached - and, if it is older,

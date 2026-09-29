@@ -1050,7 +1050,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="bbb7caf56658";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="f7faa33a4c75";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -14522,5 +14522,9 @@ async function pgRepUrl(format) {
 async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.open(u, "_blank"); }
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
+<link rel="stylesheet" href="/portal/help/help.css?v=47670d4177">
+<script src="/portal/help/guides.js?v=36cb31f19c"></script>
+<script src="/portal/help/img/manifest.js?v=019950e3e2"></script>
+<script src="/portal/help/help.js?v=5c221124a1"></script>
 </body>
 </html>
