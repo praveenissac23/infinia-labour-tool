@@ -324,11 +324,12 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
     <div class="row"><span class="lbl" style="width:110px;">Register</span><span class="seg" id="n-group" data-opts="labour:Labour,office:Office staff,local:Local staff"></span></div>
     <div class="row"><span class="lbl" style="width:110px;">Company</span><select id="n-company_id" class="hr-dd" style="width:200px;"></select>
       <span class="lbl" style="width:90px; margin-left:12px;">Code *</span><input type="text" id="n-emp_no" style="width:110px;"></div>
-    <div class="row"><span class="lbl" style="width:110px;">Full name *</span><input type="text" id="n-name" style="width:300px;" placeholder="As per passport">
-      <span class="lbl" style="width:90px; margin-left:12px;">Designation</span><input type="text" id="n-designation" style="width:180px;"></div>
+    <div class="row"><span class="lbl" style="width:110px;">Full name *</span><input type="text" id="n-name" style="width:250px;" placeholder="As per passport">
+      <span class="lbl" style="width:90px; margin-left:12px;" id="n-desig-l">Designation</span><input type="text" id="n-designation" style="width:170px;"></div>
     <div class="row"><span class="lbl" style="width:110px;">Joining date *</span><input type="date" id="n-joined_on">
       <span class="lbl" style="width:90px; margin-left:12px;">Nationality</span><input type="text" id="n-nationality" style="width:150px;"></div>
-    <div class="row"><span class="lbl" style="width:110px;">Monthly salary *</span><input type="number" id="n-gross" style="width:120px;" step="0.01" oninput="splitNew()">
+    <div class="row" id="n-paytype-row"><span class="lbl" style="width:110px;">Pay type</span><span class="seg" id="n-pay_type" data-opts="daily:Daily wage,fixed:Fixed monthly"></span></div>
+    <div class="row"><span class="lbl" style="width:110px;" id="n-gross-l">Monthly salary *</span><input type="number" id="n-gross" style="width:120px;" step="0.01" oninput="splitNew()">
       <span class="lbl" style="width:90px; margin-left:12px;">Basic</span><input type="number" id="n-basic" style="width:110px;" step="0.01">
       <span class="lbl" style="width:90px; margin-left:12px;" id="n-allow-l">Allowance</span><input type="number" id="n-allowance" style="width:110px;" step="0.01"></div>
     <div class="row" id="n-staff-row"><span class="lbl" style="width:110px;">Paid by</span><span class="seg" id="n-pay_route" data-opts="wps:WPS,bank:Bank transfer,cash:Cash"></span>
@@ -707,13 +708,21 @@ function openNew() {
   ["n-emp_no", "n-name", "n-designation", "n-joined_on", "n-nationality", "n-gross", "n-basic", "n-allowance"].forEach(id => setVal(id, ""));
   segSet(document.getElementById("n-group"), P.group === "left" || !ME.groups.includes(P.group) ? ME.groups[0] : P.group); newGroupChanged();
   segSet(document.getElementById("n-pay_route"), "wps"); segSet(document.getElementById("n-scheme"), "gratuity");
+  const pt = document.getElementById("n-pay_type"); if (pt) segSet(pt, "daily");
   document.getElementById("new-msg").textContent = ""; openDlg("dlg-new");
   setTimeout(() => document.getElementById("n-emp_no").focus(), 50);
 }
 function newGroupChanged() {
   const g = segGet(document.getElementById("n-group"));
   document.getElementById("n-staff-row").style.display = g === "labour" ? "none" : "";
-  document.getElementById("n-note").textContent = g === "labour" ? "Goes on Master Data as a daily-paid labourer with this monthly salary; the basic is what the contract says."
+  // Labour: the same fields, with the same names, as Attendance > Labour
+  // master data - it is one record, added from either page.
+  const lab = g === "labour";
+  document.getElementById("n-paytype-row").style.display = lab ? "" : "none";
+  document.getElementById("n-desig-l").textContent = lab ? "Trade" : "Designation";
+  document.getElementById("n-gross-l").textContent = lab ? "Total salary *" : "Monthly salary *";
+  document.getElementById("n-allow-l").style.display = document.getElementById("n-allowance").style.display = lab ? "none" : "";
+  document.getElementById("n-note").textContent = lab ? "One record with Attendance > Labour master data: added here, he is there at once, and on the attendance grid from his joining date. Pay changes are made on either page."
     : "Goes on the Staff Register and the " + (g === "local" ? "local" : "office") + " salary statement. Basic 40% and allowance 60% unless typed.";
   const co = COMPANIES.find(c => c.id === parseInt(document.getElementById("n-company_id").value, 10));
   if (co && co.code_prefix && !document.getElementById("n-emp_no").value) document.getElementById("n-emp_no").placeholder = co.code_prefix + "0xx";
@@ -728,7 +737,8 @@ async function saveNew() {
   const gross = parseFloat(getVal("n-gross")) || 0, basic = parseFloat(getVal("n-basic")) || 0, allowance = parseFloat(getVal("n-allowance")) || 0;
   const body = { group: g, emp_no: getVal("n-emp_no"), name: getVal("n-name"), designation: getVal("n-designation"), joined_on: getVal("n-joined_on"),
     company_id: parseInt(getVal("n-company_id"), 10) || null, gross, basic: basic || (g === "labour" ? gross : 0), allowance: allowance || (g === "labour" ? 0 : gross - basic),
-    pay_route: segGet(document.getElementById("n-pay_route")), scheme: segGet(document.getElementById("n-scheme")) };
+    pay_route: segGet(document.getElementById("n-pay_route")), scheme: segGet(document.getElementById("n-scheme")),
+    trade: getVal("n-designation"), pay_type: g === "labour" ? segGet(document.getElementById("n-pay_type")) : undefined };
   if (!gross) { document.getElementById("new-msg").textContent = "The monthly salary is needed."; return; }
   try {
     const F = await apiCall("/employees/people", { method: "POST", body: JSON.stringify(body) });

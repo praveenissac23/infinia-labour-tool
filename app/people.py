@@ -393,8 +393,9 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     if g == "labour":
         basic = float(payload.get("basic") or 0)
         gross = float(payload.get("gross") or 0) or round(basic + float(payload.get("allowance") or 0), 2)
-        e = models.Employee(emp_no=emp_no, name=name, trade=(payload.get("designation") or "").strip(),
-                            company=(payload.get("company") or "Infinia"), pay_type="daily",
+        e = models.Employee(emp_no=emp_no, name=name, trade=(payload.get("trade") or payload.get("designation") or "").strip(),
+                            company=(payload.get("company") or "Infinia"),
+                            pay_type="fixed" if payload.get("pay_type") == "fixed" else "daily",
                             total_salary=gross, basic_salary=basic, staff=False, active=True,
                             joined_on=joined)
         if payload.get("company_id"):
