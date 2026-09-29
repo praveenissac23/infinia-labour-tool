@@ -10524,7 +10524,7 @@ def get_notifications(db: Session = Depends(get_db),
                          "detail": y.strftime("%A, %d %B %Y"),
                          "screen": "attendance", "when": y.isoformat(), "level": "warn"})
         elif active and marked < active:
-            out.append({"id": f"att-part-{y}-{marked}", "kind": "attendance",
+            out.append({"id": f"att-part-{y}", "kind": "attendance",
                          "title": "Yesterday's attendance is incomplete",
                          "detail": f"{marked} of {active} workers marked",
                          "screen": "attendance", "when": y.isoformat(), "level": "info"})
@@ -10539,7 +10539,7 @@ def get_notifications(db: Session = Depends(get_db),
                         f"{s['week']} due within 7 days" if s["week"] else "",
                         f"{s['month']} within 30" if s["month"] else ""]
                 first = ", ".join(f"{i['who']} ({i['what']})" for i in s["attention"][:3])
-                out.append({"id": f"expiry-{today}-{s['expired']}-{s['week']}", "kind": "expiry",
+                out.append({"id": f"expiry-{today}", "kind": "expiry",
                             "title": "Expiries: " + ", ".join(b for b in bits if b),
                             "detail": first + (f" and {len(s['attention']) - 3} more" if len(s["attention"]) > 3 else ""),
                             "screen": "expiry", "when": today.isoformat(), "count": s["expired"] + s["week"],
