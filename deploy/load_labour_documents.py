@@ -8,8 +8,8 @@ The sheet has names only, typed in their own way ("RAVI RAYI" is RAVI
 ROY, "FALVDAR" is FAVLDAR), so each line below carries the worker code it
 was matched to by hand. On the server every match is checked again: the
 code must be on the list and share a name with the sheet's, or the line
-is skipped and named. Four men were not on the copy of the list used to
-match (GUDDU KUMAR, JAYA PRAKASH, MIRAJUL ANSARI, PALDURAI PICHAI); they
+is skipped and named. Three men were not on the copy of the list used to
+match (GUDDU KUMAR, JAYA PRAKASH, MIRAJUL ANSARI; PALDURAI PICHAI is F-801); they
 are found by name on the server, and skipped if not found exactly once.
 
 Checked against the sheet before loading:
@@ -125,7 +125,7 @@ ROWS = [
     (69, "ARUN YADAV", "F798", "Prime Infinia", "2028-07-18", "2028-07-14", "2036-03-09"),
     (70, "JAYA PRAKASH", None, "Prime Infinia", "2028-07-28", "2028-07-24", "2028-09-26"),
     (71, "MIRAJUL ANSARI", None, "Prime Infinia", "2028-07-28", "2028-07-24", "2034-06-27"),
-    (72, "PALDURAI PICHAI", None, "Prime Infinia", "2028-08-18", "2028-08-12", "2036-07-08"),
+    (72, "PALDURAI PICHAI", "F-801", "Prime Infinia", "2028-08-18", "2028-08-12", "2036-07-08"),
 ]
 KINDS = (("eid", "Emirates ID"), ("labour_card", "Labour card"), ("passport", "Passport"))
 FIXED = {5: "passport not loaded - sheet says RENEWED but still has the old date 27-Sep-2026; put the new date in",
@@ -154,7 +154,12 @@ def same_man(a, b):
         return True
     x = re.sub(r"[^A-Z]", "", (a or "").upper().replace("0", "O"))
     y = re.sub(r"[^A-Z]", "", (b or "").upper())
-    return bool(x and y) and (x in y or y in x or SequenceMatcher(None, x, y[:len(x) + 3]).ratio() >= 0.7)
+    if bool(x and y) and (x in y or y in x or SequenceMatcher(None, x, y[:len(x) + 3]).ratio() >= 0.7):
+        return True
+    # First names alone ("PALDURAI PICHAI" / "PALADURAI").
+    fa = re.sub(r"[^A-Z]", "", (a or "").upper().replace("0", "O").split()[0]) if (a or "").split() else ""
+    fb = re.sub(r"[^A-Z]", "", (b or "").upper().split()[0]) if (b or "").split() else ""
+    return len(fa) >= 4 and len(fb) >= 4 and SequenceMatcher(None, fa, fb).ratio() >= 0.85
 
 
 engine = create_engine(url)
