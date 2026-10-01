@@ -96,6 +96,12 @@ ts = dl(SI)
 ck("PDF refused to site login", c.get(f"/export/accounts/invoice/{iid}?token={ts}").status_code == 403)
 r = c.get(f"/export/accounts/invoices?kind=tax&token={t}")
 ck("Excel list", r.status_code == 200 and r.content[:2] == b"PK", r.status_code)
+r = c.get(f"/export/accounts/invoices?kind=tax&format=excel&token={t}"); ck("Export Excel", r.content[:2] == b"PK")
+r = c.get(f"/export/accounts/invoices?kind=tax&format=view&token={t}")
+ck("Preview list = PDF inline", r.content[:4] == b"%PDF" and "inline" in r.headers.get("content-disposition", ""), r.headers.get("content-disposition"))
+r = c.get(f"/export/accounts/invoices?kind=tax&format=pdf&token={t}")
+ck("Export PDF list = download", r.content[:4] == b"%PDF" and "attachment" in r.headers.get("content-disposition", ""))
+ck("list PDF refused to site login", c.get(f"/export/accounts/invoices?kind=tax&format=pdf&token={ts}").status_code == 403)
 # cancel
 r = c.post(f"/employees/accounts/invoices/{iid}/cancel", json={"reason": "wrong client"}, headers=CH); ck("cancel", r.status_code == 200)
 ck("cancelled cannot be edited", c.put(f"/employees/accounts/invoices/{iid}", json=body, headers=CH).status_code == 400)
@@ -114,13 +120,14 @@ ck("converted number in tax series", r.json()["number"] == f"IC/{yy}/920/01", r.
 ck("convert twice refused", c.post(f"/employees/accounts/invoices/{pid}/convert", headers=CH).status_code == 400)
 pr = c.get("/employees/accounts/invoices?kind=proforma", headers=CH).json()["rows"][0]
 ck("proforma linked", pr["converted_to_id"] == r.json()["id"])
-# signature upload
-png = open("/tmp/claude-0/inv-sig.png", "rb").read() if __import__("os").path.exists("/tmp/claude-0/inv-sig.png") else None
-if png:
-    r = c.post("/employees/accounts/invoice-signature", files={"file": ("sig.png", png, "image/png")}, headers=CH)
-    ck("signature uploaded", r.status_code == 200 and c.get("/employees/accounts/invoices", headers=CH).json()["signature"], r.text)
-    ck("PDF with signature", c.get(f"/export/accounts/invoice/{iid}?token={t}").content[:4] == b"%PDF")
-ck("signature refuses a pdf", c.post("/employees/accounts/invoice-signature", files={"file": ("a.pdf", b"x", "application/pdf")}, headers=CH).status_code == 400)
+# signature: the one kept in Settings (purchase orders) is used
+import export_web, shutil
+had = export_web.signature_file()
+if not had and os.path.exists("/tmp/claude-0/inv-sig.png"):
+    shutil.copy("/tmp/claude-0/inv-sig.png", export_web.SIG_PATHS[0])
+ck("invoices use the Settings signature", c.get("/employees/accounts/invoices", headers=CH).json()["signature"] == bool(export_web.signature_file()))
+ck("PDF with signature", c.get(f"/export/accounts/invoice/{iid}?token={t}").content[:4] == b"%PDF")
+ck("no separate invoice signature upload", c.post("/employees/accounts/invoice-signature", files={"file": ("a.png", b"x", "image/png")}, headers=CH).status_code in (404, 405))
 
 # ---- cash register -----------------------------------------------------
 ck("register refused without key", c.get("/employees/accounts/register", headers=CH).status_code == 423)

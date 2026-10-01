@@ -10,7 +10,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 (async () => {
   const b = await chromium.launch(); let bad = 0;
   const ck = (n, ok, info) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(info)}`); };
-  const login = async (u, pw, url = '/?p=store#petty') => {
+  const login = async (u, pw, url = '/?p=accounts#petty') => {
     const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
     await p.goto(B + url); await p.fill('#login-username', u); await p.fill('#login-password', pw); await p.evaluate('doLogin()');
@@ -19,7 +19,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const subs = p => p.evaluate(() => [...document.querySelectorAll('.pg-subtab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
   const api = (p, u, m, body) => p.evaluate(async ([u, m, body]) => { try { return { ok: 1, d: await apiCall(u, m ? { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined) }; } catch (e) { return { ok: 0, status: e.status, msg: String(e.message || e) }; } }, [u, m, body]);
   const add = async (p, kind, desc, amt) => {
-    await p.click(`.pc-kind button[data-k="${kind}"]`); await p.fill('#pc-desc', desc); await p.fill('#pc-sup', 'Test'); await p.fill('#pc-amt', String(amt));
+    await p.click(`#screen-pettycash .pc-kind button[data-k="${kind}"]`); await p.fill('#pc-desc', desc); await p.fill('#pc-sup', 'Test'); await p.fill('#pc-amt', String(amt));
     await p.click('#pc-save'); await p.waitForTimeout(1000);
   };
   const today = new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
@@ -37,7 +37,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('asking for the Office box is refused', !so.ok && so.status === 403, so);
   const sneak = await api(s, '/store/petty-cash', 'POST', { book: 'pro', date: today, description: 'x', paid: 5 });
   ck('he cannot slip a line into the PRO box', !sneak.ok && sneak.status === 403, sneak);
-  await s.goto(B + '/?p=store#petty:pro'); await s.waitForTimeout(3000);
+  await s.goto(B + '/?p=accounts#petty:pro'); await s.waitForTimeout(3000);
   ck('opening #petty:pro still shows him Site', (await s.locator('#pc-heading').textContent()) === 'Site petty cash');
   await s.screenshot({ path: SH + 'petty-books-site.png' });
 
@@ -83,8 +83,8 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('its PDF link is for the PRO box', /book=pro/.test(pdfHref), pdfHref);
   await pop.close();
   const roles = (await api(ad, '/permissions/roles')).d;
-  const pg = roles.pages.find(x => x[0] === 'Petty cash');
-  ck('Access page has a Petty cash group with the three boxes', pg && JSON.stringify(pg[1]) === '["petty_site","petty_pro","petty_office"]' && roles.labels.petty_pro === 'PRO petty cash', pg);
+  const pg = roles.pages.find(x => x[0] === 'Accounts');
+  ck('Access page: the three petty cash boxes are under Accounts', pg && ['petty_site', 'petty_pro', 'petty_office'].every(r => pg[1].includes(r)) && roles.labels.petty_pro === 'PRO petty cash', pg);
   for (const p of [s, r, a, ad]) ck('no script errors', p.errs.length === 0, p.errs);
   console.log(bad ? `${bad} FAILED` : 'EACH PETTY CASH BOX IS ITS OWN');
   await b.close(); process.exit(bad ? 1 : 0);

@@ -99,7 +99,7 @@ window.HELP_GUIDES = [
       { say: "Scroll to Final settlement and put his last working day.", el: "#fs-last" },
       { say: "Choose the reason (resignation, termination...).", el: "#fs-reason" },
       { say: "Check leave days, loan and anything to add or take off. The total updates as you type.", el: "#fs-leave" },
-      { say: "Print it from Print / Export.", el: "#hr-fs-card .hr-menu-btn" }] },
+      { say: "Print it with Preview or Export PDF.", el: "#hr-fs-card button[onclick=\"fsOpen('pdf')\"]" }] },
   { id: "staff-add", area: "Workers", title: "How to add new office staff",
     words: "add new office staff employee join joiner hire staff register local staff",
     go: { page: "payroll", tab: "hrpayroll", sub: "staff" },
@@ -216,16 +216,16 @@ window.HELP_GUIDES = [
       { say: "Type the supplier name, contact person and phone.", el: "#sup-name" },
       { say: "Type the TRN, email and payment terms.", el: "#sup-trn" },
       { say: "Press Save supplier.", el: "button[onclick='saveSupplier()']" }] },
-  { id: "petty", area: "Purchasing", title: "How to enter petty cash (bill paid or cash received)",
+  { id: "petty", area: "Accounts", title: "How to enter petty cash (bill paid or cash received)",
     words: "petty cash bill receipt expense cash paid received balance amal register pro office site",
-    go: { page: "store", tab: "petty" },
+    go: { page: "accounts", tab: "petty" },
     steps: [
       { say: "Pick your cash box: Site, PRO or Office. You only see the boxes you are allowed.", el: ".pg-sub" },
       { say: "Choose 'Bill paid' or 'Cash received'.", el: ".pc-kind" },
       { say: "Put the date and what it was for.", el: "#pc-desc" },
       { say: "Type the shop / supplier and the site.", el: "#pc-sup" },
       { say: "Type the amount and press Add. The balance updates.", el: "#pc-save" },
-      { say: "Print the month from Print / Export.", el: "#screen-pettycash .hr-menu-btn" }] },
+      { say: "Print the month: Preview, Export PDF or Export Excel.", el: "#screen-pettycash button[onclick=\"pcExport('pdf')\"]" }] },
 
   // ---------------- Labour payroll ----------------
   { id: "check-pay", area: "Payroll", title: "How to check attendance before paying salaries",
@@ -263,7 +263,7 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Choose the company and month.", el: "#hr-run-month" },
       { say: "Choose Office staff or Local staff.", el: "button[onclick=\"hrPickGroup('staff')\"]" },
-      { say: "Check the figures. Print the statement from Print / Export.", el: "#screen-hrpayroll .hr-menu-btn" },
+      { say: "Check the figures. Print the statement with Preview or Export PDF.", el: "#screen-hrpayroll .exp-btns button" },
       { say: "When correct, press 'Approve & lock'.", el: "#screen-hrpayroll button[onclick*='approvePayrollRun']" }] },
   { id: "office-full", area: "Payroll", title: "How to pay office staff the full month early",
     words: "pay full month now early advance office local staff 27th 28th holiday",
@@ -355,7 +355,7 @@ window.HELP_GUIDES = [
       { say: "Type each line: what it is for and the amount before VAT. Pick 5% or 0% VAT.", el: "#inv-lines tr:first-child td:nth-child(2) input" },
       { say: "More lines? Press + Add line. The totals add up as you type.", el: "button[onclick='invAddLine()']" },
       { say: "Press Save & open PDF. The invoice opens ready to print or send.", el: "#inv-save-pdf" }],
-    tip: "The signature and stamp print on every invoice - upload the picture once with the Signature & stamp button." },
+    tip: "The signature and stamp are the ones kept in Settings (the same as on purchase orders)." },
   { id: "inv-proforma", area: "Accounts", title: "How to make a proforma invoice",
     words: "proforma pro forma performa quotation advance invoice client accounts",
     go: { page: "accounts", tab: "proforma" },
@@ -378,12 +378,12 @@ window.HELP_GUIDES = [
       { say: "Find the invoice in the list. Type the number or client to search.", el: "#inv-search" },
       { say: "Press the ... button on its line: Edit to correct it, or Cancel invoice.", el: "#inv-body .hr-menu-btn" }],
     tip: "A cancelled invoice is never deleted - it stays on the list marked CANCELLED and its number is not used again." },
-  { id: "inv-signature", area: "Accounts", title: "How to put the signature and stamp on invoices",
-    words: "signature stamp seal sign invoice upload picture accounts",
-    go: { page: "accounts", tab: "taxinv" },
+  { id: "inv-signature", area: "Settings", title: "How to put the signature and stamp on invoices and purchase orders",
+    words: "signature stamp seal sign invoice lpo purchase order upload picture settings",
+    go: { page: "settings", tab: "general" }, admin: true,
     steps: [
-      { say: "Press Signature & stamp and pick the picture (PNG or JPG) of the signature with the stamp.", el: "label:has(#inv-sig)" },
-      { say: "It prints on every invoice from now on." }] },
+      { say: "In Settings > General, under Signature & Stamp, choose the picture (PNG or JPG) of the signature with the stamp.", el: "#sig-file" },
+      { say: "Press Upload. It prints on every purchase order and every invoice from now on.", el: "button[onclick='uploadSignature()']" }] },
   // ---------------- Reports ----------------
   { id: "report-cycle", area: "Reports", title: "How to get a labour salary report",
     words: "report salary report cycle report total cost summary labour export excel pdf",
@@ -391,13 +391,13 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Choose the cycle and company.", el: "#report-cycle" },
       { say: "Press Run.", el: "button[onclick='loadReports()']" },
-      { say: "Export to Excel or PDF.", el: "button[onclick=\"exportReportTable('excel')\"]" }] },
+      { say: "Preview it, or Export PDF / Export Excel.", el: "button[onclick=\"exportReportTable('pdf')\"]" }] },
   { id: "report-stock", area: "Reports", title: "How to print a stock report",
     words: "stock report current stock print export materials at site consumption",
     go: { page: "reports", tab: "storerep", sub: "stock" },
     steps: [
       { say: "Pick the report on the tabs above (current stock, at sites, consumption...)." },
-      { say: "Export to PDF or Excel.", el: "button[onclick=\"exportStore('pdf')\"]" }] },
+      { say: "Preview it, or Export PDF / Export Excel.", el: "button[onclick=\"exportStore('pdf')\"]" }] },
 
   // ---------------- Settings ----------------
   { id: "login-new", area: "Settings", title: "How to give someone a login",

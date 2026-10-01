@@ -222,7 +222,7 @@
   td.hr-d-add, span.hr-d-add { cursor: pointer; } td.hr-d-add:hover, span.hr-d-add:hover { outline: 2px solid #B7322A; outline-offset: -2px; }
   .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   /* Accounts: invoices and the cash register */
-  #screen-title, #inv-form-title, #inv-list-title { user-select: none; -webkit-user-select: none; }
+  #screen-title, #inv-form-title, #inv-list-title { user-select: none; -webkit-user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .inv-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin-bottom: 14px; }
   .inv-form .hr-field input, .inv-form .hr-field select { width: 100%; }
   .inv-form .inv-w2 { grid-column: span 2; }
@@ -291,6 +291,7 @@
   .hr-exp-form .hr-field input { width: 100%; }
   .hr-exp-form > .btn { justify-self: start; height: 36px; }
   @media (max-width: 900px) { .hr-exp-form { grid-template-columns: 1fr 1fr; } }
+  .exp-btns { display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .hr-menu { position: relative; display: inline-block; }
   .hr-menu-list { display: none; position: absolute; right: 0; top: calc(100% + 4px); min-width: 230px; background: #fff; z-index: 2500;
                   border: 1px solid #E4E0DB; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.14); padding: 5px; }
@@ -1522,8 +1523,8 @@
             </span>
             <button class="btn btn-primary" onclick="loadReports()">Run</button>
             <button class="btn btn-dark" onclick="exportReportTable('view')">Preview</button>
-            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-monthly" id="monthly-report-btn" onclick="switchScreen('monthly'); openMonthlyReport();"
                     title="The report management sees every month end: fixed columns, your notes beside it, one PDF to send">
               Monthly Report</button>
@@ -1585,8 +1586,8 @@
             </select>
             <button class="btn btn-primary" onclick="saveAllMonthlyNotes()" title="Notes also save on their own as you leave each box">Save notes</button>
             <button class="btn btn-dark" onclick="exportReportTable('view')">Preview</button>
-            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
             <button class="btn btn-dark" onclick="exportReportTable('pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="exportReportTable('excel')">Export Excel</button>
           </div>
           <div class="status-msg" id="monthly-status"></div>
           <p style="font-size:12.5px; color:#666; margin:0 0 10px; max-width:900px;">
@@ -1628,8 +1629,8 @@
               <datalist id="combine-emp-list"></datalist>
               <div style="display:flex; gap:8px;">
                 <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('view')">Preview</button>
-                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('excel')">Excel</button>
-                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('pdf')">PDF</button>
+                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('pdf')">Export PDF</button>
+                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('excel')">Export Excel</button>
               </div>
             </div>
           </div>
@@ -1713,8 +1714,8 @@
             <input type="text" id="livecard-search" placeholder="Employee No or Name" oninput="renderLiveCardWorkerList()">
             <span style="margin-left:auto; display:flex; gap:8px;">
               <button class="btn btn-dark" onclick="exportLiveCard('view')">Preview</button>
-              <button class="btn btn-dark" onclick="exportLiveCard('excel')">Excel</button>
-              <button class="btn btn-dark" onclick="exportLiveCard('pdf')">PDF</button>
+              <button class="btn btn-dark" onclick="exportLiveCard('pdf')">Export PDF</button>
+              <button class="btn btn-dark" onclick="exportLiveCard('excel')">Export Excel</button>
             </span>
           </div>
           <div class="status-msg" id="livecard-status"></div>
@@ -1849,8 +1850,8 @@
               <input type="text" id="mreq-search" placeholder="Search ref, site or material" style="width:220px;" oninput="loadRequests()">
               <button class="btn btn-primary" onclick="loadRequests()">Refresh</button>
               <button class="btn btn-dark" onclick="exportRequests('view')">Preview</button>
-              <button class="btn btn-dark" onclick="exportRequests('excel')">Download Excel</button>
-              <button class="btn btn-dark" onclick="exportRequests('pdf')">Download PDF</button>
+              <button class="btn btn-dark" onclick="exportRequests('pdf')">Export PDF</button>
+              <button class="btn btn-dark" onclick="exportRequests('excel')">Export Excel</button>
             </div>
             <div id="mreq-list"></div>
           </div>
@@ -2059,7 +2060,7 @@
                   <option value="labour">Labour</option>
                 </select>
                 <input type="text" id="hr-doc-search" placeholder="Search code or name" style="width:180px;" oninput="renderDocuments()">
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('documents')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('documents','excel')">Download Excel</button></div></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewHr('documents')">Preview</button><button type="button" class="btn btn-dark" onclick="downloadHr('documents','pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadHr('documents','excel')">Export Excel</button></div>
                 <span id="hr-doc-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
@@ -2106,7 +2107,7 @@
                   </select>
                   <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
                   <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
-                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); hrExpExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); hrExpExport('excel')">Download Excel</button></div></div>
+                  <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="hrExpExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="hrExpExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="hrExpExport('excel')">Export Excel</button></div>
                   <span id="hr-exp-count" style="font-size:12px; color:#888;"></span>
                 </div>
                 <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
@@ -2164,7 +2165,7 @@
                 <button type="button" class="on" data-v="grid" onclick="pdcView('grid')">Monthly tracker</button>
                 <button type="button" data-v="list" onclick="pdcView('list')">Cheque list</button>
               </div>
-              <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" onclick="hrMenuClose(); pdcExport('view')">Preview</button><button type="button" onclick="hrMenuClose(); pdcExport('pdf')">Download PDF</button><button type="button" onclick="hrMenuClose(); pdcExport('excel')">Download Excel</button></div></div>
+              <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pdcExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pdcExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pdcExport('excel')">Export Excel</button></div>
             </div>
             <div id="pdc-grid-wrap">
               <div class="pdc-bar">
@@ -2245,9 +2246,7 @@
                 <span id="inv-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <span id="inv-sig-state" style="font-size:12px; color:#888;"></span>
-                <label class="btn btn-gray" style="margin:0; cursor:pointer;">Signature &amp; stamp<input type="file" id="inv-sig" accept=".png,.jpg,.jpeg" style="display:none;" onchange="invSignature(this)"></label>
-                <button class="btn btn-gray" onclick="invExcel()">Download Excel</button>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="invList('view')">Preview</button><button type="button" class="btn btn-dark" onclick="invList('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="invList('excel')">Export Excel</button></div>
               </div>
             </div>
             <div class="grid-wrap" style="max-height:62vh; margin-top:10px;"><table class="hr-grid inv-list">
@@ -2281,7 +2280,7 @@
                   <button type="button" class="btn btn-gray btn-sm" style="height:36px;" onclick="regAll()">All dates</button>
                 </div>
                 <div class="pc-btns">
-                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" onclick="hrMenuClose(); regExport('pdf')">Preview / print PDF</button><button type="button" onclick="hrMenuClose(); regExport('excel')">Download Excel</button><hr id="reg-pw-hr"><button type="button" id="reg-pw-btn" onclick="hrMenuClose(); regPwShow()">Change register password</button></div></div>
+                  <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="regExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="regExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="regExport('excel')">Export Excel</button><button type="button" class="btn btn-gray" id="reg-pw-btn" onclick="regPwShow()">Change password</button></div>
                   <button type="button" class="btn btn-gray" onclick="regLock()">&#128274; Lock</button>
                 </div>
               </div>
@@ -2332,7 +2331,7 @@
                 <label class="pc-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
               </div>
               <div class="pc-btns">
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); pcExport('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); pcExport('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); pcExport('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); pcExport('print')">Print</button></div></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pcExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pcExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pcExport('excel')">Export Excel</button></div>
               </div>
             </div>
             <div class="pc-stats" id="pc-stats"></div>
@@ -2396,7 +2395,7 @@
             <div class="form-row" style="gap:8px; margin-top:10px; align-items:center;">
               <button class="btn btn-gray" onclick="supplierTemplate()">Download Template</button>
               <button class="btn btn-dark" onclick="previewSuppliers()">Preview</button>
-              <button class="btn btn-dark" onclick="exportSuppliers()">Export to Excel</button>
+              <button class="btn btn-dark" onclick="exportSuppliers()">Export Excel</button>
               <!-- The file box belongs to Import, so it sits with it: beside
                    Export it read as something Export needed. -->
               <span style="display:inline-flex; align-items:center; gap:8px; margin-left:18px;
@@ -2442,9 +2441,9 @@
               <option value="all">Including cancelled</option>
               <option value="cancelled">Cancelled only</option>
             </select>
-            <button class="btn btn-primary" onclick="exportLpoReport('view')">Preview</button>
-            <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="exportLpoReport('view')">Preview</button>
             <button class="btn btn-dark" onclick="exportLpoReport('pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button>
           </div>
           <div class="card">
             <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
@@ -2619,7 +2618,7 @@
                 <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
                   <div class="field"><label>Where</label>
                     <select id="rent-where" style="width:190px;" onchange="refreshOnHire()"></select></div>
-                  <button class="btn btn-primary" onclick="exportRental('view')">Preview</button>
+                  <button class="btn btn-dark" onclick="exportRental('view')">Preview</button>
                   <button class="btn btn-dark" onclick="exportRental('pdf')">Export PDF</button>
                   <button class="btn btn-dark" onclick="exportRental('excel')">Export Excel</button>
                 </div>
@@ -2998,9 +2997,9 @@
                     <label>From</label><input type="date" id="store-date-from" onchange="loadStore()">
                     <label>To</label><input type="date" id="store-date-to" onchange="loadStore()">
                   </span>
-                  <button class="btn btn-primary" onclick="exportStore('view')">Preview</button>
-                  <button class="btn btn-dark" onclick="exportStore('excel')">Export Excel</button>
+                  <button class="btn btn-dark" onclick="exportStore('view')">Preview</button>
                   <button class="btn btn-dark" onclick="exportStore('pdf')">Export PDF</button>
+                  <button class="btn btn-dark" onclick="exportStore('excel')">Export Excel</button>
                 </div>
               </div>
               <div class="grid-wrap" style="margin:0; border:none; border-radius:0;">
@@ -3067,11 +3066,11 @@
           </div>
 
           <div class="card" id="signature-card" style="display:none;">
-            <h2>Purchase Order Signature</h2>
+            <h2>Signature &amp; Stamp</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
-              The authorised signature printed on every purchase order. Upload a PNG or JPG of the
-              signature on white or transparent background - it is placed in the signature box of
-              each LPO, in both the PDF and the Excel.</p>
+              The authorised signature (with the company stamp) printed on every purchase order and every
+              tax / proforma invoice. Upload a PNG or JPG on white or transparent background - it goes in the
+              signature box of each LPO (PDF and Excel) and each invoice.</p>
             <div class="form-row" style="align-items:center; gap:10px;">
               <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:290px;">
               <button class="btn btn-primary" onclick="uploadSignature()">Upload</button>
@@ -3246,7 +3245,7 @@
                 <span id="hr-all-sub" style="font-size:12px; color:#888;"></span>
                 <div class="hr-cb-spacer"></div>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewConsolidated()">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadConsolidated('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadConsolidated('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); printConsolidated()">Print</button><hr><button type="button" class="" onclick="hrMenuClose(); previewConsolidated(true)">Consolidated statement (office + local)</button></div></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewConsolidated()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button></div>
               </div>
               <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
               <div id="hr-all-body" style="margin-top:12px;"></div>
@@ -3263,7 +3262,7 @@
                 <button class="btn btn-danger" id="hr-reopen-btn" onclick="reopenPayrollRun()" style="display:none;">Reopen</button>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
                 <div class="hr-cb-spacer"></div>
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewStatement()">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadStatement('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadStatement('excel')">Download Excel</button><button type="button" class="" onclick="hrMenuClose(); printStatement()">Print</button><hr><button type="button" class="" onclick="hrMenuClose(); previewConsolidated(true)">Consolidated statement (office + local)</button><hr><button type="button" class="danger" onclick="hrMenuClose(); dropPayrollRun()">Discard this draft</button></div></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewStatement()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadStatement('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadStatement('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button><button type="button" class="btn btn-gray" style="color:#B7322A;" onclick="dropPayrollRun()">Discard this draft</button></div>
                 <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()" hidden>Discard draft</button>
               </div>
               <div class="grid-wrap" style="max-height:56vh;">
@@ -3300,8 +3299,8 @@
                 <select id="hr-staff-company" style="width:190px;" onchange="renderStaff()"></select>
                 <input type="text" id="hr-staff-search" placeholder="Search code or name" style="width:190px;" oninput="renderStaff()">
                 <button class="btn btn-dark" onclick="previewHr('staff')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('staff','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('staff','excel')">Export to Excel</button>
+                <button class="btn btn-dark" onclick="downloadHr('staff','pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="downloadHr('staff','excel')">Export Excel</button>
                 <div class="hr-cb-spacer"></div>
                 <button class="btn btn-primary" onclick="hrNewStaff()">+ New staff</button>
               </div>
@@ -3427,8 +3426,8 @@
                 <input type="month" id="hr-leave-month" style="width:160px;" onchange="loadLeave()">
                 <select id="hr-leave-filter" class="hr-staff-pick" data-all="Everyone" style="width:210px;" onchange="renderLeave()"></select>
                 <button class="btn btn-dark" onclick="previewHr('leave')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('leave','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('leave','excel')">Export to Excel</button>
+                <button class="btn btn-dark" onclick="downloadHr('leave','pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="downloadHr('leave','excel')">Export Excel</button>
                 <span id="hr-leave-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:58vh; margin-top:10px;">
@@ -3474,8 +3473,8 @@
                 <input type="month" id="hr-items-month" style="width:160px;" onchange="loadItems()">
                 <select id="hr-items-filter" class="hr-staff-pick" data-all="Everyone" style="width:210px;" onchange="renderItems()"></select>
                 <button class="btn btn-dark" onclick="previewHr('items')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('items','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('items','excel')">Export to Excel</button>
+                <button class="btn btn-dark" onclick="downloadHr('items','pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="downloadHr('items','excel')">Export Excel</button>
                 <span id="hr-items-count" style="font-size:12px; color:#888;"></span>
               </div>
               <div class="grid-wrap" style="max-height:58vh; margin-top:10px;">
@@ -3509,8 +3508,8 @@
               <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
                 <h2 style="margin:0 12px 0 0;">Staff loans</h2>
                 <button class="btn btn-dark" onclick="previewHr('loans')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('loans','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('loans','excel')">Export to Excel</button>
+                <button class="btn btn-dark" onclick="downloadHr('loans','pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="downloadHr('loans','excel')">Export Excel</button>
                 <span style="font-size:12px; color:#888;">Approving a salary cycle records that month's instalment. Money paid back any other way goes in with Repayment.</span>
               </div>
               <div class="grid-wrap" style="max-height:62vh; margin-top:10px;">
@@ -3536,7 +3535,7 @@
               <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
                 <label class="hr-field"><span>Staff member</span><select id="hr-grat-emp" class="hr-staff-pick" style="width:260px;" onchange="renderGratuity()"></select></label>
                 <div class="hr-cb-spacer"></div>
-                <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); previewHr('gratuity')">Preview</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('gratuity','pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); downloadHr('gratuity','excel')">Download Excel</button></div></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewHr('gratuity')">Preview</button><button type="button" class="btn btn-dark" onclick="downloadHr('gratuity','pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadHr('gratuity','excel')">Export Excel</button></div>
               </div>
               <div id="hr-grat-view" style="margin-top:14px;"></div>
             </div>
@@ -3544,7 +3543,7 @@
               <div class="form-row" style="gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
                 <h2 style="margin:0;">Final settlement</h2>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" class="" onclick="hrMenuClose(); fsOpen('view')">Preview</button><button type="button" class="" onclick="hrMenuClose(); fsOpen('pdf')">Download PDF</button><button type="button" class="" onclick="hrMenuClose(); fsOpen('excel')">Download Excel</button></div></div>
+                  <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="fsOpen('view')">Preview</button><button type="button" class="btn btn-dark" onclick="fsOpen('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="fsOpen('excel')">Export Excel</button></div>
                 </div>
               </div>
               <p class="hr-nil" style="margin:6px 0 12px;">For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.</p>
@@ -3609,8 +3608,8 @@
                 <h2 style="margin:0 12px 0 0;">Salary history</h2>
                 <select id="hr-inc-filter" class="hr-staff-pick" data-all="Everyone" style="width:220px;" onchange="renderIncrements()"></select>
                 <button class="btn btn-dark" onclick="previewHr('increments')">Preview</button>
-                <button class="btn btn-gray" onclick="downloadHr('increments','pdf')">Export to PDF</button>
-                <button class="btn btn-gray" onclick="downloadHr('increments','excel')">Export to Excel</button>
+                <button class="btn btn-dark" onclick="downloadHr('increments','pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="downloadHr('increments','excel')">Export Excel</button>
               </div>
               <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
                 <table class="hr-grid">
@@ -6948,9 +6947,9 @@ async function refreshReturnList() {
       <td${r.total_short ? ' style="color:#C0392B; font-weight:600;"' : ""}>${r.total_short ? num(r.total_short) : "-"}</td>
       <td>${pill(r.status)}${r.received_by ? `<div style="font-size:11px; color:#888;">${r.received_by}</div>` : ""}</td>
       <td style="text-align:right; white-space:nowrap;">
-        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'view')">Preview</button>
-        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'pdf')">PDF</button>
-        <button class="btn btn-gray" onclick="printReturn(${r.id}, 'excel')">Excel</button>
+        <button class="btn btn-dark" onclick="printReturn(${r.id}, 'view')">Preview</button>
+        <button class="btn btn-dark" onclick="printReturn(${r.id}, 'pdf')">Export PDF</button>
+        <button class="btn btn-dark" onclick="printReturn(${r.id}, 'excel')">Export Excel</button>
         ${r.status !== "confirmed" && r.status !== "cancelled"
           ? `<button class="btn btn-gray" onclick="editReturnNote(${r.id})">Edit</button>
              <button class="btn btn-primary" onclick="confirmReturn(${r.id}, '${r.ref}')">Signed &amp; back</button>` : ""}
@@ -13948,8 +13947,9 @@ async function renderGratuity() {
     </div>`;
 }
 
-// One "Print / Export" button with a short list, instead of a row of
-// Preview / PDF / Excel / Print buttons on every sheet.
+// A small drop-down list (the ... on an invoice line). Papers are not
+// in one: every sheet has the same three buttons, Preview / Export PDF /
+// Export Excel.
 function hrMenuClose() { document.querySelectorAll(".hr-menu.open").forEach(m => m.classList.remove("open")); }
 function hrMenu(btn, ev) {
   if (ev) ev.stopPropagation();
@@ -14276,7 +14276,7 @@ async function invLoad() {
   document.getElementById("inv-client-list").innerHTML = INV.clients.map(x => `<option value="${escapeAttr(x)}">`).join("");
   const pnos = [...new Set(INV.rows.map(r => r.project_no).filter(Boolean))];
   document.getElementById("inv-pno-list").innerHTML = pnos.map(x => `<option value="${escapeAttr(x)}">`).join("");
-  document.getElementById("inv-sig-state").textContent = INV.signature ? "Signature & stamp on file" : "No signature yet - upload it once";
+  if (!INV.signature) showStatus("inv-status", "warn", "No signature & stamp on file yet - admin uploads it once in Settings > General.");
   invDrawList();
 }
 function invDrawList() {
@@ -14411,9 +14411,9 @@ async function invPdfUrl(id) {
   return `${API}/export/accounts/invoice/${id}?token=${encodeURIComponent(cachedDownloadToken || "")}`;
 }
 async function invPdf(id) { const w = window.open("", "_blank"); const u = await invPdfUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
-async function invExcel() {
+async function invList(kind) {
   await refreshDownloadToken();
-  window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+  window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function invCancel(id) {
   const r = INV.rows.find(x => x.id === id); if (!r) return;
@@ -14430,15 +14430,6 @@ async function invConvert(id) {
     await invLoad(); showStatus("inv-status", "ok", `Tax invoice ${t.number} made from ${r.number}. It is under the Tax Invoice tab.`);
   } catch (e) { showStatus("inv-status", "err", errText(e)); }
 }
-async function invSignature(input) {
-  const f = input.files[0]; if (!f) return;
-  const fd = new FormData(); fd.append("file", f);
-  try { await apiCall("/employees/accounts/invoice-signature", { method: "POST", body: fd }); await invLoad();
-        showStatus("inv-status", "ok", "Signature & stamp saved - it prints on every invoice."); }
-  catch (e) { showStatus("inv-status", "err", errText(e)); }
-  input.value = "";
-}
-
 // ---- Accounts: the cash register -------------------------------------
 // Locked every time the screen is opened, and again on leaving it or
 // after five quiet minutes. The key lives only in this variable - never
@@ -14471,7 +14462,7 @@ async function regUnlock() {
     document.getElementById("reg-pass").value = "";
     document.getElementById("reg-lock").style.display = "none";
     document.getElementById("reg-body").style.display = "";
-    document.getElementById("reg-pw-btn").style.display = document.getElementById("reg-pw-hr").style.display = CURRENT_ROLE === "admin" ? "" : "none";
+    document.getElementById("reg-pw-btn").style.display = CURRENT_ROLE === "admin" ? "" : "none";
     regReset(); await regLoad(); regTouch();
   } catch (e) { msg.textContent = errText(e); document.getElementById("reg-pass").select(); }
   finally { btn.disabled = false; }
@@ -14547,16 +14538,16 @@ async function regDelete() {
 // an address the browser keeps in its history.
 async function regExport(kind) {
   if (!REG_KEY) return;
-  const win = kind === "pdf" ? window.open("", "_blank") : null;
+  const win = kind === "view" ? window.open("", "_blank") : null;
   try {
     await refreshDownloadToken();
-    const q = `format=${kind}&start=${document.getElementById("reg-from").value}&end=${document.getElementById("reg-to").value}` +
+    const q = `format=${kind === "excel" ? "excel" : "pdf"}&start=${document.getElementById("reg-from").value}&end=${document.getElementById("reg-to").value}` +
               `&token=${encodeURIComponent(cachedDownloadToken || "")}&rk=${encodeURIComponent(REG_KEY)}`;
     const res = await fetch(`${API}/export/accounts/register?${q}`);
     if (!res.ok) throw { status: res.status, body: await res.json().catch(() => ({})) };
     const url = URL.createObjectURL(await res.blob());
     if (win) win.location = url;
-    else { const a = document.createElement("a"); a.href = url; a.download = "Cash_Register.xlsx"; document.body.appendChild(a); a.click(); a.remove(); }
+    else { const a = document.createElement("a"); a.href = url; a.download = kind === "excel" ? "Cash_Register.xlsx" : "Cash_Register.pdf"; document.body.appendChild(a); a.click(); a.remove(); }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     regTouch();
   } catch (e) { if (win) win.close(); if (e && e.status === 423) regLock("The register locked itself - enter the password again."); else showStatus("reg-status", "err", errText(e)); }
@@ -14571,16 +14562,24 @@ async function regPwSave() {
     showStatus("reg-status", "ok", "Register password changed. Use the new one from now on.");
   } catch (e) { if (REG_KEY) showStatus("reg-status", "err", errText(e)); }
 }
-// The register has no tab of its own on view: three quick clicks on the
-// Tax Invoices heading bring it up, for a login that holds the right.
-document.addEventListener("click", ev => {
-  if (ev.detail !== 3 || !ev.target.closest || !ev.target.closest("#screen-title, #inv-form-title, #inv-list-title")) return;
+// The register has no tab of its own on view: three quick clicks (or taps
+// on a phone) on the Tax Invoices heading bring it up, for a login that
+// holds the right. Counted here rather than read from the browser's
+// click count, which phones do not keep for taps.
+let REG_TAPS = [];
+function regHeadingTap(ev) {
+  if (!ev.target.closest || !ev.target.closest("#screen-title, #inv-form-title, #inv-list-title")) return;
   const scr = document.getElementById("screen-invoices");
-  if (!scr || !scr.classList.contains("active") || INV_KIND !== "tax") return;
+  if (!scr || !scr.classList.contains("active") || INV_KIND !== "tax") { REG_TAPS = []; return; }
+  const now = Date.now();
+  REG_TAPS = REG_TAPS.filter(t => now - t < 1200); REG_TAPS.push(now);
+  if (REG_TAPS.length < 3) return;
+  REG_TAPS = [];
   if (CURRENT_ROLE !== "admin" && !MY_SCREENS.includes("accounts_register")) return;
   if (window.getSelection) window.getSelection().removeAllRanges();
   if (typeof pgReveal === "function") pgReveal("register"); else switchScreen("cashreg");
-});
+}
+document.addEventListener("click", regHeadingTap);
 document.addEventListener("keydown", () => { if (REG_KEY) regTouch(); });
 document.addEventListener("click", () => { if (REG_KEY) regTouch(); });
 

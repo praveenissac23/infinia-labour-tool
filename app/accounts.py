@@ -93,12 +93,10 @@ def create_tables(engine):
 
 # ---- invoices ---------------------------------------------------------------
 
-SIG_PATHS = [os.path.join(export_web.DATA_DIR, "invoice_signature." + e) for e in ("png", "jpg")]
-
-
 def invoice_signature():
-    found = [p for p in SIG_PATHS if os.path.exists(p)]
-    return max(found, key=os.path.getmtime) if found else None
+    """The signature and stamp kept in Settings - the same picture the
+    purchase orders print - so there is one to upload and one to change."""
+    return export_web.signature_file()
 
 
 def _company(db, cid):
@@ -272,26 +270,6 @@ def convert_proforma(iid: int, db: Session = Depends(get_db), user: models.User 
     return {"ok": True, "id": t.id, "number": t.number}
 
 
-@router.post("/employees/accounts/invoice-signature")
-async def upload_invoice_signature(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = INV):
-    """The signature and stamp printed on invoices - one picture, uploaded once."""
-    data = await file.read()
-    name = (file.filename or "").lower()
-    if not name.endswith((".png", ".jpg", ".jpeg")):
-        raise HTTPException(status_code=400, detail="Use a PNG or JPG picture.")
-    if len(data) > 8_000_000:
-        raise HTTPException(status_code=400, detail="The picture must be under 8 MB.")
-    ext = "png" if name.endswith(".png") else "jpg"
-    target = os.path.join(export_web.DATA_DIR, "invoice_signature." + ext)
-    for other in SIG_PATHS:
-        if other != target and os.path.exists(other):
-            os.remove(other)
-    with open(target, "wb") as f:
-        f.write(data)
-    M.log_action(db, user.id, "invoice_signature", f"{file.filename} ({len(data) // 1024} KB)")
-    return {"ok": True}
-
-
 def _pdf_response(db, x):
     d = _dict(x)
     d["date_text"] = f"{x.inv_date:%d %B %Y}"
@@ -313,11 +291,16 @@ def export_invoice(iid: int, token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/export/accounts/invoices")
-def export_invoice_register(token: str, kind: str = "tax", db: Session = Depends(get_db)):
-    """The list of invoices as a spreadsheet."""
+def export_invoice_register(token: str, kind: str = "tax", format: str = "excel", db: Session = Depends(get_db)):
+    """The list of invoices: Preview (PDF in the browser), PDF or Excel."""
     u = auth.get_download_user_from_token(token, db)
     if INV_RIGHT not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Invoices are for accounts only.")
+    if format in ("view", "pdf"):
+        rows = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date, Invoice.id).all()
+        name = "Tax_Invoices" if kind == "tax" else "Proforma_Invoices"
+        return StreamingResponse(_invoice_list_pdf(rows, kind), media_type="application/pdf",
+                                 headers={"Content-Disposition": f'{"inline" if format == "view" else "attachment"}; filename="{name}.pdf"'})
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     wb = Workbook(); ws = wb.active
@@ -344,6 +327,48 @@ def export_invoice_register(token: str, kind: str = "tax", db: Session = Depends
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={ws.title.replace(' ', '_')}.xlsx"})
+
+
+def _invoice_list_pdf(rows, kind):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    RED = colors.HexColor("#C0392B"); TINT = colors.HexColor("#F7F5F3"); GREY = colors.HexColor("#9A9A9A")
+    base = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5)
+    bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
+    rt = ParagraphStyle("r", parent=base, alignment=TA_RIGHT); rtb = ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
+    P = lambda t, st=base: Paragraph(escape(str(t)), st)
+    page = landscape(A4); W = page[0] - 24 * mm
+    buf = io.BytesIO()
+    title = "TAX INVOICES" if kind == "tax" else "PROFORMA INVOICES"
+    doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=10 * mm, bottomMargin=10 * mm, title=title.title())
+    logo = export_web._logo_image(42)
+    top = Table([[logo or P("INFINIA", bold), Paragraph(title, ParagraphStyle("t", parent=bold, fontSize=15, leading=19, textColor=RED, alignment=TA_RIGHT))]],
+                colWidths=[W / 2, W / 2])
+    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.2, RED),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    head = [P(h, bold) for h in ("Number", "Date", "Client", "Client TRN", "Project")] + [P(h, rtb) for h in ("Net (AED)", "VAT (AED)", "Total (AED)")] + [P("Status", bold)]
+    data, live = [head], [r for r in rows if r.status != "cancelled"]
+    for x in rows:
+        st = ParagraphStyle("g", parent=base, textColor=GREY) if x.status == "cancelled" else base
+        data.append([P(x.number, st), P(f"{x.inv_date:%d-%b-%y}", st), P(x.client, st), P(x.client_trn, st),
+                     P(" - ".join(v for v in (x.project_no, x.project) if v), st),
+                     P(f"{x.subtotal:,.2f}", rt), P(f"{x.vat:,.2f}", rt), P(f"{x.total:,.2f}", rt),
+                     P("Cancelled" if x.status == "cancelled" else ("Invoiced" if x.converted_to_id else "Issued"), st)])
+    data.append([P("TOTAL (not counting cancelled)", bold), "", "", "", "",
+                 P(f"{sum(r.subtotal for r in live):,.2f}", rtb), P(f"{sum(r.vat for r in live):,.2f}", rtb),
+                 P(f"{sum(r.total for r in live):,.2f}", rtb), ""])
+    t = Table(data, colWidths=[W * f for f in (.14, .08, .2, .12, .16, .09, .07, .09, .05)], repeatRows=1)
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), TINT), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
+                           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")), ("SPAN", (0, -1), (4, -1)),
+                           ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black), ("BACKGROUND", (0, -1), (-1, -1), TINT),
+                           ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    doc.build([top, Spacer(1, 8), t] if rows else [top, Spacer(1, 12), P("No invoices yet.")])
+    buf.seek(0)
+    return buf
 
 
 # ---- the cash register (password) -------------------------------------------------

@@ -17,6 +17,7 @@
   function allowed(g) {
     try {
       if (typeof pgHas !== "function" || typeof ALL_PAGES === "undefined") return true;
+      if (g.admin && typeof CURRENT_ROLE !== "undefined" && CURRENT_ROLE !== "admin") return false;
       const p = ALL_PAGES[g.go.page]; if (!p) return false;
       const t = p.tabs.find(x => x.id === g.go.tab); if (!t) return false;
       const sb = g.go.sub ? t.subs.find(x => x.id === g.go.sub) : null;

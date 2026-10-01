@@ -83,6 +83,11 @@ PAGES = {
     "accounts": ("Accounts", [
         tab("taxinv", "invoices", "Tax Invoice", "accounts_invoices", go="invOpen('tax')"),
         tab("proforma", "invoices", "Proforma Invoice", "accounts_invoices", go="invOpen('proforma')"),
+        # Petty cash: one cash box per sub-tab, each behind its own right.
+        tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
+            sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),
+            sub("pro", "PRO", screen="pettycash", right="petty_pro", go="pcBook('pro')"),
+            sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')")]),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [
@@ -99,11 +104,6 @@ PAGES = {
             sub("requests", "Material requests", screen="requests", right="requests"),
             sub("approvals", "Approvals", screen="approvals", right="approvals"),
             sub("followup", "Order follow-up", screen="followup", right="requests")]),
-        # One cash box per sub-tab, each behind its own right.
-        tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
-            sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),
-            sub("pro", "PRO", screen="pettycash", right="petty_pro", go="pcBook('pro')"),
-            sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')")]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),

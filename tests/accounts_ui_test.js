@@ -73,7 +73,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // ---- help: invoice guides yes, nothing at all about the register -------
   const h = await c.evaluate(() => ({
     inv: HELP.search('tax invoice').map(g => g.id), pro: HELP.search('proforma').map(g => g.id),
-    cash: ['cash register', 'register password', 'cash received', 'secret', 'cash book', 'register'].map(q => HELP.search(q).filter(g => g.area === 'Accounts' || (g.go && g.go.tab === 'register')).map(g => g.id)).flat(),
+    cash: ['cash register', 'register password', 'cash received', 'secret', 'cash book', 'register'].map(q => HELP.search(q).filter(g => (g.go && g.go.tab === 'register') || /^inv-/.test(g.id) && /register|secret/.test(q)).map(g => g.id)).flat(),
     any: HELP_GUIDES.some(g => (g.go && (g.go.tab === 'register')) || /cash ?reg|reg-|cashreg/i.test(JSON.stringify(g))),
     tips: Object.keys(window.HELP_TIPS || {}).some(k => /reg-/.test(k)) }));
   ck('help: tax invoice guide found', h.inv.includes('inv-tax'), h.inv);
@@ -113,7 +113,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('click row to edit', (await c.inputValue('#reg-desc')) === 'Labour advance - Ramesh' && (await c.textContent('#reg-save')) === 'Save changes');
   await c.click('#reg-cancel');
   // PDF export opens a blob
-  const [rp] = await Promise.all([c.ctx.waitForEvent('page'), c.evaluate(() => regExport('pdf'))]);
+  const [rp] = await Promise.all([c.ctx.waitForEvent('page'), c.evaluate(() => regExport('view'))]);
   await rp.waitForURL(/^blob:/, { timeout: 8000 }).catch(() => {}); ck('register PDF opens from memory (blob)', rp.url().startsWith('blob:') || c.reqs.some(u => u.startsWith('blob:')), c.reqs.slice(-4));
   ck('register key fetched, not navigated', !(await rp.evaluate(() => location.href)).includes('rk=')); await rp.close();
   // leave and come back: locked again

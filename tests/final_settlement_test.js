@@ -25,7 +25,7 @@ const B = 'http://127.0.0.1:8032';
   const rows = await p.locator('#fs-result').textContent();
   ck('and shows the notice pay line, no notice deduction', /Notice pay/.test(rows) && !/Notice not served/.test(rows));
   await p.screenshot({ path: '/tmp/claude-0/shots/final-settlement.png', fullPage: true });
-  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#hr-fs-card .hr-menu-btn').then(() => p.click('#hr-fs-card .hr-menu-list button:has-text("Preview")'))]);
+  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#hr-fs-card .exp-btns button:has-text("Preview")')]);
   await pop.waitForLoadState(); await pop.waitForTimeout(800);
   const pv = await pop.locator('.net b').textContent();
   ck('the preview shows the same total', /14,103\.00/.test(pv), pv);

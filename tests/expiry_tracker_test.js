@@ -44,7 +44,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.selectOption('#hr-exp-within', '30'); await p.waitForTimeout(300);
   ck('"Due in 30 days" shows the Hilux registration and the road permit', (await p.locator('#hr-exp-body tr').count()) === 2);
   await p.selectOption('#hr-exp-within', '-1');
-  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#hr-doc-company .hr-menu-btn').then(() => p.click('#hr-doc-company .hr-menu-list button:has-text("Preview")'))]);
+  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#hr-doc-company .exp-btns button:has-text("Preview")')]);
   await pop.waitForLoadState(); await pop.waitForTimeout(800);
   ck('preview lists the items', /Vehicle Expiry Tracker/.test(await pop.content()) && /Mobile crane/.test(await pop.content()));
   await pop.screenshot({ path: SH + 'expiry-3-preview.png' });

@@ -10,8 +10,8 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
 const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['labourpay', 'hrpayroll'],
-  store: ['store', 'rentals', 'requests', 'petty', 'purchasing'],
-  accounts: ['taxinv', 'proforma'],
+  store: ['store', 'rentals', 'requests', 'purchasing'],
+  accounts: ['taxinv', 'proforma', 'petty'],
   reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
 };
 const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices', labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };

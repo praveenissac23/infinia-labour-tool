@@ -143,7 +143,7 @@ if (window.PG_EMBED) {
 })();
 function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; } document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
 </script>
-<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_register"], "store": ["approvals", "petty_office", "petty_pro", "petty_site", "requests", "store"], "reports": ["approvals", "combine", "hrpayroll", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_register", "petty_office", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "hrpayroll", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 
