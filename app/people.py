@@ -269,7 +269,7 @@ def documents_due(days: int = 90, group: str = "", db: Session = Depends(get_db)
     rows = []
     for d in db.query(models.EmployeeDocument).options(joinedload(models.EmployeeDocument.employee)).all():
         e = d.employee
-        if not e or not e.active or not d.expires_on:
+        if not M.doc_tracked(e, today) or not d.expires_on:
             continue
         g = group_of(e, profs.get(e.id))
         if (group and g != group) or g not in allowed_groups(user):

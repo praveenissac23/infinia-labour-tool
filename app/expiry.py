@@ -49,7 +49,10 @@ def missing_people(db):
         k = "visa" if d.kind == "labour_card" else d.kind
         have.setdefault(d.employee_id, set()).add(k)
     out = []
+    today = M._dubai_today()
     for e in db.query(models.Employee).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all():  # noqa: E712
+        if not M.doc_tracked(e, today):
+            continue          # left, and his last pay cycle is over
         need = [k for k, _ in REQUIRED if not (k == "visa" and (e.pay_group or "") == "local")]
         miss = [label for k, label in REQUIRED if k in need and k not in have.get(e.id, set())]
         if miss:
@@ -64,7 +67,20 @@ def summary(db):
     expired = [i for i in items if i["days_left"] < 0]
     week = [i for i in items if 0 <= i["days_left"] <= 7]
     month = [i for i in items if 8 <= i["days_left"] <= 30]
+    # What each tab of the page shows: people counted once each, by the
+    # document of theirs that is soonest (one line a person on that list);
+    # company documents one by one (one line a document there). The
+    # totals above stay for the menu number and the bell.
+    soonest = {}
+    for i in items:
+        if i["type"] == "person":
+            soonest[i["who"]] = min(soonest.get(i["who"], 10 ** 6), i["days_left"])
+    comp = [i["days_left"] for i in items if i["type"] == "company"]
+    band = lambda xs: {"expired": sum(1 for d in xs if d < 0), "week": sum(1 for d in xs if 0 <= d <= 7),
+                       "month": sum(1 for d in xs if 8 <= d <= 30)}
     return {"expired": len(expired), "week": len(week), "month": len(month), "missing": len(miss),
+            "people": band(list(soonest.values())),
+            "company": {**band(comp), "all": len(M.list_expiries(db=db, user=None)["rows"])},
             "missing_people": miss,
             "attention": sorted(expired + week, key=lambda i: i["days_left"])}
 

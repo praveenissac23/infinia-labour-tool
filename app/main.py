@@ -8334,6 +8334,22 @@ def _doc_dict(d, emp):
             "notes": d.notes or ""}
 
 
+
+def doc_tracked(emp, today=None):
+    """Still followed by Expiry Reminder? A man who has left stays only
+    until the end of the pay cycle he left in (his last pay and settlement
+    may still need his papers); from the next cycle he is off every
+    reminder, list, count and the bell."""
+    if not emp or not emp.active:
+        return False
+    if emp.terminated_on:
+        from payroll_cycle import cycle_bounds_for
+        today = today or _dubai_today()
+        if cycle_bounds_for(emp.terminated_on)[1] < today:
+            return False
+    return True
+
+
 @app.get("/employees/documents")
 def list_documents(within: int = None, kind: str = "", q: str = "",
                     group: str = "", db: Session = Depends(get_db),
@@ -8346,9 +8362,10 @@ def list_documents(within: int = None, kind: str = "", q: str = "",
     """
     emps = {e.id: e for e in db.query(models.Employee).all()}
     rows = []
+    today = _dubai_today()
     for d in db.query(models.EmployeeDocument).all():
         emp = emps.get(d.employee_id)
-        if not emp or not emp.active:
+        if not doc_tracked(emp, today):
             continue
         if kind and d.kind != kind:
             continue

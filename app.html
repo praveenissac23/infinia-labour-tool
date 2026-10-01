@@ -1072,7 +1072,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b0a32f36d2e8";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="7c9b58d2e3e2";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2115,6 +2115,8 @@
                   <option value="30" selected>Expired or due in 30 days</option>
                   <option value="7">Expired or due in 7 days</option>
                   <option value="0">Expired only</option>
+                  <option value="w">Due in 7 days</option>
+                  <option value="m">Due in 8 to 30 days</option>
                   <option value="90">Expired or due in 90 days</option>
                   <option value="missing">Missing documents</option>
                   <option value="-1">Everyone</option>
@@ -2165,6 +2167,8 @@
                     <option value="30" selected>Expired or due in 30 days</option>
                     <option value="7">Expired or due in 7 days</option>
                     <option value="0">Expired only</option>
+                    <option value="w">Due in 7 days</option>
+                    <option value="m">Due in 8 to 30 days</option>
                     <option value="90">Expired or due in 90 days</option>
                     <option value="-1">Everything</option>
                   </select>
@@ -13543,29 +13547,41 @@ function expOpen() {
 }
 async function expLoadSummary() {
   try { EXP_SUM = await apiCall("/employees/expiry/summary"); } catch (e) { return; }
-  const c = (k, cls, label, sub, n) => `<button type="button" class="exp-card ${cls}${n ? " has" : " zero"}" data-k="${k}" onclick="expCard('${k}')">
-      <b>${n}</b><span>${label}</span><small>${sub}</small></button>`;
-  document.getElementById("exp-cards").innerHTML =
-    c("expired", "red", "Expired", "renew now", EXP_SUM.expired) +
-    c("week", "amber", "Due in 7 days", "start renewal", EXP_SUM.week) +
-    c("month", "yellow", "Due in 8 to 30 days", "plan ahead", EXP_SUM.month) +
-    c("missing", "grey", "Missing documents", "people with nothing on file", EXP_SUM.missing);
-  expCardsMark();
+  expDrawCards();
   expBadge(EXP_SUM.expired + EXP_SUM.week);
   if (document.getElementById("hr-doc-within").value === "missing") renderDocuments();
 }
-// A counter picks the list: the same filter on both lists.
+// The counters count what the open tab lists - people on People (one
+// each, by their soonest document), documents on Company - so a card's
+// number is the number of lines its click shows.
+function expDrawCards() {
+  if (!EXP_SUM || !EXP_SUM.people) return;
+  const company = document.getElementById("hr-doc-company").style.display !== "none";
+  const n = company ? EXP_SUM.company : EXP_SUM.people;
+  const who = company ? "documents" : "people";
+  const c = (k, cls, label, sub, v) => `<button type="button" class="exp-card ${cls}${v ? " has" : " zero"}" data-k="${k}" onclick="expCard('${k}')">
+      <b>${v}</b><span>${label}</span><small>${sub}</small></button>`;
+  document.getElementById("exp-cards").innerHTML =
+    c("expired", "red", "Expired", `${who} - renew now`, n.expired) +
+    c("week", "amber", "Due in 7 days", `${who} - start renewal`, n.week) +
+    c("month", "yellow", "Due in 8 to 30 days", `${who} - plan ahead`, n.month) +
+    (company ? c("all", "grey", "All company documents", "everything on file", n.all)
+             : c("missing", "grey", "Missing documents", "people with nothing on file", EXP_SUM.missing));
+  expCardsMark();
+}
+// A counter picks exactly its own lines.
 function expCard(k) {
-  const v = { expired: "0", week: "7", month: "30", missing: "missing" }[k];
+  const v = { expired: "0", week: "w", month: "m", missing: "missing", all: "-1" }[k];
   if (k === "missing") { hrDocMode("people"); if (typeof pgSub === "function") try { pgSub("people"); } catch (e) {} }
-  document.getElementById("hr-doc-within").value = v;
-  document.getElementById("hr-exp-within").value = k === "missing" ? "30" : v;
+  const company = document.getElementById("hr-doc-company").style.display !== "none";
+  if (company && k !== "missing") document.getElementById("hr-exp-within").value = v;
+  else document.getElementById("hr-doc-within").value = k === "all" ? "-1" : v;
   expCardsMark(); renderDocuments(); renderExpiries();
 }
 function expCardsMark() {
   const company = document.getElementById("hr-doc-company").style.display !== "none";
   const v = document.getElementById(company ? "hr-exp-within" : "hr-doc-within").value;
-  const k = { "0": "expired", "7": "week", "missing": "missing" }[v];
+  const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company ? "all" : "" }[v];
   document.querySelectorAll(".exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
 // The menu number: documents needing action, plus - for admin and the
@@ -13623,7 +13639,8 @@ function hrDocCell(x, emp, kind) {
 
 function renderDocuments() {
   if (document.getElementById("hr-doc-within").value === "missing") return expRenderMissing();
-  const within = parseInt(document.getElementById("hr-doc-within").value, 10);
+  const wv = document.getElementById("hr-doc-within").value;
+  const within = wv === "w" || wv === "m" ? -2 : parseInt(wv, 10);
   const who = document.getElementById("hr-doc-who").value;
   const q = (document.getElementById("hr-doc-search").value || "").toLowerCase().trim();
   const people = {};
@@ -13646,7 +13663,8 @@ function renderDocuments() {
   rows = rows.filter(p =>
     (who === "all" || (who === "staff") === !!p.staff) &&
     (!q || `${p.emp_no} ${p.name}`.toLowerCase().includes(q)) &&
-    (within < 0 || (within === 0 ? p.worst === "expired" : p.soonest <= within)));
+    (wv === "w" ? p.soonest >= 0 && p.soonest <= 7 : wv === "m" ? p.soonest >= 8 && p.soonest <= 30 :
+     within < 0 || (within === 0 ? p.soonest < 0 : p.soonest <= within)));
   rows.sort((a, b) => a.soonest - b.soonest ||
     String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
   const count = k => rows.filter(p => p.worst === k).length;
@@ -13775,6 +13793,7 @@ function hrDocMode(m) {
   document.getElementById("hr-doc-people").style.display = m === "people" ? "" : "none";
   document.getElementById("hr-doc-company").style.display = m === "company" ? "" : "none";
   if (m === "company") loadExpiries(); else loadDocuments();
+  expDrawCards();
 }
 async function loadExpiries() {
   try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { expMsg("err", errText(e)); return; }
@@ -13788,12 +13807,15 @@ async function loadExpiries() {
   renderExpiries();
 }
 function renderExpiries() {
-  const within = parseInt(document.getElementById("hr-exp-within").value, 10);
+  const wv = document.getElementById("hr-exp-within").value;
+  const within = wv === "w" || wv === "m" ? -2 : parseInt(wv, 10);
   const cat = document.getElementById("hr-exp-catf").value;
   const q = (document.getElementById("hr-exp-search").value || "").toLowerCase().trim();
   const rows = HR_EXP.rows.filter(r => (!cat || r.category === cat) &&
     (!q || `${r.item} ${r.number} ${r.kind} ${r.category}`.toLowerCase().includes(q)) &&
-    (within < 0 || (within === 0 ? r.status === "expired" : (r.days_left ?? 1e9) <= within)));
+    (wv === "w" ? r.days_left !== null && r.days_left >= 0 && r.days_left <= 7 :
+     wv === "m" ? r.days_left !== null && r.days_left >= 8 && r.days_left <= 30 :
+     within < 0 || (within === 0 ? r.status === "expired" : (r.days_left ?? 1e9) <= within)));
   const c = k => rows.filter(r => r.status === k).length;
   document.getElementById("hr-exp-count").textContent = `${rows.length} items - ${c("expired")} expired, ${c("urgent")} due in 30 days, ${c("soon")} in 90`;
   document.getElementById("hr-exp-body").innerHTML = rows.map(r => {
