@@ -219,6 +219,7 @@
   .exp-card.grey b { color: #555; } .exp-card.grey.has { background: #F5F3F1; }
   .exp-card.zero b { color: #2E7D32; }
   .exp-card.on { outline: 2px solid #B7322A; outline-offset: -1px; }
+  td.hr-d-add, span.hr-d-add { cursor: pointer; } td.hr-d-add:hover, span.hr-d-add:hover { outline: 2px solid #B7322A; outline-offset: -2px; }
   .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   /* PDC tracker */
   .pdc-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.6fr 1fr auto; gap: 10px 12px; align-items: end; }
@@ -13431,8 +13432,9 @@ async function loadDocuments() {
   renderDocuments();
 }
 
-function hrDocCell(x) {
-  if (!x) return `<td class="hr-nil">-</td>`;
+function hrDocCell(x, emp, kind) {
+  if (!x) return emp ? `<td class="hr-nil hr-d-add" onclick="hrAddDoc('${escapeAttr(emp)}', '${kind}')"
+              title="Click to add this document">-</td>` : `<td class="hr-nil">-</td>`;
   const n = x.days_left;
   const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago`
              : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
@@ -13477,10 +13479,10 @@ function renderDocuments() {
       <td>${escapeHtml(p.emp_no)}</td>
       <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}
         ${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
-      ${hrDocCell(p.docs.eid)}${hrDocCell(p.docs.visa)}${hrDocCell(p.docs.passport)}
+      ${hrDocCell(p.docs.eid, p.emp_no, "eid")}${hrDocCell(p.docs.visa, p.emp_no, p.staff ? "visa" : "labour_card")}${hrDocCell(p.docs.passport, p.emp_no, "passport")}
       <td class="txt">${p.other.map(x => `<span class="hr-d hr-d-${x.status}" style="display:block; padding:1px 3px;"
           onclick="hrEditDoc(${x.id})">${escapeHtml(x.kind_label)}: ${hrDate(x.expires_on)}</span>`).join("") ||
-          '<span class="hr-nil">-</span>'}</td>
+          `<span class="hr-nil hr-d-add" style="display:block;" onclick="hrAddDoc('${escapeAttr(p.emp_no)}', 'custom')" title="Click to add another document">-</span>`}</td>
       <td class="hr-d-${p.worst === "valid" ? "" : p.worst}">${HR_DOC_WORD[p.worst]}</td>
     </tr>`).join("") ||
     `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nothing matches.</td></tr>`;
@@ -13494,12 +13496,24 @@ function expRenderMissing() {
   const rows = ((EXP_SUM && EXP_SUM.missing_people) || []).filter(p =>
     (who === "all" || (who === "staff") === !!p.staff) && (!q || `${p.emp_no} ${p.name}`.toLowerCase().includes(q)));
   document.getElementById("hr-doc-count").textContent = `${rows.length} people with a document missing`;
-  const cell = (p, label) => p.missing.includes(label) ? `<td class="hr-d hr-d-expired">Missing</td>` : `<td class="hr-nil">on file</td>`;
+  // Each cell opens its own document: a Missing one to add it, an "on
+  // file" one to renew or correct what is there.
+  const kindOf = { "Emirates ID": "eid", "Visa / labour card": "visa", "Passport": "passport" };
+  const onFile = (p, label) => {
+    const k = kindOf[label];
+    return (HR_DOCS || []).find(d => d.emp_no === p.emp_no && (d.kind === k || (k === "visa" && d.kind === "labour_card")));
+  };
+  const cell = (p, label) => {
+    if (p.missing.includes(label))
+      return `<td class="hr-d hr-d-expired hr-d-add" onclick="hrAddDoc('${escapeAttr(p.emp_no)}', '${label === "Visa / labour card" && !p.staff ? "labour_card" : kindOf[label]}')" title="Click to add it">Missing</td>`;
+    const d = onFile(p, label);
+    return d ? `<td class="hr-nil hr-d-add" onclick="hrEditDoc(${d.id})" title="Click to renew or correct">on file</td>` : `<td class="hr-nil">on file</td>`;
+  };
   document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
-    <tr style="cursor:pointer;" onclick="document.getElementById('hr-doc-emp').value='${escapeAttr(p.emp_no)}'; document.getElementById('hr-doc-expires').focus();" title="Click to add the missing document">
+    <tr>
       <td>${escapeHtml(p.emp_no)}</td>
       <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
-      ${cell(p, "Emirates ID")}${cell(p, "Visa / labour card")}${cell(p, "Passport")}<td class="hr-nil">-</td>
+      ${cell(p, "Emirates ID")}${cell(p, "Visa / labour card")}${cell(p, "Passport")}<td class="hr-nil hr-d-add" onclick="hrAddDoc('${escapeAttr(p.emp_no)}', 'custom')" title="Click to add another document">-</td>
       <td class="hr-d-expired">Missing</td></tr>`).join("") ||
     `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nobody is missing a document.</td></tr>`;
 }
@@ -13522,9 +13536,28 @@ function hrEditDoc(id) {
   box.innerHTML = `Editing <b>${escapeHtml(x.kind_label)}</b> for ${escapeHtml(x.name)}
     <a href="#" onclick="deleteDocument(${id});return false;" style="color:var(--red); margin-left:10px;">Remove it</a>
     <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
-  box.style.display = "";
+  box.className = "status-msg warn"; box.style.display = "";
   document.getElementById("hr-doc-expires").focus();
   document.getElementById("screen-expiry").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Clicking an empty or Missing cell: the form above is filled for that
+// person and that document, ready for the expiry date.
+function hrAddDoc(emp, kind) {
+  hrClearDoc();
+  const p = (HR_DOCS || []).find(d => d.emp_no === emp) || (EXP_SUM && (EXP_SUM.missing_people || []).find(x => x.emp_no === emp)) || {};
+  document.getElementById("hr-doc-emp").value = emp;
+  const sel = document.getElementById("hr-doc-kind");
+  sel.value = [...sel.options].some(o => o.value === kind) ? kind : "custom";
+  hrDocKindChanged();
+  const label = sel.value === "custom" ? "another document" : sel.options[sel.selectedIndex].text;
+  const box = document.getElementById("hr-doc-editing");
+  box.dataset.id = "";
+  box.innerHTML = `Adding <b>${escapeHtml(label)}</b> for ${escapeHtml(emp)}${p.name ? " " + escapeHtml(p.name) : ""} - put the expiry date and press Save document
+    <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
+  box.className = "status-msg warn"; box.style.display = "";
+  document.getElementById("screen-expiry").scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => document.getElementById(sel.value === "custom" ? "hr-doc-custom" : "hr-doc-expires").focus(), 250);
 }
 
 function hrClearDoc() {
