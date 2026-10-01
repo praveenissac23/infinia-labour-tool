@@ -763,6 +763,7 @@ SCREEN_LABELS = {
     "storekeeper": "Record stock in / out", "people_labour": "Labour register",
     "people_office": "Office staff register incl. household (office salaries)", "people_local": "Local staff register",
     "expiry": "Expiry reminder - documents, NOCs, permits, licences (no salaries)",
+    "pdc": "PDC tracker - post-dated cheques (admin and chief accountant)",
     "petty_site": "Site petty cash", "petty_pro": "PRO petty cash", "petty_office": "Office petty cash",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
@@ -774,7 +775,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Petty cash", ["petty_site", "petty_pro", "petty_office"]),
-    ("Expiry Reminder", ["expiry"]),
+    ("Expiry Reminder", ["expiry", "pdc"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),

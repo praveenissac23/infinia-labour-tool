@@ -220,6 +220,26 @@
   .exp-card.zero b { color: #2E7D32; }
   .exp-card.on { outline: 2px solid #B7322A; outline-offset: -1px; }
   .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  /* PDC tracker */
+  .pdc-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.6fr 1fr auto; gap: 10px 12px; align-items: end; }
+  .pdc-form .hr-field input, .pdc-form .hr-field select { width: 100%; }
+  .pdc-form .pdc-btns { display: flex; gap: 8px; }
+  .pdc-bar { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin: 14px 0 10px; }
+  .pdc-bar input[type="month"] { height: 36px; box-sizing: border-box; padding: 0 8px; }
+  .pdc-grid th, .pdc-grid td { text-align: right; white-space: nowrap; }
+  .pdc-grid th:first-child, .pdc-grid td:first-child { text-align: left; white-space: normal; }
+  .pdc-grid td:first-child small { display: block; color: #8A8178; font-size: 11px; }
+  .pdc-grid td.od { color: #B7322A; font-weight: 700; }
+  .pdc-grid td { vertical-align: top; } .pdc-grid small.pdc-when { display: block; font-size: 11px; color: #8A8178; font-weight: 400; }
+  .pdc-grid tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
+  .pdc-grid td.tot { font-weight: 700; }
+  .pdc-list tr { cursor: pointer; } .pdc-list tr:hover td { background: #FDF6F5; }
+  .pdc-list tr.edit td { background: #FFF6DA; }
+  .pdc-st { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11.5px; font-weight: 700; }
+  .pdc-st.overdue { background: #FDE3DF; color: #B7322A; } .pdc-st.soon { background: #FFF1CC; color: #8A6100; }
+  .pdc-st.later { background: #EEF2F6; color: #44546A; } .pdc-st.cleared { background: #E3F4E5; color: #2E7D32; }
+  .pdc-st.cancelled { background: #EEE; color: #888; text-decoration: line-through; }
+  @media (max-width: 900px) { .pdc-form { grid-template-columns: 1fr 1fr; } }
   .exp-mail-row > div { min-width: 190px; } .exp-mail-row .hr-nil { display: block; font-size: 11.5px; }
   .exp-mail-row input { flex: 1 1 320px; height: 36px; }
   .pg-side .pg-item .pg-badge { background: #fff !important; color: #C0392B !important; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 1px 7px; margin-left: 8px; display: inline-block; line-height: 16px; }
@@ -2058,6 +2078,76 @@
           
         </div>
 
+        <!-- ============ PDC TRACKER ============
+             Post-dated cheques - admin and the chief accountant only. -->
+        <div class="screen" id="screen-pdc">
+          <div class="status-msg" id="pdc-status"></div>
+          <div class="exp-cards" id="pdc-cards"></div>
+          <div class="card">
+            <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
+              <h2 style="margin:0;" id="pdc-form-title">Add a cheque</h2>
+            </div>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">
+              Each cheque given out, with the date it can be presented. Reminders come 14 days and 7 days before,
+              on the day, and every day after until it is marked cleared. Rent or instalments? Pick how many months -
+              the cheque number counts up by itself. Expected payments without a cheque (salaries) can go in too.</p>
+            <div class="pdc-form">
+              <label class="hr-field"><span>Payee *</span><input type="text" id="pdc-payee" list="pdc-payee-list" placeholder="e.g. Desarch Scaffolding"></label>
+              <datalist id="pdc-payee-list"></datalist>
+              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451"></label>
+              <label class="hr-field"><span>Bank</span><input type="text" id="pdc-bank" list="pdc-bank-list" placeholder="e.g. ADCB"></label>
+              <datalist id="pdc-bank-list"></datalist>
+              <label class="hr-field"><span>Cheque date *</span><input type="date" id="pdc-date"></label>
+              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00"></label>
+              <label class="hr-field"><span>For / notes</span><input type="text" id="pdc-notes" placeholder="e.g. Final 30% - 906"></label>
+              <label class="hr-field" id="pdc-repeat-f"><span>Months</span><select id="pdc-repeat" class="hr-dd">
+                <option value="1">Just this one</option><option value="2">2 months</option><option value="3">3 months</option>
+                <option value="4">4 months</option><option value="6">6 months</option><option value="12">12 months</option></select></label>
+              <label class="hr-field" id="pdc-status-f" style="display:none;"><span>Status</span><select id="pdc-st" class="hr-dd">
+                <option value="pending">To be paid</option><option value="cleared">Cleared</option><option value="cancelled">Cancelled</option></select></label>
+              <div class="pdc-btns">
+                <button class="btn btn-primary" id="pdc-save" onclick="pdcSave()">Add</button>
+                <button class="btn btn-gray" id="pdc-cancel" style="display:none;" onclick="pdcReset()">Cancel</button>
+                <button class="btn btn-gray" id="pdc-del" style="display:none; color:#B7322A;" onclick="pdcDelete()">Remove</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+              <div class="pc-kind" id="pdc-view">
+                <button type="button" class="on" data-v="grid" onclick="pdcView('grid')">Monthly tracker</button>
+                <button type="button" data-v="list" onclick="pdcView('list')">Cheque list</button>
+              </div>
+              <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" onclick="hrMenuClose(); pdcExport('view')">Preview</button><button type="button" onclick="hrMenuClose(); pdcExport('pdf')">Download PDF</button><button type="button" onclick="hrMenuClose(); pdcExport('excel')">Download Excel</button></div></div>
+            </div>
+            <div id="pdc-grid-wrap">
+              <div class="pdc-bar">
+                <label class="hr-field"><span>From</span><input type="month" id="pdc-from" onchange="pdcLoadGrid()"></label>
+                <label class="hr-field"><span>Months</span><select id="pdc-months" class="hr-dd" onchange="pdcLoadGrid()">
+                  <option value="3">3</option><option value="4" selected>4</option><option value="6">6</option><option value="12">12</option></select></label>
+                <label class="hr-field"><span>Show</span><select id="pdc-show" class="hr-dd" onchange="pdcLoadGrid()">
+                  <option value="due" selected>To be paid</option><option value="all">Paid and to be paid</option></select></label>
+              </div>
+              <div class="grid-wrap" style="max-height:62vh;"><table class="hr-grid pdc-grid"><thead id="pdc-ghead"></thead><tbody id="pdc-gbody"></tbody><tfoot id="pdc-gfoot"></tfoot></table></div>
+            </div>
+            <div id="pdc-list-wrap" style="display:none;">
+              <div class="pdc-bar">
+                <select id="pdc-filter" class="hr-dd" style="width:200px;" onchange="pdcDrawList()">
+                  <option value="pending" selected>To be paid</option><option value="overdue">Overdue</option>
+                  <option value="week">Due in 7 days</option><option value="fortnight">Due in 14 days</option>
+                  <option value="cleared">Cleared</option><option value="cancelled">Cancelled</option><option value="all">All</option></select>
+                <input type="text" id="pdc-search" placeholder="Search payee, cheque or note" style="width:240px;" oninput="pdcDrawList()">
+                <span id="pdc-count" style="font-size:12px; color:#888;"></span>
+              </div>
+              <div class="grid-wrap" style="max-height:62vh;"><table class="hr-grid pdc-list">
+                <thead><tr><th style="width:11%;">Cheque date</th><th class="txt" style="width:24%;">Payee</th><th style="width:11%;">Cheque no</th>
+                  <th style="width:9%;">Bank</th><th style="width:12%; text-align:right;">Amount</th><th class="txt" style="width:17%;">For / notes</th>
+                  <th style="width:9%;">Standing</th><th style="width:7%;"></th></tr></thead>
+                <tbody id="pdc-lbody"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
           <div class="card">
@@ -3488,7 +3578,7 @@ const SCREEN_TITLES = {
   errorcheck: "Check Before You Pay",
   livecard: "Live Card",
   settings: "Settings",
-  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
   activity: "Activity Monitor",
   store: "Store / Inventory",
   requests: "Material Requests",
@@ -3600,6 +3690,7 @@ function switchScreen(name) {
   if (name === "suppliers") loadSuppliersScreen();
   if (name === "pettycash") loadPettyCash();
   if (name === "expiry") expOpen();
+  if (name === "pdc") pdcOpen();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -6078,7 +6169,8 @@ async function loadNotifications() {
     const d = await apiCall("/notifications");
     notifications = d.notifications || [];
     const ex = notifications.find(n => n.kind === "expiry");
-    if (typeof expBadge === "function") expBadge(ex ? ex.count : 0);
+    const pd = notifications.find(n => n.kind === "pdc");
+    if (typeof expBadge === "function") { PDC_N = pd ? pd.count : 0; expBadge(ex ? ex.count : 0); }
   } catch (e) {
     notifications = [];
   }
@@ -11241,7 +11333,7 @@ const SCREEN_LABELS = {
   livecard: "Live Card", store: "Store / Inventory", requests: "Material Requests",
   approvals: "Material Approvals", errorcheck: "Check Before You Pay",
   settings: "Settings", activity: "Activity Monitor",
-  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pettycash: "Petty Cash",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
   storekeeper: "Records stock in and out",
 };
@@ -13294,7 +13386,13 @@ function expCardsMark() {
   const k = { "0": "expired", "7": "week", "missing": "missing" }[v];
   document.querySelectorAll(".exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
+// The menu number: documents needing action, plus - for admin and the
+// chief accountant only (the server sends nothing to anyone else) -
+// cheques overdue or due within 7 days.
+let EXP_N = 0, PDC_N = 0;
 function expBadge(n) {
+  if (n !== undefined) EXP_N = n || 0;
+  n = EXP_N + PDC_N;
   const item = document.querySelector('.pg-side .pg-item[data-page="expiry"]'); if (!item) return;
   let b = item.querySelector(".pg-badge");
   if (!n) { if (b) b.remove(); return; }
@@ -13768,6 +13866,148 @@ async function pcExport(kind) {
                                                 : `${API}/export/store/petty-cash?month=${m}&book=${PC_BOOK}&format=${kind}&token=${t}`;
   const w = window.open(u, "_blank");
   if (kind === "print" && w) w.addEventListener("load", () => w.print());
+}
+
+// ---- PDC tracker (Expiry Reminder > PDCs) ---------------------------------
+// Admin and the chief accountant only - the server refuses everyone else.
+let PDC = null, PDC_EDIT = null, PDC_GRID = null, PDC_VIEW = "grid";
+const pdcMoney = v => (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// "29-Sep-26" exactly as on the papers (a browser's own "short month" can
+// read "Sept").
+const PDC_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pdcDmy = iso => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}-${PDC_MON[+m - 1]}-${y.slice(2)}`; };
+function pdcToday() { const d = new Date(Date.now() + 4 * 3600e3); return d.toISOString().slice(0, 10); }
+
+async function pdcOpen() {
+  if (!document.getElementById("pdc-from").value) document.getElementById("pdc-from").value = pdcToday().slice(0, 7);
+  if (!document.getElementById("pdc-date").value) document.getElementById("pdc-date").value = pdcToday();
+  await pdcLoad();
+}
+async function pdcLoad() {
+  try { PDC = await apiCall("/employees/pdc"); }
+  catch (e) { showStatus("pdc-status", "err", errText(e)); return; }
+  const s = PDC.summary;
+  const c = (k, cls, label, sub, n, amt) => `<button type="button" class="exp-card ${cls}${n ? " has" : " zero"}" data-k="${k}" onclick="pdcCard('${k}')">
+      <b>${n}</b><span>${label}</span><small>${n ? "AED " + pdcMoney(amt) : sub}</small></button>`;
+  document.getElementById("pdc-cards").innerHTML =
+    c("overdue", "red", "Overdue", "nothing overdue", s.overdue, s.overdue_amount) +
+    c("week", "amber", "Due in 7 days", "nothing this week", s.week, s.week_amount) +
+    c("fortnight", "yellow", "Due in 8 to 14 days", "nothing next week", s.fortnight, s.fortnight_amount) +
+    c("pending", "grey", "All to be paid", "no cheques pending", s.pending, s.pending_amount);
+  PDC_N = s.overdue + s.week; if (typeof expBadge === "function") expBadge();
+  document.getElementById("pdc-payee-list").innerHTML = PDC.payees.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  document.getElementById("pdc-bank-list").innerHTML = PDC.banks.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  pdcDrawList();
+  await pdcLoadGrid();
+}
+function pdcCard(k) {
+  document.getElementById("pdc-filter").value = k;
+  pdcView("list");
+}
+function pdcView(v) {
+  PDC_VIEW = v;
+  document.querySelectorAll("#pdc-view button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  document.getElementById("pdc-grid-wrap").style.display = v === "grid" ? "" : "none";
+  document.getElementById("pdc-list-wrap").style.display = v === "list" ? "" : "none";
+  if (v === "list") pdcDrawList();
+}
+async function pdcLoadGrid() {
+  const q = `start=${document.getElementById("pdc-from").value}&months=${document.getElementById("pdc-months").value}&show=${document.getElementById("pdc-show").value}`;
+  try { PDC_GRID = await apiCall(`/employees/pdc/tracker?${q}`); } catch (e) { return; }
+  const t = PDC_GRID, od = !!t.overdue;
+  const cell = v => v ? pdcMoney(v) : "";
+  document.getElementById("pdc-ghead").innerHTML = `<tr><th class="txt">Payee</th>${od ? "<th>Overdue</th>" : ""}${t.columns.map(c => `<th>${c.label}</th>`).join("")}<th>Total</th></tr>`;
+  document.getElementById("pdc-gbody").innerHTML = t.rows.map(r => {
+    const tip = r.cheques.map(q => `${pdcDmy(q.date)}${q.no ? " #" + q.no : ""}: ${pdcMoney(q.amount)}${q.status === "cleared" ? " (cleared)" : ""}`).join("\n");
+    return `<tr title="${escapeAttr(tip)}"><td><b>${escapeHtml(r.payee)}</b>${r.notes ? `<small>${escapeHtml(r.notes)}</small>` : ""}</td>
+      ${od ? `<td class="od">${cell(r.overdue)}${pdcWhen(r.overdue_dates)}</td>` : ""}${r.cells.map((v, i) => `<td>${cell(v)}${pdcWhen(r.dates[i])}</td>`).join("")}<td class="tot">${pdcMoney(r.total)}</td></tr>`;
+  }).join("") || `<tr><td colspan="${t.columns.length + 2 + (od ? 1 : 0)}" style="color:#999; padding:18px; text-align:left;">No cheques in ${escapeHtml(t.label)}.</td></tr>`;
+  document.getElementById("pdc-gfoot").innerHTML = `<tr><td>TOTAL (Monthly)</td>${od ? `<td class="od">${pdcMoney(t.overdue)}</td>` : ""}${t.totals.map(v => `<td>${pdcMoney(v)}</td>`).join("")}<td>${pdcMoney(t.grand)}</td></tr>`;
+}
+// The exact date (and cheque number) under each figure.
+function pdcWhen(qs) {
+  return (qs || []).map(q => `<small class="pdc-when">${pdcDmy(q.date)}${q.no ? " #" + escapeHtml(q.no) : ""}${q.cleared ? " &#10003;" : ""}${qs.length > 1 ? " - " + pdcMoney(q.amount) : ""}</small>`).join("");
+}
+function pdcStanding(r) {
+  if (r.status === "cleared") return `<span class="pdc-st cleared">Cleared</span>`;
+  if (r.status === "cancelled") return `<span class="pdc-st cancelled">Cancelled</span>`;
+  const d = r.days_left;
+  if (d < 0) return `<span class="pdc-st overdue">${-d} day${d === -1 ? "" : "s"} over</span>`;
+  if (d === 0) return `<span class="pdc-st overdue">Today</span>`;
+  return `<span class="pdc-st ${d <= 14 ? "soon" : "later"}">in ${d} day${d === 1 ? "" : "s"}</span>`;
+}
+function pdcDrawList() {
+  if (!PDC) return;
+  const f = document.getElementById("pdc-filter").value, q = document.getElementById("pdc-search").value.trim().toLowerCase();
+  const keep = r => f === "all" ? true : f === "cleared" || f === "cancelled" ? r.status === f : r.status === "pending" && (
+    f === "pending" || (f === "overdue" && r.days_left < 0) || (f === "week" && r.days_left >= 0 && r.days_left <= 7) || (f === "fortnight" && r.days_left >= 8 && r.days_left <= 14));
+  const rows = PDC.rows.filter(keep).filter(r => !q || `${r.payee} ${r.cheque_no} ${r.notes} ${r.bank}`.toLowerCase().includes(q));
+  const tot = rows.reduce((a, r) => a + r.amount, 0);
+  document.getElementById("pdc-count").textContent = `${rows.length} cheque${rows.length === 1 ? "" : "s"} - AED ${pdcMoney(tot)}`;
+  document.getElementById("pdc-lbody").innerHTML = rows.map(r => `<tr class="${PDC_EDIT === r.id ? "edit" : ""}" onclick="pdcEdit(${r.id})">
+      <td>${pdcDmy(r.date)}</td><td class="txt"><b>${escapeHtml(r.payee)}</b></td><td>${escapeHtml(r.cheque_no)}</td><td>${escapeHtml(r.bank)}</td>
+      <td style="text-align:right; font-weight:600;">${pdcMoney(r.amount)}</td><td class="txt">${escapeHtml(r.notes)}</td><td>${pdcStanding(r)}</td>
+      <td>${r.status === "pending" ? `<button class="btn btn-gray btn-sm" title="Mark this cheque cleared" onclick="event.stopPropagation(); pdcClear(${r.id})">Cleared</button>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="8" style="color:#999; padding:18px;">Nothing here.</td></tr>`;
+}
+function pdcReset() {
+  PDC_EDIT = null;
+  ["pdc-payee", "pdc-no", "pdc-bank", "pdc-amt", "pdc-notes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("pdc-date").value = pdcToday();
+  document.getElementById("pdc-repeat").value = "1";
+  document.getElementById("pdc-repeat-f").style.display = "";
+  document.getElementById("pdc-status-f").style.display = "none";
+  document.getElementById("pdc-save").textContent = "Add";
+  document.getElementById("pdc-form-title").textContent = "Add a cheque";
+  ["pdc-cancel", "pdc-del"].forEach(id => document.getElementById(id).style.display = "none");
+  pdcDrawList();
+}
+function pdcEdit(id) {
+  const r = PDC.rows.find(x => x.id === id); if (!r) return;
+  PDC_EDIT = id;
+  document.getElementById("pdc-payee").value = r.payee; document.getElementById("pdc-no").value = r.cheque_no;
+  document.getElementById("pdc-bank").value = r.bank; document.getElementById("pdc-date").value = r.date;
+  document.getElementById("pdc-amt").value = r.amount; document.getElementById("pdc-notes").value = r.notes;
+  document.getElementById("pdc-st").value = r.status;
+  document.getElementById("pdc-repeat-f").style.display = "none";
+  document.getElementById("pdc-status-f").style.display = "";
+  document.getElementById("pdc-save").textContent = "Save changes";
+  document.getElementById("pdc-form-title").textContent = `Editing: ${r.payee}`;
+  ["pdc-cancel", "pdc-del"].forEach(id => document.getElementById(id).style.display = "");
+  pdcDrawList();
+  document.getElementById("screen-pdc").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function pdcSave() {
+  const v = id => document.getElementById(id).value;
+  const body = { payee: v("pdc-payee"), cheque_no: v("pdc-no"), bank: v("pdc-bank"), date: v("pdc-date"),
+                 amount: v("pdc-amt").replace(/,/g, ""), notes: v("pdc-notes") };
+  const btn = document.getElementById("pdc-save"); btn.disabled = true;
+  try {
+    let msg;
+    if (PDC_EDIT) { await apiCall(`/employees/pdc/${PDC_EDIT}`, { method: "PUT", body: JSON.stringify({ ...body, status: v("pdc-st") }) }); msg = "Saved."; }
+    else {
+      const n = parseInt(v("pdc-repeat"), 10) || 1;
+      await apiCall("/employees/pdc", { method: "POST", body: JSON.stringify({ ...body, repeat: n }) });
+      msg = n > 1 ? `${n} monthly cheques added for ${body.payee}.` : `Cheque for ${body.payee} added.`;
+    }
+    pdcReset(); await pdcLoad(); showStatus("pdc-status", "ok", msg);
+  } catch (e) { showStatus("pdc-status", "err", errText(e)); }
+  finally { btn.disabled = false; }
+}
+async function pdcClear(id) {
+  try { await apiCall(`/employees/pdc/${id}/clear`, { method: "POST" }); await pdcLoad(); showStatus("pdc-status", "ok", "Marked cleared."); }
+  catch (e) { showStatus("pdc-status", "err", errText(e)); }
+}
+async function pdcDelete() {
+  const r = PDC.rows.find(x => x.id === PDC_EDIT); if (!r) return;
+  if (!await hrAsk(`Remove the cheque for ${r.payee} (${pdcMoney(r.amount)}, ${pdcDmy(r.date)})? To keep it on record, set it to Cancelled instead.`, "Remove", true)) return;
+  try { await apiCall(`/employees/pdc/${r.id}`, { method: "DELETE" }); pdcReset(); await pdcLoad(); showStatus("pdc-status", "ok", "Removed."); }
+  catch (e) { showStatus("pdc-status", "err", errText(e)); }
+}
+async function pdcExport(kind) {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  const q = `start=${document.getElementById("pdc-from").value}&months=${document.getElementById("pdc-months").value}&show=${document.getElementById("pdc-show").value}&token=${encodeURIComponent(cachedDownloadToken || "")}`;
+  window.open(kind === "view" ? `${API}/export/pdc/view?${q}` : `${API}/export/pdc?${q}&format=${kind}`, "_blank");
 }
 
 // ---- Final settlement -------------------------------------------------

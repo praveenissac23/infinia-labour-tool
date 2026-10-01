@@ -327,6 +327,22 @@ window.HELP_GUIDES = [
       { say: "Type the document name and its expiry date.", el: "#hr-exp-expires" },
       { say: "Press Save.", el: "button[onclick='saveExpiry()']" }] },
 
+  { id: "pdc-add", area: "Expiry", title: "How to add a post-dated cheque (PDC)",
+    words: "pdc post dated cheque check payment supplier rent instalment due bank tracker accountant",
+    go: { page: "expiry", tab: "expiry", sub: "pdc" },
+    steps: [
+      { say: "Type who the cheque is for.", el: "#pdc-payee" },
+      { say: "Type the cheque number, bank and the cheque date.", el: "#pdc-date" },
+      { say: "Type the amount, and what it is for.", el: "#pdc-amt" },
+      { say: "Rent or instalments? Pick how many months - the cheque numbers count up by themselves.", el: "#pdc-repeat" },
+      { say: "Press Add. It shows in the monthly tracker below.", el: "#pdc-save" }],
+    tip: "Only admin and the chief accountant can see PDCs. Reminders come 14 and 7 days before the cheque date." },
+  { id: "pdc-clear", area: "Expiry", title: "How to mark a cheque cleared",
+    words: "pdc cheque cleared paid presented bounced cancel cancelled",
+    go: { page: "expiry", tab: "expiry", sub: "pdc" },
+    steps: [
+      { say: "Open the Cheque list.", el: "#pdc-view button[data-v='list']", run: "pdcView('grid')" },
+      { say: "Press Cleared on the cheque's line. To cancel a cheque, click its line and set Status to Cancelled.", el: "#pdc-lbody", run: "pdcView('list')" }] },
   // ---------------- Reports ----------------
   { id: "report-cycle", area: "Reports", title: "How to get a labour salary report",
     words: "report salary report cycle report total cost summary labour export excel pdf",

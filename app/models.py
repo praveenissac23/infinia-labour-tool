@@ -1015,3 +1015,26 @@ class CompanyExpiry(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Pdc(Base):
+    """A post-dated cheque the company has written (or an expected
+    payment such as salaries): who it is for, the cheque, the date it can
+    be presented and the amount. Pending until it clears; a cancelled or
+    replaced cheque is kept, marked cancelled. Admin and whoever holds
+    the "pdc" right only."""
+    __tablename__ = "pdcs"
+    id = Column(Integer, primary_key=True)
+    payee = Column(String, nullable=False, index=True)
+    cheque_no = Column(String, default="")
+    bank = Column(String, default="")
+    cheque_date = Column(Date, nullable=False, index=True)
+    amount = Column(Float, default=0.0)
+    notes = Column(String, default="")
+    status = Column(String, default="pending", index=True)   # pending | cleared | cancelled
+    cleared_on = Column(Date, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+

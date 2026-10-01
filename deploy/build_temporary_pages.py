@@ -69,9 +69,11 @@ PAGES = {
     # permits, licences, vehicles) - on a page of their own, with a
     # right of their own that shows no pay.
     "expiry": ("Expiry Reminder", [
-        tab("expiry", "expiry", "Expiry reminder", "expiry", subs=[
+        tab("expiry", "expiry", "Expiry reminder", ["expiry", "pdc"], subs=[
             sub("people", "People", screen="expiry", right="expiry", go="hrDocMode('people')"),
-            sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')")])]),
+            sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')"),
+            # Post-dated cheques: a screen of its own and a right of its own.
+            sub("pdc", "PDCs", screen="pdc", right="pdc")])]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),

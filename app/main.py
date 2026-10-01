@@ -229,7 +229,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "expiry",
                # Petty cash: one right per cash box, so the site never
                # sees the PRO's box and only the chief accountant the office's.
-               "petty_site", "petty_pro", "petty_office"]
+               "petty_site", "petty_pro", "petty_office",
+               # PDC tracker: post-dated cheques - admin and the chief
+               # accountant only; no role has it by default.
+               "pdc"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -10736,6 +10739,16 @@ def get_notifications(db: Session = Depends(get_db),
         except Exception:
             pass
 
+    # ---- PDCs: admin and the pdc right only - nobody else sees a word -----
+    if "pdc" in allowed:
+        try:
+            import pdc as _pdc
+            n = _pdc.notification(db, today)
+            if n:
+                out.append(n)
+        except Exception:
+            pass
+
     # Newest first within each urgency band
     order = {"warn": 0, "info": 1, "ok": 2}
     out.sort(key=lambda n: (order.get(n["level"], 3), n["when"]), reverse=False)
@@ -10875,6 +10888,8 @@ import settlement  # noqa: E402
 app.include_router(settlement.router)
 import pettycash  # noqa: E402
 app.include_router(pettycash.router)
+import pdc  # noqa: E402
+app.include_router(pdc.router)
 import expiry  # noqa: E402
 app.include_router(expiry.router)
 
