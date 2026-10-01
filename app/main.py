@@ -7539,8 +7539,11 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   .hint {{ font-size:11.5px; color:#999; margin-right:6px; }}
   @media (max-width:1180px) {{ .hint {{ display:none; }} }}
   @media print {{ .hint {{ display:none; }} th .arr {{ display:none; }} }}
+  /* A word only breaks if it cannot fit its column at all - never a
+     code or a date split in the middle because it could. */
   td {{ padding:3px 4px; border:0.4px solid #CCCCCC; vertical-align:middle;
-        word-wrap:break-word; overflow-wrap:anywhere; }}
+        overflow-wrap:break-word; }}
+  th {{ hyphens:none; }}
   th.l, td.l {{ text-align:left; }}
   th.c, td.c {{ text-align:center; }}
   th.r, td.r {{ text-align:right; }}

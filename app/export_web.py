@@ -298,20 +298,44 @@ def _is_money(k):
     return any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
 
 
+def _shown(k, v, money_like=None):
+    """A value exactly as a report prints it - the form to measure."""
+    if v in (None, ""):
+        return ""
+    if isinstance(v, bool):
+        return "Yes" if v else ""
+    if isinstance(v, (int, float)):
+        return f"{v:,.2f}" if (money_like or _is_money)(k) else _clean_qty(v)
+    if isinstance(v, dict):
+        return ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items())
+    if isinstance(v, str) and _looks_like_date(v):
+        return _day(v)
+    return str(v)
+
+
+def _is_prose(k, rows):
+    """A column of words - material names, remarks, who it was given to -
+    rather than short tokens (codes, dates, units, counts)."""
+    vals = [r.get(k) for r in rows if r.get(k) not in (None, "")]
+    texts = [_shown(k, v) for v in vals if isinstance(v, str) and not _looks_like_date(v)]
+    if not texts or len(texts) < len(vals) / 2:
+        return False
+    return max(len(t) for t in texts) > 14 and any(" " in t for t in texts)
+
+
 def col_align(key, rows):
-    """How a whole column sits - heading and every cell in it alike.
+    """How a whole column sits - heading and every cell in it alike, in
+    the PDF, the spreadsheet and the preview.
 
-    The heading used to be centred on every column while the cells under
-    it went left or right by type, so a report read as though it had
-    been laid out twice by two different people. Centred now, heading
-    and contents together, matching the tables on the screen the
-    figures were checked on.
-
-    Kept as one function so there is one place to change it, rather than
-    the rule being spelled out again in the PDF, the spreadsheet and the
-    preview and drifting apart between them.
+    Words read from the left (material, remarks, names), amounts line
+    up on the right, and short tokens - dates, codes, units, counts -
+    sit centred. Everything centred made a page of material names and
+    remarks look ragged down both edges.
     """
-    return "C"
+    vals = [r.get(key) for r in rows if r.get(key) not in (None, "")]
+    if vals and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+        return "R" if _is_money(key) else "C"
+    return "L" if _is_prose(key, rows) else "C"
 
 
 # ---- A4, the way round that fits ------------------------------------
@@ -352,81 +376,74 @@ def _page_size(orientation):
 def col_fractions(rows, cols, money_cols=None, total_cols=None):
     """What share of the page each column should take.
 
-    Every column used to be given the same width - the page divided by
-    the number of columns - so "Unit" holding the word "pcs" was handed
-    as much paper as "Material", and a long material name wrapped onto
-    three lines beside an inch of white space. On a ten-column report
-    most of the sheet was margin.
+    Measured in printed points, not characters: capitals and digits are
+    wider than an average letter, so "ITM3347" and "01 Oct 2026" were
+    given less room than they print in and broke into two lines. Each
+    column wants its widest value (as printed) or the longest word of
+    its heading, whichever is wider, plus the cell padding.
 
-    Each column is measured instead: the longer of its heading and its
-    widest value, with a floor so a heading is never squeezed and a
-    ceiling so one long remark cannot eat the page. Whatever is left
-    over goes to the widest columns, which are the ones that wrap.
+    Short tokens - dates, codes, units, counts - are given their full
+    width first, because breaking one is never right. Columns of words
+    share what is left in proportion to what they want; they wrap, which
+    is fine for a sentence. Only if even the tokens do not fit is
+    everything scaled down together.
 
     Returns a list of fractions summing to 1.
     """
     if not cols:
         return []
+    from reportlab.pdfbase.pdfmetrics import stringWidth
     money_like = ((lambda k: k in set(money_cols)) if money_cols is not None else _is_money)
-    # The totals line is part of the table and has to be measured with
-    # it. A column of figures none of which reaches a thousand still
-    # adds up to one that does, and the sum was the cell that broke: the
-    # deductions came to 1,099.00 under a column sized for 400.00. The
-    # word TOTAL in the first column is measured for the same reason -
-    # it was appearing as "TOT" over "AL" above a two-character Sr.
+    # The totals line is part of the table and is measured with it (a
+    # column of 400s adds up to 1,099.00), and so is the word TOTAL.
     totals_row = {}
     if rows:
         adding = set(total_cols) if total_cols is not None else {c for c in cols if money_like(c)}
         for c in cols:
-            if c not in adding:
-                continue
-            s = sum(r.get(c) or 0 for r in rows if isinstance(r.get(c), (int, float)))
-            totals_row[c] = f"{s:,.2f}" if money_like(c) else _clean_qty(s)
+            if c in adding:
+                s = sum(r.get(c) or 0 for r in rows if isinstance(r.get(c), (int, float)))
+                totals_row[c] = f"{s:,.2f}" if money_like(c) else _clean_qty(s)
         if totals_row and cols[0] not in totals_row:
-            # Bold, and with padding either side, so it needs more room
-            # than its five letters suggest - otherwise the first column
-            # of a wide sheet shows "TOT" above "AL".
-            totals_row[cols[0]] = "TOTAL  "
-    want = []
+            totals_row[cols[0]] = "TOTAL"
+    CELL, HEAD, PAD, CAP = 8.5, 8.0, 13.0, 230.0
+    need, prose = [], []
     for c in cols:
-        widest = len(totals_row.get(c, ""))
+        cell_w = stringWidth(totals_row.get(c, ""), "Helvetica-Bold", CELL)
         for r in rows:
-            v = r.get(c)
-            if v in (None, ""):
-                continue
-            # Measured as it will be PRINTED, not as it is held. A net
-            # pay of 14000.0 is six characters in the row and nine on
-            # the page - "14,000.00" - and measuring the short one gave
-            # the column too little room, so the figure broke across two
-            # lines as "14,000.0" and a lonely "0". Any column whose
-            # numbers are formatted has to be measured formatted.
-            if isinstance(v, bool):
-                text = "Yes" if v else ""
-            elif isinstance(v, (int, float)):
-                text = f"{v:,.2f}" if money_like(c) else _clean_qty(v)
-            elif isinstance(v, dict):
-                text = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items())
+            t = _shown(c, r.get(c), money_like)
+            for line in t.split("\n"):
+                if line:
+                    cell_w = max(cell_w, stringWidth(line, "Helvetica", CELL))
+        # A heading wraps happily, so only its longest word must fit.
+        head_w = max((stringWidth(w, "Helvetica-Bold", HEAD) for w in _store_label(c).split()), default=20)
+        p = _is_prose(c, rows)
+        prose.append(p)
+        need.append(max(min(cell_w, CAP), head_w, 14.0) + PAD)
+    # The page this report prints on, less margins.
+    page = (281.0 if choose_orientation(rows, cols) == "landscape" else 194.0) * 72 / 25.4
+    fixed = sum(n for n, p in zip(need, prose) if not p)
+    flex = [n for n, p in zip(need, prose) if p]
+    flex_min = sum(min(n, 90.0) for n in flex)
+    if flex and fixed + flex_min <= page:
+        room = page - fixed            # what the columns of words share
+        want = sum(flex)
+        widths = []
+        for n, p in zip(need, prose):
+            if not p:
+                widths.append(n)                                   # tokens: their full width
+            elif want <= room:
+                widths.append(n + (room - want) * n / want)        # spare room goes to the words
             else:
-                text = str(v)
-            if not text:
-                continue
-            # A cell of several lines is as wide as its longest line.
-            widest = max(widest, max(len(x) for x in text.split("\n")))
-        # A heading wraps over two or three lines happily enough, so the
-        # column only has to be as wide as the heading's longest WORD.
-        # Measuring the whole heading gave a column holding the number
-        # 360 a sixteen-character width because it is called "In central
-        # store" - most of the page went to headings, not to figures.
-        head = max((len(w) for w in _store_label(c).split()), default=4)
-        # Plus the cell padding, which is the same few points on every
-        # column however narrow it is. Sharing the page out purely by
-        # character count ignored that fixed cost, and on a wide sheet
-        # it was the narrow columns that paid: a five-character staff
-        # code came out as "IC00" over "1". Two characters' worth of
-        # padding per column, then the rest shared by content.
-        want.append(max(min(widest, 46), min(head, 12), 4) + 2)
-    total = float(sum(want)) or 1.0
-    return [w / total for w in want]
+                widths.append(max(min(n, 90.0), room * n / want))  # words squeeze, with a floor
+        over = sum(widths) - page
+        if over > 0.5:   # the floors pushed past the page: take it back from the wider word columns
+            give = [(w - min(n, 90.0)) if p else 0.0 for w, n, p in zip(widths, need, prose)]
+            g = sum(give) or 1.0
+            widths = [w - over * gv / g for w, gv in zip(widths, give)]
+    else:
+        widths = list(need)            # not even the tokens fit: scale everything together
+    total = float(sum(widths)) or 1.0
+    return [w / total for w in widths]
 
 
 def print_ready(ws, orientation="landscape", header_row=None, last_col=None,
