@@ -70,6 +70,16 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await c.click('.pg-tab[data-tab="taxinv"]'); await c.waitForTimeout(900);
   ck('back on tax: both invoices', (await c.textContent('#inv-body')).includes(`IC/${yy}/920/01`) && (await c.textContent('#inv-body')).includes(`IC/${yy}/906/01`));
 
+  // ---- help: invoice guides yes, nothing at all about the register -------
+  const h = await c.evaluate(() => ({
+    inv: HELP.search('tax invoice').map(g => g.id), pro: HELP.search('proforma').map(g => g.id),
+    cash: ['cash register', 'register password', 'cash received', 'secret', 'cash book', 'register'].map(q => HELP.search(q).filter(g => g.area === 'Accounts' || (g.go && g.go.tab === 'register')).map(g => g.id)).flat(),
+    any: HELP_GUIDES.some(g => (g.go && (g.go.tab === 'register')) || /cash ?reg|reg-|cashreg/i.test(JSON.stringify(g))),
+    tips: Object.keys(window.HELP_TIPS || {}).some(k => /reg-/.test(k)) }));
+  ck('help: tax invoice guide found', h.inv.includes('inv-tax'), h.inv);
+  ck('help: proforma guides found', h.pro.includes('inv-proforma') && h.pro.includes('inv-convert'), h.pro);
+  ck('help: searching the register finds nothing about it', !h.cash.length, h.cash);
+  ck('help: no guide or tip points at the register', !h.any && !h.tips);
   // ---- the register ----------------------------------------------------
   // two clicks do nothing; three on the proforma heading do nothing
   await c.click('#inv-list-title', { clickCount: 2 }); await c.waitForTimeout(400);
@@ -155,6 +165,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('documents login: no Accounts in menu', !(await menu(d)).some(x => x.startsWith('Accounts')), await menu(d));
   const r = await d.evaluate(async () => { try { await apiCall('/employees/accounts/invoices'); return 200; } catch (e) { return e.status; } });
   ck('documents login: invoices refused by server', r === 403, r);
+  ck('documents login: no invoice guides', !(await d.evaluate(() => HELP.search('tax invoice').some(g => g.area === 'Accounts'))));
   await d.goto(B + '/?p=accounts#register'); await d.waitForTimeout(3000);
   ck('documents login: typed address does not show register', !(await vis(d, '#screen-cashreg')) && !(await vis(d, '#screen-invoices')));
   await b.close();

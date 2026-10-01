@@ -40,6 +40,11 @@ const only = process.argv.slice(2);
       if (r && r.lines) for (const l of r.lines) await post(`/store/request-lines/${l.id}/decision`, { decision: 'approved', reason: '' });
     }
     await post('/store/petty-cash', { date: today, description: 'Cash received', supplier: 'CASH/ADCB', received: 2000 });
+    const inv = { date: today, client: 'Mr. Mohammed Ahmed', client_trn: '100234567800003', client_address: 'Dubai, UAE', project: '(B+G+1+R) Villa',
+                  project_no: '906', plot: '6457380', location: 'Al Barsha South', work: 'Phase 2 Works', lines: [{ description: 'Phase 2 works - 30% progress', amount: 56339, vat: 5 }] };
+    const yy = today.slice(2, 4);
+    await post('/employees/accounts/invoices', { ...inv, kind: 'tax', number: `IC/${yy}/906/01` });
+    await post('/employees/accounts/invoices', { ...inv, kind: 'proforma', number: `PI/${yy}/920/01`, project_no: '920', client: 'Mrs. Fatima Khalid' });
     await post('/store/petty-cash', { date: today, description: 'Water and ice for site', supplier: 'GRAND MART', site, paid: 150 });
   });
   await p.reload(); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3000);

@@ -343,6 +343,47 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Open the Cheque list.", el: "#pdc-view button[data-v='list']", run: "pdcView('grid')" },
       { say: "Press Cleared on the cheque's line. To cancel a cheque, click its line and set Status to Cancelled.", el: "#pdc-lbody", run: "pdcView('list')" }] },
+  // ---------------- Accounts ----------------
+  { id: "inv-tax", area: "Accounts", title: "How to make a tax invoice",
+    words: "tax invoice bill client vat trn progress payment ipc raise issue print pdf accounts",
+    go: { page: "accounts", tab: "taxinv" },
+    steps: [
+      { say: "Type the project number. A project used before fills in its client and site.", el: "#inv-pno" },
+      { say: "The invoice number fills in by itself. Change it only if you need to.", el: "#inv-no" },
+      { say: "Type the client, the client's TRN and address.", el: "#inv-client" },
+      { say: "Type the project, plot, location and the work.", el: "#inv-project" },
+      { say: "Type each line: what it is for and the amount before VAT. Pick 5% or 0% VAT.", el: "#inv-lines tr:first-child td:nth-child(2) input" },
+      { say: "More lines? Press + Add line. The totals add up as you type.", el: "button[onclick='invAddLine()']" },
+      { say: "Press Save & open PDF. The invoice opens ready to print or send.", el: "#inv-save-pdf" }],
+    tip: "The signature and stamp print on every invoice - upload the picture once with the Signature & stamp button." },
+  { id: "inv-proforma", area: "Accounts", title: "How to make a proforma invoice",
+    words: "proforma pro forma performa quotation advance invoice client accounts",
+    go: { page: "accounts", tab: "proforma" },
+    steps: [
+      { say: "Open the Proforma Invoice tab.", el: ".pg-tab[data-tab='proforma']" },
+      { say: "Type the project number - the proforma number fills in by itself.", el: "#inv-pno" },
+      { say: "Type the client and the lines, the same as a tax invoice.", el: "#inv-client" },
+      { say: "Press Save & open PDF.", el: "#inv-save-pdf" }] },
+  { id: "inv-convert", area: "Accounts", title: "How to turn a proforma into a tax invoice",
+    words: "proforma convert change make tax invoice from proforma paid accounts",
+    go: { page: "accounts", tab: "proforma" },
+    steps: [
+      { say: "On the Proforma Invoice tab, find the proforma in the list.", el: "#inv-body" },
+      { say: "Press the ... button on its line and choose 'Make tax invoice from this'. It is made with today's date and the next tax invoice number.", el: "#inv-body .hr-menu-btn" }],
+    tip: "The proforma is then marked Invoiced, so it cannot be invoiced twice." },
+  { id: "inv-fix", area: "Accounts", title: "How to change or cancel an invoice",
+    words: "invoice edit change correct mistake cancel void wrong invoice accounts",
+    go: { page: "accounts", tab: "taxinv" },
+    steps: [
+      { say: "Find the invoice in the list. Type the number or client to search.", el: "#inv-search" },
+      { say: "Press the ... button on its line: Edit to correct it, or Cancel invoice.", el: "#inv-body .hr-menu-btn" }],
+    tip: "A cancelled invoice is never deleted - it stays on the list marked CANCELLED and its number is not used again." },
+  { id: "inv-signature", area: "Accounts", title: "How to put the signature and stamp on invoices",
+    words: "signature stamp seal sign invoice upload picture accounts",
+    go: { page: "accounts", tab: "taxinv" },
+    steps: [
+      { say: "Press Signature & stamp and pick the picture (PNG or JPG) of the signature with the stamp.", el: "label:has(#inv-sig)" },
+      { say: "It prints on every invoice from now on." }] },
   // ---------------- Reports ----------------
   { id: "report-cycle", area: "Reports", title: "How to get a labour salary report",
     words: "report salary report cycle report total cost summary labour export excel pdf",
