@@ -232,7 +232,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "petty_site", "petty_pro", "petty_office",
                # PDC tracker: post-dated cheques - admin and the chief
                # accountant only; no role has it by default.
-               "pdc"]
+               "pdc",
+               # Accounts: invoices, and the cash register behind its own
+               # password. No role has them by default.
+               "accounts_invoices", "accounts_register"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -10912,6 +10915,9 @@ import pdc  # noqa: E402
 app.include_router(pdc.router)
 import expiry  # noqa: E402
 app.include_router(expiry.router)
+import accounts  # noqa: E402
+accounts.create_tables(engine)
+app.include_router(accounts.router)
 
 
 @app.on_event("startup")

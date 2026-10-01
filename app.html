@@ -222,6 +222,46 @@
   .exp-card.on { outline: 2px solid #B7322A; outline-offset: -1px; }
   td.hr-d-add, span.hr-d-add { cursor: pointer; } td.hr-d-add:hover, span.hr-d-add:hover { outline: 2px solid #B7322A; outline-offset: -2px; }
   .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  /* Accounts: invoices and the cash register */
+  #screen-title, #inv-form-title, #inv-list-title { user-select: none; -webkit-user-select: none; }
+  .inv-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin-bottom: 14px; }
+  .inv-form .hr-field input, .inv-form .hr-field select { width: 100%; }
+  .inv-form .inv-w2 { grid-column: span 2; }
+  .inv-lines { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .inv-lines th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #555; background: #F7F5F3; border-bottom: 1.5px solid #C0392B; padding: 7px 6px; text-align: right; }
+  .inv-lines th.l { text-align: left; } .inv-lines th:first-child { text-align: center; }
+  .inv-lines td { padding: 4px 6px; border-bottom: 1px solid #EFEFEF; text-align: right; font-variant-numeric: tabular-nums; }
+  .inv-lines td:first-child { text-align: center; color: #888; }
+  .inv-lines td input, .inv-lines td select { width: 100%; height: 34px; box-sizing: border-box; }
+  .inv-lines td input.n { text-align: right; }
+  .inv-lines td .x { border: 0; background: none; color: #B7322A; font-size: 18px; cursor: pointer; }
+  .inv-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .inv-sum { border-collapse: collapse; width: 360px !important; max-width: 100%; margin-left: auto; font-size: 13.5px; }
+  .inv-sum td:first-child { text-align: left; color: #555; }
+  .inv-sum td { padding: 5px 10px; } .inv-sum td:last-child { text-align: right; font-variant-numeric: tabular-nums; min-width: 120px; }
+  .inv-sum tr.t td { font-weight: 800; font-size: 15px; background: #FBF3F1; border-left: 3px solid #C0392B; }
+  .inv-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .inv-list td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
+  .inv-list tr.edit td { background: #FFF6DA; }
+  .inv-list tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
+  .inv-list .acts { white-space: nowrap; text-align: right; } .inv-list .acts .btn { margin-left: 3px; }
+  .inv-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; }
+  .inv-tag.cx { background: #EEE; color: #888; } .inv-tag.conv { background: #E3F4E5; color: #2E7D32; }
+  @media (max-width: 900px) { .inv-form { grid-template-columns: 1fr 1fr; } }
+  .reg-lock { max-width: 430px; margin: 50px auto; text-align: center; padding: 30px 28px !important; }
+  .reg-lock-ico { font-size: 34px; }
+  .reg-lock-form { display: flex; gap: 8px; justify-content: center; }
+  .reg-lock-form input { flex: 1; height: 40px; font-size: 15px; }
+  .reg-lock-msg { min-height: 18px; margin-top: 10px; color: #B7322A; font-size: 13px; font-weight: 600; }
+  .reg-form { grid-template-columns: auto 140px minmax(200px, 2fr) 140px minmax(130px, 1fr) auto; }
+  .reg-sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; }
+  .reg-sides .card { margin-top: 0; }
+  .reg-h { margin: 0 0 8px; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: #C0392B; }
+  .reg-table td { text-align: left; } .reg-table td.n { text-align: right; } .reg-table tbody tr { cursor: pointer; }
+  .reg-table tbody tr:hover td { background: #FDF6F5; }
+  .reg-pw { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin: 0 0 12px; padding: 10px; background: #FBF8F5; border-radius: 8px; }
+  @media (max-width: 1000px) { .reg-sides { grid-template-columns: 1fr; } .reg-form { grid-template-columns: 1fr 1fr; } }
   /* PDC tracker */
   .pdc-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.6fr 1fr auto; gap: 10px 12px; align-items: end; }
   .pdc-form .hr-field input, .pdc-form .hr-field select { width: 100%; }
@@ -1019,7 +1059,7 @@
 // /?p=store the store and so on. Old addresses still land on the right
 // page: app.html, /portal/store.html, /temporary/Infinia/payroll.html#tab.
 (function () {
-  var KEYS = ["dashboard", "attendance", "payroll", "expiry", "store", "reports", "settings", "people"];
+  var KEYS = ["dashboard", "attendance", "payroll", "expiry", "accounts", "store", "reports", "settings", "people"];
   var q = location.search.match(/[?&]p=([a-z]+)/), k = q ? q[1] : "", hash = location.hash;
   if (!k) { var f = (location.pathname.split("/").pop() || "").replace(/\.html$/, ""); k = f === "reporting" ? "reports" : f; }
   if (k === "access") { k = "settings"; hash = "#access"; }
@@ -1032,7 +1072,7 @@
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll"}, "expiry": {"expiry": "expiry", "expiry:people": "expiry", "expiry:company": "expiry", "expiry:pdc": "pdc"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "petty": "pettycash", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "petty:site": "pettycash", "petty:pro": "pettycash", "petty:office": "pettycash", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "office": "hrpayroll", "people": "pgreports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "office:cycle": "hrpayroll", "office:leave": "hrpayroll", "office:items": "hrpayroll", "office:loans": "hrpayroll", "office:staff": "hrpayroll", "office:increments": "hrpayroll", "office:gratuity": "hrpayroll", "people:register": "pgreports", "people:due": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "expiry": "expiry", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
+    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll"}, "expiry": {"expiry": "expiry", "expiry:people": "expiry", "expiry:company": "expiry", "expiry:pdc": "pdc"}, "accounts": {"taxinv": "invoices", "proforma": "invoices"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "petty": "pettycash", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "petty:site": "pettycash", "petty:pro": "pettycash", "petty:office": "pettycash", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "office": "hrpayroll", "people": "pgreports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "office:cycle": "hrpayroll", "office:leave": "hrpayroll", "office:items": "hrpayroll", "office:loans": "hrpayroll", "office:staff": "hrpayroll", "office:increments": "hrpayroll", "office:gratuity": "hrpayroll", "people:register": "pgreports", "people:due": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "expiry": "expiry", "accounts": "taxinv", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
     var tabs = TABMAPS[window.PG_KEY] || TABMAPS.dashboard;
     // No tab in the address: the first tab this login had here last time.
     var remembered = null;
@@ -1072,7 +1112,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="7c9b58d2e3e2";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="e4f929263fe4";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1100,6 +1140,7 @@
 <div class="pg-item " data-page="payroll" onclick="pgGo('payroll')">Payroll</div>
 <div class="pg-item " data-page="store" onclick="pgGo('store')">Store &amp; Purchasing</div>
 <div class="pg-item " data-page="expiry" onclick="pgGo('expiry')">Expiry Reminder</div>
+<div class="pg-item " data-page="accounts" onclick="pgGo('accounts')">Accounts</div>
 <div class="pg-item " data-page="reports" onclick="pgGo('reports')">Reports</div>
 <div class="pg-item " data-page="settings" onclick="pgGo('settings')">Settings</div>
 </div>
@@ -2259,6 +2300,134 @@
                   <th style="width:9%;">Bank</th><th style="width:12%; text-align:right;">Amount</th><th class="txt" style="width:17%;">For / notes</th>
                   <th style="width:9%;">Standing</th><th style="width:7%;"></th></tr></thead>
                 <tbody id="pdc-lbody"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ ACCOUNTS: TAX / PROFORMA INVOICES ============ -->
+        <div class="screen" id="screen-invoices">
+          <div class="status-msg" id="inv-status"></div>
+          <div class="card">
+            <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+              <h2 style="margin:0;" id="inv-form-title">New tax invoice</h2>
+              <span id="inv-from-note" style="font-size:12px; color:#888;"></span>
+            </div>
+            <div class="inv-form">
+              <label class="hr-field" id="inv-co-f"><span>Company</span><select id="inv-co" class="hr-dd"></select></label>
+              <label class="hr-field"><span id="inv-no-l">Invoice No. *</span><input type="text" id="inv-no" oninput="INV_AUTO = false"></label>
+              <label class="hr-field"><span id="inv-date-l">Invoice date *</span><input type="date" id="inv-date"></label>
+              <label class="hr-field"><span>Project No.</span><input type="text" id="inv-pno" list="inv-pno-list" placeholder="e.g. 906" onchange="invProjectPicked()"></label>
+              <datalist id="inv-pno-list"></datalist>
+              <label class="hr-field inv-w2"><span>Client *</span><input type="text" id="inv-client" list="inv-client-list" placeholder="e.g. Mr. Mohammed Ahmed" onchange="invClientPicked()"></label>
+              <datalist id="inv-client-list"></datalist>
+              <label class="hr-field"><span>Client TRN</span><input type="text" id="inv-trn" placeholder="if registered"></label>
+              <label class="hr-field"><span>Client address</span><input type="text" id="inv-addr" placeholder="e.g. Dubai, UAE"></label>
+              <label class="hr-field inv-w2"><span>Project</span><input type="text" id="inv-project" placeholder="e.g. (B+G+1+R) Villa"></label>
+              <label class="hr-field"><span>Plot No.</span><input type="text" id="inv-plot" placeholder="e.g. 6457380"></label>
+              <label class="hr-field"><span>Location</span><input type="text" id="inv-loc" placeholder="e.g. Al Barsha South"></label>
+              <label class="hr-field inv-w2"><span>Work</span><input type="text" id="inv-work" placeholder="e.g. Phase 2 Works"></label>
+            </div>
+            <table class="inv-lines">
+              <thead><tr><th style="width:4%;">#</th><th class="l">Description *</th><th style="width:15%;">Net amount (AED)</th><th style="width:9%;">VAT</th>
+                <th style="width:12%;">VAT (AED)</th><th style="width:14%;">Total (AED)</th><th style="width:4%;"></th></tr></thead>
+              <tbody id="inv-lines"></tbody>
+            </table>
+            <div class="inv-foot">
+              <button type="button" class="btn btn-gray btn-sm" onclick="invAddLine()">+ Add line</button>
+              <table class="inv-sum">
+                <tr><td>Subtotal (excl. VAT)</td><td id="inv-sub">0.00</td></tr>
+                <tr><td>VAT</td><td id="inv-vat">0.00</td></tr>
+                <tr class="t"><td id="inv-tot-l">Total due</td><td id="inv-tot">AED 0.00</td></tr>
+              </table>
+            </div>
+            <div class="inv-btns">
+              <button class="btn btn-primary" id="inv-save-pdf" onclick="invSave(true)">Save &amp; open PDF</button>
+              <button class="btn btn-gray" id="inv-save" onclick="invSave(false)">Save</button>
+              <button class="btn btn-gray" id="inv-clear" onclick="invReset()">Clear</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="form-row" style="gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <h2 style="margin:0;" id="inv-list-title">Tax invoices</h2>
+                <input type="text" id="inv-search" placeholder="Search number, client or project" style="width:250px;" oninput="invDrawList()">
+                <span id="inv-count" style="font-size:12px; color:#888;"></span>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span id="inv-sig-state" style="font-size:12px; color:#888;"></span>
+                <label class="btn btn-gray" style="margin:0; cursor:pointer;">Signature &amp; stamp<input type="file" id="inv-sig" accept=".png,.jpg,.jpeg" style="display:none;" onchange="invSignature(this)"></label>
+                <button class="btn btn-gray" onclick="invExcel()">Download Excel</button>
+              </div>
+            </div>
+            <div class="grid-wrap" style="max-height:62vh; margin-top:10px;"><table class="hr-grid inv-list">
+              <thead><tr><th style="width:15%;" class="txt">Number</th><th style="width:9%;">Date</th><th class="txt" style="width:20%;">Client</th>
+                <th class="txt" style="width:17%;">Project</th><th style="width:10%; text-align:right;">Net</th><th style="width:8%; text-align:right;">VAT</th>
+                <th style="width:10%; text-align:right;">Total</th><th style="width:11%;"></th></tr></thead>
+              <tbody id="inv-body"></tbody><tfoot id="inv-foot"></tfoot></table></div>
+          </div>
+        </div>
+
+        <!-- ============ ACCOUNTS: CASH REGISTER (password every time) ============ -->
+        <div class="screen" id="screen-cashreg">
+          <div class="card reg-lock" id="reg-lock">
+            <div class="reg-lock-ico">&#128274;</div>
+            <h2 style="margin:4px 0 4px;">Cash register is locked</h2>
+            <p style="margin:0 0 14px; color:#777; font-size:13px;">Enter the register password to open it. It locks again when you leave this page.</p>
+            <form onsubmit="regUnlock(); return false;" class="reg-lock-form" autocomplete="off">
+              <input type="password" id="reg-pass" placeholder="Register password" autocomplete="new-password">
+              <button class="btn btn-primary" type="submit" id="reg-open-btn">Open</button>
+            </form>
+            <div class="reg-lock-msg" id="reg-lock-msg"></div>
+          </div>
+          <div id="reg-body" style="display:none;">
+            <div class="status-msg" id="reg-status"></div>
+            <div class="card">
+              <div class="pc-head">
+                <div class="pc-title">
+                  <h2 style="margin:0;">Cash register</h2>
+                  <label class="pc-f"><span>From</span><input type="date" id="reg-from" onchange="regLoad()"></label>
+                  <label class="pc-f"><span>To</span><input type="date" id="reg-to" onchange="regLoad()"></label>
+                  <button type="button" class="btn btn-gray btn-sm" style="height:36px;" onclick="regAll()">All dates</button>
+                </div>
+                <div class="pc-btns">
+                  <div class="hr-menu"><button type="button" class="btn btn-gray hr-menu-btn" onclick="hrMenu(this, event)">Print / Export <span class="hr-caret">&#9662;</span></button><div class="hr-menu-list"><button type="button" onclick="hrMenuClose(); regExport('pdf')">Preview / print PDF</button><button type="button" onclick="hrMenuClose(); regExport('excel')">Download Excel</button><hr id="reg-pw-hr"><button type="button" id="reg-pw-btn" onclick="hrMenuClose(); regPwShow()">Change register password</button></div></div>
+                  <button type="button" class="btn btn-gray" onclick="regLock()">&#128274; Lock</button>
+                </div>
+              </div>
+              <div class="pc-stats" id="reg-stats"></div>
+              <div class="reg-pw" id="reg-pw" style="display:none;">
+                <label class="pc-f"><span>Current password</span><input type="password" id="reg-pw-cur" autocomplete="off"></label>
+                <label class="pc-f"><span>New password (8+ characters)</span><input type="password" id="reg-pw-new" autocomplete="new-password"></label>
+                <button class="btn btn-primary" onclick="regPwSave()">Change</button>
+                <button class="btn btn-gray" onclick="document.getElementById('reg-pw').style.display='none'">Cancel</button>
+              </div>
+              <div class="pc-form reg-form">
+                <div class="pc-kind" id="reg-kind">
+                  <button type="button" class="on" data-k="received" onclick="regKind('received')">Cash received</button>
+                  <button type="button" data-k="paid" onclick="regKind('paid')">Cash paid out</button>
+                </div>
+                <label class="pc-f"><span>Date</span><input type="date" id="reg-date"></label>
+                <label class="pc-f pc-wide"><span>Description</span><input type="text" id="reg-desc" maxlength="250" placeholder="e.g. Received from Mr. Ahmed - Plot 906"></label>
+                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="reg-amt" placeholder="0.00"></label>
+                <label class="pc-f" id="reg-rem-f" style="visibility:hidden;"><span>Remarks</span><input type="text" id="reg-rem" maxlength="200" placeholder="optional"></label>
+                <div class="pc-go" style="display:flex;">
+                  <button class="btn btn-primary" id="reg-save" onclick="regSave()">Add</button>
+                  <button class="btn btn-gray" id="reg-cancel" style="display:none;" onclick="regReset()">Cancel</button>
+                  <button class="btn btn-gray" id="reg-del" style="display:none; color:#B7322A;" onclick="regDelete()">Remove</button>
+                </div>
+              </div>
+            </div>
+            <div class="reg-sides">
+              <div class="card">
+                <h3 class="reg-h">Cash received</h3>
+                <table class="pc-table reg-table"><thead><tr><th class="l" style="width:22%;">Date</th><th class="l">Description</th><th class="n" style="width:24%;">Amount</th></tr></thead>
+                  <tbody id="reg-rec"></tbody><tfoot id="reg-rec-t"></tfoot></table>
+              </div>
+              <div class="card">
+                <h3 class="reg-h">Cash paid out</h3>
+                <table class="pc-table reg-table"><thead><tr><th class="l" style="width:18%;">Date</th><th class="l">Description</th><th class="n" style="width:19%;">Amount</th><th class="l" style="width:22%;">Remarks</th></tr></thead>
+                  <tbody id="reg-paid"></tbody><tfoot id="reg-paid-t"></tfoot></table>
+              </div>
             </div>
           </div>
         </div>
@@ -3764,7 +3933,7 @@ const SCREEN_TITLES = {
   errorcheck: "Check Before You Pay",
   livecard: "Live Card",
   settings: "Settings",
-  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
+  hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash", invoices: "Tax Invoices", cashreg: "Cash Register",
   activity: "Activity Monitor",
   store: "Store / Inventory",
   requests: "Material Requests",
@@ -3877,6 +4046,8 @@ function switchScreen(name) {
   if (name === "pettycash") loadPettyCash();
   if (name === "expiry") expOpen();
   if (name === "pdc") pdcOpen();
+  if (name === "invoices") setTimeout(() => invOpen(), 0);
+  if (name === "cashreg") regOpen(); else if (typeof REG_KEY !== "undefined" && REG_KEY) regLock();
   if (name === "settings") {
     loadBackupList();
     // The staff list is admin business and its card is hidden for
@@ -11521,6 +11692,7 @@ const SCREEN_LABELS = {
   settings: "Settings", activity: "Activity Monitor",
   hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
+  accounts_invoices: "Tax & proforma invoices", accounts_register: "Cash register",
   storekeeper: "Records stock in and out",
 };
 let permsUserId = null;
@@ -14249,6 +14421,349 @@ async function pdcExport(kind) {
   window.open(kind === "view" ? `${API}/export/pdc/view?${q}` : `${API}/export/pdc?${q}&format=${kind}`, "_blank");
 }
 
+// ---- Accounts: tax invoices and proforma invoices ---------------------
+// One screen for both; the tab says which. Numbers follow the company's
+// pattern (IC/26/906/01, PI/26/906/01) and count up by themselves; an
+// issued invoice is cancelled, never deleted.
+let INV_KIND = "tax", INV = null, INV_EDIT = null, INV_AUTO = true, INV_LINES = [];
+function accMoney(v) { return (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function accDmy(iso) { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}-${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m - 1]}-${y.slice(2)}`; }
+function accToday() { return new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10); }
+function accNum(s) { const v = parseFloat(String(s || "").replace(/,/g, "")); return isNaN(v) ? 0 : v; }
+
+async function invOpen(kind) {
+  if (kind) { if (kind !== INV_KIND) INV_EDIT = null; INV_KIND = kind; }
+  else if (typeof PG_TAB !== "undefined" && PG_TAB && ["taxinv", "proforma"].includes(PG_TAB.id)) {
+    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) INV_EDIT = null; INV_KIND = k;
+  }
+  const pro = INV_KIND === "proforma";
+  const t = document.getElementById("screen-title"); if (t) t.textContent = pro ? "Proforma Invoices" : "Tax Invoices";
+  document.getElementById("inv-list-title").textContent = pro ? "Proforma invoices" : "Tax invoices";
+  document.getElementById("inv-no-l").textContent = pro ? "Proforma No. *" : "Invoice No. *";
+  document.getElementById("inv-date-l").textContent = pro ? "Proforma date *" : "Invoice date *";
+  document.getElementById("inv-tot-l").textContent = pro ? "Total" : "Total due";
+  await invLoad();
+  if (!INV_EDIT) invReset();
+}
+async function invLoad() {
+  try { INV = await apiCall(`/employees/accounts/invoices?kind=${INV_KIND}`); }
+  catch (e) { showStatus("inv-status", "err", errText(e)); return; }
+  const co = document.getElementById("inv-co"), was = co.value;
+  co.innerHTML = INV.companies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  const main = INV.companies.find(c => /INFINIA CONTRACTING/i.test(c.name) && !/PRIME/i.test(c.name));
+  co.value = was && INV.companies.some(c => String(c.id) === was) ? was : (main ? main.id : (INV.companies[0] || {}).id || "");
+  document.getElementById("inv-co-f").style.display = INV.companies.length > 1 ? "" : "none";
+  document.getElementById("inv-client-list").innerHTML = INV.clients.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  const pnos = [...new Set(INV.rows.map(r => r.project_no).filter(Boolean))];
+  document.getElementById("inv-pno-list").innerHTML = pnos.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  document.getElementById("inv-sig-state").textContent = INV.signature ? "Signature & stamp on file" : "No signature yet - upload it once";
+  invDrawList();
+}
+function invDrawList() {
+  if (!INV) return;
+  const q = document.getElementById("inv-search").value.trim().toLowerCase();
+  const rows = INV.rows.filter(r => !q || `${r.number} ${r.client} ${r.project} ${r.project_no} ${r.plot}`.toLowerCase().includes(q));
+  const live = rows.filter(r => r.status !== "cancelled");
+  const sum = k => live.reduce((a, r) => a + r[k], 0);
+  const pro = INV_KIND === "proforma";
+  document.getElementById("inv-count").textContent = `${live.length} ${pro ? "proforma" : "invoice"}${live.length === 1 ? "" : "s"}`;
+  document.getElementById("inv-body").innerHTML = rows.map(r => {
+    const cx = r.status === "cancelled";
+    const tag = cx ? `<span class="inv-tag cx" title="${escapeAttr(r.cancel_reason)}">Cancelled</span>`
+              : (pro && r.converted_to_id ? `<span class="inv-tag conv">Invoiced</span>` : "");
+    return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
+      <td class="txt num"><b>${escapeHtml(r.number)}</b>${tag}</td><td>${accDmy(r.date)}</td>
+      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml([r.project_no, r.project].filter(Boolean).join(" - "))}</td>
+      <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
+      <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})">PDF</button>${cx ? "" :
+        `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
+          <button type="button" onclick="hrMenuClose(); invEdit(${r.id})">Edit</button>
+          ${pro && !r.converted_to_id ? `<button type="button" onclick="hrMenuClose(); invConvert(${r.id})">Make tax invoice from this</button>` : ""}
+          <button type="button" onclick="hrMenuClose(); invCopy(${r.id})">New one like this</button>
+          <hr><button type="button" class="danger" onclick="hrMenuClose(); invCancel(${r.id})">Cancel ${pro ? "proforma" : "invoice"}</button></div></span>`}</td></tr>`;
+  }).join("") || `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">No ${pro ? "proforma invoices" : "tax invoices"} yet.</td></tr>`;
+  document.getElementById("inv-foot").innerHTML = live.length ? `<tr><td class="txt" colspan="4">TOTAL (not counting cancelled)</td>
+    <td class="n">${accMoney(sum("subtotal"))}</td><td class="n">${accMoney(sum("vat"))}</td><td class="n">${accMoney(sum("total"))}</td><td></td></tr>` : "";
+}
+function invDrawLines() {
+  document.getElementById("inv-lines").innerHTML = INV_LINES.map((l, i) => `<tr>
+    <td>${i + 1}</td>
+    <td><input type="text" value="${escapeAttr(l.description)}" placeholder="e.g. Phase 2 works - 30% progress" oninput="INV_LINES[${i}].description = this.value"></td>
+    <td><input type="text" class="n" inputmode="decimal" value="${l.amount === "" ? "" : escapeAttr(String(l.amount))}" placeholder="0.00" oninput="INV_LINES[${i}].amount = this.value; invTotals()"></td>
+    <td><select onchange="INV_LINES[${i}].vat = Number(this.value); invTotals()"><option value="5"${l.vat == 5 ? " selected" : ""}>5%</option><option value="0"${l.vat == 0 ? " selected" : ""}>0%</option></select></td>
+    <td id="inv-lv-${i}"></td><td id="inv-lt-${i}"></td>
+    <td>${INV_LINES.length > 1 ? `<button type="button" class="x" title="Remove this line" onclick="INV_LINES.splice(${i}, 1); invDrawLines()">&times;</button>` : ""}</td></tr>`).join("");
+  invTotals();
+}
+function invAddLine() { INV_LINES.push({ description: "", amount: "", vat: 5 }); invDrawLines(); }
+function invTotals() {
+  let sub = 0, vat = 0;
+  INV_LINES.forEach((l, i) => {
+    const a = Math.round(accNum(l.amount) * 100) / 100, v = Math.round(a * (l.vat || 0)) / 100;
+    sub += a; vat += v;
+    const lv = document.getElementById("inv-lv-" + i), lt = document.getElementById("inv-lt-" + i);
+    if (lv) lv.textContent = a ? accMoney(v) : ""; if (lt) lt.textContent = a ? accMoney(a + v) : "";
+  });
+  document.getElementById("inv-sub").textContent = accMoney(sub);
+  document.getElementById("inv-vat").textContent = accMoney(vat);
+  document.getElementById("inv-tot").textContent = "AED " + accMoney(sub + vat);
+}
+const INV_FIELDS = { client: "inv-client", client_trn: "inv-trn", client_address: "inv-addr", project: "inv-project",
+                     project_no: "inv-pno", plot: "inv-plot", location: "inv-loc", work: "inv-work" };
+function invFill(r, withNumber) {
+  Object.entries(INV_FIELDS).forEach(([k, id]) => document.getElementById(id).value = r[k] || "");
+  if (r.company_id) document.getElementById("inv-co").value = r.company_id;
+  INV_LINES = (r.lines || []).map(l => ({ ...l }));
+  if (!INV_LINES.length) INV_LINES = [{ description: "", amount: "", vat: 5 }];
+  if (withNumber) { document.getElementById("inv-no").value = r.number; document.getElementById("inv-date").value = r.date; }
+  invDrawLines();
+}
+async function invNextNumber() {
+  if (!INV_AUTO) return;
+  try {
+    const r = await apiCall(`/employees/accounts/invoices/next?kind=${INV_KIND}&project_no=${encodeURIComponent(document.getElementById("inv-pno").value.trim())}`);
+    if (INV_AUTO && !INV_EDIT) document.getElementById("inv-no").value = r.number;
+  } catch (e) {}
+}
+function invReset() {
+  INV_EDIT = null; INV_AUTO = true;
+  Object.values(INV_FIELDS).forEach(id => document.getElementById(id).value = "");
+  document.getElementById("inv-date").value = accToday();
+  INV_LINES = [{ description: "", amount: "", vat: 5 }];
+  invDrawLines();
+  const pro = INV_KIND === "proforma";
+  document.getElementById("inv-form-title").textContent = pro ? "New proforma invoice" : "New tax invoice";
+  document.getElementById("inv-from-note").textContent = "";
+  document.getElementById("inv-clear").textContent = "Clear";
+  invNextNumber(); invDrawList();
+}
+// A project number used before brings its client and site along.
+function invProjectPicked() {
+  const p = document.getElementById("inv-pno").value.trim();
+  const last = p && INV && INV.rows.find(r => r.project_no === p);
+  if (last && !INV_EDIT) {
+    ["client", "client_trn", "client_address", "project", "plot", "location"].forEach(k => {
+      const el = document.getElementById(INV_FIELDS[k]); if (!el.value) el.value = last[k] || "";
+    });
+  }
+  invNextNumber();
+}
+function invClientPicked() {
+  const c = document.getElementById("inv-client").value.trim();
+  const last = c && INV && INV.rows.find(r => r.client === c);
+  if (last) ["client_trn", "client_address"].forEach(k => { const el = document.getElementById(INV_FIELDS[k]); if (!el.value) el.value = last[k] || ""; });
+}
+function invEdit(id) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  INV_EDIT = id; INV_AUTO = false;
+  invFill(r, true);
+  document.getElementById("inv-form-title").textContent = `Editing ${r.number}`;
+  document.getElementById("inv-from-note").textContent = r.by ? `last saved by ${r.by}` : "";
+  document.getElementById("inv-clear").textContent = "Cancel editing";
+  invDrawList();
+  document.getElementById("screen-invoices").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function invCopy(id) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  invReset(); invFill(r, false); invNextNumber();
+  document.getElementById("inv-from-note").textContent = `copied from ${r.number} - change what is different`;
+  document.getElementById("screen-invoices").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function invSave(openPdf) {
+  const v = id => document.getElementById(id).value;
+  const body = { kind: INV_KIND, number: v("inv-no"), date: v("inv-date"), company_id: Number(v("inv-co")) || null,
+                 lines: INV_LINES.map(l => ({ description: l.description, amount: String(l.amount).replace(/,/g, ""), vat: l.vat })) };
+  Object.entries(INV_FIELDS).forEach(([k, id]) => body[k] = v(id));
+  const win = openPdf ? window.open("", "_blank") : null;
+  const btns = ["inv-save", "inv-save-pdf"].map(id => document.getElementById(id)); btns.forEach(b => b.disabled = true);
+  try {
+    let id = INV_EDIT;
+    if (INV_EDIT) await apiCall(`/employees/accounts/invoices/${INV_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
+    else id = (await apiCall("/employees/accounts/invoices", { method: "POST", body: JSON.stringify(body) })).id;
+    const msg = `${body.number} saved - AED ${document.getElementById("inv-tot").textContent.replace("AED ", "")}.`;
+    if (win) win.location = await invPdfUrl(id);
+    INV_EDIT = null; await invLoad(); invReset(); showStatus("inv-status", "ok", msg);
+  } catch (e) { if (win) win.close(); showStatus("inv-status", "err", errText(e)); }
+  finally { btns.forEach(b => b.disabled = false); }
+}
+async function invPdfUrl(id) {
+  await refreshDownloadToken();
+  return `${API}/export/accounts/invoice/${id}?token=${encodeURIComponent(cachedDownloadToken || "")}`;
+}
+async function invPdf(id) { const w = window.open("", "_blank"); const u = await invPdfUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
+async function invExcel() {
+  await refreshDownloadToken();
+  window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+async function invCancel(id) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  if (!await hrAsk(`Cancel ${r.number} (${r.client}, AED ${accMoney(r.total)})? It stays on the list marked CANCELLED and its number is not used again.`, "Cancel it", true)) return;
+  try { await apiCall(`/employees/accounts/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason: "" }) });
+        if (INV_EDIT === id) INV_EDIT = null; await invLoad(); invReset(); showStatus("inv-status", "ok", `${r.number} cancelled.`); }
+  catch (e) { showStatus("inv-status", "err", errText(e)); }
+}
+async function invConvert(id) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  if (!await hrAsk(`Make a tax invoice from proforma ${r.number}? Same client, project and lines, dated today, numbered next in the tax invoice series.`, "Make tax invoice")) return;
+  try {
+    const t = await apiCall(`/employees/accounts/invoices/${id}/convert`, { method: "POST" });
+    await invLoad(); showStatus("inv-status", "ok", `Tax invoice ${t.number} made from ${r.number}. It is under the Tax Invoice tab.`);
+  } catch (e) { showStatus("inv-status", "err", errText(e)); }
+}
+async function invSignature(input) {
+  const f = input.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { await apiCall("/employees/accounts/invoice-signature", { method: "POST", body: fd }); await invLoad();
+        showStatus("inv-status", "ok", "Signature & stamp saved - it prints on every invoice."); }
+  catch (e) { showStatus("inv-status", "err", errText(e)); }
+  input.value = "";
+}
+
+// ---- Accounts: the cash register -------------------------------------
+// Locked every time the screen is opened, and again on leaving it or
+// after five quiet minutes. The key lives only in this variable - never
+// in storage - and the server refuses everything without it.
+let REG_KEY = "", REG = null, REG_EDIT = null, REG_KIND = "received", REG_IDLE = null;
+const REG_IDLE_MS = 5 * 60 * 1000;
+function regLock(msg) {
+  REG_KEY = ""; REG = null; REG_EDIT = null; clearTimeout(REG_IDLE);
+  const body = document.getElementById("reg-body"); if (!body) return;
+  body.style.display = "none";
+  ["reg-rec", "reg-paid", "reg-rec-t", "reg-paid-t", "reg-stats"].forEach(id => document.getElementById(id).innerHTML = "");
+  document.getElementById("reg-lock").style.display = "";
+  document.getElementById("reg-pass").value = "";
+  document.getElementById("reg-lock-msg").textContent = typeof msg === "string" ? msg : "";
+  if (document.getElementById("screen-cashreg").classList.contains("active")) setTimeout(() => document.getElementById("reg-pass").focus(), 50);
+}
+function regOpen() { regLock(); }
+function regTouch() {
+  clearTimeout(REG_IDLE);
+  if (REG_KEY) REG_IDLE = setTimeout(() => regLock("Locked after 5 minutes without use."), REG_IDLE_MS);
+}
+async function regUnlock() {
+  const pw = document.getElementById("reg-pass").value;
+  const msg = document.getElementById("reg-lock-msg"), btn = document.getElementById("reg-open-btn");
+  if (!pw) { msg.textContent = "Type the password."; return; }
+  btn.disabled = true; msg.textContent = "";
+  try {
+    const r = await apiCall("/employees/accounts/register/unlock", { method: "POST", body: JSON.stringify({ password: pw }) });
+    REG_KEY = r.key;
+    document.getElementById("reg-pass").value = "";
+    document.getElementById("reg-lock").style.display = "none";
+    document.getElementById("reg-body").style.display = "";
+    document.getElementById("reg-pw-btn").style.display = document.getElementById("reg-pw-hr").style.display = CURRENT_ROLE === "admin" ? "" : "none";
+    regReset(); await regLoad(); regTouch();
+  } catch (e) { msg.textContent = errText(e); document.getElementById("reg-pass").select(); }
+  finally { btn.disabled = false; }
+}
+async function regApi(path, opts = {}) {
+  try { return await apiCall(path, { ...opts, headers: { ...(opts.headers || {}), "X-Register-Key": REG_KEY } }); }
+  catch (e) { if (e && e.status === 423) { regLock("The register locked itself - enter the password again."); } throw e; }
+  finally { regTouch(); }
+}
+function regAll() { document.getElementById("reg-from").value = ""; document.getElementById("reg-to").value = ""; regLoad(); }
+async function regLoad() {
+  if (!REG_KEY) return;
+  const q = `start=${document.getElementById("reg-from").value}&end=${document.getElementById("reg-to").value}`;
+  try { REG = await regApi(`/employees/accounts/register?${q}`); } catch (e) { if (REG_KEY) showStatus("reg-status", "err", errText(e)); return; }
+  const r = REG, neg = r.balance < 0;
+  const stat = (cls, label, v) => `<div class="pc-stat ${cls}"><span>${label}</span><b>${v}</b></div>`;
+  document.getElementById("reg-stats").innerHTML =
+    (r.from ? stat("", "Brought forward", accMoney(r.opening)) : "") +
+    stat("", "Total received", accMoney(r.total_received)) + stat("", "Total paid out", accMoney(r.total_paid)) +
+    stat("hand" + (neg ? " neg" : ""), `Balance as on ${accDmy(r.as_on) || "-"}`, "AED " + accMoney(r.balance));
+  document.getElementById("reg-stats").style.gridTemplateColumns = `repeat(${r.from ? 4 : 3}, minmax(0, 1fr))`;
+  const row = (x, rem) => `<tr class="${REG_EDIT === x.id ? "edit" : ""}" onclick="regEdit(${x.id})"><td class="l">${accDmy(x.date)}</td><td class="l">${escapeHtml(x.description)}</td>
+      <td class="n">${accMoney(x.amount)}</td>${rem ? `<td class="l">${escapeHtml(x.remarks)}</td>` : ""}</tr>`;
+  document.getElementById("reg-rec").innerHTML = r.received.map(x => row(x, false)).join("") || `<tr><td colspan="3" style="color:#999;">Nothing received in this period.</td></tr>`;
+  document.getElementById("reg-paid").innerHTML = r.paid.map(x => row(x, true)).join("") || `<tr><td colspan="4" style="color:#999;">Nothing paid out in this period.</td></tr>`;
+  document.getElementById("reg-rec-t").innerHTML = `<tr><td class="l"></td><td class="l">Total</td><td class="n">${accMoney(r.total_received)}</td></tr>`;
+  document.getElementById("reg-paid-t").innerHTML = `<tr><td class="l"></td><td class="l">Total</td><td class="n">${accMoney(r.total_paid)}</td><td></td></tr>`;
+}
+function regKind(k) {
+  REG_KIND = k;
+  document.querySelectorAll("#reg-kind button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  document.getElementById("reg-rem-f").style.visibility = k === "paid" ? "visible" : "hidden";
+  document.getElementById("reg-desc").placeholder = k === "paid" ? "e.g. Paid to Al Hassai Building - cement" : "e.g. Received from Mr. Ahmed - Plot 906";
+}
+function regReset() {
+  REG_EDIT = null;
+  ["reg-desc", "reg-amt", "reg-rem"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("reg-date").value = accToday();
+  document.getElementById("reg-save").textContent = "Add";
+  ["reg-cancel", "reg-del"].forEach(id => document.getElementById(id).style.display = "none");
+  regKind(REG_KIND);
+  if (REG) regLoad();
+}
+function regEdit(id) {
+  const x = REG && [...REG.received, ...REG.paid].find(e => e.id === id); if (!x) return;
+  REG_EDIT = id; regKind(x.kind);
+  document.getElementById("reg-date").value = x.date; document.getElementById("reg-desc").value = x.description;
+  document.getElementById("reg-amt").value = x.amount; document.getElementById("reg-rem").value = x.remarks;
+  document.getElementById("reg-save").textContent = "Save changes";
+  ["reg-cancel", "reg-del"].forEach(id => document.getElementById(id).style.display = "");
+  regLoad();
+  document.getElementById("screen-cashreg").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function regSave() {
+  const v = id => document.getElementById(id).value;
+  const body = { kind: REG_KIND, date: v("reg-date"), description: v("reg-desc"), amount: v("reg-amt").replace(/,/g, ""), remarks: REG_KIND === "paid" ? v("reg-rem") : "" };
+  const btn = document.getElementById("reg-save"); btn.disabled = true;
+  try {
+    if (REG_EDIT) await regApi(`/employees/accounts/register/${REG_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
+    else await regApi("/employees/accounts/register", { method: "POST", body: JSON.stringify(body) });
+    const msg = REG_EDIT ? "Saved." : (REG_KIND === "paid" ? "Payment added." : "Receipt added.");
+    regReset(); showStatus("reg-status", "ok", msg);
+  } catch (e) { if (REG_KEY) showStatus("reg-status", "err", errText(e)); }
+  finally { btn.disabled = false; }
+}
+async function regDelete() {
+  const x = REG && [...REG.received, ...REG.paid].find(e => e.id === REG_EDIT); if (!x) return;
+  if (!await hrAsk(`Remove "${x.description}" (AED ${accMoney(x.amount)}, ${accDmy(x.date)}) from the register?`, "Remove", true)) return;
+  try { await regApi(`/employees/accounts/register/${x.id}`, { method: "DELETE" }); regReset(); showStatus("reg-status", "ok", "Removed."); }
+  catch (e) { if (REG_KEY) showStatus("reg-status", "err", errText(e)); }
+}
+// Fetched with the key and opened from memory, so the key never sits in
+// an address the browser keeps in its history.
+async function regExport(kind) {
+  if (!REG_KEY) return;
+  const win = kind === "pdf" ? window.open("", "_blank") : null;
+  try {
+    await refreshDownloadToken();
+    const q = `format=${kind}&start=${document.getElementById("reg-from").value}&end=${document.getElementById("reg-to").value}` +
+              `&token=${encodeURIComponent(cachedDownloadToken || "")}&rk=${encodeURIComponent(REG_KEY)}`;
+    const res = await fetch(`${API}/export/accounts/register?${q}`);
+    if (!res.ok) throw { status: res.status, body: await res.json().catch(() => ({})) };
+    const url = URL.createObjectURL(await res.blob());
+    if (win) win.location = url;
+    else { const a = document.createElement("a"); a.href = url; a.download = "Cash_Register.xlsx"; document.body.appendChild(a); a.click(); a.remove(); }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    regTouch();
+  } catch (e) { if (win) win.close(); if (e && e.status === 423) regLock("The register locked itself - enter the password again."); else showStatus("reg-status", "err", errText(e)); }
+}
+function regPwShow() { document.getElementById("reg-pw").style.display = "flex"; document.getElementById("reg-pw-cur").focus(); }
+async function regPwSave() {
+  const cur = document.getElementById("reg-pw-cur").value, nw = document.getElementById("reg-pw-new").value;
+  try {
+    await regApi("/employees/accounts/register/password", { method: "POST", body: JSON.stringify({ current: cur, new: nw }) });
+    ["reg-pw-cur", "reg-pw-new"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("reg-pw").style.display = "none";
+    showStatus("reg-status", "ok", "Register password changed. Use the new one from now on.");
+  } catch (e) { if (REG_KEY) showStatus("reg-status", "err", errText(e)); }
+}
+// The register has no tab of its own on view: three quick clicks on the
+// Tax Invoices heading bring it up, for a login that holds the right.
+document.addEventListener("click", ev => {
+  if (ev.detail !== 3 || !ev.target.closest || !ev.target.closest("#screen-title, #inv-form-title, #inv-list-title")) return;
+  const scr = document.getElementById("screen-invoices");
+  if (!scr || !scr.classList.contains("active") || INV_KIND !== "tax") return;
+  if (CURRENT_ROLE !== "admin" && !MY_SCREENS.includes("accounts_register")) return;
+  if (window.getSelection) window.getSelection().removeAllRanges();
+  if (typeof pgReveal === "function") pgReveal("register"); else switchScreen("cashreg");
+});
+document.addEventListener("keydown", () => { if (REG_KEY) regTouch(); });
+document.addEventListener("click", () => { if (REG_KEY) regTouch(); });
+
 // ---- Final settlement -------------------------------------------------
 // One working for the staff member chosen above: drawn here as the
 // figures are typed, and as the paper (preview, PDF, Excel) from the
@@ -14523,13 +15038,13 @@ async function addIncrement() {
 // Every generated page carries the whole app, so moving between them is
 // done here, in the same page: no reload, no fetching the app again, no
 // signing in again, and lists already fetched stay in memory.
-const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": []}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": []}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "expiry": {"key": "expiry", "title": "Expiry Reminder", "screens": ["expiry", "pdc"], "tabs": [{"id": "expiry", "screen": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "show": [], "subs": [{"id": "people", "label": "People", "screen": "expiry", "right": "expiry", "go": "hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "expiry", "right": "expiry", "go": "hrDocMode('company')", "people": "", "opts": "", "show": []}, {"id": "pdc", "label": "PDCs", "screen": "pdc", "right": "pdc", "go": "", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "pettycash", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}]}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}]}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}]}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office"], "show": [], "subs": [{"id": "site", "label": "Site", "screen": "pettycash", "right": "petty_site", "go": "pcBook('site')", "people": "", "opts": "", "show": []}, {"id": "pro", "label": "PRO", "screen": "pettycash", "right": "petty_pro", "go": "pcBook('pro')", "people": "", "opts": "", "show": []}, {"id": "office", "label": "Office", "screen": "pettycash", "right": "petty_office", "go": "pcBook('office')", "people": "", "opts": "", "show": []}]}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "hrpayroll", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}]}, {"id": "office", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}]}, {"id": "people", "screen": "pgreports", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "register", "label": "Register", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "register", "opts": "group", "show": []}, {"id": "due", "label": "Documents due", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "documents-due", "opts": "days", "show": []}]}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Consumption", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Issue & return register", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent now", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Request history", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}]}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"], "subs": []}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "__admin__", "show": ["#companies-card", "#pg-sites-block"], "subs": []}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "__admin__", "show": [], "subs": []}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "__admin__", "show": [], "subs": []}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": []}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
+const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "expiry": {"key": "expiry", "title": "Expiry Reminder", "screens": ["expiry", "pdc"], "tabs": [{"id": "expiry", "screen": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "show": [], "subs": [{"id": "people", "label": "People", "screen": "expiry", "right": "expiry", "go": "hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "expiry", "right": "expiry", "go": "hrDocMode('company')", "people": "", "opts": "", "show": []}, {"id": "pdc", "label": "PDCs", "screen": "pdc", "right": "pdc", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "accounts": {"key": "accounts", "title": "Accounts", "screens": ["cashreg", "invoices"], "tabs": [{"id": "taxinv", "screen": "invoices", "label": "Tax Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('tax')", "hidden": false}, {"id": "proforma", "screen": "invoices", "label": "Proforma Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('proforma')", "hidden": false}, {"id": "register", "screen": "cashreg", "label": "Register", "right": "accounts_register", "show": [], "subs": [], "go": "", "hidden": true}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "pettycash", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office"], "show": [], "subs": [{"id": "site", "label": "Site", "screen": "pettycash", "right": "petty_site", "go": "pcBook('site')", "people": "", "opts": "", "show": []}, {"id": "pro", "label": "PRO", "screen": "pettycash", "right": "petty_pro", "go": "pcBook('pro')", "people": "", "opts": "", "show": []}, {"id": "office", "label": "Office", "screen": "pettycash", "right": "petty_office", "go": "pcBook('office')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "hrpayroll", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}], "go": "", "hidden": false}, {"id": "office", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "people", "screen": "pgreports", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "register", "label": "Register", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "register", "opts": "group", "show": []}, {"id": "due", "label": "Documents due", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "documents-due", "opts": "days", "show": []}], "go": "", "hidden": false}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Consumption", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Issue & return register", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent now", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Request history", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"], "subs": [], "go": "", "hidden": false}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "__admin__", "show": ["#companies-card", "#pg-sites-block"], "subs": [], "go": "", "hidden": false}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "__admin__", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "__admin__", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices"], "store": ["pettycash", "purchase", "requests", "store"], "reports": ["hrpayroll", "pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
 let PAGE = ALL_PAGES[window.PG_KEY] || ALL_PAGES.dashboard;
 document.title = PAGE.title + " - Infinia App";
 document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === PAGE.key));
 const STANDALONE_PAGES = ["access"];
-const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "expiry": "expiry", "pdc": "expiry", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "pettycash": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "monthly": "reports", "settings": "settings", "pglogins": "settings", "pgaccess": "settings", "activity": "settings", "pgstaff": "people"};
-const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["adjustments", "combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "expiry": ["expiry", "pdc"], "pdc": "pdc", "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "pettycash": ["petty_office", "petty_pro", "petty_site"], "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "monthly": "reports", "settings": ["__admin__", "settings"], "pglogins": ["__admin__"], "pgaccess": ["__admin__"], "activity": ["activity"], "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "access": "access", "pgstaff": ["people_labour", "people_office", "people_local"]};
+const PAGE_OF = {"dashboard": "dashboard", "attendance": "attendance", "livecard": "attendance", "masterdata": "attendance", "combine": "payroll", "errorcheck": "payroll", "hrpayroll": "reports", "expiry": "expiry", "pdc": "expiry", "invoices": "accounts", "cashreg": "accounts", "store": "reports", "requests": "store", "approvals": "store", "followup": "store", "pettycash": "store", "purchase": "store", "lporegister": "store", "suppliers": "store", "pgreports": "reports", "reports": "reports", "monthly": "reports", "settings": "settings", "pglogins": "settings", "pgaccess": "settings", "activity": "settings", "pgstaff": "people"};
+const RIGHT_OF = {"dashboard": ["dashboard"], "attendance": ["attendance"], "livecard": ["livecard"], "masterdata": ["masterdata"], "combine": ["adjustments", "combine", "errorcheck"], "errorcheck": "errorcheck", "hrpayroll": ["hrpayroll"], "expiry": ["expiry", "pdc"], "pdc": "pdc", "invoices": ["accounts_invoices"], "cashreg": ["accounts_register"], "store": ["approvals", "requests", "store"], "requests": ["approvals", "requests"], "approvals": "approvals", "followup": "requests", "pettycash": ["petty_office", "petty_pro", "petty_site"], "purchase": ["approvals"], "lporegister": "approvals", "suppliers": "approvals", "pgreports": ["combine", "people_labour", "people_local", "people_office", "reports"], "reports": "reports", "monthly": "reports", "settings": ["__admin__", "settings"], "pglogins": ["__admin__"], "pgaccess": ["__admin__"], "activity": ["activity"], "people_labour": "people_labour", "people_office": "people_office", "people_local": "people_local", "access": "access", "pgstaff": ["people_labour", "people_office", "people_local"]};
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
 SCREEN_TITLES.pgaccess = "Access";
@@ -14551,7 +15066,7 @@ SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
-const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard"}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance"}, {"id": "livecard", "label": "Live card", "right": "livecard"}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata"}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll"}], "expiry": [{"id": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"]}], "store": [{"id": "store", "label": "Stock", "right": "store"}, {"id": "rentals", "label": "Rentals", "right": "store"}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"]}, {"id": "petty", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office"]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals"}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine"]}, {"id": "office", "label": "Office payroll", "right": "hrpayroll"}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local"]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"]}], "settings": [{"id": "general", "label": "General", "right": "settings"}, {"id": "companies", "label": "Companies & sites", "right": "__admin__"}, {"id": "logins", "label": "Logins", "right": "__admin__"}, {"id": "access", "label": "Access", "right": "__admin__"}, {"id": "activity", "label": "Activity monitor", "right": "activity"}]};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard", "hidden": false}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance", "hidden": false}, {"id": "livecard", "label": "Live card", "right": "livecard", "hidden": false}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata", "hidden": false}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "hidden": false}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "hidden": false}], "expiry": [{"id": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "hidden": false}], "accounts": [{"id": "taxinv", "label": "Tax Invoice", "right": "accounts_invoices", "hidden": false}, {"id": "proforma", "label": "Proforma Invoice", "right": "accounts_invoices", "hidden": false}, {"id": "register", "label": "Register", "right": "accounts_register", "hidden": true}], "store": [{"id": "store", "label": "Stock", "right": "store", "hidden": false}, {"id": "rentals", "label": "Rentals", "right": "store", "hidden": false}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"], "hidden": false}, {"id": "petty", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office"], "hidden": false}, {"id": "purchasing", "label": "Purchasing", "right": "approvals", "hidden": false}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine"], "hidden": false}, {"id": "office", "label": "Office payroll", "right": "hrpayroll", "hidden": false}, {"id": "people", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "hidden": false}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "hidden": false}], "settings": [{"id": "general", "label": "General", "right": "settings", "hidden": false}, {"id": "companies", "label": "Companies & sites", "right": "__admin__", "hidden": false}, {"id": "logins", "label": "Logins", "right": "__admin__", "hidden": false}, {"id": "access", "label": "Access", "right": "__admin__", "hidden": false}, {"id": "activity", "label": "Activity monitor", "right": "activity", "hidden": false}]};
 // One address for the whole app: app.infinia.ae/ is the dashboard and
 // app.infinia.ae/?p=<page> every other page; the tab follows after #.
 function pgFile(key) { return key === "dashboard" ? "/" : key === "access" ? "/?p=settings" : "/?p=" + key; }
@@ -14582,7 +15097,13 @@ window.addEventListener("popstate", () => {
 });
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
-function pgTabOk(t) { return pgHas(t.right); }
+// A hidden tab counts only once revealed, and only until its screen is left.
+let PG_SHOWN = new Set();
+function pgTabOk(t) { return pgHas(t.right) && (!t.hidden || PG_SHOWN.has(t.id)); }
+function pgReveal(id) {
+  const t = PAGE.tabs.find(x => x.id === id); if (!t || !pgHas(t.right)) return false;
+  PG_SHOWN.add(id); pgTab(id); return true;
+}
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id) || PAGE.tabs.find(t => t.subs.some(sb => sb.id === id || sb.screen === id)); }
 let PG_TAB = null, PG_SUB = null;
 
@@ -14592,6 +15113,7 @@ switchScreen = function (name) {
   // A login without the right is on its way to another page; nothing
   // here should start loading (and being refused) in the meantime.
   if (MY_SCREENS.length && !pgAllowed(name)) return;
+  if (PG_SHOWN.size && !PAGE.tabs.some(t => PG_SHOWN.has(t.id) && t.screen === name)) PG_SHOWN.clear();
   _switchScreen(name);
   const early = document.getElementById("pg-early"); if (early) early.remove();
   const inSubs = PG_TAB && PG_TAB.subs.some(sb => sb.screen === name);
@@ -14614,7 +15136,7 @@ function pgTab(id) {
   PG_TAB = t;
   if (t.id !== t.screen) location.hash = t.id;
   // Two tabs of one screen: only the part shown changes, nothing reloads.
-  if (same) { pgApplyTab(); pgRenderTabs(); return; }
+  if (same) { pgApplyTab(); pgRenderTabs(); if (t.go) { try { new Function(t.go)(); } catch (e) { console.error(e); } } return; }
   switchScreen(t.screen);
 }
 // A sign-in that does not resume shows the sign-in box after all.
@@ -14670,7 +15192,7 @@ firstScreenFor = function () {
     if (tb.subs.length) { PG_SUB = tb.subs.find(sb => pgHas(sb.right)) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
     return tb.screen;
   }
-  const pages = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "reports", "settings"];
+  const pages = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "reports", "settings"];
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
     if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) {
@@ -14719,7 +15241,7 @@ applyScreenPermissions = async function (pre) { await _applyScreenPermissions(pr
 window.addEventListener("hashchange", () => {
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
-  if (!t) return;
+  if (!t || !pgTabOk(t)) return;
   if (t.subs.length) { const sb = t.subs.find(x => x.id === extra); if (sb && !(PG_SUB && PG_SUB.id === sb.id)) { PG_TAB = t; pgSub(sb.id); } return; }
   if (!(PG_TAB && PG_TAB.id === t.id)) { PG_TAB = t; switchScreen(t.screen); }
 });

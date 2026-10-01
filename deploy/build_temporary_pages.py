@@ -27,8 +27,13 @@ OUT = os.path.join(ROOT, "portal")          # Staff, Access and the logo
 APP_OUT = os.path.join(ROOT, "app.html")     # the app itself
 
 
-def tab(id, screen, label, right=None, show=None, subs=None):
-    return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or [], "subs": subs or []}
+def tab(id, screen, label, right=None, show=None, subs=None, go=None, hidden=False):
+    """go = what to run when moving to this tab from another tab of the
+    same screen (Tax Invoice -> Proforma Invoice), where nothing reloads.
+    hidden = not in the tab bar at all until something on the page reveals
+    it (pgReveal), and gone again once its screen is left."""
+    return {"id": id, "screen": screen, "label": label, "right": right or screen, "show": show or [], "subs": subs or [],
+            "go": go or "", "hidden": hidden}
 
 
 def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, show=None):
@@ -74,6 +79,12 @@ PAGES = {
             sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')"),
             # Post-dated cheques: a screen of its own and a right of its own.
             sub("pdc", "PDCs", screen="pdc", right="pdc")])]),
+    # Accounts: invoices, and the cash register behind its own password.
+    "accounts": ("Accounts", [
+        tab("taxinv", "invoices", "Tax Invoice", "accounts_invoices", go="invOpen('tax')"),
+        tab("proforma", "invoices", "Proforma Invoice", "accounts_invoices", go="invOpen('proforma')"),
+        # Not shown: three clicks on the Tax Invoices heading bring it up.
+        tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -136,7 +147,7 @@ PAGES = {
 EXTRA = {"monthly": "reports"}
 # Pages held in a frame inside the app rather than written from app.html.
 VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
-ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "reports", "settings"]
+ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
@@ -145,7 +156,8 @@ def fname(key): return FILE.get(key, key) + ".html"
 STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local"]),
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
-          "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder"}
+          "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder",
+          "accounts": "Accounts"}
 
 CSS = """
 <style>
@@ -392,7 +404,13 @@ window.addEventListener("popstate", () => {
 });
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
-function pgTabOk(t) { return pgHas(t.right); }
+// A hidden tab counts only once revealed, and only until its screen is left.
+let PG_SHOWN = new Set();
+function pgTabOk(t) { return pgHas(t.right) && (!t.hidden || PG_SHOWN.has(t.id)); }
+function pgReveal(id) {
+  const t = PAGE.tabs.find(x => x.id === id); if (!t || !pgHas(t.right)) return false;
+  PG_SHOWN.add(id); pgTab(id); return true;
+}
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id) || PAGE.tabs.find(t => t.subs.some(sb => sb.id === id || sb.screen === id)); }
 let PG_TAB = null, PG_SUB = null;
 
@@ -402,6 +420,7 @@ switchScreen = function (name) {
   // A login without the right is on its way to another page; nothing
   // here should start loading (and being refused) in the meantime.
   if (MY_SCREENS.length && !pgAllowed(name)) return;
+  if (PG_SHOWN.size && !PAGE.tabs.some(t => PG_SHOWN.has(t.id) && t.screen === name)) PG_SHOWN.clear();
   _switchScreen(name);
   const early = document.getElementById("pg-early"); if (early) early.remove();
   const inSubs = PG_TAB && PG_TAB.subs.some(sb => sb.screen === name);
@@ -424,7 +443,7 @@ function pgTab(id) {
   PG_TAB = t;
   if (t.id !== t.screen) location.hash = t.id;
   // Two tabs of one screen: only the part shown changes, nothing reloads.
-  if (same) { pgApplyTab(); pgRenderTabs(); return; }
+  if (same) { pgApplyTab(); pgRenderTabs(); if (t.go) { try { new Function(t.go)(); } catch (e) { console.error(e); } } return; }
   switchScreen(t.screen);
 }
 // A sign-in that does not resume shows the sign-in box after all.
@@ -529,7 +548,7 @@ applyScreenPermissions = async function (pre) { await _applyScreenPermissions(pr
 window.addEventListener("hashchange", () => {
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
-  if (!t) return;
+  if (!t || !pgTabOk(t)) return;
   if (t.subs.length) { const sb = t.subs.find(x => x.id === extra); if (sb && !(PG_SUB && PG_SUB.id === sb.id)) { PG_TAB = t; pgSub(sb.id); } return; }
   if (!(PG_TAB && PG_TAB.id === t.id)) { PG_TAB = t; switchScreen(t.screen); }
 });
@@ -746,7 +765,8 @@ def build():
             right_of[t["screen"]] = t["right"]
     tabmaps, firsts = {}, {}
     for key, (title, tabs) in list(PAGES.items()) + list(VIRTUAL.items()):
-        tm = {t["id"]: (next((sb["screen"] or "pgreports" for sb in t["subs"]), t["screen"]) if t["subs"] else t["screen"]) for t in tabs}
+        tm = {t["id"]: (next((sb["screen"] or "pgreports" for sb in t["subs"]), t["screen"]) if t["subs"] else t["screen"])
+              for t in tabs if not t.get("hidden")}       # a hidden tab is never painted from the address
         for t in tabs:
             for sb in t["subs"]:
                 tm[t["id"] + ":" + sb["id"]] = sb["screen"] or "pgreports"
@@ -764,7 +784,7 @@ def build():
                        "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
                        "file_json": json.dumps(FILE),
                        "all_pages_json": json.dumps(ALL_CFG),
-                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"]} for t in tb] for k, (_, tb) in PAGES.items()})}
+                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"]} for t in tb] for k, (_, tb) in PAGES.items()})}
     page = page.replace("</body>", script + "</body>", 1)
     # In-app help (portal/help): the guides, the list of step pictures and
     # the code, each tagged with its own content hash so a changed guide

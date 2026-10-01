@@ -10,10 +10,11 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
 const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['labourpay', 'hrpayroll'],
-  store: ['store', 'rentals', 'requests', 'purchasing'],
+  store: ['store', 'rentals', 'requests', 'petty', 'purchasing'],
+  accounts: ['taxinv', 'proforma'],
   reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
 };
-const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
+const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices', labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
 
 (async () => {
   const b = await chromium.launch();
@@ -24,7 +25,7 @@ const SCREEN_OF = { labourpay: 'combine', rentals: 'store', purchasing: 'purchas
   ck('a temporary page opens on the sign-in', await p.locator('#login-screen').isVisible());
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1500);
-  ck('the new menu has seven entries and the old one is hidden', await p.locator('.pg-side .pg-item:visible').count() === 7 && !(await p.locator('#legacy-sidebar').isVisible()));
+  ck('the new menu has nine entries and the old one is hidden', await p.locator('.pg-side .pg-item:visible').count() === 9 && !(await p.locator('#legacy-sidebar').isVisible()));
   ck('the dashboard has no tab strip (one screen)', !(await p.locator('#pg-tabs').isVisible()));
 
   for (const [page, screens] of Object.entries(PAGES)) {

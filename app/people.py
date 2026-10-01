@@ -765,6 +765,8 @@ SCREEN_LABELS = {
     "expiry": "Expiry reminder - documents, NOCs, permits, licences (no salaries)",
     "pdc": "PDC tracker - post-dated cheques (admin and chief accountant)",
     "petty_site": "Site petty cash", "petty_pro": "PRO petty cash", "petty_office": "Office petty cash",
+    "accounts_invoices": "Tax & proforma invoices",
+    "accounts_register": "Cash register (opens with its own password)",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
@@ -776,6 +778,7 @@ RIGHT_PAGES = [
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Petty cash", ["petty_site", "petty_pro", "petty_office"]),
     ("Expiry Reminder", ["expiry", "pdc"]),
+    ("Accounts", ["accounts_invoices", "accounts_register"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),
