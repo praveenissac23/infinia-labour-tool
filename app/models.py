@@ -1029,6 +1029,10 @@ class Pdc(Base):
     cheque_no = Column(String, default="")
     bank = Column(String, default="")
     cheque_date = Column(Date, nullable=False, index=True)
+    # The month is known but not the day yet (an old sheet carried over):
+    # cheque_date holds the 1st of that month and the screens say "date to
+    # fill" until the accountant puts the real date in.
+    date_tbc = Column(Boolean, default=False)
     amount = Column(Float, default=0.0)
     notes = Column(String, default="")
     status = Column(String, default="pending", index=True)   # pending | cleared | cancelled

@@ -62,9 +62,9 @@ def _same_day(d, n):
 
 
 def _row(x, today, users):
-    left = (x.cheque_date - today).days
+    left = None if x.date_tbc else (x.cheque_date - today).days
     return {"id": x.id, "payee": x.payee, "cheque_no": x.cheque_no or "", "bank": x.bank or "",
-            "date": x.cheque_date.isoformat(), "amount": round(x.amount or 0, 2), "notes": x.notes or "",
+            "date": x.cheque_date.isoformat(), "date_tbc": bool(x.date_tbc), "month": f"{x.cheque_date:%b-%y}", "amount": round(x.amount or 0, 2), "notes": x.notes or "",
             "status": x.status or "pending", "cleared_on": x.cleared_on.isoformat() if x.cleared_on else "",
             "days_left": left, "by": users.get(x.updated_by or x.created_by, "")}
 
@@ -72,7 +72,8 @@ def _row(x, today, users):
 def summary(db):
     today = M._dubai_today()
     pend = db.query(models.Pdc).filter(models.Pdc.status == "pending").all()
-    days = [((x.cheque_date - today).days, x) for x in pend]
+    nodate = [x for x in pend if x.date_tbc]
+    days = [((x.cheque_date - today).days, x) for x in pend if not x.date_tbc]
     overdue = [x for d, x in days if d < 0]
     week = [x for d, x in days if 0 <= d <= 7]
     fortnight = [x for d, x in days if 8 <= d <= 14]
@@ -80,6 +81,7 @@ def summary(db):
     return {"overdue": len(overdue), "overdue_amount": s(overdue), "week": len(week), "week_amount": s(week),
             "fortnight": len(fortnight), "fortnight_amount": s(fortnight),
             "pending": len(pend), "pending_amount": s(pend),
+            "no_date": len(nodate), "no_date_amount": s(nodate),
             "milestone": any(d < 0 or d == 0 or d in REMIND for d, _ in days),
             "soon": sorted(overdue + week + fortnight, key=lambda x: x.cheque_date)}
 
@@ -101,6 +103,8 @@ def _clean(p):
     if not payee:
         raise HTTPException(status_code=400, detail="Who is the cheque for? Type the payee.")
     d = M._as_date(p.get("date"))
+    if not d and p.get("_keep_date"):
+        d = p["_keep_date"]
     if not d:
         raise HTTPException(status_code=400, detail="Put the cheque date.")
     try:
@@ -151,8 +155,12 @@ def edit_pdc(pid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     if not x:
         raise HTTPException(status_code=404, detail="That cheque is no longer there.")
     was = x.status
-    for k, v in _clean(payload).items():
+    # A cheque still waiting for its date may be saved without one; putting
+    # a date in settles it.
+    tbc = bool(x.date_tbc) and not M._as_date(payload.get("date"))
+    for k, v in _clean({**payload, "_keep_date": x.cheque_date if tbc else None}).items():
         setattr(x, k, v)
+    x.date_tbc = tbc
     if x.status == "cleared" and was != "cleared":
         x.cleared_on = M._dubai_today()
     if x.status != "cleared":
@@ -214,7 +222,8 @@ def tracker(db, start="", months=4, show="due"):
         if x.notes and x.notes not in p["notes"]:
             p["notes"].append(x.notes)
         p["cheques"].append({"date": x.cheque_date.isoformat(), "no": x.cheque_no or "", "amount": x.amount, "status": x.status})
-        q = {"date": x.cheque_date.isoformat(), "label": f"{x.cheque_date:%d-%b-%y}", "no": x.cheque_no or "",
+        q = {"date": x.cheque_date.isoformat(), "label": "date to fill" if x.date_tbc else f"{x.cheque_date:%d-%b-%y}",
+             "tbc": bool(x.date_tbc), "no": x.cheque_no or "",
              "amount": round(x.amount or 0, 2), "cleared": x.status == "cleared"}
         if x.cheque_date < a:
             p["overdue"] += x.amount or 0
@@ -471,12 +480,14 @@ def notification(db, today):
     checks). It pops up on a reminder day (14 or 7 days before, the day
     itself, or overdue); otherwise it sits quietly in the bell."""
     s = summary(db)
-    if not (s["overdue"] or s["week"] or s["fortnight"]):
+    if not (s["overdue"] or s["week"] or s["fortnight"] or s["no_date"]):
         return None
     bits = [f"{s['overdue']} overdue" if s["overdue"] else "",
             f"{s['week']} due within 7 days" if s["week"] else "",
-            f"{s['fortnight']} within 14 days" if s["fortnight"] else ""]
-    first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d %b}" for x in s["soon"][:3])
+            f"{s['fortnight']} within 14 days" if s["fortnight"] else "",
+            f"{s['no_date']} with no date yet" if s["no_date"] else ""]
+    first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d %b}" for x in s["soon"][:3]) \
+        or "Put the cheque dates in so the reminders can work"
     more = len(s["soon"]) - 3
     return {"id": f"pdc-{today}" if s["milestone"] else f"pdc-wk{today.isocalendar()[1]}", "kind": "pdc",
             "title": "PDCs: " + ", ".join(b for b in bits if b),
