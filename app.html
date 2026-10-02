@@ -1149,7 +1149,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="aeecc38f0911";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="7b5d21bae4f7";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -8920,6 +8920,12 @@ async function loadFollowUp() {
   } catch (e) { box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`; }
 }
 
+// "01-Oct-26 09:12" - the day and minute a request was raised.
+function fuWhen(iso) {
+  const d = new Date(iso); if (isNaN(d)) return "";
+  return `${pcDate(isoLocal(d))} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 function renderFollowUp() {
   const box = document.getElementById("fu-list");
   if (!box) return;
@@ -8938,6 +8944,7 @@ function renderFollowUp() {
     rows.push({
       rid: r.id, supId: sup ? sup.id : 0,
       ref: r.ref, site: r.site || "", needed: r.needed_by || "", expected: r.expected_on || "",
+      raised: r.created_at || "", by: r.requested_by || "",
       late: !!(r.needed_by && r.needed_by < today),
       name: l.item_name || l.description || "", code: l.item_code || "",
       due, unit: l.unit || "", received: l.qty_received || 0, asked: l.qty_requested || 0,
@@ -8972,8 +8979,8 @@ function renderFollowUp() {
     <table>
       <thead><tr>
         <th style="width:22%;">Material</th><th style="width:8%;">Still due</th><th style="width:7%;">For site</th>
-        <th style="width:8%;">Request</th><th style="width:9%;">Needed by</th>
-        <th style="width:13%;">Ordered from</th><th style="width:16%;">Who to call</th>
+        <th style="width:11%;">Request</th><th style="width:9%;">Needed by</th>
+        <th style="width:13%;">Ordered from</th><th style="width:13%;">Who to call</th>
         <th style="width:9%;">Expected</th><th style="width:10%;">Status</th>
       </tr></thead>
       <tbody>${list.map(x => `
@@ -8981,7 +8988,7 @@ function renderFollowUp() {
           <td>${x.code ? `<strong>${materialLink(x.code)}</strong> ` : ""}${escapeHtml(x.name || "")}${x.purpose ? `<div style="font-size:11px; color:#999;">${x.purpose}</div>` : ""}</td>
           <td class="num-col" style="font-weight:700;">${num(x.due)} ${x.unit}${x.received ? `<div style="font-size:11px; color:#999; font-weight:400;">${num(x.received)} of ${num(x.asked)} in</div>` : ""}</td>
           <td>${x.site || '<span style="color:#999;">store</span>'}</td>
-          <td><strong>${requestLink(x.ref)}</strong></td>
+          <td><strong>${requestLink(x.ref)}</strong>${x.raised ? `<div style="font-size:11px; color:#999; white-space:nowrap;">${fuWhen(x.raised)}</div>` : ""}</td>
           <td>${x.needed || "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
           <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
           <td>${x.sup && (x.sup.phone || x.sup.contact_person)

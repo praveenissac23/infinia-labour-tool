@@ -5356,6 +5356,11 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
                       "contact_person": sup.contact_person or "", "phone": sup.phone or ""}
                      if sup else None)
     d["expected_on"] = mr.expected_on.isoformat() if getattr(mr, "expected_on", None) else None
+    # When it was raised, to the minute - the follow-up list shows it.
+    ca = getattr(mr, "created_at", None)
+    if ca and ca.tzinfo is None:
+        ca = ca.replace(tzinfo=timezone.utc)      # the clock is UTC; the browser shows Dubai time
+    d["created_at"] = ca.isoformat() if ca else None
     for i, ln in enumerate(mr.lines):
         d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
         d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
