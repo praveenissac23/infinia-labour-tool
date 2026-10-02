@@ -79,6 +79,7 @@
   .list { border: 1px solid #E9EBEE; border-radius: 10px; overflow: hidden; max-height: 72vh; overflow-y: auto; }
   .person { padding: 9px 12px; border-bottom: 1px solid #F0EDE8; display: flex; justify-content: space-between; cursor: pointer; gap: 8px; }
   .person:hover { background: #FBF8F4; } .person.on { background: #FBE4E1; border-left: 3px solid var(--red); }
+  tr.focus td { background: #FFF1CC !important; font-weight: 600; } tr.focus td:first-child { box-shadow: inset 3px 0 0 var(--red); }
   .person small { color: #888; display: block; } .person .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .file { border: 1px solid #E9EBEE; border-radius: 10px; padding: 16px 20px; min-height: 300px; }
   .file h2 { margin: 0; }
@@ -536,6 +537,9 @@ async function start() {
     if (b.dataset.v && !ME.groups.includes(b.dataset.v)) b.remove();
   });
   if (!ME.groups.includes(P.leaveGroup)) { P.leaveGroup = ME.groups[0]; segSet(document.getElementById("lv-group"), P.leaveGroup); }
+  window.PG_READY = true;
+  // Sent here from elsewhere in the app while the page was still opening.
+  if (window.PG_PENDING) { const [c, k] = window.PG_PENDING; window.PG_PENDING = null; goPersonDoc(c, k); return; }
   showView((localStorage.getItem("people_view") || "register").replace("leave", "register"));
 }
 async function refreshDl() {
@@ -580,6 +584,7 @@ function renderList() {
     </div>`).join("") : `<div class="empty">No one here.</div>`;
 }
 async function openPerson(code) {
+  if (code !== P.focusFor) P.focusDoc = "";          // a document to show belongs to one person only
   P.current = code;
   document.querySelectorAll("#list .person").forEach(el => el.classList.toggle("on", el.querySelector("b").textContent === code));
   try { P.file = await apiCall(`/employees/people/${encodeURIComponent(code)}`); }
@@ -656,6 +661,14 @@ function renderFile() {
       <div><h2>${esc(p.emp_no)} · ${esc(p.name)}</h2><div class="muted">${esc(p.designation || p.group_label)} · ${esc(p.company)}${p.joined_on ? " · joined " + dmy(p.joined_on) : ""} &nbsp;${pills}</div></div>
       <div style="white-space:nowrap;"><button class="btn btn-dark btn-sm" onclick="preview('file')">Print file</button> <button class="btn btn-primary btn-sm" onclick="openEdit()">Edit</button></div></div>
     <div class="subtabs">${SECTIONS.map(([k, l]) => `<button class="${k === P.section ? "on" : ""}" data-section="${k}" onclick="setSection('${k}')">${l}</button>`).join("")}</div>${body}`;
+  // Arrived from the Expiry Reminder: the document asked about, lit up.
+  if (P.section === "documents" && P.focusDoc && P.focusFor === p.emp_no) {
+    const same = k => k === P.focusDoc || (["visa", "labour_card"].includes(k) && ["visa", "labour_card"].includes(P.focusDoc));
+    const i = F.documents.findIndex(d => same(d.kind));
+    const tr = i >= 0 ? box.querySelectorAll("tbody tr")[i] : null;
+    if (tr) { tr.classList.add("focus"); setTimeout(() => tr.scrollIntoView({ block: "center", behavior: "smooth" }), 60); }
+    const on = document.querySelector("#list .person.on"); if (on) on.scrollIntoView({ block: "nearest" });
+  }
 }
 function age(iso) { const b = new Date(iso), t = new Date(); let a = t.getFullYear() - b.getFullYear(); if (t < new Date(t.getFullYear(), b.getMonth(), b.getDate())) a--; return a > 0 ? a : ""; }
 function table(head, rows, empty) {
@@ -849,6 +862,21 @@ async function loadLeave() {
     <td>${r.next_due ? (r.due_state === "due" ? `<span class="pill r">Due since ${dmy(r.next_due)}</span>` : dmy(r.next_due)) : (r.why ? `<span class="nil">${esc(r.why)}</span>` : "")}</td><td>${esc(r.last_vacation || "—")}</td>
     <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(P.leaveGroup)}','${esc(r.emp_no)}','leave')">Open</button></td></tr>`).join("") || `<tr><td colspan="12" class="muted">No one on this register.</td></tr>`;
 }
+// Opened from elsewhere in the app (the Expiry Reminder): the person's own
+// register, their file, the Documents section, the document lit up.
+async function goPersonDoc(code, kind) {
+  if (!window.PG_READY) { window.PG_PENDING = [code, kind]; return; }
+  let file;
+  try { file = await apiCall(`/employees/people/${encodeURIComponent(code)}`); } catch (e) { status("warn", errText(e)); return; }
+  const p = file.person;
+  P.group = p.active ? p.group : "left"; P.current = code; P.section = "documents";
+  P.focusDoc = kind || ""; P.focusFor = code; P.active = "all";
+  segSet(document.getElementById("f-active"), "all"); document.getElementById("f-q").value = "";
+  document.getElementById("f-company").value = "";
+  document.getElementById("f-active").style.visibility = P.group === "left" ? "hidden" : "";
+  showView("register");
+}
+window.goPersonDoc = goPersonDoc;
 async function goPerson(group, code, section) { P.group = group; P.current = code; P.section = section; P.active = "all"; segSet(document.getElementById("f-active"), "all"); showView("register"); }
 
 // ---- Reports -------------------------------------------------------------------

@@ -1147,7 +1147,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="22f46db20f1c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="688b3d45de62";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -13915,7 +13915,7 @@ function renderDocuments() {
   document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
     <tr>
       <td>${escapeHtml(p.emp_no)}</td>
-      <td class="txt">${workerLink(p.emp_no, p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}
+      <td class="txt">${staffFileLink(p)}<span class="sub">${p.staff ? "Office" : "Labour"}
         ${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
       ${hrDocCell(p.docs.eid, p.emp_no, "eid")}${hrDocCell(p.docs.visa, p.emp_no, p.staff ? "visa" : "labour_card")}${hrDocCell(p.docs.passport, p.emp_no, "passport")}
       <td class="txt">${p.other.map(x => `<span class="hr-d hr-d-${x.status}" style="display:block; padding:1px 3px;"
@@ -13950,7 +13950,7 @@ function expRenderMissing() {
   document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
     <tr>
       <td>${escapeHtml(p.emp_no)}</td>
-      <td class="txt">${workerLink(p.emp_no, p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
+      <td class="txt">${staffFileLink(p)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
       ${cell(p, "Emirates ID")}${cell(p, "Visa / labour card")}${cell(p, "Passport")}<td class="hr-nil hr-d-add" onclick="hrAddDoc('${escapeAttr(p.emp_no)}', 'custom')" title="Click to add another document">-</td>
       <td class="hr-d-expired">Missing</td></tr>`).join("") ||
     `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nobody is missing a document.</td></tr>`;
@@ -14895,6 +14895,26 @@ function openWorker(empNo) {
   } else if (xlCan("masterdata")) {
     xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(empNo));
   }
+}
+// A person's file on the Staff page, Documents section, with the one
+// document asked about lit up (Expiry Reminder names).
+function staffCan(isLabour) {
+  if (CURRENT_ROLE === "admin") return true;
+  return isLabour ? MY_SCREENS.includes("people_labour") : (MY_SCREENS.includes("people_office") || MY_SCREENS.includes("people_local"));
+}
+function openStaffFile(empNo, kind) {
+  xlGo("people", "people", null, () => {
+    const f = document.getElementById("pg-staff-frame"); let w = null; try { w = f && f.contentWindow; } catch (e) {}
+    return xlOn("pgstaff") && w && typeof w.goPersonDoc === "function";
+  }, () => document.getElementById("pg-staff-frame").contentWindow.goPersonDoc(empNo, kind));
+}
+function staffFileLink(p) {
+  // The document that matters most: expired or soonest first.
+  const docs = [...Object.values(p.docs || {}), ...(p.other || [])].filter(d => d && d.kind);
+  docs.sort((a, b) => (a.days_left ?? 1e9) - (b.days_left ?? 1e9));
+  const kind = docs.length ? docs[0].kind : "";
+  if (!staffCan(!p.staff)) return workerLink(p.emp_no, p.name);
+  return xlink(p.name, `openStaffFile(${jsq(p.emp_no)}, ${jsq(kind)})`, null, "Open the staff file at this document");
 }
 function workerLink(empNo, text) {
   const lab = (employees || []).some(e => e.emp_no === empNo);

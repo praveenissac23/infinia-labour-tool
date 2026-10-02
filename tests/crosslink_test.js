@@ -24,25 +24,27 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const po = await api(a, '/store/purchase/orders', 'POST', { order_date: '2026-10-01', supplier_name: 'Al Raha Trading LLC', lines: [{ item_id: it.id, description: it.name, qty: 20, unit: it.unit || 'pcs', rate: 16.5, tax_pct: 5 }] });
   ck('seed: order raised', po && po.ref, po);
 
-  // ---- Expiry > People: a labourer's name opens his live card ------------
-  await a.evaluate(() => pgGo('expiry')); await a.waitForTimeout(2500);
-  await a.evaluate(() => { document.getElementById('hr-doc-within').value = '-1'; renderDocuments(); });
-  const labRow = await a.evaluate(() => { const l = [...document.querySelectorAll('#hr-doc-body a.xl')].find(x => !/Office/.test(x.parentElement.textContent)); return l ? [l.textContent, l.closest('tr').children[0].textContent.trim()] : null; });
-  const lab = labRow && labRow[0];
-  ck('expiry: names are links', !!lab, lab);
-  if (lab) {
-    await a.click(`#hr-doc-body a.xl:text-is("${lab}")`); await a.waitForTimeout(3500);
-    ck('labour name -> his live card', (await active(a)) === 'screen-livecard' && (await a.evaluate(() => selectedLiveCardEmpNo)) === labRow[1] && (await a.textContent('#livecard-detail')).includes(labRow[1]), [await active(a), labRow]);
-  }
-  // ---- an office name on Expiry opens his staff record --------------------
-  await a.evaluate(() => pgGo('expiry')); await a.waitForTimeout(2500);
-  await a.evaluate(() => { document.getElementById('hr-doc-within').value = '-1'; renderDocuments(); });
-  const off = await a.evaluate(() => { const l = [...document.querySelectorAll('#hr-doc-body a.xl')].find(x => /Office/.test(x.parentElement.textContent)); return l ? l.textContent : null; });
-  if (off) {
-    await a.click(`#hr-doc-body a.xl:text-is("${off}")`); await a.waitForTimeout(4000);
-    ck('office name -> staff record dialog', (await active(a)) === 'screen-hrpayroll' && await a.locator('#hr-dlg').isVisible() && (await a.textContent('#hr-staff-edit-title')).includes(off), [await active(a)]);
-    await a.evaluate(() => hrCloseDlg());
-  } else ck('an office name on the documents list', false, 'none found');
+  // ---- Expiry > People: a name opens his file on Staff, at the document ----
+  const staffCheck = async (office) => {
+    await a.evaluate(() => pgGo('expiry')); await a.waitForTimeout(2500);
+    await a.evaluate(() => { document.getElementById('hr-doc-within').value = '-1'; renderDocuments(); });
+    const row = await a.evaluate(office => { const l = [...document.querySelectorAll('#hr-doc-body a.xl')].find(x => /Office/.test(x.parentElement.textContent) === office);
+      if (!l) return null; const tr = l.closest('tr'); const lit = [...tr.querySelectorAll('td.hr-d')].map(td => td.textContent.trim());
+      return [l.textContent, tr.children[0].textContent.trim()]; }, office);
+    ck(`expiry: ${office ? 'office' : 'labour'} names are links`, !!row, row);
+    if (!row) return;
+    await a.click(`#hr-doc-body a.xl:text-is("${row[0]}")`); await a.waitForTimeout(5000);
+    const fr = a.frameLocator('#pg-staff-frame');
+    const head = await fr.locator('#file h2').textContent().catch(() => '');
+    const sec = await fr.locator('#file .subtabs button.on').textContent().catch(() => '');
+    const lit = await fr.locator('#file tr.focus').count().catch(() => 0);
+    const docs = await fr.locator('#file tbody tr').count().catch(() => 0);
+    ck(`${office ? 'office' : 'labour'} name -> Staff register, his file, Documents, the document lit up`,
+       (await active(a)) === 'screen-pgstaff' && head.includes(row[1]) && sec === 'Documents' && (lit === 1 || docs === 0), [await active(a), head, sec, lit, docs]);
+    if (!office) await a.screenshot({ path: SH + 'xl_staff_doc.png' });
+  };
+  await staffCheck(false);
+  await staffCheck(true);
   // ---- loans list: name opens the record in place ------------------------
   await a.evaluate(() => pgGo('payroll', 'hrpayroll:loans')); await a.waitForTimeout(3000);
   const ln = await a.$('#hr-loan-body a.xl');
