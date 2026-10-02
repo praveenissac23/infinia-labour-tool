@@ -320,13 +320,14 @@
   .pc-stat b { font-size: 17px; font-variant-numeric: tabular-nums; } .pc-stat.hand b { color: #2E7D32; } .pc-stat.hand.neg b { color: #C0392B; }
   .pc-form { display: grid; grid-template-columns: auto 140px minmax(180px, 2fr) minmax(150px, 1.4fr) 140px 120px auto; gap: 10px; align-items: end;
              border-top: 1px solid #EEE; padding-top: 12px; }
+  .pc-form.nosup { grid-template-columns: auto 140px minmax(220px, 3fr) 160px 140px auto; }
   .pc-form input, .pc-form select { width: 100%; }
   .pc-kind { display: inline-flex; border: 1px solid #D5D9DE; border-radius: 7px; overflow: hidden; height: 36px; }
   .pc-kind button { border: 0; background: #fff; padding: 0 12px; font: 600 12.5px inherit; color: #555; cursor: pointer; white-space: nowrap; }
   .pc-kind button.on { background: #B7322A; color: #fff; }
   .pc-go { flex-direction: row; gap: 6px; }
   .pc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .pc-table th { text-align: center; } .pc-table th.l, .pc-table td.l { text-align: left; } .pc-table th.n, .pc-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .pc-table th { text-align: center; white-space: normal; line-height: 1.25; } .pc-table th.l, .pc-table td.l { text-align: left; } .pc-table th.n, .pc-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
   .pc-table td { text-align: center; padding: 8px 10px; border-bottom: 1px solid #EFEFEF; }
   .pc-table td.bal { font-weight: 700; } .pc-table td.neg { color: #C0392B; }
   .pc-table tr.bf td { background: #FBF6F4; font-style: italic; color: #6b625a; }
@@ -1148,7 +1149,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="8c481d0ffaa7";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="e76f7fa23f12";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2492,7 +2493,7 @@
               </div>
               <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
               <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="200"></label>
-              <label class="pc-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off"></label>
+              <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off"></label>
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site"></select></label>
               <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
@@ -14228,7 +14229,7 @@ const PC_DIRECTORS = { naveen: "Naveen", praveen: "Praveen" };
 function pcTerms(book) {
   const n = PC_DIRECTORS[book || PC_BOOK];
   return n ? { director: true, out: `Paid by ${n}`, in: `Repaid to ${n}`, outCol: `DR - Paid by ${n}`, inCol: `CR - Repaid`,
-               balance: `Due to ${n}`, balanceCol: "Balance due", supplier: "Paid to / Ref", site: "Project", general: "Office / general" }
+               balance: `Due to ${n}`, balanceCol: "Balance due", supplier: "", site: "Project", general: "Office / general" }
            : { director: false, out: "Paid", in: "Received", outCol: "Paid", inCol: "Received",
                balance: "Balance in hand", balanceCol: "Balance", supplier: "Supplier / contact", site: "Site", general: "Office / general" };
 }
@@ -14241,11 +14242,13 @@ function pcKind(k) {
   btns[0].textContent = t.director ? t.out : "Bill paid";
   btns[1].textContent = t.director ? t.in : "Cash received";
   document.getElementById("pc-amt-l").textContent = (k === "paid" ? (t.director ? "DR - paid" : "Paid") : (t.director ? "CR - repaid" : "Received")) + " (AED)";
-  document.getElementById("pc-sup-l").textContent = k === "paid" ? t.supplier : (t.director ? "How (e.g. Bank transfer)" : "From (e.g. Cash / ADCB)");
+  document.getElementById("pc-sup-l").textContent = k === "paid" ? t.supplier : "From (e.g. Cash / ADCB)";
+  document.getElementById("pc-sup-f").style.display = t.supplier ? "" : "none";
+  document.getElementById("pc-form").classList.toggle("nosup", !t.supplier);
   document.getElementById("pc-desc").placeholder = t.director ? (k === "paid" ? "e.g. Etisalat bill payment" : "e.g. Company bank transfer")
                                                               : (k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received");
   const site = document.querySelector("#pc-form .pc-site span"); if (site) site.textContent = t.site;
-  document.getElementById("pc-sup").placeholder = t.director ? (k === "paid" ? "e.g. Etisalat" : "e.g. ADCB") : "e.g. Al Hassai Building";
+
 }
 
 // Which cash box is open: site (store keeper), pro or office - each has
@@ -14288,9 +14291,10 @@ async function loadPettyCash() {
 function pcHead() {
   const t = pcTerms(), row = document.getElementById("pc-head-row");
   const pair = t.director ? [t.outCol, t.inCol] : [t.inCol, t.outCol];
-  const html = `<th style="width:92px;">Date</th><th class="l">Description</th><th class="l">${escapeHtml(t.supplier)}</th>
-    <th style="width:70px;">${escapeHtml(t.site)}</th><th class="n" style="width:120px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:120px;">${escapeHtml(pair[1])} (AED)</th>
-    <th class="n" style="width:130px;">${escapeHtml(t.balanceCol)} (AED)</th><th style="width:118px;"></th>`;
+  const w = t.director ? 112 : 120;
+  const html = `<th style="width:92px;">Date</th><th class="l">Description</th>${t.supplier ? `<th class="l">${escapeHtml(t.supplier)}</th>` : ""}
+    <th style="width:70px;">${escapeHtml(t.site)}</th><th class="n" style="width:${w}px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:${w}px;">${escapeHtml(pair[1])} (AED)</th>
+    <th class="n" style="width:${w}px;">${escapeHtml(t.balanceCol)} (AED)</th><th style="width:118px;"></th>`;
   if (row && row.dataset.book !== PC_BOOK) { row.innerHTML = html; row.dataset.book = PC_BOOK; }
 }
 
@@ -14307,16 +14311,16 @@ function pcDraw() {
     <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b></div>`;
   const cell = v => v ? pcMoney(v) : "";
   document.getElementById("pc-body").innerHTML =
-    `<tr class="bf"><td></td><td class="l">Balance brought forward</td><td></td><td></td><td></td><td></td>
+    `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${t.supplier ? "<td></td>" : ""}<td></td><td></td><td></td>
        <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
     (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
        <td class="l">${escapeHtml(r.description)}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
-       <td class="l">${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.site)}</td>
+       ${t.supplier ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}<td>${escapeHtml(r.site)}</td>
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
        <td class="pc-act"><button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button></td></tr>`).join("")
-     || `<tr><td colspan="8" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
-  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="4" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
+     || `<tr><td colspan="${t.supplier ? 8 : 7}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
+  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${t.supplier ? 4 : 3}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
     <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");

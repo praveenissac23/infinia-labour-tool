@@ -30,7 +30,8 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('heading: Naveen petty cash', (await c.locator('#pc-heading').textContent()) === 'Naveen petty cash');
   ck('the address remembers the Naveen box', (await c.evaluate(() => location.hash)) === '#petty:naveen', await c.evaluate(() => location.hash));
   const h = await heads(c);
-  ck('columns read as his sheet: DR before CR, then balance due', h[2] === 'Paid to / Ref' && h[3] === 'Project' && /^DR - Paid by Naveen/.test(h[4]) && /^CR - Repaid/.test(h[5]) && /^Balance due/.test(h[6]), h);
+  ck('columns read as his sheet: no supplier column, Project, DR before CR, then balance due', h.length === 7 && h[2] === 'Project' && /^DR - Paid by Naveen/.test(h[3]) && /^CR - Repaid/.test(h[4]) && /^Balance due/.test(h[5]), h);
+  ck('the Paid to / Ref box is gone from the form', !(await c.locator('#pc-sup-f').isVisible()));
   ck('form buttons say Paid by Naveen / Repaid to Naveen', (await c.evaluate(() => [...document.querySelectorAll('#pc-kind button')].map(x => x.textContent).join('|'))) === 'Paid by Naveen|Repaid to Naveen');
   ck('form site box is called Project', (await c.locator('#pc-form .pc-site span').textContent()) === 'Project');
   await month(c, '2026-09');
@@ -38,11 +39,11 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('Sep 2026: due to Naveen 20,253.65 (the sheet)', st[3] === 'Due to Naveen: 20,253.65', st);
   ck('stats order: brought forward, paid by, repaid, due', /^Brought forward: 21,753.65/.test(st[0]) && /^Paid by Naveen this month/.test(st[1]) && /^Repaid to Naveen this month: 1,500.00/.test(st[2]), st);
   const row = await c.evaluate(() => [...document.querySelectorAll('#pc-body tr')][1].innerText);
-  ck('a repayment sits in the CR column', /Paid to Naveen Sir/.test(row) && /\t\t1,500.00\t20,253.65/.test(row), row);
+  ck('a repayment sits in the CR column', /Paid to Naveen Sir/.test(row) && /\t1,500.00\t20,253.65/.test(row), row);
   await month(c, '2023-09');
   ck('Sep 2023 closes at 233,320.71 as on his sheet', (await c.evaluate(() => PC.closing)) === 233320.71, await c.evaluate(() => PC.closing));
   await month(c, '2024-03');
-  const proj = await c.evaluate(() => [...document.querySelectorAll('#pc-body tr td:nth-child(4)')].map(x => x.textContent).filter(Boolean));
+  const proj = await c.evaluate(() => [...document.querySelectorAll('#pc-body tr td:nth-child(3)')].map(x => x.textContent).filter(Boolean));
   ck('project numbers from the sheet show', proj.includes('906'), proj);
   await c.screenshot({ path: SH + 'petty-naveen.png', fullPage: false });
 
@@ -50,7 +51,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await month(c, '2026-10');
   const today = new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
   const before = await c.evaluate(() => PC.closing);
-  await c.click('#pc-kind button[data-k="paid"]'); await c.fill('#pc-date', today); await c.fill('#pc-desc', 'Etisalat bill test'); await c.fill('#pc-sup', 'Etisalat');
+  await c.click('#pc-kind button[data-k="paid"]'); await c.fill('#pc-date', today); await c.fill('#pc-desc', 'Etisalat bill test');
   await c.selectOption('#pc-site', '906'); await c.fill('#pc-amt', '250'); await c.click('#pc-save'); await c.waitForTimeout(1200);
   ck('paid by Naveen 250 raises what is due by 250', Math.round(((await c.evaluate(() => PC.closing)) - before) * 100) === 25000, [before, await c.evaluate(() => PC.closing)]);
   ck('the status says Due to Naveen', /Due to Naveen: /.test(await c.locator('#pc-status').textContent()), await c.locator('#pc-status').textContent());
@@ -68,14 +69,14 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // Praveen.
   await clickSub(c, 'Praveen');
   await month(c, '2024-05');
-  ck('Praveen: May 2024 closes at 6,210.50 as on his sheet', (await c.evaluate(() => PC.closing)) === 6210.5 && (await heads(c))[4].startsWith('DR - Paid by Praveen'), [await c.evaluate(() => PC.closing), await heads(c)]);
+  ck('Praveen: May 2024 closes at 6,210.50 as on his sheet', (await c.evaluate(() => PC.closing)) === 6210.5 && (await heads(c))[3].startsWith('DR - Paid by Praveen'), [await c.evaluate(() => PC.closing), await heads(c)]);
   await month(c, '2026-09');
   ck('Praveen: Sep 2026 due 95,302.06', (await stats(c))[3] === 'Due to Praveen: 95,302.06', await stats(c));
 
   // Back to the office box: its own words again.
   await clickSub(c, 'Office');
   const oh = await heads(c);
-  ck('Office box: Received / Paid / Balance in hand again', /^Received/.test(oh[4]) && /^Paid/.test(oh[5]) && (await stats(c))[3].startsWith('Balance in hand') &&
+  ck('Office box: Supplier column back, Received / Paid / Balance in hand again', oh.length === 8 && /^Supplier/.test(oh[2]) && /^Received/.test(oh[4]) && /^Paid/.test(oh[5]) && (await stats(c))[3].startsWith('Balance in hand') &&
      (await c.evaluate(() => [...document.querySelectorAll('#pc-kind button')].map(x => x.textContent).join('|'))) === 'Bill paid|Cash received', [oh, await stats(c)]);
 
   // The papers.
@@ -89,7 +90,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     return { v, pdf: p.status + ' ' + p.headers.get('content-type') + ' ' + (await p.arrayBuffer()).byteLength,
              xl: x.status + ' ' + x.headers.get('content-disposition') };
   });
-  ck('preview: NAVEEN PETTY CASH REGISTER with DR / CR columns and Due to Naveen', /NAVEEN PETTY CASH REGISTER/.test(papers.v) && /DR - Paid by Naveen \(AED\)<\/th><th>CR - Repaid to Naveen/.test(papers.v) && /Due to Naveen<\/span><b>-8,246.35/.test(papers.v) && /preview-bar|pv-bar|Download PDF/.test(papers.v), papers.v.slice(0, 300));
+  ck('preview: NAVEEN PETTY CASH REGISTER with DR / CR columns and Due to Naveen', /NAVEEN PETTY CASH REGISTER/.test(papers.v) && /Project<\/th><th class="n">DR - Paid by Naveen \(AED\)<\/th><th class="n">CR - Repaid to Naveen/.test(papers.v) && /Due to Naveen<\/span><b>-8,246.35/.test(papers.v) && /preview-bar|pv-bar|Download PDF/.test(papers.v), papers.v.slice(0, 300));
   ck('PDF downloads', /^200 application\/pdf \d{4,}/.test(papers.pdf), papers.pdf);
   ck('Excel downloads as Naveen_petty_cash_2026-07.xlsx', /^200 .*Naveen_petty_cash_2026-07\.xlsx/.test(papers.xl), papers.xl);
   ck('no script errors (chief accountant)', !c.errs.length, c.errs);

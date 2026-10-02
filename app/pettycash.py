@@ -45,7 +45,7 @@ def terms(book):
     if n:
         return {"director": True, "sign": -1, "out": f"Paid by {n}", "in": f"Repaid to {n}",
                 "out_col": "DR - Paid by " + n, "in_col": "CR - Repaid to " + n,
-                "balance": f"Due to {n}", "balance_col": "Balance due", "supplier": "Paid to / Ref", "site": "Project"}
+                "balance": f"Due to {n}", "balance_col": "Balance due", "supplier": "", "site": "Project"}
     return {"director": False, "sign": 1, "out": "Paid", "in": "Received", "out_col": "Paid", "in_col": "Received",
             "balance": "Balance in hand", "balance_col": "Balance", "supplier": "Supplier / Contact", "site": "Site"}
 RIGHTS = tuple(r for _, r in BOOKS.values())
@@ -198,7 +198,14 @@ def _cols(r):
     own sheet does."""
     t = r["terms"]
     pair = (t["out_col"], t["in_col"]) if t["director"] else (t["in_col"], t["out_col"])
-    return ("Date", "Description", t["supplier"], t["site"], pair[0] + " (AED)", pair[1] + " (AED)", t["balance_col"] + " (AED)")
+    # A director's book has no supplier column - his sheet never had one.
+    return tuple(c for c in ("Date", "Description", t["supplier"], t["site"], pair[0] + " (AED)", pair[1] + " (AED)", t["balance_col"] + " (AED)") if c)
+
+
+def _cells(r, line):
+    """A line's cells in the sheet's columns (the mark at the end dropped)."""
+    d, ds, s, st, rc, pd, bal, _ = line
+    return (d, ds, st, rc, pd, bal) if not r["terms"]["supplier"] else (d, ds, s, st, rc, pd, bal)
 
 
 def _pair(r, received, paid):
@@ -230,10 +237,12 @@ def _sum_boxes(r):
 def _html(r, pdf_url, excel_url):
     logo = export_web.logo_data_uri()
     m = lambda v: _money(v) if v not in ("", None) else ""
+    sup = bool(r["terms"]["supplier"])
     body = "".join(
-        f"<tr class='{k}'><td>{escape(d)}</td><td class='l'>{escape(ds)}</td><td class='l'>{escape(s)}</td><td>{escape(str(st))}</td>"
+        f"<tr class='{k}'><td>{escape(d)}</td><td class='l'>{escape(ds)}</td>{f'<td class=l>{escape(s)}</td>' if sup else ''}<td>{escape(str(st))}</td>"
         f"<td class='n'>{m(rc)}</td><td class='n'>{m(pd)}</td><td class='n b{' neg' if bal < 0 else ''}'>{m(bal)}</td></tr>"
         for d, ds, s, st, rc, pd, bal, k in _lines(r))
+    ntext = 4 if sup else 3
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
@@ -246,7 +255,8 @@ def _html(r, pdf_url, excel_url):
 .meta{{display:flex;justify-content:space-between;gap:20px;margin:12px 0;font-size:12.5px}} .meta span{{color:#777}} .meta b{{margin-left:6px}}
 .wrap{{overflow-x:auto}} table{{width:100%;border-collapse:collapse;min-width:720px}}
 th{{background:{RED};color:#fff;font-size:11px;letter-spacing:.04em;padding:7px 8px;text-align:center}}
-td{{padding:6px 8px;border-bottom:1px solid #e3e3e3;text-align:center}} td.l{{text-align:left}} td.n{{text-align:right;font-variant-numeric:tabular-nums}}
+td{{padding:6px 8px;border-bottom:1px solid #e3e3e3;text-align:center}} td.l{{text-align:left}} td.n{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
+td:first-child,th:first-child{{white-space:nowrap;width:80px}} th.n{{text-align:right}}
 td.b{{font-weight:600}} td.neg{{color:{RED}}} tr.bf td{{background:#FBF6F4;font-style:italic}}
 tbody tr:nth-child(even):not(.bf) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
@@ -260,8 +270,8 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>
- <div class="wrap"><table><thead><tr>{''.join(f'<th>{escape(c)}</th>' for c in _cols(r))}</tr></thead><tbody>{body}</tbody>
- <tfoot><tr><td colspan="4" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
+ <div class="wrap"><table><thead><tr>{''.join(f'<th class="{"n" if i >= len(_cols(r)) - 3 else ""}">{escape(c)}</th>' for i, c in enumerate(_cols(r)))}</tr></thead><tbody>{body}</tbody>
+ <tfoot><tr><td colspan="{ntext}" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
  <div class="sum"><div><span>Brought forward</span><b>{_money(r['opening'])}</b></div>{_sum_boxes(r)}
   <div><span>{escape(r['terms']['balance'])}</span><b>{_money(r['closing'])}</b></div></div>
  <div class="sign"><div>Prepared By</div><div>Checked By</div><div>Approved By</div></div>
@@ -298,15 +308,19 @@ def _pdf(r):
     meta.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 6)]))
     m = lambda v: _money(v) if v not in ("", None) else ""
     data = [[P(c.upper(), hd) for c in _cols(r)]]
-    for d, ds, s, st, rc, pd, bal, k in _lines(r):
-        data.append([P(d, cen), P(ds), P(s), P(st, cen), P(m(rc), rt), P(m(pd), rt), P(m(bal), rtb)])
-    data.append([P("TOTAL", bold), "", "", "", *(P(_money(v), rtb) for v in _pair(r, r["received"], r["paid"])), P(_money(r["closing"]), rtb)])
-    widths = [W * f for f in (.09, .29, .20, .08, .11, .11, .12)]
+    sup = bool(r["terms"]["supplier"])
+    for line in _lines(r):
+        d, ds, s, st, rc, pd, bal, k = line
+        cells = [P(d, cen), P(ds), P(s), P(st, cen), P(m(rc), rt), P(m(pd), rt), P(m(bal), rtb)]
+        data.append(cells if sup else cells[:2] + cells[3:])
+    ntext = 4 if sup else 3
+    data.append([P("TOTAL", bold)] + [""] * (ntext - 1) + [*(P(_money(v), rtb) for v in _pair(r, r["received"], r["paid"])), P(_money(r["closing"]), rtb)])
+    widths = [W * f for f in ((.09, .29, .20, .08, .11, .11, .12) if sup else (.10, .44, .10, .12, .12, .12))]
     t = Table(data, colWidths=widths, repeatRows=1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),
           ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FBF6F4")),
-          ("SPAN", (0, -1), (3, -1)), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F1EF")),
+          ("SPAN", (0, -1), (ntext - 1, -1)), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F1EF")),
           ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black)]
     for i in range(3, len(data) - 1, 2):
         st.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FAFAFA")))
@@ -327,9 +341,16 @@ def _excel(r):
     R = RED.lstrip("#")
     fill = PatternFill("solid", fgColor=R)
     thin = Side(style="thin", color="DDDDDD")
-    for col, w in zip("ABCDEFG", (12, 38, 28, 10, 16, 16, 16)):
+    cols = _cols(r)
+    sup = bool(r["terms"]["supplier"])
+    N = len(cols)                       # 7 with a supplier column, 6 without
+    L = "ABCDEFGH"
+    cE, cF, cG = N - 2, N - 1, N        # the two amount columns and the balance
+    E, F, G = L[cE - 1], L[cF - 1], L[cG - 1]
+    ntext = N - 3
+    for col, w in zip(L, (12, 38, 28, 10, 16, 16, 16) if sup else (12, 52, 10, 18, 18, 18)):
         ws.column_dimensions[col].width = w
-    ws.merge_cells("A1:G1")
+    ws.merge_cells(f"A1:{G}1")
     ws["A1"] = r["book_label"].upper() + " REGISTER"; ws["A1"].font = Font(bold=True, size=15, color=R)
     ws.row_dimensions[1].height = 34
     try:
@@ -342,43 +363,47 @@ def _excel(r):
         pass
     ws["A1"].alignment = Alignment(horizontal="right", vertical="center")
     ws["A2"] = "Company"; ws["A2"].font = Font(color="777777"); ws["B2"] = COMPANY; ws["B2"].font = Font(bold=True)
-    ws["E2"] = "Month / Period"; ws["E2"].font = Font(color="777777"); ws["F2"] = r["label"]; ws["F2"].font = Font(bold=True)
-    for i, c in enumerate(_cols(r), 1):
+    ws[f"{E}2"] = "Month / Period"; ws[f"{E}2"].font = Font(color="777777"); ws[f"{F}2"] = r["label"]; ws[f"{F}2"].font = Font(bold=True)
+    for i, c in enumerate(cols, 1):
         cell = ws.cell(4, i, c.upper()); cell.font = Font(bold=True, color="FFFFFF"); cell.fill = fill
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.row_dimensions[4].height = 22
+    ws.row_dimensions[4].height = 30
     row = 5
     first = row
-    ws.cell(row, 2, "Balance brought forward"); ws.cell(row, 7, r["opening"]).number_format = "#,##0.00"
-    for c in range(1, 8):
-        ws.cell(row, c).font = Font(italic=True, bold=(c == 7)); ws.cell(row, c).fill = PatternFill("solid", fgColor="FBF6F4")
+    ws.cell(row, 2, "Balance brought forward"); ws.cell(row, cG, r["opening"]).number_format = "#,##0.00"
+    for c in range(1, N + 1):
+        ws.cell(row, c).font = Font(italic=True, bold=(c == cG)); ws.cell(row, c).fill = PatternFill("solid", fgColor="FBF6F4")
         ws.cell(row, c).border = Border(bottom=thin)
     row += 1
     for x in r["rows"]:
         ws.cell(row, 1, M._as_date(x["date"])).number_format = "dd-mmm-yy"
-        ws.cell(row, 2, x["description"]); ws.cell(row, 3, x["supplier"]); ws.cell(row, 4, x["site"])
+        ws.cell(row, 2, x["description"])
+        if sup: ws.cell(row, 3, x["supplier"])
+        ws.cell(row, ntext, x["site"])
         c5, c6 = _pair(r, x["received"], x["paid"])
-        if c5: ws.cell(row, 5, c5)
-        if c6: ws.cell(row, 6, c6)
-        # The balance is a formula, as on the office's own sheet (E adds:
-        # cash received, or for a director what he paid).
-        ws.cell(row, 7, f"=G{row - 1}+E{row}-F{row}").font = Font(bold=True)
-        for c in (5, 6, 7):
+        if c5: ws.cell(row, cE, c5)
+        if c6: ws.cell(row, cF, c6)
+        # The balance is a formula, as on the office's own sheet (the first
+        # amount column adds: cash received, or for a director what he paid).
+        ws.cell(row, cG, f"={G}{row - 1}+{E}{row}-{F}{row}").font = Font(bold=True)
+        for c in (cE, cF, cG):
             ws.cell(row, c).number_format = "#,##0.00"
-        ws.cell(row, 1).alignment = Alignment(horizontal="center"); ws.cell(row, 4).alignment = Alignment(horizontal="center")
-        for c in range(1, 8):
+        ws.cell(row, 1).alignment = Alignment(horizontal="center"); ws.cell(row, ntext).alignment = Alignment(horizontal="center")
+        for c in range(1, N + 1):
             ws.cell(row, c).border = Border(bottom=thin)
         row += 1
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ntext)
     ws.cell(row, 1, "TOTAL").font = Font(bold=True)
-    ws.cell(row, 5, f"=SUM(E{first + 1}:E{row - 1})"); ws.cell(row, 6, f"=SUM(F{first + 1}:F{row - 1})")
-    ws.cell(row, 7, f"=G{first}+E{row}-F{row}")
-    for c in range(1, 8):
+    ws.cell(row, cE, f"=SUM({E}{first + 1}:{E}{row - 1})"); ws.cell(row, cF, f"=SUM({F}{first + 1}:{F}{row - 1})")
+    ws.cell(row, cG, f"={G}{first}+{E}{row}-{F}{row}")
+    for c in range(1, N + 1):
         cell = ws.cell(row, c); cell.fill = PatternFill("solid", fgColor="F3F1EF")
         cell.border = Border(top=Side(style="medium", color="000000"))
-        if c >= 5: cell.number_format = "#,##0.00"; cell.font = Font(bold=True)
+        if c >= cE: cell.number_format = "#,##0.00"; cell.font = Font(bold=True)
     row += 4
-    for a, b, t in (("A", "B", "Prepared By"), ("D", "E", "Checked By"), ("F", "G", "Approved By")):
+    signs = (("A", "B", "Prepared By"), ("D", "E", "Checked By"), ("F", "G", "Approved By")) if sup else \
+            (("A", "B", "Prepared By"), ("C", "D", "Checked By"), ("E", "F", "Approved By"))
+    for a, b, t in signs:
         ws.merge_cells(f"{a}{row}:{b}{row}")
         c = ws[f"{a}{row}"]; c.value = t; c.alignment = Alignment(horizontal="center")
         c.border = Border(top=Side(style="thin", color="000000"))
