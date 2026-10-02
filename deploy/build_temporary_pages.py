@@ -47,7 +47,7 @@ def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, sho
 
 PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local"]
 STORE_RIGHTS = ["store", "approvals", "requests"]
-PETTY_RIGHTS = ["petty_site", "petty_pro", "petty_office"]
+PETTY_RIGHTS = ["petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen"]
 
 
 # page key -> (title, tabs)
@@ -87,7 +87,9 @@ PAGES = {
         tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
             sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),
             sub("pro", "PRO", screen="pettycash", right="petty_pro", go="pcBook('pro')"),
-            sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')")]),
+            sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')"),
+            sub("naveen", "Naveen", screen="pettycash", right="petty_naveen", go="pcBook('naveen')"),
+            sub("praveen", "Praveen", screen="pettycash", right="petty_praveen", go="pcBook('praveen')")]),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [

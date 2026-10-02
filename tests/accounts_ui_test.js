@@ -21,7 +21,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // ---- the chief accountant -------------------------------------------
   const c = await login('chiefacc', 'chief12345');
   ck('chief: Accounts in the menu', (await menu(c)).some(x => x.startsWith('Accounts')), await menu(c));
-  ck('chief: two tabs, no Register on view', JSON.stringify(await tabs(c)) === JSON.stringify(['Tax Invoice', 'Proforma Invoice']), await tabs(c));
+  ck('chief: three tabs (Petty cash = Naveen / Praveen), no Register on view', JSON.stringify(await tabs(c)) === JSON.stringify(['Tax Invoice', 'Proforma Invoice', 'Petty cash']), await tabs(c));
   ck('tax invoice screen first', await vis(c, '#screen-invoices'));
   ck('title says Tax Invoices', (await c.textContent('#screen-title')).includes('Tax Invoices'));
   const yy = String(new Date().getFullYear()).slice(2);

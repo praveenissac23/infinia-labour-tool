@@ -767,6 +767,7 @@ SCREEN_LABELS = {
     "expiry": "Expiry reminder - documents, NOCs, permits, licences (no salaries)",
     "pdc": "PDC tracker - post-dated cheques (admin and chief accountant)",
     "petty_site": "Site petty cash", "petty_pro": "PRO petty cash", "petty_office": "Office petty cash",
+    "petty_naveen": "Naveen petty cash (admin and chief accountant)", "petty_praveen": "Praveen petty cash (admin and chief accountant)",
     "accounts_invoices": "Tax & proforma invoices",
     "accounts_register": "Cash register (opens with its own password)",
 }
@@ -779,7 +780,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Expiry Reminder", ["expiry", "pdc"]),
-    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "accounts_register"]),
+    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_register"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),

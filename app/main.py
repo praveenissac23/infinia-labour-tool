@@ -158,6 +158,7 @@ def seed_on_startup():
         _retire_staff_role(db)
         _grant_storekeeper_to_existing(db)
         _grant_petty_site_to_existing(db)
+        _grant_director_petty_to_chief_accountant(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -259,6 +260,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Petty cash: one right per cash box, so the site never
                # sees the PRO's box and only the chief accountant the office's.
                "petty_site", "petty_pro", "petty_office",
+               # The two directors' own petty cash (what the company owes
+               # each of them): admin and the chief accountant only.
+               "petty_naveen", "petty_praveen",
                # PDC tracker: post-dated cheques - admin and the chief
                # accountant only; no role has it by default.
                "pdc",
@@ -466,6 +470,29 @@ def _grant_storekeeper_to_existing(db):
     db.commit()
     if granted:
         print(f"Kept stock in/out for {granted} existing login(s)")
+
+
+def _grant_director_petty_to_chief_accountant(db):
+    """Naveen's and Praveen's petty cash are for admin and the chief
+    accountant. Admin has every right; the chief accountant is the login
+    (or role) already trusted with the office's cash box or the PDCs -
+    both kept for admin and the chief accountant alone. Once; after that
+    it is ticked on Settings > Access like any other right."""
+    if db.query(models.Setting).filter(models.Setting.key == "petty_directors_granted").first():
+        return
+    n = []
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        perms = [x for x in (getattr(obj, field) or "").split(",") if x]
+        if {"petty_office", "pdc"} & set(perms):
+            add = [r for r in ("petty_naveen", "petty_praveen") if r not in perms]
+            if add:
+                setattr(obj, field, ",".join(perms + add))
+                n.append(getattr(obj, "username", None) or getattr(obj, "name", "role"))
+    db.add(models.Setting(key="petty_directors_granted", value="1"))
+    db.commit()
+    if n:
+        print("Naveen / Praveen petty cash given to: " + ", ".join(n))
 
 
 def _grant_petty_site_to_existing(db):

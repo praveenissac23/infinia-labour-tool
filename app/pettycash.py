@@ -29,7 +29,25 @@ router = APIRouter()
 # sees the PRO's, only the chief accountant sees the office's.
 BOOKS = {"site": ("Site petty cash", "petty_site"),
          "pro": ("PRO petty cash", "petty_pro"),
-         "office": ("Office petty cash", "petty_office")}
+         "office": ("Office petty cash", "petty_office"),
+         "naveen": ("Naveen petty cash", "petty_naveen"),
+         "praveen": ("Praveen petty cash", "petty_praveen")}
+# The directors' books are kept the other way round, as on their own
+# sheets: DR is what the director paid for the company (what it owes
+# him goes up), CR what was paid back to him. A bill he paid is kept
+# under "paid", so spending by project reads the same in every book.
+DIRECTORS = {"naveen": "Naveen", "praveen": "Praveen"}
+
+
+def terms(book):
+    """The words and the sign a book is kept with."""
+    n = DIRECTORS.get(book)
+    if n:
+        return {"director": True, "sign": -1, "out": f"Paid by {n}", "in": f"Repaid to {n}",
+                "out_col": "DR - Paid by " + n, "in_col": "CR - Repaid to " + n,
+                "balance": f"Due to {n}", "balance_col": "Balance due", "supplier": "Paid to / Ref", "site": "Project"}
+    return {"director": False, "sign": 1, "out": "Paid", "in": "Received", "out_col": "Paid", "in_col": "Received",
+            "balance": "Balance in hand", "balance_col": "Balance", "supplier": "Supplier / Contact", "site": "Site"}
 RIGHTS = tuple(r for _, r in BOOKS.values())
 PC = Depends(M.require_any_screen(*RIGHTS))
 COMPANY = "INFINIA CONTRACTING L.L.C."
@@ -72,15 +90,17 @@ def _money(v):
 
 def register(db, month, book="site"):
     a, b = _month_bounds(month)
+    t = terms(book)
+    sg = t["sign"]
     before = _of_book(db.query(models.PettyCash), book).filter(models.PettyCash.on_date < a).all()
-    opening = round(sum((x.received or 0) - (x.paid or 0) for x in before), 2)
+    opening = round(sg * sum((x.received or 0) - (x.paid or 0) for x in before), 2)
     rows = (_of_book(db.query(models.PettyCash), book)
               .filter(models.PettyCash.on_date >= a, models.PettyCash.on_date <= b)
               .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     bal, out = opening, []
     for x in rows:
-        bal = round(bal + (x.received or 0) - (x.paid or 0), 2)
+        bal = round(bal + sg * ((x.received or 0) - (x.paid or 0)), 2)
         out.append({"id": x.id, "date": x.on_date.isoformat(), "description": x.description or "",
                     "supplier": x.supplier or "", "site": x.site or "",
                     "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "balance": bal,
@@ -92,9 +112,9 @@ def register(db, month, book="site"):
         if r["paid"]:
             k = r["site"] or "Office / general"
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
-    return {"book": book, "book_label": BOOKS[book][0], "month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "from": a.isoformat(), "to": b.isoformat(),
+    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "from": a.isoformat(), "to": b.isoformat(),
             "opening": opening, "rows": out, "received": rec, "paid": paid,
-            "closing": round(opening + rec - paid, 2),
+            "closing": round(opening + sg * (rec - paid), 2),
             "by_site": [{"site": k, "paid": v} for k, v in sorted(by_site.items(), key=lambda kv: -kv[1])]}
 
 
@@ -167,7 +187,16 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
 # ---- The paper -----------------------------------------------------------
 
 RED = "#B7322A"
-COLS = ("Date", "Description", "Supplier / Contact", "Site", "Received (AED)", "Paid (AED)", "Balance (AED)")
+def _cols(r):
+    """The sheet's columns: a director's book shows DR before CR, as his
+    own sheet does."""
+    t = r["terms"]
+    pair = (t["out_col"], t["in_col"]) if t["director"] else (t["in_col"], t["out_col"])
+    return ("Date", "Description", t["supplier"], t["site"], pair[0] + " (AED)", pair[1] + " (AED)", t["balance_col"] + " (AED)")
+
+
+def _pair(r, received, paid):
+    return (paid, received) if r["terms"]["director"] else (received, paid)
 
 
 def _dmy(iso):
@@ -180,8 +209,16 @@ def _lines(r):
     out = [("", "Balance brought forward", "", "", "", "", r["opening"], "bf")]
     for x in r["rows"]:
         out.append((_dmy(x["date"]), x["description"], x["supplier"], x["site"],
-                    x["received"] or "", x["paid"] or "", x["balance"], ""))
+                    *_pair(r, x["received"] or "", x["paid"] or ""), x["balance"], ""))
     return out
+
+
+def _sum_boxes(r):
+    t = r["terms"]
+    boxes = [(t["in"], r["received"]), (t["out"], r["paid"])]
+    if t["director"]:
+        boxes.reverse()
+    return "".join(f"<div><span>{escape(k)}</span><b>{_money(v)}</b></div>" for k, v in boxes)
 
 
 def _html(r, pdf_url, excel_url):
@@ -217,10 +254,10 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>
- <div class="wrap"><table><thead><tr>{''.join(f'<th>{c}</th>' for c in COLS)}</tr></thead><tbody>{body}</tbody>
- <tfoot><tr><td colspan="4" class="l">TOTAL</td><td class="n">{_money(r['received'])}</td><td class="n">{_money(r['paid'])}</td><td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
- <div class="sum"><div><span>Brought forward</span><b>{_money(r['opening'])}</b></div><div><span>Received</span><b>{_money(r['received'])}</b></div>
-  <div><span>Paid</span><b>{_money(r['paid'])}</b></div><div><span>Balance in hand</span><b>{_money(r['closing'])}</b></div></div>
+ <div class="wrap"><table><thead><tr>{''.join(f'<th>{escape(c)}</th>' for c in _cols(r))}</tr></thead><tbody>{body}</tbody>
+ <tfoot><tr><td colspan="4" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
+ <div class="sum"><div><span>Brought forward</span><b>{_money(r['opening'])}</b></div>{_sum_boxes(r)}
+  <div><span>{escape(r['terms']['balance'])}</span><b>{_money(r['closing'])}</b></div></div>
  <div class="sign"><div>Prepared By</div><div>Checked By</div><div>Approved By</div></div>
 </div></body></html>"""
 
@@ -254,10 +291,10 @@ def _pdf(r):
                    Paragraph(f"<font color='#777777'>Month / Period</font>&nbsp;&nbsp;<b>{escape(r['label'])}</b>", rt)]], colWidths=[W / 2, W / 2])
     meta.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 6)]))
     m = lambda v: _money(v) if v not in ("", None) else ""
-    data = [[P(c.upper(), hd) for c in COLS]]
+    data = [[P(c.upper(), hd) for c in _cols(r)]]
     for d, ds, s, st, rc, pd, bal, k in _lines(r):
         data.append([P(d, cen), P(ds), P(s), P(st, cen), P(m(rc), rt), P(m(pd), rt), P(m(bal), rtb)])
-    data.append([P("TOTAL", bold), "", "", "", P(_money(r["received"]), rtb), P(_money(r["paid"]), rtb), P(_money(r["closing"]), rtb)])
+    data.append([P("TOTAL", bold), "", "", "", *(P(_money(v), rtb) for v in _pair(r, r["received"], r["paid"])), P(_money(r["closing"]), rtb)])
     widths = [W * f for f in (.09, .29, .20, .08, .11, .11, .12)]
     t = Table(data, colWidths=widths, repeatRows=1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -300,7 +337,7 @@ def _excel(r):
     ws["A1"].alignment = Alignment(horizontal="right", vertical="center")
     ws["A2"] = "Company"; ws["A2"].font = Font(color="777777"); ws["B2"] = COMPANY; ws["B2"].font = Font(bold=True)
     ws["E2"] = "Month / Period"; ws["E2"].font = Font(color="777777"); ws["F2"] = r["label"]; ws["F2"].font = Font(bold=True)
-    for i, c in enumerate(COLS, 1):
+    for i, c in enumerate(_cols(r), 1):
         cell = ws.cell(4, i, c.upper()); cell.font = Font(bold=True, color="FFFFFF"); cell.fill = fill
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[4].height = 22
@@ -314,9 +351,11 @@ def _excel(r):
     for x in r["rows"]:
         ws.cell(row, 1, M._as_date(x["date"])).number_format = "dd-mmm-yy"
         ws.cell(row, 2, x["description"]); ws.cell(row, 3, x["supplier"]); ws.cell(row, 4, x["site"])
-        if x["received"]: ws.cell(row, 5, x["received"])
-        if x["paid"]: ws.cell(row, 6, x["paid"])
-        # The balance is a formula, as on the office's own sheet.
+        c5, c6 = _pair(r, x["received"], x["paid"])
+        if c5: ws.cell(row, 5, c5)
+        if c6: ws.cell(row, 6, c6)
+        # The balance is a formula, as on the office's own sheet (E adds:
+        # cash received, or for a director what he paid).
         ws.cell(row, 7, f"=G{row - 1}+E{row}-F{row}").font = Font(bold=True)
         for c in (5, 6, 7):
             ws.cell(row, c).number_format = "#,##0.00"

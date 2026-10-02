@@ -2348,7 +2348,7 @@
             <div class="pc-stats" id="pc-stats"><div class="pc-stat "><span>Brought forward</span><b>&ndash;</b></div><div class="pc-stat "><span>Received this month</span><b>&ndash;</b></div><div class="pc-stat "><span>Paid this month</span><b>&ndash;</b></div><div class="pc-stat hand"><span>Balance in hand</span><b>&ndash;</b></div></div>
             <div class="status-msg" id="pc-status"></div>
             <div class="pc-form" id="pc-form">
-              <div class="pc-kind">
+              <div class="pc-kind" id="pc-kind">
                 <button type="button" class="on" data-k="paid" onclick="pcKind('paid')">Bill paid</button>
                 <button type="button" data-k="received" onclick="pcKind('received')">Cash received</button>
               </div>
@@ -2367,7 +2367,7 @@
           <div class="card pc-card">
             <div class="grid-wrap">
               <table class="pc-table">
-                <thead><tr><th style="width:92px;">Date</th><th class="l">Description</th><th class="l">Supplier / contact</th>
+                <thead><tr id="pc-head-row"><th style="width:92px;">Date</th><th class="l">Description</th><th class="l">Supplier / contact</th>
                   <th style="width:70px;">Site</th><th class="n" style="width:120px;">Received (AED)</th><th class="n" style="width:120px;">Paid (AED)</th>
                   <th class="n" style="width:130px;">Balance (AED)</th><th style="width:118px;"></th></tr></thead>
                 <tbody id="pc-body"></tbody>
@@ -14014,17 +14014,36 @@ function pcToday() { const d = new Date(Date.now() + 4 * 3600e3); return d.toISO
 function pcMoney(v) { return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function pcDate(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }).replace("Sept", "Sep").replace(/ /g, "-"); }
 
+// The words a book is kept with. A director's book (Naveen, Praveen)
+// reads as his own sheet does: DR what he paid for the company, CR what
+// was paid back to him, and the balance is what the company owes him.
+const PC_DIRECTORS = { naveen: "Naveen", praveen: "Praveen" };
+function pcTerms(book) {
+  const n = PC_DIRECTORS[book || PC_BOOK];
+  return n ? { director: true, out: `Paid by ${n}`, in: `Repaid to ${n}`, outCol: `DR - Paid by ${n}`, inCol: `CR - Repaid`,
+               balance: `Due to ${n}`, balanceCol: "Balance due", supplier: "Paid to / Ref", site: "Project", general: "Office / general" }
+           : { director: false, out: "Paid", in: "Received", outCol: "Paid", inCol: "Received",
+               balance: "Balance in hand", balanceCol: "Balance", supplier: "Supplier / contact", site: "Site", general: "Office / general" };
+}
+
 function pcKind(k) {
   PC_KIND = k;
-  document.querySelectorAll(".pc-kind button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
-  document.getElementById("pc-amt-l").textContent = k === "paid" ? "Paid (AED)" : "Received (AED)";
-  document.getElementById("pc-sup-l").textContent = k === "paid" ? "Supplier / contact" : "From (e.g. Cash / ADCB)";
-  document.getElementById("pc-desc").placeholder = k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received";
+  const t = pcTerms();
+  const btns = document.querySelectorAll("#pc-kind button");
+  btns.forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  btns[0].textContent = t.director ? t.out : "Bill paid";
+  btns[1].textContent = t.director ? t.in : "Cash received";
+  document.getElementById("pc-amt-l").textContent = (k === "paid" ? (t.director ? "DR - paid" : "Paid") : (t.director ? "CR - repaid" : "Received")) + " (AED)";
+  document.getElementById("pc-sup-l").textContent = k === "paid" ? t.supplier : (t.director ? "How (e.g. Bank transfer)" : "From (e.g. Cash / ADCB)");
+  document.getElementById("pc-desc").placeholder = t.director ? (k === "paid" ? "e.g. Etisalat bill payment" : "e.g. Company bank transfer")
+                                                              : (k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received");
+  const site = document.querySelector("#pc-form .pc-site span"); if (site) site.textContent = t.site;
+  document.getElementById("pc-sup").placeholder = t.director ? (k === "paid" ? "e.g. Etisalat" : "e.g. ADCB") : "e.g. Al Hassai Building";
 }
 
 // Which cash box is open: site (store keeper), pro or office - each has
 // its own right, picked on the sub-tabs above.
-const PC_BOOKS = { site: "Site petty cash", pro: "PRO petty cash", office: "Office petty cash" };
+const PC_BOOKS = { site: "Site petty cash", pro: "PRO petty cash", office: "Office petty cash", naveen: "Naveen petty cash", praveen: "Praveen petty cash" };
 let PC_BOOK = "";
 function pcMayBook(b) { return typeof pgHas !== "function" || pgHas("petty_" + b); }
 function pcBook(b) {
@@ -14037,6 +14056,8 @@ async function loadPettyCash() {
   if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
   document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
   const book = PC_BOOK;
+  pcKind(PC_KIND);
+  pcHead();
   const m = document.getElementById("pc-month");
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("pc-date").value) document.getElementById("pc-date").value = pcToday();
@@ -14054,14 +14075,26 @@ async function loadPettyCash() {
   PC = d; pcDraw();
 }
 
+// The column heads: a director's book shows DR before CR, as on his sheet.
+function pcHead() {
+  const t = pcTerms(), row = document.getElementById("pc-head-row");
+  const pair = t.director ? [t.outCol, t.inCol] : [t.inCol, t.outCol];
+  const html = `<th style="width:92px;">Date</th><th class="l">Description</th><th class="l">${escapeHtml(t.supplier)}</th>
+    <th style="width:70px;">${escapeHtml(t.site)}</th><th class="n" style="width:120px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:120px;">${escapeHtml(pair[1])} (AED)</th>
+    <th class="n" style="width:130px;">${escapeHtml(t.balanceCol)} (AED)</th><th style="width:118px;"></th>`;
+  if (row && row.dataset.book !== PC_BOOK) { row.innerHTML = html; row.dataset.book = PC_BOOK; }
+}
+
 function pcDraw() {
   const d = PC;
   const hand = d.closing;
+  const t = pcTerms(d.book);
+  const pair = (rec, paid) => t.director ? [paid, rec] : [rec, paid];
+  const stats = pair(`<div class="pc-stat"><span>${escapeHtml(t.in)} this month</span><b>${pcMoney(d.received)}</b></div>`,
+                     `<div class="pc-stat"><span>${escapeHtml(t.out)} this month</span><b>${pcMoney(d.paid)}</b></div>`);
   document.getElementById("pc-stats").innerHTML = `
-    <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>
-    <div class="pc-stat"><span>Received this month</span><b>${pcMoney(d.received)}</b></div>
-    <div class="pc-stat"><span>Paid this month</span><b>${pcMoney(d.paid)}</b></div>
-    <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>Balance in hand</span><b>${pcMoney(hand)}</b></div>`;
+    <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>${stats.join("")}
+    <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b></div>`;
   const cell = v => v ? pcMoney(v) : "";
   document.getElementById("pc-body").innerHTML =
     `<tr class="bf"><td></td><td class="l">Balance brought forward</td><td></td><td></td><td></td><td></td>
@@ -14069,12 +14102,12 @@ function pcDraw() {
     (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
        <td class="l">${escapeHtml(r.description)}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
        <td class="l">${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.site)}</td>
-       <td class="n">${cell(r.received)}</td><td class="n">${cell(r.paid)}</td>
+       ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
        <td class="pc-act"><button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button></td></tr>`).join("")
      || `<tr><td colspan="8" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
-  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="4" class="l">TOTAL</td><td class="n">${pcMoney(d.received)}</td>
-    <td class="n">${pcMoney(d.paid)}</td><td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
+  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="4" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
+    <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");
 }
@@ -14096,7 +14129,10 @@ function pcEdit(id) {
   document.getElementById("pc-date").value = r.date;
   document.getElementById("pc-desc").value = r.description;
   document.getElementById("pc-sup").value = r.supplier;
-  document.getElementById("pc-site").value = r.site;
+  const sel = document.getElementById("pc-site");
+  // A project no longer on the site list still shows (and is kept) when editing.
+  if (r.site && ![...sel.options].some(o => o.value === r.site)) sel.insertAdjacentHTML("beforeend", `<option value="${escapeAttr(r.site)}">${escapeHtml(r.site)}</option>`);
+  sel.value = r.site;
   document.getElementById("pc-amt").value = r.received || r.paid;
   document.getElementById("pc-save").textContent = "Save changes";
   document.getElementById("pc-cancel").style.display = "";
@@ -14118,7 +14154,7 @@ async function pcSave() {
     document.getElementById("pc-month").value = body.date.slice(0, 7);
     pcReset();
     await loadPettyCash();
-    showStatus("pc-status", "ok", was ? "Saved." : `Added - balance in hand ${pcMoney(PC.closing)}.`);
+    showStatus("pc-status", "ok", was ? "Saved." : `Added - ${pcTerms(PC.book).balance}: ${pcMoney(PC.closing)}.`);
     document.getElementById("pc-desc").focus();
   } catch (e) { showStatus("pc-status", "err", errText(e)); }
   finally { btn.disabled = false; }
