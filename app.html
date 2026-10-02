@@ -1147,7 +1147,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="16353e8fb411";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="22f46db20f1c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -14508,9 +14508,9 @@ function accToday() { return new Date(Date.now() + 4 * 3600e3).toISOString().sli
 function accNum(s) { const v = parseFloat(String(s || "").replace(/,/g, "")); return isNaN(v) ? 0 : v; }
 
 async function invOpen(kind) {
-  if (kind) { if (kind !== INV_KIND) INV_EDIT = null; INV_KIND = kind; }
+  if (kind) { if (kind !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = kind; }
   else if (typeof PG_TAB !== "undefined" && PG_TAB && ["taxinv", "proforma"].includes(PG_TAB.id)) {
-    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) INV_EDIT = null; INV_KIND = k;
+    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = k;
   }
   const pro = INV_KIND === "proforma";
   const t = document.getElementById("screen-title"); if (t) t.textContent = pro ? "Proforma Invoices" : "Tax Invoices";
@@ -14537,7 +14537,11 @@ async function invLoad() {
   invDrawList();
 }
 function invDrawList() {
-  if (!INV) return;
+  if (!INV) {
+    document.getElementById("inv-body").innerHTML = `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">Loading…</td></tr>`;
+    document.getElementById("inv-foot").innerHTML = ""; document.getElementById("inv-count").textContent = "";
+    return;
+  }
   const q = document.getElementById("inv-search").value.trim().toLowerCase();
   const rows = INV.rows.filter(r => !q || `${r.number} ${r.client} ${r.project} ${r.project_no} ${r.plot}`.toLowerCase().includes(q));
   const live = rows.filter(r => r.status !== "cancelled");

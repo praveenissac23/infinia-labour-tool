@@ -14302,9 +14302,9 @@ function accToday() { return new Date(Date.now() + 4 * 3600e3).toISOString().sli
 function accNum(s) { const v = parseFloat(String(s || "").replace(/,/g, "")); return isNaN(v) ? 0 : v; }
 
 async function invOpen(kind) {
-  if (kind) { if (kind !== INV_KIND) INV_EDIT = null; INV_KIND = kind; }
+  if (kind) { if (kind !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = kind; }
   else if (typeof PG_TAB !== "undefined" && PG_TAB && ["taxinv", "proforma"].includes(PG_TAB.id)) {
-    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) INV_EDIT = null; INV_KIND = k;
+    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = k;
   }
   const pro = INV_KIND === "proforma";
   const t = document.getElementById("screen-title"); if (t) t.textContent = pro ? "Proforma Invoices" : "Tax Invoices";
@@ -14331,7 +14331,11 @@ async function invLoad() {
   invDrawList();
 }
 function invDrawList() {
-  if (!INV) return;
+  if (!INV) {
+    document.getElementById("inv-body").innerHTML = `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">Loading…</td></tr>`;
+    document.getElementById("inv-foot").innerHTML = ""; document.getElementById("inv-count").textContent = "";
+    return;
+  }
   const q = document.getElementById("inv-search").value.trim().toLowerCase();
   const rows = INV.rows.filter(r => !q || `${r.number} ${r.client} ${r.project} ${r.project_no} ${r.plot}`.toLowerCase().includes(q));
   const live = rows.filter(r => r.status !== "cancelled");
