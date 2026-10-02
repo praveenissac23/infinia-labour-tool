@@ -355,7 +355,7 @@ window.HELP_GUIDES = [
       { say: "Type each line: what it is for and the amount before VAT. Pick 5% or 0% VAT.", el: "#inv-lines tr:first-child td:nth-child(2) input" },
       { say: "More lines? Press + Add line. The totals add up as you type.", el: "button[onclick='invAddLine()']" },
       { say: "Press Save & open PDF. The invoice opens ready to print or send.", el: "#inv-save-pdf" }],
-    tip: "The signature and stamp are the ones kept in Settings (the same as on purchase orders)." },
+    tip: "The signature and stamp are the invoice ones kept in Settings > General (separate from the purchase-order signature)." },
   { id: "inv-proforma", area: "Accounts", title: "How to make a proforma invoice",
     words: "proforma pro forma performa quotation advance invoice client accounts",
     go: { page: "accounts", tab: "proforma" },
@@ -382,8 +382,9 @@ window.HELP_GUIDES = [
     words: "signature stamp seal sign invoice lpo purchase order upload picture settings",
     go: { page: "settings", tab: "general" }, admin: true,
     steps: [
-      { say: "In Settings > General, under Signature & Stamp, choose the picture (PNG or JPG) of the signature with the stamp.", el: "#sig-file" },
-      { say: "Press Upload. It prints on every purchase order and every invoice from now on.", el: "button[onclick='uploadSignature()']" }] },
+      { say: "In Settings > General, under Signature & Stamp, there are two: one for purchase orders (LPO), one for invoices - they are signed by different people.", el: "#signature-card h2" },
+      { say: "For purchase orders: choose the picture (PNG or JPG) of the signature with the stamp and press Upload.", el: "#sig-file" },
+      { say: "For tax and proforma invoices: choose the invoice signature here and press Upload. Until one is uploaded, invoices print with the purchase-order signature.", el: "#sig-file-invoice" }] },
   // ---------------- Reports ----------------
   { id: "report-cycle", area: "Reports", title: "How to get a labour salary report",
     words: "report salary report cycle report total cost summary labour export excel pdf",

@@ -7866,19 +7866,23 @@ def _tidy_signature(data: bytes, filename: str = "") -> tuple:
 
 
 @app.post("/store/purchase/signature")
-async def upload_signature(file: UploadFile = File(...), db: Session = Depends(get_db),
+async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", db: Session = Depends(get_db),
                             user: models.User = Depends(auth.require_admin)):
-    """The authorised signature, printed on every order. Uploaded once."""
+    """The authorised signature, printed on every order (kind=lpo) or on
+    every tax / proforma invoice (kind=invoice). Uploaded once each."""
+    if kind not in export_web.SIGNATURE_KINDS:
+        raise HTTPException(status_code=400, detail="Which signature: lpo or invoice?")
+    label, paths = export_web.SIGNATURE_KINDS[kind]
     data = await file.read()
     if len(data) > 8_000_000:
         raise HTTPException(status_code=400, detail="Signature image must be under 8 MB.")
     if not (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Use a PNG or JPG image.")
     data, ext = _tidy_signature(data, file.filename or "")
-    target = os.path.join(export_web.DATA_DIR, "signature." + ext)
+    target = os.path.join(export_web.DATA_DIR, os.path.basename(paths[0]).rsplit(".", 1)[0] + "." + ext)
     try:
-        # Only one signature is ever held, so the other spelling goes.
-        for other in export_web.SIG_PATHS:
+        # Only one signature of each kind is ever held, so the other spelling goes.
+        for other in paths:
             if other != target and os.path.exists(other):
                 try:
                     os.remove(other)
@@ -7894,18 +7898,23 @@ async def upload_signature(file: UploadFile = File(...), db: Session = Depends(g
     if not os.path.exists(target):
         raise HTTPException(status_code=500, detail="The signature did not save - check the server's disk.")
     log_action(db, user.id, "upload_signature",
-               f"{file.filename or ''} -> {os.path.basename(target)}, {len(data)/1024:.0f} KB")
-    return {"ok": True, "detail": "Signature saved - it prints on every purchase order.",
+               f"{label}: {file.filename or ''} -> {os.path.basename(target)}, {len(data)/1024:.0f} KB")
+    return {"ok": True, "detail": f"Signature saved - it prints on every {'invoice' if kind == 'invoice' else 'purchase order'}.",
             "path": target, "bytes": len(data)}
 
 
 @app.get("/store/purchase/signature-status")
-def signature_status(user: models.User = Depends(require_screen("approvals"))):
+def signature_status(kind: str = "lpo", user: models.User = Depends(require_any_screen("approvals", "accounts_invoices"))):
     # The path comes back too, so where it went can be checked on the
     # server without guessing.
-    path = export_web.signature_file()
-    return {"present": bool(path), "path": path or export_web.SIG_PATH,
-            "bytes": os.path.getsize(path) if path else 0}
+    if kind not in export_web.SIGNATURE_KINDS:
+        raise HTTPException(status_code=400, detail="Which signature: lpo or invoice?")
+    path = export_web.invoice_signature_file() if kind == "invoice" else export_web.signature_file()
+    out = {"present": bool(path), "path": path or export_web.SIGNATURE_KINDS[kind][1][0],
+           "bytes": os.path.getsize(path) if path else 0}
+    if kind == "invoice" and not path:
+        out["fallback"] = bool(export_web.signature_file())      # invoices print the LPO one meanwhile
+    return out
 
 
 @app.get("/export/store/report")

@@ -1834,12 +1834,30 @@ SIG_PATH = os.path.join(DATA_DIR, "signature.png")
 SIG_PATHS = [os.path.join(DATA_DIR, "signature." + e) for e in ("png", "jpg")]
 
 
+# Invoices are signed by a different hand than purchase orders, so the
+# tax / proforma invoices have a signature of their own. Until one is
+# uploaded they print with the purchase-order signature.
+INV_SIG_PATHS = [os.path.join(DATA_DIR, "invoice_signature." + e) for e in ("png", "jpg")]
+SIGNATURE_KINDS = {"lpo": ("Purchase orders (LPO)", SIG_PATHS), "invoice": ("Tax & proforma invoices", INV_SIG_PATHS)}
+
+
+def _newest(paths):
+    found = [p for p in paths if os.path.exists(p)]
+    return max(found, key=os.path.getmtime) if found else None
+
+
 def signature_file():
-    """The signature currently on this server, or None."""
-    found = [p for p in SIG_PATHS if os.path.exists(p)]
-    if not found:
-        return None
-    return max(found, key=os.path.getmtime)
+    """The purchase-order signature currently on this server, or None."""
+    return _newest(SIG_PATHS)
+
+
+def invoice_signature_file():
+    """The signature for invoices: its own if uploaded, else the LPO's."""
+    return _newest(INV_SIG_PATHS)
+
+
+def invoice_signature_or_lpo():
+    return invoice_signature_file() or signature_file()
 
 # A signature uploaded before this moved is still in the old place;
 # carry it across once rather than making somebody upload it again.

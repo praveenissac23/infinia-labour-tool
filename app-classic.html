@@ -3079,13 +3079,19 @@
           <div class="card" id="signature-card" style="display:none;">
             <h2>Signature &amp; Stamp</h2>
             <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
-              The authorised signature (with the company stamp) printed on every purchase order and every
-              tax / proforma invoice. Upload a PNG or JPG on white or transparent background - it goes in the
-              signature box of each LPO (PDF and Excel) and each invoice.</p>
-            <div class="form-row" style="align-items:center; gap:10px;">
+              The authorised signature (with the company stamp), as a PNG or JPG on white or transparent background.
+              Purchase orders and invoices are signed by different people, so each has its own.</p>
+            <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
+              <b style="width:170px; font-size:13px;">Purchase orders (LPO)</b>
               <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:290px;">
-              <button class="btn btn-primary" onclick="uploadSignature()">Upload</button>
+              <button class="btn btn-primary" onclick="uploadSignature('lpo')">Upload</button>
               <span id="sig-state" style="font-size:12px; color:#888;"></span>
+            </div>
+            <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px;">
+              <b style="width:170px; font-size:13px;">Tax &amp; proforma invoices</b>
+              <input type="file" id="sig-file-invoice" accept="image/png,image/jpeg" style="width:290px;">
+              <button class="btn btn-primary" onclick="uploadSignature('invoice')">Upload</button>
+              <span id="sig-state-invoice" style="font-size:12px; color:#888;"></span>
             </div>
           </div>
 
@@ -10435,6 +10441,15 @@ async function refreshSignatureState() {
       panel.style.background = s.present ? "#FBF8F6" : "#FFF8F7";
     }
   } catch (e) { el.textContent = ""; }
+  const ei = document.getElementById("sig-state-invoice");
+  if (!ei) return;
+  try {
+    const s = await apiCall("/store/purchase/signature-status?kind=invoice");
+    ei.textContent = s.present ? "An invoice signature is on file."
+                   : s.fallback ? "None uploaded yet - invoices print with the purchase-order signature meanwhile."
+                   : "None uploaded - invoices print with an empty signature box.";
+    ei.style.color = s.present ? "#2E7D32" : "#B26A00";
+  } catch (e) { ei.textContent = ""; }
 }
 
 function renderSuppliers() {
@@ -11719,16 +11734,17 @@ async function saveCompanySettings() {
   }
 }
 
-async function uploadSignature() {
+async function uploadSignature(kind = "lpo") {
   const where = "settings-status";
-  const f = document.getElementById("sig-file").files[0];
+  const input = document.getElementById(kind === "invoice" ? "sig-file-invoice" : "sig-file");
+  const f = input.files[0];
   if (!f) { showStatus(where, "warn", "Choose the signature image first."); return; }
   const fd = new FormData();
   fd.append("file", f);
   try {
-    const r = await apiCall("/store/purchase/signature", { method: "POST", body: fd });
+    const r = await apiCall(`/store/purchase/signature?kind=${kind}`, { method: "POST", body: fd });
     showStatus(where, "ok", r.detail || "Signature saved.");
-    document.getElementById("sig-file").value = "";
+    input.value = "";
     refreshSignatureState();
   } catch (e) {
     showStatus(where, "err", errText(e));
@@ -14398,7 +14414,7 @@ async function invLoad() {
   document.getElementById("inv-client-list").innerHTML = INV.clients.map(x => `<option value="${escapeAttr(x)}">`).join("");
   const pnos = [...new Set(INV.rows.map(r => r.project_no).filter(Boolean))];
   document.getElementById("inv-pno-list").innerHTML = pnos.map(x => `<option value="${escapeAttr(x)}">`).join("");
-  document.getElementById("inv-sig-note").textContent = INV.signature ? "" : "No signature & stamp yet - admin uploads it in Settings > General.";
+  document.getElementById("inv-sig-note").textContent = INV.signature ? "" : "No signature & stamp yet - admin uploads the invoice signature in Settings > General.";
   invDrawList();
 }
 function invDrawList() {

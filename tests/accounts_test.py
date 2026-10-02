@@ -120,14 +120,25 @@ ck("converted number in tax series", r.json()["number"] == f"IC/{yy}/920/01", r.
 ck("convert twice refused", c.post(f"/employees/accounts/invoices/{pid}/convert", headers=CH).status_code == 400)
 pr = c.get("/employees/accounts/invoices?kind=proforma", headers=CH).json()["rows"][0]
 ck("proforma linked", pr["converted_to_id"] == r.json()["id"])
-# signature: the one kept in Settings (purchase orders) is used
-import export_web, shutil
-had = export_web.signature_file()
-if not had and os.path.exists("/tmp/claude-0/inv-sig.png"):
-    shutil.copy("/tmp/claude-0/inv-sig.png", export_web.SIG_PATHS[0])
-ck("invoices use the Settings signature", c.get("/employees/accounts/invoices", headers=CH).json()["signature"] == bool(export_web.signature_file()))
+# signature: invoices have their own (Settings > General), and print the
+# purchase-order one until it is uploaded.
+import export_web
+for p in export_web.SIG_PATHS + export_web.INV_SIG_PATHS:
+    if os.path.exists(p): os.remove(p)
+from PIL import Image
+import io as _io
+def _png():
+    b = _io.BytesIO(); Image.new("RGBA", (300, 120), (0, 0, 0, 0)).save(b, "PNG"); return b.getvalue()
+ck("no signature: invoice says so", c.get("/employees/accounts/invoices", headers=CH).json()["signature"] is False)
+ck("chief accountant cannot upload a signature", c.post("/store/purchase/signature?kind=invoice", files={"file": ("a.png", _png(), "image/png")}, headers=CH).status_code == 403)
+ck("LPO signature uploaded", c.post("/store/purchase/signature", files={"file": ("a.png", _png(), "image/png")}, headers=A).status_code == 200)
+st = c.get("/store/purchase/signature-status?kind=invoice", headers=CH).json()
+ck("invoice status: none of its own, falls back to the LPO one", st["present"] is False and st["fallback"] is True, st)
+ck("invoices print with the LPO signature meanwhile", c.get("/employees/accounts/invoices", headers=CH).json()["signature"] is True)
+ck("invoice signature uploaded separately", c.post("/store/purchase/signature?kind=invoice", files={"file": ("b.png", _png(), "image/png")}, headers=A).json()["detail"].endswith("every invoice."))
+ck("the two live in different files", export_web.invoice_signature_file() != export_web.signature_file() and export_web.invoice_signature_file().endswith("invoice_signature.png"))
+ck("unknown kind refused", c.post("/store/purchase/signature?kind=x", files={"file": ("a.png", _png(), "image/png")}, headers=A).status_code == 400)
 ck("PDF with signature", c.get(f"/export/accounts/invoice/{iid}?token={t}").content[:4] == b"%PDF")
-ck("no separate invoice signature upload", c.post("/employees/accounts/invoice-signature", files={"file": ("a.png", b"x", "image/png")}, headers=CH).status_code in (404, 405))
 
 # ---- cash register -----------------------------------------------------
 ck("register refused without key", c.get("/employees/accounts/register", headers=CH).status_code == 423)

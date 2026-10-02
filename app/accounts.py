@@ -94,9 +94,10 @@ def create_tables(engine):
 # ---- invoices ---------------------------------------------------------------
 
 def invoice_signature():
-    """The signature and stamp kept in Settings - the same picture the
+    """The invoice signature and stamp kept in Settings (the purchase-order
+    one until an invoice one is uploaded). Was: the same picture the
     purchase orders print - so there is one to upload and one to change."""
-    return export_web.signature_file()
+    return export_web.invoice_signature_or_lpo()
 
 
 def _company(db, cid):
