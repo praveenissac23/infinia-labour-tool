@@ -2339,7 +2339,8 @@
             <div class="pc-head">
               <div class="pc-title">
                 <h2 style="margin:0;" id="pc-heading">Petty cash register</h2>
-                <label class="pc-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
+                <label class="pc-f"><span>Show</span><select id="pc-range" onchange="loadPettyCash()"><option value="month">One month</option><option value="all">Full history</option></select></label>
+                <label class="pc-f" id="pc-month-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
               </div>
               <div class="pc-btns">
                 <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pcExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pcExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pcExport('excel')">Export Excel</button></div>
@@ -14067,11 +14068,13 @@ async function loadPettyCash() {
     document.getElementById("pc-site").innerHTML = `<option value="">Office / general</option>` +
       PC_SITES.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
   }
-  const want = m.value;
+  const all = document.getElementById("pc-range").value === "all";
+  document.getElementById("pc-month-f").style.visibility = all ? "hidden" : "";
+  const want = all ? "all" : m.value;
   let d;
   try { d = await apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}&book=${book}`); }
   catch (e) { showStatus("pc-status", "err", errText(e)); return; }
-  if (m.value !== want || book !== PC_BOOK) return;
+  if ((all ? "all" : m.value) !== want || book !== PC_BOOK) return;
   PC = d; pcDraw();
 }
 
@@ -14090,8 +14093,9 @@ function pcDraw() {
   const hand = d.closing;
   const t = pcTerms(d.book);
   const pair = (rec, paid) => t.director ? [paid, rec] : [rec, paid];
-  const stats = pair(`<div class="pc-stat"><span>${escapeHtml(t.in)} this month</span><b>${pcMoney(d.received)}</b></div>`,
-                     `<div class="pc-stat"><span>${escapeHtml(t.out)} this month</span><b>${pcMoney(d.paid)}</b></div>`);
+  const when = d.all ? " in all" : " this month";
+  const stats = pair(`<div class="pc-stat"><span>${escapeHtml(t.in + when)}</span><b>${pcMoney(d.received)}</b></div>`,
+                     `<div class="pc-stat"><span>${escapeHtml(t.out + when)}</span><b>${pcMoney(d.paid)}</b></div>`);
   document.getElementById("pc-stats").innerHTML = `
     <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>${stats.join("")}
     <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b></div>`;
@@ -14151,7 +14155,7 @@ async function pcSave() {
     else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
     const was = PC_EDIT;
     // Show the month the line went into.
-    document.getElementById("pc-month").value = body.date.slice(0, 7);
+    if (document.getElementById("pc-range").value !== "all") document.getElementById("pc-month").value = body.date.slice(0, 7);
     pcReset();
     await loadPettyCash();
     showStatus("pc-status", "ok", was ? "Saved." : `Added - ${pcTerms(PC.book).balance}: ${pcMoney(PC.closing)}.`);
@@ -14168,7 +14172,7 @@ async function pcDelete(id) {
 }
 
 async function pcExport(kind) {
-  const m = document.getElementById("pc-month").value || pcToday().slice(0, 7);
+  const m = document.getElementById("pc-range").value === "all" ? "all" : (document.getElementById("pc-month").value || pcToday().slice(0, 7));
   if (!cachedDownloadToken) await refreshDownloadToken();
   const t = encodeURIComponent(cachedDownloadToken || "");
   const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?month=${m}&book=${PC_BOOK}&token=${t}`

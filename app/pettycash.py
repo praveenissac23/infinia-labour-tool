@@ -89,7 +89,10 @@ def _money(v):
 
 
 def register(db, month, book="site"):
-    a, b = _month_bounds(month)
+    """One month's register - or, for month "all", every line from the
+    first entry (the full history, as the directors' sheets read)."""
+    whole = str(month or "").strip().lower() == "all"
+    a, b = (date(2000, 1, 1), date(2099, 12, 31)) if whole else _month_bounds(month)
     t = terms(book)
     sg = t["sign"]
     before = _of_book(db.query(models.PettyCash), book).filter(models.PettyCash.on_date < a).all()
@@ -112,7 +115,10 @@ def register(db, month, book="site"):
         if r["paid"]:
             k = r["site"] or "Office / general"
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
-    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "from": a.isoformat(), "to": b.isoformat(),
+    first = rows[0].on_date if rows else a
+    label = (f"Full history - {first:%d %b %Y} to {M._dubai_today():%d %b %Y}" if whole else f"{a:%B %Y}")
+    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
+            "from": a.isoformat(), "to": b.isoformat(), "all": whole,
             "opening": opening, "rows": out, "received": rec, "paid": paid,
             "closing": round(opening + sg * (rec - paid), 2),
             "by_site": [{"site": k, "paid": v} for k, v in sorted(by_site.items(), key=lambda kv: -kv[1])]}
