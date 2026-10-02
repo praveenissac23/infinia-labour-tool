@@ -222,6 +222,11 @@
   .exp-card.on { outline: 2px solid #B7322A; outline-offset: -1px; }
   td.hr-d-add, span.hr-d-add { cursor: pointer; } td.hr-d-add:hover, span.hr-d-add:hover { outline: 2px solid #B7322A; outline-offset: -2px; }
   .exp-mail-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  /* Cross-links: a name or number that opens its own record */
+  a.xl { color: inherit; text-decoration: underline; text-decoration-color: rgba(183,50,42,.35); text-underline-offset: 2px; cursor: pointer; }
+  a.xl:hover { color: #B7322A; text-decoration-color: #B7322A; }
+  .xl-hit, .xl-hit td { animation: xlhit 2.2s ease-out; }
+  @keyframes xlhit { 0%, 40% { background: #FFF1CC; } 100% { background: transparent; } }
   /* Accounts: invoices and the cash register */
   #screen-title, #inv-form-title, #inv-list-title { user-select: none; -webkit-user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .inv-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin-bottom: 14px; }
@@ -248,6 +253,7 @@
   .inv-list .acts { white-space: nowrap; text-align: right; } .inv-list .acts .btn { margin-left: 3px; }
   .inv-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; }
   .inv-tag.cx { background: #EEE; color: #888; } .inv-tag.conv { background: #E3F4E5; color: #2E7D32; }
+  a.inv-tag { text-decoration: none; cursor: pointer; } a.inv-tag:hover { filter: brightness(.94); } .inv-tag.from { background: #EEF2F6; color: #44546A; }
   @media (max-width: 900px) { .inv-form { grid-template-columns: 1fr 1fr; } }
   .reg-lock { max-width: 430px; margin: 50px auto; text-align: center; padding: 30px 28px !important; }
   .reg-lock-ico { font-size: 34px; }
@@ -1141,7 +1147,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b347560c08a6";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="ed65bd751154";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -6505,7 +6511,7 @@ async function selectLiveCardWorker(empNo) {
   const adjRows = s.adjustments.map(a => `<div class="side-row" style="display:flex; justify-content:space-between;"><strong>${a.description}</strong><span style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"} AED ${money(a.amount)}</span></div>`).join("");
 
   detail.innerHTML = `
-    <h2 style="margin-bottom:2px;">${s.emp_no} - ${s.emp_name}</h2>
+    <h2 style="margin-bottom:2px;">${s.emp_no} - ${xlink(s.emp_name, `xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(${jsq(s.emp_no)}))`, "masterdata", "Open his record on Master Data")}</h2>
     <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${cycleLabel(s.month_year)} &nbsp;|&nbsp; Total Salary: AED ${money(s.total_salary)}</p>
     <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
@@ -6678,7 +6684,8 @@ function showNextNotification() {
     // queued waits rather than opening on top: pressing 'Open
     // approvals' and landing behind another notification made it look
     // as though the button had simply closed and done nothing.
-    if (MY_SCREENS.includes(target) || target === "dashboard") switchScreen(target);
+    // ...and to the very request or material it is about, not just the screen.
+    if (CURRENT_ROLE === "admin" || MY_SCREENS.includes(target) || target === "dashboard") openNotification(n.id, target, n.target);
     closeNotifications();
   };
   document.getElementById("notif-go").focus();
@@ -6767,12 +6774,17 @@ function openNotification(id, screen, target) {
     if (screen === "approvals") {
       const f = document.getElementById("mreq-filter"); if (f) f.value = "all";
       const s = document.getElementById("mreq-search"); if (s) s.value = target;
-      loadRequests();
+      Promise.resolve(loadRequests()).then(() => {
+        const r = (mrCache || []).find(x => x.ref === target);
+        const d = r && document.getElementById("mr-detail-" + r.id);
+        if (d && d.style.display === "none") toggleRequest(r.id);
+        if (d) xlFlash(d.previousElementSibling || d);
+      });
     } else if (screen === "followup") {
       const s = document.getElementById("fu-search"); if (s) { s.value = target; renderFollowUp(); }
     } else if (screen === "store") {
       const s = document.getElementById("home-stock-search");
-      if (s) { storeGo("home"); s.value = target; filterHomeStock(); }
+      if (s) { storeGo("home"); s.value = target; filterHomeStock(); setTimeout(() => { try { toggleStockDetail(target); } catch (e) {} }, 400); }
     }
   }, 250);
 }
@@ -7003,7 +7015,7 @@ async function refreshOnHire() {
     <div class="card" style="margin:0 0 10px; background:#FBF8F6;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
         <div>
-          <strong style="font-size:14px;">${g.supplier}</strong>
+          <strong style="font-size:14px;">${supplierLink(g.supplier)}</strong>
           <span style="font-size:12px; color:#888; margin-left:8px;">
             ${g.lines} material${g.lines === 1 ? "" : "s"} &middot; ${num(g.total_qty)} in all
             ${g.longest_days ? `&middot; longest out <strong>${g.longest_days} day${g.longest_days === 1 ? "" : "s"}</strong>` : ""}</span>
@@ -7153,9 +7165,9 @@ async function refreshReturnList() {
   };
   body.innerHTML = rows.map(r => `
     <tr>
-      <td style="text-align:left;"><strong>${r.ref}</strong></td>
+      <td style="text-align:left;"><strong>${xlink(r.ref, `printReturn(${r.id}, 'view')`, null, "Open the return note")}</strong></td>
       <td>${r.return_date || "-"}</td>
-      <td style="text-align:left;">${r.supplier || "-"}</td>
+      <td style="text-align:left;">${r.supplier ? supplierLink(r.supplier) : "-"}</td>
       <td>${r.lines}</td>
       <td>${num(r.total_returned)}</td>
       <td${r.total_short ? ' style="color:#C0392B; font-weight:600;"' : ""}>${r.total_short ? num(r.total_short) : "-"}</td>
@@ -7413,7 +7425,7 @@ async function loadArrivePanel() {
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px;
                   flex-wrap:wrap; padding:12px 2px; border-bottom:1px solid #EFEFEF;">
         <div style="min-width:220px;">
-          <strong>${r.ref}</strong> &middot; site ${r.site || "-"} &middot;
+          <strong>${requestLink(r.ref)}</strong> &middot; site ${r.site || "-"} &middot;
           <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>
           <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
         </div>
@@ -7582,7 +7594,7 @@ async function toggleStockDetail(code) {
     if (s.reorder_level) chips.push(`<span class="stat-chip" style="border-color:#999; color:#777; background:#f7f7f7;">Warn under ${num(s.reorder_level)} ${s.unit}</span>`);
     if (onOrder.length) {
       const totalOut = onOrder.reduce((a, x) => a + x.out, 0);
-      chips.push(`<span class="stat-chip" style="border-color:#B26A00; color:#B26A00; background:#B26A0012;">${num(totalOut)} ${s.unit} on order (${onOrder.map(x => x.ref).join(", ")})</span>`);
+      chips.push(`<span class="stat-chip" style="border-color:#B26A00; color:#B26A00; background:#B26A0012;">${num(totalOut)} ${s.unit} on order (${[...new Set(onOrder.map(x => x.ref))].map(requestLink).join(", ")})</span>`);
     }
 
     box.innerHTML = `
@@ -8957,12 +8969,12 @@ function renderFollowUp() {
       </tr></thead>
       <tbody>${list.map(x => `
         <tr${x.late ? ' style="background:#FFF8F7;"' : ""}>
-          <td>${x.code ? `<strong>${x.code}</strong> ` : ""}${x.name}${x.purpose ? `<div style="font-size:11px; color:#999;">${x.purpose}</div>` : ""}</td>
+          <td>${x.code ? `<strong>${materialLink(x.code)}</strong> ` : ""}${escapeHtml(x.name || "")}${x.purpose ? `<div style="font-size:11px; color:#999;">${x.purpose}</div>` : ""}</td>
           <td class="num-col" style="font-weight:700;">${num(x.due)} ${x.unit}${x.received ? `<div style="font-size:11px; color:#999; font-weight:400;">${num(x.received)} of ${num(x.asked)} in</div>` : ""}</td>
           <td>${x.site || '<span style="color:#999;">store</span>'}</td>
-          <td><strong>${x.ref}</strong></td>
+          <td><strong>${requestLink(x.ref)}</strong></td>
           <td>${x.needed || "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
-          <td>${x.sup ? x.sup.name : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
+          <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
           <td>${x.sup && (x.sup.phone || x.sup.contact_person)
             ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
             : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
@@ -9192,13 +9204,13 @@ async function loadRequests() {
                       const rej = (l.status || "pending") === "rejected";
                       return `<tr style="${rej ? "opacity:.55; text-decoration:line-through;" : ""}">
                         <td>${i + 1}</td>
-                        <td>${l.item_code ? `<strong>${l.item_code}</strong> ` : ""}${l.item_name || l.description}</td>
+                        <td>${l.item_code ? `<strong>${materialLink(l.item_code)}</strong> ` : ""}${escapeHtml(l.item_name || l.description || "")}</td>
                         <td>${num(l.qty_requested)}</td><td>${l.unit}</td>
                         <td>${l.purpose || "-"}</td>
                         <td>${l.qty_received ? num(l.qty_received) : "-"}</td>
                         <td>${out > 0 ? num(out) : '<span style="color:#2E7D32;">complete</span>'}</td>
                         <td style="font-size:11.5px;">${l.supplier
-                          ? `${l.supplier.name}${l.supplier.phone ? `<div><a href="tel:${l.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${l.supplier.phone}</a>${l.supplier.contact_person ? ` (${l.supplier.contact_person})` : ""}</div>` : ""}`
+                          ? `${supplierLink(l.supplier.name)}${l.supplier.phone ? `<div><a href="tel:${l.supplier.phone}" onclick="event.stopPropagation();" style="color:#1565C0;">${l.supplier.phone}</a>${l.supplier.contact_person ? ` (${l.supplier.contact_person})` : ""}</div>` : ""}`
                           : '<span style="color:#999;">not ordered yet</span>'}</td>
                         <td>${lineDecisionHtml(l, r)}</td>
                       </tr>`;
@@ -10060,7 +10072,7 @@ async function loadStore() {
         // had no eighth column for that stray Print button - the report
         // is for reading and exporting.
         const CELL = {
-          ref: `<td><strong>${r.ref}</strong></td>`,
+          ref: `<td><strong>${requestLink(r.ref)}</strong></td>`,
           site: `<td>${r.site || "-"}</td>`,
           requested_on: `<td>${r.requested_on}</td>`,
           needed_by: `<td>${r.needed_by || "-"}</td>`,
@@ -10241,6 +10253,11 @@ async function loadActivityLog() {
   renderActivityLog();
 }
 
+// Request numbers in the log open the request (for someone who may read it).
+function actLinks(text) {
+  const parts = String(text).split(/(MR-\d{3,})/);
+  return parts.map((p, i) => i % 2 ? requestLink(p) : escapeHtml(p)).join("");
+}
 function renderActivityLog() {
   const body = document.getElementById("activity-body");
   const rows = currentActivityLog;
@@ -10262,7 +10279,7 @@ function renderActivityLog() {
       <td class="txt"><b>${escapeHtml(r.full_name)}</b><span class="sub">${escapeHtml(r.username)}</span></td>
       <td><span class="act-pill ${tone[r.group] || "gr"}">${escapeHtml(r.group_label)}</span></td>
       <td class="txt">${escapeHtml(r.label)}</td>
-      <td class="txt act-det">${r.details ? escapeHtml(r.details) : '<span class="hr-nil">-</span>'}</td></tr>`;
+      <td class="txt act-det">${r.details ? actLinks(r.details) : '<span class="hr-nil">-</span>'}</td></tr>`;
   }
   body.innerHTML = out;
 }
@@ -10338,7 +10355,7 @@ async function loadErrorCheck() {
           ? `<input type="checkbox" class="ec-pick" value="${w.emp_no}" onclick="event.stopPropagation();" style="width:auto; margin-right:4px;" title="Include in the reminder">` : ""}
         <span style="color:#B26A00;">&#9656;</span></td>
       <td style="width:11%;">${w.emp_no}</td>
-      <td style="width:24%; text-align:left; font-weight:500;">${w.name}</td>
+      <td style="width:24%; text-align:left; font-weight:500;">${workerLink(w.emp_no, w.name)}</td>
       <td style="width:12%;">${tag ? `<span style="color:${tag[1]}; font-weight:700; font-size:10px; letter-spacing:.4px;">${tag[0]}</span>` : ""}</td>
       <td style="text-align:left; color:#555;">${kinds}
         <span style="color:#999;">&nbsp;&mdash; ${n} issue${n === 1 ? "" : "s"}</span></td>
@@ -10837,7 +10854,7 @@ function renderLpoPending() {
   body.innerHTML = lpoPending.map(p => `
     <tr${p.urgency === "urgent" ? ' style="background:#FFF6E5;"' : ""}>
       <td><input type="checkbox" class="lpo-pick" value="${p.line_id}" onchange="notePendingPick()"></td>
-      <td>${p.ref}</td><td>${p.site || "-"}</td>
+      <td>${requestLink(p.ref)}</td><td>${p.site || "-"}</td>
       <td style="text-align:left;">${p.description}</td>
       <td>${num(p.qty)} ${p.unit || ""}</td>
       <td style="text-align:left;">${p.purpose || "-"}</td>
@@ -10924,6 +10941,14 @@ function lprParams() {
        + `&status=${document.getElementById("lpr-show").value}`;
 }
 
+function lprDrill(group, label) {
+  const box = document.getElementById({ supplier: "lpr-supplier", site: "lpr-site", material: "lpr-material" }[group]);
+  if (!box) return;
+  box.value = label;
+  document.getElementById("lpr-group").value = "order";
+  loadLpoReport();
+  document.getElementById("lpr-title").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 async function loadLpoReport() {
   const head = document.getElementById("lpr-head");
   const body = document.getElementById("lpr-body");
@@ -10967,10 +10992,12 @@ async function loadLpoReport() {
           row.edited && row.status !== "cancelled"
             ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${row.edited_on}">edited</span>` : ""}</td>`);
         cells.push(`<td style="text-align:left;">${row.date || "-"}</td>`);
-        cells.push(`<td style="text-align:left;">${row.supplier || "-"}</td>`);
+        cells.push(`<td style="text-align:left;">${row.supplier ? supplierLink(row.supplier) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
       } else {
-        cells.push(`<td style="text-align:left;"><strong>${row.label}</strong></td>`);
+        // A supplier, site or material line opens its own orders.
+        const drill = ["supplier", "site", "material"].includes(r.group_by) && row.label;
+        cells.push(`<td style="text-align:left;"><strong>${drill ? xlink(row.label, `lprDrill(${jsq(r.group_by)}, ${jsq(row.label)})`, null, "Show these orders one by one") : escapeHtml(String(row.label || ""))}</strong></td>`);
       }
       r.measures.forEach(m => cells.push(
         `<td style="text-align:right;">${["qty", "orders", "lines"].includes(m.key) ? num(row[m.key]) : money(row[m.key])}</td>`));
@@ -11055,7 +11082,7 @@ async function priceSearch() {
           <table>${m.buys.map(b => `
             <tr>
               <td style="width:16%;">${b.date}</td>
-              <td style="width:28%;">${b.supplier || "-"}</td>
+              <td style="width:28%;">${b.supplier ? supplierLink(b.supplier) : "-"}</td>
               <td style="width:16%;">${b.site || "-"}</td>
               <td style="width:14%; text-align:right;">${num(b.qty)} ${m.unit || ""}</td>
               <td style="width:14%; text-align:right; font-weight:600;
@@ -12666,7 +12693,7 @@ function hrRunRows(r) {
         `<input type="checkbox" ${l.held ? "" : "checked"} title="Untick to hold this salary over to a later month"
                 onchange="hrHold(${l.id}, !this.checked)">`}</td>
       <td>${escapeHtml(l.emp_no)}</td>
-      <td class="txt">${escapeHtml(l.name)}
+      <td class="txt">${xlink(l.name, `editStaff(${jsq(l.emp_no)})`, "hrpayroll", "Open the staff record")}
         ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}</td>
       <td class="num">${hrMoney(l.basic)}</td>
       <td class="num">${hrMoney(l.allowance)}</td>
@@ -13326,7 +13353,7 @@ function renderLoans() {
     const open = HR_LOAN_OPEN === l.id;
     const main = `
     <tr${l.closed ? ' class="hr-soft"' : ""}>
-      <td>${escapeHtml(l.emp_no)}</td><td class="txt">${escapeHtml(l.name)}</td>
+      <td>${escapeHtml(l.emp_no)}</td><td class="txt">${xlink(l.name, `editStaff(${jsq(l.emp_no)})`, "hrpayroll", "Open the staff record")}</td>
       <td>${hrDate(l.taken_on)}</td>
       <td class="num">${hrMoney(l.amount)}</td>
       <td class="num">${hrMoney(l.repaid)}</td>
@@ -13500,7 +13527,7 @@ function renderLeave() {
     `${rows.length} entr${rows.length === 1 ? "y" : "ies"} - ${days} day(s), ${off} deducted`;
   document.getElementById("hr-leave-body").innerHTML = rows.map(r => `
     <tr${r.unpaid_days ? ' class="hr-bad"' : ""}>
-      <td>${escapeHtml(r.emp_no)}</td><td class="txt">${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.emp_no)}</td><td class="txt">${xlink(r.name, `editStaff(${jsq(r.emp_no)})`, "hrpayroll", "Open the staff record")}</td>
       <td>${escapeHtml(r.kind_label)}</td>
       <td>${hrSpan(r)}${r.days !== r.days_total ? `<span class="sub">${r.days} in ${escapeHtml(HR_LEAVE.month)}</span>` : ""}</td>
       <td>${r.half ? "Half" : r.days}</td>
@@ -13668,7 +13695,7 @@ function renderItems() {
   document.getElementById("hr-items-count").textContent = `${rows.length} entr${rows.length === 1 ? "y" : "ies"}`;
   document.getElementById("hr-items-body").innerHTML = rows.map(r => `
     <tr>
-      <td>${escapeHtml(r.emp_no)}</td><td class="txt">${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.emp_no)}</td><td class="txt">${xlink(r.name, `editStaff(${jsq(r.emp_no)})`, "hrpayroll", "Open the staff record")}</td>
       <td class="txt">${escapeHtml(r.category_label)}${r.from_vacation ? '<span class="sub">from the vacation entry</span>' : ""}</td>
       <td class="num">${r.direction === "add" ? hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
       <td class="num">${r.direction === "deduct" ? hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
@@ -13888,7 +13915,7 @@ function renderDocuments() {
   document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
     <tr>
       <td>${escapeHtml(p.emp_no)}</td>
-      <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}
+      <td class="txt">${workerLink(p.emp_no, p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}
         ${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
       ${hrDocCell(p.docs.eid, p.emp_no, "eid")}${hrDocCell(p.docs.visa, p.emp_no, p.staff ? "visa" : "labour_card")}${hrDocCell(p.docs.passport, p.emp_no, "passport")}
       <td class="txt">${p.other.map(x => `<span class="hr-d hr-d-${x.status}" style="display:block; padding:1px 3px;"
@@ -13923,7 +13950,7 @@ function expRenderMissing() {
   document.getElementById("hr-doc-body").innerHTML = rows.map(p => `
     <tr>
       <td>${escapeHtml(p.emp_no)}</td>
-      <td class="txt">${escapeHtml(p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
+      <td class="txt">${workerLink(p.emp_no, p.name)}<span class="sub">${p.staff ? "Office" : "Labour"}${p.company ? " - " + escapeHtml(p.company) : ""}</span></td>
       ${cell(p, "Emirates ID")}${cell(p, "Visa / labour card")}${cell(p, "Passport")}<td class="hr-nil hr-d-add" onclick="hrAddDoc('${escapeAttr(p.emp_no)}', 'custom')" title="Click to add another document">-</td>
       <td class="hr-d-expired">Missing</td></tr>`).join("") ||
     `<tr><td colspan="7" class="hr-nil" style="padding:14px;">Nobody is missing a document.</td></tr>`;
@@ -14353,6 +14380,12 @@ async function pdcLoad() {
   pdcDrawList();
   await pdcLoadGrid();
 }
+// A payee on the monthly grid opens the cheque list for that payee.
+function pdcPayee(name) {
+  document.getElementById("pdc-filter").value = "all";
+  document.getElementById("pdc-search").value = name;
+  pdcView("list");
+}
 function pdcCard(k) {
   document.getElementById("pdc-filter").value = k;
   pdcView("list");
@@ -14372,7 +14405,7 @@ async function pdcLoadGrid() {
   document.getElementById("pdc-ghead").innerHTML = `<tr><th class="txt">Payee</th>${od ? "<th>Overdue</th>" : ""}${t.columns.map(c => `<th>${c.label}</th>`).join("")}<th>Total</th></tr>`;
   document.getElementById("pdc-gbody").innerHTML = t.rows.map(r => {
     const tip = r.cheques.map(q => `${pdcDmy(q.date)}${q.no ? " #" + q.no : ""}: ${pdcMoney(q.amount)}${q.status === "cleared" ? " (cleared)" : ""}`).join("\n");
-    return `<tr title="${escapeAttr(tip)}"><td><b>${escapeHtml(r.payee)}</b>${r.notes ? `<small>${escapeHtml(r.notes)}</small>` : ""}</td>
+    return `<tr title="${escapeAttr(tip)}"><td><b>${xlink(r.payee, `pdcPayee(${jsq(r.payee)})`, null, "List this payee's cheques")}</b>${r.notes ? `<small>${escapeHtml(r.notes)}</small>` : ""}</td>
       ${od ? `<td class="od">${cell(r.overdue)}${pdcWhen(r.overdue_dates)}</td>` : ""}${r.cells.map((v, i) => `<td>${cell(v)}${pdcWhen(r.dates[i])}</td>`).join("")}<td class="tot">${pdcMoney(r.total)}</td></tr>`;
   }).join("") || `<tr><td colspan="${t.columns.length + 2 + (od ? 1 : 0)}" style="color:#999; padding:18px; text-align:left;">No cheques in ${escapeHtml(t.label)}.</td></tr>`;
   document.getElementById("pdc-gfoot").innerHTML = `<tr><td>TOTAL (Monthly)</td>${od ? `<td class="od">${pdcMoney(t.overdue)}</td>` : ""}${t.totals.map(v => `<td>${pdcMoney(v)}</td>`).join("")}<td>${pdcMoney(t.grand)}</td></tr>`;
@@ -14514,9 +14547,10 @@ function invDrawList() {
   document.getElementById("inv-body").innerHTML = rows.map(r => {
     const cx = r.status === "cancelled";
     const tag = cx ? `<span class="inv-tag cx" title="${escapeAttr(r.cancel_reason)}">Cancelled</span>`
-              : (pro && r.converted_to_id ? `<span class="inv-tag conv">Invoiced</span>` : "");
+              : (pro && r.converted_to_id ? `<a href="#" class="inv-tag conv" title="Open the tax invoice made from it" onclick="event.preventDefault(); openInvoice(${r.converted_to_id}, 'tax')">Invoiced &rsaquo;</a>`
+                 : (!pro && r.from_proforma_id ? `<a href="#" class="inv-tag from" title="Open the proforma it was made from" onclick="event.preventDefault(); openInvoice(${r.from_proforma_id}, 'proforma')">from proforma &rsaquo;</a>` : ""));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
-      <td class="txt num"><b>${escapeHtml(r.number)}</b>${tag}</td><td>${accDmy(r.date)}</td>
+      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag}</td><td>${accDmy(r.date)}</td>
       <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml([r.project_no, r.project].filter(Boolean).join(" - "))}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})">PDF</button>${cx ? "" :
@@ -14807,6 +14841,113 @@ document.addEventListener("click", regHeadingTap);
 document.addEventListener("keydown", () => { if (REG_KEY) regTouch(); });
 document.addEventListener("click", () => { if (REG_KEY) regTouch(); });
 
+// ---- Cross-links: a name or a number opens its own record ---------------
+// One helper draws the link (only for someone who may open what it points
+// at - everyone else sees plain text) and a handful of openers go to the
+// right page, tab and sub-tab, wait for the list to arrive and open the
+// record in it.
+function xlCan(screen) {
+  if (typeof pgAllowed === "function") return pgAllowed(screen);
+  return CURRENT_ROLE === "admin" || MY_SCREENS.includes(screen);
+}
+function jsq(v) { return JSON.stringify(String(v == null ? "" : v)); }
+function xlink(text, call, screen, title) {
+  const t = escapeHtml(String(text == null ? "" : text));
+  if (!t || (screen && !xlCan(screen))) return t;
+  return `<a class="xl" href="#"${title ? ` title="${escapeAttr(title)}"` : ""} onclick="event.preventDefault(); event.stopPropagation(); ${escapeAttr(call)}">${t}</a>`;
+}
+function xlGo(page, tab, sub, ready, act) {
+  if (typeof pgGo === "function") {
+    const hash = tab ? tab + (sub ? ":" + sub : "") : "";
+    if (!PAGE || PAGE.key !== page) pgGo(page, hash);
+    else {
+      if (tab && (!PG_TAB || PG_TAB.id !== tab)) pgTab(tab);
+      if (sub && (!PG_SUB || PG_SUB.id !== sub)) pgSub(sub);
+    }
+  }
+  const t0 = Date.now();
+  (function wait() {
+    let ok = false; try { ok = !!ready(); } catch (e) {}
+    if (ok) { setTimeout(() => { try { act(); } catch (e) { console.error(e); } }, 60); return; }
+    if (Date.now() - t0 < 9000) setTimeout(wait, 120);
+  })();
+}
+const xlOn = id => { const el = document.getElementById("screen-" + id); return el && el.classList.contains("active"); };
+function xlFlash(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("xl-hit"); setTimeout(() => el.classList.remove("xl-hit"), 2200);
+}
+
+// A worker or staff member: a labourer's live card, an office person's
+// record (or Master Data when the live card is not his to open).
+function openWorker(empNo) {
+  const lab = (employees || []).some(e => e.emp_no === empNo);
+  if (lab && xlCan("livecard")) {
+    xlGo("attendance", "livecard", null, () => xlOn("livecard"), () => selectLiveCardWorker(empNo));
+  } else if (!lab && xlCan("hrpayroll")) {
+    if (xlOn("hrpayroll") && HR_STAFF.some(s => s.emp_no === empNo)) { editStaff(empNo); return; }
+    xlGo("payroll", "hrpayroll", "staff", () => xlOn("hrpayroll") && HR_STAFF.some(s => s.emp_no === empNo), () => editStaff(empNo));
+  } else if (xlCan("masterdata")) {
+    xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(empNo));
+  }
+}
+function workerLink(empNo, text) {
+  const lab = (employees || []).some(e => e.emp_no === empNo);
+  const can = lab ? (xlCan("livecard") || xlCan("masterdata")) : xlCan("hrpayroll");
+  return can ? xlink(text || empNo, `openWorker(${jsq(empNo)})`, null, lab ? "Open his card" : "Open the staff record") : escapeHtml(String(text || empNo || ""));
+}
+
+// A material request: Approvals with that request open (or Order
+// follow-up for someone who raises but does not approve).
+function openRequestRef(ref) {
+  if (xlCan("approvals")) {
+    // Wait for the screen's own load to finish first, or it redraws the
+    // list closed again after the request has been opened.
+    xlGo("store", "requests", "approvals", () => { const l = document.getElementById("mreq-list"); return xlOn("approvals") && l && l.children.length && !/Loading/.test(l.textContent); }, async () => {
+      document.getElementById("mreq-filter").value = "all";
+      document.getElementById("mreq-search").value = ref;
+      await loadRequests();
+      const r = (mrCache || []).find(x => x.ref === ref);
+      if (r) { const d = document.getElementById("mr-detail-" + r.id); if (d && d.style.display === "none") toggleRequest(r.id); xlFlash(d ? d.previousElementSibling || d : null); }
+    });
+  } else if (xlCan("requests")) {
+    xlGo("store", "requests", "followup", () => xlOn("followup") && document.getElementById("fu-search"), () => {
+      document.getElementById("fu-search").value = ref; renderFollowUp();
+    });
+  }
+}
+function requestLink(ref) { return ref ? xlink(ref, `openRequestRef(${jsq(ref)})`, xlCan("approvals") ? "approvals" : "requests", "Open this request") : ""; }
+
+// A supplier: its card on the supplier list, ready to read or change.
+function openSupplier(name) {
+  const t0 = Date.now();
+  xlGo("store", "purchasing", "suppliers", () => xlOn("suppliers") && ((suppliers || []).some(s => s.name === name) || Date.now() - t0 > 2500), () => {
+    if (!(suppliers || []).some(s => s.name === name)) return;      // not on the list: the list itself is shown
+    editSupplier(name); xlFlash(document.getElementById("sup-name") && document.getElementById("sup-name").closest(".card"));
+  });
+}
+function supplierLink(name) {
+  if (!name) return "";
+  return xlink(name, `openSupplier(${jsq(name)})`, "approvals", "Open the supplier");
+}
+
+// A material: Stock on hand, found and opened to show where it is.
+function openMaterial(code) {
+  xlGo("store", "store", "home", () => xlOn("store") && document.getElementById("home-stock-search") && document.querySelector("#home-stock-body tr"), () => {
+    const s = document.getElementById("home-stock-search"); s.value = code; filterHomeStock();
+    toggleStockDetail(code);
+    xlFlash(document.querySelector(`#home-stock-body tr[data-code="${CSS.escape(code)}"]`) || document.getElementById("home-stock-body"));
+  });
+}
+function materialLink(code, text) { return code ? xlink(text || code, `openMaterial(${jsq(code)})`, "store", "Show this material in stock") : escapeHtml(String(text || "")); }
+
+// An invoice: its own tab, opened in the form.
+function openInvoice(id, kind) {
+  const tab = kind === "proforma" ? "proforma" : "taxinv";
+  xlGo("accounts", tab, null, () => xlOn("invoices") && INV && INV.rows.some(r => r.id === id), () => invEdit(id));
+}
+
 // ---- Final settlement -------------------------------------------------
 // One working for the staff member chosen above: drawn here as the
 // figures are typed, and as the paper (preview, PDF, Excel) from the
@@ -14904,7 +15045,7 @@ function renderIncrements() {
     return `
     <tr${cls ? ` class="${cls}"` : ""}>
       <td>${first ? escapeHtml(r.emp_no) : ""}</td>
-      <td class="txt">${first ? escapeHtml(r.name) : ""}</td>
+      <td class="txt">${first ? xlink(r.name, `editStaff(${jsq(r.emp_no)})`, "hrpayroll", "Open the staff record") : ""}</td>
       <td>${hrDate(r.effective_on)}${r.future ? '<span class="sub">not yet due</span>' : ""}</td>
       <td>${kind[r.kind] || hrCap(r.kind)}</td>
       <td class="num">${r.amount ? (r.amount > 0 ? "+" : "") + hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
