@@ -2,7 +2,7 @@
 
     python3 deploy/parse_director_petty_cash.py NAVEEN.xlsx PRAVEEN.xlsx
 
-Writes deploy/data/director_petty_cash.json, which
+Writes deploy/director_petty_cash.json, which
 deploy/load_director_petty_cash.py puts into the app.
 
 How the sheets read: DR is money the director put in or paid for the
@@ -29,7 +29,7 @@ from datetime import date, datetime
 import openpyxl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "data", "director_petty_cash.json")
+OUT = os.path.join(HERE, "director_petty_cash.json")
 
 
 def _date(v):

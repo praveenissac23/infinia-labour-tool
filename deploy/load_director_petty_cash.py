@@ -4,7 +4,7 @@ Accounts > Petty cash > Naveen / Praveen.
     cd ~/infinia-labour-tool && venv/bin/python deploy/load_director_petty_cash.py
 
 Run it after the app has been restarted on the new code. The lines are
-in deploy/data/director_petty_cash.json (made from the two sheets by
+in deploy/director_petty_cash.json (made from the two sheets by
 deploy/parse_director_petty_cash.py). Before anything is saved, each
 book's lines are added up and must come to the balance on the sheet:
 Naveen 20,253.65 (17-Sep-26), Praveen 95,302.06 (28-Sep-26).
@@ -23,7 +23,7 @@ from clear_test_returns import _find_database_url
 
 SHEET = {"naveen": 20253.65, "praveen": 95302.06}
 
-data = json.load(open(os.path.join(HERE, "data", "director_petty_cash.json")))
+data = json.load(open(os.path.join(HERE, "director_petty_cash.json")))
 for book, want in SHEET.items():
     lines = data[book]["lines"]
     bal = round(sum(x["paid"] - x["received"] for x in lines), 2)
