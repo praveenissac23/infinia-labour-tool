@@ -177,7 +177,7 @@ if r.content[:2] == b"PK":
     from openpyxl import load_workbook
     ws = load_workbook(io.BytesIO(r.content)).active
     vals = [c2.value for row in ws.iter_rows() for c2 in row if c2.value is not None]
-    ck("Excel has balance formula", any(isinstance(v, str) and v.startswith("=C") for v in vals), vals[-5:])
+    ck("Excel has balance formulas (one ledger, F = F above + D - E)", any(isinstance(v, str) and v.startswith("=F") and "+D" in v for v in vals) and vals[-1] == "=F7", vals[-5:])
 ck("register export without key refused", c.get(f"/export/accounts/register?token={t}&rk=bad&format=pdf").status_code == 423)
 ck("register export refused to invoices-only", c.get(f"/export/accounts/register?token={dl(IO)}&rk={K['X-Register-Key']}&format=pdf").status_code == 403)
 # activity log: no figures
