@@ -8639,7 +8639,18 @@ def _record_labour_rate(db, e, new_basic, new_total, when, reason, user_id):
         db.add(models.SalaryChange(employee_id=e.id, effective_on=e.joined_on or date(2000, 1, 1),
                                    kind="opening", basic=old_basic, allowance=round(old_total - old_basic, 2),
                                    amount=0, reason="Rate before the first recorded change", created_by=user_id))
-    db.add(models.SalaryChange(employee_id=e.id, effective_on=when or _dubai_today(), kind="rate",
+    when = when or _dubai_today()
+    # A second change in the same cycle replaces the first: dated no
+    # earlier than one already recorded later in that cycle, so the rate
+    # entered last is the one the cycle is paid at (Staff page on the 2nd,
+    # then Master Data the same week, used to leave the first standing).
+    _ce = pcyc.cycle_bounds_for(when)[1]
+    later = (db.query(func.max(models.SalaryChange.effective_on))
+               .filter(models.SalaryChange.employee_id == e.id, models.SalaryChange.kind == "rate",
+                       models.SalaryChange.effective_on > when, models.SalaryChange.effective_on <= _ce).scalar())
+    if later:
+        when = later
+    db.add(models.SalaryChange(employee_id=e.id, effective_on=when, kind="rate",
                                basic=new_basic, allowance=round(new_total - new_basic, 2),
                                amount=round(new_total - old_total, 2), reason=(reason or "").strip(),
                                created_by=user_id))

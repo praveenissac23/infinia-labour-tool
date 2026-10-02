@@ -185,8 +185,8 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <span class="seg" id="f-active"><button class="on" data-v="active" onclick="setActive('active')">Active</button><button data-v="all" onclick="setActive('all')">All</button></span>
             <span class="grow"></span>
             <button class="btn btn-dark" onclick="preview('register')">Preview</button>
-            <button class="btn btn-gray" onclick="download('register','pdf')">Export to PDF</button>
-            <button class="btn btn-gray" onclick="download('register','excel')">Export to Excel</button>
+            <button class="btn btn-dark" onclick="download('register','pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('register','excel')">Export Excel</button>
             <button class="btn btn-primary" onclick="openNew()">+ New person</button>
           </div>
           <div class="two">
@@ -204,8 +204,8 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <span class="seg" id="due-group"><button class="on" data-v="" onclick="setDueGroup('')">All registers</button><button data-v="labour" onclick="setDueGroup('labour')">Labour</button><button data-v="office" onclick="setDueGroup('office')">Office</button><button data-v="local" onclick="setDueGroup('local')">Local</button></span>
             <span class="grow"></span>
             <button class="btn btn-dark" onclick="preview('documents-due')">Preview</button>
-            <button class="btn btn-gray" onclick="download('documents-due','pdf')">Export to PDF</button>
-            <button class="btn btn-gray" onclick="download('documents-due','excel')">Export to Excel</button>
+            <button class="btn btn-dark" onclick="download('documents-due','pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('documents-due','excel')">Export Excel</button>
           </div>
           <p class="muted" id="due-count"></p>
           <div class="grid-wrap"><table><thead><tr><th>Register</th><th>Code</th><th>Name</th><th>Document</th><th>Number</th><th>Expires</th><th>Days</th><th>Company</th><th></th></tr></thead><tbody id="due-body"></tbody></table></div>
@@ -219,8 +219,8 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <span class="seg" id="lv-group"><button class="on" data-v="labour" onclick="setLeaveGroup('labour')">Labour</button><button data-v="office" onclick="setLeaveGroup('office')">Office</button><button data-v="local" onclick="setLeaveGroup('local')">Local</button></span>
             <span class="grow"></span>
             <button class="btn btn-dark" onclick="preview('leave')">Preview</button>
-            <button class="btn btn-gray" onclick="download('leave','pdf')">Export to PDF</button>
-            <button class="btn btn-gray" onclick="download('leave','excel')">Export to Excel</button>
+            <button class="btn btn-dark" onclick="download('leave','pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('leave','excel')">Export Excel</button>
           </div>
           <p class="muted">Labour: 60 days after every 2 years of service. Office staff (household included) and local staff: 30 days after each year. Days taken come from the Absence register (staff) or days marked Leave on the attendance grid (labour). A contract that says otherwise is set on the person's file.</p>
           <div class="grid-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Designation</th><th>Joined</th><th>Service</th><th>Rule</th><th class="num">Accrued</th><th class="num">Taken</th><th class="num">Balance</th><th>Next due</th><th>Last vacation</th><th></th></tr></thead><tbody id="lv-body"></tbody></table></div>

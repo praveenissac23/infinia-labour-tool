@@ -68,7 +68,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
 
   // ---- Toolbar buttons --------------------------------------------------------------
   await p.click('#tabs .tab[data-tab="office"]'); await p.waitForTimeout(800);
-  for (const text of ['Preview', 'Export to PDF', 'Export to Excel']) {
+  for (const text of ['Preview', 'Export PDF', 'Export Excel']) {
     await p.click(`#view-register .row button:has-text("${text}")`); pressed++; await p.waitForTimeout(700);
   }
   ck('register preview / PDF / Excel each opened a tab', newPages.length === 3, newPages.length);
@@ -150,7 +150,7 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('Documents due opens', await p.locator('#view-due').isVisible() && (await p.locator('#due-count').textContent()).includes('document'));
   for (const d of ['30', '180', '90']) { await p.click(`#due-days button[data-v="${d}"]`); pressed++; await p.waitForTimeout(500); }
   for (const g of ['labour', 'office', '']) { await p.click(`#due-group button[data-v="${g}"]`); pressed++; await p.waitForTimeout(500); }
-  for (const text of ['Preview', 'Export to PDF', 'Export to Excel']) { await p.click(`#view-due button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
+  for (const text of ['Preview', 'Export PDF', 'Export Excel']) { await p.click(`#view-due button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
   ck('Leave balances is no longer a view of its own', await p.locator('.viewtab[data-view="leave"]').count() === 0);
   ck('the three report buttons opened three tabs', newPages.length === 3, newPages.length);
   for (const pg of newPages) { await pg.waitForLoadState().catch(() => {}); ck(`opened: ${((await pg.url()).split('/export/')[1] || pg.url()).split('&token')[0]}`, !/"detail"/.test(await pg.content().catch(() => '"detail"'))); await pg.close().catch(() => {}); }

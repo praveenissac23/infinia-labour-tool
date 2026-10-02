@@ -67,7 +67,7 @@ ck('no attendance yet', len(c.get('/attendance/2026-09-03', headers=A).json()) =
 ck('no requests yet', len(c.get('/store/requests', headers=A).json()) == 0)
 ck('error check is empty of pay warnings', not any(r.get('severity') == 'legal' for r in c.get(f'/error-check/{CYCLE}', headers=A).json()['rows']))
 me = c.get('/permissions/me', headers=S).json()
-ck('site engineer sees only his screens', set(me['screens']) == {'dashboard', 'attendance', 'store', 'requests', 'settings'}, me['screens'])
+ck('site engineer sees only his screens', set(me['screens']) == {'dashboard', 'attendance', 'store', 'requests', 'settings', 'petty_site'}, me['screens'])
 ck('store keeper sees only his screens', set(c.get('/permissions/me', headers=K).json()['screens']) == {'dashboard', 'store', 'requests', 'settings', 'storekeeper'})
 
 # -------------------------------------------------- 2. Site marks attendance

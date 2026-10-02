@@ -1147,7 +1147,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="ed65bd751154";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="16353e8fb411";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -6957,7 +6957,7 @@ async function loadHirePanel() {
     d.value = isoLocal(new Date());
     d.dataset.autofilled = d.value;
   }
-  if (!document.querySelectorAll('#hin-lines tr').length) addHireInLine();
+  if (!document.querySelectorAll('#hin-lines tr:not(.ph)').length) addHireInLine();
   // The two Export buttons need a download token, and asking for it
   // only when one is pressed makes the first press feel slow.
   if (!cachedDownloadToken) refreshDownloadToken();
@@ -7102,7 +7102,7 @@ async function saveHireIn() {
   // Read the rows themselves - the picker writes the material's id into
   // a hidden box beside what was typed, the same as every other
   // material picker in the store.
-  const rows = [...document.querySelectorAll("#hin-lines tr")].map(tr => ({
+  const rows = [...document.querySelectorAll("#hin-lines tr:not(.ph)")].map(tr => ({
     item_id: parseInt((tr.querySelector(".hin-item") || {}).value, 10) || 0,
     typed: ((tr.querySelector(".hin-item-txt") || {}).value || "").trim(),
     qty: parseFloat((tr.querySelector(".hin-qty") || {}).value) || 0,
@@ -13823,7 +13823,7 @@ function expCardsMark() {
   const company = document.getElementById("hr-doc-company").style.display !== "none";
   const v = document.getElementById(company ? "hr-exp-within" : "hr-doc-within").value;
   const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company ? "all" : "" }[v];
-  document.querySelectorAll(".exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  document.querySelectorAll("#exp-cards .exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
 // The menu number: documents needing action, plus - for admin and the
 // chief accountant only (the server sends nothing to anyone else) -

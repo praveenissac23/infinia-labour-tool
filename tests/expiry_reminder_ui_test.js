@@ -16,7 +16,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.screenshot({ path: SH + 'reminder-0-signin.png' });
   await p.click('#notif-overlay button:has-text("Open")').catch(() => {}); await p.waitForTimeout(2500);
   await p.click('.pg-side .pg-item[data-page="expiry"]'); await p.waitForTimeout(2500);
-  const cards = await p.locator('.exp-card').allTextContents();
+  const cards = await p.locator('#exp-cards .exp-card').allTextContents();
   ck('four counters: Expired, Due in 7 days, 8 to 30 days, Missing', cards.length === 4 && /Expired/.test(cards[0]) && /Missing/.test(cards[3]), cards);
   const s = await p.evaluate(() => EXP_SUM);
   const shown = await p.locator('#hr-doc-body tr').count();

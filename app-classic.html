@@ -6751,7 +6751,7 @@ async function loadHirePanel() {
     d.value = isoLocal(new Date());
     d.dataset.autofilled = d.value;
   }
-  if (!document.querySelectorAll('#hin-lines tr').length) addHireInLine();
+  if (!document.querySelectorAll('#hin-lines tr:not(.ph)').length) addHireInLine();
   // The two Export buttons need a download token, and asking for it
   // only when one is pressed makes the first press feel slow.
   if (!cachedDownloadToken) refreshDownloadToken();
@@ -6896,7 +6896,7 @@ async function saveHireIn() {
   // Read the rows themselves - the picker writes the material's id into
   // a hidden box beside what was typed, the same as every other
   // material picker in the store.
-  const rows = [...document.querySelectorAll("#hin-lines tr")].map(tr => ({
+  const rows = [...document.querySelectorAll("#hin-lines tr:not(.ph)")].map(tr => ({
     item_id: parseInt((tr.querySelector(".hin-item") || {}).value, 10) || 0,
     typed: ((tr.querySelector(".hin-item-txt") || {}).value || "").trim(),
     qty: parseFloat((tr.querySelector(".hin-qty") || {}).value) || 0,
@@ -13617,7 +13617,7 @@ function expCardsMark() {
   const company = document.getElementById("hr-doc-company").style.display !== "none";
   const v = document.getElementById(company ? "hr-exp-within" : "hr-doc-within").value;
   const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company ? "all" : "" }[v];
-  document.querySelectorAll(".exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  document.querySelectorAll("#exp-cards .exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
 // The menu number: documents needing action, plus - for admin and the
 // chief accountant only (the server sends nothing to anyone else) -

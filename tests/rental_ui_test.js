@@ -151,7 +151,7 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   const rowBtns = await p.evaluate(() =>
     [...document.querySelectorAll('#rn-list tr:first-child button')].map(x => x.textContent.trim()));
   ck('the row offers PDF, Excel, Edit and Signed & back',
-     ['PDF', 'Excel', 'Edit'].every(t => rowBtns.includes(t)) && rowBtns.some(t => /Signed/.test(t)),
+     ['Export PDF', 'Export Excel', 'Edit'].every(t => rowBtns.includes(t)) && rowBtns.some(t => /Signed/.test(t)),
      rowBtns);
 
   await p.evaluate(() => {

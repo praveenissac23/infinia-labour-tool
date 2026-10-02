@@ -312,8 +312,8 @@ const CYCLE_MONTH = '2026-08';
     ck(`${tab} opens`, await p.locator(`#hrpane-${tab}`).isVisible());
     const text = await p.locator(`#hrpane-${tab}`).textContent();
     ck(`${tab} offers a preview`, text.includes('Preview'), text.slice(0, 80));
-    ck(`${tab} offers a PDF`, text.includes('Export to PDF'));
-    ck(`${tab} offers a spreadsheet`, text.includes('Export to Excel'));
+    ck(`${tab} offers a PDF`, text.includes('Export PDF'));
+    ck(`${tab} offers a spreadsheet`, text.includes('Export Excel'));
   }
   ck('the salary sheet can be printed',
      (await p.locator('#hrpane-payroll').textContent()).includes('Print'));
