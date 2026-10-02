@@ -71,18 +71,22 @@
   // ---- The bits on screen ----------------------------------------------
   let box, list, drawer, body;
   function mount() {
-    const bar = $(".topbar"); if (!bar || $("#help-search")) return;
-    const right = bar.lastElementChild;
-    const wrap = document.createElement("div");
-    wrap.className = "help-wrap";
-    wrap.innerHTML = `<span class="help-glass">&#128269;</span>
-      <input id="help-search" type="search" autocomplete="off" placeholder="How do I...?  e.g. add stock, LPO, leave">
-      <div id="help-results" class="help-results"></div>`;
-    const q = document.createElement("button");
-    q.id = "help-q"; q.className = "help-q"; q.title = "Help for this page"; q.textContent = "?";
-    q.onclick = () => openList();
-    right.insertBefore(q, right.firstChild);
-    right.insertBefore(wrap, right.firstChild);
+    const bar = $(".topbar"); if (!bar || (box && box.isConnected)) return;
+    // The box and the ? are in the page itself (so the bar never changes
+    // size as the page opens); made here only if a page lacks them.
+    if (!$("#help-search")) {
+      const right = bar.lastElementChild;
+      const wrap = document.createElement("div");
+      wrap.className = "help-wrap";
+      wrap.innerHTML = `<span class="help-glass">&#128269;</span>
+        <input id="help-search" type="search" autocomplete="off" placeholder="How do I...?  e.g. add stock, LPO, leave">
+        <div id="help-results" class="help-results"></div>`;
+      const q = document.createElement("button");
+      q.id = "help-q"; q.className = "help-q"; q.title = "Help for this page"; q.textContent = "?";
+      right.insertBefore(q, right.firstChild);
+      right.insertBefore(wrap, right.firstChild);
+    }
+    $("#help-q").onclick = () => openList();
     box = $("#help-search"); list = $("#help-results");
     box.addEventListener("input", renderResults);
     box.addEventListener("focus", renderResults);

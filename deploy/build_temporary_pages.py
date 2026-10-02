@@ -134,7 +134,8 @@ PAGES = {
             sub("issues", "Issue & return register", screen="store", right=STORE_RIGHTS, go="pgStoreReport('issues')"),
             sub("lost", "Lost / damaged", screen="store", right=STORE_RIGHTS, go="pgStoreReport('lost')"),
             sub("hired", "On rent now", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
-            sub("mr_history", "Request history", screen="store", right=STORE_RIGHTS, go="pgStoreReport('mr_history')")])]),
+            # Requests are read by whoever raises or approves them - not by stock alone.
+            sub("mr_history", "Request history", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
@@ -184,6 +185,9 @@ CSS = """
   /* The reports hub: tabs inside tabs, the preview underneath */
   .pg-sub { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px 2px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
   .pg-sub:empty { display: none; }
+  /* A page where some tabs have a second row keeps that row's space on
+     the others too, so moving between them never shifts the screen. */
+  .pg-sub.pg-sub-keep { display: block; height: 51px; box-sizing: border-box; }
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }
@@ -230,7 +234,14 @@ CSS = """
     .main { width: 100%; }
     .pg-tabs, .pg-sub { padding-left: 12px; padding-right: 12px; overflow-x: auto; flex-wrap: nowrap; }
     .pg-tab, .pg-subtab { flex-shrink: 0; }
+    /* One line for the page name, so a long name never pushes the bar taller. */
+    #screen-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    #viewing-label { display: block; min-height: 18px; width: 100%; }
+    #pg-people-count { display: block !important; width: 100%; min-height: 17px; }
   }
+  /* Preview / Export PDF / Export Excel: on a phone always a row of their
+     own, so what sits beside them never decides where they land. */
+  @media (max-width: 700px) { .exp-btns { flex-basis: 100%; } #store-table-title { min-height: 47px; } }
 </style>
 """
 
@@ -268,6 +279,7 @@ EARLY = """
     // A page this login has nothing on: draw no screen at all - it is
     // about to be taken to a page it does have.
     if (mine && !remembered.tabs.length) screen = "__none__";
+    window.PG_EARLY_SCREEN = screen; window.PG_TITLES = %(titles)s;
     var css = "#login-screen{display:none!important}#app-screen{display:block!important}" +
               ".screen{display:none!important}#screen-" + screen + "{display:block!important}";
     // The menu as this login last saw it, so it never draws in full and
@@ -285,13 +297,29 @@ EARLY = """
     // the app's script runs, so the strip never appears empty and fills.
     var tabs = null;
     try { tabs = JSON.parse(localStorage.getItem("infinia_tabs:" + window.PG_KEY) || "null"); } catch (e) {}
-    if (tabs && tabs.user === (sessionStorage.getItem("infinia_user") || "") && tabs.tabs.length > 1) {
-      document.addEventListener("DOMContentLoaded", function () {
+    if (tabs && tabs.user === (sessionStorage.getItem("infinia_user") || "")) {
+      // Drawn the moment the bars exist in the page (a script right after
+      // them calls this), not when the whole page has arrived.
+      window.pgEarlyBars = function () {
         var bar = document.getElementById("pg-tabs");
-        if (bar && !bar.children.length) bar.innerHTML = tabs.tabs.map(function (t) {
+        if (bar && !bar.children.length && tabs.tabs.length > 1) bar.innerHTML = tabs.tabs.map(function (t) {
           return '<span class="pg-tab ' + (t.id === want ? "active" : "") + '" data-tab="' + t.id + '">' + t.label + "</span>";
         }).join("");
-      });
+        // The second row too, so the page does not drop by its height a
+        // moment later.
+        var sub = document.getElementById("pg-sub"), extra = full.split(":")[1] || "";
+        var tab = null; for (var i = 0; i < tabs.tabs.length; i++) if (tabs.tabs[i].id === want) tab = tabs.tabs[i];
+        if (!tab) tab = tabs.tabs[0];
+        if (sub && !sub.children.length && tab) {
+          var subs = tab.subs || [];
+          if (subs.length) {
+            var on = extra; var found = false; for (var j = 0; j < subs.length; j++) if (subs[j].id === on) found = true;
+            if (!found) on = subs[0].id;
+            sub.innerHTML = subs.map(function (s) { return '<span class="pg-subtab ' + (s.id === on ? "active" : "") + '" data-sub="' + s.id + '">' + s.label + "</span>"; }).join("");
+          } else if (tabs.tabs.some(function (t) { return (t.subs || []).length; })) sub.classList.add("pg-sub-keep");
+        }
+      };
+      document.addEventListener("DOMContentLoaded", window.pgEarlyBars);
     }
   } catch (e) {}
 })();
@@ -306,11 +334,9 @@ HUB_HTML = """
             <div class="form-row" style="gap:10px; align-items:center; flex-wrap:wrap;">
               <h2 id="pg-people-title" style="margin:0 12px 0 0;"></h2>
               <span id="pg-people-opts"></span>
+              <span id="pg-people-count" style="font-size:12px; color:#888; display:inline-block; min-width:70px;"></span>
               <div class="hr-cb-spacer"></div>
-              <button class="btn btn-dark" onclick="pgRepOpen()">Preview</button>
-              <button class="btn btn-gray" onclick="pgRepDownload('pdf')">Export to PDF</button>
-              <button class="btn btn-gray" onclick="pgRepDownload('excel')">Export to Excel</button>
-              <span id="pg-people-count" style="font-size:12px; color:#888;"></span>
+              <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pgRepOpen()">Preview</button><button type="button" class="btn btn-dark" onclick="pgRepDownload('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pgRepDownload('excel')">Export Excel</button></div>
             </div>
             <p id="pg-people-sub" style="font-size:12px; color:#888; margin:6px 0 0;"></p>
             <div class="grid-wrap" style="max-height:64vh; margin-top:10px;">
@@ -516,8 +542,11 @@ function pgRenderTabs() {
   // already paints the right first tab and screen.
   try {
     for (const [key, list] of Object.entries(ALL_TABS)) {
-      const ok = list.filter(pgTabOk);
-      localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label })) }));
+      // A hidden tab (the register) is never remembered, so a refresh can
+      // never paint it before the app has decided.
+      const ok = list.filter(t => !t.hidden && pgHas(t.right));
+      localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label,
+        subs: (t.subs || []).filter(sb => pgHas(sb.right)).map(sb => ({ id: sb.id, label: sb.label })) })) }));
     }
   } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
@@ -526,6 +555,7 @@ function pgRenderTabs() {
   const subs = PG_TAB ? PG_TAB.subs.filter(sb => pgHas(sb.right)) : [];
   sub.innerHTML = subs.map(sb =>
     `<span class="pg-subtab ${PG_SUB && PG_SUB.id === sb.id ? "active" : ""}" data-sub="${sb.id}" onclick="pgSub('${sb.id}')">${sb.label}</span>`).join("");
+  sub.classList.toggle("pg-sub-keep", !subs.length && PAGE.tabs.some(t => pgTabOk(t) && t.subs.some(sb => pgHas(sb.right))));
   const shown = [];
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
     const ok = (PAGE.pages[el.dataset.page] || []).some(s => pgAllowed(s));
@@ -603,6 +633,15 @@ function pgSubGo() {
   if (sb.go) setTimeout(() => { try { new Function(sb.go)(); } catch (e) { console.error(e); } }, 30);
 }
 function pgStoreReport(kind) {
+  // The report's own boxes (dates, site) at once, not after its figures
+  // arrive - otherwise the buttons beside them jump a moment later.
+  const wrap = document.getElementById("store-range-wrap"), sf = document.getElementById("store-site-filter");
+  if (wrap) wrap.style.display = ["usage", "lost", "issues"].includes(kind) ? "" : "none";
+  if (sf) sf.style.display = kind === "by_site" ? "" : "none";
+  const ttl = document.getElementById("store-table-title");
+  if (ttl && PG_SUB && PG_SUB.go && PG_SUB.go.includes("'" + kind + "'")) ttl.textContent = PG_SUB.label;
+  const sub = document.getElementById("store-report-sub");
+  if (sub) sub.textContent = ["usage", "lost", "issues"].includes(kind) ? "Pick a date range, or leave blank for everything." : `As at ${isoLocal(new Date())}`;
   STORE_REPORT_WANT = kind; STORE_PANEL_WANT = "reports";
   storeGo("reports");
 }
@@ -702,7 +741,7 @@ def build():
     brand = m.group(1).strip()
     src = src.replace('<div class="sidebar">\n', '<div class="sidebar" id="legacy-sidebar">\n', 1)
     src = src.replace("</head>", CSS + "</head>", 1)
-    src = src.replace('<div class="content">\n', '<div class="pg-tabs" id="pg-tabs"></div>\n      <div class="pg-sub" id="pg-sub"></div>\n      <div class="content">\n', 1)
+    src = src.replace('<div class="content">\n', '<div class="pg-tabs" id="pg-tabs"></div>\n      <div class="pg-sub" id="pg-sub"></div>\n      <script>try{window.pgEarlyBars&&window.pgEarlyBars();}catch(e){}</script>\n      <div class="content">\n', 1)
 
     # Settings, in parts: the cards get ids so a tab can show one part.
     src = src.replace('<div class="card">\n            <h2>Change Your Password</h2>',
@@ -778,13 +817,18 @@ def build():
     side.append("</div>")
     page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
     page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
-    early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts)}
+    _titles = dict(re.findall(r'(\w+):\s*"([^"]*)"', re.search(r'const SCREEN_TITLES = \{(.*?)\};', src, re.S).group(1)))
+    early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts), "titles": json.dumps(_titles)}
+    # The page name and who is signed in, right from the first frame.
+    page = page.replace('<h1 id="screen-title">Dashboard</h1>', '<h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>', 1)
+    page = page.replace('<span class="who" id="who-label"></span>', '<span class="who" id="who-label"></span><script>try{document.getElementById("who-label").textContent=sessionStorage.getItem("infinia_who")||"";}catch(e){}</script>', 1)
     page = page.replace("</head>", early + "</head>", 1)
     script = SCRIPT % {"key": "app", "page_of_json": json.dumps(page_of),
                        "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
                        "file_json": json.dumps(FILE),
                        "all_pages_json": json.dumps(ALL_CFG),
-                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"]} for t in tb] for k, (_, tb) in PAGES.items()})}
+                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"],
+                                                 "subs": [{"id": sb["id"], "label": sb["label"], "right": sb["right"]} for sb in t["subs"]]} for t in tb] for k, (_, tb) in PAGES.items()})}
     page = page.replace("</body>", script + "</body>", 1)
     # In-app help (portal/help): the guides, the list of step pictures and
     # the code, each tagged with its own content hash so a changed guide
