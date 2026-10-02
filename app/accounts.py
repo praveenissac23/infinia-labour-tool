@@ -389,8 +389,14 @@ def register(db, start=None, end=None):
     paid = [d(r) for r in inside if r.kind == "paid"]
     tr, tp = round(sum(r["amount"] for r in rec), 2), round(sum(r["amount"] for r in paid), 2)
     last = max((r.on_date for r in inside), default=None)
+    # The same lines in date order with the running balance - the paper
+    # reads as a bank statement, so it never splits into two uneven sides.
+    bal, ledger = opening, []
+    for r in inside:
+        bal = round(bal + (r.amount if r.kind == "received" else -r.amount), 2)
+        ledger.append({**d(r), "balance": bal})
     return {"from": start.isoformat() if start else "", "to": end.isoformat() if end else "",
-            "opening": opening, "received": rec, "paid": paid, "total_received": tr, "total_paid": tp,
+            "opening": opening, "received": rec, "paid": paid, "ledger": ledger, "total_received": tr, "total_paid": tp,
             "balance": round(opening + tr - tp, 2), "as_on": last.isoformat() if last else ""}
 
 
@@ -471,12 +477,15 @@ def _register_pdf(r):
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.enums import TA_RIGHT, TA_CENTER
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    RED = colors.HexColor("#C0392B"); TINT = colors.HexColor("#F7F5F3")
+    RED = colors.HexColor("#C0392B"); TINT = colors.HexColor("#F7F5F3"); GREY = colors.HexColor("#DDDDDD")
     base = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5)
     bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
     rt = ParagraphStyle("r", parent=base, alignment=TA_RIGHT); rtb = ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
-    hd = ParagraphStyle("h", parent=bold, fontSize=8)
-    P = lambda s, st=base: Paragraph(escape(str(s)), st)
+    hd = ParagraphStyle("h", parent=bold, fontSize=8, textColor=colors.white)
+    hdr = ParagraphStyle("hr", parent=hd, alignment=TA_RIGHT)
+    muted = ParagraphStyle("m", parent=base, textColor=colors.HexColor("#6B7178"))
+    P = lambda s_, st=base: Paragraph(escape(str(s_)), st)
+    m = lambda v: f"{v:,.2f}" if v not in ("", None) else ""
     page = landscape(A4); W = page[0] - 24 * mm
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=10 * mm, bottomMargin=10 * mm,
@@ -488,29 +497,36 @@ def _register_pdf(r):
                 colWidths=[W / 2, W / 2])
     top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 1), (-1, 1), 1.2, RED),
                              ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    half = (W - 6 * mm) / 2
-
-    def side(title, rows, total, remarks):
-        head = [P("DATE", hd), P(title, hd), P("AMOUNT", ParagraphStyle("hr", parent=hd, alignment=TA_RIGHT))] + ([P("REMARKS", hd)] if remarks else [])
-        data = [head] + [[P(_d(x["date"])), P(x["description"]), P(f"{x['amount']:,.2f}", rt)] + ([P(x["remarks"])] if remarks else []) for x in rows]
-        data.append([P(""), P("Total", bold), P(f"{total:,.2f}", rtb)] + ([P("")] if remarks else []))
-        widths = [half * f for f in ((.17, .43, .2, .2) if remarks else (.2, .55, .25))]
-        t = Table(data, colWidths=widths, repeatRows=1)
-        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), TINT), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
-                               ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),
-                               ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        return t
-    left = side("CASH RECEIVED", r["received"], r["total_received"], False)
-    right = side("CASH PAID OUT", r["paid"], r["total_paid"], True)
-    both = Table([[left, "", right]], colWidths=[half, 6 * mm, half])
-    both.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    bal = [["Brought forward", f"{r['opening']:,.2f}"]] if r["from"] else []
-    bal += [["Total received", f"{r['total_received']:,.2f}"], ["Total paid out", f"{r['total_paid']:,.2f}"],
-            [f"Balance as on {_d(r['as_on']) or '-'}", f"AED {r['balance']:,.2f}"]]
-    bt = Table([[P(a, bold if i == len(bal) - 1 else base), P(b, rtb if i == len(bal) - 1 else rt)] for i, (a, b) in enumerate(bal)],
-               colWidths=[60 * mm, 40 * mm], hAlign="RIGHT")
-    bt.setStyle(TableStyle([("LINEABOVE", (0, -1), (-1, -1), 1, RED), ("BACKGROUND", (0, -1), (-1, -1), TINT)]))
-    doc.build([top, Spacer(1, 8), both, Spacer(1, 10), bt])
+    # One ledger in date order: Date | Description | Remarks | Received | Paid out | Balance.
+    data = [[P("DATE", hd), P("DESCRIPTION", hd), P("REMARKS", hd), P("RECEIVED (AED)", hdr), P("PAID OUT (AED)", hdr), P("BALANCE (AED)", hdr)]]
+    data.append([P(""), P("Balance brought forward", ParagraphStyle("i", parent=muted, fontName="Helvetica-Oblique")), P(""), P(""), P(""), P(m(r["opening"]), rtb)])
+    for x in r["ledger"]:
+        data.append([P(_d(x["date"])), P(x["description"]), P(x["remarks"], muted),
+                     P(m(x["amount"]) if x["kind"] == "received" else "", rt), P(m(x["amount"]) if x["kind"] == "paid" else "", rt),
+                     P(m(x["balance"]), rtb)])
+    data.append([P("TOTAL", bold), "", "", P(m(r["total_received"]), rtb), P(m(r["total_paid"]), rtb), P(m(r["balance"]), rtb)])
+    data.append([P(f"Balance as on {_d(r['as_on']) or '-'}", bold), "", "", "", "", P(f"AED {r['balance']:,.2f}", rtb)])
+    widths = [W * f for f in (.09, .42, .16, .11, .11, .11)]
+    n = len(data)
+    # The totals and the closing balance never sit alone on a page: the
+    # last few lines go with them in a block that is kept together.
+    cut = max(2, n - 5)
+    head, tail = data[:cut], data[cut:]
+    t = Table(head, colWidths=widths, repeatRows=1)
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), RED), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                           ("LINEBELOW", (0, 1), (-1, -1), .3, GREY), ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FBF6F4"))]
+                          + [("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FAFAFA")) for i in range(3, cut, 2)]))
+    k = len(tail)
+    t2 = Table(tail, colWidths=widths)
+    st = [("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LINEBELOW", (0, 0), (-1, k - 3), .3, GREY),
+          ("SPAN", (0, k - 2), (2, k - 2)), ("LINEABOVE", (0, k - 2), (-1, k - 2), 1, colors.black), ("BACKGROUND", (0, k - 2), (-1, k - 2), TINT),
+          ("SPAN", (0, k - 1), (4, k - 1)), ("LINEABOVE", (0, k - 1), (-1, k - 1), 1, RED), ("BACKGROUND", (0, k - 1), (-1, k - 1), TINT),
+          ("TOPPADDING", (0, k - 1), (-1, k - 1), 6), ("BOTTOMPADDING", (0, k - 1), (-1, k - 1), 6)]
+    st += [("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FAFAFA")) for i in range(k - 2) if (cut + i) % 2 == 1]
+    t2.setStyle(TableStyle(st))
+    from reportlab.platypus import KeepTogether
+    tail_block = KeepTogether([t2])
+    doc.build([top, Spacer(1, 8), t, tail_block])
     buf.seek(0)
     return buf
 
@@ -522,36 +538,46 @@ def _d(iso):
 
 def _register_excel(r):
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     wb = Workbook(); ws = wb.active; ws.title = "Cash Register"
+    fill = PatternFill("solid", fgColor="C0392B"); thin = Side(style="thin", color="DDDDDD")
     ws["A1"] = "CASH REGISTER"; ws["A1"].font = Font(bold=True, size=14, color="C0392B")
-    ws.append(["DATE", "CASH RECEIVED", "AMOUNT", "", "DATE", "CASH PAID OUT", "AMOUNT", "REMARKS"])
+    period = (f"{_d(r['from']) or 'start'} to {_d(r['to']) or 'date'}" if (r["from"] or r["to"]) else "All entries")
+    ws["F1"] = period; ws["F1"].font = Font(color="6B7178"); ws["F1"].alignment = Alignment(horizontal="right")
+    ws.append(["DATE", "DESCRIPTION", "REMARKS", "RECEIVED (AED)", "PAID OUT (AED)", "BALANCE (AED)"])
     for c in ws[2]:
-        if c.value:
-            c.font = Font(bold=True); c.fill = PatternFill("solid", fgColor="F7F5F3")
-    n = max(len(r["received"]), len(r["paid"]))
-    for i in range(n):
-        a = r["received"][i] if i < len(r["received"]) else None
-        b = r["paid"][i] if i < len(r["paid"]) else None
-        ws.append([M._as_date(a["date"]) if a else None, a["description"] if a else None, a["amount"] if a else None, None,
-                   M._as_date(b["date"]) if b else None, b["description"] if b else None, b["amount"] if b else None,
-                   b["remarks"] if b else None])
-        for col in (1, 5):
-            ws.cell(ws.max_row, col).number_format = "dd-mmm-yy"
-        for col in (3, 7):
-            ws.cell(ws.max_row, col).number_format = "#,##0.00"
+        c.font = Font(bold=True, color="FFFFFF"); c.fill = fill
+        c.alignment = Alignment(horizontal="right" if c.column >= 4 else "left", vertical="center")
+    ws.append([None, "Balance brought forward", None, None, None, r["opening"]])
+    first = ws.max_row
+    for c in ws[first]:
+        c.font = Font(italic=True, bold=(c.column == 6)); c.fill = PatternFill("solid", fgColor="FBF6F4")
+    ws.cell(first, 6).number_format = "#,##0.00"
+    for x in r["ledger"]:
+        ws.append([M._as_date(x["date"]), x["description"], x["remarks"],
+                   x["amount"] if x["kind"] == "received" else None, x["amount"] if x["kind"] == "paid" else None, None])
+        row = ws.max_row
+        ws.cell(row, 6, f"=F{row - 1}+D{row}-E{row}").font = Font(bold=True)        # the balance is a formula
+        ws.cell(row, 1).number_format = "dd-mmm-yy"
+        for col in (4, 5, 6):
+            ws.cell(row, col).number_format = "#,##0.00"
+        for col in range(1, 7):
+            ws.cell(row, col).border = Border(bottom=thin)
     last = ws.max_row
-    ws.append([None, "Total", f"=SUM(C3:C{last})", None, None, "Total", f"=SUM(G3:G{last})"])
+    ws.append(["TOTAL", None, None, f"=SUM(D{first + 1}:D{last})", f"=SUM(E{first + 1}:E{last})", f"=F{first}+D{last + 1}-E{last + 1}"])
     tot = ws.max_row
-    for col in (2, 3, 6, 7):
-        ws.cell(tot, col).font = Font(bold=True)
-    ws.cell(tot, 3).number_format = ws.cell(tot, 7).number_format = "#,##0.00"
-    op = r["opening"]
-    ws.append([f"Balance as on {_d(r['as_on'])}", None, None, None, None, None,
-               f"={op}+C{tot}-G{tot}" if op else f"=C{tot}-G{tot}"])
-    ws.cell(ws.max_row, 1).font = Font(bold=True); ws.cell(ws.max_row, 7).font = Font(bold=True)
-    ws.cell(ws.max_row, 7).number_format = "#,##0.00"
-    for col, w in zip("ABCDEFGH", (12, 44, 15, 3, 12, 44, 15, 24)):
+    ws.merge_cells(start_row=tot, start_column=1, end_row=tot, end_column=3)
+    for col in range(1, 7):
+        c = ws.cell(tot, col); c.font = Font(bold=True); c.fill = PatternFill("solid", fgColor="F7F5F3")
+        c.border = Border(top=Side(style="medium", color="000000"))
+        if col >= 4: c.number_format = "#,##0.00"
+    ws.append([f"Balance as on {_d(r['as_on']) or '-'}", None, None, None, None, f"=F{tot}"])
+    ws.merge_cells(start_row=tot + 1, start_column=1, end_row=tot + 1, end_column=5)
+    ws.cell(tot + 1, 1).font = Font(bold=True); ws.cell(tot + 1, 6).font = Font(bold=True)
+    ws.cell(tot + 1, 6).number_format = '"AED "#,##0.00'
+    for col in range(1, 7):
+        ws.cell(tot + 1, col).border = Border(top=Side(style="thin", color="C0392B"))
+    for col, w in zip("ABCDEF", (12, 52, 24, 16, 16, 16)):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A3"
     export_web.print_ready(ws, "landscape", header_row=2, title="Cash Register")
