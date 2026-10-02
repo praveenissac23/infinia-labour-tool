@@ -281,6 +281,7 @@
   .pdc-grid small.pdc-when.tbc { color: #9A6700; font-style: italic; }
   .pdc-grid tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
   .pdc-grid td.tot { font-weight: 700; }
+  .pdc-grid td.pdc-hit { cursor: pointer; } .pdc-grid td.pdc-hit:hover { background: #FDF6F5; outline: 1px solid #F0C4BE; outline-offset: -1px; }
   .pdc-list tr { cursor: pointer; } .pdc-list tr:hover td { background: #FDF6F5; }
   .pdc-list tr.edit td { background: #FFF6DA; }
   .pdc-st { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11.5px; font-weight: 700; }
@@ -14174,13 +14175,30 @@ async function pdcLoad() {
   pdcDrawList();
   await pdcLoadGrid();
 }
-// A payee on the monthly grid opens the cheque list for that payee.
+// A payee on the monthly grid opens the cheque list for that payee; a
+// figure opens the cheque behind it (or that payee's list, when several
+// cheques make up the figure). Whatever was being edited is closed first,
+// so the form never shows a different cheque from the one clicked.
 function pdcPayee(name) {
+  pdcReset();
   document.getElementById("pdc-filter").value = "all";
   document.getElementById("pdc-search").value = name;
   pdcView("list");
 }
+function pdcCellCls(qs) { return qs && qs.length ? " pdc-hit" : ""; }
+function pdcCellClick(payee, qs) {
+  if (!qs || !qs.length) return "";
+  const call = qs.length === 1 ? `pdcOpenCheque(${qs[0].id}, ${jsq(payee)})` : `pdcPayee(${jsq(payee)})`;
+  return ` onclick="${escapeAttr(call)}" title="${qs.length === 1 ? "Open this cheque" : "List these cheques"}"`;
+}
+function pdcOpenCheque(id, payee) {
+  document.getElementById("pdc-filter").value = "all";
+  document.getElementById("pdc-search").value = payee;
+  pdcView("list");
+  pdcEdit(id);
+}
 function pdcCard(k) {
+  pdcReset();
   document.getElementById("pdc-filter").value = k;
   pdcView("list");
 }
@@ -14200,7 +14218,7 @@ async function pdcLoadGrid() {
   document.getElementById("pdc-gbody").innerHTML = t.rows.map(r => {
     const tip = r.cheques.map(q => `${pdcDmy(q.date)}${q.no ? " #" + q.no : ""}: ${pdcMoney(q.amount)}${q.status === "cleared" ? " (cleared)" : ""}`).join("\n");
     return `<tr title="${escapeAttr(tip)}"><td><b>${xlink(r.payee, `pdcPayee(${jsq(r.payee)})`, null, "List this payee's cheques")}</b>${r.notes ? `<small>${escapeHtml(r.notes)}</small>` : ""}</td>
-      ${od ? `<td class="od">${cell(r.overdue)}${pdcWhen(r.overdue_dates)}</td>` : ""}${r.cells.map((v, i) => `<td>${cell(v)}${pdcWhen(r.dates[i])}</td>`).join("")}<td class="tot">${pdcMoney(r.total)}</td></tr>`;
+      ${od ? `<td class="od${pdcCellCls(r.overdue_dates)}"${pdcCellClick(r.payee, r.overdue_dates)}>${cell(r.overdue)}${pdcWhen(r.overdue_dates)}</td>` : ""}${r.cells.map((v, i) => `<td class="${pdcCellCls(r.dates[i])}"${pdcCellClick(r.payee, r.dates[i])}>${cell(v)}${pdcWhen(r.dates[i])}</td>`).join("")}<td class="tot">${pdcMoney(r.total)}</td></tr>`;
   }).join("") || `<tr><td colspan="${t.columns.length + 2 + (od ? 1 : 0)}" style="color:#999; padding:18px; text-align:left;">No cheques in ${escapeHtml(t.label)}.</td></tr>`;
   document.getElementById("pdc-gfoot").innerHTML = `<tr><td>TOTAL (Monthly)</td>${od ? `<td class="od">${pdcMoney(t.overdue)}</td>` : ""}${t.totals.map(v => `<td>${pdcMoney(v)}</td>`).join("")}<td>${pdcMoney(t.grand)}</td></tr>`;
 }
@@ -14217,12 +14235,19 @@ function pdcStanding(r) {
   if (d === 0) return `<span class="pdc-st overdue">Today</span>`;
   return `<span class="pdc-st ${d <= 14 ? "soon" : "later"}">in ${d} day${d === 1 ? "" : "s"}</span>`;
 }
-function pdcDrawList() {
-  if (!PDC) return;
+function pdcShownRows() {
   const f = document.getElementById("pdc-filter").value, q = document.getElementById("pdc-search").value.trim().toLowerCase();
   const keep = r => f === "all" ? true : f === "cleared" || f === "cancelled" ? r.status === f : r.status === "pending" && (
     f === "pending" || (f === "nodate" && r.date_tbc) || (f === "overdue" && r.days_left !== null && r.days_left < 0) || (f === "week" && r.days_left !== null && r.days_left >= 0 && r.days_left <= 7) || (f === "fortnight" && r.days_left !== null && r.days_left >= 8 && r.days_left <= 14));
   const rows = PDC.rows.filter(keep).filter(r => !q || `${r.payee} ${r.cheque_no} ${r.notes} ${r.bank}`.toLowerCase().includes(q));
+  return rows;
+}
+function pdcDrawList() {
+  if (!PDC) return;
+  const rows = pdcShownRows();
+  // The cheque in the form must be one of those on show - otherwise the
+  // form and the list disagree about what was clicked.
+  if (PDC_EDIT && PDC_VIEW === "list" && !rows.some(r => r.id === PDC_EDIT)) { pdcReset(); return; }
   const tot = rows.reduce((a, r) => a + r.amount, 0);
   document.getElementById("pdc-count").textContent = `${rows.length} cheque${rows.length === 1 ? "" : "s"} - AED ${pdcMoney(tot)}`;
   document.getElementById("pdc-lbody").innerHTML = rows.map(r => `<tr class="${PDC_EDIT === r.id ? "edit" : ""}" onclick="pdcEdit(${r.id})">
@@ -14245,6 +14270,8 @@ function pdcReset() {
 }
 function pdcEdit(id) {
   const r = PDC.rows.find(x => x.id === id); if (!r) return;
+  // The cheque opened is always on show in the list beside the form.
+  if (!pdcShownRows().some(x => x.id === id)) { document.getElementById("pdc-filter").value = "all"; document.getElementById("pdc-search").value = ""; }
   PDC_EDIT = id;
   document.getElementById("pdc-payee").value = r.payee; document.getElementById("pdc-no").value = r.cheque_no;
   document.getElementById("pdc-bank").value = r.bank; document.getElementById("pdc-date").value = r.date_tbc ? "" : r.date;

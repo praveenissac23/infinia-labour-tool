@@ -222,7 +222,7 @@ def tracker(db, start="", months=4, show="due"):
         if x.notes and x.notes not in p["notes"]:
             p["notes"].append(x.notes)
         p["cheques"].append({"date": x.cheque_date.isoformat(), "no": x.cheque_no or "", "amount": x.amount, "status": x.status})
-        q = {"date": x.cheque_date.isoformat(), "label": "date to fill" if x.date_tbc else f"{x.cheque_date:%d-%b-%y}",
+        q = {"id": x.id, "date": x.cheque_date.isoformat(), "label": "date to fill" if x.date_tbc else f"{x.cheque_date:%d-%b-%y}",
              "tbc": bool(x.date_tbc), "no": x.cheque_no or "",
              "amount": round(x.amount or 0, 2), "cleared": x.status == "cleared"}
         if x.cheque_date < a:
