@@ -117,17 +117,8 @@ PAGES = {
             # Reports shows the card downloads only; the additions and
             # deductions editor lives under Payroll.
             sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"])]),
-        tab("office", "hrpayroll", "Office payroll", "hrpayroll", subs=[
-            sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
-            sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),
-            sub("items", "Additions & deductions", screen="hrpayroll", go="hrTab('items')"),
-            sub("loans", "Loans", screen="hrpayroll", go="hrTab('loans')"),
-            sub("staff", "Staff register", screen="hrpayroll", go="hrTab('staff')"),
-            sub("increments", "Increments", screen="hrpayroll", go="hrTab('increments')"),
-            sub("gratuity", "Gratuity", screen="hrpayroll", go="hrTab('gratuity')")]),
-        tab("people", "pgreports", "Staff", PEOPLE_RIGHTS, subs=[
-            sub("register", "Register", right=PEOPLE_RIGHTS, people="register", opts="group"),
-            sub("due", "Documents due", right=PEOPLE_RIGHTS, people="documents-due", opts="days")]),
+        # Office payroll and Staff are not repeated here: they are pages of
+        # their own (Payroll > Office payroll, Staff).
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
             sub("stock", "Current stock", screen="store", right=STORE_RIGHTS, go="pgStoreReport('stock')"),
             sub("by_site", "At sites", screen="store", right=STORE_RIGHTS, go="pgStoreReport('by_site')"),

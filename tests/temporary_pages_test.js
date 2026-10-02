@@ -12,7 +12,7 @@ const PAGES = {
   payroll: ['labourpay', 'hrpayroll'],
   store: ['store', 'rentals', 'requests', 'purchasing'],
   accounts: ['taxinv', 'proforma', 'petty'],
-  reports: ['labour', 'office', 'people', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
+  reports: ['labour', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
 };
 const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices', labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
 
@@ -60,8 +60,8 @@ const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices'
   // The reports page: tabs inside tabs, the working screen underneath.
   await p.goto(BASE + 'reporting.html'); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(1800);
   ck('the reports page opens on Labour › Cycle report builder', await p.locator('#screen-reports.active').count() === 1 && (await p.locator('#pg-sub .pg-subtab.active').textContent()) === 'Cycle report builder');
-  const EXPECT = { office: '#screen-hrpayroll', people: '#screen-pgreports', storerep: '#screen-store' };
-  for (const t of ['office', 'people', 'storerep']) {
+  const EXPECT = { storerep: '#screen-store' };
+  for (const t of ['storerep']) {
     await p.click(`#pg-tabs .pg-tab[data-tab="${t}"]`); await p.waitForTimeout(900);
     const subs = await p.locator('#pg-sub .pg-subtab').allTextContents();
     ck(`${t}: has sub-tabs (${subs.length})`, subs.length >= 2, subs);
@@ -82,9 +82,6 @@ const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices'
       }
     }
   }
-  await p.click('#pg-tabs .pg-tab[data-tab="people"]'); await p.waitForTimeout(900);
-  await p.click('#pg-opt-group button[data-v="office"]'); await p.waitForTimeout(1200);
-  ck('the group switch reloads the People list', (await p.locator('#pg-people-body').innerText()).includes('IC0'));
   await p.click('#pg-tabs .pg-tab[data-tab="labour"]'); await p.waitForTimeout(400);
   await p.locator('#pg-sub .pg-subtab', { hasText: 'Salary cards' }).click(); await p.waitForTimeout(800);
   ck('a Labour sub-tab opens that screen under the same tab', await p.locator('#screen-combine.active').count() === 1 && (await p.locator('#pg-tabs .pg-tab.active').textContent()) === 'Labour');
@@ -98,7 +95,7 @@ const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices'
   await pa.goto(BASE + 'reporting.html'); await pa.fill('#login-username', 'tmp_asst'); await pa.fill('#login-password', 'tmpasst123'); await pa.evaluate('doLogin()');
   await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(2000);
   const atabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
-  ck('an assistant without the office right gets no Office payroll tab on Reports', atabs.join(',') === 'Labour,Staff', atabs);
+  ck('Reports has Labour only for him (one tab, so no tab row) - Office payroll and Staff are not repeated on Reports', atabs.length === 0 && await pa.locator('#screen-reports.active').count() === 1, atabs);
   await pa.goto(BASE + 'payroll.html'); await pa.waitForSelector('#app-screen', { state: 'visible' }); await pa.waitForTimeout(1500);
   const ptabs = await pa.locator('#pg-tabs .pg-tab').allTextContents();
   ck('nor on Payroll', !ptabs.includes('Office HR & Payroll') && await pa.locator('#screen-combine.active').count() === 1, ptabs);
