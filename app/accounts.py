@@ -292,83 +292,37 @@ def export_invoice(iid: int, token: str, db: Session = Depends(get_db)):
 
 @router.get("/export/accounts/invoices")
 def export_invoice_register(token: str, kind: str = "tax", format: str = "excel", db: Session = Depends(get_db)):
-    """The list of invoices: Preview (PDF in the browser), PDF or Excel."""
+    """The list of invoices in the app's standard report: Preview (on
+    screen, with Download PDF / Download Excel / Print), PDF or Excel."""
     u = auth.get_download_user_from_token(token, db)
     if INV_RIGHT not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Invoices are for accounts only.")
-    if format in ("view", "pdf"):
-        rows = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date, Invoice.id).all()
-        name = "Tax_Invoices" if kind == "tax" else "Proforma_Invoices"
-        return StreamingResponse(_invoice_list_pdf(rows, kind), media_type="application/pdf",
-                                 headers={"Content-Disposition": f'{"inline" if format == "view" else "attachment"}; filename="{name}.pdf"'})
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    wb = Workbook(); ws = wb.active
-    ws.title = "Tax invoices" if kind == "tax" else "Proforma invoices"
-    head = ["Number", "Date", "Client", "Client TRN", "Project", "Project No", "Plot", "Net (AED)", "VAT (AED)", "Total (AED)", "Status"]
-    ws.append(head)
-    for c in ws[1]:
-        c.font = Font(bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor="C0392B")
-    rows = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date, Invoice.id).all()
-    for x in rows:
-        ws.append([x.number, x.inv_date, x.client, x.client_trn, x.project, x.project_no, x.plot,
-                   x.subtotal, x.vat, x.total, x.status.title()])
-        ws.cell(ws.max_row, 2).number_format = "dd-mmm-yy"
-        for col in (8, 9, 10):
-            ws.cell(ws.max_row, col).number_format = "#,##0.00"
-    n = ws.max_row
-    ws.append(["TOTAL (issued)", "", "", "", "", "", "",
-               f'=SUMIF(K2:K{n},"Issued",H2:H{n})', f'=SUMIF(K2:K{n},"Issued",I2:I{n})', f'=SUMIF(K2:K{n},"Issued",J2:J{n})'])
-    for col in (1, 8, 9, 10):
-        ws.cell(ws.max_row, col).font = Font(bold=True)
-        ws.cell(ws.max_row, col).number_format = "#,##0.00"
-    for col, w in zip("ABCDEFGHIJK", (24, 12, 30, 18, 26, 11, 12, 15, 13, 15, 11)):
-        ws.column_dimensions[col].width = w
-    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
-    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": f"attachment; filename={ws.title.replace(' ', '_')}.xlsx"})
-
-
-def _invoice_list_pdf(rows, kind):
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.units import mm
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    RED = colors.HexColor("#C0392B"); TINT = colors.HexColor("#F7F5F3"); GREY = colors.HexColor("#9A9A9A")
-    base = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5)
-    bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
-    rt = ParagraphStyle("r", parent=base, alignment=TA_RIGHT); rtb = ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
-    P = lambda t, st=base: Paragraph(escape(str(t)), st)
-    page = landscape(A4); W = page[0] - 24 * mm
-    buf = io.BytesIO()
-    title = "TAX INVOICES" if kind == "tax" else "PROFORMA INVOICES"
-    doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=10 * mm, bottomMargin=10 * mm, title=title.title())
-    logo = export_web._logo_image(42)
-    top = Table([[logo or P("INFINIA", bold), Paragraph(title, ParagraphStyle("t", parent=bold, fontSize=15, leading=19, textColor=RED, alignment=TA_RIGHT))]],
-                colWidths=[W / 2, W / 2])
-    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.2, RED),
-                             ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    head = [P(h, bold) for h in ("Number", "Date", "Client", "Client TRN", "Project")] + [P(h, rtb) for h in ("Net (AED)", "VAT (AED)", "Total (AED)")] + [P("Status", bold)]
-    data, live = [head], [r for r in rows if r.status != "cancelled"]
-    for x in rows:
-        st = ParagraphStyle("g", parent=base, textColor=GREY) if x.status == "cancelled" else base
-        data.append([P(x.number, st), P(f"{x.inv_date:%d-%b-%y}", st), P(x.client, st), P(x.client_trn, st),
-                     P(" - ".join(v for v in (x.project_no, x.project) if v), st),
-                     P(f"{x.subtotal:,.2f}", rt), P(f"{x.vat:,.2f}", rt), P(f"{x.total:,.2f}", rt),
-                     P("Cancelled" if x.status == "cancelled" else ("Invoiced" if x.converted_to_id else "Issued"), st)])
-    data.append([P("TOTAL (not counting cancelled)", bold), "", "", "", "",
-                 P(f"{sum(r.subtotal for r in live):,.2f}", rtb), P(f"{sum(r.vat for r in live):,.2f}", rtb),
-                 P(f"{sum(r.total for r in live):,.2f}", rtb), ""])
-    t = Table(data, colWidths=[W * f for f in (.14, .08, .2, .12, .16, .09, .07, .09, .05)], repeatRows=1)
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), TINT), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
-                           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")), ("SPAN", (0, -1), (4, -1)),
-                           ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black), ("BACKGROUND", (0, -1), (-1, -1), TINT),
-                           ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    doc.build([top, Spacer(1, 8), t] if rows else [top, Spacer(1, 12), P("No invoices yet.")])
-    buf.seek(0)
-    return buf
+    title = "Tax invoices" if kind == "tax" else "Proforma invoices"
+    found = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date, Invoice.id).all()
+    live = [x for x in found if x.status != "cancelled"]
+    # A cancelled invoice stays on the list, its figures shown as text so
+    # the totals line (which adds numbers only) leaves it out.
+    amt = lambda x, v: round(v or 0, 2) if x.status != "cancelled" else f"{(v or 0):,.2f}"
+    rows = [{"Number": x.number, "Date": f"{x.inv_date:%d-%b-%y}", "Client": x.client or "",
+             "Client TRN": x.client_trn or "-", "Project": " - ".join(v for v in (x.project_no, x.project) if v) or "-",
+             "Net (AED)": amt(x, x.subtotal), "VAT (AED)": amt(x, x.vat), "Total (AED)": amt(x, x.total),
+             "Status": "Cancelled" if x.status == "cancelled" else ("Invoiced" if x.converted_to_id else "Issued")}
+            for x in found]
+    cx = len(found) - len(live)
+    sub = (f"{len(live)} {'invoice' if kind == 'tax' else 'proforma'}{'' if len(live) == 1 else 's'}"
+           + (f" (+{cx} cancelled, not in the totals)" if cx else "") + f" | As at {M._dubai_today():%d %b %Y}")
+    money = ["Net (AED)", "VAT (AED)", "Total (AED)"]
+    name = title.replace(" ", "_")
+    if format == "view":
+        from urllib.parse import quote
+        url = f"/export/accounts/invoices?kind={kind}&token={quote(auth.create_view_token(u.username), safe='')}"
+        return M._preview_page(title, sub, rows, url, url, money_cols=money)
+    if format == "pdf":
+        return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=money),
+                                 media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    return StreamingResponse(export_web.build_store_report_excel(title, rows, sub, money_cols=money),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
 
 
 # ---- the cash register (password) -------------------------------------------------
@@ -598,6 +552,8 @@ def _register_excel(r):
     ws.cell(ws.max_row, 7).number_format = "#,##0.00"
     for col, w in zip("ABCDEFGH", (12, 44, 15, 3, 12, 44, 15, 24)):
         ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A3"
+    export_web.print_ready(ws, "landscape", header_row=2, title="Cash Register")
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf
 

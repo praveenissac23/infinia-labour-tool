@@ -25,6 +25,7 @@ paying only what the law requires:
   * Loans and advances still owing are deducted.
 """
 import calendar
+import re
 import math
 import io
 from datetime import date, timedelta
@@ -316,7 +317,7 @@ td{{padding:6px 8px;border-bottom:1px solid var(--line)}} tr.t td{{font-weight:7
 @media(max-width:640px){{.page{{padding:20px 16px;margin:0}} .grid,.two{{grid-template-columns:1fr}}}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
 </style></head><body>
-<div class="bar"><button onclick="print()">Print</button><a href="{escape(excel_url)}">Excel</a><a class="p" href="{escape(pdf_url)}">Download PDF</a></div>
+{export_web.preview_bar("Final settlement - " + e['name'], "Settlement date: " + _dmy(M._as_date(i['settled_on'])), pdf_url, excel_url)}
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div>
   <div><h1>FINAL SETTLEMENT</h1><div class="d">Settlement date: {_dmy(M._as_date(i['settled_on']))}</div></div></div>
@@ -449,7 +450,13 @@ def _excel(s):
         nonlocal r
         for k, v in rows:
             ws.cell(r, 1, k).font = mf
-            c = ws.cell(r, 2, v); c.font = bf
+            # An amount is kept as a number, so it can be added up.
+            if isinstance(v, str) and re.fullmatch(r"-?\d{1,3}(,\d{3})*\.\d{2}", v.strip()):
+                c = ws.cell(r, 2, float(v.replace(",", ""))); c.number_format = M_
+                c.alignment = Alignment(horizontal="left")
+            else:
+                c = ws.cell(r, 2, v)
+            c.font = bf
             ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=5)
             r += 1
         r += 1

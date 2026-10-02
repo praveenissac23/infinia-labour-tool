@@ -312,7 +312,7 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
 @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}}}}
 </style></head><body>
-<div class="bar"><button onclick="print()">Print</button><a href="{escape(excel_url)}">Excel</a><a class="p" href="{escape(pdf_url)}">Download PDF</a></div>
+{export_web.preview_bar("PDC Tracker", t['label'], pdf_url, excel_url)}
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>PDC TRACKER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Period</span><b>{escape(t['label'])}</b></div>
@@ -436,8 +436,7 @@ def _excel(t):
     for i in range(1, n + 1):
         ws.cell(row, i).fill = PatternFill("solid", fgColor="F3F1EF"); ws.cell(row, i).border = Border(top=Side(style="medium"))
     ws.freeze_panes = "B5"
-    ws.page_setup.orientation = "landscape"; ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
+    export_web.print_ready(ws, "landscape", header_row=4, title="PDC Tracker")
     # The cheques themselves, one line each, on a second sheet.
     w2 = wb.create_sheet("Cheques")
     for i, (h, wd) in enumerate((("Cheque date", 13), ("Payee", 36), ("Cheque no", 14), ("Amount", 15), ("Status", 11), ("Notes", 34)), 1):
@@ -450,6 +449,8 @@ def _excel(t):
             w2.cell(rr, 2, r["payee"]); w2.cell(rr, 3, q["no"])
             w2.cell(rr, 4, q["amount"]).number_format = "#,##0.00"; w2.cell(rr, 5, q["status"].title()); w2.cell(rr, 6, r["notes"])
             rr += 1
+    w2.freeze_panes = "A2"
+    export_web.print_ready(w2, "portrait", header_row=1, title="PDC Cheques")
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf
 

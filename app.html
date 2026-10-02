@@ -1141,7 +1141,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="bce4e7499b20";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="b347560c08a6";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -4196,6 +4196,9 @@ async function refreshDownloadToken() {
 }
 
 async function initApp() {
+  // The key every Preview / Export button needs, fetched at sign-in for
+  // every page (and kept fresh), so the first press always works.
+  refreshDownloadToken();
   const today = isoLocal(new Date());
   document.getElementById("date-picker").value = today;
   // Stop the picker offering days that haven't happened yet - the

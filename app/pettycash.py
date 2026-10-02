@@ -213,7 +213,7 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
 @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}} .sign{{gap:14px}}}}
 </style></head><body>
-<div class="bar"><button onclick="print()">Print</button><a href="{escape(excel_url)}">Excel</a><a class="p" href="{escape(pdf_url)}">Download PDF</a></div>
+{export_web.preview_bar(r['book_label'] + " register", r['label'], pdf_url, excel_url)}
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>

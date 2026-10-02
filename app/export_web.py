@@ -10,6 +10,7 @@ Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
 import base64
+import re
 import contextvars
 import io
 import os
@@ -61,6 +62,29 @@ def _fit_box(path, max_w_mm, max_h_mm):
 # One PNG beside this module; the same image the app shows top-left.
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 LOGO_W_MM, LOGO_H_MM = 42, 7.1          # 995x168 px, scaled to a neat header
+
+
+# The bar across the top of every on-screen preview: the report's name,
+# then Download PDF, Download Excel and Print - the same words, the same
+# order and the same look on every preview in the app.
+PREVIEW_BAR_CSS = (
+    ".pvbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;padding:10px 16px;"
+    "background:#fff;border-bottom:1px solid #E2E0DC;z-index:5;font-family:Arial,Helvetica,sans-serif}"
+    ".pvbar h1{font-size:16px;margin:0 6px 0 0;color:#1d1d1d;letter-spacing:0;text-align:left;font-weight:700}"
+    ".pvbar .who{font-size:12.5px;color:#666}.pvbar .sp{margin-left:auto}"
+    ".pvbar a.btn{display:inline-block;text-decoration:none;font:600 13px Arial,Helvetica,sans-serif;padding:7px 14px;"
+    "border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26;cursor:pointer}"
+    ".pvbar a.btn.dark{background:#2E3238;border-color:#2E3238;color:#fff}"
+    "@media print{.pvbar{display:none!important}}")
+
+
+def preview_bar(title, subtitle, pdf_url, excel_url):
+    from html import escape as _e
+    return (f'<style>{PREVIEW_BAR_CSS}</style><div class="pvbar"><h1>{_e(title)}</h1>'
+            f'<span class="who">{_e(subtitle or "")}</span><span class="sp"></span>'
+            f'<a class="btn dark" href="{_e(pdf_url)}">Download PDF</a>'
+            f'<a class="btn" href="{_e(excel_url)}">Download Excel</a>'
+            '<a class="btn" href="#" onclick="window.print();return false;">Print</a></div>')
 
 
 def logo_data_uri():
@@ -1604,10 +1628,19 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
                 v = "Yes" if v else ""
             elif k == "item_type" and v:
                 v = str(v).title()
+            # An amount written as text ("2,600.00") goes in as a number,
+            # so the sheet can add it up - but is never counted in the
+            # totals line (text there means "shown, not counted").
+            as_text_amount = isinstance(v, str) and bool(re.fullmatch(r"-?\d{1,3}(,\d{3})*\.\d{2}", v.strip()))
+            if as_text_amount:
+                v = float(v.replace(",", ""))
             c = ws.cell(row=r, column=i, value=v)
             c.border = border
             c.font = Font(size=10)
-            if isinstance(v, (int, float)):
+            if as_text_amount:
+                c.number_format = '#,##0.00'
+                c.alignment = Alignment(horizontal="right", vertical="center")
+            elif isinstance(v, (int, float)):
                 # Counts keep no fake decimals; money always shows two.
                 # Alignment follows the column, like every other cell.
                 c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'

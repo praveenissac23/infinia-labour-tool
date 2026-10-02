@@ -678,7 +678,9 @@ def _due_parts(db, days, group, user=None):
     d = documents_due(days=days, group=group, db=db, user=user)
     rows = [{"Register": r["group_label"], "Code": r["emp_no"], "Name": r["name"], "Document": r["kind_label"],
              "Number": r["number"] or "-", "Expires": M._dmy(M._as_date(r["expires_on"])),
-             "Days": r["days_left"], "Company": r["company"]} for r in d["rows"]]
+             "Days Left": ("expired %dd" % -r["days_left"]) if r["days_left"] is not None and r["days_left"] < 0
+                          else ("today" if r["days_left"] == 0 else r["days_left"]),
+             "Company": r["company"]} for r in d["rows"]]
     return rows, f"Documents Due Within {days} Days", f"{len(rows)} document(s)   |   As at {M._dubai_today():%d %b %Y}"
 
 

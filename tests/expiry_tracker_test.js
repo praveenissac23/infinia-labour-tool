@@ -57,7 +57,8 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await q.goto(B + '/'); await q.fill('#login-username', 'docsonly'); await q.fill('#login-password', 'docs12345'); await q.evaluate('doLogin()');
   await q.waitForSelector('#app-screen', { state: 'visible' }); await q.waitForTimeout(2500);
   const menu = await q.evaluate(() => [...document.querySelectorAll('.pg-side .pg-item')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
-  ck('a login given only Expiry Reminder sees just that page in the menu', menu.join('|').replace(/\d+$/, '') === 'Expiry Reminder', menu);
+  // Settings is on every login (own password, backups) - nothing else.
+  ck('a login given only Expiry Reminder sees just that page in the menu (and Settings)', menu.filter(m => m !== 'Settings').map(m => m.replace(/\d+$/, '')).join('|') === 'Expiry Reminder', menu);
   await q.click('.pg-side .pg-item[data-page="expiry"]'); await q.waitForTimeout(2000);
   ck('and the people list opens for him', (await q.locator('#hr-doc-body tr').count()) > 3);
   const pay = await q.evaluate(async () => { try { await apiCall('/employees/staff'); return 'open'; } catch (e) { return 'refused'; } });

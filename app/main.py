@@ -42,6 +42,35 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Infinia Labour Tool API")
 
 
+# A report opened in its own browser tab that cannot be made (no cards for
+# that month, a link that has expired) used to show the raw server reply -
+# {"detail": "..."} on a white page. A person opening a report gets a page
+# that says what happened, in the app's own look, with a way back. Calls
+# made by the app itself still get the usual reply to read.
+from fastapi.exceptions import HTTPException as _HTTPExc  # noqa: E402
+from fastapi.exception_handlers import http_exception_handler as _default_http_handler  # noqa: E402
+from fastapi.responses import HTMLResponse as _HTML  # noqa: E402
+
+
+@app.exception_handler(_HTTPExc)
+async def _friendly_report_error(request, exc):
+    accept = request.headers.get("accept", "")
+    if request.url.path.startswith("/export/") and "text/html" in accept and request.method == "GET":
+        msg = exc.detail if isinstance(exc.detail, str) else "This report could not be made."
+        if exc.status_code == 401:
+            msg = "This link has expired. Go back to the app and press the button again."
+        page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nothing to show</title><style>
+body{{margin:0;background:#F4F2EF;font:15px/1.5 Arial,Helvetica,sans-serif;color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+.box{{background:#fff;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:30px 34px;max-width:460px;margin:16px;text-align:center;border-top:4px solid #C0392B}}
+h1{{font-size:18px;margin:0 0 8px}} p{{margin:0 0 18px;color:#555}}
+button{{font:600 14px Arial;padding:9px 18px;border-radius:7px;border:1px solid #2E3238;background:#2E3238;color:#fff;cursor:pointer}}
+</style></head><body><div class="box"><h1>Nothing to show</h1><p>{escape(msg)}</p>
+<button onclick="window.close(); history.length > 1 && history.back();">Close</button></div></body></html>"""
+        return _HTML(page, status_code=exc.status_code)
+    return await _default_http_handler(request, exc)
+
+
 def drop_leaver_cards(db, month_year=None):
     """A labourer who has left has no card in the cycles after he left.
 
@@ -10439,7 +10468,7 @@ def _expiry_parts(db, days):
         out.append({"Sr.": i, "Category": r["category"], "Item": r["item"], "Document": r["kind"],
                     "Number": r["number"] or "-", "Expires": _dmy(_as_date(r["expires_on"])),
                     "Days Left": ("expired %dd" % -n) if n is not None and n < 0 else (n if n is not None else "-"),
-                    "Standing": DOC_STANDING[r["status"]], "Notes": r["notes"] or "-"})
+                    "Standing": "Expires today" if n == 0 else DOC_STANDING[r["status"]], "Notes": r["notes"] or "-"})
     c = lambda k: sum(1 for r in rows if r["status"] == k)
     sub = (f"{len(out)} items   |   {c('expired')} expired, {c('urgent')} due within 30 days, {c('soon')} within 90"
            f"   |   As at {_dubai_today():%d %b %Y}")

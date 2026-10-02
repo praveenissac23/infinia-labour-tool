@@ -3990,6 +3990,9 @@ async function refreshDownloadToken() {
 }
 
 async function initApp() {
+  // The key every Preview / Export button needs, fetched at sign-in for
+  // every page (and kept fresh), so the first press always works.
+  refreshDownloadToken();
   const today = isoLocal(new Date());
   document.getElementById("date-picker").value = today;
   // Stop the picker offering days that haven't happened yet - the
