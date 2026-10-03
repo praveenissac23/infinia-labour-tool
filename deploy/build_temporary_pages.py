@@ -90,6 +90,8 @@ PAGES = {
             sub("office", "Office", screen="pettycash", right="petty_office", go="pcBook('office')"),
             sub("naveen", "Naveen", screen="pettycash", right="petty_naveen", go="pcBook('naveen')"),
             sub("praveen", "Praveen", screen="pettycash", right="petty_praveen", go="pcBook('praveen')")]),
+        # Contract, payments and what remains, per project scope.
+        tab("projects", "projpay", "Project payments", "accounts_projects"),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [

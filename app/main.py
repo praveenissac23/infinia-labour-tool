@@ -159,6 +159,7 @@ def seed_on_startup():
         _grant_storekeeper_to_existing(db)
         _grant_petty_site_to_existing(db)
         _grant_director_petty_to_chief_accountant(db)
+        _grant_projects_to_chief_accountant(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -268,7 +269,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "pdc",
                # Accounts: invoices, and the cash register behind its own
                # password. No role has them by default.
-               "accounts_invoices", "accounts_register"]
+               "accounts_invoices", "accounts_register",
+               # Project payment tracker: contract, payments, remaining per
+               # project scope - admin and the chief accountant only.
+               "accounts_projects"]
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -493,6 +497,25 @@ def _grant_director_petty_to_chief_accountant(db):
     db.commit()
     if n:
         print("Naveen / Praveen petty cash given to: " + ", ".join(n))
+
+
+def _grant_projects_to_chief_accountant(db):
+    """The project payment tracker is for admin and the chief accountant:
+    given once to the login (or role) already holding Office petty cash
+    or the PDCs - the rights only the chief accountant has."""
+    if db.query(models.Setting).filter(models.Setting.key == "projects_right_granted").first():
+        return
+    n = []
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        perms = [x for x in (getattr(obj, field) or "").split(",") if x]
+        if {"petty_office", "pdc"} & set(perms) and "accounts_projects" not in perms:
+            setattr(obj, field, ",".join(perms + ["accounts_projects"]))
+            n.append(getattr(obj, "username", None) or getattr(obj, "name", "role"))
+    db.add(models.Setting(key="projects_right_granted", value="1"))
+    db.commit()
+    if n:
+        print("Project payment tracker given to: " + ", ".join(n))
 
 
 def _grant_petty_site_to_existing(db):
@@ -10999,6 +11022,10 @@ app.include_router(expiry.router)
 import accounts  # noqa: E402
 accounts.create_tables(engine)
 app.include_router(accounts.router)
+import projectpay  # noqa: E402
+projectpay.create_tables(engine)
+app.include_router(projectpay.router)
+projectpay.seed_once(SessionLocal)
 
 
 @app.on_event("startup")

@@ -11,10 +11,10 @@ const PAGES = {
   dashboard: ['dashboard'], attendance: ['attendance', 'livecard', 'masterdata'],
   payroll: ['labourpay', 'hrpayroll'],
   store: ['store', 'rentals', 'requests', 'purchasing'],
-  accounts: ['taxinv', 'proforma', 'petty'],
+  accounts: ['taxinv', 'proforma', 'petty', 'projects'],
   reports: ['labour', 'storerep'], settings: ['general', 'companies', 'logins', 'access', 'activity'],
 };
-const SCREEN_OF = { petty: 'pettycash', taxinv: 'invoices', proforma: 'invoices', labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
+const SCREEN_OF = { petty: 'pettycash', projects: 'projpay', taxinv: 'invoices', proforma: 'invoices', labourpay: 'combine', rentals: 'store', purchasing: 'purchase', general: 'settings', companies: 'settings', logins: 'pglogins', labour: 'reports', office: 'hrpayroll', people: 'pgreports', storerep: 'store', activity: 'activity', access: 'settings' };
 
 (async () => {
   const b = await chromium.launch();

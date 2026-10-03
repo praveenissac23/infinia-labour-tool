@@ -770,6 +770,7 @@ SCREEN_LABELS = {
     "petty_naveen": "Naveen petty cash (admin and chief accountant)", "petty_praveen": "Praveen petty cash (admin and chief accountant)",
     "accounts_invoices": "Tax & proforma invoices",
     "accounts_register": "Cash register (opens with its own password)",
+    "accounts_projects": "Project payment tracker (admin and chief accountant)",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
@@ -780,7 +781,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Expiry Reminder", ["expiry", "pdc"]),
-    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_register"]),
+    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_register"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings"]),
     ("Activity Monitor", ["activity"]),
