@@ -1,12 +1,13 @@
 """Turn the petty cash files kept outside the app into the lines it keeps.
 
-    python3 deploy/parse_petty_history.py SITE.xlsx COMPANY_2026.xlsx TALLY_2025.xlsx JOMON.xlsx
+    python3 deploy/parse_petty_history.py SITE.xlsx COMPANY_2026.xlsx TALLY_2025.xlsx JOMON.xlsx [JOMON_MONTH.xlsx ...]
 
 Writes deploy/petty_books_history.json for deploy/load_petty_history.py.
 
   site    <- site petty cash (Zoho "Account Transactions", Jun - 7 Sep 2026)
   office  <- company petty cash: Tally cash book 2025 + Zoho 2026
-  pro     <- Jomon's petty cash (Zoho, Jan 2025 - Aug 2026)
+  pro     <- Jomon's petty cash (Zoho, Jan 2025 - Aug 2026), then his own
+             monthly sheets ("PETTY CASH SHEET ON SEPTEMBER 2026" ...)
 
 Zoho exports: debit = cash received, credit = paid; "Vendor Name : X"
 inside the details becomes the supplier.
@@ -121,11 +122,39 @@ def tally(path):
     return out
 
 
+def jomon_month(path):
+    """Jomon's own monthly sheet: NO | DATE | EXPENSE | DEBIT | CREDIT | BALANCE.
+    Excel read his 1-12 Sep dates as 9 Jan - 9 Dec (day and month swapped);
+    the later ones are text (15/9/2026). Its Opening Balance line is not
+    loaded - the book already carries the balance from the month before."""
+    ws = openpyxl.load_workbook(path, data_only=True).active
+    out, opening = [], None
+    for r in range(3, ws.max_row + 1):
+        no, d, det, dr, cr = (ws.cell(r, c).value for c in range(1, 6))
+        det = " ".join(str(det or "").split())
+        if isinstance(d, datetime.datetime):
+            d = datetime.date(d.year, d.day, d.month)          # 2026-01-09 is 1 Sep 2026
+        elif isinstance(d, str) and re.fullmatch(r"\s*\d{1,2}/\d{1,2}/\d{4}\s*", d):
+            dd, mm, yy = (int(x) for x in d.strip().split("/"))
+            d = datetime.date(yy, mm, dd)
+        else:
+            continue
+        dr = _r2(dr if isinstance(dr, (int, float)) else 0)
+        cr = _r2(cr if isinstance(cr, (int, float)) else 0)
+        if det.lower().startswith("opening balance"):
+            opening = dr - cr
+            continue
+        if not dr and not cr:
+            continue
+        out.append({"date": d.isoformat(), "description": det, "supplier": "", "site": "", "received": dr, "paid": cr})
+    return out, opening
+
+
 def bal(lines):
     return round(sum(x["received"] - x["paid"] for x in lines), 2)
 
 
-def main(site, comp26, tally25, jomon):
+def main(site, comp26, tally25, jomon, *jomon_months):
     books = {}
     books["site"] = zoho(site)
     t = tally(tally25)
@@ -133,6 +162,12 @@ def main(site, comp26, tally25, jomon):
     books["office"] = t + zoho(comp26, skip_op=True)
     books["pro"] = zoho(jomon)
     want = {"site": 1199.95, "office": 1856.64, "pro": 20898.20}
+    for path in jomon_months:
+        lines, opening = jomon_month(path)
+        print(f"  {os.path.basename(path)}: {len(lines)} lines; its opening {opening:,.2f}, the book's {bal(books['pro']):,.2f}"
+              f"{'' if abs(opening - bal(books['pro'])) < .005 else '  <- differs; the book keeps its own'}")
+        books["pro"] += lines
+        want["pro"] = round(want["pro"] + bal(lines), 2)
     for b, lines in books.items():
         rec = round(sum(x["received"] for x in lines), 2)
         paid = round(sum(x["paid"] for x in lines), 2)
@@ -146,4 +181,4 @@ def main(site, comp26, tally25, jomon):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:])

@@ -160,6 +160,7 @@ def seed_on_startup():
         _grant_petty_site_to_existing(db)
         _grant_director_petty_to_chief_accountant(db)
         _grant_projects_to_chief_accountant(db)
+        _jomon_not_admin(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -497,6 +498,25 @@ def _grant_director_petty_to_chief_accountant(db):
     db.commit()
     if n:
         print("Naveen / Praveen petty cash given to: " + ", ".join(n))
+
+
+def _jomon_not_admin(db):
+    """Asked for on 03-Oct-2026: Jomon (the PRO) is not to be an admin;
+    the owner gives him the access he needs. Once: his login becomes an
+    office login with his own PRO petty cash and Settings (his password)
+    only - anything more is ticked on Settings > Access. Never touches
+    the last admin left."""
+    if db.query(models.Setting).filter(models.Setting.key == "jomon_not_admin").first():
+        return
+    for u in db.query(models.User).filter(func.lower(models.User.username) == "jomon").all():
+        others = db.query(models.User).filter(models.User.role == "admin", models.User.id != u.id).count()
+        if u.role == "admin" and others:
+            u.role = "office"
+            u.permissions = "petty_pro,settings"
+            u.access_role_id = None
+            print("Jomon is no longer an admin: PRO petty cash and Settings only")
+    db.add(models.Setting(key="jomon_not_admin", value="1"))
+    db.commit()
 
 
 def _grant_projects_to_chief_accountant(db):

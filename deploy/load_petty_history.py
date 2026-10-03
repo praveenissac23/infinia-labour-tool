@@ -7,7 +7,8 @@ The lines are in deploy/petty_books_history.json, made by
 deploy/parse_petty_history.py from:
   Site    site petty cash till 7th Sept 2026          balance  1,199.95
   Office  Tally company cash book 2025 + company 2026 balance  1,856.64
-  PRO     Jomon's petty cash 2025-2026                balance 20,898.20
+  PRO     Jomon's petty cash 2025 - Aug 2026, and his
+          September 2026 sheet                         balance 23,572.68
 Each book is checked against those balances before anything is saved.
 
 Lines already in the app are kept. A line from the files is skipped when
@@ -26,7 +27,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "app"))
 sys.path.insert(0, HERE)
 from clear_test_returns import _find_database_url
 
-FILES = {"site": 1199.95, "office": 1856.64, "pro": 20898.20}
+FILES = {"site": 1199.95, "office": 1856.64, "pro": 23572.68}
 NAMES = {"site": "Site", "office": "Office", "pro": "PRO"}
 
 data = json.load(open(os.path.join(HERE, "petty_books_history.json")))
