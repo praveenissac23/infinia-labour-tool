@@ -847,6 +847,28 @@
      to be closed. It replaced a corner toast that faded after fourteen
      seconds - which is fine until the one time it matters is the one
      nobody was looking at. */
+  /* Birthdays: confetti over the whole app and a card with the names. */
+  #bday-confetti { position: fixed; inset: 0; z-index: 7001; pointer-events: none; }
+  #bday-overlay { position: fixed; inset: 0; z-index: 7000; display: none; align-items: center; justify-content: center;
+                  background: rgba(20, 22, 26, .38); padding: 16px; }
+  #bday-overlay.on { display: flex; }
+  .bday-card { position: relative; z-index: 7002; background: #fff; border-radius: 18px; width: 100%; max-width: 460px; overflow: hidden;
+               box-shadow: 0 24px 60px rgba(0,0,0,.28); animation: bday-pop .45s cubic-bezier(.2,1.4,.4,1); text-align: center; }
+  @keyframes bday-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .bday-top { background: linear-gradient(135deg, #B7322A, #D9573F 55%, #E8A33D); color: #fff; padding: 26px 22px 20px; }
+  .bday-cake { font-size: 46px; line-height: 1; animation: bday-bob 1.6s ease-in-out infinite; }
+  @keyframes bday-bob { 50% { transform: translateY(-5px) rotate(-4deg); } }
+  .bday-top h2 { margin: 8px 0 2px; font-size: 27px; letter-spacing: .02em; color: #fff; font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .bday-top p { margin: 0; font-size: 13px; opacity: .9; }
+  .bday-list { padding: 14px 20px 6px; max-height: 46vh; overflow-y: auto; }
+  .bday-person { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #F1ECE7; text-align: left; }
+  .bday-person:last-child { border-bottom: 0; }
+  .bday-av { width: 40px; height: 40px; border-radius: 50%; background: #FBEAE7; color: #B7322A; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; font-size: 14px; }
+  .bday-name { font-weight: 700; font-size: 15.5px; color: #1F2429; } .bday-name a { color: inherit; text-decoration: none; border-bottom: 1px dashed #C9A9A4; }
+  .bday-sub { font-size: 12px; color: #8A8178; margin-top: 2px; }
+  .bday-foot { padding: 12px 20px 18px; }
+  #bday-chip { display: none; margin-right: 12px; border: 1px solid #F0D3CC; background: #FFF6F3; color: #B7322A; border-radius: 16px;
+               padding: 4px 10px; font: 600 12px inherit; cursor: pointer; white-space: nowrap; }
   #notif-overlay { position: fixed; inset: 0; z-index: 6000; display: none;
                    align-items: center; justify-content: center; padding: 20px;
                    background: rgba(25, 22, 20, .42); }
@@ -1187,11 +1209,12 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="8e0f49e54d51";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="4f44867ebdc5";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
 <div id="notif-overlay"><div class="notif-box" id="notif-box"></div></div>
+<div id="bday-overlay" onclick="if (event.target === this) bdayClose()"><div class="bday-card" id="bday-card"></div></div>
 <div id="login-screen">
   <div id="login-box">
     <h1>Infinia Labour Tool</h1>
@@ -1250,6 +1273,7 @@
         <div style="display:flex; align-items:center; gap:14px;">
           <div class="help-wrap"><span class="help-glass">&#128269;</span><input id="help-search" type="search" autocomplete="off" placeholder="How do I...?  e.g. add stock, LPO, leave"><div id="help-results" class="help-results"></div></div>
           <button id="help-q" class="help-q" title="Help for this page">?</button>
+          <button type="button" id="bday-chip" onclick="bdayShow(true)" title="Today's birthdays"></button>
           <span id="bell-wrap" style="position:relative; margin-right:16px; display:inline-block; visibility:hidden;">
             <button id="bell-btn" onclick="toggleBell()" title="Notifications"
                     style="background:none; border:none; cursor:pointer; font-size:19px; position:relative; padding:4px 6px;">
@@ -4337,6 +4361,7 @@ async function initApp() {
 
   await loadDate(today);
   renderMasterDataLists();
+  setTimeout(bdayCheck, 600);
 
   const currentCycle = monthYearFor(new Date());
   populateCycleSelects(currentCycle);
@@ -15262,6 +15287,76 @@ function openWorker(empNo) {
     xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(empNo));
   }
 }
+// ---- Birthdays -------------------------------------------------------------
+// On the day, the first time the app is opened: confetti over everything
+// and a card with each name (date of birth from the staff file, as on the
+// passport). Once a day per login; the cake beside the bell shows it again.
+let BDAY = null;
+async function bdayCheck() {
+  try { BDAY = await apiCall("/employees/people/birthdays"); } catch (e) { return; }
+  const chip = document.getElementById("bday-chip");
+  if (!BDAY || !BDAY.people.length) { chip.style.display = "none"; return; }
+  const n = BDAY.people.length;
+  chip.textContent = n === 1 ? `\u{1F382} ${bdayFirst(BDAY.people[0].name)}'s birthday` : `\u{1F382} ${n} birthdays today`;
+  chip.style.display = "inline-block";
+  const key = `infinia_bday:${BDAY.date}:${CURRENT_USERNAME || ""}`;
+  let seen = false; try { seen = localStorage.getItem(key) === "1"; } catch (e) {}
+  if (!seen) { bdayShow(false); try { localStorage.setItem(key, "1"); } catch (e) {} }
+}
+function bdayTitle(s) { return String(s || "").toLowerCase().replace(/(^|[\s.'-])\S/g, c => c.toUpperCase()); }
+function bdayFirst(s) { return bdayTitle(String(s || "").trim().split(/\s+/)[0]); }
+function bdayShow() {
+  if (!BDAY || !BDAY.people.length) return;
+  const d = new Date(BDAY.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const ppl = BDAY.people;
+  const names = ppl.length === 1 ? bdayTitle(ppl[0].name) : ppl.length === 2 ? `${bdayFirst(ppl[0].name)} & ${bdayFirst(ppl[1].name)}` : `${ppl.length} of our team`;
+  const row = p => {
+    const init = bdayTitle(p.name).split(/\s+/).slice(0, 2).map(w => w[0]).join("");
+    const nm = staffCan(!p.staff) ? `<a href="#" onclick="bdayClose(); openStaffFile(${jsq(p.emp_no)}, ''); return false;">${escapeHtml(bdayTitle(p.name))}</a>` : escapeHtml(bdayTitle(p.name));
+    return `<div class="bday-person"><div class="bday-av">${escapeHtml(init)}</div><div><div class="bday-name">${nm}</div>
+      <div class="bday-sub">${escapeHtml([p.role, p.group_label, p.emp_no].filter(Boolean).join(" \u00b7 "))}${p.age > 0 && p.age < 100 ? ` \u00b7 turns ${p.age}` : ""}</div></div></div>`;
+  };
+  document.getElementById("bday-card").innerHTML = `
+    <div class="bday-top"><div class="bday-cake">\u{1F382}</div><h2>Happy Birthday${ppl.length <= 2 ? "," : "!"}</h2>
+      ${ppl.length <= 2 ? `<div style="font-size:20px; font-weight:700; margin-bottom:4px;">${escapeHtml(names)}!</div>` : ""}<p>${escapeHtml(d)}</p></div>
+    <div class="bday-list">${ppl.map(row).join("")}</div>
+    <div class="bday-foot"><button class="btn btn-primary" onclick="bdayClose()">Wishing them a great day</button></div>`;
+  document.getElementById("bday-overlay").classList.add("on");
+  bdayConfetti();
+}
+function bdayClose() {
+  document.getElementById("bday-overlay").classList.remove("on");
+  const c = document.getElementById("bday-confetti"); if (c) c.remove();
+}
+function bdayConfetti() {
+  let c = document.getElementById("bday-confetti"); if (c) c.remove();
+  c = document.createElement("canvas"); c.id = "bday-confetti"; document.body.appendChild(c);
+  const ctx = c.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const size = () => { c.width = innerWidth * dpr; c.height = innerHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  size(); window.addEventListener("resize", size, { once: true });
+  const cols = ["#B7322A", "#E8A33D", "#F4D06F", "#2E8B57", "#3B82C4", "#D9573F", "#8E5CC0"];
+  const parts = Array.from({ length: Math.min(260, Math.round(innerWidth / 5)) }, () => ({
+    x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * .8, w: 6 + Math.random() * 7, h: 9 + Math.random() * 9,
+    vy: 1.6 + Math.random() * 2.6, vx: -1 + Math.random() * 2, r: Math.random() * 6.28, vr: -.12 + Math.random() * .24,
+    c: cols[Math.floor(Math.random() * cols.length)], round: Math.random() < .25 }));
+  const t0 = performance.now();
+  const tick = now => {
+    if (!document.body.contains(c)) return;
+    const age = now - t0; ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let alive = 0;
+    for (const p of parts) {
+      p.y += p.vy; p.x += p.vx + Math.sin((now / 400) + p.r) * .6; p.r += p.vr;
+      if (p.y > innerHeight + 20) { if (age < 4500) { p.y = -20; p.x = Math.random() * innerWidth; } else continue; }
+      alive++;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, 6.28); ctx.fill(); } else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r)));
+      ctx.restore();
+    }
+    if (alive) requestAnimationFrame(tick); else c.remove();
+  };
+  requestAnimationFrame(tick);
+}
+
 // A person's file on the Staff page, Documents section, with the one
 // document asked about lit up (Expiry Reminder names).
 function staffCan(isLabour) {

@@ -70,6 +70,40 @@ def group_of(e, p=None):
     return "office"
 
 
+@router.get("/employees/people/birthdays")
+def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """Whose birthday it is today (Dubai), by the date of birth on the
+    staff file - the one from the passport. Labour, office and local
+    staff still working; each login sees the registers it may open (a
+    login without any sees none). 29 February birthdays are wished on
+    28 February in other years."""
+    today = M._dubai_today()
+    groups = allowed_groups(user)
+    if not groups:
+        return {"date": today.isoformat(), "people": []}
+    leap = today.year % 4 == 0 and (today.year % 100 != 0 or today.year % 400 == 0)
+    out = []
+    rows = (db.query(models.PeopleProfile, models.Employee)
+              .join(models.Employee, models.Employee.id == models.PeopleProfile.employee_id)
+              .filter(models.PeopleProfile.date_of_birth.isnot(None)).all())
+    for p, e in rows:
+        d = p.date_of_birth
+        if not e.active or (e.terminated_on and e.terminated_on <= today):
+            continue
+        if not ((d.month, d.day) == (today.month, today.day) or
+                (not leap and (d.month, d.day) == (2, 29) and (today.month, today.day) == (2, 28))):
+            continue
+        g = group_of(e, p)
+        if g == "household":
+            g = "office"
+        if g not in groups:
+            continue
+        out.append({"emp_no": e.emp_no, "name": e.name, "group": g, "group_label": GROUPS.get(g, g),
+                    "role": e.designation or e.trade or "", "age": today.year - d.year, "staff": bool(e.staff)})
+    out.sort(key=lambda x: (x["group"] != "office", x["name"]))
+    return {"date": today.isoformat(), "people": out}
+
+
 def _by_code(db, emp_no):
     e = db.query(models.Employee).filter(models.Employee.emp_no == str(emp_no).strip()).first()
     if not e:
