@@ -30,7 +30,8 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('heading: Naveen petty cash', (await c.locator('#pc-heading').textContent()) === 'Naveen petty cash');
   ck('the address remembers the Naveen box', (await c.evaluate(() => location.hash)) === '#petty:naveen', await c.evaluate(() => location.hash));
   const h = await heads(c);
-  ck('columns read as his sheet: no supplier column, Project, DR before CR, then balance due', h.length === 7 && h[2] === 'Project' && /^DR - Paid by Naveen/.test(h[3]) && /^CR - Repaid/.test(h[4]) && /^Balance due/.test(h[5]), h);
+  const hi = re => h.findIndex(x => re.test(x));
+  ck('columns read as his sheet: no supplier column, DR before CR, then balance due', !h.some(x => /Paid to|Supplier/.test(x)) && hi(/^DR - Paid by Naveen/) > 1 && hi(/^CR - Repaid/) === hi(/^DR/) + 1 && hi(/^Balance due/) === hi(/^DR/) + 2, h);
   ck('the Paid to / Ref box is gone from the form', !(await c.locator('#pc-sup-f').isVisible()));
   ck('form buttons say Paid by Naveen / Repaid to Naveen', (await c.evaluate(() => [...document.querySelectorAll('#pc-kind button')].map(x => x.textContent).join('|'))) === 'Paid by Naveen|Repaid to Naveen');
   ck('form site box is called Project', (await c.locator('#pc-form .pc-site span').textContent()) === 'Project');
@@ -69,14 +70,15 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // Praveen.
   await clickSub(c, 'Praveen');
   await month(c, '2024-05');
-  ck('Praveen: May 2024 closes at 6,210.50 as on his sheet', (await c.evaluate(() => PC.closing)) === 6210.5 && (await heads(c))[3].startsWith('DR - Paid by Praveen'), [await c.evaluate(() => PC.closing), await heads(c)]);
+  ck('Praveen: May 2024 closes at 6,210.50 as on his sheet', (await c.evaluate(() => PC.closing)) === 6210.5 && (await heads(c)).some(x => x.startsWith('DR - Paid by Praveen')), [await c.evaluate(() => PC.closing), await heads(c)]);
   await month(c, '2026-09');
   ck('Praveen: Sep 2026 due 95,302.06', (await stats(c))[3] === 'Due to Praveen: 95,302.06', await stats(c));
 
   // Back to the office box: its own words again.
   await clickSub(c, 'Office');
   const oh = await heads(c);
-  ck('Office box: Supplier column back, Received / Paid / Balance in hand again', oh.length === 8 && /^Supplier/.test(oh[2]) && /^Received/.test(oh[4]) && /^Paid/.test(oh[5]) && (await stats(c))[3].startsWith('Balance in hand') &&
+  const oi = re => oh.findIndex(x => re.test(x));
+  ck('Office box: Received / Paid / Balance in hand again', oi(/^Received/) > 1 && oi(/^Paid/) === oi(/^Received/) + 1 && (await stats(c))[3].startsWith('Balance in hand') &&
      (await c.evaluate(() => [...document.querySelectorAll('#pc-kind button')].map(x => x.textContent).join('|'))) === 'Bill paid|Cash received', [oh, await stats(c)]);
 
   // The papers.
@@ -90,7 +92,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     return { v, pdf: p.status + ' ' + p.headers.get('content-type') + ' ' + (await p.arrayBuffer()).byteLength,
              xl: x.status + ' ' + x.headers.get('content-disposition') };
   });
-  ck('preview: NAVEEN PETTY CASH REGISTER with DR / CR columns and Due to Naveen', /NAVEEN PETTY CASH REGISTER/.test(papers.v) && /Project<\/th><th class="n">DR - Paid by Naveen \(AED\)<\/th><th class="n">CR - Repaid to Naveen/.test(papers.v) && /Due to Naveen<\/span><b>-8,246.35/.test(papers.v) && /preview-bar|pv-bar|Download PDF/.test(papers.v), papers.v.slice(0, 300));
+  ck('preview: NAVEEN PETTY CASH REGISTER with DR / CR columns and Due to Naveen', /NAVEEN PETTY CASH REGISTER/.test(papers.v) && /<th class="n">DR - Paid by Naveen \(AED\)<\/th><th class="n">CR - Repaid to Naveen/.test(papers.v) && !/Paid to \/ Ref/.test(papers.v) && /Due to Naveen<\/span><b>-8,246.35/.test(papers.v) && /preview-bar|pv-bar|Download PDF/.test(papers.v), papers.v.slice(0, 300));
   ck('PDF downloads', /^200 application\/pdf \d{4,}/.test(papers.pdf), papers.pdf);
   ck('Excel downloads as Naveen_petty_cash_2026-07.xlsx', /^200 .*Naveen_petty_cash_2026-07\.xlsx/.test(papers.xl), papers.xl);
   ck('no script errors (chief accountant)', !c.errs.length, c.errs);

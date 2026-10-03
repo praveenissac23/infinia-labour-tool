@@ -151,7 +151,7 @@ def _clean(payload):
         raise HTTPException(status_code=400, detail="Enter the amount paid (or the cash received).")
     if rec and paid:
         raise HTTPException(status_code=400, detail="One line is either cash received or a bill paid - not both.")
-    return {"on_date": d, "description": desc[:200], "supplier": str(payload.get("supplier") or "").strip()[:120],
+    return {"on_date": d, "description": desc[:400], "supplier": str(payload.get("supplier") or "").strip()[:120],
             "site": str(payload.get("site") or "").strip()[:40], "received": rec, "paid": paid}
 
 
@@ -193,19 +193,24 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
 # ---- The paper -----------------------------------------------------------
 
 RED = "#B7322A"
-def _cols(r):
-    """The sheet's columns: a director's book shows DR before CR, as his
-    own sheet does."""
+
+
+def _spec(r):
+    """The paper's columns. A director's book shows DR before CR, as his
+    own sheet does; a column with nothing in it for the period (no
+    supplier, no site written on any line) is left off the paper rather
+    than printed empty."""
     t = r["terms"]
     pair = (t["out_col"], t["in_col"]) if t["director"] else (t["in_col"], t["out_col"])
-    # A director's book has no supplier column - his sheet never had one.
-    return tuple(c for c in ("Date", "Description", t["supplier"], t["site"], pair[0] + " (AED)", pair[1] + " (AED)", t["balance_col"] + " (AED)") if c)
-
-
-def _cells(r, line):
-    """A line's cells in the sheet's columns (the mark at the end dropped)."""
-    d, ds, s, st, rc, pd, bal, _ = line
-    return (d, ds, st, rc, pd, bal) if not r["terms"]["supplier"] else (d, ds, s, st, rc, pd, bal)
+    cols = [("date", "Date", 9, 12), ("desc", "Description", 0, 0)]
+    if t["supplier"] and any(x["supplier"] for x in r["rows"]):
+        cols.append(("sup", t["supplier"], 20, 28))
+    if any(x["site"] for x in r["rows"]):
+        cols.append(("site", t["site"], 8, 10))
+    cols += [("a1", pair[0] + " (AED)", 11, 16), ("a2", pair[1] + " (AED)", 11, 16), ("bal", t["balance_col"] + " (AED)", 12, 16)]
+    rest = 100 - sum(w for _, _, w, _ in cols)
+    xrest = max(46, 140 - sum(x for _, _, _, x in cols))
+    return [{"key": k, "label": lab, "w": (w or rest) / 100, "xw": x or xrest} for k, lab, w, x in cols]
 
 
 def _pair(r, received, paid):
@@ -218,11 +223,12 @@ def _dmy(iso):
 
 
 def _lines(r):
-    """Every line of the sheet, the brought-forward first."""
-    out = [("", "Balance brought forward", "", "", "", "", r["opening"], "bf")]
+    """Every line of the sheet as {column: value}, the brought-forward first."""
+    out = [{"date": "", "desc": "Balance brought forward", "sup": "", "site": "", "a1": "", "a2": "", "bal": r["opening"], "bf": True}]
     for x in r["rows"]:
-        out.append((_dmy(x["date"]), x["description"], x["supplier"], x["site"],
-                    *_pair(r, x["received"] or "", x["paid"] or ""), x["balance"], ""))
+        a1, a2 = _pair(r, x["received"] or "", x["paid"] or "")
+        out.append({"date": _dmy(x["date"]), "iso": x["date"], "desc": x["description"], "sup": x["supplier"], "site": x["site"],
+                    "a1": a1, "a2": a2, "bal": x["balance"], "bf": False})
     return out
 
 
@@ -234,43 +240,48 @@ def _sum_boxes(r):
     return "".join(f"<div><span>{escape(k)}</span><b>{_money(v)}</b></div>" for k, v in boxes)
 
 
+NUM = ("a1", "a2", "bal")
+
+
 def _html(r, pdf_url, excel_url):
     logo = export_web.logo_data_uri()
     m = lambda v: _money(v) if v not in ("", None) else ""
-    sup = bool(r["terms"]["supplier"])
-    body = "".join(
-        f"<tr class='{k}'><td>{escape(d)}</td><td class='l'>{escape(ds)}</td>{f'<td class=l>{escape(s)}</td>' if sup else ''}<td>{escape(str(st))}</td>"
-        f"<td class='n'>{m(rc)}</td><td class='n'>{m(pd)}</td><td class='n b{' neg' if bal < 0 else ''}'>{m(bal)}</td></tr>"
-        for d, ds, s, st, rc, pd, bal, k in _lines(r))
-    ntext = 4 if sup else 3
+    spec = _spec(r)
+    def cell(c, ln):
+        k = c["key"]
+        if k in NUM:
+            neg = " neg" if k == "bal" and ln["bal"] < 0 else ""
+            return f"<td class='n{' b' if k == 'bal' else ''}{neg}'>{m(ln[k])}</td>"
+        cls = "l" if k in ("desc", "sup") else ""
+        return f"<td class='{cls}'>{escape(str(ln[k]))}</td>"
+    body = "".join(f"<tr class='{'bf' if ln['bf'] else ''}'>" + "".join(cell(c, ln) for c in spec) + "</tr>" for ln in _lines(r))
+    ntext = len(spec) - 3
+    head = "".join(f'<th class="{"n" if c["key"] in NUM else ("l" if c["key"] in ("desc", "sup") else "")}">{escape(c["label"])}</th>' for c in spec)
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
-.bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end}}
-.bar a,.bar button{{font:600 13px Arial;padding:8px 14px;border-radius:6px;border:1px solid #ddd;background:#fff;color:#222;text-decoration:none;cursor:pointer}}
-.bar .p{{background:{RED};border-color:{RED};color:#fff}}
 .page{{max-width:1000px;margin:18px auto;background:#fff;padding:30px 36px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
 .top{{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid {RED};padding-bottom:10px}}
 .top img{{height:30px}} h1{{margin:0;font-size:18px;letter-spacing:.08em;color:{RED};text-align:right}}
 .meta{{display:flex;justify-content:space-between;gap:20px;margin:12px 0;font-size:12.5px}} .meta span{{color:#777}} .meta b{{margin-left:6px}}
-.wrap{{overflow-x:auto}} table{{width:100%;border-collapse:collapse;min-width:720px}}
-th{{background:{RED};color:#fff;font-size:11px;letter-spacing:.04em;padding:7px 8px;text-align:center}}
+.wrap{{overflow-x:auto}} table{{width:100%;border-collapse:collapse;min-width:640px}}
+th{{background:{RED};color:#fff;font-size:11px;letter-spacing:.04em;padding:7px 8px;text-align:center}} th.l{{text-align:left}} th.n{{text-align:right}}
 td{{padding:6px 8px;border-bottom:1px solid #e3e3e3;text-align:center}} td.l{{text-align:left}} td.n{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
-td:first-child,th:first-child{{white-space:nowrap;width:80px}} th.n{{text-align:right}}
+td:first-child,th:first-child{{white-space:nowrap;width:80px}}
 td.b{{font-weight:600}} td.neg{{color:{RED}}} tr.bf td{{background:#FBF6F4;font-style:italic}}
 tbody tr:nth-child(even):not(.bf) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
 .sum{{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}} .sum div{{flex:1;min-width:150px;border:1px solid #e3e3e3;border-radius:6px;padding:8px 12px}}
 .sum span{{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.05em}} .sum b{{font-size:15px}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
-@media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
+@media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}} .sign{{gap:14px}}}}
 </style></head><body>
 {export_web.preview_bar(r['book_label'] + " register", r['label'], pdf_url, excel_url)}
 <div class="page">
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>
- <div class="wrap"><table><thead><tr>{''.join(f'<th class="{"n" if i >= len(_cols(r)) - 3 else ""}">{escape(c)}</th>' for i, c in enumerate(_cols(r)))}</tr></thead><tbody>{body}</tbody>
+ <div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody>
  <tfoot><tr><td colspan="{ntext}" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
  <div class="sum"><div><span>Brought forward</span><b>{_money(r['opening'])}</b></div>{_sum_boxes(r)}
   <div><span>{escape(r['terms']['balance'])}</span><b>{_money(r['closing'])}</b></div></div>
@@ -288,10 +299,13 @@ def _pdf(r):
     R = colors.HexColor(RED)
     base = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5)
     bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
+    ital = ParagraphStyle("i", parent=base, fontName="Helvetica-Oblique")
     cen = ParagraphStyle("c", parent=base, alignment=TA_CENTER)
     rt = ParagraphStyle("r", parent=base, alignment=TA_RIGHT)
     rtb = ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
     hd = ParagraphStyle("h", parent=bold, fontSize=8, textColor=colors.white, alignment=TA_CENTER)
+    hdl = ParagraphStyle("hl", parent=hd, alignment=0)
+    hdr = ParagraphStyle("hr", parent=hd, alignment=TA_RIGHT)
     P = lambda t, st=base: Paragraph(escape(str(t)), st)
     page = landscape(A4)
     W = page[0] - 24 * mm
@@ -307,16 +321,25 @@ def _pdf(r):
                    Paragraph(f"<font color='#777777'>Month / Period</font>&nbsp;&nbsp;<b>{escape(r['label'])}</b>", rt)]], colWidths=[W / 2, W / 2])
     meta.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 6)]))
     m = lambda v: _money(v) if v not in ("", None) else ""
-    data = [[P(c.upper(), hd) for c in _cols(r)]]
-    sup = bool(r["terms"]["supplier"])
-    for line in _lines(r):
-        d, ds, s, st, rc, pd, bal, k = line
-        cells = [P(d, cen), P(ds), P(s), P(st, cen), P(m(rc), rt), P(m(pd), rt), P(m(bal), rtb)]
-        data.append(cells if sup else cells[:2] + cells[3:])
-    ntext = 4 if sup else 3
+    spec = _spec(r)
+    hstyle = lambda k: hdr if k in NUM else (hdl if k in ("desc", "sup") else hd)
+    data = [[P(c["label"].upper(), hstyle(c["key"])) for c in spec]]
+    for ln in _lines(r):
+        row = []
+        for c in spec:
+            k = c["key"]
+            if k in NUM:
+                row.append(P(m(ln[k]), rtb if k == "bal" else rt))
+            elif k == "desc":
+                row.append(P(ln[k], ital if ln["bf"] else base))
+            elif k == "sup":
+                row.append(P(ln[k]))
+            else:
+                row.append(P(ln[k], cen))
+        data.append(row)
+    ntext = len(spec) - 3
     data.append([P("TOTAL", bold)] + [""] * (ntext - 1) + [*(P(_money(v), rtb) for v in _pair(r, r["received"], r["paid"])), P(_money(r["closing"]), rtb)])
-    widths = [W * f for f in ((.09, .29, .20, .08, .11, .11, .12) if sup else (.10, .44, .10, .12, .12, .12))]
-    t = Table(data, colWidths=widths, repeatRows=1)
+    t = Table(data, colWidths=[W * c["w"] for c in spec], repeatRows=1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),
           ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FBF6F4")),
@@ -337,19 +360,18 @@ def _pdf(r):
 def _excel(r):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter as L
     wb = Workbook(); ws = wb.active; ws.title = "Petty Cash"
     R = RED.lstrip("#")
     fill = PatternFill("solid", fgColor=R)
     thin = Side(style="thin", color="DDDDDD")
-    cols = _cols(r)
-    sup = bool(r["terms"]["supplier"])
-    N = len(cols)                       # 7 with a supplier column, 6 without
-    L = "ABCDEFGH"
+    spec = _spec(r)
+    N = len(spec)
     cE, cF, cG = N - 2, N - 1, N        # the two amount columns and the balance
-    E, F, G = L[cE - 1], L[cF - 1], L[cG - 1]
+    E, F, G = L(cE), L(cF), L(cG)
     ntext = N - 3
-    for col, w in zip(L, (12, 38, 28, 10, 16, 16, 16) if sup else (12, 52, 10, 18, 18, 18)):
-        ws.column_dimensions[col].width = w
+    for i, c in enumerate(spec, 1):
+        ws.column_dimensions[L(i)].width = c["xw"]
     ws.merge_cells(f"A1:{G}1")
     ws["A1"] = r["book_label"].upper() + " REGISTER"; ws["A1"].font = Font(bold=True, size=15, color=R)
     ws.row_dimensions[1].height = 34
@@ -364,9 +386,10 @@ def _excel(r):
     ws["A1"].alignment = Alignment(horizontal="right", vertical="center")
     ws["A2"] = "Company"; ws["A2"].font = Font(color="777777"); ws["B2"] = COMPANY; ws["B2"].font = Font(bold=True)
     ws[f"{E}2"] = "Month / Period"; ws[f"{E}2"].font = Font(color="777777"); ws[f"{F}2"] = r["label"]; ws[f"{F}2"].font = Font(bold=True)
-    for i, c in enumerate(cols, 1):
-        cell = ws.cell(4, i, c.upper()); cell.font = Font(bold=True, color="FFFFFF"); cell.fill = fill
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for i, c in enumerate(spec, 1):
+        cell = ws.cell(4, i, c["label"].upper()); cell.font = Font(bold=True, color="FFFFFF"); cell.fill = fill
+        cell.alignment = Alignment(horizontal="right" if c["key"] in NUM else ("left" if c["key"] in ("desc", "sup") else "center"),
+                                   vertical="center", wrap_text=True)
     ws.row_dimensions[4].height = 30
     row = 5
     first = row
@@ -375,22 +398,28 @@ def _excel(r):
         ws.cell(row, c).font = Font(italic=True, bold=(c == cG)); ws.cell(row, c).fill = PatternFill("solid", fgColor="FBF6F4")
         ws.cell(row, c).border = Border(bottom=thin)
     row += 1
-    for x in r["rows"]:
-        ws.cell(row, 1, M._as_date(x["date"])).number_format = "dd-mmm-yy"
-        ws.cell(row, 2, x["description"])
-        if sup: ws.cell(row, 3, x["supplier"])
-        ws.cell(row, ntext, x["site"])
-        c5, c6 = _pair(r, x["received"], x["paid"])
-        if c5: ws.cell(row, cE, c5)
-        if c6: ws.cell(row, cF, c6)
-        # The balance is a formula, as on the office's own sheet (the first
-        # amount column adds: cash received, or for a director what he paid).
-        ws.cell(row, cG, f"={G}{row - 1}+{E}{row}-{F}{row}").font = Font(bold=True)
-        for c in (cE, cF, cG):
-            ws.cell(row, c).number_format = "#,##0.00"
-        ws.cell(row, 1).alignment = Alignment(horizontal="center"); ws.cell(row, ntext).alignment = Alignment(horizontal="center")
-        for c in range(1, N + 1):
-            ws.cell(row, c).border = Border(bottom=thin)
+    for ln in _lines(r)[1:]:
+        for i, c in enumerate(spec, 1):
+            k = c["key"]
+            if k == "date":
+                ws.cell(row, i, M._as_date(ln["iso"])).number_format = "dd-mmm-yy"
+                ws.cell(row, i).alignment = Alignment(horizontal="center", vertical="center")
+            elif k in ("a1", "a2"):
+                if ln[k]:
+                    ws.cell(row, i, ln[k])
+                ws.cell(row, i).number_format = "#,##0.00"
+                ws.cell(row, i).alignment = Alignment(vertical="center")
+            elif k == "bal":
+                # The balance is a formula, as on the office's own sheet (the first
+                # amount column adds: cash received, or for a director what he paid).
+                ws.cell(row, i, f"={G}{row - 1}+{E}{row}-{F}{row}").font = Font(bold=True)
+                ws.cell(row, i).number_format = "#,##0.00"
+                ws.cell(row, i).alignment = Alignment(vertical="center")
+            else:
+                ws.cell(row, i, ln[k])
+                ws.cell(row, i).alignment = (Alignment(horizontal="center", vertical="center") if k == "site"
+                                             else Alignment(wrap_text=True, vertical="center"))      # long details wrap, never cut off
+            ws.cell(row, i).border = Border(bottom=thin)
         row += 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ntext)
     ws.cell(row, 1, "TOTAL").font = Font(bold=True)
@@ -401,12 +430,14 @@ def _excel(r):
         cell.border = Border(top=Side(style="medium", color="000000"))
         if c >= cE: cell.number_format = "#,##0.00"; cell.font = Font(bold=True)
     row += 4
-    signs = (("A", "B", "Prepared By"), ("D", "E", "Checked By"), ("F", "G", "Approved By")) if sup else \
-            (("A", "B", "Prepared By"), ("C", "D", "Checked By"), ("E", "F", "Approved By"))
+    third = max(1, N // 3)
+    signs = ((1, third, "Prepared By"), (third + 1, 2 * third, "Checked By"), (2 * third + 1, N, "Approved By"))
     for a, b, t in signs:
-        ws.merge_cells(f"{a}{row}:{b}{row}")
-        c = ws[f"{a}{row}"]; c.value = t; c.alignment = Alignment(horizontal="center")
-        c.border = Border(top=Side(style="thin", color="000000"))
+        if b > a:
+            ws.merge_cells(start_row=row, start_column=a, end_row=row, end_column=b)
+        c = ws.cell(row, a); c.value = t; c.alignment = Alignment(horizontal="center")
+        for col in range(a, b + 1):
+            ws.cell(row, col).border = Border(top=Side(style="thin", color="000000"))
     ws.freeze_panes = "A5"
     ws.page_setup.orientation = "landscape"; ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0

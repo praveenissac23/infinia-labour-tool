@@ -1149,7 +1149,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="7b5d21bae4f7";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="6c6b5f6729a0";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2492,7 +2492,7 @@
                 <button type="button" data-k="received" onclick="pcKind('received')">Cash received</button>
               </div>
               <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
-              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="200"></label>
+              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400"></label>
               <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off"></label>
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site"></select></label>
@@ -14311,14 +14311,17 @@ async function loadPettyCash() {
 }
 
 // The column heads: a director's book shows DR before CR, as on his sheet.
-function pcHead() {
+// A Supplier or Site column with nothing in it for the period is left
+// out, here and on the paper, rather than shown empty.
+function pcHead(showSup = !!pcTerms().supplier, showSite = true) {
   const t = pcTerms(), row = document.getElementById("pc-head-row");
   const pair = t.director ? [t.outCol, t.inCol] : [t.inCol, t.outCol];
   const w = t.director ? 112 : 120;
-  const html = `<th style="width:92px;">Date</th><th class="l">Description</th>${t.supplier ? `<th class="l">${escapeHtml(t.supplier)}</th>` : ""}
-    <th style="width:70px;">${escapeHtml(t.site)}</th><th class="n" style="width:${w}px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:${w}px;">${escapeHtml(pair[1])} (AED)</th>
+  const html = `<th style="width:92px;">Date</th><th class="l">Description</th>${showSup ? `<th class="l" style="width:210px;">${escapeHtml(t.supplier)}</th>` : ""}
+    ${showSite ? `<th style="width:70px;">${escapeHtml(t.site)}</th>` : ""}<th class="n" style="width:${w}px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:${w}px;">${escapeHtml(pair[1])} (AED)</th>
     <th class="n" style="width:${w}px;">${escapeHtml(t.balanceCol)} (AED)</th><th style="width:118px;"></th>`;
-  if (row && row.dataset.book !== PC_BOOK) { row.innerHTML = html; row.dataset.book = PC_BOOK; }
+  const key = `${PC_BOOK}|${showSup}|${showSite}`;
+  if (row && row.dataset.key !== key) { row.innerHTML = html; row.dataset.key = key; }
 }
 
 function pcDraw() {
@@ -14333,17 +14336,20 @@ function pcDraw() {
     <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>${stats.join("")}
     <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b></div>`;
   const cell = v => v ? pcMoney(v) : "";
+  const sup = !!t.supplier && d.rows.some(r => r.supplier), site = d.rows.some(r => r.site);
+  pcHead(sup, site);
+  const ncols = 6 + sup + site, ntext = 2 + sup + site;
   document.getElementById("pc-body").innerHTML =
-    `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${t.supplier ? "<td></td>" : ""}<td></td><td></td><td></td>
+    `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
        <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
     (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
        <td class="l">${escapeHtml(r.description)}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
-       ${t.supplier ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}<td>${escapeHtml(r.site)}</td>
+       ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
        <td class="pc-act"><button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button></td></tr>`).join("")
-     || `<tr><td colspan="${t.supplier ? 8 : 7}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
-  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${t.supplier ? 4 : 3}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
+     || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
+  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
     <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");

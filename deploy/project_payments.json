@@ -1,0 +1,591 @@
+[
+ {
+  "project": "908",
+  "scope": "DESIGN & BUILD",
+  "contract": 2977654.75,
+  "remarks": "",
+  "sort": 1,
+  "payments": [
+   {
+    "amount": 1730952.38,
+    "date": "2025-12-31"
+   },
+   {
+    "amount": 517319.05,
+    "date": "2026-04-09"
+   },
+   {
+    "amount": 282789.52,
+    "date": "2026-08-19"
+   }
+  ]
+ },
+ {
+  "project": "909",
+  "scope": "DESIGN & BUILD",
+  "contract": 4350242.0,
+  "remarks": "333,900.00 (Pending for IPA08)",
+  "sort": 2,
+  "payments": [
+   {
+    "amount": 2128991.43,
+    "date": "2025-12-31"
+   },
+   {
+    "amount": 234595.24,
+    "date": "2026-07-27"
+   }
+  ]
+ },
+ {
+  "project": "910",
+  "scope": "DESIGN & BUILD",
+  "contract": 4200000.0,
+  "remarks": "Payments by Bank",
+  "sort": 3,
+  "payments": [
+   {
+    "amount": 30000.0,
+    "date": "2025-12-31"
+   },
+   {
+    "amount": 3990000.0,
+    "date": "2025-12-31"
+   }
+  ]
+ },
+ {
+  "project": "912",
+  "scope": "DESIGN & BUILD",
+  "contract": 5996316.5,
+  "remarks": "",
+  "sort": 4,
+  "payments": [
+   {
+    "amount": 695862.86,
+    "date": "2025-12-26"
+   },
+   {
+    "amount": 287907.62,
+    "date": "2026-04-11"
+   },
+   {
+    "amount": 703662.86,
+    "date": "2026-05-15"
+   },
+   {
+    "amount": 915013.33,
+    "date": "2026-06-24"
+   },
+   {
+    "amount": 685827.62,
+    "date": "2026-07-21"
+   },
+   {
+    "amount": 466995.24,
+    "date": "2026-08-19"
+   },
+   {
+    "amount": 372640.0,
+    "date": "2026-09-09"
+   }
+  ]
+ },
+ {
+  "project": "913",
+  "scope": "DESIGN & BUILD",
+  "contract": 8258654.57,
+  "remarks": "398894.00 (Inc. Vat) Pending",
+  "sort": 5,
+  "payments": [
+   {
+    "amount": 574700.0,
+    "date": "2025-11-30"
+   },
+   {
+    "amount": 628973.33,
+    "date": "2025-12-18"
+   },
+   {
+    "amount": 100036.19,
+    "date": "2026-01-15"
+   },
+   {
+    "amount": 433594.29,
+    "date": "2026-03-10"
+   },
+   {
+    "amount": 249846.67,
+    "date": "2026-04-08"
+   },
+   {
+    "amount": 405339.05,
+    "date": "2026-06-03"
+   },
+   {
+    "amount": 548642.86,
+    "date": "2026-07-06"
+   },
+   {
+    "amount": 498998.1,
+    "date": "2026-08-21"
+   },
+   {
+    "amount": 699752.38,
+    "date": "2026-09-05"
+   }
+  ]
+ },
+ {
+  "project": "914",
+  "scope": "MOBILIZATION",
+  "contract": 47000.0,
+  "remarks": "",
+  "sort": 6,
+  "payments": [
+   {
+    "amount": 23500.0,
+    "date": "2025-08-27"
+   },
+   {
+    "amount": 23500.0,
+    "date": "2026-01-17"
+   }
+  ]
+ },
+ {
+  "project": "914",
+  "scope": "EXCAVATION",
+  "contract": 69130.0,
+  "remarks": "10% Retention Pending",
+  "sort": 7,
+  "payments": [
+   {
+    "amount": 6913.0,
+    "date": "2026-01-17"
+   },
+   {
+    "amount": 55304.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "914",
+  "scope": "MEP",
+  "contract": 990000.0,
+  "remarks": "",
+  "sort": 8,
+  "payments": [
+   {
+    "amount": 198000.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "914",
+  "scope": "CORE & SHELL",
+  "contract": 1913413.0,
+  "remarks": "",
+  "sort": 9,
+  "payments": [
+   {
+    "amount": 260226.67,
+    "date": "2026-04-30"
+   },
+   {
+    "amount": 124936.19,
+    "date": "2026-06-05"
+   },
+   {
+    "amount": 153759.05,
+    "date": "2026-06-24"
+   },
+   {
+    "amount": 203713.33,
+    "date": "2026-08-05"
+   },
+   {
+    "amount": 156931.43,
+    "date": "2026-09-04"
+   },
+   {
+    "amount": 273168.57,
+    "date": "2026-10-02"
+   }
+  ]
+ },
+ {
+  "project": "914",
+  "scope": "POOL & LANDSCAPE DESIGN",
+  "contract": 25000.0,
+  "remarks": "",
+  "sort": 10,
+  "payments": [
+   {
+    "amount": 12500.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "915",
+  "scope": "MOBILIZATION",
+  "contract": 47000.0,
+  "remarks": "",
+  "sort": 11,
+  "payments": [
+   {
+    "amount": 23500.0,
+    "date": "2025-08-27"
+   },
+   {
+    "amount": 23500.0,
+    "date": "2026-01-17"
+   }
+  ]
+ },
+ {
+  "project": "915",
+  "scope": "EXCAVATION",
+  "contract": 55380.0,
+  "remarks": "10% Retention Pending",
+  "sort": 12,
+  "payments": [
+   {
+    "amount": 5538.0,
+    "date": "2026-01-17"
+   },
+   {
+    "amount": 44304.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "915",
+  "scope": "MEP",
+  "contract": 1011000.0,
+  "remarks": "",
+  "sort": 13,
+  "payments": [
+   {
+    "amount": 202200.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "915",
+  "scope": "CORE & SHELL",
+  "contract": 1891026.0,
+  "remarks": "",
+  "sort": 14,
+  "payments": [
+   {
+    "amount": 298950.48,
+    "date": "2026-04-30"
+   },
+   {
+    "amount": 106145.71,
+    "date": "2026-06-05"
+   },
+   {
+    "amount": 84761.9,
+    "date": "2026-06-24"
+   },
+   {
+    "amount": 80855.24,
+    "date": "2026-08-05"
+   },
+   {
+    "amount": 224257.14,
+    "date": "2026-09-04"
+   },
+   {
+    "amount": 92109.52,
+    "date": "2026-10-02"
+   }
+  ]
+ },
+ {
+  "project": "915",
+  "scope": "POOL & LANDSCAPE DESIGN",
+  "contract": 25000.0,
+  "remarks": "",
+  "sort": 15,
+  "payments": [
+   {
+    "amount": 12500.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "916",
+  "scope": "DESIGN",
+  "contract": 140000.0,
+  "remarks": "20000 (3rd Payment pending)",
+  "sort": 16,
+  "payments": [
+   {
+    "amount": 55000.0,
+    "date": "2025-09-20"
+   },
+   {
+    "amount": 65000.0,
+    "date": "2026-06-17"
+   }
+  ]
+ },
+ {
+  "project": "919",
+  "scope": "MOBILIZATION",
+  "contract": 47000.0,
+  "remarks": "",
+  "sort": 17,
+  "payments": [
+   {
+    "amount": 23500.0,
+    "date": "2025-12-09"
+   },
+   {
+    "amount": 23500.0,
+    "date": "2026-04-30"
+   }
+  ]
+ },
+ {
+  "project": "919",
+  "scope": "CORE & SHELL",
+  "contract": 1988850.0,
+  "remarks": "",
+  "sort": 18,
+  "payments": [
+   {
+    "amount": 198885.0,
+    "date": "2026-04-30"
+   },
+   {
+    "amount": 316324.76,
+    "date": "2026-08-05"
+   },
+   {
+    "amount": 70011.43,
+    "date": "2026-09-04"
+   }
+  ]
+ },
+ {
+  "project": "920",
+  "scope": "DESIGN",
+  "contract": 90000.0,
+  "remarks": "30000 (6MONTHS) PENDING CONSULTANY FEE",
+  "sort": 19,
+  "payments": [
+   {
+    "amount": 45559.0,
+    "date": "2026-02-05"
+   },
+   {
+    "amount": 44441.0,
+    "date": "2026-05-05"
+   }
+  ]
+ },
+ {
+  "project": "920",
+  "scope": "CONSTRUCTION PHASE1",
+  "contract": 2800000.0,
+  "remarks": "Authority payments need to claim",
+  "sort": 20,
+  "payments": [
+   {
+    "amount": 560000.0,
+    "date": "2026-08-11"
+   }
+  ]
+ },
+ {
+  "project": "921",
+  "scope": "DESIGN",
+  "contract": 125000.0,
+  "remarks": "69811 (Inc.Vat) Pending",
+  "sort": 21,
+  "payments": [
+   {
+    "amount": 62500.0,
+    "date": "2026-01-10"
+   }
+  ]
+ },
+ {
+  "project": "922",
+  "scope": "DESIGN",
+  "contract": 125000.0,
+  "remarks": "71064 (Inc.Vat) Pending",
+  "sort": 22,
+  "payments": [
+   {
+    "amount": 62500.0,
+    "date": "2026-01-10"
+   }
+  ]
+ },
+ {
+  "project": "923",
+  "scope": "SOIL INVESTIGATION",
+  "contract": 3450.0,
+  "remarks": "1798.50 (Inc.Vat) Pending",
+  "sort": 23,
+  "payments": [
+   {
+    "amount": 1798.5,
+    "date": "2026-07-10"
+   }
+  ]
+ },
+ {
+  "project": "924",
+  "scope": "SOIL INVESTIGATION",
+  "contract": 3450.0,
+  "remarks": "3597 (Inc.Vat) Pending",
+  "sort": 24,
+  "payments": []
+ },
+ {
+  "project": "925",
+  "scope": "LANDSCAPE DESIGN",
+  "contract": 10000.0,
+  "remarks": "",
+  "sort": 25,
+  "payments": [
+   {
+    "amount": 5000.0,
+    "date": "2026-03-27"
+   },
+   {
+    "amount": 5000.0,
+    "date": "2026-07-29"
+   }
+  ]
+ },
+ {
+  "project": "925",
+  "scope": "CONSTRUCTION",
+  "contract": 864700.0,
+  "remarks": "",
+  "sort": 26,
+  "payments": []
+ },
+ {
+  "project": "926",
+  "scope": "LANDSCAPE DESIGN",
+  "contract": 10000.0,
+  "remarks": "",
+  "sort": 27,
+  "payments": [
+   {
+    "amount": 5000.0,
+    "date": "2026-03-27"
+   },
+   {
+    "amount": 5000.0,
+    "date": "2026-07-29"
+   }
+  ]
+ },
+ {
+  "project": "926",
+  "scope": "CONSTRUCTION",
+  "contract": 622300.0,
+  "remarks": "",
+  "sort": 28,
+  "payments": []
+ },
+ {
+  "project": "927",
+  "scope": "DESIGN",
+  "contract": 118000.0,
+  "remarks": "30000 (6MONTHS) PENDING CONSULTANY FEE",
+  "sort": 29,
+  "payments": [
+   {
+    "amount": 59000.0,
+    "date": "2026-07-09"
+   }
+  ]
+ },
+ {
+  "project": "927",
+  "scope": "CONSTRUCTION NOC",
+  "contract": 13500.0,
+  "remarks": "8500 Claim Pending.",
+  "sort": 30,
+  "payments": []
+ },
+ {
+  "project": "928",
+  "scope": "VILLA DESIGN",
+  "contract": 140000.0,
+  "remarks": "57750.00 (Inc.Vat) Pending",
+  "sort": 31,
+  "payments": []
+ },
+ {
+  "project": "101",
+  "scope": "LANDSCAPE WORK PHASE1",
+  "contract": 119640.0,
+  "remarks": "Payment on 03/04/2027",
+  "sort": 32,
+  "payments": [
+   {
+    "amount": 56169.52,
+    "date": "2026-01-31"
+   },
+   {
+    "amount": 28084.76,
+    "date": "2026-02-06"
+   },
+   {
+    "amount": 16850.48,
+    "date": "2026-02-12"
+   },
+   {
+    "amount": 12917.0,
+    "date": "2026-04-03"
+   }
+  ]
+ },
+ {
+  "project": "102",
+  "scope": "Swimming Pool",
+  "contract": 251200.0,
+  "remarks": "",
+  "sort": 33,
+  "payments": [
+   {
+    "amount": 62800.0,
+    "date": "2026-08-19"
+   }
+  ]
+ },
+ {
+  "project": "103",
+  "scope": "Renovation Work",
+  "contract": 225000.0,
+  "remarks": "",
+  "sort": 34,
+  "payments": [
+   {
+    "amount": 175000.0,
+    "date": "2026-09-12"
+   },
+   {
+    "amount": 50000.0,
+    "date": "2026-09-28"
+   }
+  ]
+ }
+]
