@@ -21,3 +21,4 @@ env/
 *.backup
 *.bak
 *.log
+unpriced_items.csv
