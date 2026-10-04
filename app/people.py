@@ -104,6 +104,49 @@ def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(a
     return {"date": today.isoformat(), "people": out}
 
 
+def _next_birthday(d, today):
+    """The next time this date of birth comes round, today included
+    (29 February: 28 February in other years)."""
+    def on(y):
+        try:
+            return date(y, d.month, d.day)
+        except ValueError:
+            return date(y, 2, 28)
+    n = on(today.year)
+    return n if n >= today else on(today.year + 1)
+
+
+@router.get("/employees/people/birthdays/upcoming")
+def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: models.User = PEOPLE):
+    """Everyone still working, next birthday first, counted from today.
+    Also how many have no date of birth on their file yet."""
+    today = M._dubai_today()
+    groups = allowed_groups(user)
+    if group:
+        _may(user, group)
+        groups = {group}
+    out, missing = [], 0
+    rows = (db.query(models.Employee, models.PeopleProfile)
+              .outerjoin(models.PeopleProfile, models.PeopleProfile.employee_id == models.Employee.id)
+              .filter(models.Employee.active == True).all())  # noqa: E712
+    for e, p in rows:
+        if e.terminated_on and e.terminated_on <= today:
+            continue
+        g = group_of(e, p)
+        g = "office" if g == "household" else g
+        if g not in groups:
+            continue
+        if not p or not p.date_of_birth:
+            missing += 1
+            continue
+        nxt = _next_birthday(p.date_of_birth, today)
+        out.append({"emp_no": e.emp_no, "name": e.name, "group": g, "group_label": GROUPS.get(g, g),
+                    "role": e.designation or e.trade or "", "dob": p.date_of_birth.isoformat(),
+                    "next": nxt.isoformat(), "days": (nxt - today).days, "turns": nxt.year - p.date_of_birth.year})
+    out.sort(key=lambda x: (x["days"], x["name"]))
+    return {"date": today.isoformat(), "rows": out, "missing": missing}
+
+
 def _by_code(db, emp_no):
     e = db.query(models.Employee).filter(models.Employee.emp_no == str(emp_no).strip()).first()
     if not e:
@@ -729,6 +772,18 @@ def _leave_parts(db, group, user=None):
     return rows, f"Leave Balances - {GROUPS.get(group, 'Everyone')}", f"{len(rows)} people   |   As at {M._dubai_today():%d %b %Y}"
 
 
+def _bday_parts(db, group, user=None):
+    d = birthdays_upcoming(group=group, db=db, user=user)
+    rows = [{"Birthday": M._as_date(r["next"]).strftime("%a %d %b"),
+             "In": "Today" if r["days"] == 0 else ("Tomorrow" if r["days"] == 1 else f"{r['days']} days"),
+             "Code": r["emp_no"], "Name": r["name"], "Register": r["group_label"], "Designation": r["role"] or "-",
+             "Date of Birth": M._dmy(M._as_date(r["dob"])), "Turns": r["turns"]} for r in d["rows"]]
+    sub = f"{len(rows)} people, next birthday first   |   From {M._dubai_today():%d %b %Y}"
+    if d["missing"]:
+        sub += f"   |   {d['missing']} without a date of birth on file"
+    return rows, f"Birthdays - {GROUPS.get(group, 'Everyone')}", sub
+
+
 def _reader(token, db):
     user = auth.get_download_user_from_token(token, db)
     if not allowed_groups(user):
@@ -750,6 +805,8 @@ def _report(kind, db, user, group="", emp_no="", days=90, company_id=None):
     if kind == "leave":
         _may(user, group)
         return _leave_parts(db, group, user), []
+    if kind == "birthdays":
+        return _bday_parts(db, group, user), []
     raise HTTPException(status_code=404, detail="No such report.")
 
 

@@ -172,7 +172,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
   </div>
   <div class="main">
     <div class="top"><h1 id="page-title">Staff</h1><div class="who"><span id="who-name"></span> <button class="signout" onclick="signOut()">Sign out</button></div></div>
-    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="due" onclick="showView('due')">Documents due</span></div>
+    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="due" onclick="showView('due')">Documents due</span><span class="viewtab" data-view="bday" onclick="showView('bday')">&#127874; Birthdays</span></div>
     <div class="content">
       <div class="status" id="status"></div>
 
@@ -210,6 +210,21 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
           </div>
           <p class="muted" id="due-count"></p>
           <div class="grid-wrap"><table><thead><tr><th>Register</th><th>Code</th><th>Name</th><th>Document</th><th>Number</th><th>Expires</th><th>Days</th><th>Company</th><th></th></tr></thead><tbody id="due-body"></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- ---- Birthdays ------------------------------------------------ -->
+      <div id="view-bday" style="display:none;">
+        <div class="card r">
+          <div class="row">
+            <span class="seg" id="bd-group"><button class="on" data-v="" onclick="setBdayGroup('')">All registers</button><button data-v="labour" onclick="setBdayGroup('labour')">Labour</button><button data-v="office" onclick="setBdayGroup('office')">Office</button><button data-v="local" onclick="setBdayGroup('local')">Local</button></span>
+            <span class="grow"></span>
+            <button class="btn btn-dark" onclick="preview('birthdays')">Preview</button>
+            <button class="btn btn-dark" onclick="download('birthdays','pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('birthdays','excel')">Export Excel</button>
+          </div>
+          <p class="muted" id="bd-count"></p>
+          <div class="grid-wrap"><table><thead><tr><th>Birthday</th><th>In</th><th>Code</th><th>Name</th><th>Register</th><th>Designation</th><th>Date of birth</th><th class="num">Turns</th><th></th></tr></thead><tbody id="bd-body"></tbody></table></div>
         </div>
       </div>
 
@@ -550,10 +565,10 @@ async function dl() { await refreshDl(); return DLTOKEN; }
 
 function showView(v) {
   P.view = v; localStorage.setItem("people_view", v);
-  ["register", "due", "leave"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
+  ["register", "due", "leave", "bday"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
   document.querySelectorAll(".viewtab[data-view]").forEach(el => el.classList.toggle("active", el.dataset.view === v));
-  document.getElementById("page-title").textContent = { register: "Staff", due: "Staff · Documents due", leave: "Staff · Leave balances" }[v];
-  if (v === "register") loadPeople(); if (v === "due") loadDue(); if (v === "leave") loadLeave();
+  document.getElementById("page-title").textContent = { register: "Staff", due: "Staff · Documents due", leave: "Staff · Leave balances", bday: "Staff · Birthdays" }[v];
+  if (v === "register") loadPeople(); if (v === "due") loadDue(); if (v === "leave") loadLeave(); if (v === "bday") loadBday();
 }
 
 // ---- Register -------------------------------------------------------------
@@ -853,6 +868,21 @@ async function loadDue() {
     <td><span class="pill ${r.days_left < 0 ? "r" : r.days_left <= 30 ? "r" : "y"}">${r.days_left < 0 ? "expired " + (-r.days_left) + " d" : r.days_left}</span></td><td>${esc(r.company)}</td>
     <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','documents')">Open</button></td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nothing due.</td></tr>`;
 }
+// Birthdays: everyone with a date of birth on file, next birthday first.
+function setBdayGroup(g) { P.bdGroup = g; segSet(document.getElementById("bd-group"), g); loadBday(); }
+async function loadBday() {
+  let d = { rows: [], missing: 0 };
+  try { d = await apiCall(`/employees/people/birthdays/upcoming?group=${P.bdGroup || ""}`); } catch (e) { status("warn", errText(e)); }
+  const wk = iso => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+  document.getElementById("bd-count").innerHTML = `${d.rows.length} people, next birthday first.` +
+    (d.missing ? ` <b>${d.missing}</b> still have no date of birth on their file - add it (as per passport) under Identity to include them.` : "");
+  document.getElementById("bd-body").innerHTML = d.rows.map(r => `<tr${r.days === 0 ? ' style="background:#FFF6F3;"' : ""}>
+    <td><b>${wk(r.next)}</b></td>
+    <td>${r.days === 0 ? '<span class="pill r">&#127874; Today</span>' : r.days === 1 ? '<span class="pill y">Tomorrow</span>' : r.days <= 7 ? `<span class="pill y">${r.days} days</span>` : `${r.days} days`}</td>
+    <td>${esc(r.emp_no)}</td><td>${esc(r.name)}</td><td>${esc(r.group_label)}</td><td>${esc(r.role)}</td><td>${dmy(r.dob)}</td><td class="num">${r.turns}</td>
+    <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','')">Open</button></td></tr>`).join("")
+    || `<tr><td colspan="9" class="muted">No dates of birth on file yet.</td></tr>`;
+}
 function setLeaveGroup(g) { P.leaveGroup = g; segSet(document.getElementById("lv-group"), g); loadLeave(); }
 async function loadLeave() {
   let rows = [];
@@ -885,6 +915,7 @@ function reportUrl(kind) {
   if (kind === "file") return `/export/people/file?emp_no=${encodeURIComponent(P.current)}`;
   if (kind === "documents-due") return `/export/people/documents-due?days=${P.dueDays}&group=${P.dueGroup}`;
   if (kind === "leave") return `/export/people/leave?group=${P.leaveGroup}`;
+  if (kind === "birthdays") return `/export/people/birthdays?group=${P.bdGroup || ""}`;
 }
 async function preview(kind) { const u = reportUrl(kind); window.open(`${API}${u.replace("?", "/view?")}&token=${await dl()}`, "_blank"); }
 async function download(kind, format) { const u = reportUrl(kind); window.open(`${API}${u}&token=${await dl()}&format=${format}`, "_blank"); }
