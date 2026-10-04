@@ -271,7 +271,7 @@ STORE_LABELS = {
     "days_late": "Days late", "outstanding": "Still to come",
     "total_salary": "Salary (AED)", "pay_type": "Paid", "company": "Company",
     "joined": "Joined", "worker_name": "Name",
-    "net_transfer": "Net transfer (AED)", "moved_in": "Moved in", "moved_out": "Moved out",
+    "net_transfer": "Net transfer (AED)", "rate_from": "Rate from", "moved_in": "Moved in", "moved_out": "Moved out",
     "material": "Material", "qty_requested": "Asked for",
     "qty_approved": "Approved", "qty_received": "Received",
     "purpose": "What for",

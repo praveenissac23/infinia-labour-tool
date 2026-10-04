@@ -1216,7 +1216,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="91dab8c0dfb9";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="09083b0838dd";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -10313,6 +10313,8 @@ async function loadStore() {
       lowN ? [`${num(lowN)} low on stock`, "#C0392B"] : null,
       odN ? [`${num(odN)} overdue`, "#C0392B"] : null,
       d.total_value !== undefined ? [`AED ${money(d.total_value)} total`, "#2E7D32"] : null,
+      d.estimated ? [`${num(d.estimated)} at estimated price`, "#B26A00"] : null,
+      d.unpriced ? [`${num(d.unpriced)} with no price`, "#999"] : null,
     ]);
     // The stock report knows where every unit sits, but squeezing that
     // into one cell made it unreadable. Hide it from the columns and
@@ -10321,7 +10323,7 @@ async function loadStore() {
     const blank = v => v === "" || v === null || v === undefined || v === "-";
     // A column with nothing in it on any row is left off, not shown as dashes.
     const keys = orderColumns(view, Object.keys(d.rows[0])
-      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site"))
+      .filter(k => k !== "low" && k !== "overdue" && k !== "rate_from" && !(expandable && k === "by_site"))
       .filter(k => d.rows.some(r => !blank(r[k]))));
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const WIDE = ["name", "notes", "description", "hired_from", "condition", "supplier", "material"];
@@ -10331,7 +10333,7 @@ async function loadStore() {
       KIND[k] = vals.length && vals.every(v => typeof v === "number") ? "n"
               : vals.length && vals.every(isDate) ? "k"
               : ["code", "unit", "reference", "item_type", "site"].includes(k) ? "k"
-              : ["type", "from", "to", "given_to", "incharge", "returned_by"].includes(k) ? "kl" : "l";
+              : ["type", "from", "to", "given_to", "incharge", "returned_by", "rate_from"].includes(k) ? "kl" : "l";
     });
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
@@ -10339,7 +10341,7 @@ async function loadStore() {
                    written_off: "Written off", qty: "Qty", name: "Material", code: "Code",
                    given_to: "Given to", incharge: "Given to", date: "Date", from: "From",
                    to: "To", reference: "Ref", notes: "Remarks", since: "Out since",
-                   rate: "Rate (AED)", amount: "Amount (AED)", type: "Type",
+                   rate: "Rate (AED)", amount: "Amount (AED)", type: "Type", rate_from: "Rate from",
                    issued_from_store: "Issued from store (AED)", delivered_direct: "Delivered direct (AED)",
                    received_from_sites: "From other sites (AED)", sent_to_sites: "Sent to other sites (AED)",
                    net_cost: "Net cost (AED)", lines: "Lines", net_transfer: "Net transfer (AED)",
@@ -10367,7 +10369,9 @@ async function loadStore() {
         } else if (typeof v === "number") {
           const isMoney = ["value", "est_cost", "rate", "amount"].includes(k) || (d.money_cols || []).includes(k);
           v = isMoney ? money(v) : num(v);
-          if (k === "net_transfer" && r[k]) v = `<b style="color:${r[k] > 0 ? "#1E7B34" : "#B7322A"};">${r[k] > 0 ? "+" : ""}${v}</b>`;
+          // An estimated rate is marked where it stands, not in a column of its own.
+          if (k === "rate" && r.rate_from === "Estimate") v = `<span style="color:#B26A00; font-size:10.5px; font-weight:700; margin-right:5px;" title="Market estimate - no LPO price on record">EST.</span>${v}`;
+                    if (k === "net_transfer" && r[k]) v = `<b style="color:${r[k] > 0 ? "#1E7B34" : "#B7322A"};">${r[k] > 0 ? "+" : ""}${v}</b>`;
           if (r[k] === 0 && !isMoney) v = '<span class="zero">0</span>';
         } else if (isDate(v)) {
           v = accDmy(v);

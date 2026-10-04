@@ -495,6 +495,12 @@ class StoreItem(Base):
     rental_period = Column(String, default="day")     # day | week | month
     rental_start = Column(Date, nullable=True)
     rental_due = Column(Date, nullable=True)
+    # A rough market price for a material never bought through an LPO,
+    # so what went to a site can still be costed. Shown as an estimate;
+    # any real LPO or receipt price always wins over it.
+    est_price = Column(Float, default=0.0)
+    est_source = Column(String, default="")
+    est_on = Column(Date, nullable=True)
     notes = Column(Text, default="")
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

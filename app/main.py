@@ -5201,8 +5201,14 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                 r["notes"] = ((r["notes"] + " / ") if r["notes"] else "") \
                     + f"{back} {i_unit(r)} returned to the store"
             rate = r.get("_cost") or price(r["_item"], r["_on"])
+            basis = "LPO" if rate else ""
+            if not rate:
+                it = items.get(r["_item"])
+                if it is not None and (getattr(it, "est_price", 0) or 0) > 0:
+                    rate, basis = float(it.est_price), "Estimate"
             r["type"] = MOVE_TYPES[r["_type"]]
             r["rate"] = round(rate, 2) if rate else None
+            r["rate_from"] = basis
             r["amount"] = round(rate * r["qty"], 2) if rate else None
             r["_t"] = r["_type"]
             for k in ("_id", "_item", "_qty", "_on", "_type", "_cost"):
@@ -5218,7 +5224,11 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows.sort(key=lambda r: (r["date"], r["to"], r["code"]), reverse=True)
         _drop_empty(rows, "reference", "notes")
         # Column order: what, how much, where, what it cost.
-        order = ["date", "type", "code", "name", "unit", "qty", "from", "to", "given_to", "rate", "amount", "reference", "notes"]
+        estimated = sum(1 for r in rows if r.get("rate_from") == "Estimate")
+        if not estimated:
+            for r in rows:
+                r.pop("rate_from", None)      # all real prices: no need to say so
+        order = ["date", "type", "code", "name", "unit", "qty", "from", "to", "given_to", "rate", "rate_from", "amount", "reference", "notes"]
         rows = [{k: r[k] for k in order if k in r} for r in rows]
         priced = [r for r in rows if r.get("amount")]
         title = "Materials issued and moved" + (f" - {_place_label(site)}" if site else "")
@@ -5228,7 +5238,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                 r.pop("rate", None); r.pop("amount", None)
             return {"title": title, "rows": rows, "unpriced": len(rows), "money_cols": [], "total_cols": []}
         return {"title": title, "rows": rows, "total_value": round(sum(r["amount"] for r in priced), 2),
-                "unpriced": len(rows) - len(priced),
+                "unpriced": len(rows) - len(priced), "estimated": estimated,
                 "money_cols": ["rate", "amount"], "total_cols": ["amount"]}
 
     if kind == "site_cost":
@@ -5237,6 +5247,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # site - less what it passed on to another site. Built from the
         # same lines as the consumption report, so the two always agree.
         lines = store_report(kind="usage", date_from=date_from, date_to=date_to, db=db, user=None)["rows"]
+        estimated = sum(1 for r in lines if r.get("rate_from") == "Estimate")
         agg = {}
         def at(place):
             return agg.setdefault(place, {"site": place, "issued_from_store": 0.0, "delivered_direct": 0.0,
@@ -5269,6 +5280,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows.sort(key=lambda r: r["site"])
         money = ["issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_cost"]
         return {"title": "Material cost by site", "rows": rows, "total_value": round(sum(r["net_cost"] for r in rows), 2),
+                "estimated": estimated,
                 "money_cols": money, "total_cols": money + ["lines", "lines_without_price"]}
 
     if kind == "transfers":
@@ -5277,6 +5289,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # accounts can move the cost from one job to the other. The lines
         # are the consumption report's "Moved between sites" lines.
         lines = store_report(kind="usage", date_from=date_from, date_to=date_to, move="transfer", db=db, user=None)["rows"]
+        estimated = sum(1 for r in lines if r.get("rate_from") == "Estimate")
         agg = {}
         def at(place):
             return agg.setdefault(place, {"site": place, "received_from_sites": 0.0,
@@ -5303,7 +5316,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                 r.pop("lines_without_price")
         money = ["received_from_sites", "sent_to_sites", "net_transfer"]
         unpriced = sum(1 for r in lines if not r.get("amount"))
-        return {"title": "Site transfers", "rows": rows, "unpriced": unpriced,
+        return {"title": "Site transfers", "rows": rows, "unpriced": unpriced, "estimated": estimated,
                 "money_cols": money, "total_cols": money}
 
     if kind == "issues":
@@ -7871,6 +7884,8 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         sub = f"{sub} · {MOVE_TYPES[move]}"
     if data.get("unpriced"):
         sub = f"{sub} · {data['unpriced']} line(s) with no purchase price on record"
+    if data.get("estimated"):
+        sub = f"{sub} · {data['estimated']} line(s) priced at a market estimate"
     return _preview_page(title, sub, rows, url, url, money_cols=data.get("money_cols"), total_cols=data.get("total_cols"))
 
 
@@ -8162,6 +8177,8 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         sub = f"{sub} · {MOVE_TYPES[move]}"
     if data.get("unpriced"):
         sub = f"{sub} · {data['unpriced']} line(s) with no purchase price on record"
+    if data.get("estimated"):
+        sub = f"{sub} · {data['estimated']} line(s) priced at a market estimate"
     data = {**data, "rows": rows}
     cols_kw = {k: data[k] for k in ("money_cols", "total_cols") if data.get(k)}
     if format == "pdf":

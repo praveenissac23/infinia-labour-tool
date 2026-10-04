@@ -1,0 +1,776 @@
+[
+ {
+  "code": "ITM3242",
+  "name": "Adhesive Tape - Grey",
+  "unit": "pcs",
+  "price": 4.07,
+  "confidence": "medium",
+  "source": "[medium] supplyvan.com - Asmaco grey duct tape 48mm x 30yd, carton of 24 AED 102.50 incl VAT",
+  "qty_moved": 24.0
+ },
+ {
+  "code": "ITM3241",
+  "name": "Adhesive Tape - White",
+  "unit": "pcs",
+  "price": 3.75,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Ranger white masking tape 2in x 20yd",
+  "qty_moved": 27.0
+ },
+ {
+  "code": "ITM3413",
+  "name": "Adjustable Base Jack",
+  "unit": "pcs",
+  "price": 30.0,
+  "confidence": "medium",
+  "source": "[medium] fyind.com UAE guide AED 20-45 per scaffold base jack (mid-point)",
+  "qty_moved": 47.0
+ },
+ {
+  "code": "ITM3414",
+  "name": "Adjustable Prop (Jackey)",
+  "unit": "pcs",
+  "price": 95.0,
+  "confidence": "low",
+  "source": "[low] fyind.com UAE guide AED 60-150 per steel telescopic prop, 3-4m",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3426",
+  "name": "Aluminium Scaffolding Ladder",
+  "unit": "set",
+  "price": 2004.0,
+  "confidence": "low",
+  "source": "[low] supplyvan.com - aluminium scaffold tower 2.17m working height AED 2,104 incl VAT",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3425",
+  "name": "Aluminum Ladder",
+  "unit": "pcs",
+  "price": 220.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Topman 1.8m 6-step aluminium A-type ladder",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM3442",
+  "name": "Aluminum Plastering Trowel (Theappupalaka)",
+  "unit": "pcs",
+  "price": 25.0,
+  "confidence": "low",
+  "source": "[low] estimate - aluminium plastering float (fepy.com steel trowel 280x130mm AED 15.75)",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM3384",
+  "name": "Binding Wire (MS Wire)",
+  "unit": "roll",
+  "price": 110.0,
+  "confidence": "low",
+  "source": "[low] fepy.com GI binding wire 10kg AED 75; 20kg roll assumed at ~AED 5.5/kg",
+  "qty_moved": 7.0
+ },
+ {
+  "code": "ITM3438",
+  "name": "Brick Levelling Scale 20cm (Brick Tape)",
+  "unit": "pcs",
+  "price": 14.0,
+  "confidence": "low",
+  "source": "[low] estimate - small aluminium level/scale (fepy.com 40cm level AED 19.63)",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3311",
+  "name": "Brick Levelling Scale 30cm (Brick Tape)",
+  "unit": "pcs",
+  "price": 17.0,
+  "confidence": "low",
+  "source": "[low] estimate - small aluminium level/scale (fepy.com 40cm level AED 19.63)",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3394",
+  "name": "Broom",
+  "unit": "pcs",
+  "price": 16.19,
+  "confidence": "medium",
+  "source": "[medium] moglix.ae - 6-row hard broom with handle AED 17 incl VAT",
+  "qty_moved": 10.0
+ },
+ {
+  "code": "ITM3336",
+  "name": "Chisel",
+  "unit": "pcs",
+  "price": 12.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - 10in pointed cold chisel",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3368",
+  "name": "Cotton Hand Gloves",
+  "unit": "set",
+  "price": 0.79,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - cotton knitted gloves, 12 pairs AED 9.45 (1 set = 1 pair)",
+  "qty_moved": 34.0
+ },
+ {
+  "code": "ITM3322",
+  "name": "Dewalt Drilling Machine (D25133)",
+  "unit": "pcs",
+  "price": 1190.48,
+  "confidence": "high",
+  "source": "[high] moglix.ae - Dewalt D25133-B5 800W SDS-plus hammer AED 1,250 incl VAT",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM1223",
+  "name": "Electric Vibrator",
+  "unit": "pcs",
+  "price": 1500.0,
+  "confidence": "low",
+  "source": "[low] hkm.ae UAE guide - electric concrete vibrator ~AED 1,600",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM3432",
+  "name": "Electric Vibrator Needle",
+  "unit": "pcs",
+  "price": 457.14,
+  "confidence": "medium",
+  "source": "[medium] supplyvan.com - Aqson 38mm vibrator poker AED 480 incl VAT",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3377",
+  "name": "Fiber Glass Joint Tape",
+  "unit": "pcs",
+  "price": 20.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Knauf fibreglass joint tape 50mm x 90m",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM2832",
+  "name": "Fire Extinguisher",
+  "unit": "pcs",
+  "price": 120.0,
+  "confidence": "high",
+  "source": "[high] firesupplies.ae - FireGuard 6kg dry powder AED 126 incl VAT",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3433",
+  "name": "Generator 30 KVA",
+  "unit": "pcs",
+  "price": 30000.0,
+  "confidence": "low",
+  "source": "[low] fyind.com UAE guide - silent diesel generators 20-125 kVA AED 15k-80k; 30 kVA assumed",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3253",
+  "name": "Gun Bit Yellow - 6.8*11mm",
+  "unit": "set",
+  "price": 40.0,
+  "confidence": "low",
+  "source": "[low] estimate - 6.8/11 yellow nail-gun cartridges, box of 100 (Hilti from AED 171)",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3400",
+  "name": "Hack Saw Frame",
+  "unit": "pcs",
+  "price": 13.5,
+  "confidence": "high",
+  "source": "[high] fepy.com - Total 12in hacksaw frame",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM2413",
+  "name": "Hammer",
+  "unit": "pcs",
+  "price": 15.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - 500g fibreglass claw hammer",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3429",
+  "name": "Hand Cutter",
+  "unit": "pcs",
+  "price": 301.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Makita 9553HNG 4in angle grinder (assumed)",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM3445",
+  "name": "Hand Cutter (DWE5615)",
+  "unit": "pcs",
+  "price": 634.0,
+  "confidence": "medium",
+  "source": "[medium] saco.sa - Dewalt DWE5615 184mm circular saw SAR 745 incl VAT, in AED",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3313",
+  "name": "Karandy",
+  "unit": "pcs",
+  "price": 13.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Total 6in bricklaying trowel",
+  "qty_moved": 14.0
+ },
+ {
+  "code": "ITM3335",
+  "name": "Knipex End Cutting Player",
+  "unit": "pcs",
+  "price": 70.0,
+  "confidence": "medium",
+  "source": "[medium] knipex-shop.me / nabiltools.com - Knipex 68 01 end cutter, 200mm est.",
+  "qty_moved": 6.0
+ },
+ {
+  "code": "ITM3415",
+  "name": "Ledger 0.30M",
+  "unit": "pcs",
+  "price": 6.0,
+  "confidence": "low",
+  "source": "[low] weight x AED 4/kg (sinopro.ae cuplock AED 3,500/t; affixksa.com weights)",
+  "qty_moved": 16.0
+ },
+ {
+  "code": "ITM3409",
+  "name": "Ledger 0.6 M",
+  "unit": "pcs",
+  "price": 9.4,
+  "confidence": "low",
+  "source": "[low] 0.6m ledger 2.35kg x AED 4/kg (sinopro.ae / affixksa.com)",
+  "qty_moved": 11.0
+ },
+ {
+  "code": "ITM3410",
+  "name": "Ledger 1.3 M",
+  "unit": "pcs",
+  "price": 20.2,
+  "confidence": "low",
+  "source": "[low] 1.3m ledger 5.05kg x AED 4/kg (sinopro.ae / affixksa.com)",
+  "qty_moved": 20.0
+ },
+ {
+  "code": "ITM3407",
+  "name": "Ledger 1.6 M",
+  "unit": "pcs",
+  "price": 24.2,
+  "confidence": "low",
+  "source": "[low] 1.6m ledger 6.05kg x AED 4/kg (sinopro.ae / affixksa.com)",
+  "qty_moved": 97.0
+ },
+ {
+  "code": "ITM3408",
+  "name": "Ledger 1.8 M",
+  "unit": "pcs",
+  "price": 27.2,
+  "confidence": "low",
+  "source": "[low] 1.8m ledger 6.8kg x AED 4/kg (sinopro.ae / affixksa.com)",
+  "qty_moved": 198.0
+ },
+ {
+  "code": "ITM3411",
+  "name": "Ledger 2.5 M",
+  "unit": "pcs",
+  "price": 33.2,
+  "confidence": "low",
+  "source": "[low] 2.5m ledger 8.3kg x AED 4/kg (sinopro.ae / affixksa.com)",
+  "qty_moved": 45.0
+ },
+ {
+  "code": "ITM3345",
+  "name": "Magnet",
+  "unit": "pcs",
+  "price": 37.33,
+  "confidence": "low",
+  "source": "[low] fepy.com - SATA magnetic pick-up tool (assumed)",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3378",
+  "name": "Measuring Tape 5mtr",
+  "unit": "pcs",
+  "price": 37.5,
+  "confidence": "high",
+  "source": "[high] fepy.com - Stanley PowerLock 5m tape",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3343",
+  "name": "Nail Bar",
+  "unit": "pcs",
+  "price": 33.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Total 24in wrecking / nail bar",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3430",
+  "name": "Nose Spanner",
+  "unit": "pcs",
+  "price": 17.0,
+  "confidence": "low",
+  "source": "[low] fepy.com - 8in long-nose plier (assumed)",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3447",
+  "name": "Office Table",
+  "unit": "pcs",
+  "price": 383.0,
+  "confidence": "medium",
+  "source": "[medium] officestationery.ae - MHM melamine table 120x75cm AED 402.15 incl VAT",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM721",
+  "name": "Paint Roller 4",
+  "unit": "pcs",
+  "price": 5.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - 4in paint roller with handle",
+  "qty_moved": 9.0
+ },
+ {
+  "code": "ITM3349",
+  "name": "Paint Roller 9",
+  "unit": "pcs",
+  "price": 12.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - 9in paint roller with handle",
+  "qty_moved": 6.0
+ },
+ {
+  "code": "ITM3350",
+  "name": "Paint Roller 9 Refill",
+  "unit": "pcs",
+  "price": 5.85,
+  "confidence": "high",
+  "source": "[high] fepy.com - Emerald 9in roller refill",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM1221",
+  "name": "Petrol Vibrator",
+  "unit": "pcs",
+  "price": 1200.0,
+  "confidence": "medium",
+  "source": "[medium] goldentools.ae - concrete vibrator drive unit, Honda GX160 petrol",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM1222",
+  "name": "Petrol Vibrator Needle",
+  "unit": "pcs",
+  "price": 457.14,
+  "confidence": "medium",
+  "source": "[medium] supplyvan.com - Aqson 38mm vibrator poker AED 480 incl VAT",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3310",
+  "name": "Plum Bob",
+  "unit": "pcs",
+  "price": 10.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - 400g plumb bob",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3361",
+  "name": "Poly Propylene String Wound Filter Cartridge",
+  "unit": "pcs",
+  "price": 23.81,
+  "confidence": "high",
+  "source": "[high] dubaifilter.com - 10in PP string-wound cartridge AED 25 incl VAT",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM323",
+  "name": "Polythene Sheet - 1000G (3.66 X 10 MTR) 5KG/roll",
+  "unit": "roll",
+  "price": 35.81,
+  "confidence": "high",
+  "source": "[high] nqcart.ae - 1000G polythene roll 3.6x10m AED 37.60 incl VAT",
+  "qty_moved": 13.0
+ },
+ {
+  "code": "ITM3406",
+  "name": "Polythene Sheet 1000 Gauge",
+  "unit": "pcs",
+  "price": 35.81,
+  "confidence": "medium",
+  "source": "[medium] nqcart.ae - 1000G polythene roll 3.6x10m (1 pcs = 1 roll assumed)",
+  "qty_moved": 10.0
+ },
+ {
+  "code": "ITM3347",
+  "name": "Putty Blade",
+  "unit": "pcs",
+  "price": 6.12,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - 2in stainless putty knife",
+  "qty_moved": 10.0
+ },
+ {
+  "code": "ITM3367",
+  "name": "Rubber Hand Gloves",
+  "unit": "set",
+  "price": 3.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - latex rubber work gloves (1 set = 1 pair)",
+  "qty_moved": 19.0
+ },
+ {
+  "code": "ITM3059",
+  "name": "Safety Belt",
+  "unit": "pcs",
+  "price": 100.53,
+  "confidence": "high",
+  "source": "[high] fepy.com - full-body harness, double lanyard with shock absorber",
+  "qty_moved": 6.0
+ },
+ {
+  "code": "ITM3303",
+  "name": "Safety Eye Wear Glass",
+  "unit": "pcs",
+  "price": 3.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Vaultex clear safety glasses",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3305",
+  "name": "Safety Vest",
+  "unit": "pcs",
+  "price": 8.12,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - reflective safety vest",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3421",
+  "name": "Scaffolding Tube 0.60mtr",
+  "unit": "pcs",
+  "price": 8.4,
+  "confidence": "low",
+  "source": "[low] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 0.6m",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3419",
+  "name": "Scaffolding Tube 2.5mtr",
+  "unit": "pcs",
+  "price": 35.0,
+  "confidence": "medium",
+  "source": "[medium] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 2.5m",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3420",
+  "name": "Scaffolding Tube 2mtr",
+  "unit": "pcs",
+  "price": 28.0,
+  "confidence": "medium",
+  "source": "[medium] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 2m",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3418",
+  "name": "Scaffolding Tube 3mtr",
+  "unit": "pcs",
+  "price": 42.0,
+  "confidence": "medium",
+  "source": "[medium] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 3m",
+  "qty_moved": 20.0
+ },
+ {
+  "code": "ITM3422",
+  "name": "Scaffolding Tube 4mtr",
+  "unit": "pcs",
+  "price": 56.0,
+  "confidence": "medium",
+  "source": "[medium] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 4m",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3423",
+  "name": "Scaffolding Tube 6.10mtr",
+  "unit": "pcs",
+  "price": 85.4,
+  "confidence": "medium",
+  "source": "[medium] galv. 48.3mm tube AED 14/m (sinopro.ae 6m AED 80) x 6.1m",
+  "qty_moved": 7.0
+ },
+ {
+  "code": "ITM3437",
+  "name": "Screw Drill Machine + 2Battery (Screw Tighter)",
+  "unit": "pcs",
+  "price": 713.5,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Dewalt DCD776S2 18V drill driver, 2 batteries",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM2497",
+  "name": "Screw Driver",
+  "unit": "pcs",
+  "price": 16.9,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - Stanley PH2x150mm screwdriver",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3396",
+  "name": "Shovel",
+  "unit": "pcs",
+  "price": 22.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - HD pointed site shovel",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3441",
+  "name": "Shovel (panji)",
+  "unit": "pcs",
+  "price": 35.91,
+  "confidence": "high",
+  "source": "[high] fepy.com - HD flat shovel 120cm wooden handle",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM1240",
+  "name": "Spigot Connector (Standard Connector)",
+  "unit": "pcs",
+  "price": 5.5,
+  "confidence": "medium",
+  "source": "[medium] sinopro.ae - cuplock spigot pin 38mm x 300mm with bolt",
+  "qty_moved": 49.0
+ },
+ {
+  "code": "ITM2419",
+  "name": "Spirit Level - 60CM",
+  "unit": "pcs",
+  "price": 15.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - Total TMT26036 60cm spirit level",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3309",
+  "name": "Spirit Level 30cm",
+  "unit": "pcs",
+  "price": 15.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - 30cm spirit level",
+  "qty_moved": 7.0
+ },
+ {
+  "code": "ITM3379",
+  "name": "Stand Fan",
+  "unit": "pcs",
+  "price": 160.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - IEKO 24in pedestal fan",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3031",
+  "name": "Standard 1.00M",
+  "unit": "pcs",
+  "price": 17.15,
+  "confidence": "medium",
+  "source": "[medium] 1.0m standard 4.9kg x AED 3.5/kg (sinopro.ae cuplock AED 3,500/t)",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3412",
+  "name": "Standard 1.60 M",
+  "unit": "pcs",
+  "price": 26.9,
+  "confidence": "low",
+  "source": "[low] 1.6m standard ~7.7kg x AED 3.5/kg (sinopro.ae)",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3035",
+  "name": "Standard 2.00M",
+  "unit": "pcs",
+  "price": 34.3,
+  "confidence": "medium",
+  "source": "[medium] 2.0m standard 9.8kg x AED 3.5/kg (sinopro.ae)",
+  "qty_moved": 14.0
+ },
+ {
+  "code": "ITM3038",
+  "name": "Standard 3.00M",
+  "unit": "pcs",
+  "price": 50.05,
+  "confidence": "medium",
+  "source": "[medium] 3.0m standard 14.3kg x AED 3.5/kg (sinopro.ae); Dubai retail AED 180",
+  "qty_moved": 70.0
+ },
+ {
+  "code": "ITM3334",
+  "name": "Stanley Aluminum Cutting Player",
+  "unit": "pcs",
+  "price": 40.0,
+  "confidence": "high",
+  "source": "[high] luluhypermarket.com - Stanley 250mm aviation snips AED 42 incl VAT",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3280",
+  "name": "Steal Cutting Blade (DEWALT Big)",
+  "unit": "pcs",
+  "price": 25.0,
+  "confidence": "low",
+  "source": "[low] estimate - DeWalt 355mm metal cut-off wheel DWA8011",
+  "qty_moved": 3.0
+ },
+ {
+  "code": "ITM3444",
+  "name": "Steel Bar Bending Machine",
+  "unit": "pcs",
+  "price": 32.5,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - 16mm manual bar bending key (electric GW40 ~AED 4-7k)",
+  "qty_moved": 5.0
+ },
+ {
+  "code": "ITM3381",
+  "name": "Steel Muzhakkolu 4.5 Mtr",
+  "unit": "pcs",
+  "price": 60.0,
+  "confidence": "low",
+  "source": "[low] estimate - 4.5m straight-edge rule (indiamart.com + UAE markup)",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM1829",
+  "name": "Swivel Clamp",
+  "unit": "pcs",
+  "price": 17.14,
+  "confidence": "medium",
+  "source": "[medium] greensouq.ae - scaffold swivel coupler AED 18 incl VAT",
+  "qty_moved": 39.0
+ },
+ {
+  "code": "ITM3431",
+  "name": "Tai Rod 1mtr",
+  "unit": "pcs",
+  "price": 12.85,
+  "confidence": "medium",
+  "source": "[medium] sinopro.ae - formwork tie rod USD 3.50/m",
+  "qty_moved": 160.0
+ },
+ {
+  "code": "ITM3340",
+  "name": "Tile Fixing Hammer",
+  "unit": "pcs",
+  "price": 18.1,
+  "confidence": "medium",
+  "source": "[medium] aceuae.com - rubber mallet 453g AED 19 incl VAT",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3395",
+  "name": "Traffic Safety Cone",
+  "unit": "pcs",
+  "price": 18.0,
+  "confidence": "high",
+  "source": "[high] bluerhine.store - 75cm traffic cone AED 18.90 incl VAT",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM3428",
+  "name": "Trolley (Materials Shifting)",
+  "unit": "pcs",
+  "price": 188.5,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - welded construction wheelbarrow",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3427",
+  "name": "Trolley Wheel",
+  "unit": "pcs",
+  "price": 24.0,
+  "confidence": "medium",
+  "source": "[medium] fepy.com - pneumatic wheelbarrow tyre",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM2234",
+  "name": "Vacuum Cleaner",
+  "unit": "pcs",
+  "price": 380.0,
+  "confidence": "medium",
+  "source": "[medium] vtoolsme.com - VTools 30L 1400W wet & dry vacuum AED 399",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3424",
+  "name": "Vacuum Cleaner Small",
+  "unit": "pcs",
+  "price": 313.33,
+  "confidence": "medium",
+  "source": "[medium] vtoolsme.com - VTools 15L 1200W wet & dry vacuum AED 329",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3255",
+  "name": "Warning Tape",
+  "unit": "roll",
+  "price": 20.0,
+  "confidence": "high",
+  "source": "[high] alliancegroupuae.com - warning tape 3in x 500yd",
+  "qty_moved": 7.0
+ },
+ {
+  "code": "ITM1863",
+  "name": "Water Level Hose",
+  "unit": "pcs",
+  "price": 7.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - clear PVC level hose 1/4in x 15yd",
+  "qty_moved": 2.0
+ },
+ {
+  "code": "ITM2400",
+  "name": "Wire Brush",
+  "unit": "pcs",
+  "price": 5.0,
+  "confidence": "high",
+  "source": "[high] fepy.com - steel wire hand brush, wooden handle",
+  "qty_moved": 1.0
+ },
+ {
+  "code": "ITM3314",
+  "name": "Wooden Plastering Trowel (Theappupalaka)",
+  "unit": "pcs",
+  "price": 12.0,
+  "confidence": "low",
+  "source": "[low] estimate - wooden plastering float",
+  "qty_moved": 4.0
+ },
+ {
+  "code": "ITM3389",
+  "name": "Yellow Bucket",
+  "unit": "pcs",
+  "price": 11.18,
+  "confidence": "high",
+  "source": "[high] fepy.com - yellow heavy-duty bucket 14L",
+  "qty_moved": 14.0
+ }
+]
