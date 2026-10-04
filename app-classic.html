@@ -323,6 +323,13 @@
   .pp-stat small { display: block; font-size: 11px; color: #8A8178; margin-top: 1px; }
   .pp-stat .ppbar { width: 100%; height: 7px; margin-top: 6px; }
   .pp-stat.g b { color: #1E7B34; } .pp-stat.r b { color: #B7322A; }
+  /* Store reports: words read from the left, figures line up on the right,
+     dates and codes never break over two lines. */
+  .rep-table th.l, .rep-table td.l { text-align: left; }
+  .rep-table th.n, .rep-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rep-table th.k, .rep-table td.k { white-space: nowrap; }
+  .rep-table th.kl, .rep-table td.kl { white-space: nowrap; text-align: left; }
+  .rep-table td.w { min-width: 150px; }
   .pp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .pp-table th { background: #22262A; color: #fff; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
   .pp-table th.l { text-align: left; } .pp-table th.n { text-align: right; }
@@ -3124,6 +3131,7 @@
                   <input type="text" id="store-report-search" placeholder="Search within this report"
                          style="width:200px;" oninput="filterStoreReport()">
                   <select id="store-site-filter" onchange="loadStore()" style="display:none; width:160px;"></select>
+                  <select id="store-move-filter" onchange="loadStore()" style="display:none; width:180px;"><option value="">All movements</option><option value="out">Issued from store</option><option value="transfer">Moved between sites</option><option value="direct">Delivered direct</option></select>
                   <span id="store-range-wrap">
                     <label>From</label><input type="date" id="store-date-from" onchange="loadStore()">
                     <label>To</label><input type="date" id="store-date-to" onchange="loadStore()">
@@ -3133,7 +3141,7 @@
                 <div id="store-report-stats" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
               </div>
               <div class="grid-wrap" style="margin:0; border:none; border-radius:0;">
-                <table><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
+                <table class="rep-table"><thead><tr id="store-head"></tr></thead><tbody id="store-body"></tbody></table>
               </div>
               <div id="store-report-foot" style="padding:10px 22px; border-top:1px solid #eee;
                    font-size:12px; color:#888; background:#FAFAFA;"></div>
@@ -6818,7 +6826,11 @@ function storeGo(which) {
     updateReportBadges();
     // Current stock is what people come here for; showing it straight
     // away saves a click and makes the screen useful on arrival.
-    pickReport(STORE_REPORT_WANT || "stock", true);
+    // The report the lit sub-tab stands for wins over Current stock - the
+    // store screen opens this panel a second time once its lists are in,
+    // and a refresh on Consumption used to land on Current stock.
+    const fromTab = (typeof PG_SUB !== "undefined" && PG_SUB && /pgStoreReport\('(\w+)'\)/.exec(PG_SUB.go || "") || [])[1];
+    pickReport(STORE_REPORT_WANT || fromTab || "stock", true);
     STORE_REPORT_WANT = "";
   }
   if (which === "other") setMvKind(null);
@@ -9848,6 +9860,15 @@ async function downloadRequestPdf(id) {
   window.open(`${API}/export/store/request/${id}/view?token=${encodeURIComponent(cachedDownloadToken)}`, "_blank");
 }
 
+// The site and movement boxes, for the reports that take them.
+function storeFilterQs(view) {
+  let qs = "";
+  const site = (document.getElementById("store-site-filter") || {}).value || "";
+  const move = (document.getElementById("store-move-filter") || {}).value || "";
+  if (site && ["usage", "site_cost", "transfers"].includes(view)) qs += `&site=${encodeURIComponent(site)}`;
+  if (move && view === "usage") qs += `&move=${encodeURIComponent(move)}`;
+  return qs;
+}
 async function exportStore(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
   const view = document.getElementById("store-view").value;
@@ -9858,6 +9879,7 @@ async function exportStore(fmt) {
           + (fmt === "view" ? "" : `&format=${fmt}`);
   if (from) url += `&date_from=${from}`;
   if (to) url += `&date_to=${to}`;
+  url += storeFilterQs(view);
   // The download is the screen: whatever the search box has narrowed
   // it to is what goes on paper.
   const q = ((document.getElementById("store-report-search") || {}).value || "").trim();
@@ -9893,7 +9915,7 @@ function pickReport(kind, noScroll) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["usage", "lost", "issues"].includes(kind);
+  const needsDates = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
@@ -9904,10 +9926,12 @@ function pickReport(kind, noScroll) {
   // "At Sites" can be narrowed to a single site - the question a site
   // engineer actually asks is "what does MY site hold".
   const sf = document.getElementById("store-site-filter");
-  sf.style.display = kind === "by_site" ? "" : "none";
-  if (kind === "by_site")
-    sf.innerHTML = '<option value="">All sites together</option>' +
-      (sites || []).map(s => `<option value="${s.code}">Only site ${s.code}</option>`).join("");
+  sf.style.display = ["by_site", "usage", "site_cost", "transfers"].includes(kind) ? "" : "none";
+  if (["by_site", "usage", "site_cost", "transfers"].includes(kind))
+    sf.innerHTML = `<option value="">${kind === "by_site" ? "All sites together" : "All sites"}</option>` +
+      (sites || []).map(s => `<option value="${s.code}">${kind === "by_site" ? "Only site " : "Site "}${s.code}</option>`).join("");
+  const mf = document.getElementById("store-move-filter");
+  mf.style.display = kind === "usage" ? "" : "none"; mf.value = "";
   loadStore();
   // Scrolling on arrival would yank the picker off screen before the
   // keeper has seen it; only scroll when they actively choose a report.
@@ -10032,6 +10056,7 @@ async function loadStore() {
     let url = `/store/report?kind=${view}`;
     if (from) url += `&date_from=${from}`;
     if (to) url += `&date_to=${to}`;
+    url += storeFilterQs(view);
     let d;
     const siteOnly = view === "by_site" ? (document.getElementById("store-site-filter").value || "") : "";
     if (siteOnly) {
@@ -10077,7 +10102,7 @@ async function loadStore() {
     const odN = d.rows.filter(r => r.overdue).length;
     const withStock = ("total" in d.rows[0]) ? d.rows.filter(r => (r.total || 0) > 0).length : null;
     setStoreStats([
-      [`${num(d.rows.length)} ${view.startsWith("mr") ? "requests" : "materials"}`, "#777"],
+      [`${num(d.rows.length)} ${view.startsWith("mr") ? "requests" : ["site_cost", "transfers"].includes(view) ? (d.rows.length === 1 ? "site" : "sites") : view === "usage" ? "lines" : "materials"}`, "#777"],
       withStock !== null ? [`${num(withStock)} with stock`, "#2E7D32"] : null,
       lowN ? [`${num(lowN)} low on stock`, "#C0392B"] : null,
       odN ? [`${num(odN)} overdue`, "#C0392B"] : null,
@@ -10087,20 +10112,38 @@ async function loadStore() {
     // into one cell made it unreadable. Hide it from the columns and
     // give the row an expandable breakdown instead.
     const expandable = ["stock", "hired"].includes(view) && "by_site" in d.rows[0];
+    const blank = v => v === "" || v === null || v === undefined || v === "-";
+    // A column with nothing in it on any row is left off, not shown as dashes.
     const keys = orderColumns(view, Object.keys(d.rows[0])
-      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site")));
+      .filter(k => k !== "low" && k !== "overdue" && !(expandable && k === "by_site"))
+      .filter(k => d.rows.some(r => !blank(r[k]))));
+    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const WIDE = ["name", "notes", "description", "hired_from", "condition", "supplier", "material"];
+    const KIND = {};
+    keys.forEach(k => {
+      const vals = d.rows.map(r => r[k]).filter(v => !blank(v));
+      KIND[k] = vals.length && vals.every(v => typeof v === "number") ? "n"
+              : vals.length && vals.every(isDate) ? "k"
+              : ["code", "unit", "reference", "item_type", "site"].includes(k) ? "k"
+              : ["type", "from", "to", "given_to", "incharge", "returned_by"].includes(k) ? "kl" : "l";
+    });
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
                    written_off: "Written off", qty: "Qty", name: "Material", code: "Code",
                    given_to: "Given to", incharge: "Given to", date: "Date", from: "From",
                    to: "To", reference: "Ref", notes: "Remarks", since: "Out since",
+                   rate: "Rate (AED)", amount: "Amount (AED)", type: "Type",
+                   issued_from_store: "Issued from store (AED)", delivered_direct: "Delivered direct (AED)",
+                   received_from_sites: "From other sites (AED)", sent_to_sites: "Sent to other sites (AED)",
+                   net_cost: "Net cost (AED)", lines: "Lines", net_transfer: "Net transfer (AED)",
+                   moved_in: "Moved in", moved_out: "Moved out", lines_without_price: "Lines without price",
                    last_arrived: "Last arrived", issued_on: "Issued on", site: "Site",
                    returned_on: "Returned on", returned_by: "Returned by", qty_back: "Qty back",
                    condition: "Condition", still_out: "Still out", days_out: "Days out" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
-      keys.map(k => `<th ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
+      keys.map(k => `<th class="${KIND[k]}" ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
     body.innerHTML = d.rows.map((r, idx) => {
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       // A caret only where there is something to open - material sitting
@@ -10111,15 +10154,21 @@ async function loadStore() {
         ? `<td style="color:#B26A00; font-weight:700;">${canOpen ? "&#9656;" : ""}</td>` : "";
       return `<tr${flag}${canOpen ? ` onclick="toggleReportRow(${idx})" style="cursor:pointer;${flag ? "background:#FFE9E6;" : ""}"` : ""}>`
         + opener + keys.map(k => {
-        let v = r[k], cls = "";
+        let v = r[k];
+        const cls = ` class="${KIND[k]}${WIDE.includes(k) ? " w" : ""}"`;
         if (typeof v === "object" && v !== null) {
           v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
         } else if (typeof v === "number") {
-          v = ["value", "est_cost", "rate"].includes(k) ? money(v) : num(v);
-          cls = ' style="font-variant-numeric:tabular-nums;"';   // centred like every other column
-          if (r[k] === 0 && !["value", "est_cost", "rate"].includes(k)) v = '<span class="zero">0</span>';
-        } else if (k === "item_type" || k === "type") {
+          const isMoney = ["value", "est_cost", "rate", "amount"].includes(k) || (d.money_cols || []).includes(k);
+          v = isMoney ? money(v) : num(v);
+          if (k === "net_transfer" && r[k]) v = `<b style="color:${r[k] > 0 ? "#1E7B34" : "#B7322A"};">${r[k] > 0 ? "+" : ""}${v}</b>`;
+          if (r[k] === 0 && !isMoney) v = '<span class="zero">0</span>';
+        } else if (isDate(v)) {
+          v = accDmy(v);
+        } else if (k === "item_type" || (k === "type" && /^(consumable|returnable|asset|rental)$/.test(r[k]))) {
           v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
+        } else if (typeof v === "string") {
+          v = escapeHtml(v);
         }
         return `<td${cls}>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
       }).join("") + "</tr>" + (canOpen ? `
@@ -10139,7 +10188,16 @@ async function loadStore() {
             </div>
           </td></tr>` : "");
     }).join("");
-    if (d.total_value !== undefined)
+    if ((d.total_cols || []).length) {
+      // Totals sit under their own columns, not at the far right.
+      const cells = keys.map((k, i) => {
+        if (!d.total_cols.includes(k)) return `<td class="${KIND[k]}">${i === 0 ? "TOTAL" : ""}</td>`;
+        const t = d.rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+        const isMoney = ["value", "est_cost", "rate", "amount"].includes(k) || (d.money_cols || []).includes(k);
+        return `<td class="n">${isMoney ? money(t) : num(t)}</td>`;
+      });
+      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}</tr>`;
+    } else if (d.total_value !== undefined)
       body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td></tr>`;
     filterStoreReport();
   } catch (e) {

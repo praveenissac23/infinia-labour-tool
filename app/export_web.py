@@ -270,7 +270,8 @@ STORE_LABELS = {
     "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
     "days_late": "Days late", "outstanding": "Still to come",
     "total_salary": "Salary (AED)", "pay_type": "Paid", "company": "Company",
-    "joined": "Joined",
+    "joined": "Joined", "worker_name": "Name",
+    "net_transfer": "Net transfer (AED)", "moved_in": "Moved in", "moved_out": "Moved out",
     "material": "Material", "qty_requested": "Asked for",
     "qty_approved": "Approved", "qty_received": "Received",
     "purpose": "What for",
@@ -283,6 +284,10 @@ STORE_LABELS = {
     "where": "Where", "reason": "Reason", "type": "Type",
     "reference": "Ref", "notes": "Remarks", "incharge": "Given to",
     "last_arrived": "Last arrived", "since": "Out since",
+    "rate": "Rate (AED)", "amount": "Amount (AED)",
+    "issued_from_store": "Issued from store (AED)", "delivered_direct": "Delivered direct (AED)",
+    "received_from_sites": "From other sites (AED)", "sent_to_sites": "Sent to other sites (AED)",
+    "net_cost": "Net cost (AED)", "lines": "Lines", "lines_without_price": "Lines without price",
 }
 
 
@@ -318,8 +323,23 @@ def _is_texty(k):
                 "purpose", "site", "status", "urgency", "hired", "person"))
 
 
+# Money columns whose key names no money word.
+MONEY_KEYS = {"issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_transfer"}
+
+
 def _is_money(k):
-    return any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+    return k in MONEY_KEYS or any(w in k.lower() for w in ("cost", "value", "amount", "rate", "price"))
+
+
+# Columns that read as a gain or a loss: "+1,050.00" / "-1,050.00".
+SIGNED_COLS = {"net_transfer"}
+
+
+def money_text(k, v):
+    """An amount as printed; a signed column carries its + sign."""
+    if k in SIGNED_COLS and v:
+        return f"{v:+,.2f}"
+    return f"{v:,.2f}"
 
 
 def _shown(k, v, money_like=None):
@@ -329,7 +349,7 @@ def _shown(k, v, money_like=None):
     if isinstance(v, bool):
         return "Yes" if v else ""
     if isinstance(v, (int, float)):
-        return f"{v:,.2f}" if (money_like or _is_money)(k) else _clean_qty(v)
+        return money_text(k, v) if (money_like or _is_money)(k) else _clean_qty(v)
     if isinstance(v, dict):
         return ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items())
     if isinstance(v, str) and _looks_like_date(v):
@@ -1628,6 +1648,10 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
                 v = "Yes" if v else ""
             elif k == "item_type" and v:
                 v = str(v).title()
+            is_date = isinstance(v, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))
+            if is_date:
+                # A real date, shown the way the screen and PDF show it.
+                v = datetime.strptime(v, "%Y-%m-%d")
             # An amount written as text ("2,600.00") goes in as a number,
             # so the sheet can add it up - but is never counted in the
             # totals line (text there means "shown, not counted").
@@ -1637,13 +1661,16 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             c = ws.cell(row=r, column=i, value=v)
             c.border = border
             c.font = Font(size=10)
-            if as_text_amount:
+            if is_date:
+                c.number_format = "dd mmm yyyy"
+                c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
+            elif as_text_amount:
                 c.number_format = '#,##0.00'
                 c.alignment = Alignment(horizontal="right", vertical="center")
             elif isinstance(v, (int, float)):
                 # Counts keep no fake decimals; money always shows two.
                 # Alignment follows the column, like every other cell.
-                c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
+                c.number_format = ('+#,##0.00;-#,##0.00;0.00' if k in SIGNED_COLS else '#,##0.00') if money_like(k) else '#,##0.##'
                 c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
                 if k in numeric_totals:
                     numeric_totals[k] += v
@@ -1663,7 +1690,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
             c.border = border
             if isinstance(v, (int, float)):
-                c.number_format = '#,##0.00' if money_like(k) else '#,##0.##'
+                c.number_format = ('+#,##0.00;-#,##0.00;0.00' if k in SIGNED_COLS else '#,##0.00') if money_like(k) else '#,##0.##'
 
     # Long reports stay usable: headers stay put while scrolling, and the
     # filter arrows let the office slice by site or type right in Excel.
@@ -1759,7 +1786,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
                 v = "Yes" if v else ""
             elif isinstance(v, (int, float)):
                 if k in totals: totals[k] += v
-                v = f"{v:,.2f}" if money_like(k) else _clean_qty(v)
+                v = money_text(k, v) if money_like(k) else _clean_qty(v)
             elif k == "item_type" and v:
                 v = str(v).title()
             elif isinstance(v, str) and _looks_like_date(v):
@@ -1771,7 +1798,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
         data.append(line)
     if totals:
         def tot(k):
-            return f"{totals[k]:,.2f}" if money_like(k) else _clean_qty(totals[k])
+            return money_text(k, totals[k]) if money_like(k) else _clean_qty(totals[k])
         data.append([Paragraph(f"<b>{tot(k) if k in totals else ('TOTAL' if i == 0 else '')}</b>",
                                pick[aligns[k]])
                      for i, k in enumerate(cols)])
