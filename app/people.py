@@ -235,6 +235,29 @@ def leave_state(db, e, p, group, today=None):
             if r.full_date.year == today.year:
                 out["sick_this_year"] += (0.5 if r.am in ("Sick", "Medical") else 0) + \
                                          (0.5 if r.pm in ("Sick", "Medical") else 0)
+    # Annual leave entered on Staff > Leave (approved or returned) counts
+    # too: from the date of leave to the day before the date of return
+    # (or for the days approved), up to today. A day already marked on
+    # the attendance grid or the absence register is not counted twice.
+    have = {d0 for d0, _ in vac}
+    from_register = 0
+    for r in (db.query(models.LeaveRecord)
+                .filter(models.LeaveRecord.employee_id == e.id, models.LeaveRecord.leave_type == "annual",
+                        models.LeaveRecord.status.in_(("approved", "returned")),
+                        models.LeaveRecord.leave_on.isnot(None)).all()):
+        if r.return_on:
+            last = r.return_on - timedelta(days=1)
+        elif r.approved_days:
+            last = r.leave_on + timedelta(days=int(r.approved_days) - 1)
+        else:
+            last = end                   # gone, no return date yet: up to today
+        d0 = max(r.leave_on, start)
+        while d0 <= min(last, end):
+            if d0 not in have:
+                vac.append((d0, 1.0)); have.add(d0); from_register += 1
+            d0 += timedelta(days=1)
+    vac.sort(key=lambda t: t[0])
+    out["from_register"] = from_register
     taken = round(sum(pn for _, pn in vac), 1)
     out["taken"] = taken
     out["balance"] = round(out["accrued"] - taken, 1)
@@ -558,6 +581,9 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
                                key=lambda r: r["expires_on"] or "9999"),
            "document_kinds": M.DOC_KINDS,
            "leave": leave_state(db, e, p, g, today),
+           "leave_spells": sorted((_leave_dict(r, e, p, today) for r in db.query(models.LeaveRecord)
+                                   .filter(models.LeaveRecord.employee_id == e.id).all()),
+                                  key=lambda x: x["leave_on"] or "", reverse=True),
            "assets": [_asset_dict(a) for a in db.query(models.PeopleAsset)
                       .filter(models.PeopleAsset.employee_id == e.id).order_by(models.PeopleAsset.id).all()],
            "gratuity": M.gratuity_detail(e, db) if e.staff else

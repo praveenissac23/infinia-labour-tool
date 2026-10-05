@@ -703,7 +703,14 @@ function renderFile() {
       <div class="sec-h"><span class="lbl">Vacations taken</span></div>` + table(["From", "To", "Days"], lv.vacations.map(v => [dmy(v.from), dmy(v.to), v.days]), "None recorded.")
       + (p.group !== "labour" ? `<div class="sec-h"><span class="lbl">Absence record (Absence register)</span></div>` + table(["Date(s)", "Type", "Days", "Pay", "Deduction"],
           F.absence.map(a => [`${dmy(a.from)}${a.to && a.to !== a.from ? " - " + dmy(a.to) : ""}${a.half ? " (half)" : ""}`, a.kind_label || a.kind, a.days_total, a.why || a.pay || "", "$" + money(a.cost || 0)]), "Nothing recorded.")
-        : `<p class="muted">For labour, days marked Leave on the attendance grid are the days taken.</p>`);
+        : `<p class="muted">For labour, days marked Leave on the attendance grid are the days taken.</p>`)
+      + `<div class="sec-h"><span class="lbl">Leave register (Staff &gt; Leave)</span><button class="btn btn-primary btn-sm" onclick="openVac(null, '${esc(p.emp_no)}')">+ Add leave</button></div>`
+      + (F.leave_spells.length ? `<div class="grid-wrap"><table><thead><tr><th>Leave type</th><th>Date of leave</th><th>Date of return</th><th class="num">Days</th><th>Status</th><th>Approved by</th><th>Remark</th></tr></thead><tbody>`
+          + F.leave_spells.map(r => `<tr style="cursor:pointer;" onclick="openVac(${r.id}, '${esc(p.emp_no)}')"><td style="white-space:nowrap;">${esc(r.leave_type_label)}</td><td style="white-space:nowrap;">${dmy(r.leave_on)}</td>
+              <td style="white-space:nowrap;">${r.return_on ? dmy(r.return_on) : (r.due_back ? `<span class="muted">due ${dmy(r.due_back)}</span>` : or(""))}</td><td class="num">${r.approved_days ?? or("")}</td>
+              <td><span class="pill ${VAC_PILL[r.standing] || "gr"}">${esc(r.standing)}${r.days_late ? " " + r.days_late + " d" : ""}</span></td><td>${or(r.approved_by)}</td><td>${or(r.remark)}</td></tr>`).join("")
+          + `</tbody></table></div>` : `<p class="muted">No leave entered for him yet.</p>`)
+      + `<p class="muted">Annual leave here that is Approved or Returned counts as days taken in the balance above${lv.from_register ? ` (${lv.from_register} day(s) so far)` : ""} - from the date of leave to the day before the date of return, up to today. A day already marked on attendance is not counted twice.</p>`;
   else if (P.section === "money") {
     body = `<div class="sec-h"><span class="lbl">Loans</span>${p.group !== "labour" && ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openLoan()">+ Loan</button>` : ""}</div>` + table(["Taken", "Amount", "Terms", "Recovered", "Balance", "Status", ""],
       F.loans.map(l => [dmy(l.taken_on), "$" + money(l.amount), l.terms || "", "$" + money(l.repaid), "$" + money(l.balance), l.closed ? '<span class="pill gr">Closed</span>' : '<span class="pill y">Running</span>',
@@ -951,8 +958,8 @@ async function loadVac() {
     || `<tr><td colspan="11" class="muted">No leave on file${P.vacShow ? " for this filter" : ""} - + Add leave to enter one.</td></tr>`;
 }
 let VAC_PEOPLE = [];
-async function vacPeople() {
-  try { VAC_PEOPLE = (await apiCall(`/employees/people?group=${P.vacGroup}`)).rows || []; } catch (e) { VAC_PEOPLE = []; }
+async function vacPeople(group) {
+  try { VAC_PEOPLE = (await apiCall(`/employees/people?group=${group}`)).rows || []; } catch (e) { VAC_PEOPLE = []; }
   document.getElementById("v-people").innerHTML = VAC_PEOPLE.map(p => `<option value="${esc(p.emp_no)} - ${esc(p.name)}">`).join("");
 }
 function vacPick() { const v = document.getElementById("v-who").value.trim(); const code = v.split(" - ")[0].trim().toUpperCase();
@@ -962,12 +969,17 @@ function vacDays() {
   const a = getVal("v-leave_on"), b = getVal("v-return_on"), d = document.getElementById("v-approved_days");
   if (a && b && !d.value) { const n = Math.round((new Date(b) - new Date(a)) / 86400000); if (n > 0) d.value = n; }
 }
-async function openVac(id) {
+async function openVac(id, code) {
+  // From a person's file: his own spells, and the person already picked.
+  P.vacFrom = code ? "file" : "list";
+  if (code && P.file) P.vac = P.file.leave_spells;
   const r = id ? P.vac.find(x => x.id === id) : null; P.editingVac = r ? r.id : null;
-  document.getElementById("vac-title").textContent = r ? `Leave · ${r.name}` : "Add leave";
-  await vacPeople();
-  const w = document.getElementById("v-who"); w.value = r ? `${r.emp_no} - ${r.name}` : ""; w.disabled = !!r; vacWho();
+  const who = r ? `${r.emp_no} - ${r.name}` : (code && P.file ? `${P.file.person.emp_no} - ${P.file.person.name}` : "");
+  document.getElementById("vac-title").textContent = r ? `Leave · ${r.name}` : (code && P.file ? `Add leave · ${P.file.person.name}` : "Add leave");
+  await vacPeople(code && P.file ? (P.file.person.group === "household" ? "office" : P.file.person.group) : P.vacGroup);
+  const w = document.getElementById("v-who"); w.value = who; w.disabled = !!(r || code); vacWho();
   ["leave_type", "leave_on", "return_on", "approved_days", "approved_by", "home_phone", "remark"].forEach(k => setVal("v-" + k, r ? r[k] : (k === "leave_type" ? "annual" : "")));
+  if (!r && code && P.file) setVal("v-home_phone", P.file.profile.home_phone || "");
   segSet(document.getElementById("v-status"), r ? r.status : "pending");
   document.getElementById("v-del").style.display = r ? "" : "none";
   document.getElementById("vac-msg").textContent = ""; openDlg("dlg-vac");
@@ -985,13 +997,14 @@ async function saveVac() {
     if (P.editingVac) await apiCall(`/employees/people/leave-register/${P.editingVac}`, { method: "PUT", body: JSON.stringify(body) });
     else { const p = vacPick(); if (!p) { document.getElementById("vac-msg").textContent = "Pick the person from the list."; return; }
            body.emp_no = p.emp_no; await apiCall(`/employees/people/leave-register`, { method: "POST", body: JSON.stringify(body) }); }
-    closeDlg("dlg-vac"); status("ok", "Leave saved."); loadVac();
+    closeDlg("dlg-vac"); status("ok", "Leave saved."); vacRefresh();
   } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
 }
+function vacRefresh() { if (P.vacFrom === "file" && P.current) openPerson(P.current); else loadVac(); }
 async function removeVac() {
   const r = P.vac.find(x => x.id === P.editingVac); if (!r) return;
   if (!(await ask(`Delete this leave for ${r.name} (from ${dmy(r.leave_on)})?`, "Delete", true))) return;
-  try { await apiCall(`/employees/people/leave-register/${r.id}`, { method: "DELETE" }); closeDlg("dlg-vac"); loadVac(); } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
+  try { await apiCall(`/employees/people/leave-register/${r.id}`, { method: "DELETE" }); closeDlg("dlg-vac"); vacRefresh(); } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
 }
 function setLeaveGroup(g) { P.leaveGroup = g; segSet(document.getElementById("lv-group"), g); loadLeave(); }
 async function loadLeave() {

@@ -77,6 +77,23 @@ ck('report preview', r.status_code == 200 and 'Leave Details' in r.text and 'HAR
 rows, title, sub = people._leave_reg_parts(database.SessionLocal(), 'labour', '', None)
 ck('empty columns left off the paper', 'Remark' not in rows[0] and 'Approved By' in rows[0], list(rows[0]))
 
+# ---- Days taken in the leave balance, and the person's file --------------
+db = database.SessionLocal()
+e = db.query(models.Employee).filter_by(emp_no='F-716').first()
+e.joined_on = today - timedelta(days=900)
+from datetime import date as _date
+db.add(models.DailyRow(employee_id=e.id, emp_no='F-716', month_year='x', full_date=today - timedelta(days=59), am='Leave', pm='Leave'))  # inside the returned spell
+db.commit()
+lv = people.leave_state(db, e, people._profile(db, e), 'labour')
+# Returned spell: leave d(-60) .. return d(-2) -> 58 days, one already on attendance -> 57 from the register, 58 taken.
+ck('returned annual leave counts as days taken, nothing twice', lv['taken'] == 58 and lv['from_register'] == 57, (lv['taken'], lv['from_register']))
+db.close()
+f = c.get('/employees/people/F-716', headers=HR).json()
+ck('the file lists his leave', len(f['leave_spells']) == 3 and f['leave'].get('from_register') == 57, (len(f['leave_spells']), f['leave'].get('from_register')))
+r = c.post('/employees/people/leave-register', headers=HR, json={'emp_no': 'F-716', 'leave_type': 'sick', 'leave_on': d(-10), 'return_on': d(-5), 'status': 'returned'})
+f = c.get('/employees/people/F-716', headers=HR).json()
+ck('sick leave does not touch the annual balance', f['leave']['taken'] == 58, f['leave']['taken'])
+
 ck('delete', c.delete(f'/employees/people/leave-register/{hari}', headers=HR).json().get('ok'))
 
 print('\nALL PASS' if not FAIL else f'\n{len(FAIL)} FAILED: {FAIL}')
