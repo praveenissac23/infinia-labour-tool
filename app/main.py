@@ -280,7 +280,7 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # but an admin can make an admin, and a login that hands
                # out rights can only hand out rights it has itself.
                "settings_company",     # General: store in-charge, LPO / invoice signatures
-               "settings_data",        # General: restore or delete a backup, clear the store
+               "settings_data",        # General: restore or delete a backup
                "settings_companies",   # Companies & sites
                "settings_logins",      # Logins: add, delete, reset password, change role
                "settings_access"]      # Access: the roles and their rights
@@ -3189,7 +3189,7 @@ def maybe_create_auto_backup(db: Session):
 # this - and it belongs with the backups anyway, since it takes one.
 @app.post("/backup/store-reset")
 def store_reset(payload: dict = Body(...), db: Session = Depends(get_db),
-                user: models.User = Depends(require_screen("settings_data"))):
+                user: models.User = Depends(auth.require_admin)):
     """Empty the store before it goes live, and touch nothing else.
 
     The store was filled with practice entries while it was being built,

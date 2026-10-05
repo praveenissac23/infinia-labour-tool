@@ -45,7 +45,7 @@ ck('plain: logins refused', c.get('/users', headers=PL).status_code == 403)
 ck('plain: roles refused', c.get('/permissions/roles', headers=PL).status_code == 403)
 ck('plain: company settings refused', c.post('/settings/company', headers=PL, json={'store_incharge': 'x'}).status_code == 403)
 ck('plain: activity monitor refused', c.get('/users/audit-log', headers=PL).status_code == 403)
-ck('plain: clear store refused', c.post('/backup/store-reset', headers=PL, json={'confirm': 'CLEAR STORE'}).status_code == 403)
+ck('plain: clear store refused (admin only, no card)', c.post('/backup/store-reset', headers=PL, json={'confirm': 'CLEAR STORE'}).status_code == 403)
 ck('plain: companies refused', c.post('/employees/companies', headers=PL, json={'name': 'X'}).status_code == 403)
 ck('plain: own password still allowed', c.post('/auth/change-password', headers=PL, json={'current_password': 'p', 'new_password': 'pppppp'}).status_code == 200)
 

@@ -3222,34 +3222,8 @@
             </div>
           </div>
 
-          <div class="card" id="store-reset-card" style="display:none; border:1px solid #D6E4F0;">
-            <h2 style="color:#1F618D;">Clear the Store for Go-Live</h2>
-            <p style="font-size:12.5px; color:#666; margin:2px 0 10px; max-width:760px;">
-              Removes the practice entries from the store so it starts empty on day one.
-              <strong>Attendance, payroll, workers, sites, engineers and logins are not
-              touched</strong> &mdash; this reaches the store side only.
-              <br>
-              <strong>Cleared:</strong> every stock movement, every material request and
-              every purchase order. Requests start again at MR&#8209;0001 and orders at
-              IC/LPO/20260100.
-              <br>
-              <strong>Kept</strong> unless ticked below: the material list and the supplier
-              list, since those are usually typed-up master data rather than practice.
-            </p>
-            <div class="form-row" style="gap:18px; align-items:center; flex-wrap:wrap;">
-              <label style="font-size:12.5px; color:#555; cursor:pointer; white-space:nowrap;">
-                <input type="checkbox" id="store-reset-materials" style="width:auto; margin-right:5px;">
-                Also empty the material list</label>
-              <label style="font-size:12.5px; color:#555; cursor:pointer; white-space:nowrap;">
-                <input type="checkbox" id="store-reset-suppliers" style="width:auto; margin-right:5px;">
-                Also empty the supplier list</label>
-            </div>
-            <div class="form-row" style="margin-top:8px;">
-              <input type="text" id="store-reset-confirm" placeholder="Type CLEAR STORE" style="width:230px;">
-              <button class="btn btn-danger" onclick="runStoreReset()">Clear store data</button>
-            </div>
-          </div>
-
+          <!-- "Clear the Store for Go-Live" sat here. The store is live now,
+               so the card is gone; the server endpoint stays admin-only. -->
           <!--
             "Start Fresh" used to sit here. It wiped attendance days,
             payroll summaries and salary adjustments along with the
@@ -11828,7 +11802,6 @@ function hasRight(r) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(r)
 function applySettingsCards() {
   const show = (id, ok) => { const el = document.getElementById(id); if (el) el.style.display = ok ? "block" : "none"; };
   show("user-mgmt-card", hasRight("settings_logins"));
-  show("store-reset-card", hasRight("settings_data"));
   const co = hasRight("settings_company");
   show("signature-card", co); show("company-card", co);
   if (co) { loadCompanySettings(); refreshSignatureState(); }

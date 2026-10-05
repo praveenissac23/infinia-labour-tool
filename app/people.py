@@ -1278,7 +1278,7 @@ SCREEN_LABELS = {
     "accounts_register": "Cash register (opens with its own password)",
     "accounts_projects": "Project payment tracker (admin and chief accountant)",
     "settings_company": "General - store in-charge, LPO and invoice signatures",
-    "settings_data": "General - restore or delete backups, clear the store (replaces live data)",
+    "settings_data": "General - restore or delete backups (replaces live data)",
     "settings_companies": "Companies & sites",
     "settings_logins": "Logins - add, delete, reset passwords, change roles",
     "settings_access": "Access - roles and their rights",
