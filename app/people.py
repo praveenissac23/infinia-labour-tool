@@ -272,6 +272,13 @@ def seed_birthdays(SessionLocal):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "deploy", "birthdays.json")
     db = SessionLocal()
     try:
+        # Rizwana Mahamood (IC016) has left Infinia: off the birthday list, once.
+        if not db.query(models.Setting).filter(models.Setting.key == "birthday_rizwana_removed").first():
+            for c in db.query(models.BirthdayContact).all():
+                if " ".join((c.name or "").split()).upper() == "RIZWANA MAHAMOOD":
+                    db.delete(c)
+            db.add(models.Setting(key="birthday_rizwana_removed", value="1"))
+            db.commit()
         if db.query(models.Setting).filter(models.Setting.key == "birthdays_sheet_loaded").first() or not os.path.exists(path):
             return
         data = json.load(open(path))

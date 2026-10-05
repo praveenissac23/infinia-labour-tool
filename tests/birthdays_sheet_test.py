@@ -38,7 +38,7 @@ ck('a date already on file is kept', dob('IC010') == date(2001, 8, 2), dob('IC01
 names = {c.name.title(): c for c in db.query(models.BirthdayContact).all()}
 ck('clients loaded, with and without a date', names.get('Karim Panju') and names['Karim Panju'].date_of_birth == date(1978, 4, 25)
    and names.get('Gourav') and names['Gourav'].date_of_birth is None and names['Aditya Bhagra'].date_of_birth == date(1988, 1, 5), list(names))
-ck('not on a register: kept in the list', 'Rizwana Mahamood' in names)
+ck('Rizwana (left Infinia) not on the list', not any('RIZWANA' in n.upper() for n in names))
 log = db.query(models.AuditLog).filter_by(action='birthdays_loaded').first()
 ck('what happened is in the activity log', log and 'kept the date already on file' in log.details, log and log.details)
 db.close()
