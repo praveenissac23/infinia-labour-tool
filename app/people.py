@@ -25,7 +25,11 @@ router = APIRouter()
 PEOPLE_RIGHTS = {"labour": "people_labour", "office": "people_office",
                  "local": "people_local"}
 PEOPLE = Depends(M.require_any_screen(*PEOPLE_RIGHTS.values()))
-ACCESS = Depends(auth.require_admin)   # roles and logins: admin only
+# Roles (Settings > Access) and logins (Settings > Logins): admin, or a
+# login given that tab - which then can only hand out rights it holds.
+ACCESS = Depends(M.require_screen("settings_access"))
+LOGINS = Depends(M.require_screen("settings_logins"))
+ROLES_READ = Depends(M.require_any_screen("settings_access", "settings_logins"))
 
 
 def allowed_groups(user):
@@ -1252,7 +1256,7 @@ def _role_dict(r, db):
 
 
 @router.get("/permissions/roles")
-def list_roles(db: Session = Depends(get_db), user: models.User = ACCESS):
+def list_roles(db: Session = Depends(get_db), user: models.User = ROLES_READ):
     return {"rows": [_role_dict(r, db) for r in db.query(models.AccessRole).order_by(models.AccessRole.name).all()],
             "screens": M.ALL_SCREENS, "role_defaults": M.ROLE_DEFAULTS,
             "labels": SCREEN_LABELS, "pages": RIGHT_PAGES}
@@ -1273,6 +1277,11 @@ SCREEN_LABELS = {
     "accounts_invoices": "Tax & proforma invoices",
     "accounts_register": "Cash register (opens with its own password)",
     "accounts_projects": "Project payment tracker (admin and chief accountant)",
+    "settings_company": "General - store in-charge, LPO and invoice signatures",
+    "settings_data": "General - restore or delete backups, clear the store (replaces live data)",
+    "settings_companies": "Companies & sites",
+    "settings_logins": "Logins - add, delete, reset passwords, change roles",
+    "settings_access": "Access - roles and their rights",
 }
 # The rights as the pages and tabs show them, so a role is ticked the
 # way the app is laid out.
@@ -1285,8 +1294,7 @@ RIGHT_PAGES = [
     ("Expiry Reminder", ["expiry", "pdc"]),
     ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_register"]),
     ("Reports", ["reports"]),
-    ("Settings", ["settings"]),
-    ("Activity Monitor", ["activity"]),
+    ("Settings", ["settings_company", "settings_data", "settings_companies", "settings_logins", "settings_access", "activity"]),
 ]
 
 
@@ -1309,6 +1317,8 @@ def save_role(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     r = None
     if payload.get("id"):
         r = db.query(models.AccessRole).filter(models.AccessRole.id == payload["id"]).first()
+    was = set((r.screens or "").split(",")) if r else set()
+    M.guard_rights(user, set(screens) ^ was, "give or take away")
     clash = db.query(models.AccessRole).filter(models.AccessRole.name == name).first()
     if clash and (not r or clash.id != r.id):
         raise HTTPException(status_code=400, detail=f"There is already a role called {name}.")
@@ -1330,6 +1340,7 @@ def delete_role(role_id: int, db: Session = Depends(get_db), user: models.User =
     r = db.query(models.AccessRole).filter(models.AccessRole.id == role_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="That role is not on file.")
+    M.guard_rights(user, (r.screens or "").split(","), "delete a role holding")
     # The logins keep the rights they have; they just stop following the role.
     for u in db.query(models.User).filter(models.User.access_role_id == r.id).all():
         u.access_role_id = None
@@ -1339,7 +1350,7 @@ def delete_role(role_id: int, db: Session = Depends(get_db), user: models.User =
 
 
 @router.get("/permissions/roles/users")
-def users_with_roles(db: Session = Depends(get_db), user: models.User = ACCESS):
+def users_with_roles(db: Session = Depends(get_db), user: models.User = LOGINS):
     roles = {r.id: r.name for r in db.query(models.AccessRole).all()}
     out = []
     for u in db.query(models.User).order_by(models.User.username).all():
@@ -1351,11 +1362,19 @@ def users_with_roles(db: Session = Depends(get_db), user: models.User = ACCESS):
 
 
 @router.post("/permissions/roles/assign")
-def assign_role(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ACCESS):
+def assign_role(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = LOGINS):
     u = db.query(models.User).filter(models.User.id == payload.get("user_id")).first()
     if not u:
         raise HTTPException(status_code=404, detail="That login is not on file.")
     rid = payload.get("role_id")
+    if user.role != "admin":
+        if rid == "admin" or u.role == "admin":
+            raise HTTPException(status_code=403, detail="Only an admin can make an admin or change an admin login.")
+        M.guard_target(user, u, "change")
+        if rid:
+            r0 = db.query(models.AccessRole).filter(models.AccessRole.id == rid).first()
+            if r0:
+                M.guard_rights(user, (r0.screens or "").split(","), "give")
     # Make an existing login an admin - or take admin away - here, so a
     # person never needs a second login to be promoted. The last admin
     # can never be demoted, and nobody demotes himself.
@@ -1388,7 +1407,7 @@ def assign_role(payload: dict = Body(...), db: Session = Depends(get_db), user: 
 
 
 @router.post("/permissions/roles/new-user")
-def new_user_with_role(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ACCESS):
+def new_user_with_role(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = LOGINS):
     """A login made from a role: the role's rights from the first sign-in."""
     username = (payload.get("username") or "").strip().lower()
     password = payload.get("password") or ""
@@ -1402,6 +1421,7 @@ def new_user_with_role(payload: dict = Body(...), db: Session = Depends(get_db),
     r = db.query(models.AccessRole).filter(models.AccessRole.id == payload.get("role_id")).first()
     if not r:
         raise HTTPException(status_code=400, detail="Pick the role first.")
+    M.guard_rights(user, (r.screens or "").split(","), "give")
     base = "site" if (payload.get("base") or "") == "site" else "office"
     u = models.User(username=username, hashed_password=auth.hash_password(password),
                     full_name=full_name, role=base, active=True)

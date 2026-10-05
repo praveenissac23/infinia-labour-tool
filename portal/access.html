@@ -132,7 +132,7 @@ if (window.PG_EMBED) {
 })();
 function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; } document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
 </script>
-<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings", "settings_access", "settings_companies", "settings_logins"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 <div id="login"><div class="login-box"><h1>Infinia · Access</h1><p>Sign in with your app login.</p>
@@ -275,7 +275,10 @@ async function start() {
     else if (!window.PG_EMBED) setTimeout(start, 3000);
     return;
   }
-  if (ME.role !== "admin") { if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("/?p=settings"); return; }   // admin only - back to Settings, still signed in
+  // Admin, or a login given this tab (Settings > Access or Logins).
+  ME.isAdmin = ME.role === "admin";
+  const need = VIEW === "users" ? "settings_logins" : "settings_access";
+  if (!ME.isAdmin && !(ME.screens || []).includes(need)) { if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("/?p=settings"); return; }   // not this login's tab - back to Settings, still signed in
   document.getElementById("login").style.display = "none"; document.getElementById("shell").style.display = "flex";
   document.getElementById("who-name").textContent = `${ME.full_name || ME.username} (${ME.username})`;
   applyMenu();
@@ -286,7 +289,8 @@ function setTab(t) {
   document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
 }
 async function loadAll() {
-  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; USERS = (await apiCall("/permissions/roles/users")).rows; }
+  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || [];
+        USERS = VIEW === "users" || ME.isAdmin || (ME.screens || []).includes("settings_logins") ? (await apiCall("/permissions/roles/users")).rows : []; }
   catch (e) { status("warn", errText(e)); }
   renderRoles(); renderUsers();
 }
@@ -303,6 +307,7 @@ function renderRoles() {
       <div class="racts"><button onclick="openRole(${r.id})">Edit</button><button class="danger" onclick="removeRole(${r.id})">Delete</button></div></th>`).join("")}</tr>`;
   document.getElementById("roles-body").innerHTML = ROLES.length ? groups.map(([pg, keys]) =>
     `<tr class="pg"><td colspan="${ROLES.length + 1}">${esc(pg)}</td></tr>` +
+    (pg === "Settings" ? `<tr><td class="rt muted">General - change own password, take a backup <i>(every login)</i></td>${ROLES.map(() => `<td class="cb"><input type="checkbox" checked disabled></td>`).join("")}</tr>` : "") +
     keys.map(s => `<tr><td class="rt">${esc(LABELS[s] || s)}</td>${ROLES.map(r =>
       `<td class="cb"><label><input type="checkbox" ${r.screens.includes(s) ? "checked" : ""} onchange="tickRole(${r.id}, '${s}', this.checked)"></label></td>`).join("")}</tr>`).join("")).join("")
     : `<tr><td class="muted" style="padding:14px;">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
@@ -336,8 +341,11 @@ function renderUsers() {
     <td>${u.role === "admin" ? '<span class="muted">Not needed</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">Custom rights</span>'}</td>
     <td class="scr" title="${esc(c.full)}">${c.text}</td>
     <td>${u.active ? '<span class="pill g">Active</span>' : '<span class="pill gr">Off</span>'}</td>
-    <td class="act">${u.username === (ME && ME.username) && u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}</td></tr>`; }).join("");
+    <td class="act">${!mayTouch(u) ? '<span class="muted">Admin only</span>' : `${u.username === (ME && ME.username) && u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}`}</td></tr>`; }).join("");
 }
+// A login that is not an admin acts only on logins that open no more than it does.
+function mayTouch(u) { if (ME.isAdmin) return true; if (u.role === "admin") return false;
+  const mine = new Set(ME.screens || []); return u.screens.every(x => x === "settings" || mine.has(x)); }
 let PW_USER = null;
 function openPw(uid) { const u = USERS.find(x => x.id === uid); PW_USER = uid; document.getElementById("pw-title").textContent = `New password for ${u.username}`; document.getElementById("pw-new").value = ""; document.getElementById("pw-msg").textContent = ""; openDlg("dlg-pw"); setTimeout(() => document.getElementById("pw-new").focus(), 50); }
 async function savePw() {
@@ -353,7 +361,7 @@ function openRole(id) {
   const r = id ? ROLES.find(x => x.id === id) : null; editingRole = r ? r.id : null;
   document.getElementById("role-title").textContent = r ? `Edit ${r.name}` : "New role";
   document.getElementById("r-name").value = r ? r.name : ""; document.getElementById("r-notes").value = r ? r.notes : "";
-  document.getElementById("r-rights").innerHTML = GROUPED().map(([pg, keys]) => `<div class="rgroup"><div class="rpage">${esc(pg)}</div>${keys.map(s =>
+  document.getElementById("r-rights").innerHTML = GROUPED().map(([pg, keys]) => `<div class="rgroup"><div class="rpage">${esc(pg)}</div>${pg === "Settings" ? `<label class="muted"><input type="checkbox" checked disabled> General - change own password, take a backup (every login)</label>` : ""}${keys.map(s =>
     `<label><input type="checkbox" value="${esc(s)}" ${r && r.screens.includes(s) ? "checked" : ""}> ${esc(LABELS[s] || s)}</label>`).join("")}</div>`).join("");
   document.getElementById("role-msg").textContent = ""; openDlg("dlg-role");
 }
@@ -371,7 +379,7 @@ async function removeRole(id) {
 function openUser() {
   ["u-username", "u-full_name", "u-password"].forEach(id => document.getElementById(id).value = "");
   segFill(document.getElementById("u-role"), ROLES.map(r => ({ v: r.id, l: r.name })), ROLES[0] ? ROLES[0].id : "");
-  segFill(document.getElementById("u-base"), [{ v: "office", l: "Office" }, { v: "site", l: "Site" }, { v: "admin", l: "Admin" }], "office", userTypeChanged);
+  segFill(document.getElementById("u-base"), [{ v: "office", l: "Office" }, { v: "site", l: "Site" }].concat(ME.isAdmin ? [{ v: "admin", l: "Admin" }] : []), "office", userTypeChanged);
   userTypeChanged(); openDlg("dlg-user");
 }
 function userTypeChanged() {
@@ -395,7 +403,7 @@ function openAssign(uid) {
   // an admin, and an admin can be put back on a role.
   const opts = u.role === "admin"
     ? [{ v: "admin", l: "Admin (everything)" }, ...ROLES.map(r => ({ v: r.id, l: r.name }))]
-    : [{ v: "", l: "No role (set by hand)" }, ...ROLES.map(r => ({ v: r.id, l: r.name })), { v: "admin", l: "Admin (everything)" }];
+    : [{ v: "", l: "No role (set by hand)" }, ...ROLES.map(r => ({ v: r.id, l: r.name })), ...(ME.isAdmin ? [{ v: "admin", l: "Admin (everything)" }] : [])];
   segFill(document.getElementById("as-role"), opts, u.role === "admin" ? "admin" : (u.access_role_id || ""));
   document.getElementById("assign-msg").textContent = ""; openDlg("dlg-assign");
 }

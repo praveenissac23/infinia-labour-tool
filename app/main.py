@@ -273,7 +273,17 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                "accounts_invoices", "accounts_register",
                # Project payment tracker: contract, payments, remaining per
                # project scope - admin and the chief accountant only.
-               "accounts_projects"]
+               "accounts_projects",
+               # Settings, tab by tab. "settings" itself (own password,
+               # take a backup) is on every login. These were admin only;
+               # now each can be given to whoever should have it. Nobody
+               # but an admin can make an admin, and a login that hands
+               # out rights can only hand out rights it has itself.
+               "settings_company",     # General: store in-charge, LPO / invoice signatures
+               "settings_data",        # General: restore or delete a backup, clear the store
+               "settings_companies",   # Companies & sites
+               "settings_logins",      # Logins: add, delete, reset password, change role
+               "settings_access"]      # Access: the roles and their rights
 
 # What a role can see when no explicit permissions have been set, so
 # existing accounts keep working exactly as before this was added.
@@ -625,6 +635,30 @@ def require_any_screen(*screens):
     return _check
 
 
+def guard_rights(actor: models.User, screens, what: str = "give"):
+    """A login that is not an admin may only give, take away or act over
+    rights it holds itself - so the Logins or Access tab can never be
+    used to climb above what the login was given."""
+    if actor.role == "admin":
+        return
+    mine = set(effective_permissions(actor))
+    over = sorted({s for s in (screens or []) if s and s != "settings"} - mine)
+    if over:
+        labels = ", ".join(over)
+        raise HTTPException(status_code=403,
+            detail=f"Only an admin can {what} rights you do not have yourself: {labels}.")
+
+
+def guard_target(actor: models.User, target: models.User, what: str):
+    """Acting on another login - its password, its role, deleting it: not
+    an admin's unless you are one, and not one that can open more than you."""
+    if actor.role == "admin":
+        return
+    if target.role == "admin":
+        raise HTTPException(status_code=403, detail=f"Only an admin can {what} an admin login.")
+    guard_rights(actor, effective_permissions(target), f"{what} a login holding")
+
+
 def log_action(db: Session, user_id, action: str, details: str = ""):
     db.add(models.AuditLog(user_id=user_id, action=action, details=details))
     db.commit()
@@ -696,7 +730,7 @@ def change_password(payload: schemas.ChangePasswordRequest, db: Session = Depend
 # ---------------------------------------------------------------------
 @app.get("/users", response_model=list[schemas.UserOut])
 def list_users(db: Session = Depends(get_db),
-                user: models.User = Depends(auth.require_admin)):
+                user: models.User = Depends(require_screen("settings_logins"))):
     """Who can log in, and what each may open, is administration - not
     something a store keeper or site engineer needs to read."""
     return db.query(models.User).order_by(models.User.username).all()
@@ -704,7 +738,7 @@ def list_users(db: Session = Depends(get_db),
 
 @app.post("/users", response_model=schemas.UserOut)
 def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.require_admin)):
+                 user: models.User = Depends(require_screen("settings_logins"))):
     # Staff can add fellow staff, but only an admin can mint another
     # admin - otherwise any staff login could promote itself (or a new
     # account) to admin, which would make every admin-only restriction
@@ -749,7 +783,7 @@ def create_user(payload: schemas.UserIn, db: Session = Depends(get_db),
 
 @app.delete("/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.require_admin)):
+                 user: models.User = Depends(require_screen("settings_logins"))):
     """Remove a login for good. Admin only.
 
     Two things this must not allow: deleting your own account, which
@@ -767,6 +801,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    guard_target(user, target, "delete")
     if target.role == "admin":
         others = (db.query(models.User)
                     .filter(models.User.role == "admin", models.User.id != target.id).count())
@@ -791,7 +826,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
 @app.post("/users/{user_id}/reset-password")
 def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
                          db: Session = Depends(get_db),
-                         user: models.User = Depends(auth.require_admin)):
+                         user: models.User = Depends(require_screen("settings_logins"))):
     """
     Set another user's password without knowing their current one - for
     when someone forgets theirs. Anyone can reset a staff account (staff
@@ -803,6 +838,8 @@ def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
         raise HTTPException(status_code=404, detail="User not found")
     if target.role == "admin" and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can reset an admin's password.")
+    if target.id != user.id:
+        guard_target(user, target, "reset the password of")
     if len(payload.new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
     target.hashed_password = auth.hash_password(payload.new_password)
@@ -886,7 +923,7 @@ _ACTION_GROUP = {a: g for g, (_, acts) in ACTION_GROUPS.items() for a in acts}
 @app.get("/audit-log")
 def list_audit_log(limit: int = 500, group: str = "", username: str = "", days: int = 0,
                     q: str = "", db: Session = Depends(get_db),
-                    user: models.User = Depends(auth.require_admin)):
+                    user: models.User = Depends(require_screen("activity"))):
     """Everything anyone did, newest first, with the filters the page
     offers: a part of the app, one login, the last N days, a word."""
     query = (db.query(models.AuditLog, models.User.username, models.User.full_name)
@@ -3152,7 +3189,7 @@ def maybe_create_auto_backup(db: Session):
 # this - and it belongs with the backups anyway, since it takes one.
 @app.post("/backup/store-reset")
 def store_reset(payload: dict = Body(...), db: Session = Depends(get_db),
-                user: models.User = Depends(auth.require_admin)):
+                user: models.User = Depends(require_screen("settings_data"))):
     """Empty the store before it goes live, and touch nothing else.
 
     The store was filled with practice entries while it was being built,
@@ -3389,7 +3426,7 @@ def download_backup(backup_id: int, token: str, db: Session = Depends(get_db)):
 
 @app.post("/backup/{backup_id}/restore")
 def restore_backup(backup_id: int, db: Session = Depends(get_db),
-                    user: models.User = Depends(auth.require_admin)):
+                    user: models.User = Depends(require_screen("settings_data"))):
     """
     Put the whole system back as it stood when the snapshot was taken.
 
@@ -3426,7 +3463,7 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db),
 
 @app.delete("/backup/{backup_id}")
 def delete_backup(backup_id: int, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.require_admin)):
+                   user: models.User = Depends(require_screen("settings_data"))):
     """
     Remove a single backup. Useful for clearing out snapshots taken
     before a known-bad state, so nobody restores one by mistake later -
@@ -6602,7 +6639,7 @@ def read_company_settings(db: Session = Depends(get_db),
 
 @app.post("/settings/company")
 def save_company_settings(payload: dict = Body(...), db: Session = Depends(get_db),
-                           user: models.User = Depends(auth.require_admin)):
+                           user: models.User = Depends(require_screen("settings_company"))):
     for k in ("store_incharge", "store_incharge_mobile"):
         if k in payload:
             put_setting(db, k, str(payload.get(k) or "").strip())
@@ -8083,7 +8120,7 @@ def _tidy_signature(data: bytes, filename: str = "") -> tuple:
 
 @app.post("/store/purchase/signature")
 async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", db: Session = Depends(get_db),
-                            user: models.User = Depends(auth.require_admin)):
+                            user: models.User = Depends(require_screen("settings_company"))):
     """The authorised signature, printed on every order (kind=lpo) or on
     every tax / proforma invoice (kind=invoice). Uploaded once each."""
     if kind not in export_web.SIGNATURE_KINDS:
@@ -8304,7 +8341,7 @@ def list_companies(db: Session = Depends(get_db), user: models.User = Depends(au
 
 @app.post("/employees/companies")
 def save_company(payload: dict = Body(...), db: Session = Depends(get_db),
-                  user: models.User = HR):
+                  user: models.User = Depends(require_any_screen("hrpayroll", "settings_companies"))):
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="A company needs a name.")
@@ -10897,7 +10934,7 @@ def my_permissions(user: models.User = Depends(auth.get_current_user)):
 @app.post("/users/{user_id}/permissions")
 def set_permissions(user_id: int, payload: schemas.PermissionsIn,
                      db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.require_admin)):
+                     user: models.User = Depends(require_screen("settings_logins"))):
     target = db.query(models.User).filter(models.User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -10908,6 +10945,8 @@ def set_permissions(user_id: int, payload: schemas.PermissionsIn,
     bad = [s for s in wanted if s not in ALL_SCREENS]
     if bad:
         raise HTTPException(status_code=400, detail=f"Unknown screen(s): {', '.join(bad)}")
+    guard_target(user, target, "change")
+    guard_rights(user, set(wanted) ^ set(effective_permissions(target)), "give or take away")
     target.permissions = ",".join(wanted)
     db.commit()
     log_action(db, user.id, "set_permissions", f"{target.username}: {target.permissions or '(role default)'}")

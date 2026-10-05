@@ -139,9 +139,9 @@ PAGES = {
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#store-reset-card", "#pg-backup-card"]),
-        tab("companies", "settings", "Companies & sites", "__admin__", ["#companies-card", "#pg-sites-block"]),
-        tab("logins", "pglogins", "Logins", "__admin__"),
-        tab("access", "pgaccess", "Access", "__admin__"),
+        tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
+        tab("logins", "pglogins", "Logins", "settings_logins"),
+        tab("access", "pgaccess", "Access", "settings_access"),
         tab("activity", "activity", "Activity monitor", "activity")]),
 }
 # Screens without a tab of their own, reached from inside another.
@@ -358,7 +358,7 @@ ROLES_CARD = """
             <h2>Roles &amp; access</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Named sets of rights - Assistant Accountant, Store Keeper, Purchase Manager - and the logins that follow them. Give a login a role and it gets exactly those screens.</p>
             <button class="btn btn-primary" onclick="location.href='/?p=settings#access'">Open roles &amp; access</button>
-            <p style="font-size:12px; color:#888; margin:10px 0 0;">Admin only - roles cannot carry this tab.</p>
+            <p style="font-size:12px; color:#888; margin:10px 0 0;">Admin, or a login given Settings - Access.</p>
           </div>
 """
 

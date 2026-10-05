@@ -4019,7 +4019,7 @@ function switchScreen(name) {
     // The staff list is admin business and its card is hidden for
     // everyone else, so there is nothing to fetch - asking anyway only
     // produced a refusal to apologise for.
-    if (CURRENT_ROLE === "admin") {
+    if (hasRight("settings_logins")) {
       loadUsers().catch(e => showStatus("settings-status", "err", "Could not load the staff list: " + errText(e)));
     }
   }
@@ -4173,22 +4173,6 @@ async function initApp() {
   // Everyone reaches Settings, to change their own password and take a
   // backup. Staff logins and Start Fresh are administration, and the
   // server refuses them for anyone else regardless of what is shown.
-  const isAdmin = CURRENT_ROLE === "admin";
-  document.getElementById("user-mgmt-card").style.display = isAdmin ? "block" : "none";
-  const storeResetCard = document.getElementById("store-reset-card");
-  if (storeResetCard) storeResetCard.style.display = isAdmin ? "block" : "none";
-  const sigCard = document.getElementById("signature-card");
-  if (sigCard) {
-    sigCard.style.display = isAdmin ? "block" : "none";
-    const cfg = document.getElementById("company-card");
-    if (cfg) {
-      cfg.style.display = isAdmin ? "block" : "none";
-      if (isAdmin) loadCompanySettings();
-    }
-    // One place says what the state is, in red when there is none, so
-    // nobody has to wonder whether orders are going out unsigned.
-    if (isAdmin) refreshSignatureState();
-  }
   if (CURRENT_ROLE !== "admin") {
     const roleSel = document.getElementById("new-user-role");
     const adminOpt = roleSel.querySelector('option[value="admin"]');
@@ -4203,6 +4187,7 @@ async function initApp() {
   }
   // Runs last so it can hide anything the lines above turned on.
   await applyScreenPermissions(permsEarly);
+  applySettingsCards();
   applyNavGroups();          // restore which sections were left open
   // The screen the person wants, before the extras below: its own
   // requests go out first.
@@ -11837,6 +11822,17 @@ function applyKeeperVisibility() {
   });
 }
 
+// Settings, card by card, by the rights given on Settings > Access (admin
+// has them all). The server refuses the same things to anyone without them.
+function hasRight(r) { return CURRENT_ROLE === "admin" || MY_SCREENS.includes(r); }
+function applySettingsCards() {
+  const show = (id, ok) => { const el = document.getElementById(id); if (el) el.style.display = ok ? "block" : "none"; };
+  show("user-mgmt-card", hasRight("settings_logins"));
+  show("store-reset-card", hasRight("settings_data"));
+  const co = hasRight("settings_company");
+  show("signature-card", co); show("company-card", co);
+  if (co) { loadCompanySettings(); refreshSignatureState(); }
+}
 async function applyScreenPermissions(prefetched) {
   try {
     const me = (prefetched && await prefetched) || await apiCall("/permissions/me");
@@ -12118,7 +12114,7 @@ async function loadBackupList() {
       // safety net - both are refused by the server for anyone but an
       // admin, so they are not offered either. A button that always
       // fails is worse than no button.
-      const admin = CURRENT_ROLE === "admin";
+      const admin = hasRight("settings_data");
       const restoreBtn = admin ? `<button class="btn btn-gray" onclick="restoreBackupById(${b.id})">Restore</button>` : "";
       const deleteBtn = admin ? `<button class="btn btn-danger" onclick="deleteBackupById(${b.id}, '${when.replace(/'/g, "")}')">Delete</button>` : "";
       return `<tr>
