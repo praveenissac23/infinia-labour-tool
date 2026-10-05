@@ -970,6 +970,20 @@ class LeaveRecord(Base):
     employee = relationship("Employee")
 
 
+class BirthdayContact(Base):
+    """Someone whose birthday the office remembers who is not on a staff
+    register - a client, a client's family. Staff birthdays come from the
+    date of birth on their own file."""
+    __tablename__ = "birthday_contacts"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    relation = Column(String, default="Client")     # Client | Wife of client | Son of client ...
+    project_no = Column(String, default="")
+    date_of_birth = Column(Date, nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class PeopleAsset(Base):
     """Something handed to a person that comes back when he leaves."""
     __tablename__ = "people_assets"

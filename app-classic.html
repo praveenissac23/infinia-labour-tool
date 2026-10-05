@@ -15168,7 +15168,7 @@ function bdayShow() {
   const names = ppl.length === 1 ? bdayTitle(ppl[0].name) : ppl.length === 2 ? `${bdayFirst(ppl[0].name)} & ${bdayFirst(ppl[1].name)}` : `${ppl.length} of our team`;
   const row = p => {
     const init = bdayTitle(p.name).split(/\s+/).slice(0, 2).map(w => w[0]).join("");
-    const nm = staffCan(!p.staff) ? `<a href="#" onclick="bdayClose(); openStaffFile(${jsq(p.emp_no)}, ''); return false;">${escapeHtml(bdayTitle(p.name))}</a>` : escapeHtml(bdayTitle(p.name));
+    const nm = !p.contact && staffCan(!p.staff) ? `<a href="#" onclick="bdayClose(); openStaffFile(${jsq(p.emp_no)}, ''); return false;">${escapeHtml(bdayTitle(p.name))}</a>` : escapeHtml(bdayTitle(p.name));
     return `<div class="bday-person"><div class="bday-av">${escapeHtml(init)}</div><div><div class="bday-name">${nm}</div>
       <div class="bday-sub">${escapeHtml([p.role, p.group_label, p.emp_no].filter(Boolean).join(" \u00b7 "))}${p.age > 0 && p.age < 100 ? ` \u00b7 turns ${p.age}` : ""}</div></div></div>`;
   };

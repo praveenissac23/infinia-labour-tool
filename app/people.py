@@ -100,8 +100,22 @@ def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(a
             continue
         out.append({"emp_no": e.emp_no, "name": e.name, "group": g, "group_label": GROUPS.get(g, g),
                     "role": e.designation or e.trade or "", "age": today.year - d.year, "staff": bool(e.staff)})
-    out.sort(key=lambda x: (x["group"] != "office", x["name"]))
+    if _contacts_ok(user):
+        for c in db.query(models.BirthdayContact).filter(models.BirthdayContact.active == True,  # noqa: E712
+                                                          models.BirthdayContact.date_of_birth.isnot(None)).all():
+            d = c.date_of_birth
+            if (d.month, d.day) == (today.month, today.day) or \
+                    (not leap and (d.month, d.day) == (2, 29) and (today.month, today.day) == (2, 28)):
+                out.append({"emp_no": "", "name": c.name, "group": "client", "group_label": c.relation or "Client",
+                            "role": f"Project {c.project_no}" if c.project_no else "", "age": today.year - d.year,
+                            "staff": True, "contact": True})
+    out.sort(key=lambda x: (x["group"] == "client", x["group"] != "office", x["name"]))
     return {"date": today.isoformat(), "people": out}
+
+
+def _contacts_ok(user):
+    """Client birthdays: admin and whoever keeps the office register."""
+    return user is not None and (user.role == "admin" or "office" in allowed_groups(user))
 
 
 def _next_birthday(d, today):
@@ -122,10 +136,25 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
     Also how many have no date of birth on their file yet."""
     today = M._dubai_today()
     groups = allowed_groups(user)
-    if group:
+    with_clients = _contacts_ok(user) and group in ("", "client")
+    if group == "client":
+        if not _contacts_ok(user):
+            raise HTTPException(status_code=403, detail="Not available to this login.")
+        groups = set()
+    elif group:
         _may(user, group)
         groups = {group}
     out, missing = [], 0
+    if with_clients:
+        for c in db.query(models.BirthdayContact).filter(models.BirthdayContact.active == True).all():  # noqa: E712
+            if not c.date_of_birth:
+                missing += 1
+                continue
+            nxt = _next_birthday(c.date_of_birth, today)
+            out.append({"emp_no": c.project_no or "", "name": c.name, "group": "client",
+                        "group_label": "Client" if "client" in (c.relation or "client").lower() else "Not on a register",
+                        "role": c.relation or "Client", "dob": c.date_of_birth.isoformat(), "next": nxt.isoformat(),
+                        "days": (nxt - today).days, "turns": nxt.year - c.date_of_birth.year, "contact_id": c.id})
     rows = (db.query(models.Employee, models.PeopleProfile)
               .outerjoin(models.PeopleProfile, models.PeopleProfile.employee_id == models.Employee.id)
               .filter(models.Employee.active == True).all())  # noqa: E712
@@ -145,6 +174,142 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
                     "next": nxt.isoformat(), "days": (nxt - today).days, "turns": nxt.year - p.date_of_birth.year})
     out.sort(key=lambda x: (x["days"], x["name"]))
     return {"date": today.isoformat(), "rows": out, "missing": missing}
+
+
+def _contact_dict(c):
+    return {"id": c.id, "name": c.name, "relation": c.relation or "", "project_no": c.project_no or "",
+            "date_of_birth": _d(c.date_of_birth)}
+
+
+def _contact_fields(c, payload):
+    for f in ("name", "relation", "project_no"):
+        if f in payload:
+            setattr(c, f, (payload.get(f) or "").strip())
+    if "date_of_birth" in payload:
+        c.date_of_birth = M._as_date(payload.get("date_of_birth"))
+    if not c.name:
+        raise HTTPException(status_code=400, detail="Enter the name.")
+
+
+def _contacts_guard(user):
+    if not _contacts_ok(user):
+        raise HTTPException(status_code=403, detail="Not available to this login.")
+
+
+@router.get("/employees/people/birthday-contacts")
+def list_contacts(db: Session = Depends(get_db), user: models.User = PEOPLE):
+    _contacts_guard(user)
+    return {"rows": [_contact_dict(c) for c in db.query(models.BirthdayContact)
+                     .filter(models.BirthdayContact.active == True).order_by(models.BirthdayContact.name).all()]}  # noqa: E712
+
+
+@router.post("/employees/people/birthday-contacts")
+def add_contact(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
+    _contacts_guard(user)
+    c = models.BirthdayContact(relation="Client", active=True)
+    _contact_fields(c, payload)
+    db.add(c); db.commit()
+    M.log_action(db, user.id, "birthday_contact_added", c.name)
+    return _contact_dict(c)
+
+
+@router.put("/employees/people/birthday-contacts/{cid}")
+def save_contact(cid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
+    _contacts_guard(user)
+    c = db.query(models.BirthdayContact).filter(models.BirthdayContact.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Not on file.")
+    _contact_fields(c, payload)
+    db.commit()
+    return _contact_dict(c)
+
+
+@router.delete("/employees/people/birthday-contacts/{cid}")
+def delete_contact(cid: int, db: Session = Depends(get_db), user: models.User = PEOPLE):
+    _contacts_guard(user)
+    c = db.query(models.BirthdayContact).filter(models.BirthdayContact.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Not on file.")
+    db.delete(c); db.commit()
+    M.log_action(db, user.id, "birthday_contact_deleted", c.name)
+    return {"ok": True}
+
+
+def _name_like(a, b, same_code=False):
+    """The same person written two ways - "Khadeeja Faris" and "KHADIJA
+    FARIS ABDULLA", "Rajasekar" and "RAJASEKAR MUNIYAN", "Shaji Sir" and
+    "SHAJI MATHEW": the words of the shorter all found, near enough, in
+    the longer."""
+    import difflib, re
+    w = lambda x: [t for t in re.sub(r"[^a-z ]", " ", (x or "").lower()).split() if t not in ("sir", "mr", "mrs", "ms")]
+    aw, bw = w(a), w(b)
+    if not aw or not bw:
+        return False
+    short, long_ = (aw, bw) if len(aw) <= len(bw) else (bw, aw)
+    if same_code and difflib.SequenceMatcher(None, short[0], long_[0]).ratio() >= 0.6 and (
+            len(short) == 1 or any(difflib.SequenceMatcher(None, t, u).ratio() >= 0.75 for t in short[1:] for u in long_[1:])):
+        return True              # code agrees and the names are plainly the same man ("Shaiju Thomas" / "SHYJU THOMAS")
+    if difflib.SequenceMatcher(None, short[0], long_[0]).ratio() < 0.75:
+        return False
+    return all(any(difflib.SequenceMatcher(None, t, u).ratio() >= 0.75 or u.startswith(t) or t.startswith(u) for u in long_)
+               for t in short)
+
+
+def seed_birthdays(SessionLocal):
+    """Birthdays.xlsx, put in once: office staff and owners onto their
+    staff files (a date of birth already on a file is kept), clients and
+    their family into the birthday list. Each person is found by code and
+    checked by name; where the code belongs to someone else he is looked
+    for by name among the office staff. What happened is written to the
+    activity log."""
+    import json, os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "deploy", "birthdays.json")
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "birthdays_sheet_loaded").first() or not os.path.exists(path):
+            return
+        data = json.load(open(path))
+        staff = db.query(models.Employee).filter(models.Employee.staff == True).all()  # noqa: E712
+        if not staff:
+            return               # no staff on file yet (a new database): try again at the next start
+        done, kept, notfound = [], [], []
+        for x in data["staff"]:
+            e = next((s_ for s_ in staff if s_.emp_no == x["emp_no"]), None)
+            if e is None or not _name_like(x["name"], e.name, same_code=True):
+                hits = [s_ for s_ in staff if _name_like(x["name"], s_.name)]
+                e = hits[0] if len(hits) == 1 else None
+            if e is None:
+                notfound.append(f'{x["emp_no"]} {x["name"]}')
+                # Not on a register: still remembered, in the birthday list.
+                if not db.query(models.BirthdayContact).filter(models.BirthdayContact.name == x["name"].strip()).first():
+                    db.add(models.BirthdayContact(name=x["name"].strip(), relation="Owner" if x["emp_no"] in ("IC201", "IC202", "IC203") else "Office staff",
+                                                  project_no="", date_of_birth=M._as_date(x["dob"]), active=True))
+                continue
+            p = _profile(db, e, create=True)
+            dob = M._as_date(x["dob"])
+            if p.date_of_birth and p.date_of_birth != dob:
+                kept.append(f"{e.emp_no} {e.name} (file {p.date_of_birth}, sheet {dob})")
+                continue
+            p.date_of_birth = dob
+            done.append(e.emp_no)
+        for x in data["clients"]:
+            if db.query(models.BirthdayContact).filter(models.BirthdayContact.name == x["name"]).first():
+                continue
+            db.add(models.BirthdayContact(name=x["name"], relation=x["relation"], project_no=x["project_no"] or "",
+                                          date_of_birth=M._as_date(x["dob"]) if x["dob"] else None, active=True))
+        db.add(models.Setting(key="birthdays_sheet_loaded", value="1"))
+        msg = (f"Birthdays sheet: {len(done)} staff dates of birth filled ({', '.join(done)}); "
+               f"{len(data['clients'])} client birthdays added"
+               + (f"; kept the date already on file for: {'; '.join(kept)}" if kept else "")
+               + (f"; not on a register, put in the birthday list: {'; '.join(notfound)}" if notfound else ""))
+        db.add(models.AuditLog(user_id=None, action="birthdays_loaded", details=msg))
+        db.commit()
+        print(msg)
+    except Exception as ex:                       # a failed seed must never stop the app
+        db.rollback()
+        print(f"Birthdays sheet skipped: {ex}")
+    finally:
+        db.close()
 
 
 def _by_code(db, emp_no):
@@ -879,6 +1044,8 @@ def seed_leave_records(SessionLocal):
     try:
         if db.query(models.Setting).filter(models.Setting.key == "leave_records_seeded").first():
             return
+        if not db.query(models.Employee).first():
+            return               # a new database with nobody on it yet: try again at the next start
         added, missing = 0, []
         if os.path.exists(path):
             for x in json.load(open(path)):
@@ -994,12 +1161,12 @@ def _bday_parts(db, group, user=None):
     d = birthdays_upcoming(group=group, db=db, user=user)
     rows = [{"Birthday": M._as_date(r["next"]).strftime("%a %d %b"),
              "In": "Today" if r["days"] == 0 else ("Tomorrow" if r["days"] == 1 else f"{r['days']} days"),
-             "Code": r["emp_no"], "Name": r["name"], "Register": r["group_label"], "Designation": r["role"] or "-",
+             "Code / Project": r["emp_no"] or "-", "Name": r["name"], "Register": r["group_label"], "Designation": r["role"] or "-",
              "Date of Birth": M._dmy(M._as_date(r["dob"])), "Turns": r["turns"]} for r in d["rows"]]
     sub = f"{len(rows)} people, next birthday first   |   From {M._dubai_today():%d %b %Y}"
     if d["missing"]:
         sub += f"   |   {d['missing']} without a date of birth on file"
-    return rows, f"Birthdays - {GROUPS.get(group, 'Everyone')}", sub
+    return rows, f"Birthdays - {GROUPS.get(group, 'Clients' if group == 'client' else 'Everyone')}", sub
 
 
 def _leave_reg_parts(db, group, show, user=None):

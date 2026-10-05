@@ -11208,6 +11208,7 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
 import people  # noqa: E402
 app.include_router(people.router)
 people.seed_leave_records(SessionLocal)
+people.seed_birthdays(SessionLocal)
 import settlement  # noqa: E402
 app.include_router(settlement.router)
 import pettycash  # noqa: E402

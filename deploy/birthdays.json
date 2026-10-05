@@ -1,0 +1,176 @@
+{
+ "staff": [
+  {
+   "emp_no": "IC001",
+   "name": "Jomon Thomas",
+   "dob": "1995-04-20"
+  },
+  {
+   "emp_no": "IC010",
+   "name": "Aysha Hiba",
+   "dob": "2001-08-01"
+  },
+  {
+   "emp_no": "IC015",
+   "name": "Khadeeja Faris",
+   "dob": "1974-09-01"
+  },
+  {
+   "emp_no": "IC016",
+   "name": "Rizwana Mahamood",
+   "dob": "1997-05-15"
+  },
+  {
+   "emp_no": "IC017",
+   "name": "Arathi sajeedran",
+   "dob": "1992-03-14"
+  },
+  {
+   "emp_no": "IC018",
+   "name": "Aya Adil",
+   "dob": "2003-04-27"
+  },
+  {
+   "emp_no": "IC019",
+   "name": "Neethu Treesa Jose",
+   "dob": "1993-04-21"
+  },
+  {
+   "emp_no": "IC020",
+   "name": "Rajasekar",
+   "dob": "1992-08-24"
+  },
+  {
+   "emp_no": "IC021",
+   "name": "Mohammed Shafeeq",
+   "dob": "1990-04-18"
+  },
+  {
+   "emp_no": "IC023",
+   "name": "Akhil Ratna Das",
+   "dob": "1991-12-25"
+  },
+  {
+   "emp_no": "IC024",
+   "name": "febiyans Lucas",
+   "dob": "1993-04-17"
+  },
+  {
+   "emp_no": "IC025",
+   "name": "Preenu",
+   "dob": "1998-03-21"
+  },
+  {
+   "emp_no": "IC026",
+   "name": "Sara Adil",
+   "dob": "1998-07-06"
+  },
+  {
+   "emp_no": "PI001",
+   "name": "Shaiju Thomas",
+   "dob": "1986-03-29"
+  },
+  {
+   "emp_no": "PI002",
+   "name": "Syed Abdul Rahim",
+   "dob": "1990-11-18"
+  },
+  {
+   "emp_no": "PI003",
+   "name": "Sreekanth",
+   "dob": "1987-01-21"
+  },
+  {
+   "emp_no": "PI004",
+   "name": "Muhsina Paleri",
+   "dob": "2001-12-18"
+  },
+  {
+   "emp_no": "PI005",
+   "name": "Amal",
+   "dob": "1997-10-02"
+  },
+  {
+   "emp_no": "PI006",
+   "name": "Anoop",
+   "dob": "1986-12-13"
+  },
+  {
+   "emp_no": "IC202",
+   "name": "Naveen sir",
+   "dob": "1992-02-23"
+  },
+  {
+   "emp_no": "IC203",
+   "name": "Praveen sir",
+   "dob": "1993-05-23"
+  },
+  {
+   "emp_no": "IC201",
+   "name": "Shaji Sir",
+   "dob": "1962-10-05"
+  }
+ ],
+ "clients": [
+  {
+   "name": "Mohammed Anis Pardesi",
+   "relation": "Client",
+   "project_no": "902",
+   "dob": null
+  },
+  {
+   "name": "Jamal Khan",
+   "relation": "Client",
+   "project_no": "906",
+   "dob": "1992-03-02"
+  },
+  {
+   "name": "Adil Amersrouh",
+   "relation": "Client",
+   "project_no": "907",
+   "dob": "1980-02-27"
+  },
+  {
+   "name": "Gourav",
+   "relation": "Client",
+   "project_no": "908",
+   "dob": null
+  },
+  {
+   "name": "Muhammed Shihab",
+   "relation": "Client",
+   "project_no": "909",
+   "dob": "1985-05-15"
+  },
+  {
+   "name": "Kabir Bhagra",
+   "relation": "Son of client",
+   "project_no": "910",
+   "dob": "2022-02-06"
+  },
+  {
+   "name": "Aditya Bhagra",
+   "relation": "Client",
+   "project_no": "910",
+   "dob": "1988-01-05"
+  },
+  {
+   "name": "Rashmi",
+   "relation": "Wife of client",
+   "project_no": "910",
+   "dob": "1990-08-01"
+  },
+  {
+   "name": "Karim Panju",
+   "relation": "Client",
+   "project_no": "911",
+   "dob": "1978-04-25"
+  },
+  {
+   "name": "Sara Elizebet",
+   "relation": "Wife of client",
+   "project_no": "911",
+   "dob": "1979-11-22"
+  }
+ ]
+}

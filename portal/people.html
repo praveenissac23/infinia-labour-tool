@@ -235,14 +235,15 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
       <div id="view-bday" style="display:none;">
         <div class="card r">
           <div class="row">
-            <span class="seg" id="bd-group"><button class="on" data-v="" onclick="setBdayGroup('')">All registers</button><button data-v="labour" onclick="setBdayGroup('labour')">Labour</button><button data-v="office" onclick="setBdayGroup('office')">Office</button><button data-v="local" onclick="setBdayGroup('local')">Local</button></span>
+            <span class="seg" id="bd-group"><button class="on" data-v="" onclick="setBdayGroup('')">All registers</button><button data-v="labour" onclick="setBdayGroup('labour')">Labour</button><button data-v="office" onclick="setBdayGroup('office')">Office</button><button data-v="local" onclick="setBdayGroup('local')">Local</button><button data-v="client" id="bd-client-btn" onclick="setBdayGroup('client')">Clients</button></span>
             <span class="grow"></span>
+            <button class="btn btn-primary" id="bd-add" onclick="openContact(null)">+ Client birthday</button>
             <button class="btn btn-dark" onclick="preview('birthdays')">Preview</button>
             <button class="btn btn-dark" onclick="download('birthdays','pdf')">Export PDF</button>
             <button class="btn btn-dark" onclick="download('birthdays','excel')">Export Excel</button>
           </div>
           <p class="muted" id="bd-count"></p>
-          <div class="grid-wrap"><table><thead><tr><th>Birthday</th><th>In</th><th>Code</th><th>Name</th><th>Register</th><th>Designation</th><th>Date of birth</th><th class="num">Turns</th><th></th></tr></thead><tbody id="bd-body"></tbody></table></div>
+          <div class="grid-wrap"><table><thead><tr><th>Birthday</th><th>In</th><th>Code / Project</th><th>Name</th><th>Register</th><th>Designation</th><th>Date of birth</th><th class="num">Turns</th><th></th></tr></thead><tbody id="bd-body"></tbody></table></div>
         </div>
       </div>
 
@@ -481,6 +482,25 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
     </div>
   </div>
 </div>
+<div class="dlg" id="dlg-contact" onclick="if (event.target === this) closeDlg('dlg-contact')">
+  <div class="dlg-box" style="max-width:700px;">
+    <h3 id="ct-title">Client birthday</h3>
+    <div class="row">
+      <label class="fld"><span>Name *</span><input type="text" id="ct-name" style="width:240px;"></label>
+      <label class="fld"><span>Relation</span><input type="text" id="ct-relation" list="ct-rel" style="width:150px;" placeholder="Client"></label>
+      <datalist id="ct-rel"><option value="Client"><option value="Wife of client"><option value="Husband of client"><option value="Son of client"><option value="Daughter of client"><option value="Owner"></datalist>
+      <label class="fld"><span>Project no.</span><input type="text" id="ct-project_no" style="width:100px;"></label>
+      <label class="fld"><span>Date of birth</span><input type="date" id="ct-date_of_birth"></label>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="saveContact()">Save</button>
+      <button class="btn btn-gray" onclick="closeDlg('dlg-contact')">Cancel</button>
+      <span class="grow"></span>
+      <button class="btn btn-danger" id="ct-del" onclick="removeContact()">Delete</button>
+      <span class="muted" id="ct-msg"></span>
+    </div>
+  </div>
+</div>
 <div class="dlg" id="dlg-asset" onclick="if (event.target === this) closeDlg('dlg-asset')">
   <div class="dlg-box" style="max-width:760px;">
     <h3 id="asset-title">Item issued</h3>
@@ -600,6 +620,7 @@ async function start() {
     if (b.dataset.v && !ME.groups.includes(b.dataset.v)) b.remove();
   });
   if (!ME.groups.includes(P.leaveGroup)) { P.leaveGroup = ME.groups[0]; segSet(document.getElementById("lv-group"), P.leaveGroup); }
+  if (!(ME.role === "admin" || ME.groups.includes("office"))) { document.getElementById("bd-client-btn").remove(); document.getElementById("bd-add").remove(); }
   if (!ME.groups.includes(P.vacGroup)) { P.vacGroup = ME.groups[0]; segSet(document.getElementById("vc-group"), P.vacGroup); }
   window.PG_READY = true;
   // Sent here from elsewhere in the app while the page was still opening.
@@ -931,12 +952,17 @@ async function loadBday() {
   try { d = await apiCall(`/employees/people/birthdays/upcoming?group=${P.bdGroup || ""}`); } catch (e) { status("warn", errText(e)); }
   const wk = iso => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
   document.getElementById("bd-count").innerHTML = `${d.rows.length} people, next birthday first.` +
-    (d.missing ? ` <b>${d.missing}</b> still have no date of birth on their file - add it (as per passport) under Identity to include them.` : "");
+    (d.missing ? ` <b>${d.missing}</b> still have no date of birth on file - ${P.bdGroup === "client" ? "click + Client birthday or Edit to add it" : "add it (as per passport) under Identity to include them"}.` : "");
+  if (P.bdGroup === "client") { // clients with no date yet, so it can be filled in
+    try { const c = await apiCall("/employees/people/birthday-contacts"); P.contacts = c.rows;
+      const none = c.rows.filter(x => !x.date_of_birth);
+      if (none.length) document.getElementById("bd-count").innerHTML += ` No date yet: ${none.map(x => `<a href="#" onclick="openContact(${x.id}); return false;">${esc(x.name)}</a>`).join(", ")}.`;
+    } catch (e) {} }
   document.getElementById("bd-body").innerHTML = d.rows.map(r => `<tr${r.days === 0 ? ' style="background:#FFF6F3;"' : ""}>
     <td><b>${wk(r.next)}</b></td>
     <td>${r.days === 0 ? '<span class="pill r">&#127874; Today</span>' : r.days === 1 ? '<span class="pill y">Tomorrow</span>' : r.days <= 7 ? `<span class="pill y">${r.days} days</span>` : `${r.days} days`}</td>
     <td>${esc(r.emp_no)}</td><td>${esc(r.name)}</td><td>${esc(r.group_label)}</td><td>${esc(r.role)}</td><td>${dmy(r.dob)}</td><td class="num">${r.turns}</td>
-    <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','')">Open</button></td></tr>`).join("")
+    <td>${r.contact_id ? `<button class="btn btn-gray btn-sm" onclick="openContact(${r.contact_id})">Edit</button>` : `<button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','')">Open</button>`}</td></tr>`).join("")
     || `<tr><td colspan="9" class="muted">No dates of birth on file yet.</td></tr>`;
 }
 // ---- Leave register --------------------------------------------------------
@@ -1005,6 +1031,29 @@ async function removeVac() {
   const r = P.vac.find(x => x.id === P.editingVac); if (!r) return;
   if (!(await ask(`Delete this leave for ${r.name} (from ${dmy(r.leave_on)})?`, "Delete", true))) return;
   try { await apiCall(`/employees/people/leave-register/${r.id}`, { method: "DELETE" }); closeDlg("dlg-vac"); vacRefresh(); } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
+}
+// ---- Client birthdays -------------------------------------------------------
+async function openContact(id) {
+  if (!P.contacts || (id && !P.contacts.find(x => x.id === id))) { try { P.contacts = (await apiCall("/employees/people/birthday-contacts")).rows; } catch (e) { P.contacts = []; } }
+  const c = id ? P.contacts.find(x => x.id === id) : null; P.editingContact = c ? c.id : null;
+  document.getElementById("ct-title").textContent = c ? `Birthday · ${c.name}` : "Add a client birthday";
+  ["name", "relation", "project_no", "date_of_birth"].forEach(k => setVal("ct-" + k, c ? c[k] : (k === "relation" ? "Client" : "")));
+  document.getElementById("ct-del").style.display = c ? "" : "none";
+  document.getElementById("ct-msg").textContent = ""; openDlg("dlg-contact");
+}
+async function saveContact() {
+  const body = {}; ["name", "relation", "project_no", "date_of_birth"].forEach(k => body[k] = getVal("ct-" + k));
+  try {
+    if (P.editingContact) await apiCall(`/employees/people/birthday-contacts/${P.editingContact}`, { method: "PUT", body: JSON.stringify(body) });
+    else await apiCall("/employees/people/birthday-contacts", { method: "POST", body: JSON.stringify(body) });
+    P.contacts = null; closeDlg("dlg-contact"); status("ok", "Birthday saved."); loadBday();
+  } catch (e) { document.getElementById("ct-msg").textContent = errText(e); }
+}
+async function removeContact() {
+  const c = P.contacts.find(x => x.id === P.editingContact); if (!c) return;
+  if (!(await ask(`Remove ${c.name} from the birthday list?`, "Remove", true))) return;
+  try { await apiCall(`/employees/people/birthday-contacts/${c.id}`, { method: "DELETE" }); P.contacts = null; closeDlg("dlg-contact"); loadBday(); }
+  catch (e) { document.getElementById("ct-msg").textContent = errText(e); }
 }
 function setLeaveGroup(g) { P.leaveGroup = g; segSet(document.getElementById("lv-group"), g); loadLeave(); }
 async function loadLeave() {
