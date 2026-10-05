@@ -4206,11 +4206,11 @@ def _item_for_lpo_line(db, item_id, description, unit, created):
     if not name:
         return None
     key = name.lower()
-    for it in db.query(models.StoreItem).all():
-        if " ".join((it.name or "").split()).lower() == key:
-            if not it.active:
-                it.active = True
-            return it
+    it = db.query(models.StoreItem).filter(func.lower(models.StoreItem.name) == key).first()
+    if it:
+        if not it.active:
+            it.active = True
+        return it
     it = models.StoreItem(code=_next_item_code(db), name=name, unit=(unit or "").strip() or "pcs",
                           item_type="consumable", category="", reorder_level=0.0, active=True)
     db.add(it)
@@ -4230,7 +4230,7 @@ def _lpo_lines_to_materials(db, order, created):
 def _next_item_code(db):
     """ITM1, ITM2... The keeper never invents a code; existing items keep
     whatever code they were given."""
-    used = {i.code for i in db.query(models.StoreItem).all()}
+    used = {c for (c,) in db.query(models.StoreItem.code).all()}
     n = 1
     while f"ITM{n}" in used:
         n += 1
