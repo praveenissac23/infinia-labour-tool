@@ -106,7 +106,7 @@ def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(a
             d = c.date_of_birth
             if (d.month, d.day) == (today.month, today.day) or \
                     (not leap and (d.month, d.day) == (2, 29) and (today.month, today.day) == (2, 28)):
-                out.append({"emp_no": "", "name": c.name, "group": "client", "group_label": c.relation or "Client",
+                out.append({"emp_no": "", "name": (c.name or "").upper(), "group": "client", "group_label": c.relation or "Client",
                             "role": f"Project {c.project_no}" if c.project_no else "", "age": today.year - d.year,
                             "staff": True, "contact": True})
     out.sort(key=lambda x: (x["group"] == "client", x["group"] != "office", x["name"]))
@@ -151,7 +151,7 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
                 missing += 1
                 continue
             nxt = _next_birthday(c.date_of_birth, today)
-            out.append({"emp_no": c.project_no or "", "name": c.name, "group": "client",
+            out.append({"emp_no": c.project_no or "", "name": (c.name or "").upper(), "group": "client",
                         "group_label": "Client" if "client" in (c.relation or "client").lower() else "Not on a register",
                         "role": c.relation or "Client", "dob": c.date_of_birth.isoformat(), "next": nxt.isoformat(),
                         "days": (nxt - today).days, "turns": nxt.year - c.date_of_birth.year, "contact_id": c.id})
@@ -169,7 +169,7 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
             missing += 1
             continue
         nxt = _next_birthday(p.date_of_birth, today)
-        out.append({"emp_no": e.emp_no, "name": e.name, "group": g, "group_label": GROUPS.get(g, g),
+        out.append({"emp_no": e.emp_no, "name": (e.name or "").upper(), "group": g, "group_label": GROUPS.get(g, g),
                     "role": e.designation or e.trade or "", "dob": p.date_of_birth.isoformat(),
                     "next": nxt.isoformat(), "days": (nxt - today).days, "turns": nxt.year - p.date_of_birth.year})
     out.sort(key=lambda x: (x["days"], x["name"]))
@@ -177,7 +177,7 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
 
 
 def _contact_dict(c):
-    return {"id": c.id, "name": c.name, "relation": c.relation or "", "project_no": c.project_no or "",
+    return {"id": c.id, "name": (c.name or "").upper(), "relation": c.relation or "", "project_no": c.project_no or "",
             "date_of_birth": _d(c.date_of_birth)}
 
 
@@ -185,6 +185,8 @@ def _contact_fields(c, payload):
     for f in ("name", "relation", "project_no"):
         if f in payload:
             setattr(c, f, (payload.get(f) or "").strip())
+    # Names in capitals, the way the staff registers have them.
+    c.name = " ".join((c.name or "").split()).upper()
     if "date_of_birth" in payload:
         c.date_of_birth = M._as_date(payload.get("date_of_birth"))
     if not c.name:
@@ -281,8 +283,8 @@ def seed_birthdays(SessionLocal):
             if e is None:
                 notfound.append(f'{x["emp_no"]} {x["name"]}')
                 # Not on a register: still remembered, in the birthday list.
-                if not db.query(models.BirthdayContact).filter(models.BirthdayContact.name == x["name"].strip()).first():
-                    db.add(models.BirthdayContact(name=x["name"].strip(), relation="Owner" if x["emp_no"] in ("IC201", "IC202", "IC203") else "Office staff",
+                if not db.query(models.BirthdayContact).filter(models.BirthdayContact.name.in_((x["name"].strip(), " ".join(x["name"].split()).upper()))).first():
+                    db.add(models.BirthdayContact(name=" ".join(x["name"].split()).upper(), relation="Owner" if x["emp_no"] in ("IC201", "IC202", "IC203") else "Office staff",
                                                   project_no="", date_of_birth=M._as_date(x["dob"]), active=True))
                 continue
             p = _profile(db, e, create=True)
@@ -293,9 +295,9 @@ def seed_birthdays(SessionLocal):
             p.date_of_birth = dob
             done.append(e.emp_no)
         for x in data["clients"]:
-            if db.query(models.BirthdayContact).filter(models.BirthdayContact.name == x["name"]).first():
+            if db.query(models.BirthdayContact).filter(models.BirthdayContact.name.in_((x["name"], x["name"].upper()))).first():
                 continue
-            db.add(models.BirthdayContact(name=x["name"], relation=x["relation"], project_no=x["project_no"] or "",
+            db.add(models.BirthdayContact(name=x["name"].upper(), relation=x["relation"], project_no=x["project_no"] or "",
                                           date_of_birth=M._as_date(x["dob"]) if x["dob"] else None, active=True))
         db.add(models.Setting(key="birthdays_sheet_loaded", value="1"))
         msg = (f"Birthdays sheet: {len(done)} staff dates of birth filled ({', '.join(done)}); "

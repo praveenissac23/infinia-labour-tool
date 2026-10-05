@@ -35,7 +35,7 @@ ck('sheet code IC021 belongs to someone else: found by name on IC022', dob('IC02
 ck('same code, spelt differently (Shaiju / SHYJU THOMAS)', dob('PI001') == date(1986, 3, 29), dob('PI001'))
 ck('owner by code (Shaji Sir / SHAJI MATHEW)', dob('IC201') == date(1962, 10, 5), dob('IC201'))
 ck('a date already on file is kept', dob('IC010') == date(2001, 8, 2), dob('IC010'))
-names = {c.name: c for c in db.query(models.BirthdayContact).all()}
+names = {c.name.title(): c for c in db.query(models.BirthdayContact).all()}
 ck('clients loaded, with and without a date', names.get('Karim Panju') and names['Karim Panju'].date_of_birth == date(1978, 4, 25)
    and names.get('Gourav') and names['Gourav'].date_of_birth is None and names['Aditya Bhagra'].date_of_birth == date(1988, 1, 5), list(names))
 ck('not on a register: kept in the list', 'Rizwana Mahamood' in names)
@@ -55,12 +55,12 @@ ck('admin sees clients among the birthdays', any(r['group'] == 'client' for r in
 ck('labour-only login does not', not any(r['group'] == 'client' for r in c.get('/employees/people/birthdays/upcoming', headers=LAB).json()['rows']))
 ck('client list closed to labour-only login', c.get('/employees/people/birthday-contacts', headers=LAB).status_code == 403)
 r = c.post('/employees/people/birthday-contacts', headers=H, json={'name': 'New Client', 'relation': 'Client', 'project_no': '912', 'date_of_birth': '1980-10-07'})
-ck('add a client birthday', r.status_code == 200, r.text)
+ck('add a client birthday, name in capitals', r.status_code == 200 and r.json()['name'] == 'NEW CLIENT', r.text)
 cid = r.json()['id']
 ck('edit', c.put(f'/employees/people/birthday-contacts/{cid}', headers=H, json={'date_of_birth': '1981-10-07'}).json()['date_of_birth'] == '1981-10-07')
 ck('delete', c.delete(f'/employees/people/birthday-contacts/{cid}', headers=H).json().get('ok'))
 T = auth.create_download_token('admin')
 r = c.get(f'/export/people/birthdays/view?group=client&token={T}')
-ck('clients report', r.status_code == 200 and 'Birthdays - Clients' in r.text and 'Karim Panju' in r.text, r.status_code)
+ck('clients report', r.status_code == 200 and 'Birthdays - Clients' in r.text and 'KARIM PANJU' in r.text, r.status_code)
 
 print('\nALL PASS' if not FAIL else f'\n{len(FAIL)} FAILED: {FAIL}')
