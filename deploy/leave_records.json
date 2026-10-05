@@ -1,0 +1,42 @@
+[
+ {
+  "emp_no": "D-01",
+  "leave_type": "annual",
+  "leave_on": "2025-02-14",
+  "return_on": "2025-04-12",
+  "approved_days": 60,
+  "status": "returned",
+  "approved_by": "HR Manager",
+  "remark": ""
+ },
+ {
+  "emp_no": "F-716",
+  "leave_type": "annual",
+  "leave_on": "2026-09-04",
+  "return_on": null,
+  "approved_days": 60,
+  "status": "approved",
+  "approved_by": "",
+  "remark": ""
+ },
+ {
+  "emp_no": "F-726",
+  "leave_type": "annual",
+  "leave_on": "2026-09-18",
+  "return_on": null,
+  "approved_days": null,
+  "status": "pending",
+  "approved_by": "",
+  "remark": "Not taken return"
+ },
+ {
+  "emp_no": "F-754",
+  "leave_type": "annual",
+  "leave_on": "2026-10-05",
+  "return_on": "2026-11-05",
+  "approved_days": null,
+  "status": "approved",
+  "approved_by": "",
+  "remark": ""
+ }
+]

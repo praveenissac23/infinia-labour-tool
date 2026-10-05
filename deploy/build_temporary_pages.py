@@ -113,12 +113,14 @@ PAGES = {
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
             sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
     "reports": ("Reports", [
-        tab("labour", "pgreports", "Labour", ["reports", "combine"], subs=[
+        tab("labour", "pgreports", "Labour", ["reports", "combine"] + PEOPLE_RIGHTS, subs=[
             sub("builder", "Cycle report builder", screen="reports"),
             sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             # Reports shows the card downloads only; the additions and
             # deductions editor lives under Payroll.
-            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"])]),
+            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
+            # Who is on leave, pending, due back - filled in on Staff > Leave.
+            sub("leavereport", "Leave report", right=PEOPLE_RIGHTS, people="leave-register")]),
         # Office payroll and Staff are not repeated here: they are pages of
         # their own (Payroll > Office payroll, Staff).
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
@@ -676,8 +678,12 @@ const PG_COLS = {
              ["issued_on", "Issued"], ["expires_on", "Expires"], ["days_left", "Days left", "num"], ["status", "Standing"]],
   leave: [["emp_no", "Code"], ["name", "Name", "txt"], ["designation", "Designation", "txt"], ["company", "Company", "txt"], ["joined_on", "Joined"], ["service", "Service"],
           ["rule", "Entitlement", "txt"], ["accrued", "Accrued", "num"], ["taken", "Taken", "num"], ["balance", "Balance", "num"], ["next_due", "Next due"], ["due_state", "Standing"]],
+  "leave-register": [["name", "Staff", "txt", 1], ["emp_no", "Code", "", 1], ["designation", "Designation", "txt", 1], ["leave_type_label", "Leave type", "txt", 1],
+          ["leave_on", "Date of leave", "date", 1], ["return_on", "Date of return", "date", 1], ["approved_days", "Days", "num"], ["standing", "Status", "", 1],
+          ["approved_by", "Approved by", "txt"], ["home_phone", "Home contact", "", 1], ["remark", "Remark", "txt"]],
 };
-const PG_PATHS = { register: "/employees/people", "documents-due": "/employees/people/documents-due", leave: "/employees/people/leave-balances" };
+const PG_PATHS = { register: "/employees/people", "documents-due": "/employees/people/documents-due", leave: "/employees/people/leave-balances",
+                   "leave-register": "/employees/people/leave-register" };
 async function pgPeopleShow() {
   const sb = PG_SUB; if (!sb || !sb.people) return;
   document.getElementById("pg-people-title").textContent = sb.label;
@@ -685,6 +691,8 @@ async function pgPeopleShow() {
   const cols = PG_COLS[sb.people];
   const head = document.getElementById("pg-people-head"), body = document.getElementById("pg-people-body");
   head.innerHTML = "<tr>" + cols.map(c => `<th class="${c[2] || ""}">${c[1]}</th>`).join("") + "</tr>";
+  // The leave list sizes its columns to what is in them: names in full on one line.
+  head.parentNode.style.tableLayout = sb.people === "leave-register" ? "auto" : "";
   body.innerHTML = `<tr><td colspan="${cols.length}" class="empty-note">Loading…</td></tr>`;
   const q = pgPeopleQuery(sb);
   let d;
@@ -694,11 +702,18 @@ async function pgPeopleShow() {
   document.getElementById("pg-people-count").textContent = rows.length ? `${rows.length} row(s)` : "";
   document.getElementById("pg-people-sub").textContent =
     sb.people === "leave" && d.rule ? `Entitlement: ${d.rule[0]} days every ${d.rule[1]} months, as at ${isoLocal(new Date())}` :
-    sb.people === "documents-due" ? `Everything expiring within ${d.days} days, soonest first` : `As at ${isoLocal(new Date())}`;
-  const cell = (r, c) => { const v = r[c[0]]; if (v === null || v === undefined || v === "") return "-";
+    sb.people === "documents-due" ? `Everything expiring within ${d.days} days, soonest first` :
+    sb.people === "leave-register" && d.counts ? `${d.counts.away} on leave now · ${d.counts.pending} pending · ${d.counts.upcoming} approved, not yet gone · ${d.counts.returned} returned · as at ${accDmy(isoLocal(new Date()))}. Entered on Staff > Leave.` :
+    `As at ${isoLocal(new Date())}`;
+  const cell = (r, c) => { let v = r[c[0]];
+    if (c[0] === "return_on" && !v && r.due_back) return `<span style="color:#888;">due ${accDmy(r.due_back)}</span>`;
+    if (v === null || v === undefined || v === "") return "-";
+    if (c[2] === "date") return accDmy(v);
+    if (c[0] === "standing") { const col = { "On leave": "#1F5F80", "Overdue": "#A5301F", "Pending": "#8A6100", "Approved": "#1E7A3A" }[v] || "#666";
+      return `<b style="color:${col};">${escapeHtml(v)}${r.days_late ? " " + r.days_late + " d" : ""}</b>`; }
     return c[2] === "num" && typeof v === "number" ? num(v) : escapeHtml(String(v)); };
   body.innerHTML = rows.length
-    ? rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${cell(r, c)}</td>`).join("") + "</tr>").join("")
+    ? rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}"${c[3] ? ' style="white-space:nowrap;"' : ""}>${cell(r, c)}</td>`).join("") + "</tr>").join("")
     : `<tr><td colspan="${cols.length}" class="empty-note">Nothing to show.</td></tr>`;
 }
 async function pgRepUrl(format) {

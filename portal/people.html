@@ -144,7 +144,7 @@ if (window.PG_EMBED) {
 })();
 function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; } document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
 </script>
-<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 
@@ -172,7 +172,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
   </div>
   <div class="main">
     <div class="top"><h1 id="page-title">Staff</h1><div class="who"><span id="who-name"></span> <button class="signout" onclick="signOut()">Sign out</button></div></div>
-    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="due" onclick="showView('due')">Documents due</span><span class="viewtab" data-view="bday" onclick="showView('bday')">&#127874; Birthdays</span></div>
+    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="due" onclick="showView('due')">Documents due</span><span class="viewtab" data-view="vacation" onclick="showView('vacation')">Leave</span><span class="viewtab" data-view="bday" onclick="showView('bday')">&#127874; Birthdays</span></div>
     <div class="content">
       <div class="status" id="status"></div>
 
@@ -210,6 +210,24 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
           </div>
           <p class="muted" id="due-count"></p>
           <div class="grid-wrap"><table><thead><tr><th>Register</th><th>Code</th><th>Name</th><th>Document</th><th>Number</th><th>Expires</th><th>Days</th><th>Company</th><th></th></tr></thead><tbody id="due-body"></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- ---- Leave register: who is away, who is due back ----------- -->
+      <div id="view-vacation" style="display:none;">
+        <div class="card r">
+          <div class="row">
+            <span class="seg" id="vc-group"><button class="on" data-v="labour" onclick="setVacGroup('labour')">Labour</button><button data-v="office" onclick="setVacGroup('office')">Office</button><button data-v="local" onclick="setVacGroup('local')">Local</button></span>
+            <span class="seg" id="vc-show"><button class="on" data-v="" onclick="setVacShow('')">All</button><button data-v="away" onclick="setVacShow('away')">On leave</button><button data-v="pending" onclick="setVacShow('pending')">Pending</button><button data-v="upcoming" onclick="setVacShow('upcoming')">Approved</button><button data-v="returned" onclick="setVacShow('returned')">Returned</button></span>
+            <span class="grow"></span>
+            <button class="btn btn-primary" onclick="openVac()">+ Add leave</button>
+            <button class="btn btn-dark" onclick="preview('leave-register')">Preview</button>
+            <button class="btn btn-dark" onclick="download('leave-register','pdf')">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button>
+          </div>
+          <p class="muted" id="vc-count"></p>
+          <div class="grid-wrap"><table><thead><tr><th>Staff</th><th>Code</th><th>Designation</th><th>Leave type</th><th>Date of leave</th><th>Date of return</th><th class="num">Days</th><th>Status</th><th>Approved by</th><th>Home contact</th><th>Remark</th></tr></thead><tbody id="vc-body"></tbody></table></div>
+          <p class="muted" style="margin-top:8px;">Click a line to change it. Approved leave shows <b>On leave</b> from the day he goes and <b>Overdue</b> once the return date (or leave date + approved days) has passed; mark <b>Returned</b> when he is back.</p>
         </div>
       </div>
 
@@ -433,6 +451,36 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
 </div>
 
 <!-- ---- Asset --------------------------------------------------------- -->
+<div class="dlg" id="dlg-vac" onclick="if (event.target === this) closeDlg('dlg-vac')">
+  <div class="dlg-box" style="max-width:820px;">
+    <h3 id="vac-title">Leave</h3>
+    <div class="row">
+      <label class="fld"><span>Staff *</span><input type="text" id="v-who" list="v-people" style="width:330px;" placeholder="Type a code or name" oninput="vacWho()"></label>
+      <datalist id="v-people"></datalist>
+      <span class="muted" id="v-who-note"></span>
+    </div>
+    <div class="row">
+      <label class="fld"><span>Leave type</span><select id="v-leave_type" style="width:170px;"><option value="annual">Annual leave</option><option value="sick">Sick leave</option><option value="emergency">Emergency leave</option><option value="unpaid">Unpaid leave</option><option value="other">Other</option></select></label>
+      <label class="fld"><span>Date of leave *</span><input type="date" id="v-leave_on" onchange="vacDays()"></label>
+      <label class="fld"><span>Date of return</span><input type="date" id="v-return_on" onchange="vacDays()"></label>
+      <label class="fld"><span>Approved days</span><input type="number" id="v-approved_days" style="width:100px;" min="0"></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span>Status</span><span class="seg" id="v-status"><button data-v="pending" onclick="segSet(this.parentNode,'pending')">Pending</button><button data-v="approved" onclick="segSet(this.parentNode,'approved')">Approved</button><button data-v="returned" onclick="segSet(this.parentNode,'returned')">Returned</button><button data-v="cancelled" onclick="segSet(this.parentNode,'cancelled')">Cancelled</button></span></label>
+      <label class="fld"><span>Approved by</span><input type="text" id="v-approved_by" style="width:170px;"></label>
+      <label class="fld"><span>Contact number - home country</span><input type="tel" id="v-home_phone" style="width:190px;"></label>
+    </div>
+    <div class="row"><label class="fld" style="flex:1;"><span>Remark</span><input type="text" id="v-remark"></label></div>
+    <p class="muted">The home-country number is the one on the staff file - changing it here changes it there.</p>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="saveVac()">Save</button>
+      <button class="btn btn-gray" onclick="closeDlg('dlg-vac')">Cancel</button>
+      <span class="grow"></span>
+      <button class="btn btn-danger" id="v-del" onclick="removeVac()">Delete</button>
+      <span class="muted" id="vac-msg"></span>
+    </div>
+  </div>
+</div>
 <div class="dlg" id="dlg-asset" onclick="if (event.target === this) closeDlg('dlg-asset')">
   <div class="dlg-box" style="max-width:760px;">
     <h3 id="asset-title">Item issued</h3>
@@ -457,7 +505,7 @@ const API = "";
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
 let ME = null, COMPANIES = [], DLTOKEN = null, DLTIMER = null;
 const P = { view: "register", group: "labour", active: "active", rows: [], counts: {}, current: "", file: null,
-            section: "identity", dueDays: 90, dueGroup: "", leaveGroup: "labour", editingDoc: null, editingAsset: null };
+            section: "identity", dueDays: 90, dueGroup: "", leaveGroup: "labour", vacGroup: "labour", vacShow: "", vac: [], editingDoc: null, editingAsset: null, editingVac: null };
 const GROUPS = { labour: "Labour", office: "Office staff", local: "Local staff", left: "Left / archived" };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -548,10 +596,11 @@ async function start() {
   await refreshDl();
   if (!ME.groups.includes(P.group)) P.group = ME.groups[0];
   // Segments offer only the registers this login may see.
-  document.querySelectorAll("#due-group button, #lv-group button, #n-group button").forEach(b => {
+  document.querySelectorAll("#due-group button, #lv-group button, #vc-group button, #n-group button").forEach(b => {
     if (b.dataset.v && !ME.groups.includes(b.dataset.v)) b.remove();
   });
   if (!ME.groups.includes(P.leaveGroup)) { P.leaveGroup = ME.groups[0]; segSet(document.getElementById("lv-group"), P.leaveGroup); }
+  if (!ME.groups.includes(P.vacGroup)) { P.vacGroup = ME.groups[0]; segSet(document.getElementById("vc-group"), P.vacGroup); }
   window.PG_READY = true;
   // Sent here from elsewhere in the app while the page was still opening.
   if (window.PG_PENDING) { const [c, k] = window.PG_PENDING; window.PG_PENDING = null; goPersonDoc(c, k); return; }
@@ -565,10 +614,10 @@ async function dl() { await refreshDl(); return DLTOKEN; }
 
 function showView(v) {
   P.view = v; localStorage.setItem("people_view", v);
-  ["register", "due", "leave", "bday"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
+  ["register", "due", "leave", "bday", "vacation"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
   document.querySelectorAll(".viewtab[data-view]").forEach(el => el.classList.toggle("active", el.dataset.view === v));
-  document.getElementById("page-title").textContent = { register: "Staff", due: "Staff · Documents due", leave: "Staff · Leave balances", bday: "Staff · Birthdays" }[v];
-  if (v === "register") loadPeople(); if (v === "due") loadDue(); if (v === "leave") loadLeave(); if (v === "bday") loadBday();
+  document.getElementById("page-title").textContent = { register: "Staff", due: "Staff · Documents due", leave: "Staff · Leave balances", bday: "Staff · Birthdays", vacation: "Staff · Leave" }[v];
+  if (v === "register") loadPeople(); if (v === "due") loadDue(); if (v === "leave") loadLeave(); if (v === "bday") loadBday(); if (v === "vacation") loadVac();
 }
 
 // ---- Register -------------------------------------------------------------
@@ -883,6 +932,67 @@ async function loadBday() {
     <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','')">Open</button></td></tr>`).join("")
     || `<tr><td colspan="9" class="muted">No dates of birth on file yet.</td></tr>`;
 }
+// ---- Leave register --------------------------------------------------------
+const VAC_PILL = { "On leave": "b", "Overdue": "r", "Pending": "y", "Approved": "g", "Returned": "gr", "Cancelled": "gr" };
+function setVacGroup(g) { P.vacGroup = g; segSet(document.getElementById("vc-group"), g); loadVac(); }
+function setVacShow(v) { P.vacShow = v; segSet(document.getElementById("vc-show"), v); loadVac(); }
+async function loadVac() {
+  let d = { rows: [], counts: {} };
+  try { d = await apiCall(`/employees/people/leave-register?group=${P.vacGroup}&show=${P.vacShow || ""}`); } catch (e) { status("warn", errText(e)); }
+  P.vac = d.rows; const c = d.counts || {};
+  document.getElementById("vc-count").innerHTML = `<b>${c.away || 0}</b> on leave now · <b>${c.pending || 0}</b> pending · <b>${c.upcoming || 0}</b> approved, not yet gone · <b>${c.returned || 0}</b> returned`;
+  document.getElementById("vc-body").innerHTML = d.rows.map(r => `<tr style="cursor:pointer;" onclick="openVac(${r.id})">
+    <td style="white-space:nowrap;"><b>${esc(r.name)}</b></td><td>${esc(r.emp_no)}</td><td>${esc(r.designation)}</td><td style="white-space:nowrap;">${esc(r.leave_type_label)}</td>
+    <td style="white-space:nowrap;">${dmy(r.leave_on)}</td>
+    <td style="white-space:nowrap;">${r.return_on ? dmy(r.return_on) : (r.due_back ? `<span class="muted">due ${dmy(r.due_back)}</span>` : or(""))}</td>
+    <td class="num">${r.approved_days ?? or("")}</td>
+    <td><span class="pill ${VAC_PILL[r.standing] || "gr"}">${esc(r.standing)}${r.days_late ? " " + r.days_late + " d" : ""}</span></td>
+    <td>${or(r.approved_by)}</td><td style="white-space:nowrap;">${or(r.home_phone)}</td><td>${or(r.remark)}</td></tr>`).join("")
+    || `<tr><td colspan="11" class="muted">No leave on file${P.vacShow ? " for this filter" : ""} - + Add leave to enter one.</td></tr>`;
+}
+let VAC_PEOPLE = [];
+async function vacPeople() {
+  try { VAC_PEOPLE = (await apiCall(`/employees/people?group=${P.vacGroup}`)).rows || []; } catch (e) { VAC_PEOPLE = []; }
+  document.getElementById("v-people").innerHTML = VAC_PEOPLE.map(p => `<option value="${esc(p.emp_no)} - ${esc(p.name)}">`).join("");
+}
+function vacPick() { const v = document.getElementById("v-who").value.trim(); const code = v.split(" - ")[0].trim().toUpperCase();
+  return VAC_PEOPLE.find(p => String(p.emp_no).toUpperCase() === code) || null; }
+function vacWho() { const p = vacPick(); document.getElementById("v-who-note").textContent = p ? (p.designation || "") : ""; }
+function vacDays() {
+  const a = getVal("v-leave_on"), b = getVal("v-return_on"), d = document.getElementById("v-approved_days");
+  if (a && b && !d.value) { const n = Math.round((new Date(b) - new Date(a)) / 86400000); if (n > 0) d.value = n; }
+}
+async function openVac(id) {
+  const r = id ? P.vac.find(x => x.id === id) : null; P.editingVac = r ? r.id : null;
+  document.getElementById("vac-title").textContent = r ? `Leave · ${r.name}` : "Add leave";
+  await vacPeople();
+  const w = document.getElementById("v-who"); w.value = r ? `${r.emp_no} - ${r.name}` : ""; w.disabled = !!r; vacWho();
+  ["leave_type", "leave_on", "return_on", "approved_days", "approved_by", "home_phone", "remark"].forEach(k => setVal("v-" + k, r ? r[k] : (k === "leave_type" ? "annual" : "")));
+  segSet(document.getElementById("v-status"), r ? r.status : "pending");
+  document.getElementById("v-del").style.display = r ? "" : "none";
+  document.getElementById("vac-msg").textContent = ""; openDlg("dlg-vac");
+}
+// Picking someone fills in the home-country number already on his file.
+document.addEventListener("change", async e => {
+  if (e.target.id !== "v-who" || P.editingVac) return;
+  const p = vacPick(); if (!p) return;
+  try { const f = await apiCall(`/employees/people/${encodeURIComponent(p.emp_no)}`); if (f.profile && f.profile.home_phone && !getVal("v-home_phone")) setVal("v-home_phone", f.profile.home_phone); } catch (err) {}
+});
+async function saveVac() {
+  const body = {}; ["leave_type", "leave_on", "return_on", "approved_days", "approved_by", "home_phone", "remark"].forEach(k => body[k] = getVal("v-" + k));
+  body.status = segGet(document.getElementById("v-status")) || "pending";
+  try {
+    if (P.editingVac) await apiCall(`/employees/people/leave-register/${P.editingVac}`, { method: "PUT", body: JSON.stringify(body) });
+    else { const p = vacPick(); if (!p) { document.getElementById("vac-msg").textContent = "Pick the person from the list."; return; }
+           body.emp_no = p.emp_no; await apiCall(`/employees/people/leave-register`, { method: "POST", body: JSON.stringify(body) }); }
+    closeDlg("dlg-vac"); status("ok", "Leave saved."); loadVac();
+  } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
+}
+async function removeVac() {
+  const r = P.vac.find(x => x.id === P.editingVac); if (!r) return;
+  if (!(await ask(`Delete this leave for ${r.name} (from ${dmy(r.leave_on)})?`, "Delete", true))) return;
+  try { await apiCall(`/employees/people/leave-register/${r.id}`, { method: "DELETE" }); closeDlg("dlg-vac"); loadVac(); } catch (e) { document.getElementById("vac-msg").textContent = errText(e); }
+}
 function setLeaveGroup(g) { P.leaveGroup = g; segSet(document.getElementById("lv-group"), g); loadLeave(); }
 async function loadLeave() {
   let rows = [];
@@ -916,6 +1026,7 @@ function reportUrl(kind) {
   if (kind === "documents-due") return `/export/people/documents-due?days=${P.dueDays}&group=${P.dueGroup}`;
   if (kind === "leave") return `/export/people/leave?group=${P.leaveGroup}`;
   if (kind === "birthdays") return `/export/people/birthdays?group=${P.bdGroup || ""}`;
+  if (kind === "leave-register") return `/export/people/leave-register?group=${P.vacGroup}&show=${P.vacShow || ""}`;
 }
 async function preview(kind) { const u = reportUrl(kind); window.open(`${API}${u.replace("?", "/view?")}&token=${await dl()}`, "_blank"); }
 async function download(kind, format) { const u = reportUrl(kind); window.open(`${API}${u}&token=${await dl()}&format=${format}`, "_blank"); }

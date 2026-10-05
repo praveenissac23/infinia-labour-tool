@@ -301,6 +301,167 @@ PROFILE_DATES = {"date_of_birth", "contract_expiry", "leave_opening_on", "last_t
 PROFILE_NUMBERS = {"leave_days", "leave_months", "leave_opening", "ticket_every_years"}
 
 
+# ---- Leave register: spells of leave ----------------------------------------
+
+LEAVE_TYPES = {"annual": "Annual leave", "sick": "Sick leave", "emergency": "Emergency leave",
+               "unpaid": "Unpaid leave", "other": "Other"}
+LEAVE_STATUS = {"pending": "Pending", "approved": "Approved", "returned": "Returned", "cancelled": "Cancelled"}
+
+
+def _due_back(r):
+    """The day he is due back: the return date written down, else the
+    leave date plus the days approved."""
+    if r.return_on:
+        return r.return_on
+    if r.leave_on and r.approved_days:
+        return r.leave_on + timedelta(days=int(r.approved_days))
+    return None
+
+
+def _standing(r, today):
+    """Where the spell stands today. Approved leave reads On leave from
+    the day he goes, and Overdue once the day he was due back has passed
+    without his return being marked."""
+    st = r.status or "pending"
+    if st in ("pending", "returned", "cancelled"):
+        return LEAVE_STATUS[st], 0
+    if r.leave_on and r.leave_on > today:
+        return "Approved", 0
+    due = _due_back(r)
+    if due and due < today:
+        return "Overdue", (today - due).days
+    return "On leave", 0
+
+
+def _leave_dict(r, e, p, today):
+    g = group_of(e, p)
+    g = "office" if g == "household" else g
+    standing, late = _standing(r, today)
+    due = _due_back(r)
+    return {"id": r.id, "emp_no": e.emp_no, "name": e.name, "group": g, "group_label": GROUPS.get(g, g),
+            "designation": e.designation or e.trade or "",
+            "leave_type": r.leave_type or "annual", "leave_type_label": LEAVE_TYPES.get(r.leave_type or "annual", r.leave_type),
+            "leave_on": _d(r.leave_on), "return_on": _d(r.return_on), "approved_days": r.approved_days,
+            "due_back": _d(due), "status": r.status or "pending", "standing": standing, "days_late": late,
+            "approved_by": r.approved_by or "", "home_phone": (p.home_phone if p else "") or "",
+            "remark": r.remark or ""}
+
+
+STANDING_ORDER = {"Overdue": 0, "On leave": 1, "Pending": 2, "Approved": 3, "Returned": 4, "Cancelled": 5}
+
+
+@router.get("/employees/people/leave-register")
+def leave_register(group: str = "", show: str = "", db: Session = Depends(get_db), user: models.User = PEOPLE):
+    """Every spell of leave on file, those away now first. show: "" all,
+    away (on leave or overdue), pending, upcoming (approved, not gone
+    yet), returned."""
+    today = M._dubai_today()
+    groups = allowed_groups(user)
+    if group:
+        _may(user, group)
+        groups = {group}
+    rows = (db.query(models.LeaveRecord, models.Employee, models.PeopleProfile)
+              .join(models.Employee, models.Employee.id == models.LeaveRecord.employee_id)
+              .outerjoin(models.PeopleProfile, models.PeopleProfile.employee_id == models.Employee.id).all())
+    out = []
+    for r, e, p in rows:
+        d = _leave_dict(r, e, p, today)
+        if d["group"] not in groups:
+            continue
+        out.append(d)
+    want = {"away": ("On leave", "Overdue"), "pending": ("Pending",), "upcoming": ("Approved",),
+            "returned": ("Returned",)}.get(show)
+    counts = {k: sum(1 for d in out if d["standing"] in v) for k, v in
+              {"away": ("On leave", "Overdue"), "pending": ("Pending",), "upcoming": ("Approved",), "returned": ("Returned",)}.items()}
+    if want:
+        out = [d for d in out if d["standing"] in want]
+    # Away now first, then waiting, then coming up, then the history (latest first).
+    out.sort(key=lambda d: (STANDING_ORDER.get(d["standing"], 9),
+                            d["leave_on"] if d["standing"] in ("Approved",) else "",
+                            "".join(chr(255 - ord(c)) for c in (d["leave_on"] or "")), d["name"]))
+    return {"date": today.isoformat(), "rows": out, "counts": counts, "total": sum(counts.values())}
+
+
+def _leave_fields(r, payload):
+    if "leave_type" in payload:
+        t = (payload.get("leave_type") or "annual").strip().lower()
+        if t not in LEAVE_TYPES:
+            raise HTTPException(status_code=400, detail="Pick the leave type.")
+        r.leave_type = t
+    if "status" in payload:
+        st = (payload.get("status") or "pending").strip().lower()
+        if st not in LEAVE_STATUS:
+            raise HTTPException(status_code=400, detail="Pick the status.")
+        r.status = st
+    for f in ("leave_on", "return_on"):
+        if f in payload:
+            setattr(r, f, M._as_date(payload.get(f)))
+    if "approved_days" in payload:
+        v = payload.get("approved_days")
+        try:
+            r.approved_days = int(float(v)) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Approved days must be a number.")
+        if r.approved_days is not None and r.approved_days < 0:
+            raise HTTPException(status_code=400, detail="Approved days cannot be negative.")
+    for f in ("approved_by", "remark"):
+        if f in payload:
+            setattr(r, f, (payload.get(f) or "").strip())
+    if not r.leave_on:
+        raise HTTPException(status_code=400, detail="Enter the date of leave.")
+    if r.return_on and r.return_on < r.leave_on:
+        raise HTTPException(status_code=400, detail="The date of return is before the date of leave.")
+
+
+def _save_home_phone(db, e, payload):
+    """The home-country number lives on the staff file; the leave form
+    only shows it and can fill it in."""
+    if "home_phone" in payload:
+        v = (payload.get("home_phone") or "").strip()
+        p = _profile(db, e, create=bool(v))
+        if p and (p.home_phone or "") != v:
+            p.home_phone = v
+
+
+@router.post("/employees/people/leave-register")
+def add_leave_record(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
+    e = _by_code(db, payload.get("emp_no") or "")
+    _may(user, group_of(e, _profile(db, e)))
+    r = models.LeaveRecord(employee_id=e.id, created_by=user.id, leave_type="annual", status="pending")
+    _leave_fields(r, payload)
+    db.add(r)
+    _save_home_phone(db, e, payload)
+    db.commit()
+    M.log_action(db, user.id, "leave_added", f"{e.emp_no}: {LEAVE_TYPES[r.leave_type]} from {r.leave_on}")
+    return _leave_dict(r, e, _profile(db, e), M._dubai_today())
+
+
+@router.put("/employees/people/leave-register/{rec_id}")
+def save_leave_record(rec_id: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
+    r = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == rec_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That leave is not on file.")
+    e = r.employee
+    _may(user, group_of(e, _profile(db, e)))
+    _leave_fields(r, payload)
+    _save_home_phone(db, e, payload)
+    db.commit()
+    M.log_action(db, user.id, "leave_saved", f"{e.emp_no}: {LEAVE_STATUS[r.status]} {r.leave_on}")
+    return _leave_dict(r, e, _profile(db, e), M._dubai_today())
+
+
+@router.delete("/employees/people/leave-register/{rec_id}")
+def delete_leave_record(rec_id: int, db: Session = Depends(get_db), user: models.User = PEOPLE):
+    r = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == rec_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="That leave is not on file.")
+    e = r.employee
+    _may(user, group_of(e, _profile(db, e)))
+    db.delete(r); db.commit()
+    M.log_action(db, user.id, "leave_deleted", f"{e.emp_no}: {r.leave_on}")
+    return {"ok": True}
+
+
 @router.get("/employees/people")
 def list_people(group: str = "", include_left: bool = False, q: str = "",
                 company_id: int = None, db: Session = Depends(get_db), user: models.User = PEOPLE):
@@ -682,6 +843,37 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db), user: models.User
     return {"ok": True}
 
 
+def seed_leave_records(SessionLocal):
+    """The labour leave sheet as it stood (LABOURS_LEAVE_DETAILS.xlsx),
+    put in once and matched on the employee code. Never again after that,
+    so nothing typed in the app is overwritten."""
+    import json, os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "deploy", "leave_records.json")
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "leave_records_seeded").first():
+            return
+        added, missing = 0, []
+        if os.path.exists(path):
+            for x in json.load(open(path)):
+                e = db.query(models.Employee).filter(models.Employee.emp_no == x["emp_no"]).first()
+                if not e:
+                    missing.append(x["emp_no"]); continue
+                db.add(models.LeaveRecord(employee_id=e.id, leave_type=x["leave_type"], status=x["status"],
+                                          leave_on=M._as_date(x["leave_on"]), return_on=M._as_date(x.get("return_on")),
+                                          approved_days=x.get("approved_days"), approved_by=x.get("approved_by", ""),
+                                          remark=x.get("remark", "")))
+                added += 1
+        db.add(models.Setting(key="leave_records_seeded", value="1"))
+        db.commit()
+        print(f"Leave register: {added} spell(s) loaded from the sheet" + (f"; not on file: {', '.join(missing)}" if missing else ""))
+    except Exception as ex:                       # a failed seed must never stop the app
+        db.rollback()
+        print(f"Leave register seed skipped: {ex}")
+    finally:
+        db.close()
+
+
 # ---- Reports ---------------------------------------------------------------
 
 REGISTER_MONEY = ["Basic", "Allowance", "Gross"]
@@ -784,6 +976,28 @@ def _bday_parts(db, group, user=None):
     return rows, f"Birthdays - {GROUPS.get(group, 'Everyone')}", sub
 
 
+def _leave_reg_parts(db, group, show, user=None):
+    d = leave_register(group=group, show=show, db=db, user=user)
+    dm = lambda v: M._dmy(M._as_date(v)) if v else ""
+    rows = [{"Staff": r["name"], "Employee Code": r["emp_no"], "Designation": r["designation"],
+             "Leave Type": r["leave_type_label"], "Date of Leave": dm(r["leave_on"]),
+             "Date of Return": dm(r["return_on"]) or (f"due {dm(r['due_back'])}" if r["due_back"] else ""),
+             "Approved Days": r["approved_days"] if r["approved_days"] is not None else "",
+             "Status": r["standing"] + (f" {r['days_late']} d" if r["days_late"] else ""),
+             "Approved By": r["approved_by"], "Contact - Home Country": r["home_phone"],
+             "Remark": r["remark"]} for r in d["rows"]]
+    # A column nobody has filled in yet is left off, not printed empty.
+    keep = [k for k in (rows[0] if rows else {}) if any(str(x[k]).strip() for x in rows)]
+    rows = [{k: x[k] or "-" for k in keep} for x in rows]
+    c = d["counts"]
+    label = {"labour": "Labour", "office": "Office Staff", "local": "Local Staff"}.get(group, "All Staff")
+    what = {"away": "on leave now", "pending": "pending", "upcoming": "approved, not yet gone", "returned": "returned"}.get(show)
+    sub = (f"{len(rows)} {what}" if what else
+           f"{c['away']} on leave   |   {c['pending']} pending   |   {c['upcoming']} approved, not yet gone   |   {c['returned']} returned")
+    sub += f"   |   As at {M._dubai_today():%d %b %Y}"
+    return rows, f"{label} - Leave Details", sub
+
+
 def _reader(token, db):
     user = auth.get_download_user_from_token(token, db)
     if not allowed_groups(user):
@@ -791,7 +1005,7 @@ def _reader(token, db):
     return user
 
 
-def _report(kind, db, user, group="", emp_no="", days=90, company_id=None):
+def _report(kind, db, user, group="", emp_no="", days=90, company_id=None, show=""):
     if kind == "register":
         if group in GROUPS:
             _may(user, group)
@@ -807,24 +1021,26 @@ def _report(kind, db, user, group="", emp_no="", days=90, company_id=None):
         return _leave_parts(db, group, user), []
     if kind == "birthdays":
         return _bday_parts(db, group, user), []
+    if kind == "leave-register":
+        return _leave_reg_parts(db, group, show, user), []
     raise HTTPException(status_code=404, detail="No such report.")
 
 
 @router.get("/export/people/{kind}")
 def export_people(kind: str, token: str, format: str = "pdf", group: str = "", emp_no: str = "",
-                  days: int = 90, company_id: int = None, db: Session = Depends(get_db)):
+                  days: int = 90, company_id: int = None, show: str = "", db: Session = Depends(get_db)):
     user = _reader(token, db)
-    (rows, title, sub), money = _report(kind, db, user, group, emp_no, days, company_id)
+    (rows, title, sub), money = _report(kind, db, user, group, emp_no, days, company_id, show)
     return M._hr_file(title, rows, sub, format, money, "People_" + kind.replace("-", "_").title())
 
 
 @router.get("/export/people/{kind}/view")
 def view_people(kind: str, token: str, group: str = "", emp_no: str = "", days: int = 90,
-                company_id: int = None, db: Session = Depends(get_db)):
+                company_id: int = None, show: str = "", db: Session = Depends(get_db)):
     user = _reader(token, db)
-    (rows, title, sub), money = _report(kind, db, user, group, emp_no, days, company_id)
+    (rows, title, sub), money = _report(kind, db, user, group, emp_no, days, company_id, show)
     t = quote(auth.create_view_token(user.username), safe="")
-    url = (f"/export/people/{kind}?token={t}&group={quote(group)}&emp_no={quote(emp_no)}&days={days}"
+    url = (f"/export/people/{kind}?token={t}&group={quote(group)}&emp_no={quote(emp_no)}&days={days}&show={quote(show)}"
            + (f"&company_id={company_id}" if company_id else ""))
     return M._preview_page(title, sub, rows, url + "&format=pdf", url + "&format=excel",
                            money_cols=money, total_cols=money or None)

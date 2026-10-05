@@ -948,6 +948,28 @@ class PeopleProfile(Base):
     employee = relationship("Employee")
 
 
+class LeaveRecord(Base):
+    """A spell of leave - annual, sick, emergency - as the office keeps
+    it: when he went, when he is due back or came back, the days
+    approved, who approved it. One row per spell, not per day; the
+    day-by-day absence register is separate."""
+    __tablename__ = "leave_records"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    leave_type = Column(String, default="annual")    # annual | sick | emergency | unpaid | other
+    leave_on = Column(Date, nullable=True)           # date of leave
+    return_on = Column(Date, nullable=True)          # date of return (due back, or came back)
+    approved_days = Column(Integer, nullable=True)
+    status = Column(String, default="pending")       # pending | approved | returned | cancelled
+    approved_by = Column(String, default="")
+    remark = Column(String, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee")
+
+
 class PeopleAsset(Base):
     """Something handed to a person that comes back when he leaves."""
     __tablename__ = "people_assets"
