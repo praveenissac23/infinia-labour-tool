@@ -697,13 +697,13 @@ function renderFile() {
       + `<p class="muted">The same table the app's Documents tracker reads - a renewal recorded here is a renewal there.</p>`;
   else if (P.section === "leave") body = `<div class="grid">
       ${f("Rule", lv.rule + (pr.leave_days ? " (contract)" : ""))}${f("Counted from", lv.counted_from ? dmy(lv.counted_from) : "")}${f("Accrued to date", `${lv.accrued} days`)}${f("Taken", `${lv.taken} days`)}
-      ${f("Balance", `<b>${lv.balance} days</b>`)}${f("Next due", lv.next_due ? `${dmy(lv.next_due)} ${lv.due_state === "due" ? '<span class="pill r">due</span>' : ""}` : "")}${f("Last vacation", lv.last_vacation)}${f("Sick this year", `${lv.sick_this_year} days`)}
+      ${f("Balance", `<b>${lv.balance} days</b>`)}${f("Next due", lv.next_due ? `<span>${dmy(lv.next_due)} ${lv.due_state === "due" ? '<span class="pill r">due</span>' : ""}</span>` : "")}${f("Last vacation", lv.last_vacation)}${f("Sick this year", `${lv.sick_this_year} days`)}
       ${f("Air ticket", pr.ticket_every_years ? `every ${pr.ticket_every_years} yr${pr.last_ticket_on ? " · last " + dmy(pr.last_ticket_on) : ""}` : "")}${lv.opening ? f("Opening balance", `${lv.opening} days as at ${dmy(pr.leave_opening_on)}`) : ""}</div>
       ${lv.why ? `<p class="muted">${esc(lv.why)}</p>` : ""}
       <div class="sec-h"><span class="lbl">Vacations taken</span></div>` + table(["From", "To", "Days"], lv.vacations.map(v => [dmy(v.from), dmy(v.to), v.days]), "None recorded.")
       + (p.group !== "labour" ? `<div class="sec-h"><span class="lbl">Absence record (Absence register)</span></div>` + table(["Date(s)", "Type", "Days", "Pay", "Deduction"],
           F.absence.map(a => [`${dmy(a.from)}${a.to && a.to !== a.from ? " - " + dmy(a.to) : ""}${a.half ? " (half)" : ""}`, a.kind_label || a.kind, a.days_total, a.why || a.pay || "", "$" + money(a.cost || 0)]), "Nothing recorded.")
-        : `<p class="muted">For labour, days marked Leave on the attendance grid are the days taken.</p>`)
+        : `<p class="muted">For labour, the days taken are days marked Leave on the attendance grid, plus annual leave in the leave register below.</p>`)
       + `<div class="sec-h"><span class="lbl">Leave register (Staff &gt; Leave)</span><button class="btn btn-primary btn-sm" onclick="openVac(null, '${esc(p.emp_no)}')">+ Add leave</button></div>`
       + (F.leave_spells.length ? `<div class="grid-wrap"><table><thead><tr><th>Leave type</th><th>Date of leave</th><th>Date of return</th><th class="num">Days</th><th>Status</th><th>Approved by</th><th>Remark</th></tr></thead><tbody>`
           + F.leave_spells.map(r => `<tr style="cursor:pointer;" onclick="openVac(${r.id}, '${esc(p.emp_no)}')"><td style="white-space:nowrap;">${esc(r.leave_type_label)}</td><td style="white-space:nowrap;">${dmy(r.leave_on)}</td>
