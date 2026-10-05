@@ -162,6 +162,7 @@ def seed_on_startup():
         _grant_projects_to_chief_accountant(db)
         _jomon_not_admin(db)
         _drop_market_estimates(db)
+        _materials_from_old_lpos(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -509,6 +510,31 @@ def _grant_director_petty_to_chief_accountant(db):
     db.commit()
     if n:
         print("Naveen / Praveen petty cash given to: " + ", ".join(n))
+
+
+def _materials_from_old_lpos(db):
+    """Orders raised before LPO lines put their material on the list:
+    done once for every line typed by hand on a live (not cancelled)
+    order, so the list carries everything bought so far."""
+    if db.query(models.Setting).filter(models.Setting.key == "materials_from_lpos").first():
+        return
+    created, linked = [], 0
+    for o in db.query(models.PurchaseOrder).all():
+        if (o.status or "issued") == "cancelled":
+            continue
+        for l in o.lines:
+            if l.item_id:
+                continue
+            it = _item_for_lpo_line(db, None, l.description, l.unit, created)
+            if it:
+                l.item_id = it.id; linked += 1
+    db.add(models.Setting(key="materials_from_lpos", value="1"))
+    if created:
+        db.add(models.AuditLog(user_id=None, action="materials_from_lpos",
+                               details=f"{len(created)} material(s) added from LPO lines: {', '.join(created)}"))
+    db.commit()
+    if linked:
+        print(f"Materials from LPOs: {linked} line(s) linked, {len(created)} material(s) added")
 
 
 def _drop_market_estimates(db):
@@ -4165,6 +4191,42 @@ def apply_units(payload: schemas.ApplyUnitsIn, db: Session = Depends(get_db),
     return {"updated": done}
 
 
+def _item_for_lpo_line(db, item_id, description, unit, created):
+    """The material behind an LPO line. A line picked from the list keeps
+    its material. A line typed by hand is matched to the list by name
+    (case and spacing aside); if it is not there, it is added - with the
+    next ITM code, the unit from the line - so every material the
+    company buys is on the material list, and the Issued-to-sites and
+    Site-costs reports can price it from this order."""
+    if item_id:
+        it = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
+        if it:
+            return it
+    name = " ".join((description or "").split())
+    if not name:
+        return None
+    key = name.lower()
+    for it in db.query(models.StoreItem).all():
+        if " ".join((it.name or "").split()).lower() == key:
+            if not it.active:
+                it.active = True
+            return it
+    it = models.StoreItem(code=_next_item_code(db), name=name, unit=(unit or "").strip() or "pcs",
+                          item_type="consumable", category="", reorder_level=0.0, active=True)
+    db.add(it)
+    db.flush()
+    created.append(f"{it.code} {it.name}")
+    return it
+
+
+def _lpo_lines_to_materials(db, order, created):
+    """Every line on the order points at a material on the list."""
+    for l in order.lines:
+        it = _item_for_lpo_line(db, l.item_id, l.description, l.unit, created)
+        if it and not l.item_id:
+            l.item_id = it.id
+
+
 def _next_item_code(db):
     """ITM1, ITM2... The keeper never invents a code; existing items keep
     whatever code they were given."""
@@ -7056,6 +7118,9 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+    db.flush()
+    new_items = []
+    _lpo_lines_to_materials(db, o, new_items)
     # Raising the order IS placing it. The request lines it came from are
     # marked ordered against this supplier, so the request moves on and
     # the keeper sees it on Order Follow-up - rather than the office
@@ -7105,8 +7170,9 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     log_action(db, user.id, "create_lpo",
                f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
                + (f", {len(placed)} request line(s) marked ordered" if placed else "")
-               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else ""))
-    return {**_lpo_dict(o), "supplier_updated": sup_changed}
+               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
+               + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
+    return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
 
 
 @app.put("/store/purchase/orders/{order_id}")
@@ -7166,11 +7232,16 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+    db.flush()
+    db.expire(o, ["lines"])          # the collection still held the lines just deleted
+    new_items = []
+    _lpo_lines_to_materials(db, o, new_items)
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
-               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else ""))
-    return {**_lpo_dict(o), "supplier_updated": sup_changed}
+               + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
+               + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
+    return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
 
 
 @app.post("/store/purchase/orders/{order_id}/cancel")

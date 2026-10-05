@@ -1218,7 +1218,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="5da8b9070e83";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="7c52b5f7cb0a";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -11951,7 +11951,9 @@ async function saveLpo() {
 // What the order taught the supplier list, said in one line.
 function lpoSupNote(r) {
   const c = (r && r.supplier_updated) || [];
-  return c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "";
+  const m = (r && r.materials_added) || [];
+  return (c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "")
+       + (m.length ? ` Added to the material list: ${m.join(", ")}.` : "");
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============

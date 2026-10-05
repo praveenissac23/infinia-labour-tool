@@ -11745,7 +11745,9 @@ async function saveLpo() {
 // What the order taught the supplier list, said in one line.
 function lpoSupNote(r) {
   const c = (r && r.supplier_updated) || [];
-  return c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "";
+  const m = (r && r.materials_added) || [];
+  return (c.length ? ` Supplier list updated for ${r.supplier_name}: ${c.join(", ")}.` : "")
+       + (m.length ? ` Added to the material list: ${m.join(", ")}.` : "");
 }
 
 // ============ SETTINGS - PASSWORD & USERS ============
