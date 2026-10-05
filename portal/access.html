@@ -366,7 +366,7 @@ function openRole(id) {
   document.getElementById("role-msg").textContent = ""; openDlg("dlg-role");
 }
 async function saveRole() {
-  const screens = [...document.querySelectorAll("#r-rights input:checked")].map(i => i.value);
+  const screens = [...document.querySelectorAll("#r-rights input:checked:not(:disabled)")].map(i => i.value);
   try { await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: editingRole, name: document.getElementById("r-name").value, notes: document.getElementById("r-notes").value, screens }) });
     closeDlg("dlg-role"); status("ok", "Role saved - every login that carries it now has these rights."); await loadAll();
   } catch (e) { document.getElementById("role-msg").textContent = errText(e); }

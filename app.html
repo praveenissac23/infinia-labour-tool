@@ -331,6 +331,8 @@
   .rep-table th.k, .rep-table td.k { white-space: nowrap; }
   .rep-table th.kl, .rep-table td.kl { white-space: nowrap; text-align: left; }
   .rep-table td.w { min-width: 150px; }
+  .rep-table tr.rep-group td { background: #F4F1EC; color: #5B6167; font-weight: 700; font-size: 11.5px; letter-spacing: .4px; padding: 6px 10px; text-align: left; }
+  .rep-tag { display: inline-block; background: #FDF6F5; border: 1px solid #E7CEC9; color: #7A3B33; padding: 0 6px; border-radius: 4px; font-size: 11px; margin-left: 6px; font-weight: 600; white-space: nowrap; }
   .pp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .pp-table th { background: #22262A; color: #fff; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
   .pp-table th.l { text-align: left; } .pp-table th.n { text-align: right; }
@@ -1159,7 +1161,7 @@
   try {
     if (!sessionStorage.getItem("infinia_token")) return;
     var full = (location.hash || "").slice(1);
-    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll"}, "expiry": {"expiry": "expiry", "expiry:people": "expiry", "expiry:company": "expiry", "expiry:pdc": "pdc"}, "accounts": {"taxinv": "invoices", "proforma": "invoices", "petty": "pettycash", "projects": "projpay", "petty:site": "pettycash", "petty:pro": "pettycash", "petty:office": "pettycash", "petty:naveen": "pettycash", "petty:praveen": "pettycash"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "labour:leavereport": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:site_cost": "store", "storerep:transfers": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "expiry": "expiry", "accounts": "taxinv", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
+    var TABMAPS = {"dashboard": {"dashboard": "dashboard"}, "attendance": {"attendance": "attendance", "livecard": "livecard", "masterdata": "masterdata"}, "payroll": {"labourpay": "combine", "hrpayroll": "hrpayroll", "labourpay:combine": "combine", "labourpay:adjust": "combine", "labourpay:errorcheck": "errorcheck", "hrpayroll:cycle": "hrpayroll", "hrpayroll:leave": "hrpayroll", "hrpayroll:items": "hrpayroll", "hrpayroll:loans": "hrpayroll", "hrpayroll:staff": "hrpayroll", "hrpayroll:increments": "hrpayroll", "hrpayroll:gratuity": "hrpayroll"}, "expiry": {"expiry": "expiry", "expiry:people": "expiry", "expiry:company": "expiry", "expiry:pdc": "pdc"}, "accounts": {"taxinv": "invoices", "proforma": "invoices", "petty": "pettycash", "projects": "projpay", "petty:site": "pettycash", "petty:pro": "pettycash", "petty:office": "pettycash", "petty:naveen": "pettycash", "petty:praveen": "pettycash"}, "store": {"store": "store", "rentals": "store", "requests": "requests", "purchasing": "purchase", "store:home": "store", "store:give": "store", "store:arrive": "store", "store:other": "store", "store:items": "store", "rentals:hire": "store", "rentals:returns": "store", "requests:requests": "requests", "requests:approvals": "approvals", "requests:followup": "followup", "purchasing:purchase": "purchase", "purchasing:lporegister": "lporegister", "purchasing:suppliers": "suppliers"}, "reports": {"labour": "reports", "storerep": "store", "labour:builder": "reports", "labour:monthly": "monthly", "labour:cards": "combine", "labour:leavereport": "pgreports", "storerep:stock": "store", "storerep:by_site": "store", "storerep:usage": "store", "storerep:site_cost": "store", "storerep:assets": "store", "storerep:issues": "store", "storerep:lost": "store", "storerep:hired": "store", "storerep:mr_history": "store"}, "settings": {"general": "settings", "companies": "settings", "logins": "pglogins", "access": "pgaccess", "activity": "activity"}, "people": {"people": "pgstaff"}}, FIRST = {"dashboard": "dashboard", "attendance": "attendance", "payroll": "labourpay", "expiry": "expiry", "accounts": "taxinv", "store": "store", "reports": "labour", "settings": "general", "people": "people"};
     var tabs = TABMAPS[window.PG_KEY] || TABMAPS.dashboard;
     // No tab in the address: the first tab this login had here last time.
     var remembered = null;
@@ -1216,7 +1218,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="23b4295198e8";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="5da8b9070e83";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3110,6 +3112,8 @@
                   <option value="rental">Rental (rented in)</option>
                 </select>
                 <input type="number" id="it-reorder" placeholder="Warn me under" style="width:130px;" step="any">
+                <input type="number" id="it-price" placeholder="Price (AED)" style="width:120px;" step="0.01" min="0"
+                       title="Purchase price per unit, excluding VAT. Used by Site costs when the material has no LPO.">
                 <input type="number" id="it-opening" placeholder="Already have" style="width:130px;" step="any"
                        title="How many are on hand right now. Recorded as an opening receipt, so equipment the company already owns does not sit in the reports holding nothing.">
               </div>
@@ -3268,7 +3272,7 @@
                   <input type="text" id="store-report-search" placeholder="Search within this report"
                          style="width:200px;" oninput="filterStoreReport()">
                   <select id="store-site-filter" onchange="loadStore()" style="display:none; width:160px;"></select>
-                  <select id="store-move-filter" onchange="loadStore()" style="display:none; width:180px;"><option value="">All movements</option><option value="out">Issued from store</option><option value="transfer">Moved between sites</option><option value="direct">Delivered direct</option></select>
+                  <select id="store-move-filter" onchange="loadStore()" style="display:none; width:180px;"></select>
                   <span id="store-range-wrap">
                     <label>From</label><input type="date" id="store-date-from" onchange="loadStore()">
                     <label>To</label><input type="date" id="store-date-to" onchange="loadStore()">
@@ -7826,7 +7830,7 @@ async function applyUnitSuggestions() {
 }
 
 function clearItemForm() {
-  ["it-code","it-name","it-cat","it-reorder","it-opening","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+  ["it-code","it-name","it-cat","it-reorder","it-price","it-opening","it-rsupplier","it-rrate","it-rstart","it-rdue"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   // A fresh form is a new material again, so opening stock is offered.
   const op = document.getElementById("it-opening");
@@ -7999,6 +8003,7 @@ function editStoreItem(id) {
   document.getElementById("it-unit").innerHTML = unitOptionsHtml(i.unit || "pcs");
   document.getElementById("it-type").value = i.item_type;
   document.getElementById("it-reorder").value = i.reorder_level || "";
+  document.getElementById("it-price").value = i.est_price ? i.est_price : "";
   // Opening stock belongs to a new material only - an existing one has
   // a ledger, and a second opening balance would double its count.
   const op = document.getElementById("it-opening");
@@ -8024,6 +8029,7 @@ async function saveStoreItem() {
     unit: document.getElementById("it-unit").value.trim() || "pcs",
     item_type: document.getElementById("it-type").value,
     reorder_level: parseFloat(document.getElementById("it-reorder").value) || 0,
+    est_price: document.getElementById("it-price").value === "" ? null : (parseFloat(document.getElementById("it-price").value) || 0),
     rental_supplier: document.getElementById("it-rsupplier").value.trim(),
     rental_rate: parseFloat(document.getElementById("it-rrate").value) || 0,
     rental_period: document.getElementById("it-rperiod").value,
@@ -8043,7 +8049,7 @@ async function saveStoreItem() {
   try {
     const r = await apiCall("/store/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     showStatus("store-status", "ok", `Saved ${r.code} - ${r.name}.`);
-    ["it-code","it-name","it-cat","it-reorder","it-rsupplier","it-rrate","it-rstart","it-rdue"]
+    ["it-code","it-name","it-cat","it-reorder","it-price","it-rsupplier","it-rrate","it-rstart","it-rdue"]
       .forEach(id => document.getElementById(id).value = "");
     document.getElementById("it-unit").innerHTML = unitOptionsHtml("pcs");
     await loadStoreItems(); await loadStore();
@@ -10026,12 +10032,30 @@ async function downloadRequestPdf(id) {
 }
 
 // The site and movement boxes, for the reports that take them.
+// The second box on a report: what to show. Reports without one hide it.
+const STORE_MOVE_OPTS = {
+  usage: [["", "All movements"], ["out", "From the store"], ["transfer", "Moved between sites"], ["direct", "Delivered direct"]],
+  issues: [["out", "Still out"], ["returned", "Returned"], ["all", "Issued and returned"]],
+  mr_history: [["open", "Open"], ["done", "Done"], ["all", "All requests"]],
+};
+const STORE_REPORT_SUB = {
+  usage: "Every material that left the store or moved between sites. Pick a site to see only what it got.",
+  site_cost: "What each site has used, in dirhams. Only materials with a price count - an LPO, a receipt, or the price on the material list.",
+  issues: "Returnable tools and equipment, and who has them.",
+  mr_history: "Every request raised by the sites and where it stands.",
+};
+function storeMoveOpts(view) {
+  const mf = document.getElementById("store-move-filter"); if (!mf) return;
+  const opts = STORE_MOVE_OPTS[view];
+  mf.style.display = opts ? "" : "none";
+  mf.innerHTML = (opts || []).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+}
 function storeFilterQs(view) {
   let qs = "";
   const site = (document.getElementById("store-site-filter") || {}).value || "";
   const move = (document.getElementById("store-move-filter") || {}).value || "";
-  if (site && ["usage", "site_cost", "transfers"].includes(view)) qs += `&site=${encodeURIComponent(site)}`;
-  if (move && view === "usage") qs += `&move=${encodeURIComponent(move)}`;
+  if (site && ["usage", "site_cost", "issues"].includes(view)) qs += `&site=${encodeURIComponent(site)}`;
+  if (move && ["usage", "issues"].includes(view)) qs += `&move=${encodeURIComponent(move)}`;
   return qs;
 }
 async function exportStore(fmt) {
@@ -10040,7 +10064,10 @@ async function exportStore(fmt) {
   const from = document.getElementById("store-date-from").value;
   const to = document.getElementById("store-date-to").value;
   const path = fmt === "view" ? "/export/store/report/view" : "/export/store/report";
-  let url = `${API}${path}?kind=${view}&token=${encodeURIComponent(cachedDownloadToken)}`
+  // The request list goes on paper as Open / Done / All, as shown.
+  const mrShow = view === "mr_history" ? ((document.getElementById("store-move-filter") || {}).value || "open") : "";
+  const kindQ = view === "mr_history" && mrShow !== "all" ? `mr_history_${mrShow}` : view;
+  let url = `${API}${path}?kind=${kindQ}&token=${encodeURIComponent(cachedDownloadToken)}`
           + (fmt === "view" ? "" : `&format=${fmt}`);
   if (from) url += `&date_from=${from}`;
   if (to) url += `&date_to=${to}`;
@@ -10080,7 +10107,7 @@ function pickReport(kind, noScroll) {
   sel.innerHTML = `<option value="${kind}"></option>`;
   sel.value = kind;
   document.getElementById("store-report-result").style.display = "";
-  const needsDates = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind);
+  const needsDates = ["usage", "lost", "issues", "site_cost"].includes(kind);
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
@@ -10091,12 +10118,13 @@ function pickReport(kind, noScroll) {
   // "At Sites" can be narrowed to a single site - the question a site
   // engineer actually asks is "what does MY site hold".
   const sf = document.getElementById("store-site-filter");
-  sf.style.display = ["by_site", "usage", "site_cost", "transfers"].includes(kind) ? "" : "none";
-  if (["by_site", "usage", "site_cost", "transfers"].includes(kind))
+  sf.style.display = ["by_site", "usage", "site_cost", "issues"].includes(kind) ? "" : "none";
+  if (["by_site", "usage", "site_cost", "issues"].includes(kind))
     sf.innerHTML = `<option value="">${kind === "by_site" ? "All sites together" : "All sites"}</option>` +
       (sites || []).map(s => `<option value="${s.code}">${kind === "by_site" ? "Only site " : "Site "}${s.code}</option>`).join("");
-  const mf = document.getElementById("store-move-filter");
-  mf.style.display = kind === "usage" ? "" : "none"; mf.value = "";
+  storeMoveOpts(kind);
+  const subEl = document.getElementById("store-report-sub");
+  if (subEl && STORE_REPORT_SUB[kind]) subEl.textContent = STORE_REPORT_SUB[kind];
   loadStore();
   // Scrolling on arrival would yank the picker off screen before the
   // keeper has seen it; only scroll when they actively choose a report.
@@ -10132,6 +10160,12 @@ function filterStoreReport() {
   let shown = 0, total = 0;
   rows.forEach(tr => {
     if (tr.querySelector(".empty-note") || tr.dataset.total) return;
+    // A group heading stays while any of its rows is showing.
+    if (tr.classList.contains("rep-group")) {
+      let n = tr.nextElementSibling, any = false;
+      while (n && !n.classList.contains("rep-group")) { if (!q || n.textContent.toLowerCase().includes(q)) any = true; n = n.nextElementSibling; }
+      tr.style.display = any ? "" : "none"; return;
+    }
     // Expanded breakdowns aren't rows in their own right: they never
     // count, and they close when their material is filtered out.
     if (tr.dataset.detail) {
@@ -10173,42 +10207,40 @@ async function loadStore() {
         mr_outstanding: r => !["received","closed","rejected"].includes(r.status),
         mr_history: () => true,
       }[view];
-      const list = all.filter(wanted);
+      const DONE = ["delivered", "received", "closed", "rejected"];
+      const showSel = (document.getElementById("store-move-filter") || {}).value || "open";
+      const list = all.filter(wanted).filter(r => view !== "mr_history" || showSel === "all" ||
+        (showSel === "done" ? DONE.includes(r.status) : !DONE.includes(r.status)));
       document.getElementById("store-table-title").textContent = {
         mr_open: "Requests waiting on the office", mr_overdue: "Requests that are late",
-        mr_outstanding: "Materials still to arrive", mr_history: "All past requests"}[view];
-      const MRC = { ref: "Request No", site: "Site", requested_on: "Asked on",
-                    needed_by: "Needed by", urgency: "Urgency", status: "Status", materials: "Materials" };
-      const mrKeys = orderColumns("mr-" + view, Object.keys(MRC));
-      head.innerHTML = mrKeys.map(k => `<th ${dragAttrs("mr-" + view, k)}>${MRC[k]}</th>`).join("");
+        mr_outstanding: "Materials still to arrive", mr_history: "Material requests"}[view];
+      const MRC = { ref: "Request", site: "Site", requested_on: "Raised",
+                    needed_by: "Needed by", status: "Status", materials: "Materials" };
+      const mrKeys = Object.keys(MRC);
+      head.innerHTML = mrKeys.map(k => `<th class="${k === "materials" ? "l" : "kl"}"${k === "materials" ? ' style="width:50%;"' : ""}>${MRC[k]}</th>`).join("");
+      const today = isoLocal(new Date());
       body.innerHTML = list.length ? list.map(r => {
-        const late = r.needed_by && r.needed_by < isoLocal(new Date()) && !["received","closed","rejected"].includes(r.status);
+        const done = DONE.includes(r.status);
+        const late = r.needed_by && r.needed_by < today && !done;
         const items = r.lines.map(l => {
-          const out = (l.qty_requested || 0) - (l.qty_received || 0);
-          return `${l.item_code || l.description}: ${num(l.qty_requested)} ${l.unit}` +
-                 (l.qty_received ? ` (${num(l.qty_received)} arrived, ${num(out)} still to come)` : "");
+          const got = l.qty_received || 0;
+          return `${escapeHtml(l.description || l.item_code || "")} · ${num(l.qty_requested)} ${escapeHtml(l.unit || "")}` +
+                 (got && got < (l.qty_requested || 0) ? ` <span style="color:#B26A00;">(${num(got)} arrived)</span>` : "");
         }).join("<br>");
-        // Cells follow the reader's column arrangement, and the header
-        // had no eighth column for that stray Print button - the report
-        // is for reading and exporting.
-        const CELL = {
-          ref: `<td><strong>${requestLink(r.ref)}</strong></td>`,
-          site: `<td>${r.site || "-"}</td>`,
-          requested_on: `<td>${r.requested_on}</td>`,
-          needed_by: `<td>${r.needed_by || "-"}</td>`,
-          urgency: `<td>${r.urgency}</td>`,
-          status: `<td>${MR_LABEL[r.status] || r.status}</td>`,
-          materials: `<td style="font-size:12px;">${items}</td>`,
-        };
-        return `<tr${late ? ' style="background:#FFE9E6;"' : ''}>
-          ${mrKeys.map(k => CELL[k]).join("")}</tr>`;
+        const urgent = r.urgency === "urgent" && !done ? ' <span class="pill" style="background:#FFF3D6; color:#8A6100;">urgent</span>' : "";
+        const col = MR_COLOUR[r.status] || "#777";
+        return `<tr>
+          <td class="kl"><strong>${requestLink(r.ref)}</strong>${urgent}</td>
+          <td class="kl">${r.site || "-"}</td>
+          <td class="kl">${accDmy(r.requested_on)}</td>
+          <td class="kl">${r.needed_by ? accDmy(r.needed_by) : "-"}${late ? ' <span class="pill" style="background:#FBE4E1; color:#A5301F;">late</span>' : ""}</td>
+          <td class="kl"><b style="color:${col};">${MR_LABEL[r.status] || r.status}</b></td>
+          <td class="l" style="font-size:12.5px;">${items}</td></tr>`;
       }).join("") : `<tr><td class="empty-note">Nothing here.</td></tr>`;
-      const lateN = list.filter(r => r.needed_by && r.needed_by < isoLocal(new Date()) &&
-                                     !["received","closed","rejected"].includes(r.status)).length;
-      const urgN = list.filter(r => r.urgency === "urgent" &&
-                                    !["received","closed","rejected"].includes(r.status)).length;
+      const lateN = list.filter(r => r.needed_by && r.needed_by < today && !DONE.includes(r.status)).length;
+      const urgN = list.filter(r => r.urgency === "urgent" && !DONE.includes(r.status)).length;
       setStoreStats([
-        [`${num(list.length)} requests`, "#777"],
+        [`${num(list.length)} ${showSel === "done" ? "done" : showSel === "all" ? "requests" : "open"}`, "#777"],
         lateN ? [`${num(lateN)} late`, "#C0392B"] : null,
         urgN ? [`${num(urgN)} urgent`, "#B26A00"] : null,
       ]);
@@ -10267,13 +10299,13 @@ async function loadStore() {
     const odN = d.rows.filter(r => r.overdue).length;
     const withStock = ("total" in d.rows[0]) ? d.rows.filter(r => (r.total || 0) > 0).length : null;
     setStoreStats([
-      [`${num(d.rows.length)} ${view.startsWith("mr") ? "requests" : ["site_cost", "transfers"].includes(view) ? (d.rows.length === 1 ? "site" : "sites") : view === "usage" ? "lines" : "materials"}`, "#777"],
+      [`${num(d.rows.length)} ${view.startsWith("mr") ? "requests" : view === "site_cost" ? (d.rows.length === 1 ? "site" : "sites") : view === "usage" ? "lines" : view === "issues" ? "items" : "materials"}`, "#777"],
       withStock !== null ? [`${num(withStock)} with stock`, "#2E7D32"] : null,
       lowN ? [`${num(lowN)} low on stock`, "#C0392B"] : null,
       odN ? [`${num(odN)} overdue`, "#C0392B"] : null,
       d.total_value !== undefined ? [`AED ${money(d.total_value)} total`, "#2E7D32"] : null,
-      d.estimated ? [`${num(d.estimated)} at estimated price`, "#B26A00"] : null,
-      d.unpriced ? [`${num(d.unpriced)} with no price`, "#999"] : null,
+      d.unpriced ? [`${num(d.unpriced)} line(s) with no price yet`, "#999"] : null,
+      d.over_30 ? [`${num(d.over_30)} out over 30 days`, "#C0392B"] : null,
     ]);
     // The stock report knows where every unit sits, but squeezing that
     // into one cell made it unreadable. Hide it from the columns and
@@ -10281,9 +10313,16 @@ async function loadStore() {
     const expandable = ["stock", "hired"].includes(view) && "by_site" in d.rows[0];
     const blank = v => v === "" || v === null || v === undefined || v === "-";
     // A column with nothing in it on any row is left off, not shown as dashes.
+    // Columns kept for paper but not for the screen: the code, the unit
+    // (shown with the quantity), the movement type (shown as a tag).
+    const SCREEN_HIDE = { usage: ["code", "from", "unit"], issues: ["code", "unit"] }[view] || [];
     const keys = orderColumns(view, Object.keys(d.rows[0])
-      .filter(k => k !== "low" && k !== "overdue" && k !== "rate_from" && !(expandable && k === "by_site"))
+      .filter(k => k !== "low" && k !== "overdue" && k !== "rate_from" && !k.startsWith("_") && !(expandable && k === "by_site") && !SCREEN_HIDE.includes(k))
       .filter(k => d.rows.some(r => !blank(r[k]))));
+    // What is grouped on screen: issues by day, tools by site and holder.
+    const groupOf = view === "usage" ? r => r.date : (view === "issues" && !(d.rows[0] || {}).returned_on) ? r => `${r.site} · ${r.given_to || "-"}` : null;
+    const groupLabel = view === "usage" ? g => (g ? new Date(g + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "short", year: "numeric" }) : "No date")
+                                        : g => `Site ${g}`;
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const WIDE = ["name", "notes", "description", "hired_from", "condition", "supplier", "material"];
     const KIND = {};
@@ -10295,23 +10334,32 @@ async function loadStore() {
               : ["type", "from", "to", "given_to", "incharge", "returned_by", "rate_from"].includes(k) ? "kl" : "l";
     });
     const NICE = { in_store: "In central store", at_sites: "Out at sites", total: "Total held",
+                   issued_from_store: "From store (AED)", delivered_direct: "Delivered direct (AED)",
+                   received_from_sites: "Moved in (AED)", sent_to_sites: "Moved out (AED)",
+                   net_cost: "Site cost (AED)", lines_without_price: "Lines not priced",
+                   days_out: "Days", issued_on: "Since", returned_on: "Returned",
                    item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
-                   written_off: "Written off", qty: "Qty", name: "Material", code: "Code",
-                   given_to: "Given to", incharge: "Given to", date: "Date", from: "From",
-                   to: "To", reference: "Ref", notes: "Remarks", since: "Out since",
+                   written_off: "Written off", qty: "Qty", name: view === "issues" ? "Tool / equipment" : "Material", code: "Code",
+                   given_to: view === "issues" ? "With" : "Given to", incharge: "Given to", date: "Date", from: "From",
+                   to: view === "usage" ? "Site" : "To", reference: "Ref", notes: "Remarks", since: "Out since",
                    rate: "Rate (AED)", amount: "Amount (AED)", type: "Type", rate_from: "Rate from",
-                   issued_from_store: "Issued from store (AED)", delivered_direct: "Delivered direct (AED)",
-                   received_from_sites: "From other sites (AED)", sent_to_sites: "Sent to other sites (AED)",
-                   net_cost: "Net cost (AED)", lines: "Lines", net_transfer: "Net transfer (AED)",
-                   moved_in: "Moved in", moved_out: "Moved out", lines_without_price: "Lines without price",
-                   last_arrived: "Last arrived", issued_on: "Issued on", site: "Site",
-                   returned_on: "Returned on", returned_by: "Returned by", qty_back: "Qty back",
-                   condition: "Condition", still_out: "Still out", days_out: "Days out" };
+                   lines: "Lines", net_transfer: "Net transfer (AED)",
+                   last_arrived: "Last arrived", site: "Site", returned_by: "Returned by", qty_back: "Qty back",
+                   condition: "Condition", still_out: "Still out" };
     const label = k => NICE[k] || k.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
+    // The material column takes the slack; everything else sits tight.
+    const slack = keys.includes("name") ? "name" : keys.includes("materials") ? "materials" : null;
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
-      keys.map(k => `<th class="${KIND[k]}" ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
+      keys.map(k => `<th class="${KIND[k]}"${k === slack ? ' style="width:45%;"' : ""} ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
+    const MOVE_TAG = { "Moved between sites": r => `moved from ${r.from}`, "Delivered direct": r => `delivered direct${r.from ? " · " + r.from.replace(/ \(direct\)$/, "") : ""}` };
+    let lastGroup = null;
     body.innerHTML = d.rows.map((r, idx) => {
+      let groupRow = "";
+      if (groupOf) {
+        const g = groupOf(r);
+        if (g !== lastGroup) { lastGroup = g; groupRow = `<tr class="rep-group"><td colspan="${keys.length + (expandable ? 1 : 0)}">${escapeHtml(groupLabel(g))}</td></tr>`; }
+      }
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       // A caret only where there is something to open - material sitting
       // out at sites. Everything else stays a plain row.
@@ -10319,18 +10367,23 @@ async function loadStore() {
       const canOpen = expandable && sites.length;
       const opener = expandable
         ? `<td style="color:#B26A00; font-weight:700;">${canOpen ? "&#9656;" : ""}</td>` : "";
-      return `<tr${flag}${canOpen ? ` onclick="toggleReportRow(${idx})" style="cursor:pointer;${flag ? "background:#FFE9E6;" : ""}"` : ""}>`
+      return groupRow + `<tr${flag}${canOpen ? ` onclick="toggleReportRow(${idx})" style="cursor:pointer;${flag ? "background:#FFE9E6;" : ""}"` : ""}>`
         + opener + keys.map(k => {
         let v = r[k];
         const cls = ` class="${KIND[k]}${WIDE.includes(k) ? " w" : ""}"`;
-        if (typeof v === "object" && v !== null) {
+        if (k === "qty" && SCREEN_HIDE.includes("unit") && typeof v === "number") {
+          v = `${num(v)} <span style="color:#777;">${escapeHtml(r.unit || "")}</span>`;
+        } else if (k === "name" && view === "usage" && MOVE_TAG[r._move]) {
+          v = `${escapeHtml(v)} <span class="rep-tag">${escapeHtml(MOVE_TAG[r._move](r))}</span>`;
+        } else if (k === "days_out" && typeof v === "number" && view === "issues") {
+          v = v > 30 ? `<span class="pill" style="background:#FBE4E1; color:#A5301F;">${v}</span>` : (v === 0 ? '<span class="zero">0</span>' : num(v));
+        } else if (typeof v === "object" && v !== null) {
           v = Object.entries(v).map(([a, b]) => `${a}: ${num(b)}`).join(", ") || "-";
         } else if (typeof v === "number") {
           const isMoney = ["value", "est_cost", "rate", "amount"].includes(k) || (d.money_cols || []).includes(k);
           v = isMoney ? money(v) : num(v);
-          // An estimated rate is marked where it stands, not in a column of its own.
-          if (k === "rate" && r.rate_from === "Estimate") v = `<span style="color:#B26A00; font-size:10.5px; font-weight:700; margin-right:5px;" title="Market estimate - no LPO price on record">EST.</span>${v}`;
-                    if (k === "net_transfer" && r[k]) v = `<b style="color:${r[k] > 0 ? "#1E7B34" : "#B7322A"};">${r[k] > 0 ? "+" : ""}${v}</b>`;
+          if (["net_transfer", "received_from_sites", "sent_to_sites"].includes(k)) v = r[k] ? `<span style="color:${r[k] > 0 ? "#1E7B34" : "#B7322A"};">${r[k] > 0 ? "+" : ""}${v}</span>` : '<span class="zero">-</span>';
+          else if (isMoney && r[k] === 0 && view === "site_cost") v = '<span class="zero">-</span>';
           if (r[k] === 0 && !isMoney) v = '<span class="zero">0</span>';
         } else if (isDate(v)) {
           v = accDmy(v);
@@ -10357,13 +10410,18 @@ async function loadStore() {
             </div>
           </td></tr>` : "");
     }).join("");
+    if (view === "site_cost" && (d.unpriced_sites || []).length) {
+      const u = d.unpriced_sites;
+      body.innerHTML += `<tr><td class="kl" style="color:#777;">${u.map(x => escapeHtml(x.site)).join(", ")}</td><td colspan="${keys.length - 1}" class="l" style="color:#999;">nothing priced yet · ${num(u.reduce((a, x) => a + x.lines, 0))} line(s) without a price</td></tr>`;
+    }
     if ((d.total_cols || []).length) {
       // Totals sit under their own columns, not at the far right.
       const cells = keys.map((k, i) => {
         if (!d.total_cols.includes(k)) return `<td class="${KIND[k]}">${i === 0 ? "TOTAL" : ""}</td>`;
         const t = d.rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
         const isMoney = ["value", "est_cost", "rate", "amount"].includes(k) || (d.money_cols || []).includes(k);
-        return `<td class="n">${isMoney ? money(t) : num(t)}</td>`;
+        const signed = ["received_from_sites", "sent_to_sites", "net_transfer"].includes(k) && t;
+        return `<td class="n">${signed ? (t > 0 ? "+" : "") : ""}${isMoney ? money(t) : num(t)}</td>`;
       });
       body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}</tr>`;
     } else if (d.total_value !== undefined)
@@ -15332,7 +15390,9 @@ async function bdayCheck() {
   chip.style.display = "inline-block";
   const key = `infinia_bday:${BDAY.date}:${CURRENT_USERNAME || ""}`;
   let seen = false; try { seen = localStorage.getItem(key) === "1"; } catch (e) {}
-  if (!seen) { bdayShow(false); try { localStorage.setItem(key, "1"); } catch (e) {} }
+  // The test robot never gets the card in its face (it blocks every click);
+  // the chip is still there and the card opens from it.
+  if (!seen && !navigator.webdriver) { bdayShow(false); try { localStorage.setItem(key, "1"); } catch (e) {} }
 }
 function bdayTitle(s) { return String(s || "").toLowerCase().replace(/(^|[\s.'-])\S/g, c => c.toUpperCase()); }
 function bdayFirst(s) { return bdayTitle(String(s || "").trim().split(/\s+/)[0]); }
@@ -15738,7 +15798,7 @@ async function addIncrement() {
 // Every generated page carries the whole app, so moving between them is
 // done here, in the same page: no reload, no fetching the app again, no
 // signing in again, and lists already fetched stay in memory.
-const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "expiry": {"key": "expiry", "title": "Expiry Reminder", "screens": ["expiry", "pdc"], "tabs": [{"id": "expiry", "screen": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "show": [], "subs": [{"id": "people", "label": "People", "screen": "expiry", "right": "expiry", "go": "hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "expiry", "right": "expiry", "go": "hrDocMode('company')", "people": "", "opts": "", "show": []}, {"id": "pdc", "label": "PDCs", "screen": "pdc", "right": "pdc", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "accounts": {"key": "accounts", "title": "Accounts", "screens": ["cashreg", "invoices", "pettycash", "projpay"], "tabs": [{"id": "taxinv", "screen": "invoices", "label": "Tax Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('tax')", "hidden": false}, {"id": "proforma", "screen": "invoices", "label": "Proforma Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('proforma')", "hidden": false}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen"], "show": [], "subs": [{"id": "site", "label": "Site", "screen": "pettycash", "right": "petty_site", "go": "pcBook('site')", "people": "", "opts": "", "show": []}, {"id": "pro", "label": "PRO", "screen": "pettycash", "right": "petty_pro", "go": "pcBook('pro')", "people": "", "opts": "", "show": []}, {"id": "office", "label": "Office", "screen": "pettycash", "right": "petty_office", "go": "pcBook('office')", "people": "", "opts": "", "show": []}, {"id": "naveen", "label": "Naveen", "screen": "pettycash", "right": "petty_naveen", "go": "pcBook('naveen')", "people": "", "opts": "", "show": []}, {"id": "praveen", "label": "Praveen", "screen": "pettycash", "right": "petty_praveen", "go": "pcBook('praveen')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "projects", "screen": "projpay", "label": "Project payments", "right": "accounts_projects", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "register", "screen": "cashreg", "label": "Register", "right": "accounts_register", "show": [], "subs": [], "go": "", "hidden": true}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine", "people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "leavereport", "label": "Leave report", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "leave-register", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Consumption", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "site_cost", "label": "Cost by site", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('site_cost')", "people": "", "opts": "", "show": []}, {"id": "transfers", "label": "Site transfers", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('transfers')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Issue & return register", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent now", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Request history", "screen": "store", "right": ["requests", "approvals"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"], "subs": [], "go": "", "hidden": false}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "settings_companies", "show": ["#companies-card", "#pg-sites-block"], "subs": [], "go": "", "hidden": false}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "settings_logins", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "settings_access", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
+const ALL_PAGES = {"dashboard": {"key": "dashboard", "title": "Dashboard", "screens": ["dashboard"], "tabs": [{"id": "dashboard", "screen": "dashboard", "label": "Overview", "right": "dashboard", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "attendance": {"key": "attendance", "title": "Attendance", "screens": ["attendance", "livecard", "masterdata"], "tabs": [{"id": "attendance", "screen": "attendance", "label": "Daily attendance", "right": "attendance", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "livecard", "screen": "livecard", "label": "Live card", "right": "livecard", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "masterdata", "screen": "masterdata", "label": "Labour master data", "right": "masterdata", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "payroll": {"key": "payroll", "title": "Payroll", "screens": ["combine", "errorcheck", "hrpayroll"], "tabs": [{"id": "labourpay", "screen": "combine", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "show": [], "subs": [{"id": "combine", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "adjust", "label": "Additions & deductions", "screen": "combine", "right": "adjustments", "go": "", "people": "", "opts": "", "show": ["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]}, {"id": "errorcheck", "label": "Check before you pay", "screen": "errorcheck", "right": "errorcheck", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "hrpayroll", "screen": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "show": [], "subs": [{"id": "cycle", "label": "Salary cycle & statements", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('payroll')", "people": "", "opts": "", "show": []}, {"id": "leave", "label": "Absence", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('leave')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Additions & deductions", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('items')", "people": "", "opts": "", "show": []}, {"id": "loans", "label": "Loans", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('loans')", "people": "", "opts": "", "show": []}, {"id": "staff", "label": "Staff register", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('staff')", "people": "", "opts": "", "show": []}, {"id": "increments", "label": "Increments", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('increments')", "people": "", "opts": "", "show": []}, {"id": "gratuity", "label": "Gratuity", "screen": "hrpayroll", "right": "hrpayroll", "go": "hrTab('gratuity')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "expiry": {"key": "expiry", "title": "Expiry Reminder", "screens": ["expiry", "pdc"], "tabs": [{"id": "expiry", "screen": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "show": [], "subs": [{"id": "people", "label": "People", "screen": "expiry", "right": "expiry", "go": "hrDocMode('people')", "people": "", "opts": "", "show": []}, {"id": "company", "label": "Company & other documents", "screen": "expiry", "right": "expiry", "go": "hrDocMode('company')", "people": "", "opts": "", "show": []}, {"id": "pdc", "label": "PDCs", "screen": "pdc", "right": "pdc", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "accounts": {"key": "accounts", "title": "Accounts", "screens": ["cashreg", "invoices", "pettycash", "projpay"], "tabs": [{"id": "taxinv", "screen": "invoices", "label": "Tax Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('tax')", "hidden": false}, {"id": "proforma", "screen": "invoices", "label": "Proforma Invoice", "right": "accounts_invoices", "show": [], "subs": [], "go": "invOpen('proforma')", "hidden": false}, {"id": "petty", "screen": "pettycash", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen"], "show": [], "subs": [{"id": "site", "label": "Site", "screen": "pettycash", "right": "petty_site", "go": "pcBook('site')", "people": "", "opts": "", "show": []}, {"id": "pro", "label": "PRO", "screen": "pettycash", "right": "petty_pro", "go": "pcBook('pro')", "people": "", "opts": "", "show": []}, {"id": "office", "label": "Office", "screen": "pettycash", "right": "petty_office", "go": "pcBook('office')", "people": "", "opts": "", "show": []}, {"id": "naveen", "label": "Naveen", "screen": "pettycash", "right": "petty_naveen", "go": "pcBook('naveen')", "people": "", "opts": "", "show": []}, {"id": "praveen", "label": "Praveen", "screen": "pettycash", "right": "petty_praveen", "go": "pcBook('praveen')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "projects", "screen": "projpay", "label": "Project payments", "right": "accounts_projects", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "register", "screen": "cashreg", "label": "Register", "right": "accounts_register", "show": [], "subs": [], "go": "", "hidden": true}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "store": {"key": "store", "title": "Store & Purchasing", "screens": ["approvals", "followup", "lporegister", "purchase", "requests", "store", "suppliers"], "tabs": [{"id": "store", "screen": "store", "label": "Stock", "right": "store", "show": [], "subs": [{"id": "home", "label": "Stock on hand", "screen": "store", "right": "store", "go": "pgStorePanel('home')", "people": "", "opts": "", "show": []}, {"id": "give", "label": "Move material", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('give')", "people": "", "opts": "", "show": []}, {"id": "arrive", "label": "Material arrived", "screen": "store", "right": "storekeeper", "go": "pgStorePanel('arrive')", "people": "", "opts": "", "show": []}, {"id": "other", "label": "Returns, lost & corrections", "screen": "store", "right": "store", "go": "pgStorePanel('other')", "people": "", "opts": "", "show": []}, {"id": "items", "label": "Material list", "screen": "store", "right": "store", "go": "pgStorePanel('items')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "rentals", "screen": "store", "label": "Rentals", "right": "store", "show": [], "subs": [{"id": "hire", "label": "On rent", "screen": "store", "right": "store", "go": "pgStorePanel('hire')", "people": "", "opts": "", "show": []}, {"id": "returns", "label": "Return notes", "screen": "store", "right": "store", "go": "pgStorePanel('returns')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "requests", "screen": "requests", "label": "Requests", "right": ["requests", "approvals"], "show": [], "subs": [{"id": "requests", "label": "Material requests", "screen": "requests", "right": "requests", "go": "", "people": "", "opts": "", "show": []}, {"id": "approvals", "label": "Approvals", "screen": "approvals", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "followup", "label": "Order follow-up", "screen": "followup", "right": "requests", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "purchasing", "screen": "purchase", "label": "Purchasing", "right": "approvals", "show": [], "subs": [{"id": "purchase", "label": "Purchase orders", "screen": "purchase", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "lporegister", "label": "LPO register", "screen": "lporegister", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}, {"id": "suppliers", "label": "Suppliers", "screen": "suppliers", "right": "approvals", "go": "", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "reports": {"key": "reports", "title": "Reports", "screens": ["combine", "monthly", "pgreports", "reports", "store"], "tabs": [{"id": "labour", "screen": "pgreports", "label": "Labour", "right": ["reports", "combine", "people_labour", "people_office", "people_local"], "show": [], "subs": [{"id": "builder", "label": "Cycle report builder", "screen": "reports", "right": "reports", "go": "", "people": "", "opts": "", "show": []}, {"id": "monthly", "label": "Monthly report", "screen": "monthly", "right": "reports", "go": "openMonthlyReport()", "people": "", "opts": "", "show": []}, {"id": "cards", "label": "Salary cards", "screen": "combine", "right": "combine", "go": "", "people": "", "opts": "", "show": ["#pg-cards-bar", "#combine-status", "#pg-cards-body"]}, {"id": "leavereport", "label": "Leave report", "screen": "pgreports", "right": ["people_labour", "people_office", "people_local"], "go": "", "people": "leave-register", "opts": "", "show": []}], "go": "", "hidden": false}, {"id": "storerep", "screen": "store", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "show": [], "subs": [{"id": "stock", "label": "Current stock", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('stock')", "people": "", "opts": "", "show": []}, {"id": "by_site", "label": "At sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('by_site')", "people": "", "opts": "", "show": []}, {"id": "usage", "label": "Issued to sites", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('usage')", "people": "", "opts": "", "show": []}, {"id": "site_cost", "label": "Site costs", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('site_cost')", "people": "", "opts": "", "show": []}, {"id": "assets", "label": "Assets", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('assets')", "people": "", "opts": "", "show": []}, {"id": "issues", "label": "Tools & equipment out", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('issues')", "people": "", "opts": "", "show": []}, {"id": "lost", "label": "Lost / damaged", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('lost')", "people": "", "opts": "", "show": []}, {"id": "hired", "label": "On rent", "screen": "store", "right": ["store", "approvals", "requests"], "go": "pgStoreReport('hired')", "people": "", "opts": "", "show": []}, {"id": "mr_history", "label": "Requests", "screen": "store", "right": ["requests", "approvals"], "go": "pgStoreReport('mr_history')", "people": "", "opts": "", "show": []}], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "settings": {"key": "settings", "title": "Settings", "screens": ["activity", "pgaccess", "pglogins", "settings"], "tabs": [{"id": "general", "screen": "settings", "label": "General", "right": "settings", "show": ["#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"], "subs": [], "go": "", "hidden": false}, {"id": "companies", "screen": "settings", "label": "Companies & sites", "right": "settings_companies", "show": ["#companies-card", "#pg-sites-block"], "subs": [], "go": "", "hidden": false}, {"id": "logins", "screen": "pglogins", "label": "Logins", "right": "settings_logins", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "access", "screen": "pgaccess", "label": "Access", "right": "settings_access", "show": [], "subs": [], "go": "", "hidden": false}, {"id": "activity", "screen": "activity", "label": "Activity monitor", "right": "activity", "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}, "people": {"key": "people", "title": "Staff", "screens": ["pgstaff"], "tabs": [{"id": "people", "screen": "pgstaff", "label": "Staff", "right": ["people_labour", "people_office", "people_local"], "show": [], "subs": [], "go": "", "hidden": false}], "pages": {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["combine", "hrpayroll"], "expiry": ["expiry"], "accounts": ["cashreg", "invoices", "pettycash", "projpay"], "store": ["purchase", "requests", "store"], "reports": ["pgreports", "store"], "settings": ["activity", "pgaccess", "pglogins", "settings"], "people": ["people_labour", "people_office", "people_local"], "access": ["access"]}}};
 let PAGE = ALL_PAGES[window.PG_KEY] || ALL_PAGES.dashboard;
 document.title = PAGE.title + " - Infinia App";
 document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === PAGE.key));
@@ -15766,7 +15826,7 @@ SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
 const PAGE_FILE = {"reports": "reporting"};
-const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard", "hidden": false, "subs": []}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance", "hidden": false, "subs": []}, {"id": "livecard", "label": "Live card", "right": "livecard", "hidden": false, "subs": []}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata", "hidden": false, "subs": []}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "hidden": false, "subs": [{"id": "combine", "label": "Salary cards", "right": "combine"}, {"id": "adjust", "label": "Additions & deductions", "right": "adjustments"}, {"id": "errorcheck", "label": "Check before you pay", "right": "errorcheck"}]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "hidden": false, "subs": [{"id": "cycle", "label": "Salary cycle & statements", "right": "hrpayroll"}, {"id": "leave", "label": "Absence", "right": "hrpayroll"}, {"id": "items", "label": "Additions & deductions", "right": "hrpayroll"}, {"id": "loans", "label": "Loans", "right": "hrpayroll"}, {"id": "staff", "label": "Staff register", "right": "hrpayroll"}, {"id": "increments", "label": "Increments", "right": "hrpayroll"}, {"id": "gratuity", "label": "Gratuity", "right": "hrpayroll"}]}], "expiry": [{"id": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "hidden": false, "subs": [{"id": "people", "label": "People", "right": "expiry"}, {"id": "company", "label": "Company & other documents", "right": "expiry"}, {"id": "pdc", "label": "PDCs", "right": "pdc"}]}], "accounts": [{"id": "taxinv", "label": "Tax Invoice", "right": "accounts_invoices", "hidden": false, "subs": []}, {"id": "proforma", "label": "Proforma Invoice", "right": "accounts_invoices", "hidden": false, "subs": []}, {"id": "petty", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen"], "hidden": false, "subs": [{"id": "site", "label": "Site", "right": "petty_site"}, {"id": "pro", "label": "PRO", "right": "petty_pro"}, {"id": "office", "label": "Office", "right": "petty_office"}, {"id": "naveen", "label": "Naveen", "right": "petty_naveen"}, {"id": "praveen", "label": "Praveen", "right": "petty_praveen"}]}, {"id": "projects", "label": "Project payments", "right": "accounts_projects", "hidden": false, "subs": []}, {"id": "register", "label": "Register", "right": "accounts_register", "hidden": true, "subs": []}], "store": [{"id": "store", "label": "Stock", "right": "store", "hidden": false, "subs": [{"id": "home", "label": "Stock on hand", "right": "store"}, {"id": "give", "label": "Move material", "right": "storekeeper"}, {"id": "arrive", "label": "Material arrived", "right": "storekeeper"}, {"id": "other", "label": "Returns, lost & corrections", "right": "store"}, {"id": "items", "label": "Material list", "right": "store"}]}, {"id": "rentals", "label": "Rentals", "right": "store", "hidden": false, "subs": [{"id": "hire", "label": "On rent", "right": "store"}, {"id": "returns", "label": "Return notes", "right": "store"}]}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"], "hidden": false, "subs": [{"id": "requests", "label": "Material requests", "right": "requests"}, {"id": "approvals", "label": "Approvals", "right": "approvals"}, {"id": "followup", "label": "Order follow-up", "right": "requests"}]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals", "hidden": false, "subs": [{"id": "purchase", "label": "Purchase orders", "right": "approvals"}, {"id": "lporegister", "label": "LPO register", "right": "approvals"}, {"id": "suppliers", "label": "Suppliers", "right": "approvals"}]}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "people_labour", "people_office", "people_local"], "hidden": false, "subs": [{"id": "builder", "label": "Cycle report builder", "right": "reports"}, {"id": "monthly", "label": "Monthly report", "right": "reports"}, {"id": "cards", "label": "Salary cards", "right": "combine"}, {"id": "leavereport", "label": "Leave report", "right": ["people_labour", "people_office", "people_local"]}]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "hidden": false, "subs": [{"id": "stock", "label": "Current stock", "right": ["store", "approvals", "requests"]}, {"id": "by_site", "label": "At sites", "right": ["store", "approvals", "requests"]}, {"id": "usage", "label": "Consumption", "right": ["store", "approvals", "requests"]}, {"id": "site_cost", "label": "Cost by site", "right": ["store", "approvals", "requests"]}, {"id": "transfers", "label": "Site transfers", "right": ["store", "approvals", "requests"]}, {"id": "assets", "label": "Assets", "right": ["store", "approvals", "requests"]}, {"id": "issues", "label": "Issue & return register", "right": ["store", "approvals", "requests"]}, {"id": "lost", "label": "Lost / damaged", "right": ["store", "approvals", "requests"]}, {"id": "hired", "label": "On rent now", "right": ["store", "approvals", "requests"]}, {"id": "mr_history", "label": "Request history", "right": ["requests", "approvals"]}]}], "settings": [{"id": "general", "label": "General", "right": "settings", "hidden": false, "subs": []}, {"id": "companies", "label": "Companies & sites", "right": "settings_companies", "hidden": false, "subs": []}, {"id": "logins", "label": "Logins", "right": "settings_logins", "hidden": false, "subs": []}, {"id": "access", "label": "Access", "right": "settings_access", "hidden": false, "subs": []}, {"id": "activity", "label": "Activity monitor", "right": "activity", "hidden": false, "subs": []}]};
+const ALL_TABS = {"dashboard": [{"id": "dashboard", "label": "Overview", "right": "dashboard", "hidden": false, "subs": []}], "attendance": [{"id": "attendance", "label": "Daily attendance", "right": "attendance", "hidden": false, "subs": []}, {"id": "livecard", "label": "Live card", "right": "livecard", "hidden": false, "subs": []}, {"id": "masterdata", "label": "Labour master data", "right": "masterdata", "hidden": false, "subs": []}], "payroll": [{"id": "labourpay", "label": "Labour payroll", "right": ["combine", "errorcheck", "adjustments"], "hidden": false, "subs": [{"id": "combine", "label": "Salary cards", "right": "combine"}, {"id": "adjust", "label": "Additions & deductions", "right": "adjustments"}, {"id": "errorcheck", "label": "Check before you pay", "right": "errorcheck"}]}, {"id": "hrpayroll", "label": "Office payroll", "right": "hrpayroll", "hidden": false, "subs": [{"id": "cycle", "label": "Salary cycle & statements", "right": "hrpayroll"}, {"id": "leave", "label": "Absence", "right": "hrpayroll"}, {"id": "items", "label": "Additions & deductions", "right": "hrpayroll"}, {"id": "loans", "label": "Loans", "right": "hrpayroll"}, {"id": "staff", "label": "Staff register", "right": "hrpayroll"}, {"id": "increments", "label": "Increments", "right": "hrpayroll"}, {"id": "gratuity", "label": "Gratuity", "right": "hrpayroll"}]}], "expiry": [{"id": "expiry", "label": "Expiry reminder", "right": ["expiry", "pdc"], "hidden": false, "subs": [{"id": "people", "label": "People", "right": "expiry"}, {"id": "company", "label": "Company & other documents", "right": "expiry"}, {"id": "pdc", "label": "PDCs", "right": "pdc"}]}], "accounts": [{"id": "taxinv", "label": "Tax Invoice", "right": "accounts_invoices", "hidden": false, "subs": []}, {"id": "proforma", "label": "Proforma Invoice", "right": "accounts_invoices", "hidden": false, "subs": []}, {"id": "petty", "label": "Petty cash", "right": ["petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen"], "hidden": false, "subs": [{"id": "site", "label": "Site", "right": "petty_site"}, {"id": "pro", "label": "PRO", "right": "petty_pro"}, {"id": "office", "label": "Office", "right": "petty_office"}, {"id": "naveen", "label": "Naveen", "right": "petty_naveen"}, {"id": "praveen", "label": "Praveen", "right": "petty_praveen"}]}, {"id": "projects", "label": "Project payments", "right": "accounts_projects", "hidden": false, "subs": []}, {"id": "register", "label": "Register", "right": "accounts_register", "hidden": true, "subs": []}], "store": [{"id": "store", "label": "Stock", "right": "store", "hidden": false, "subs": [{"id": "home", "label": "Stock on hand", "right": "store"}, {"id": "give", "label": "Move material", "right": "storekeeper"}, {"id": "arrive", "label": "Material arrived", "right": "storekeeper"}, {"id": "other", "label": "Returns, lost & corrections", "right": "store"}, {"id": "items", "label": "Material list", "right": "store"}]}, {"id": "rentals", "label": "Rentals", "right": "store", "hidden": false, "subs": [{"id": "hire", "label": "On rent", "right": "store"}, {"id": "returns", "label": "Return notes", "right": "store"}]}, {"id": "requests", "label": "Requests", "right": ["requests", "approvals"], "hidden": false, "subs": [{"id": "requests", "label": "Material requests", "right": "requests"}, {"id": "approvals", "label": "Approvals", "right": "approvals"}, {"id": "followup", "label": "Order follow-up", "right": "requests"}]}, {"id": "purchasing", "label": "Purchasing", "right": "approvals", "hidden": false, "subs": [{"id": "purchase", "label": "Purchase orders", "right": "approvals"}, {"id": "lporegister", "label": "LPO register", "right": "approvals"}, {"id": "suppliers", "label": "Suppliers", "right": "approvals"}]}], "reports": [{"id": "labour", "label": "Labour", "right": ["reports", "combine", "people_labour", "people_office", "people_local"], "hidden": false, "subs": [{"id": "builder", "label": "Cycle report builder", "right": "reports"}, {"id": "monthly", "label": "Monthly report", "right": "reports"}, {"id": "cards", "label": "Salary cards", "right": "combine"}, {"id": "leavereport", "label": "Leave report", "right": ["people_labour", "people_office", "people_local"]}]}, {"id": "storerep", "label": "Store & purchasing", "right": ["store", "approvals", "requests"], "hidden": false, "subs": [{"id": "stock", "label": "Current stock", "right": ["store", "approvals", "requests"]}, {"id": "by_site", "label": "At sites", "right": ["store", "approvals", "requests"]}, {"id": "usage", "label": "Issued to sites", "right": ["store", "approvals", "requests"]}, {"id": "site_cost", "label": "Site costs", "right": ["store", "approvals", "requests"]}, {"id": "assets", "label": "Assets", "right": ["store", "approvals", "requests"]}, {"id": "issues", "label": "Tools & equipment out", "right": ["store", "approvals", "requests"]}, {"id": "lost", "label": "Lost / damaged", "right": ["store", "approvals", "requests"]}, {"id": "hired", "label": "On rent", "right": ["store", "approvals", "requests"]}, {"id": "mr_history", "label": "Requests", "right": ["requests", "approvals"]}]}], "settings": [{"id": "general", "label": "General", "right": "settings", "hidden": false, "subs": []}, {"id": "companies", "label": "Companies & sites", "right": "settings_companies", "hidden": false, "subs": []}, {"id": "logins", "label": "Logins", "right": "settings_logins", "hidden": false, "subs": []}, {"id": "access", "label": "Access", "right": "settings_access", "hidden": false, "subs": []}, {"id": "activity", "label": "Activity monitor", "right": "activity", "hidden": false, "subs": []}]};
 // One address for the whole app: app.infinia.ae/ is the dashboard and
 // app.infinia.ae/?p=<page> every other page; the tab follows after #.
 function pgFile(key) { return key === "dashboard" ? "/" : key === "access" ? "/?p=settings" : "/?p=" + key; }
@@ -16003,13 +16063,13 @@ function pgStoreReport(kind) {
   // The report's own boxes (dates, site) at once, not after its figures
   // arrive - otherwise the buttons beside them jump a moment later.
   const wrap = document.getElementById("store-range-wrap"), sf = document.getElementById("store-site-filter");
-  if (wrap) wrap.style.display = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind) ? "" : "none";
-  if (sf) sf.style.display = ["by_site", "usage", "site_cost", "transfers"].includes(kind) ? "" : "none";
-  const mf = document.getElementById("store-move-filter"); if (mf) mf.style.display = kind === "usage" ? "" : "none";
+  if (wrap) wrap.style.display = ["usage", "lost", "issues", "site_cost"].includes(kind) ? "" : "none";
+  if (sf) sf.style.display = ["by_site", "usage", "site_cost", "issues"].includes(kind) ? "" : "none";
+  const mf = document.getElementById("store-move-filter"); if (mf) mf.style.display = ["usage", "issues", "mr_history"].includes(kind) ? "" : "none";
   const ttl = document.getElementById("store-table-title");
   if (ttl && PG_SUB && PG_SUB.go && PG_SUB.go.includes("'" + kind + "'")) ttl.textContent = PG_SUB.label;
   const sub = document.getElementById("store-report-sub");
-  if (sub) sub.textContent = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind) ? "Pick a date range, or leave blank for everything." : `As at ${isoLocal(new Date())}`;
+  if (sub) sub.textContent = STORE_REPORT_SUB[kind] || (["usage", "lost", "issues", "site_cost"].includes(kind) ? "Pick a date range, or leave blank for everything." : `As at ${isoLocal(new Date())}`);
   STORE_REPORT_WANT = kind; STORE_PANEL_WANT = "reports";
   storeGo("reports");
 }

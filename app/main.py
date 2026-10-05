@@ -161,6 +161,7 @@ def seed_on_startup():
         _grant_director_petty_to_chief_accountant(db)
         _grant_projects_to_chief_accountant(db)
         _jomon_not_admin(db)
+        _drop_market_estimates(db)
         _leaving_from_attendance(db)
         _enforce_terminations(db)
         _recalculate_all_summaries(db)
@@ -508,6 +509,21 @@ def _grant_director_petty_to_chief_accountant(db):
     db.commit()
     if n:
         print("Naveen / Praveen petty cash given to: " + ", ".join(n))
+
+
+def _drop_market_estimates(db):
+    """The market estimates loaded on 04-Oct-2026 were wrong and are taken
+    off, once. A price typed on the material list by hand is kept."""
+    if db.query(models.Setting).filter(models.Setting.key == "market_estimates_dropped").first():
+        return
+    n = 0
+    for it in db.query(models.StoreItem).filter(models.StoreItem.est_price > 0).all():
+        if (it.est_source or "").startswith("["):
+            it.est_price = 0; it.est_source = ""; it.est_on = None; n += 1
+    db.add(models.Setting(key="market_estimates_dropped", value="1"))
+    db.commit()
+    if n:
+        print(f"Market price estimates removed from {n} material(s)")
 
 
 def _jomon_not_admin(db):
@@ -3558,7 +3574,7 @@ def _price_book(db, items):
     return price
 
 
-MOVE_TYPES = {"out": "Issued from store", "transfer": "Moved between sites", "direct": "Delivered direct"}
+MOVE_TYPES = {"out": "From store", "transfer": "Moved between sites", "direct": "Delivered direct"}
 
 
 def _place_label(loc):
@@ -4258,6 +4274,15 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
     fields = payload.dict()
     fields.pop("opening_qty", None)
     fields.pop("opening_location", None)
+    # The price is only written when the form sends one (a blank keeps
+    # what was there); a typed price is marked as typed.
+    if fields.get("est_price") is None:
+        fields.pop("est_price", None)
+    else:
+        if fields["est_price"] < 0:
+            raise HTTPException(status_code=400, detail="The price cannot be negative.")
+        fields["est_source"] = "typed on the material list"
+        fields["est_on"] = _dubai_today()
 
     is_new = existing is None
     if existing:
@@ -5237,15 +5262,15 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                 back = _clean_export_qty(round(was - r["qty"], 2))
                 r["notes"] = ((r["notes"] + " / ") if r["notes"] else "") \
                     + f"{back} {i_unit(r)} returned to the store"
+            # The price: a receipt's cost, else the last LPO price, else the
+            # price typed on the material list. Nothing is guessed.
             rate = r.get("_cost") or price(r["_item"], r["_on"])
-            basis = "LPO" if rate else ""
             if not rate:
                 it = items.get(r["_item"])
                 if it is not None and (getattr(it, "est_price", 0) or 0) > 0:
-                    rate, basis = float(it.est_price), "Estimate"
-            r["type"] = MOVE_TYPES[r["_type"]]
+                    rate = float(it.est_price)
+            r["_move"] = MOVE_TYPES[r["_type"]]
             r["rate"] = round(rate, 2) if rate else None
-            r["rate_from"] = basis
             r["amount"] = round(rate * r["qty"], 2) if rate else None
             r["_t"] = r["_type"]
             for k in ("_id", "_item", "_qty", "_on", "_type", "_cost"):
@@ -5258,103 +5283,77 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             rows = [r for r in rows if r["_t"] == move]
         for r in rows:
             r.pop("_t", None)
-        rows.sort(key=lambda r: (r["date"], r["to"], r["code"]), reverse=True)
-        _drop_empty(rows, "reference", "notes")
-        # Column order: what, how much, where, what it cost.
-        estimated = sum(1 for r in rows if r.get("rate_from") == "Estimate")
-        if not estimated:
-            for r in rows:
-                r.pop("rate_from", None)      # all real prices: no need to say so
-        order = ["date", "type", "code", "name", "unit", "qty", "from", "to", "given_to", "rate", "rate_from", "amount", "reference", "notes"]
+            if r.get("reference") == "-":
+                r["reference"] = ""
+            if r.get("given_to") == "-":
+                r["given_to"] = ""
+            # Where it came from only matters when it was not the store.
+            if r["_move"] == MOVE_TYPES["out"]:
+                r["from"] = ""
+        rows.sort(key=lambda r: (r["date"], r["to"], r["name"]), reverse=True)
+        _drop_empty(rows, "reference", "notes", "from")
+        order = ["date", "code", "name", "qty", "unit", "from", "to", "given_to", "rate", "amount", "reference", "notes", "_move"]
         rows = [{k: r[k] for k in order if k in r} for r in rows]
         priced = [r for r in rows if r.get("amount")]
-        title = "Materials issued and moved" + (f" - {_place_label(site)}" if site else "")
+        title = "Issued to sites" + (f" - {_place_label(site)}" if site else "")
         if not priced:
-            # Nothing has a purchase price yet: no empty Rate / Amount columns.
+            # Nothing has a price yet: no empty Rate / Amount columns.
             for r in rows:
                 r.pop("rate", None); r.pop("amount", None)
             return {"title": title, "rows": rows, "unpriced": len(rows), "money_cols": [], "total_cols": []}
         return {"title": title, "rows": rows, "total_value": round(sum(r["amount"] for r in priced), 2),
-                "unpriced": len(rows) - len(priced), "estimated": estimated,
+                "unpriced": len(rows) - len(priced),
                 "money_cols": ["rate", "amount"], "total_cols": ["amount"]}
 
     if kind == "site_cost":
-        # The accounts' question: what each site used, in money - issued
-        # from the store, delivered straight to it, received from another
-        # site - less what it passed on to another site. Built from the
-        # same lines as the consumption report, so the two always agree.
+        # What each site has used, in dirhams: issued from the store,
+        # delivered straight to it, plus what it received from another
+        # site, less what it passed on. Only lines with a price count;
+        # sites with nothing priced are one line at the foot.
         lines = store_report(kind="usage", date_from=date_from, date_to=date_to, db=db, user=None)["rows"]
-        estimated = sum(1 for r in lines if r.get("rate_from") == "Estimate")
         agg = {}
         def at(place):
             return agg.setdefault(place, {"site": place, "issued_from_store": 0.0, "delivered_direct": 0.0,
                                           "received_from_sites": 0.0, "sent_to_sites": 0.0, "net_cost": 0.0,
-                                          "lines": 0, "lines_without_price": 0})
-        for r in lines:
-            amt = r.get("amount") or 0.0
-            dest = at(r["to"])
-            dest["lines"] += 1
-            if not r.get("amount"):
-                dest["lines_without_price"] += 1
-            if r["type"] == MOVE_TYPES["transfer"]:
-                dest["received_from_sites"] += amt
-                src = at(r["from"])
-                src["sent_to_sites"] += amt
-            elif r["type"] == MOVE_TYPES["direct"]:
-                dest["delivered_direct"] += amt
-            else:
-                dest["issued_from_store"] += amt
-        rows = []
-        for a in agg.values():
-            if a["site"] == CENTRAL_LABEL:
-                continue
-            a["net_cost"] = a["issued_from_store"] + a["delivered_direct"] + a["received_from_sites"] - a["sent_to_sites"]
-            for k in ("issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_cost"):
-                a[k] = round(a[k], 2)
-            rows.append(a)
-        if site:
-            rows = [r for r in rows if r["site"] == _place_label(site)]
-        rows.sort(key=lambda r: r["site"])
-        money = ["issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_cost"]
-        return {"title": "Material cost by site", "rows": rows, "total_value": round(sum(r["net_cost"] for r in rows), 2),
-                "estimated": estimated,
-                "money_cols": money, "total_cols": money + ["lines", "lines_without_price"]}
-
-    if kind == "transfers":
-        # Material moved from one site to another, in money: the site that
-        # received it is up (+), the site that gave it is down (-), so the
-        # accounts can move the cost from one job to the other. The lines
-        # are the consumption report's "Moved between sites" lines.
-        lines = store_report(kind="usage", date_from=date_from, date_to=date_to, move="transfer", db=db, user=None)["rows"]
-        estimated = sum(1 for r in lines if r.get("rate_from") == "Estimate")
-        agg = {}
-        def at(place):
-            return agg.setdefault(place, {"site": place, "received_from_sites": 0.0,
-                                          "sent_to_sites": 0.0, "net_transfer": 0.0,
                                           "lines_without_price": 0})
         for r in lines:
             amt = r.get("amount") or 0.0
-            dest, src = at(r["to"]), at(r["from"])
-            dest["received_from_sites"] += amt
-            src["sent_to_sites"] += amt
+            dest = at(r["to"])
             if not r.get("amount"):
-                dest["lines_without_price"] += 1; src["lines_without_price"] += 1
-        rows = []
-        for a in agg.values():
-            a["net_transfer"] = round(a["received_from_sites"] - a["sent_to_sites"], 2)
-            a["received_from_sites"] = round(a["received_from_sites"], 2)
-            a["sent_to_sites"] = round(a["sent_to_sites"], 2)
+                dest["lines_without_price"] += 1
+            if r["_move"] == MOVE_TYPES["transfer"]:
+                dest["received_from_sites"] += amt
+                at(r["from"])["sent_to_sites"] -= amt
+            elif r["_move"] == MOVE_TYPES["direct"]:
+                dest["delivered_direct"] += amt
+            else:
+                dest["issued_from_store"] += amt
+        rows, unpriced_sites = [], []
+        for a in sorted(agg.values(), key=lambda x: x["site"]):
+            if a["site"] == CENTRAL_LABEL:
+                continue
+            a["net_cost"] = a["issued_from_store"] + a["delivered_direct"] + a["received_from_sites"] + a["sent_to_sites"]
+            for k in ("issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_cost"):
+                a[k] = round(a[k], 2)
+            if not any(a[k] for k in ("issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites")):
+                unpriced_sites.append((a["site"], a["lines_without_price"]))
+                continue
             rows.append(a)
         if site:
             rows = [r for r in rows if r["site"] == _place_label(site)]
-        rows.sort(key=lambda r: (-r["net_transfer"], r["site"]))
-        if not any(r["lines_without_price"] for r in rows):
-            for r in rows:
-                r.pop("lines_without_price")
-        money = ["received_from_sites", "sent_to_sites", "net_transfer"]
-        unpriced = sum(1 for r in lines if not r.get("amount"))
-        return {"title": "Site transfers", "rows": rows, "unpriced": unpriced, "estimated": estimated,
-                "money_cols": money, "total_cols": money}
+            unpriced_sites = [u for u in unpriced_sites if u[0] == _place_label(site)]
+        money = ["issued_from_store", "delivered_direct", "received_from_sites", "sent_to_sites", "net_cost"]
+        # Columns nobody has a figure in are left off.
+        for k in ("delivered_direct", "received_from_sites", "sent_to_sites", "lines_without_price"):
+            if not any(r[k] for r in rows):
+                for r in rows:
+                    r.pop(k)
+                if k in money:
+                    money.remove(k)
+        return {"title": "Site costs", "rows": rows, "total_value": round(sum(r["net_cost"] for r in rows), 2),
+                "unpriced": sum(1 for r in lines if not r.get("amount")),
+                "unpriced_sites": [{"site": s_, "lines": n} for s_, n in unpriced_sites],
+                "money_cols": money, "total_cols": money + (["lines_without_price"] if rows and "lines_without_price" in rows[0] else [])}
 
     if kind == "issues":
         # The issue-and-return register for tools and equipment: one line
@@ -5405,13 +5404,38 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             o["days_out"] = max((end - start).days, 0)
             for k in ("_item", "_site", "_left", "_back"):
                 o.pop(k, None)
+            if o["given_to"] == "-":
+                o["given_to"] = ""
             rows.append(o)
-        rows.sort(key=lambda r: (r["still_out"] <= 0, r["issued_on"]), reverse=False)
-        rows.sort(key=lambda r: r["issued_on"], reverse=True)
-        rows.sort(key=lambda r: r["still_out"] <= 0)   # still out first
-        _drop_empty(rows, "notes", "condition")
-        return {"title": "Issue & return register - tools and equipment", "rows": rows,
-                "still_out": sum(1 for r in rows if r["still_out"] > 0)}
+        if site:
+            rows = [r for r in rows if r["site"] == _place_label(site)]
+        # show: out (default) - what is still at the sites; returned - what
+        # came back; all - both.
+        want = (move or "out")
+        if want == "out":
+            rows = [r for r in rows if r["still_out"] > 0]
+            for r in rows:
+                r["qty"] = r["still_out"]
+            rows.sort(key=lambda r: (r["site"], r["given_to"], r["issued_on"]), reverse=False)
+            rows.sort(key=lambda r: r["issued_on"], reverse=True)
+            rows.sort(key=lambda r: (r["site"], r["given_to"]))
+            order = ["name", "qty", "unit", "site", "given_to", "issued_on", "days_out", "code", "notes"]
+            title = "Tools & equipment out at sites"
+        elif want == "returned":
+            rows = [r for r in rows if r["qty_back"] > 0]
+            rows.sort(key=lambda r: r["returned_on"], reverse=True)
+            order = ["returned_on", "name", "qty_back", "unit", "site", "returned_by", "condition", "issued_on", "days_out", "code", "notes"]
+            title = "Tools & equipment returned"
+        else:
+            rows.sort(key=lambda r: r["issued_on"], reverse=True)
+            rows.sort(key=lambda r: r["still_out"] <= 0)
+            order = ["issued_on", "name", "qty", "unit", "site", "given_to", "returned_on", "returned_by", "qty_back", "still_out", "days_out", "condition", "code", "notes"]
+            title = "Tools & equipment - issued and returned"
+        rows = [{k: r[k] for k in order if k in r} for r in rows]
+        _drop_empty(rows, "notes", "condition", "given_to", "returned_by")
+        return {"title": title, "rows": rows,
+                "still_out": sum(1 for r in rows if r.get("still_out", r.get("qty", 0)) and want != "returned"),
+                "over_30": sum(1 for r in rows if want == "out" and r["days_out"] > 30)}
 
     if kind == "returnable":
         rows = []
@@ -5841,6 +5865,12 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
     return {"ok": True, "status": mr.status, "qty_received": line.qty_received}
 
 
+MR_WORDS = {"pending": "Waiting on office", "approved": "Office approved", "ordered": "Ordered from supplier",
+            "partial": "Part delivered", "delivered": "Delivered to store", "closed": "Closed",
+            "rejected": "Rejected by office", "arranging": "Ordered from supplier", "lpo_sent": "Ordered from supplier",
+            "received": "Delivered to store"}
+
+
 @app.get("/store/requests/report")
 def material_request_report(kind: str = "open", db: Session = Depends(get_db),
                             user: models.User = Depends(auth.get_current_user)):
@@ -5874,15 +5904,29 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
                               "needed_by": m.needed_by.isoformat() if m.needed_by else ""})
         return {"title": "Outstanding materials", "rows": rows}
 
-    if kind == "history":
-        rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
-                  "requested_by": m.requested_by, "urgency": m.urgency, "status": m.status,
-                  "items": len(m.lines),
-                  # No estimated value: the store keeper doesn't price a
-                  # request, the office does when it orders.
-                  "closed_on": m.closed_on.isoformat() if m.closed_on else ""}
-                for m in reqs]
-        return {"title": "Material request history", "rows": rows}
+    if kind in ("history", "history_open", "history_done"):
+        # One line per request, the materials by name, the way the screen
+        # reads it. Open: still moving; done: delivered, closed or rejected.
+        DONE = ("delivered", "received", "closed", "rejected")
+        rows = []
+        for m in reqs:
+            done = m.status in DONE
+            if kind == "history_open" and done or kind == "history_done" and not done:
+                continue
+            late = m.needed_by and m.needed_by < today and not done
+            mats = []
+            for l in m.lines:
+                got = l.qty_received or 0
+                mats.append(f"{(l.item.name if l.item else l.description)} · {_clean_export_qty(l.qty_requested)} {l.unit}"
+                            + (f" ({_clean_export_qty(got)} arrived)" if got and got < (l.qty_requested or 0) else ""))
+            rows.append({"ref": m.ref, "site": m.site or "-",
+                          "requested_on": m.requested_on.isoformat(),
+                          "needed_by": (m.needed_by.isoformat() if m.needed_by else ""),
+                          "status": MR_WORDS.get(m.status, m.status)
+                                    + (" - urgent" if m.urgency == "urgent" and not done else "") + (" - LATE" if late else ""),
+                          "materials": "\n".join(mats) or "-"})
+        title = {"history_open": "Material requests - open", "history_done": "Material requests - done"}.get(kind, "Material requests")
+        return {"title": title, "rows": rows}
 
     rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
               "needed_by": m.needed_by.isoformat() if m.needed_by else "",
@@ -7733,6 +7777,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     and a browser with no PDF plugin, both show a blank frame, and a
     preview that shows nothing is worse than no preview at all.
     """
+    rows = export_web._paper_rows(rows)
     cols = list(rows[0].keys()) if rows else []
     # The same column rule the PDF and the Excel copy use, so the sheet
     # checked on screen is laid out like the one that prints - and the
@@ -7917,12 +7962,14 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
     sub = (f"{export_web._day(date_from) if date_from else 'the start'} to "
            f"{export_web._day(date_to) if date_to else 'today'}") \
         if (date_from or date_to) else f"As at {_dubai_today():%d %b %Y}"
-    if move in MOVE_TYPES:
+    if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
     if data.get("unpriced"):
-        sub = f"{sub} · {data['unpriced']} line(s) with no purchase price on record"
-    if data.get("estimated"):
-        sub = f"{sub} · {data['estimated']} line(s) priced at a market estimate"
+        sub = f"{sub} · {data['unpriced']} line(s) with no price yet"
+    if data.get("unpriced_sites"):
+        sub = f"{sub} · nothing priced yet at {', '.join(u['site'] for u in data['unpriced_sites'])}"
+    if kind == "issues":
+        sub = f"{sub} · " + {"returned": "what came back", "all": "issued and returned"}.get(move or "out", "still at the sites")
     return _preview_page(title, sub, rows, url, url, money_cols=data.get("money_cols"), total_cols=data.get("total_cols"))
 
 
@@ -8210,12 +8257,14 @@ def export_store_report(kind: str = "stock", format: str = "excel",
     if q:
         rows = [r for r in rows if q in " ".join(str(v) for v in r.values()).lower()]
         sub = f'{sub} · matching "{q}"'
-    if move in MOVE_TYPES:
+    if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
     if data.get("unpriced"):
-        sub = f"{sub} · {data['unpriced']} line(s) with no purchase price on record"
-    if data.get("estimated"):
-        sub = f"{sub} · {data['estimated']} line(s) priced at a market estimate"
+        sub = f"{sub} · {data['unpriced']} line(s) with no price yet"
+    if data.get("unpriced_sites"):
+        sub = f"{sub} · nothing priced yet at {', '.join(u['site'] for u in data['unpriced_sites'])}"
+    if kind == "issues":
+        sub = f"{sub} · " + {"returned": "what came back", "all": "issued and returned"}.get(move or "out", "still at the sites")
     data = {**data, "rows": rows}
     cols_kw = {k: data[k] for k in ("money_cols", "total_cols") if data.get(k)}
     if format == "pdf":

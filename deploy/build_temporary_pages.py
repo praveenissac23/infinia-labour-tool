@@ -126,16 +126,15 @@ PAGES = {
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
             sub("stock", "Current stock", screen="store", right=STORE_RIGHTS, go="pgStoreReport('stock')"),
             sub("by_site", "At sites", screen="store", right=STORE_RIGHTS, go="pgStoreReport('by_site')"),
-            sub("usage", "Consumption", screen="store", right=STORE_RIGHTS, go="pgStoreReport('usage')"),
+            sub("usage", "Issued to sites", screen="store", right=STORE_RIGHTS, go="pgStoreReport('usage')"),
             # What each site used, in money - for booking costs to sites.
-            sub("site_cost", "Cost by site", screen="store", right=STORE_RIGHTS, go="pgStoreReport('site_cost')"),
-            sub("transfers", "Site transfers", screen="store", right=STORE_RIGHTS, go="pgStoreReport('transfers')"),
+            sub("site_cost", "Site costs", screen="store", right=STORE_RIGHTS, go="pgStoreReport('site_cost')"),
             sub("assets", "Assets", screen="store", right=STORE_RIGHTS, go="pgStoreReport('assets')"),
-            sub("issues", "Issue & return register", screen="store", right=STORE_RIGHTS, go="pgStoreReport('issues')"),
+            sub("issues", "Tools & equipment out", screen="store", right=STORE_RIGHTS, go="pgStoreReport('issues')"),
             sub("lost", "Lost / damaged", screen="store", right=STORE_RIGHTS, go="pgStoreReport('lost')"),
-            sub("hired", "On rent now", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
+            sub("hired", "On rent", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
             # Requests are read by whoever raises or approves them - not by stock alone.
-            sub("mr_history", "Request history", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
+            sub("mr_history", "Requests", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
@@ -636,13 +635,13 @@ function pgStoreReport(kind) {
   // The report's own boxes (dates, site) at once, not after its figures
   // arrive - otherwise the buttons beside them jump a moment later.
   const wrap = document.getElementById("store-range-wrap"), sf = document.getElementById("store-site-filter");
-  if (wrap) wrap.style.display = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind) ? "" : "none";
-  if (sf) sf.style.display = ["by_site", "usage", "site_cost", "transfers"].includes(kind) ? "" : "none";
-  const mf = document.getElementById("store-move-filter"); if (mf) mf.style.display = kind === "usage" ? "" : "none";
+  if (wrap) wrap.style.display = ["usage", "lost", "issues", "site_cost"].includes(kind) ? "" : "none";
+  if (sf) sf.style.display = ["by_site", "usage", "site_cost", "issues"].includes(kind) ? "" : "none";
+  const mf = document.getElementById("store-move-filter"); if (mf) mf.style.display = ["usage", "issues", "mr_history"].includes(kind) ? "" : "none";
   const ttl = document.getElementById("store-table-title");
   if (ttl && PG_SUB && PG_SUB.go && PG_SUB.go.includes("'" + kind + "'")) ttl.textContent = PG_SUB.label;
   const sub = document.getElementById("store-report-sub");
-  if (sub) sub.textContent = ["usage", "lost", "issues", "site_cost", "transfers"].includes(kind) ? "Pick a date range, or leave blank for everything." : `As at ${isoLocal(new Date())}`;
+  if (sub) sub.textContent = STORE_REPORT_SUB[kind] || (["usage", "lost", "issues", "site_cost"].includes(kind) ? "Pick a date range, or leave blank for everything." : `As at ${isoLocal(new Date())}`);
   STORE_REPORT_WANT = kind; STORE_PANEL_WANT = "reports";
   storeGo("reports");
 }

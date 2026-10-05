@@ -267,7 +267,11 @@ STORE_LABELS = {
     "hired_from": "Hired from", "on_hire": "On hire", "due_back": "Due back",
     "lost_damaged": "Lost / damaged", "written_off": "Written off",
     "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
-    "ref": "Request", "requested_on": "Asked on", "needed_by": "Needed by",
+    "ref": "Request", "requested_on": "Raised", "needed_by": "Needed by", "materials": "Materials",
+    "issued_on": "Since", "days_out": "Days", "given_to": "With", "qty_back": "Qty back", "returned_on": "Returned",
+    "returned_by": "Returned by", "still_out": "Still out", "issued_from_store": "From store (AED)",
+    "delivered_direct": "Delivered direct (AED)", "received_from_sites": "Moved in (AED)",
+    "sent_to_sites": "Moved out (AED)", "net_cost": "Site cost (AED)", "lines_without_price": "Lines not priced",
     "days_late": "Days late", "outstanding": "Still to come",
     "total_salary": "Salary (AED)", "pay_type": "Paid", "company": "Company",
     "joined": "Joined", "worker_name": "Name",
@@ -279,15 +283,13 @@ STORE_LABELS = {
     "payment_terms": "Payment terms", "email": "Email",
     "emp_no": "Worker No", "days_missing": "Days missing",
     "which_days": "Which days", "trade": "Trade",
-    "given_to": "Given to", "date": "Date", "from": "From", "to": "To",
+    "date": "Date", "from": "From", "to": "Site",
     "at_which_sites": "Where at sites", "reported_by": "Reported by",
     "where": "Where", "reason": "Reason", "type": "Type",
     "reference": "Ref", "notes": "Remarks", "incharge": "Given to",
     "last_arrived": "Last arrived", "since": "Out since",
     "rate": "Rate (AED)", "amount": "Amount (AED)",
-    "issued_from_store": "Issued from store (AED)", "delivered_direct": "Delivered direct (AED)",
-    "received_from_sites": "From other sites (AED)", "sent_to_sites": "Sent to other sites (AED)",
-    "net_cost": "Net cost (AED)", "lines": "Lines", "lines_without_price": "Lines without price",
+    "lines": "Lines",
 }
 
 
@@ -332,7 +334,7 @@ def _is_money(k):
 
 
 # Columns that read as a gain or a loss: "+1,050.00" / "-1,050.00".
-SIGNED_COLS = {"net_transfer"}
+SIGNED_COLS = {"net_transfer", "received_from_sites", "sent_to_sites"}
 
 
 def money_text(k, v):
@@ -1584,6 +1586,11 @@ def apply_view_prefs(rows):
     return rows
 
 
+def _paper_rows(rows):
+    """Screen-only keys (prefixed with an underscore) never reach paper."""
+    return [{k: v for k, v in r.items() if not str(k).startswith("_")} for r in rows]
+
+
 def build_store_report_excel(title, rows, subtitle="", orientation=None, money_cols=None,
                              total_cols=None):
     """
@@ -1593,6 +1600,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     function serves every report rather than one per report drifting apart.
     """
     rows = apply_view_prefs(rows)
+    rows = _paper_rows(rows)
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
@@ -1730,6 +1738,7 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     Callers may force it; left alone, the data decides.
     """
     rows = apply_view_prefs(rows)
+    rows = _paper_rows(rows)
     buf = io.BytesIO()
     orientation = orientation or choose_orientation(rows)
     doc = SimpleDocTemplate(buf, pagesize=_page_size(orientation),

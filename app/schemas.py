@@ -218,6 +218,9 @@ class StoreItemIn(BaseModel):
     unit: str = "pcs"
     item_type: str = "consumable"
     reorder_level: float = 0.0
+    # The purchase price, typed by hand, for Site costs when there is no
+    # LPO for the material. Blank = not priced.
+    est_price: Optional[float] = None
     notes: str = ""
     rental_supplier: str = ""
     rental_rate: float = 0.0
@@ -245,6 +248,7 @@ class StoreItemOut(BaseModel):
     # NULL in them - a plain str/float would reject those outright.
     rental_supplier: Optional[str] = ""
     rental_rate: Optional[float] = 0.0
+    est_price: Optional[float] = 0.0
     rental_period: Optional[str] = "day"
     rental_start: Optional[date] = None
     rental_due: Optional[date] = None
