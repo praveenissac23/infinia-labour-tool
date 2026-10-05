@@ -5558,6 +5558,9 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "at_sites": round(sum(q for loc, q in at.items() if loc), 2),
                           "total": round(sum(at.values()), 2),
                           "written_off": round(lost, 2) if lost else 0})
+        if not any(r["written_off"] for r in rows):
+            for r in rows:
+                r.pop("written_off")          # a column of zeros says nothing
         return {"title": "Owned assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
 
     if kind == "hired":

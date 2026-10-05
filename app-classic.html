@@ -476,7 +476,7 @@
   /* Light, quiet headers. Solid brand-red header bars on every table
      were the single loudest amateur signal - red now belongs to
      actions and warnings only, so when it appears, it means something. */
-  th { background: #F5F3EE; color: #5B6167; padding: 10px 10px; text-align: center;
+  th { background: #F5F3EE; color: #5B6167; padding: 10px 10px; text-align: left;
        position: sticky; top: 0; z-index: 1; white-space: nowrap;
        font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
        border: none; border-bottom: 2px solid #E6E2DA; }
@@ -485,7 +485,13 @@
   th.sortable:hover { background: #EFECE5; }
   /* Row rules only - a full grid of borders makes a dense table look
      like a spreadsheet and hides the data. */
-  td { padding: 9px 10px; text-align: center; border: none; border-bottom: 1px solid #EDEDED; }
+  td { padding: 9px 10px; text-align: left; border: none; border-bottom: 1px solid #EDEDED; }
+  /* Words read from the left, figures line up on the right: one rule for
+     every table, so a column never has to be looked for. */
+  th.num, td.num, th.num-col, td.num-col, th.n, td.n, th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  th.c, td.c { text-align: center; }
+  td.auto-num, th.auto-num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.act, th.act { text-align: right; white-space: nowrap; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:nth-child(even) td { background: #FCFCFC; }
   tr:hover td { background: #F7F4EE; }
@@ -1375,7 +1381,7 @@
                 All ticked by default. Untick the ones going elsewhere and order them separately -
                 the request stays one request, each material remembers its own supplier.
               </p>
-              <div class="grid-wrap" style="max-height:280px;">
+              <div class="grid-wrap" style="max-height:calc(100vh - 330px); min-height:280px;">
                 <table>
                   <thead><tr><th style="width:8%;"></th><th>Material</th>
                     <th style="width:20%;">How many</th><th style="width:26%;">Supplier</th></tr></thead>
@@ -1419,7 +1425,7 @@
                           title="Where the load actually went. A load dropped straight at the site books to that site; anything unloaded at the store books to the store."></select></div>
               </div>
             </div>
-            <div class="grid-wrap" style="max-height:320px;">
+            <div class="grid-wrap" style="max-height:calc(100vh - 330px); min-height:320px;">
               <table>
                 <thead><tr><th style="width:30%;">Material</th><th>Ordered</th><th>Already in</th><th>Still due</th>
                   <th style="width:14%;">Arrived now</th><th style="width:20%;">From</th></tr></thead>
@@ -5007,12 +5013,17 @@ function renderMasterDataLists() {
   const cell = v => v ? escapeHtml(v) : '<span class="md-nil">-</span>';
   document.getElementById("md-site-count").textContent = sites.length || "";
   document.getElementById("md-eng-count").textContent = engineers.length || "";
+  // Only the details somebody has filled in get a column - a page of
+  // dashes under "Plot no" says nothing.
+  const SITE_COLS = [["plot_no", "Plot no"], ["incharge", "In charge"], ["incharge_mobile", "Mobile"], ["address", "Delivery address"], ["map_url", "Map"]]
+    .filter(([k]) => sites.some(x => x[k]));
+  const siteCell = (x, k) => k === "map_url"
+    ? (x.map_url ? `<td><a href="${escapeAttr(x.map_url)}" target="_blank" rel="noopener" style="color:var(--red);">Open</a></td>` : '<td><span class="md-nil">-</span></td>')
+    : k === "address" ? `<td class="addr" title="${escapeAttr(x.address || "")}">${cell(x.address)}</td>` : `<td>${cell(x[k])}</td>`;
   document.getElementById("md-site-list").innerHTML = sites.length
-    ? `<div class="md-table-wrap"><table class="md-table"><thead><tr><th>Code</th><th>Plot no</th><th>In charge</th><th>Mobile</th><th>Delivery address</th><th>Map</th><th></th></tr></thead><tbody>${
+    ? `<div class="md-table-wrap"><table class="md-table"><thead><tr><th>Code</th>${SITE_COLS.map(([, t]) => `<th>${t}</th>`).join("")}<th></th></tr></thead><tbody>${
         [...sites].sort((x, y) => natCompare(x.code, y.code)).map(s => `<tr>
-          <td class="code">${escapeHtml(s.code)}</td><td>${cell(s.plot_no)}</td><td>${cell(s.incharge)}</td><td>${cell(s.incharge_mobile)}</td>
-          <td class="addr" title="${escapeAttr(s.address || "")}">${cell(s.address)}</td>
-          <td>${s.map_url ? `<a href="${escapeAttr(s.map_url)}" target="_blank" rel="noopener" style="color:var(--red);">Open</a>` : '<span class="md-nil">-</span>'}</td>
+          <td class="code">${escapeHtml(s.code)}</td>${SITE_COLS.map(([k]) => siteCell(s, k)).join("")}
           <td class="act"><button class="btn btn-gray" onclick="editSite(${s.id}, '${esc(s.code)}')">Edit</button><button class="btn btn-danger" onclick="removeSite(${s.id}, '${esc(s.code)}')">Remove</button></td></tr>`).join("")
       }</tbody></table></div>`
     : '<div class="empty-note">No sites yet - press + Add site.</div>';
@@ -7584,7 +7595,7 @@ async function loadUnitSuggestions() {
         <label style="font-size:12px; color:#666;"><input type="checkbox" id="ur-all" checked onchange="document.querySelectorAll('.ur-pick').forEach(c => c.checked = this.checked)"> tick / untick all</label>
         <button class="btn btn-primary" onclick="applyUnitSuggestions()">Apply ticked changes</button>
       </div>
-      <div class="grid-wrap" style="max-height:420px;">
+      <div class="grid-wrap" style="max-height:calc(100vh - 300px); min-height:420px;">
         <table>
           <thead><tr><th style="width:5%;"></th><th style="width:9%;">Code</th>
             <th>Material</th><th style="width:12%;">Unit now</th>
@@ -15583,6 +15594,40 @@ async function addIncrement() {
   // scrolling underneath closes it (its position would no longer match).
   window.addEventListener("resize", close);
   window.addEventListener("scroll", e => { if (pop && pop.style.display !== "none" && !pop.contains(e.target)) close(); }, true);
+})();
+
+// ---- Figures on the right, everywhere ---------------------------------------
+// A column whose cells are all figures (2,600.00 / 41 / 55% / 2 pcs) is
+// lined up on the right, heading included, in every table on every
+// screen - once here rather than in each of the ninety places a table
+// is drawn. Cells with controls in them, or an alignment of their own,
+// are left alone.
+(function () {
+  const NUM = /^[-+]?(AED\s*)?\d[\d,]*(\.\d+)?\s*(%|pcs|bag|kg|m|set|roll|sheet|box|ltr|nos|pair|d|yr)?$/i;
+  const ALIGNED = ["num", "num-col", "n", "r", "c", "l", "kl", "act", "txt", "code", "addr", "auto-num"];
+  function fix(tbl) {
+    const rows = [...tbl.tBodies].flatMap(b => [...b.rows]).filter(r => !r.classList.contains("rep-group") && !r.dataset.total);
+    if (!rows.length) return;
+    const head = tbl.tHead && tbl.tHead.rows.length ? tbl.tHead.rows[tbl.tHead.rows.length - 1] : null;
+    const ncol = Math.max(...rows.map(r => r.cells.length));
+    for (let c = 0; c < ncol; c++) {
+      let seen = 0, numeric = 0, skip = false;
+      for (const r of rows) {
+        const td = r.cells[c]; if (!td) continue;
+        if (td.colSpan > 1 || td.querySelector("input,select,button,a,textarea") || ALIGNED.some(k => td.classList.contains(k))) { skip = true; break; }
+        const t = td.textContent.trim();
+        if (!t || t === "-" || t === "\u2014") continue;
+        seen++; if (NUM.test(t)) numeric++;
+      }
+      if (skip || !seen || numeric < seen) continue;
+      for (const r of rows) { const td = r.cells[c]; if (td) td.classList.add("auto-num"); }
+      if (head && head.cells[c] && !ALIGNED.some(k => head.cells[c].classList.contains(k))) head.cells[c].classList.add("auto-num");
+    }
+  }
+  let t = null;
+  const run = () => { t = null; document.querySelectorAll("table").forEach(tb => { try { fix(tb); } catch (e) {} }); };
+  new MutationObserver(() => { if (!t) t = setTimeout(run, 120); }).observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(run, 500);
 })();
 </script>
 </body>
