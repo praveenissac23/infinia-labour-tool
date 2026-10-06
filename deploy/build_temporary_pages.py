@@ -742,6 +742,8 @@ def _logo_to_file(src):
     for m in sorted(big, key=lambda m: -m.start()):
         if base64.b64decode(m.group(2)) == data:
             src = src[:m.start()] + "/portal/" + name + src[m.end():]
+    # The sign-in page names the file directly; a new logo renames it.
+    src = re.sub(r"/portal/logo-[0-9a-f]{8}\.(png|jpg)", "/portal/" + name, src)
     return src
 
 

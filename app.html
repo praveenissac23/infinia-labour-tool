@@ -15,10 +15,22 @@
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
 
   /* ---- Login screen ---- */
-  #login-screen { display: flex; align-items: center; justify-content: center; height: 100vh; }
-  #login-box { background: white; border-radius: 12px; padding: 36px 40px; width: 320px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
-  #login-box h1 { font-size: 18px; margin: 0 0 4px; }
-  #login-box p { font-size: 12px; color: #888; margin: 0 0 20px; }
+  /* A site at dawn: a fine blueprint grid over warm stone, a skyline of
+     frames and tower cranes along the foot of the page, and a wash of the
+     brand red low in the sky. Drawn, not photographed - it weighs nothing
+     and never pixelates. */
+  #login-screen { display: flex; align-items: center; justify-content: center; height: 100vh; position: relative; overflow: hidden;
+    background: #ECE8E0;
+    background-image:
+      linear-gradient(180deg, rgba(192,57,43,0.00) 0%, rgba(192,57,43,0.00) 55%, rgba(192,57,43,0.10) 100%),
+      linear-gradient(rgba(46,50,56,0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(46,50,56,0.055) 1px, transparent 1px);
+    background-size: 100% 100%, 48px 48px, 48px 48px; }
+  #login-skyline { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 38vh; min-height: 220px; pointer-events: none; }
+  #login-box { position: relative; background: rgba(255,255,255,0.96); border-radius: 12px; padding: 32px 40px 36px; width: 340px;
+    box-shadow: 0 10px 40px rgba(46,50,56,0.18), 0 1px 0 rgba(255,255,255,0.8) inset; backdrop-filter: blur(2px); }
+  #login-box .logo { display: block; width: 210px; max-width: 100%; height: auto; margin: 0 auto 22px; }
+  #login-box p { font-size: 12px; color: #888; margin: 0 0 20px; text-align: center; letter-spacing: .3px; }
   #login-box input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
   #login-box button { width: 100%; padding: 10px; background: var(--red); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
   #login-box button:hover { background: var(--red-hover); }
@@ -1224,16 +1236,31 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="98ea45f3ea1a";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="f0e18d246dc0";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
 <div id="notif-overlay"><div class="notif-box" id="notif-box"></div></div>
 <div id="bday-overlay" onclick="if (event.target === this) bdayClose()"><div class="bday-card" id="bday-card"></div></div>
 <div id="login-screen">
+  <svg id="login-skyline" viewBox="0 0 1440 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <g fill="none" stroke="#2E3238" stroke-opacity="0.16" stroke-width="2">
+      <!-- tower crane, left -->
+      <path d="M150 300V60 M138 60h24 M150 60L40 90 M150 60L420 72 M420 72v10 M150 90l8-30 M150 120l-8-30 M150 150l8-30 M150 180l-8-30 M150 210l8-30 M150 240l-8-30 M150 270l8-30 M300 76v70 M292 146h16v10h-16z"/>
+      <!-- framed tower, centre-left -->
+      <path d="M470 300V150h120v150 M470 180h120 M470 210h120 M470 240h120 M470 270h120 M500 150v150 M530 150v150 M560 150v150"/>
+      <!-- tall tower -->
+      <path d="M660 300V96h150v204 M660 126h150 M660 156h150 M660 186h150 M660 216h150 M660 246h150 M660 276h150 M698 96v204 M736 96v204 M774 96v204 M700 96l-12-34h100l-12 34"/>
+      <!-- tower crane, right -->
+      <path d="M1250 300V40 M1238 40h24 M1250 40l-230 24 M1250 40l170 10 M1020 64v12 M1250 70l-8-30 M1250 100l8-30 M1250 130l-8-30 M1250 160l8-30 M1250 190l-8-30 M1250 220l8-30 M1250 250l-8-30 M1250 280l8-30 M1120 58v96 M1112 154h16v10h-16z"/>
+      <!-- low blocks -->
+      <path d="M880 300V200h110v100 M880 230h110 M880 260h110 M916 200v100 M952 200v100 M1300 300V180h90v120 M1300 210h90 M1300 240h90 M1300 270h90 M1345 180v120 M0 300V230h100v70 M0 260h100 M50 230v70"/>
+    </g>
+    <!-- ground -->
+    <path d="M0 299h1440" stroke="#2E3238" stroke-opacity="0.25" stroke-width="2"/>
+  </svg>
   <div id="login-box">
-    <h1>Infinia Labour Tool</h1>
-    <p>Sign in to continue</p>
+    <img class="logo" src="/portal/logo-bb952b26.png" alt="Infinia Contracting">
     <input type="text" id="login-username" placeholder="Username" value="admin">
     <input type="password" id="login-password" placeholder="Password">
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
