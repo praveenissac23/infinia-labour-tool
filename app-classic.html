@@ -1951,14 +1951,11 @@
               mark as ordered, and record what arrives. Click any row for the full detail.</p>
             <div class="form-row">
               <label>Show:</label>
-              <select id="mreq-filter" onchange="loadRequests()" style="width:220px;">
+              <select id="mreq-filter" onchange="MR_ONLY = null; loadRequests()" style="width:220px;">
                 <option value="open">Still open</option>
-                <option value="late">Late (past needed-by)</option>
                 <option value="all">Everything</option>
                 <option value="pending">Waiting on office</option>
                 <option value="approved">Approved</option>
-                <option value="ordered">Ordered from supplier</option>
-                <option value="partial">Part delivered</option>
                 <option value="delivered">Delivered</option>
                 <option value="rejected">Rejected</option>
               </select>
@@ -4066,6 +4063,10 @@ function switchScreen(name) {
   if (name === "followup") loadFollowUp();
 
   if (name === "approvals") {
+    // Every visit starts on Still open, nothing searched - so no request
+    // still waiting can be hidden by a filter left from last time.
+    { const f = document.getElementById("mreq-filter"), q = document.getElementById("mreq-search");
+      if (f) f.value = "open"; if (q) q.value = ""; MR_ONLY = null; }
     loadStoreItems().then(() => {
       loadSuppliers();
       loadRequests();
@@ -6693,7 +6694,7 @@ function toggleBell() {
 async function mrOpenInList(ref) {
   const f = document.getElementById("mreq-filter"), s = document.getElementById("mreq-search");
   if (s) s.value = "";
-  if (f) f.value = "open";
+  if (f) f.value = "open"; MR_ONLY = null;
   await loadRequests();
   let r = (mrCache || []).find(x => x.ref === ref);
   if (r && !document.getElementById("mr-detail-" + r.id) && f) { f.value = "all"; await loadRequests(); }
@@ -6702,7 +6703,22 @@ async function mrOpenInList(ref) {
   if (d && d.style.display === "none") toggleRequest(r.id);
   if (d) { (d.previousElementSibling || d).scrollIntoView({ block: "center" }); xlFlash(d.previousElementSibling || d); }
 }
-function mrClearSearch() { const s = document.getElementById("mreq-search"); if (s) s.value = ""; const f = document.getElementById("mreq-filter"); if (f) f.value = "open"; loadRequests(); }
+// The counts above the list (waiting, ordered, part delivered, late)
+// show just those when tapped; the drop-down keeps to the main views.
+var MR_ONLY = null;
+var MR_SELECT = ["open", "all", "pending", "approved", "delivered", "rejected"];
+function mrPill(v) {
+  const f = document.getElementById("mreq-filter");
+  if (MR_SELECT.includes(v)) { MR_ONLY = null; f.value = v; } else { MR_ONLY = MR_ONLY === v ? null : v; f.value = "open"; }
+  loadRequests();
+}
+// After an action, follow the request to where it now is.
+function mrFollow(status) {
+  const f = document.getElementById("mreq-filter"); if (!f || f.value === "all") return;
+  MR_ONLY = null;
+  f.value = MR_SELECT.includes(status) ? status : "open";
+}
+function mrClearSearch() { MR_ONLY = null; const s = document.getElementById("mreq-search"); if (s) s.value = ""; const f = document.getElementById("mreq-filter"); if (f) f.value = "open"; loadRequests(); }
 
 function openNotification(id, screen, target) {
   const read = readIds(); read.add(id); saveReadIds(read);
@@ -9016,7 +9032,7 @@ async function loadRequests() {
     const nUrgent = openReqs.filter(r => r.urgency === "urgent").length;
     let pills = `<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:2px 2px 12px;">` +
       counts.map(([val, label, n, colour]) => `
-        <span onclick="document.getElementById('mreq-filter').value='${val}'; loadRequests();"
+        <span onclick="mrPill('${val}')"
               title="Show only these"
               style="cursor:pointer; font-size:12px; font-weight:600; padding:4px 12px; border-radius:999px;
                      border:1px solid ${n ? colour : "#ddd"}; color:${n ? colour : "#999"};
@@ -9033,7 +9049,8 @@ async function loadRequests() {
         <button class="btn btn-danger" onclick="deletePicked()">Delete selected</button>
         <button class="btn btn-dark" onclick="clearOrderChecks()">Clear</button>
       </div>`;
-    const filter = document.getElementById("mreq-filter").value;
+    let filter = document.getElementById("mreq-filter").value;
+    if (MR_ONLY) filter = MR_ONLY;      // a count above tapped
     const q = (document.getElementById("mreq-search").value || "").trim().toLowerCase();
     let list = all;
     if (filter === "open") list = all.filter(isOpen);
@@ -9055,7 +9072,10 @@ async function loadRequests() {
     const cut = q ? `<div style="margin:0 0 10px; padding:7px 12px; background:#FFF3D6; border:1px solid #F0D58C; border-radius:7px; font-size:12.5px; color:#6B4E00;">
         Showing only requests matching <b>"${escapeHtml(document.getElementById("mreq-search").value.trim())}"</b>${hidden > 0 ? ` - <b>${hidden} other open request${hidden === 1 ? "" : "s"} hidden</b>` : ""}.
         <a href="#" onclick="mrClearSearch(); return false;" style="color:#C0392B; font-weight:700; margin-left:6px;">Show all</a></div>` : "";
-    pills = pills + cut;
+    const onlyWord = { pending: "waiting on office", ordered: "ordered", partial: "part delivered", late: "late" }[MR_ONLY];
+    const only = onlyWord && !q ? `<div style="margin:0 0 10px; padding:7px 12px; background:#FFF3D6; border:1px solid #F0D58C; border-radius:7px; font-size:12.5px; color:#6B4E00;">
+        Showing only <b>${onlyWord}</b> requests. <a href="#" onclick="mrClearSearch(); return false;" style="color:#C0392B; font-weight:700; margin-left:6px;">Show all open</a></div>` : "";
+    pills = pills + cut + only;
     if (!list.length) { box.innerHTML = pills + '<div class="empty-note">Nothing to show.</div>'; return; }
 
     // One row per request, details on demand. A card each was unusable
@@ -9402,8 +9422,7 @@ async function saveReceive() {
     // A fully-delivered request drops out of the default "Still open"
     // list, so it looked like nothing had happened. Switch the filter to
     // show it, otherwise the keeper can't see the delivery they just made.
-    const f = document.getElementById("mreq-filter");
-    if (f && f.value !== "all" && f.value !== res.status) f.value = res.status;
+    mrFollow(res.status);
     // Remember the supplier's contact details for next time.
     const supName = document.getElementById("recv-supplier").value.trim();
     if (supName) {
@@ -9800,8 +9819,7 @@ async function saveOrderModal() {
                   : (lineIds.length ? `${num(lineIds.length)} material(s) ordered from ${name}.`
                                     : `${done} request(s) ordered from ${name}.`));
   await loadSuppliers();
-  const f = document.getElementById("mreq-filter");
-  if (f && f.value !== "all" && f.value !== "ordered") f.value = "ordered";
+  mrFollow("ordered");
   await loadRequests();
   // Materials left without a supplier? Offer to place the next order
   // straight away, rather than making the office find the request again.
@@ -9830,8 +9848,7 @@ async function setRequestStatus(id, status) {
     // just vanishes and the button looks broken.
     // Follow the request to wherever it has just moved, so it doesn't
     // vanish from view - whatever filter was showing before.
-    const f = document.getElementById("mreq-filter");
-    if (f && f.value !== "all" && f.value !== status) f.value = status;
+    mrFollow(status);
     mreqStatus("ok", `${MR_LABEL[status] || status}.`);
     await loadRequests();
   } catch (e) { mreqStatus("err", errText(e)); }
