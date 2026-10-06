@@ -478,6 +478,8 @@ class PurchaseOrderLineIn(BaseModel):
 
 
 class PurchaseOrderIn(BaseModel):
+    # The LPO number: filled in by the app, and can be typed over.
+    ref: str = ""
     order_date: date | None = None
     terms: str = "Due on Receipt"
     delivery_date: date | None = None

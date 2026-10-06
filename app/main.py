@@ -6177,6 +6177,38 @@ RENTAL_LPO_TERMS = DEFAULT_LPO_TERMS + (
 )
 
 
+def _lpo_number(db, typed, current=None):
+    """The LPO number for an order: the next one in the series, or the one
+    typed over it. A typed number must not be on another order; one of the
+    usual shape (IC/LPO/123) also takes that place in the series."""
+    typed = re.sub(r"\s+", "", (typed or "")).upper()
+    if not typed:
+        if current is not None:
+            return current.po_no, current.ref
+        n = _next_lpo_no(db)
+        return n, f"IC/LPO/{n}"
+    if len(typed) > 40:
+        raise HTTPException(status_code=400, detail="The LPO number is too long.")
+    q = db.query(models.PurchaseOrder).filter(func.upper(models.PurchaseOrder.ref) == typed)
+    if current is not None:
+        q = q.filter(models.PurchaseOrder.id != current.id)
+    other = q.first()
+    if other:
+        raise HTTPException(status_code=400,
+            detail=f"{typed} is already used by the order to {other.supplier_name or 'another supplier'} - type a different number.")
+    m = re.fullmatch(r"IC/LPO/(\d{1,9})", typed)
+    n = int(m.group(1)) if m else None
+    if n is not None:
+        q = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.po_no == n)
+        if current is not None:
+            q = q.filter(models.PurchaseOrder.id != current.id)
+        if q.first():
+            n = None
+    if n is None:
+        n = current.po_no if current is not None else _next_lpo_no(db)
+    return n, typed
+
+
 def _next_lpo_no(db):
     """The next order number. Carries on from the highest already issued,
     so numbering is unbroken even if a record is deleted, and starts at
@@ -7151,9 +7183,9 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
     sup_changed = _supplier_from_lpo(db, supplier, payload)
-    n = _next_lpo_no(db)
+    n, ref = _lpo_number(db, payload.ref)
     o = models.PurchaseOrder(
-        po_no=n, ref=f"IC/LPO/{n}",
+        po_no=n, ref=ref,
         order_date=payload.order_date or _dubai_today(),
         terms=payload.terms or "Due on Receipt",
         delivery_date=payload.delivery_date,
@@ -7264,6 +7296,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     sup_changed = _supplier_from_lpo(db, supplier, payload)
 
+    o.po_no, o.ref = _lpo_number(db, payload.ref, current=o)
     o.order_date = payload.order_date or o.order_date
     o.terms = payload.terms or "Due on Receipt"
     o.delivery_date = payload.delivery_date

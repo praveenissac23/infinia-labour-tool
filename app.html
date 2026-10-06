@@ -1236,7 +1236,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="3154ac80b15b";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="bbbd82b31d13";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2152,7 +2152,7 @@
             <h2 id="lpo-form-title">New Purchase Order</h2>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap;">
-              <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" readonly style="width:150px; background:#F7F7F7;"></div>
+              <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" style="width:150px;" title="Filled in with the next number - type over it if this order needs a different one"></div>
               <div class="field"><label>Date</label><input type="date" id="lpo-date" style="width:150px;"></div>
               <div class="field"><label>Terms</label>
                 <input type="text" id="lpo-terms" list="terms-list" value="Due on Receipt" style="width:175px;"></div>
@@ -11950,6 +11950,7 @@ async function saveLpo() {
     showStatus("lpo-status", "warn", "Add at least one material with a quantity."); return;
   }
   const body = {
+    ref: document.getElementById("lpo-ref").value.trim(),
     order_date: document.getElementById("lpo-date").value || null,
     terms: document.getElementById("lpo-terms").value,
     delivery_date: document.getElementById("lpo-delivery").value || null,

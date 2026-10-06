@@ -2015,7 +2015,7 @@
             <h2 id="lpo-form-title">New Purchase Order</h2>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap;">
-              <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" readonly style="width:150px; background:#F7F7F7;"></div>
+              <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" style="width:150px;" title="Filled in with the next number - type over it if this order needs a different one"></div>
               <div class="field"><label>Date</label><input type="date" id="lpo-date" style="width:150px;"></div>
               <div class="field"><label>Terms</label>
                 <input type="text" id="lpo-terms" list="terms-list" value="Due on Receipt" style="width:175px;"></div>
@@ -11744,6 +11744,7 @@ async function saveLpo() {
     showStatus("lpo-status", "warn", "Add at least one material with a quantity."); return;
   }
   const body = {
+    ref: document.getElementById("lpo-ref").value.trim(),
     order_date: document.getElementById("lpo-date").value || null,
     terms: document.getElementById("lpo-terms").value,
     delivery_date: document.getElementById("lpo-delivery").value || null,
