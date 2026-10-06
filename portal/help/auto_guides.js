@@ -29,7 +29,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Attendance > Daily attendance",
   "auto": true,
-  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  71  clear day daily report     screen buttons what is",
+  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  71  daily report clear day     screen buttons what is",
   "go": {
    "page": "attendance",
    "tab": "attendance"
@@ -55,12 +55,12 @@ window.HELP_AUTO = [
     "el": "#unfilled-btn"
    },
    {
-    "say": "5. Clear Day.",
-    "el": "button[onclick=\"openClearDayModal()\"]"
+    "say": "5. Daily report: Present, absent, sick, site-wise numbers or names for the date above.",
+    "el": "#daily-report-btn"
    },
    {
-    "say": "6. Daily report: Present, absent, sick, site-wise numbers or names for the date above.",
-    "el": "#daily-report-btn"
+    "say": "6. Clear Day.",
+    "el": "button[onclick=\"openClearDayModal()\"]"
    },
    {
     "say": "7. ◀.",

@@ -857,7 +857,7 @@
                      box-shadow: 0 4px 14px rgba(0,0,0,0.07); transform: translateY(-1px); }
   .dash-tile-title { font-weight: 700; font-size: 14.5px; color: #7A3B33; }
   .dash-tile-sub { font-size: 12px; color: #927068; margin-top: 4px; }
-  #store-report-stats:empty { display: none; } .dash-calendar { min-height: 131px; align-content: start; } .dash-calendar .empty-note { grid-column: 1 / -1; align-self: center; text-align: center; } #unfilled-btn { min-width: 140px; } .att-head > .att-cal { min-width: 222px; }
+  #store-report-stats:empty { display: none; } .dash-calendar { min-height: 131px; align-content: start; } .dash-calendar .empty-note { grid-column: 1 / -1; align-self: center; text-align: center; } #unfilled-btn.on { border-color: var(--red); color: var(--red); background: #fff; } .att-head > .att-cal { min-width: 222px; }
   .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; max-width: 320px; margin: 0 auto; }
   .dash-cal-head { font-size: 8px; font-weight: bold; color: #888; text-align: center; padding: 2px 0; }
   .dash-cal-day { border-radius: 4px; padding: 4px 2px; text-align: center; font-size: 9px; font-weight: bold; cursor: pointer; color: white; }
@@ -1285,8 +1285,9 @@
                 <button class="btn btn-dark" onclick="selectNone()">Select None</button>
               <button class="btn btn-dark" id="unfilled-btn" onclick="toggleUnfilled()">Unfilled Emp</button>
               <span id="unfilled-note" style="display:none; font-size:12px; color:#B26A00; margin-left:4px;"></span>
+                <span style="flex:1;"></span>
+                <button class="btn btn-dark" id="daily-report-btn" onclick="openDailyReport()" title="Present, absent, sick, site-wise numbers or names for the date above">Daily report</button>
                 <button class="btn btn-danger" onclick="openClearDayModal()">Clear Day</button>
-                <button class="btn btn-primary" id="daily-report-btn" onclick="openDailyReport()" title="Present, absent, sick, site-wise numbers or names for the date above">Daily report</button>
               </div>
             </div>
           </div>
@@ -4660,7 +4661,7 @@ function toggleUnfilled() {
   showUnfilledOnly = !showUnfilledOnly;
   const btn = document.getElementById("unfilled-btn");
   btn.textContent = showUnfilledOnly ? "Show everyone" : "Unfilled Emp";
-  btn.className = showUnfilledOnly ? "btn btn-primary" : "btn btn-dark";
+  btn.className = "btn btn-dark" + (showUnfilledOnly ? " on" : "");   // one main button on the bar: Apply to Ticked
   renderRows();
 }
 
@@ -4713,14 +4714,13 @@ function renderRows() {
 
   const btn = document.getElementById("unfilled-btn");
   if (btn) btn.textContent = showUnfilledOnly
-    ? "Show everyone" : (unfilled ? `Unfilled Emp (${num(unfilled)})` : "Unfilled Emp");
+    ? `Show everyone (${num(shown)} unfilled)` : (unfilled ? `Unfilled Emp (${num(unfilled)})` : "Unfilled Emp");
   const note = document.getElementById("unfilled-note");
   if (note) {
     // The button says what pressing it does, not what is being shown, so
     // the only sign of the filter was an empty grid. It says which it is.
     note.textContent = showUnfilledOnly
-      ? (shown ? `Showing only cards that are not finished - ${num(shown)} of ${num(staff.length)}.`
-               : "Every card is finished for this day.")
+      ? (shown ? "" : "Every card is finished for this day.")
       : "";
     note.style.display = showUnfilledOnly ? "" : "none";
   }
