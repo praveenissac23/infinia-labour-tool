@@ -6687,6 +6687,23 @@ function toggleBell() {
 // a new request opens Material Approvals filtered to that request; a
 // status change opens Order Follow-up on it; low stock opens the
 // store searched to the material.
+// One request opened from a notification or a link: shown open and
+// highlighted IN the full list - never the list cut down to that one
+// request, which hid every other request still waiting.
+async function mrOpenInList(ref) {
+  const f = document.getElementById("mreq-filter"), s = document.getElementById("mreq-search");
+  if (s) s.value = "";
+  if (f) f.value = "open";
+  await loadRequests();
+  let r = (mrCache || []).find(x => x.ref === ref);
+  if (r && !document.getElementById("mr-detail-" + r.id) && f) { f.value = "all"; await loadRequests(); }
+  r = (mrCache || []).find(x => x.ref === ref);
+  const d = r && document.getElementById("mr-detail-" + r.id);
+  if (d && d.style.display === "none") toggleRequest(r.id);
+  if (d) { (d.previousElementSibling || d).scrollIntoView({ block: "center" }); xlFlash(d.previousElementSibling || d); }
+}
+function mrClearSearch() { const s = document.getElementById("mreq-search"); if (s) s.value = ""; const f = document.getElementById("mreq-filter"); if (f) f.value = "open"; loadRequests(); }
+
 function openNotification(id, screen, target) {
   const read = readIds(); read.add(id); saveReadIds(read);
   document.getElementById("bell-panel").style.display = "none";
@@ -6696,14 +6713,7 @@ function openNotification(id, screen, target) {
   if (!target) return;
   setTimeout(() => {
     if (screen === "approvals") {
-      const f = document.getElementById("mreq-filter"); if (f) f.value = "all";
-      const s = document.getElementById("mreq-search"); if (s) s.value = target;
-      Promise.resolve(loadRequests()).then(() => {
-        const r = (mrCache || []).find(x => x.ref === target);
-        const d = r && document.getElementById("mr-detail-" + r.id);
-        if (d && d.style.display === "none") toggleRequest(r.id);
-        if (d) xlFlash(d.previousElementSibling || d);
-      });
+      mrOpenInList(target);
     } else if (screen === "followup") {
       const s = document.getElementById("fu-search"); if (s) { s.value = target; renderFollowUp(); }
     } else if (screen === "store") {
@@ -9004,7 +9014,7 @@ async function loadRequests() {
       ["late", "late", all.filter(isLate).length, "#C0392B"],
     ];
     const nUrgent = openReqs.filter(r => r.urgency === "urgent").length;
-    const pills = `<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:2px 2px 12px;">` +
+    let pills = `<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:2px 2px 12px;">` +
       counts.map(([val, label, n, colour]) => `
         <span onclick="document.getElementById('mreq-filter').value='${val}'; loadRequests();"
               title="Show only these"
@@ -9040,6 +9050,12 @@ async function loadRequests() {
       (((b.urgency === "urgent" && isOpen(b)) ? 1 : 0) - ((a.urgency === "urgent" && isOpen(a)) ? 1 : 0)) ||
       (b.id - a.id));
 
+    // A search cuts the list down: say so plainly, with the way back.
+    const hidden = all.filter(isOpen).length - list.filter(isOpen).length;
+    const cut = q ? `<div style="margin:0 0 10px; padding:7px 12px; background:#FFF3D6; border:1px solid #F0D58C; border-radius:7px; font-size:12.5px; color:#6B4E00;">
+        Showing only requests matching <b>"${escapeHtml(document.getElementById("mreq-search").value.trim())}"</b>${hidden > 0 ? ` - <b>${hidden} other open request${hidden === 1 ? "" : "s"} hidden</b>` : ""}.
+        <a href="#" onclick="mrClearSearch(); return false;" style="color:#C0392B; font-weight:700; margin-left:6px;">Show all</a></div>` : "";
+    pills = pills + cut;
     if (!list.length) { box.innerHTML = pills + '<div class="empty-note">Nothing to show.</div>'; return; }
 
     // One row per request, details on demand. A card each was unusable
@@ -15308,11 +15324,7 @@ function openRequestRef(ref) {
     // Wait for the screen's own load to finish first, or it redraws the
     // list closed again after the request has been opened.
     xlGo("store", "requests", "approvals", () => { const l = document.getElementById("mreq-list"); return xlOn("approvals") && l && l.children.length && !/Loading/.test(l.textContent); }, async () => {
-      document.getElementById("mreq-filter").value = "all";
-      document.getElementById("mreq-search").value = ref;
-      await loadRequests();
-      const r = (mrCache || []).find(x => x.ref === ref);
-      if (r) { const d = document.getElementById("mr-detail-" + r.id); if (d && d.style.display === "none") toggleRequest(r.id); xlFlash(d ? d.previousElementSibling || d : null); }
+      await mrOpenInList(ref);
     });
   } else if (xlCan("requests")) {
     xlGo("store", "requests", "followup", () => xlOn("followup") && document.getElementById("fu-search"), () => {
