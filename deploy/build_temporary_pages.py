@@ -955,6 +955,7 @@ def build():
             return "0"
     help_tags = (f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">\n'
                  f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>\n'
+                 f'<script src="/portal/help/auto_guides.js?v={_v("portal/help/auto_guides.js")}"></script>\n'
                  f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}"></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}"></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)

@@ -5,7 +5,8 @@
    tests/help_screens.js. Plain script, no libraries. */
 (function () {
   "use strict";
-  const G = () => window.HELP_GUIDES || [];
+  // The written guides, then one for every screen (auto_guides.js).
+  const G = () => (window.HELP_GUIDES || []).concat(window.HELP_AUTO || []);
   const IMGS = () => window.HELP_IMGS || {};
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -22,6 +23,7 @@
       const t = p.tabs.find(x => x.id === g.go.tab); if (!t) return false;
       const sb = g.go.sub ? t.subs.find(x => x.id === g.go.sub) : null;
       if (g.go.sub && !sb) return false;
+      if (typeof pgSubOk === "function") return sb ? pgSubOk(sb) && pgHas(t.right) : pgTabRightOk(t);   // Settings > Access ticks
       return pgHas(t.right) && (!sb || pgHas(sb.right));
     } catch (e) { return true; }
   }

@@ -240,8 +240,10 @@ window.HELP_GUIDES = [
     go: { page: "payroll", tab: "labourpay", sub: "adjust" },
     steps: [
       { say: "Choose the cycle.", el: "#adj-cycle" },
-      { say: "Find the worker and click his row.", el: "#adj-search-box" },
-      { say: "Type what it is for and the amount.", el: "#adj-desc" },
+      { say: "Find the worker and click his row.", el: "#adj-search-box",
+        run: "if (document.querySelector('#adj-worker-body .empty-note')) { var s=document.getElementById('adj-cycle'); if (s.selectedIndex < s.options.length-1) { s.selectedIndex += 1; s.onchange(); } }" },
+      { say: "Type what it is for and the amount.", el: "#adj-desc",
+        run: "var r=document.querySelector('#adj-worker-body tr[onclick], #adj-worker-body tr'); if (r) r.click();" },
       { say: "Choose Addition or Deduction.", el: "#adj-type" },
       { say: "Press Add.", el: "button[onclick='addAdjustmentRow()']" }] },
   { id: "labour-cards", area: "Payroll", title: "How to print labour salary cards",
@@ -433,7 +435,44 @@ window.HELP_GUIDES = [
     words: "backup back up restore download save data copy",
     go: { page: "settings", tab: "general" },
     steps: [{ say: "Press 'Take Backup Now'. It appears in the list to download.", el: "button[onclick='takeBackupNow()']" }] },
+  { id: "access-tabs", area: "Settings", title: "How to choose what a role can open",
+    words: "access rights permission role tick tabs give access allow hide page tab login can see",
+    go: { page: "settings", tab: "access" },
+    steps: [
+      { say: "Pick the role on the left, or press + New role." },
+      { say: "Tick a page to give everything in it, or open the page and tick only the tabs it needs." },
+      { say: "Tick all or Untick all does every page at once; 'all · none' beside a page does that page." },
+      { say: "Press Save. Every login with this role follows straight away." }],
+    tip: "Copy from... starts a role from another one. Nothing changes until you press Save." },
+  { id: "staff-leave-add", area: "Staff", title: "How to enter someone's leave",
+    words: "leave vacation annual leave going home ticket travel return date approved staff labour leave register",
+    go: { page: "people", tab: "people" },
+    steps: [
+      { say: "Open Staff > Leave.", run: "var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('vacation');" },
+      { say: "Press + Add leave and pick the person." },
+      { say: "Fill the date of leave, the date of return (or the days approved) and the status." },
+      { say: "Save. His leave balance and his staff file update by themselves." }],
+    tip: "Overdue shows in red when the approved days have passed and he is not back." },
+  { id: "bday-client", area: "Staff", title: "How to add a client's birthday",
+    words: "birthday client birthday date of birth wish reminder",
+    go: { page: "people", tab: "people" },
+    steps: [
+      { say: "Open Staff > Birthdays.", run: "var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('bday');" },
+      { say: "Press + Client birthday." },
+      { say: "Type the name, the project and the date of birth, then Save." }],
+    tip: "Staff birthdays come from their staff file - open the person to change one." },
+  { id: "report-site-cost", area: "Reports", title: "How to see what each site cost in materials",
+    words: "site cost material cost per site transfer 912 913 consumption how much site used",
+    go: { page: "reports", tab: "storerep", sub: "site_cost" },
+    steps: [
+      { say: "Pick the dates at the top." },
+      { say: "Each site shows what was issued to it and what moved in or out between sites." },
+      { say: "Preview to read or print; Export PDF or Excel to keep it." }],
+    tip: "A material with no price shows under 'not priced' - type its price on the Material list." },
 ];
+
+// Every screen, button by button: written by tests/help_screens.js into
+// auto_guides.js (window.HELP_AUTO) each time the pictures are taken.
 
 // Words people use that mean the same thing. Left side -> added to the search.
 window.HELP_SAME = {

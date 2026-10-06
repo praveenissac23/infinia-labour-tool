@@ -53,6 +53,96 @@ const only = process.argv.slice(2);
   const stale = [], made = {};
   let prev = {};
   try { const m = fs.readFileSync(path.join(OUT, 'manifest.js'), 'utf8').match(/HELP_IMGS = (\{.*?\});/s); if (m) prev = JSON.parse(m[1]); } catch (e) {}
+
+  // ---- Every screen, button by button (portal/help/auto_guides.js) ----------
+  // Nothing to write by hand: each tab of each page is opened, the buttons on
+  // it are found, numbered on one picture and listed in plain words. A new
+  // button or tab is in Help the next time this runs.
+  const explain = (t, title) => {
+    const x = t.replace(/\s+/g, ' ').trim(), l = x.toLowerCase(), more = title && title.trim() && title.trim().toLowerCase() !== l ? ` - ${title.trim()}` : '';
+    if (/^preview/.test(l)) return `${x}: opens it on screen to read or print${more}.`;
+    if (/export pdf|^pdf$/.test(l)) return `${x}: downloads it as a PDF${more}.`;
+    if (/export excel|^excel$/.test(l)) return `${x}: downloads it as an Excel sheet${more}.`;
+    if (/^save|^update|^set /.test(l)) return `${x}: keeps what you entered - nothing is kept until you press it${more}.`;
+    if (/^\+\s*/.test(x)) return `${x}: adds a new ${x.replace(/^\+\s*(new\s+)?/i, '').toLowerCase()}${more}.`;
+    if (/^(refresh|reload)/.test(l)) return `${x}: loads the latest figures${more}.`;
+    if (/^(delete|remove)/.test(l)) return `${x}: removes it (it asks first)${more}.`;
+    if (/^edit/.test(l)) return `${x}: change what is there${more}.`;
+    if (/^print/.test(l)) return `${x}: prints it${more}.`;
+    if (/^approve/.test(l)) return `${x}: approves it${more}.`;
+    if (/^(reject|decline)/.test(l)) return `${x}: turns it down${more}.`;
+    if (/^cancel/.test(l)) return `${x}: cancels it${more}.`;
+    return `${x}${more ? more.replace(/^ - /, ': ') : ''}.`;
+  };
+  const autos = [];
+  if (!only.length || only.includes('screens')) {
+    const screens = await p.evaluate(() => {
+      const out = [];
+      for (const [key, cfg] of Object.entries(ALL_PAGES)) {
+        if (key === 'people') {
+          for (const [v, l] of [['register', 'Register'], ['due', 'Documents due'], ['vacation', 'Leave'], ['bday', 'Birthdays']])
+            out.push({ id: 'scr-people-' + v, page: 'people', tab: 'people', title: `Staff > ${l}`, view: v });
+          continue;
+        }
+        for (const t of cfg.tabs) {
+          if (t.hidden) continue;
+          if (t.subs.length) for (const sb of t.subs) out.push({ id: `scr-${key}-${t.id}-${sb.id}`, page: key, tab: t.id, sub: sb.id, title: `${cfg.title} > ${t.label} > ${sb.label}` });
+          else out.push({ id: `scr-${key}-${t.id}`, page: key, tab: t.id, title: cfg.tabs.length > 1 ? `${cfg.title} > ${t.label}` : cfg.title });
+        }
+      }
+      return out;
+    });
+    for (const sc of screens) {
+      await p.evaluate(async sc => {
+        HELP.endTour(); document.querySelectorAll('.help-drawer').forEach(d => d.classList.remove('open'));
+        if (PAGE.key !== sc.page) pgGo(sc.page);
+        await new Promise(r => setTimeout(r, 900));
+        pgTab(sc.tab); await new Promise(r => setTimeout(r, 500));
+        if (sc.sub) pgSub(sc.sub);
+      }, sc);
+      await p.waitForTimeout(2200);
+      if (await p.evaluate(() => !!document.querySelector('.screen.active iframe'))) await p.waitForTimeout(2500);   // Staff, Access, Logins load in a frame
+      if (sc.view) { await p.evaluate(v => { const f = document.getElementById('pg-staff-frame'); f && f.contentWindow.showView && f.contentWindow.showView(v); }, sc.view); await p.waitForTimeout(1500); }
+      const found = await p.evaluate(() => {
+        const vis = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && !el.closest('.pg-hide');
+        const scr = document.querySelector('.screen.active'); if (!scr) return { frame: false, items: [] };
+        const fr = scr.querySelector('iframe'), doc = fr ? fr.contentDocument : document, root = fr ? doc.body : scr;
+        const off = fr ? fr.getBoundingClientRect() : { left: 0, top: 0 };
+        const seen = new Set(), items = [];
+        for (const el of root.querySelectorAll('button, a.btn, .btn')) {
+          if (!vis(el) || el.disabled || el.closest('.dlg, .help-drawer, .ask')) continue;
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim(); if (!text || text.length > 40 || seen.has(text.toLowerCase())) continue;
+          const r = el.getBoundingClientRect(); if (r.top + off.top > innerHeight - 10 || r.width < 8) continue;
+          let sel = null;
+          if (!fr) {
+            if (el.id) sel = '#' + el.id;
+            else if (el.getAttribute('onclick')) { const c = `${el.tagName.toLowerCase()}[onclick="${el.getAttribute('onclick').replace(/"/g, '\\"')}"]`;
+              try { if ([...document.querySelectorAll(c)].filter(vis).length === 1) sel = c; } catch (e) {} }
+          }
+          seen.add(text.toLowerCase());
+          items.push({ text, title: el.getAttribute('title') || '', sel, x: r.left + off.left, y: r.top + off.top });
+          if (items.length >= 12) break;
+        }
+        // Numbered badges on the picture, matching the list.
+        items.forEach((it, i) => { const d = document.createElement('div'); d.className = 'help-auto-badge';
+          d.style.cssText = `position:fixed;left:${Math.max(2, it.x - 9)}px;top:${Math.max(2, it.y - 9)}px;z-index:99999;width:20px;height:20px;border-radius:50%;background:#C0392B;color:#fff;font:700 11px/20px Arial;text-align:center;box-shadow:0 0 0 2px #fff`;
+          d.textContent = i + 1; document.body.appendChild(d); });
+        return { frame: !!fr, items };
+      });
+      await p.screenshot({ path: path.join(OUT, `${sc.id}-1.jpg`), type: 'jpeg', quality: 68 });
+      await p.evaluate(() => document.querySelectorAll('.help-auto-badge').forEach(d => d.remove()));
+      const go = { page: sc.page, tab: sc.tab, ...(sc.sub ? { sub: sc.sub } : {}) };
+      const first = { say: `This is ${sc.title}. The numbers on the picture match the list below.` };
+      if (sc.view) first.run = `var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('${sc.view}');`;
+      autos.push({ id: sc.id, area: 'Every screen', title: sc.title, auto: true,
+        words: `${sc.title} ${found.items.map(i => i.text).join(' ')} screen buttons what is`.toLowerCase().replace(/[^a-z0-9 ]+/g, ' '),
+        go, steps: [first, ...found.items.map((it, i) => ({ say: `${i + 1}. ${explain(it.text, it.title)}`, ...(it.sel ? { el: it.sel } : {}) }))] });
+      made[sc.id] = [1];
+      console.log(`screen ${sc.id} (${found.items.length} buttons)`);
+    }
+    fs.writeFileSync(path.join(OUT, '..', 'auto_guides.js'),
+      `// Written by tests/help_screens.js - one guide for every screen, its buttons numbered. Do not edit by hand.\nwindow.HELP_AUTO = ${JSON.stringify(autos, null, 1)};\n`);
+  } else for (const k of Object.keys(prev)) if (k.startsWith('scr-')) made[k] = prev[k];
   for (const g of guides) {
     if (only.length && !only.includes(g.id)) { if (prev[g.id]) made[g.id] = prev[g.id]; continue; }
     if (!g.ok) { stale.push(`${g.id}: its page / tab is not in the app any more`); continue; }
