@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 
 import main as M
 import models, auth
+import tabrights
 from database import get_db
 
 router = APIRouter()
@@ -32,18 +33,24 @@ LOGINS = Depends(M.require_screen("settings_logins"))
 ROLES_READ = Depends(M.require_any_screen("settings_access", "settings_logins"))
 
 
-def allowed_groups(user):
+def allowed_groups(user, view=None):
     """The registers this login may see. Office salaries are on the office
     register; a login without that right never gets those rows, on any
     list, file or report."""
     if user is None or user.role == "admin":
         return set(PEOPLE_RIGHTS)
     perms = M.effective_permissions(user)
-    return {g for g, r in PEOPLE_RIGHTS.items() if r in perms}
+    groups = {g for g, r in PEOPLE_RIGHTS.items() if r in perms}
+    if view:
+        # Staff > Register / Documents due / Leave / Birthdays, ticked
+        # register by register under Settings > Access.
+        tabs = set(M.effective_tabs(user))
+        groups = {g for g in groups if f"people.{view}.{g}" in tabs}
+    return groups
 
 
-def _may(user, group):
-    if group not in allowed_groups(user):
+def _may(user, group, view=None):
+    if group not in allowed_groups(user, view):
         raise HTTPException(status_code=403, detail=f"Not available to this login: the {GROUPS.get(group, group)} register.")
 
 # Household staff (maids, house drivers) are office staff: same register,
@@ -82,7 +89,7 @@ def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(a
     login without any sees none). 29 February birthdays are wished on
     28 February in other years."""
     today = M._dubai_today()
-    groups = allowed_groups(user)
+    groups = allowed_groups(user, "bday")
     if not groups:
         return {"date": today.isoformat(), "people": []}
     leap = today.year % 4 == 0 and (today.year % 100 != 0 or today.year % 400 == 0)
@@ -119,7 +126,7 @@ def birthdays_today(db: Session = Depends(get_db), user: models.User = Depends(a
 
 def _contacts_ok(user):
     """Client birthdays: admin and whoever keeps the office register."""
-    return user is not None and (user.role == "admin" or "office" in allowed_groups(user))
+    return M.has_tab(user, "people.bday.clients")
 
 
 def _next_birthday(d, today):
@@ -139,14 +146,14 @@ def birthdays_upcoming(group: str = "", db: Session = Depends(get_db), user: mod
     """Everyone still working, next birthday first, counted from today.
     Also how many have no date of birth on their file yet."""
     today = M._dubai_today()
-    groups = allowed_groups(user)
+    groups = allowed_groups(user, "bday")
     with_clients = _contacts_ok(user) and group in ("", "client")
     if group == "client":
         if not _contacts_ok(user):
             raise HTTPException(status_code=403, detail="Not available to this login.")
         groups = set()
     elif group:
-        _may(user, group)
+        _may(user, group, "bday")
         groups = {group}
     out, missing = [], 0
     if with_clients:
@@ -557,9 +564,9 @@ def leave_register(group: str = "", show: str = "", db: Session = Depends(get_db
     away (on leave or overdue), pending, upcoming (approved, not gone
     yet), returned."""
     today = M._dubai_today()
-    groups = allowed_groups(user)
+    groups = allowed_groups(user, "leave")
     if group:
-        _may(user, group)
+        _may(user, group, "leave")
         groups = {group}
     rows = (db.query(models.LeaveRecord, models.Employee, models.PeopleProfile)
               .join(models.Employee, models.Employee.id == models.LeaveRecord.employee_id)
@@ -627,7 +634,7 @@ def _save_home_phone(db, e, payload):
 @router.post("/employees/people/leave-register")
 def add_leave_record(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
     e = _by_code(db, payload.get("emp_no") or "")
-    _may(user, group_of(e, _profile(db, e)))
+    _may(user, group_of(e, _profile(db, e, "leave")))
     r = models.LeaveRecord(employee_id=e.id, created_by=user.id, leave_type="annual", status="pending")
     _leave_fields(r, payload)
     db.add(r)
@@ -643,7 +650,7 @@ def save_leave_record(rec_id: int, payload: dict = Body(...), db: Session = Depe
     if not r:
         raise HTTPException(status_code=404, detail="That leave is not on file.")
     e = r.employee
-    _may(user, group_of(e, _profile(db, e)))
+    _may(user, group_of(e, _profile(db, e, "leave")))
     _leave_fields(r, payload)
     _save_home_phone(db, e, payload)
     db.commit()
@@ -657,7 +664,7 @@ def delete_leave_record(rec_id: int, db: Session = Depends(get_db), user: models
     if not r:
         raise HTTPException(status_code=404, detail="That leave is not on file.")
     e = r.employee
-    _may(user, group_of(e, _profile(db, e)))
+    _may(user, group_of(e, _profile(db, e, "leave")))
     db.delete(r); db.commit()
     M.log_action(db, user.id, "leave_deleted", f"{e.emp_no}: {r.leave_on}")
     return {"ok": True}
@@ -673,7 +680,7 @@ def list_people(group: str = "", include_left: bool = False, q: str = "",
         docs.setdefault(d.employee_id, []).append(d)
     rows, counts = [], {k: 0 for k in GROUPS}
     counts["left"] = 0
-    mine = allowed_groups(user)
+    mine = allowed_groups(user, "register")
     for e in db.query(models.Employee).order_by(models.Employee.emp_no).all():
         p = profs.get(e.id)
         g = group_of(e, p)
@@ -711,7 +718,7 @@ def documents_due(days: int = 90, group: str = "", db: Session = Depends(get_db)
         if not M.doc_tracked(e, today) or not d.expires_on:
             continue
         g = group_of(e, profs.get(e.id))
-        if (group and g != group) or g not in allowed_groups(user):
+        if (group and g != group) or g not in allowed_groups(user, "due"):
             continue
         left = (d.expires_on - today).days
         if left > days:
@@ -731,7 +738,7 @@ def leave_balances(group: str = "labour", db: Session = Depends(get_db), user: m
     for e in db.query(models.Employee).filter(models.Employee.active == True).order_by(models.Employee.emp_no).all():  # noqa: E712
         p = profs.get(e.id)
         g = group_of(e, p)
-        if (group and g != group) or g not in allowed_groups(user):
+        if (group and g != group) or g not in allowed_groups(user, "leave"):
             continue
         lv = leave_state(db, e, p, g, today)
         rows.append({"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
@@ -745,7 +752,7 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
     e = _by_code(db, emp_no)
     p = _profile(db, e)
     g = group_of(e, p)
-    _may(user, g)
+    _may(user, g, "register")
     today = M._dubai_today()
     docs = {}
     for d in db.query(models.EmployeeDocument).filter(models.EmployeeDocument.employee_id == e.id).all():
@@ -822,7 +829,7 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     g = (payload.get("group") or "").strip().lower()
     if g not in GROUPS:
         raise HTTPException(status_code=400, detail="Which register - labour, office or local?")
-    _may(user, g)
+    _may(user, g, "register")
     emp_no = M.norm_emp_no(payload.get("emp_no"))
     name = str(payload.get("name") or "").strip().upper()
     if not emp_no or not name:
@@ -872,7 +879,7 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
     e = _by_code(db, emp_no)
     p = _profile(db, e, create=True)
     before = group_of(e, p)
-    _may(user, before)
+    _may(user, before, "register")
     prof = payload.get("profile") or {}
     emp = payload.get("employee") or {}
     # Register tab.
@@ -884,7 +891,7 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
             raise HTTPException(status_code=400,
                 detail="Labour and monthly-paid staff are paid differently. A person cannot be moved "
                        "between the labour register and the others here.")
-        _may(user, g)
+        _may(user, g, "register")
         if g == "local" and (e.scheme or "gratuity") != "pension":
             raise HTTPException(status_code=400, detail="Local staff are UAE nationals on GPSSA pension. "
                                 "Household and other staff stay on the office register.")
@@ -981,7 +988,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
     person has attendance, a salary card, a cycle or a loan he is part of
     the books and is marked as left instead of removed."""
     e = _by_code(db, emp_no)
-    _may(user, group_of(e, _profile(db, e)))
+    _may(user, group_of(e, _profile(db, e, "register")))
     ties = []
     if db.query(models.DailyRow).filter(models.DailyRow.employee_id == e.id).first():
         ties.append("attendance")
@@ -1007,7 +1014,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
 def add_asset(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
               user: models.User = PEOPLE):
     e = _by_code(db, emp_no)
-    _may(user, group_of(e, _profile(db, e)))
+    _may(user, group_of(e, _profile(db, e, "register")))
     item = (payload.get("item") or "").strip()
     if not item:
         raise HTTPException(status_code=400, detail="What was issued?")
@@ -1214,16 +1221,16 @@ def _reader(token, db):
 def _report(kind, db, user, group="", emp_no="", days=90, company_id=None, show=""):
     if kind == "register":
         if group in GROUPS:
-            _may(user, group)
+            _may(user, group, "register")
         return _register_parts(db, group, company_id, user), REGISTER_MONEY
     if kind == "file":
         return _file_parts(db, emp_no, user), []
     if kind == "documents-due":
         if group:
-            _may(user, group)
+            _may(user, group, "due")
         return _due_parts(db, days, group, user), []
     if kind == "leave":
-        _may(user, group)
+        _may(user, group, "leave")
         return _leave_parts(db, group, user), []
     if kind == "birthdays":
         return _bday_parts(db, group, user), []
@@ -1254,10 +1261,23 @@ def view_people(kind: str, token: str, group: str = "", emp_no: str = "", days: 
 
 # ---- Access: named roles ---------------------------------------------------
 
+def _role_tabs(raw):
+    rights, _, _ = tabrights.split(raw)
+    return tabrights.tabs_of(raw, [x for x in rights if x in M.ALL_SCREENS])
+
+
+def _role_keys(raw):
+    """Everything a role holds - broad rights and ticks - for checking a
+    change against what the login making it holds."""
+    rights, _, _ = tabrights.split(raw)
+    return {x for x in rights if x in M.ALL_SCREENS} | set(_role_tabs(raw))
+
+
 def _role_dict(r, db):
     members = db.query(models.User).filter(models.User.access_role_id == r.id).all()
     return {"id": r.id, "name": r.name, "notes": r.notes or "",
-            "screens": [s for s in (r.screens or "").split(",") if s],
+            "screens": [s for s in (r.screens or "").split(",") if s and s in M.ALL_SCREENS],
+            "tabs": _role_tabs(r.screens),
             "members": [{"id": u.id, "username": u.username, "full_name": u.full_name, "active": u.active}
                         for u in members]}
 
@@ -1266,7 +1286,7 @@ def _role_dict(r, db):
 def list_roles(db: Session = Depends(get_db), user: models.User = ROLES_READ):
     return {"rows": [_role_dict(r, db) for r in db.query(models.AccessRole).order_by(models.AccessRole.name).all()],
             "screens": M.ALL_SCREENS, "role_defaults": M.ROLE_DEFAULTS,
-            "labels": SCREEN_LABELS, "pages": RIGHT_PAGES}
+            "labels": SCREEN_LABELS, "pages": RIGHT_PAGES, "tree": tabrights.TREE}
 
 
 SCREEN_LABELS = {
@@ -1315,24 +1335,33 @@ def save_role(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="The role needs a name.")
-    screens = [s.strip() for s in (payload.get("screens") or []) if s.strip()]
-    bad = [s for s in screens if s not in M.ALL_SCREENS]
-    if bad:
-        raise HTTPException(status_code=400, detail=f"Unknown screen(s): {', '.join(bad)}")
-    if "settings" not in screens:
-        screens.append("settings")   # everyone changes their own password there
     r = None
     if payload.get("id"):
         r = db.query(models.AccessRole).filter(models.AccessRole.id == payload["id"]).first()
-    was = set((r.screens or "").split(",")) if r else set()
-    M.guard_rights(user, set(screens) ^ was, "give or take away")
+    if payload.get("tabs") is not None:
+        # Ticked tab by tab (Settings > Access): the ticks, and the broad
+        # rights they bring with them.
+        tabs = sorted({t.strip() for t in payload.get("tabs") or [] if str(t).strip()})
+        bad = [t for t in tabs if not tabrights.is_leaf(t)]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"Unknown tab(s): {', '.join(bad)}")
+        stored = tabrights.stored(tabs, M.ALL_SCREENS)
+    else:
+        screens = [s.strip() for s in (payload.get("screens") or []) if s.strip()]
+        bad = [s for s in screens if s not in M.ALL_SCREENS]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"Unknown screen(s): {', '.join(bad)}")
+        if "settings" not in screens:
+            screens.append("settings")   # everyone changes their own password there
+        stored = ",".join(screens)
+    M.guard_rights(user, _role_keys(stored) ^ (_role_keys(r.screens) if r else set()), "give or take away")
     clash = db.query(models.AccessRole).filter(models.AccessRole.name == name).first()
     if clash and (not r or clash.id != r.id):
         raise HTTPException(status_code=400, detail=f"There is already a role called {name}.")
     if not r:
         r = models.AccessRole(name=name)
         db.add(r)
-    r.name = name; r.screens = ",".join(screens); r.notes = (payload.get("notes") or "").strip()
+    r.name = name; r.screens = stored; r.notes = (payload.get("notes") or "").strip()
     db.flush()
     # Everyone carrying the role gets its new rights, straight away.
     for u in db.query(models.User).filter(models.User.access_role_id == r.id).all():
@@ -1347,7 +1376,7 @@ def delete_role(role_id: int, db: Session = Depends(get_db), user: models.User =
     r = db.query(models.AccessRole).filter(models.AccessRole.id == role_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="That role is not on file.")
-    M.guard_rights(user, (r.screens or "").split(","), "delete a role holding")
+    M.guard_rights(user, _role_keys(r.screens), "delete a role holding")
     # The logins keep the rights they have; they just stop following the role.
     for u in db.query(models.User).filter(models.User.access_role_id == r.id).all():
         u.access_role_id = None
@@ -1364,7 +1393,7 @@ def users_with_roles(db: Session = Depends(get_db), user: models.User = LOGINS):
         out.append({"id": u.id, "username": u.username, "full_name": u.full_name, "role": u.role,
                     "active": u.active, "access_role_id": u.access_role_id,
                     "access_role": roles.get(u.access_role_id, ""),
-                    "screens": M.effective_permissions(u)})
+                    "screens": M.effective_permissions(u), "tabs": M.effective_tabs(u)})
     return {"rows": out}
 
 
@@ -1381,7 +1410,7 @@ def assign_role(payload: dict = Body(...), db: Session = Depends(get_db), user: 
         if rid:
             r0 = db.query(models.AccessRole).filter(models.AccessRole.id == rid).first()
             if r0:
-                M.guard_rights(user, (r0.screens or "").split(","), "give")
+                M.guard_rights(user, _role_keys(r0.screens), "give")
     # Make an existing login an admin - or take admin away - here, so a
     # person never needs a second login to be promoted. The last admin
     # can never be demoted, and nobody demotes himself.
@@ -1428,7 +1457,7 @@ def new_user_with_role(payload: dict = Body(...), db: Session = Depends(get_db),
     r = db.query(models.AccessRole).filter(models.AccessRole.id == payload.get("role_id")).first()
     if not r:
         raise HTTPException(status_code=400, detail="Pick the role first.")
-    M.guard_rights(user, (r.screens or "").split(","), "give")
+    M.guard_rights(user, _role_keys(r.screens), "give")
     base = "site" if (payload.get("base") or "") == "site" else "office"
     u = models.User(username=username, hashed_password=auth.hash_password(password),
                     full_name=full_name, role=base, active=True)

@@ -159,6 +159,90 @@ LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payr
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder",
           "accounts": "Accounts"}
 
+# ---- Settings > Access: every page, tab and tab inside a tab -------------
+# Each tab a login can be given is a "leaf" with its own id
+# (page.tab or page.tab.sub). The server reads the tree from
+# app/access_tree.json; the app marks each tab with its leaf id.
+#   right = what opened it before ticks existed (a login with no ticks of
+#           its own is shown every tab its old rights opened - nothing
+#           changes on the day this arrives)
+#   grant = the broad rights a tick brings with it, so the screen behind
+#           the tab opens (and the server's own checks pass)
+ACCESS_GRANTS = {
+    # Moving stock is done on the stock screen.
+    "store.store.give": ["store", "storekeeper"], "store.store.arrive": ["store", "storekeeper"],
+    # A store report reads the store; a request history reads requests.
+    **{f"reports.storerep.{k}": ["store"] for k in ("stock", "by_site", "usage", "site_cost", "assets", "issues", "lost", "hired")},
+    "reports.storerep.mr_history": ["requests"],
+    # The leave report shows the registers this login has on Staff > Leave.
+    "reports.labour.leavereport": [],
+}
+STAFF_TREE = [("register", "Register"), ("due", "Documents due"), ("leave", "Leave"), ("bday", "Birthdays")]
+STAFF_GROUPS = [("labour", "Labour", "people_labour"), ("office", "Office staff (with salaries)", "people_office"),
+                ("local", "Local staff", "people_local")]
+
+
+def _as_list(r):
+    return list(r) if isinstance(r, list) else [r]
+
+
+def _leaf(id, label, right, grant=None):
+    right = _as_list(right)
+    if grant is None:
+        grant = ACCESS_GRANTS.get(id, right if len(right) == 1 else [])
+    return {"id": id, "label": label, "right": right, "grant": list(grant)}
+
+
+def access_tree():
+    """The tree Settings > Access ticks, and the leaf id on every tab."""
+    pages = []
+    for key in ORDER:
+        if key == "people":
+            kids = []
+            for v, vl in STAFF_TREE:
+                leaves = [_leaf(f"people.{v}.{g}", gl, r) for g, gl, r in STAFF_GROUPS]
+                if v == "bday":
+                    # Client birthdays: whoever keeps the office register, before ticks.
+                    leaves.append(_leaf("people.bday.clients", "Clients", ["people_office"], []))
+                kids.append({"id": f"people.{v}", "label": vl, "children": leaves})
+            pages.append({"id": "people", "label": "Staff", "children": kids})
+            continue
+        title, tabs = PAGES[key]
+        kids = []
+        for t in tabs:
+            tid = f"{key}.{t['id']}"
+            t["leaf"] = tid
+            if key == "settings" and t["id"] == "general":
+                t["leaf"] = ""            # on every login
+                # Own password and backups are on every login; the two cards
+                # inside General are given on their own.
+                kids.append({"id": tid, "label": "General", "always": True, "children": [
+                    _leaf("settings.general.company", "Store in-charge, LPO and invoice signatures", "settings_company"),
+                    _leaf("settings.general.data", "Restore or delete backups", "settings_data")]})
+                continue
+            if t["subs"]:
+                leaves = []
+                for sb in t["subs"]:
+                    sb["leaf"] = f"{tid}.{sb['id']}"
+                    leaves.append(_leaf(sb["leaf"], sb["label"], sb["right"]))
+                kids.append({"id": tid, "label": t["label"], "children": leaves})
+            else:
+                label = t["label"] + (" (cash register, own password)" if t.get("hidden") else "")
+                kids.append(_leaf(tid, label, t["right"]))
+        pages.append({"id": key, "label": LABELS.get(key, title), "children": kids})
+    for t in VIRTUAL["people"][1]:
+        t["leaf"] = "people"          # any Staff tick opens the Staff page
+    return pages
+
+
+def write_access_tree():
+    tree = access_tree()
+    with open(os.path.join(ROOT, "app", "access_tree.json"), "w", encoding="utf-8") as f:
+        json.dump(tree, f, indent=1)
+        f.write("\n")
+    return tree
+
+
 CSS = """
 <style>
   /* ---- temporary pages: one menu, tabs in place of pages ---- */
@@ -431,9 +515,22 @@ function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.som
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 // A hidden tab counts only once revealed, and only until its screen is left.
 let PG_SHOWN = new Set();
-function pgTabOk(t) { return pgHas(t.right) && (!t.hidden || PG_SHOWN.has(t.id)); }
+// Settings > Access, tab by tab: a tab shows when its broad right is held
+// and it is ticked (a tab with tabs inside shows when one of those is).
+function pgLeafOk(id) {
+  if (CURRENT_ROLE === "admin" || !id || typeof MY_TABS === "undefined" || !Array.isArray(MY_TABS)) return true;
+  if (id === "people") return MY_TABS.some(x => x.indexOf("people.") === 0);
+  return MY_TABS.includes(id);
+}
+function pgSubOk(sb) { return pgHas(sb.right) && pgLeafOk(sb.leaf); }
+function pgTabRightOk(t) { return pgHas(t.right) && ((t.subs || []).length ? t.subs.some(pgSubOk) : pgLeafOk(t.leaf)); }
+function pgPageOk(key) {
+  const cfg = ALL_PAGES[key];
+  return cfg ? cfg.tabs.some(pgTabRightOk) : (PAGE.pages[key] || []).some(s => pgAllowed(s));
+}
+function pgTabOk(t) { return pgTabRightOk(t) && (!t.hidden || PG_SHOWN.has(t.id)); }
 function pgReveal(id) {
-  const t = PAGE.tabs.find(x => x.id === id); if (!t || !pgHas(t.right)) return false;
+  const t = PAGE.tabs.find(x => x.id === id); if (!t || !pgTabRightOk(t)) return false;
   PG_SHOWN.add(id); pgTab(id); return true;
 }
 function pgTabFor(id) { return PAGE.tabs.find(t => t.id === id) || PAGE.tabs.find(t => t.screen === id) || PAGE.tabs.find(t => t.subs.some(sb => sb.id === id || sb.screen === id)); }
@@ -452,7 +549,7 @@ switchScreen = function (name) {
   if (!inSubs && (!PG_TAB || PG_TAB.screen !== name))
     PG_TAB = PAGE.tabs.find(t => t.screen === name) || PAGE.tabs.find(t => t.subs.some(sb => sb.screen === name)) || null;
   if (PG_TAB && PG_TAB.subs.length && !(PG_SUB && PG_TAB.subs.includes(PG_SUB) && (PG_SUB.screen || "pgreports") === name))
-    PG_SUB = PG_TAB.subs.find(sb => pgHas(sb.right) && (sb.screen || "pgreports") === name) || PG_SUB;
+    PG_SUB = PG_TAB.subs.find(sb => pgSubOk(sb) && (sb.screen || "pgreports") === name) || PG_SUB;
   pgApplyTab(); pgRenderTabs();
   if (name === "pgreports") pgHubLoad();
   if (name === "pgstaff") pgFrame("pg-staff-frame", true);
@@ -463,7 +560,7 @@ switchScreen = function (name) {
 };
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
-  if (t.subs.length) { PG_TAB = t; const first = t.subs.find(sb => pgHas(sb.right)); if (first) { pgSub(first.id); return; } }
+  if (t.subs.length) { PG_TAB = t; const first = t.subs.find(pgSubOk); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;
   if (t.id !== t.screen) location.hash = t.id;
@@ -511,9 +608,9 @@ firstScreenFor = function () {
   if (t && pgTabOk(t)) {
     PG_TAB = t;
     if (t.subs.length) {
-      PG_SUB = t.subs.find(sb => sb.id === extra && pgHas(sb.right))
-            || t.subs.find(sb => (sb.id === want || sb.screen === want) && t.id !== want && pgHas(sb.right))
-            || t.subs.find(sb => pgHas(sb.right)) || null;
+      PG_SUB = t.subs.find(sb => sb.id === extra && pgSubOk(sb))
+            || t.subs.find(sb => (sb.id === want || sb.screen === want) && t.id !== want && pgSubOk(sb))
+            || t.subs.find(pgSubOk) || null;
       if (PG_SUB && PG_SUB.go && /pgStorePanel\('([a-z]+)'\)/.test(PG_SUB.go)) STORE_PANEL_WANT = PG_SUB.go.match(/pgStorePanel\('([a-z]+)'\)/)[1];
       return PG_SUB ? (PG_SUB.screen || "pgreports") : t.screen;
     }
@@ -521,13 +618,13 @@ firstScreenFor = function () {
   }
   for (const tb of PAGE.tabs) if (pgTabOk(tb)) {
     PG_TAB = tb;
-    if (tb.subs.length) { PG_SUB = tb.subs.find(sb => pgHas(sb.right)) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
+    if (tb.subs.length) { PG_SUB = tb.subs.find(pgSubOk) || null; return PG_SUB ? (PG_SUB.screen || "pgreports") : tb.screen; }
     return tb.screen;
   }
   const pages = %(order_json)s;
   for (const pg of pages) {
     if (pg === PAGE.key) continue;
-    if ((PAGE.pages[pg] || []).some(s => pgAllowed(s))) {
+    if (pgPageOk(pg)) {
       if (ALL_PAGES[pg]) { setTimeout(() => pgGo(pg, "", false) || history.replaceState({ pg }, "", pgFile(pg)), 0); return PAGE.tabs[0].screen; }
       location.href = pgFile(pg); return PAGE.tabs[0].screen;
     }
@@ -543,21 +640,21 @@ function pgRenderTabs() {
     for (const [key, list] of Object.entries(ALL_TABS)) {
       // A hidden tab (the register) is never remembered, so a refresh can
       // never paint it before the app has decided.
-      const ok = list.filter(t => !t.hidden && pgHas(t.right));
+      const ok = list.filter(t => !t.hidden && pgTabRightOk(t));
       localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label,
-        subs: (t.subs || []).filter(sb => pgHas(sb.right)).map(sb => ({ id: sb.id, label: sb.label })) })) }));
+        subs: (t.subs || []).filter(pgSubOk).map(sb => ({ id: sb.id, label: sb.label })) })) }));
     }
   } catch (e) {}
   bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");
-  const subs = PG_TAB ? PG_TAB.subs.filter(sb => pgHas(sb.right)) : [];
+  const subs = PG_TAB ? PG_TAB.subs.filter(pgSubOk) : [];
   sub.innerHTML = subs.map(sb =>
     `<span class="pg-subtab ${PG_SUB && PG_SUB.id === sb.id ? "active" : ""}" data-sub="${sb.id}" onclick="pgSub('${sb.id}')">${sb.label}</span>`).join("");
-  sub.classList.toggle("pg-sub-keep", !subs.length && PAGE.tabs.some(t => pgTabOk(t) && t.subs.some(sb => pgHas(sb.right))));
+  sub.classList.toggle("pg-sub-keep", !subs.length && PAGE.tabs.some(t => pgTabOk(t) && t.subs.some(pgSubOk)));
   const shown = [];
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
-    const ok = (PAGE.pages[el.dataset.page] || []).some(s => pgAllowed(s));
+    const ok = pgPageOk(el.dataset.page);
     el.style.display = ok ? "block" : "none";
     el.style.visibility = "visible";
     if (ok) shown.push(el.dataset.page);
@@ -615,7 +712,7 @@ pgLazy("refreshSignatureState", ["settings"]);
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {
   const t = PG_TAB; if (!t) return;
-  const sb = t.subs.find(x => x.id === id); if (!sb || !pgHas(sb.right)) return;
+  const sb = t.subs.find(x => x.id === id); if (!sb || !pgSubOk(sb)) return;
   PG_SUB = sb;
   location.hash = t.id + ":" + sb.id;
   const screen = sb.screen || "pgreports";
@@ -748,6 +845,7 @@ def _logo_to_file(src):
 
 
 def build():
+    write_access_tree()
     src = open(SRC, encoding="utf-8").read()
     src = _logo_to_file(src)
     m = re.search(r'<div class="sidebar">\n(\s*<div class="brand">.*?</div>)\n', src)
@@ -842,8 +940,8 @@ def build():
                        "right_of_json": json.dumps(right_of), "order_json": json.dumps(ORDER),
                        "file_json": json.dumps(FILE),
                        "all_pages_json": json.dumps(ALL_CFG),
-                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"],
-                                                 "subs": [{"id": sb["id"], "label": sb["label"], "right": sb["right"]} for sb in t["subs"]]} for t in tb] for k, (_, tb) in PAGES.items()})}
+                       "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"], "leaf": t.get("leaf", ""),
+                                                 "subs": [{"id": sb["id"], "label": sb["label"], "right": sb["right"], "leaf": sb.get("leaf", "")} for sb in t["subs"]]} for t in tb] for k, (_, tb) in PAGES.items()})}
     page = page.replace("</body>", script + "</body>", 1)
     # In-app help (portal/help): the guides, the list of step pictures and
     # the code, each tagged with its own content hash so a changed guide

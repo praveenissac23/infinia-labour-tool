@@ -600,8 +600,16 @@ async function start() {
     else if (!window.PG_EMBED) setTimeout(start, 3000);
     return;
   }
-  ME.groups = ["labour", "office", "local"].filter(g => ME.role === "admin" || ME.screens.includes("people_" + g));
-  if (!ME.groups.length) {
+  // Settings > Access ticks each register on each view (Register,
+  // Documents due, Leave, Birthdays) on its own.
+  ME.tabs = ME.tabs || [];
+  ME.has = t => ME.role === "admin" || ME.tabs.includes(t);
+  ME.vg = v => ["labour", "office", "local"].filter(g => ME.role === "admin" || (ME.screens.includes("people_" + g) && ME.tabs.includes(`people.${v}.${g}`)));
+  ME.groups = ["labour", "office", "local"].filter(g => ["register", "due", "leave", "bday"].some(v => ME.vg(v).includes(g)));
+  ME.views = { register: ME.vg("register").length > 0, due: ME.vg("due").length > 0, vacation: ME.vg("leave").length > 0,
+               leave: ME.vg("leave").length > 0, bday: ME.vg("bday").length > 0 || ME.has("people.bday.clients") };
+  document.querySelectorAll(".viewtab[data-view]").forEach(el => { el.style.display = ME.views[el.dataset.view] ? "" : "none"; });
+  if (!Object.values(ME.views).some(Boolean)) {
     // Not this login's page: back to the first page it has, still signed in.
     if (window.PG_EMBED) { document.getElementById("shell").style.display = "none"; return; } location.replace("/"); return;
   }
@@ -614,18 +622,19 @@ async function start() {
   document.getElementById("e-company_id").innerHTML = opts; document.getElementById("n-company_id").innerHTML = opts;
   document.querySelectorAll(".seg[data-opts]").forEach(el => segInit(el, el.id === "n-group" ? newGroupChanged : null));
   await refreshDl();
-  if (!ME.groups.includes(P.group)) P.group = ME.groups[0];
-  // Segments offer only the registers this login may see.
-  document.querySelectorAll("#due-group button, #lv-group button, #vc-group button, #n-group button").forEach(b => {
-    if (b.dataset.v && !ME.groups.includes(b.dataset.v)) b.remove();
-  });
-  if (!ME.groups.includes(P.leaveGroup)) { P.leaveGroup = ME.groups[0]; segSet(document.getElementById("lv-group"), P.leaveGroup); }
-  if (!(ME.role === "admin" || ME.groups.includes("office"))) { document.getElementById("bd-client-btn").remove(); document.getElementById("bd-add").remove(); }
-  if (!ME.groups.includes(P.vacGroup)) { P.vacGroup = ME.groups[0]; segSet(document.getElementById("vc-group"), P.vacGroup); }
+  const reg = ME.vg("register"), lv = ME.vg("leave");
+  if (!reg.includes(P.group)) P.group = reg[0] || "labour";
+  // Segments offer only the registers this login may see on that view.
+  [["#due-group", ME.vg("due")], ["#lv-group", lv], ["#vc-group", lv], ["#n-group", reg], ["#bd-group", ME.vg("bday")]].forEach(([sel, ok]) =>
+    document.querySelectorAll(sel + " button").forEach(b => { if (b.dataset.v && b.dataset.v !== "client" && !ok.includes(b.dataset.v)) b.remove(); }));
+  if (!lv.includes(P.leaveGroup)) { P.leaveGroup = lv[0] || "labour"; segSet(document.getElementById("lv-group"), P.leaveGroup); }
+  if (!ME.has("people.bday.clients")) { document.getElementById("bd-client-btn").remove(); document.getElementById("bd-add").remove(); }
+  if (!lv.includes(P.vacGroup)) { P.vacGroup = lv[0] || "labour"; segSet(document.getElementById("vc-group"), P.vacGroup); }
   window.PG_READY = true;
   // Sent here from elsewhere in the app while the page was still opening.
   if (window.PG_PENDING) { const [c, k] = window.PG_PENDING; window.PG_PENDING = null; goPersonDoc(c, k); return; }
-  showView((localStorage.getItem("people_view") || "register").replace("leave", "register"));
+  const want = (localStorage.getItem("people_view") || "register").replace(/^leave$/, "register");
+  showView(ME.views[want] ? want : ["register", "due", "vacation", "bday"].find(v => ME.views[v]));
 }
 async function refreshDl() {
   try { DLTOKEN = (await apiCall("/auth/download-token", { method: "POST" })).token; } catch (e) {}
@@ -634,6 +643,7 @@ async function refreshDl() {
 async function dl() { await refreshDl(); return DLTOKEN; }
 
 function showView(v) {
+  if (ME && ME.views && !ME.views[v]) v = ["register", "due", "vacation", "bday"].find(x => ME.views[x]) || v;
   P.view = v; localStorage.setItem("people_view", v);
   ["register", "due", "leave", "bday", "vacation"].forEach(k => document.getElementById("view-" + k).style.display = k === v ? "" : "none");
   document.querySelectorAll(".viewtab[data-view]").forEach(el => el.classList.toggle("active", el.dataset.view === v));
@@ -644,7 +654,7 @@ function showView(v) {
 // ---- Register -------------------------------------------------------------
 function renderTabs() {
   const c = P.counts || {};
-  document.getElementById("tabs").innerHTML = Object.entries(GROUPS).filter(([k]) => k === "left" || ME.groups.includes(k)).map(([k, l]) =>
+  document.getElementById("tabs").innerHTML = Object.entries(GROUPS).filter(([k]) => k === "left" || ME.vg("register").includes(k)).map(([k, l]) =>
     `<span class="tab ${k === P.group ? "active" : ""}" data-tab="${k}" onclick="setGroup('${k}')">${l}${c[k] !== undefined ? `<span class="n">${c[k]}</span>` : ""}</span>`).join("");
 }
 function setGroup(g) { P.group = g; P.current = ""; P.file = null; document.getElementById("f-active").style.visibility = g === "left" ? "hidden" : ""; loadPeople(); }
@@ -705,7 +715,7 @@ function renderFile() {
       ${f("Basic", money(p.basic))}${f(p.group === "labour" ? "Allowance" : "Fix allowance", money(p.allowance))}${f("Gross", `<b>${money(p.gross)}</b>`)}${f("Pay type", p.group === "labour" ? (p.pay_type === "fixed" ? "Monthly (labour)" : "Daily rate") : `Monthly · ${p.pay_group === "local" ? "local" : "office"} statement`)}
       ${f("Paid by", p.pay_route.toUpperCase())}${f("Bank", pr.bank_name)}${f("IBAN", e.iban)}${f("ILOE", pr.iloe)}
       ${f("End of service", scheme)}${e.scheme === "pension" ? f("GPSSA / month", money(e.pension)) : f("Gratuity to date", F.gratuity.entitled ? money(F.gratuity.amount) : (F.gratuity.why || "—"))}${f("Contract basic (MOHRE)", e.contract_basic ? money(e.contract_basic) : "")}</div>`;
-    if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary history (Increments register)</span>${ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openInc()">+ Increment</button>` : ""}</div>` + table(
+    if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary history (Increments register)</span>${ME.has("payroll.hrpayroll.increments") ? `<button class="btn btn-primary btn-sm" onclick="openInc()">+ Increment</button>` : ""}</div>` + table(
       ["Effective", "Kind", "Basic", "Allowance", "Gross", "Reason"], F.salary_history.map(h => [dmy(h.effective_on), h.kind, "$" + money(h.basic), "$" + money(h.allowance), "$" + money(h.gross ?? (h.basic + h.allowance)), h.reason || ""]), "No history yet.");
     if (p.group === "labour") body += `<div class="sec-h"><span class="lbl">Rate history</span>${(ME.role === "admin" || ME.screens.includes("masterdata")) ? `<button class="btn btn-primary btn-sm" onclick="openRate()">Change rate</button>` : ""}</div>` + table(
       ["From", "", "Basic", "Allowance", "Monthly", "Change", "Reason"], (F.salary_history || []).map(h => [h.effective_on === "2000-01-01" ? "Earlier" : dmy(h.effective_on), h.kind === "rate" ? "New rate" : "Before", "$" + money(h.basic), "$" + money(h.allowance), "$" + money(h.gross), h.kind === "rate" ? "$" + (h.amount >= 0 ? "+" : "") + money(h.amount) : "", h.reason || ""]), "No change recorded yet - the rate on file has applied throughout.");
@@ -733,9 +743,9 @@ function renderFile() {
           + `</tbody></table></div>` : `<p class="muted">No leave entered for him yet.</p>`)
       + `<p class="muted">Annual leave here that is Approved or Returned counts as days taken in the balance above${lv.from_register ? ` (${lv.from_register} day(s) so far)` : ""} - from the date of leave to the day before the date of return, up to today. A day already marked on attendance is not counted twice.</p>`;
   else if (P.section === "money") {
-    body = `<div class="sec-h"><span class="lbl">Loans</span>${p.group !== "labour" && ME.screens.includes("hrpayroll") ? `<button class="btn btn-primary btn-sm" onclick="openLoan()">+ Loan</button>` : ""}</div>` + table(["Taken", "Amount", "Terms", "Recovered", "Balance", "Status", ""],
+    body = `<div class="sec-h"><span class="lbl">Loans</span>${p.group !== "labour" && ME.has("payroll.hrpayroll.loans") ? `<button class="btn btn-primary btn-sm" onclick="openLoan()">+ Loan</button>` : ""}</div>` + table(["Taken", "Amount", "Terms", "Recovered", "Balance", "Status", ""],
       F.loans.map(l => [dmy(l.taken_on), "$" + money(l.amount), l.terms || "", "$" + money(l.repaid), "$" + money(l.balance), l.closed ? '<span class="pill gr">Closed</span>' : '<span class="pill y">Running</span>',
-        l.closed || !ME.screens.includes("hrpayroll") ? "" : `<button class="btn btn-gray btn-sm" onclick="openRepay(${l.id})">Repayment</button>`]), p.group === "labour" ? "Loans are kept for monthly-paid staff." : "No loans.");
+        l.closed || !ME.has("payroll.hrpayroll.loans") ? "" : `<button class="btn btn-gray btn-sm" onclick="openRepay(${l.id})">Repayment</button>`]), p.group === "labour" ? "Loans are kept for monthly-paid staff." : "No loans.");
     if (p.group !== "labour") body += `<div class="sec-h"><span class="lbl">Salary cycles</span></div>` + table(["Month", "Gross", "Add / Ded.", "Absent", "Loan", "Net", "Status"],
       F.cycles.map(c => [c.month_year, "$" + money(c.gross), "$" + money(c.adjust), "$" + money(c.absent), "$" + money(c.loan), "$" + money(c.net), c.held ? '<span class="pill gr">Held</span>' : c.status === "approved" ? '<span class="pill g">Paid</span>' : '<span class="pill y">Draft</span>']), "No cycles yet.");
     else body += `<div class="sec-h"><span class="lbl">Salary cards</span></div>` + table(["Month", "Present", "Absent", "Leave", "OT hrs", "Net"],
@@ -811,7 +821,7 @@ async function saveEdit() {
 // ---- New person -------------------------------------------------------------
 function openNew() {
   ["n-emp_no", "n-name", "n-designation", "n-joined_on", "n-nationality", "n-gross", "n-basic", "n-allowance"].forEach(id => setVal(id, ""));
-  segSet(document.getElementById("n-group"), P.group === "left" || !ME.groups.includes(P.group) ? ME.groups[0] : P.group); newGroupChanged();
+  segSet(document.getElementById("n-group"), P.group === "left" || !ME.vg("register").includes(P.group) ? ME.vg("register")[0] : P.group); newGroupChanged();
   segSet(document.getElementById("n-pay_route"), "wps"); segSet(document.getElementById("n-scheme"), "gratuity");
   const pt = document.getElementById("n-pay_type"); if (pt) segSet(pt, "daily");
   document.getElementById("new-msg").textContent = ""; openDlg("dlg-new");
@@ -943,7 +953,7 @@ async function loadDue() {
   document.getElementById("due-count").textContent = `${rows.length} document(s) expiring within ${P.dueDays} days, expired first.`;
   document.getElementById("due-body").innerHTML = rows.map(r => `<tr><td>${esc(r.group_label)}</td><td>${esc(r.emp_no)}</td><td>${esc(r.name)}</td><td>${esc(r.kind_label)}</td><td>${esc(r.number || "")}</td><td>${dmy(r.expires_on)}</td>
     <td><span class="pill ${r.days_left < 0 ? "r" : r.days_left <= 30 ? "r" : "y"}">${r.days_left < 0 ? "expired " + (-r.days_left) + " d" : r.days_left}</span></td><td>${esc(r.company)}</td>
-    <td><button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','documents')">Open</button></td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nothing due.</td></tr>`;
+    <td>${ME.vg("register").includes(r.group) ? `<button class="btn btn-gray btn-sm" onclick="goPerson('${esc(r.group)}','${esc(r.emp_no)}','documents')">Open</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nothing due.</td></tr>`;
 }
 // Birthdays: everyone with a date of birth on file, next birthday first.
 function setBdayGroup(g) { P.bdGroup = g; segSet(document.getElementById("bd-group"), g); loadBday(); }

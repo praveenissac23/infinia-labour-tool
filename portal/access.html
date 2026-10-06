@@ -78,6 +78,37 @@
   .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
   .head h2 { margin: 0 0 3px; } .head p { margin: 0; } .head .btn { flex-shrink: 0; }
   .foot { margin: 10px 0 0; }
+  /* ---- Access: roles on the left, what the picked role opens on the right ---- */
+  #pane-roles { padding: 14px; }
+  .acc { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .acc-roles { border-right: 1px solid #EEE9E3; padding-right: 12px; }
+  .acc-h { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 8px; font-size: 13.5px; }
+  .acc-h a { color: var(--red); font-weight: 700; font-size: 12.5px; text-decoration: none; }
+  .rl { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
+  .rl:hover { background: #FAF6F3; } .rl.on { background: #FDF4F3; color: var(--red); border-color: #E7CEC9; }
+  .rl small { color: #999; font-weight: 500; font-size: 11.5px; white-space: nowrap; }
+  .ed-top { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 6px; }
+  .ed-top .fld input { height: 34px; }
+  .ed-acts { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; align-items: center; }
+  .ed-acts select { height: 32px; border: 1px solid #E7CEC9; border-radius: 7px; background: #FDF6F5; color: #7A3B33; font-weight: 600; font-size: 12.5px; padding: 0 6px; }
+  .ed-hint { font-size: 12px; color: #888; margin: 0 0 10px; }
+  .ed-hint .dirty { color: #8A6100; font-weight: 700; }
+  .tree { column-count: 2; column-gap: 14px; }
+  .pgb { break-inside: avoid; border: 1px solid #EEE9E3; border-radius: 8px; margin-bottom: 12px; overflow: hidden; background: #fff; }
+  .pgb.none { opacity: .62; } .pgb.none:hover { opacity: 1; }
+  .pgh { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #FAF8F5; font-weight: 700; font-size: 13px; cursor: pointer; user-select: none; }
+  .pgb.open .pgh { border-bottom: 1px solid #EEE9E3; }
+  .pgh .car { width: 10px; color: #999; font-size: 10px; flex: none; }
+  .pgh .cnt { margin-left: auto; font-weight: 600; font-size: 11.5px; color: #888; white-space: nowrap; }
+  .pgh .cnt a { color: var(--red); font-weight: 700; text-decoration: none; margin-left: 4px; }
+  .tr { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid #F5F2EE; font-size: 13px; }
+  .tr:last-child { border-bottom: 0; } .tr label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; }
+  .tr.l1 { font-weight: 600; } .tr.l2 { padding-left: 32px; color: #444; }
+  .tr.fixed { color: #888; font-weight: 600; } .tr .why { color: #A0928A; font-size: 11.5px; font-weight: 500; }
+  .tree input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); margin: 0; flex: none; cursor: pointer; }
+  .tree input[type=checkbox]:disabled { cursor: not-allowed; }
+  @media (max-width: 1100px) { .tree { column-count: 1; } }
+  @media (max-width: 760px) { .acc { grid-template-columns: 1fr; } .acc-roles { border-right: 0; padding-right: 0; } }
   .matrix thead th { position: sticky; top: 0; z-index: 2; }
   .lbl { width: 70px; }
   .matrix { width: auto; min-width: 0; }
@@ -164,28 +195,21 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
       <div class="subtabs"><span class="subtab active" data-tab="roles" onclick="setTab('roles')">Roles</span><span class="subtab" data-tab="users" onclick="setTab('users')">Logins</span></div>
 
       <div class="card" id="pane-roles">
-        <div class="head"><div><h2>Roles</h2><p class="muted">Tick what each role may open. A tick saves at once, and every login with that role follows it.</p></div><button class="btn btn-primary" onclick="openRole(null)">+ New role</button></div>
-        <div class="grid-wrap"><table class="matrix"><thead id="roles-head"></thead><tbody id="roles-body"></tbody></table></div>
-        <p class="muted foot">Admin logins always have everything. Settings is on every role, so anyone can change their own password.</p>
+        <div class="acc">
+          <div class="acc-roles">
+            <div class="acc-h"><b>Roles</b><a href="#" onclick="newRole(); return false;">+ New role</a></div>
+            <div id="role-list"></div>
+            <p class="muted" style="margin:12px 4px 0;">Admin logins always have everything.</p>
+          </div>
+          <div class="acc-edit" id="role-edit"></div>
+        </div>
       </div>
-
       <div class="card" id="pane-users" style="display:none;">
         <div class="head"><div><h2>Logins</h2><p class="muted">Who can sign in and the role each follows. Rights are set on the role, under Access.</p></div><button class="btn btn-primary" onclick="openUser()">+ New login</button></div>
         <div class="grid-wrap"><table class="users"><colgroup><col style="width:200px"><col style="width:88px"><col style="width:180px"><col><col style="width:84px"><col style="width:330px"></colgroup>
           <thead><tr><th>Login</th><th>Type</th><th>Role</th><th>Can open</th><th>Status</th><th class="act"></th></tr></thead><tbody id="users-body"></tbody></table></div>
       </div>
     </div>
-  </div>
-</div>
-
-<div class="dlg" id="dlg-role" onclick="if (event.target === this) closeDlg('dlg-role')">
-  <div class="dlg-box">
-    <h3 id="role-title">New role</h3>
-    <div class="row"><label class="fld"><span>Role name *</span><input type="text" id="r-name" style="width:260px;" placeholder="Assistant Accountant"></label>
-      <label class="fld"><span>Notes</span><input type="text" id="r-notes" style="width:360px;" placeholder="What this person does"></label></div>
-    <div class="row"><span class="muted">Screens this role may open:</span></div>
-    <div class="rights" id="r-rights"></div>
-    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveRole()">Save role</button><button class="btn btn-gray" onclick="closeDlg('dlg-role')">Cancel</button><span class="muted" id="role-msg"></span></div>
   </div>
 </div>
 
@@ -289,49 +313,132 @@ function setTab(t) {
   document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
 }
 async function loadAll() {
-  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || [];
+  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; TREE = d.tree || []; indexTree();
         USERS = VIEW === "users" || ME.isAdmin || (ME.screens || []).includes("settings_logins") ? (await apiCall("/permissions/roles/users")).rows : []; }
   catch (e) { status("warn", errText(e)); }
+  if (DRAFT && DRAFT.id && !DRAFT.dirty) { const r = ROLES.find(x => x.id === DRAFT.id); if (r) DRAFT.tabs = new Set(r.tabs || []); else DRAFT = null; }
+  if (!DRAFT && ROLES.length && VIEW === "roles") { CUR = ROLES[0].id; const r = ROLES[0]; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), dirty: false };
+    TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id))); }
   renderRoles(); renderUsers();
 }
-const SHOWN = () => SCREENS.filter(s => s !== "settings");
-// Rights are listed the way the app is laid out: the page, then its tabs.
-const GROUPED = () => PAGES.length ? PAGES.map(([page, keys]) => [page, keys.filter(k => SCREENS.includes(k) && k !== "settings")]).filter(([, k]) => k.length) : [["All", SHOWN()]];
-function renderRoles() {
-  // Rights down the side, roles across; each role column a fixed width so
-  // a few roles sit together instead of stretching across the screen.
-  const groups = GROUPED();
-  document.getElementById("roles-head").innerHTML =
-    `<tr><th class="rt">Right</th>${ROLES.map(r => `<th class="role" title="${esc(r.members.map(m => m.username).join(", "))}"><div class="rname">${esc(r.name)}</div>
-      <div class="rcount">${r.members.length ? r.members.length + (r.members.length === 1 ? " login" : " logins") : "no logins yet"}</div>
-      <div class="racts"><button onclick="openRole(${r.id})">Edit</button><button class="danger" onclick="removeRole(${r.id})">Delete</button></div></th>`).join("")}</tr>`;
-  document.getElementById("roles-body").innerHTML = ROLES.length ? groups.map(([pg, keys]) =>
-    `<tr class="pg"><td colspan="${ROLES.length + 1}">${esc(pg)}</td></tr>` +
-    (pg === "Settings" ? `<tr><td class="rt muted">General - change own password, take a backup <i>(every login)</i></td>${ROLES.map(() => `<td class="cb"><input type="checkbox" checked disabled></td>`).join("")}</tr>` : "") +
-    keys.map(s => `<tr><td class="rt">${esc(LABELS[s] || s)}</td>${ROLES.map(r =>
-      `<td class="cb"><label><input type="checkbox" ${r.screens.includes(s) ? "checked" : ""} onchange="tickRole(${r.id}, '${s}', this.checked)"></label></td>`).join("")}</tr>`).join("")).join("")
-    : `<tr><td class="muted" style="padding:14px;">No roles yet. Make one - Assistant Accountant, say - and tick what it may open.</td></tr>`;
-}
-// A tick saves that role straight away; the row is greyed while it does.
-const TICK_TIMERS = {};
-function tickRole(id, screen, on) {
+// ---- Roles: tick page by page, tab by tab ---------------------------------
+let TREE = [], CUR = null, DRAFT = null, OPEN = {};
+const LEAVES_OF = n => n.right ? [n] : (n.children || []).flatMap(LEAVES_OF);
+const LEAF_PAGE = {};
+function indexTree() { TREE.forEach(p => LEAVES_OF(p).forEach(l => LEAF_PAGE[l.id] = p.id)); }
+// A login that is not an admin can only give what it holds itself.
+const CAN_GIVE = id => ME.isAdmin || (ME.tabs || []).includes(id);
+function pickRole(id) {
+  if (DRAFT && DRAFT.dirty && !confirm("Leave without saving the changes to " + (DRAFT.name || "this role") + "?")) return;
   const r = ROLES.find(x => x.id === id); if (!r) return;
-  r.screens = on ? [...new Set([...r.screens, screen])] : r.screens.filter(x => x !== screen);
-  clearTimeout(TICK_TIMERS[id]);
-  TICK_TIMERS[id] = setTimeout(async () => {
-    try {
-      await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id, name: r.name, notes: r.notes || "", screens: r.screens }) });
-      status("ok", `${r.name} saved - every login with that role now has these rights.`);
-    } catch (e) { status("warn", errText(e)); await loadAll(); }
-  }, 400);
+  CUR = r.id; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), dirty: false };
+  OPEN = {}; TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id)));
+  renderRoles();
 }
+function newRole() {
+  if (DRAFT && DRAFT.dirty && !confirm("Leave without saving the changes to " + (DRAFT.name || "this role") + "?")) return;
+  CUR = null; DRAFT = { id: null, name: "", notes: "", tabs: new Set(), dirty: false }; OPEN = {};
+  renderRoles(); const n = document.getElementById("r-name"); if (n) n.focus();
+}
+function renderRoles() {
+  document.getElementById("role-list").innerHTML = ROLES.map(r => `<div class="rl ${r.id === CUR ? "on" : ""}" onclick="pickRole(${r.id})">
+      <span>${esc(r.name)}</span><small>${r.members.length ? r.members.length + (r.members.length === 1 ? " login" : " logins") : "no logins"}</small></div>`).join("")
+    + (DRAFT && !DRAFT.id ? `<div class="rl on"><span>${esc(DRAFT.name || "New role")}</span><small>not saved</small></div>` : "")
+    || `<p class="muted" style="margin:4px;">No roles yet.</p>`;
+  const ed = document.getElementById("role-edit");
+  if (!DRAFT) { ed.innerHTML = `<p class="muted" style="margin:6px 0;">${ROLES.length ? "Pick a role on the left to see and change what it may open." : "Make a role - Store keeper, say - and tick what it may open."}</p>`; return; }
+  const others = ROLES.filter(r => r.id !== DRAFT.id);
+  ed.innerHTML = `<div class="ed-top">
+      <label class="fld"><span>Role name *</span><input type="text" id="r-name" style="width:220px;" value="${esc(DRAFT.name)}" placeholder="Store keeper" oninput="DRAFT.name=this.value; dirty()"></label>
+      <label class="fld"><span>Notes</span><input type="text" id="r-notes" style="width:240px;" value="${esc(DRAFT.notes)}" placeholder="What this person does" oninput="DRAFT.notes=this.value; dirty()"></label>
+      <div class="ed-acts">
+        <button class="btn btn-dark btn-sm" onclick="tickAll(true)">&#10003; Tick all</button>
+        <button class="btn btn-dark btn-sm" onclick="tickAll(false)">&#10005; Untick all</button>
+        ${others.length ? `<select onchange="copyFrom(this.value); this.value='';"><option value="">Copy from&hellip;</option>${others.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("")}</select>` : ""}
+        ${DRAFT.id ? `<button class="btn btn-gray btn-sm" onclick="removeRole(${DRAFT.id})">Delete role</button>` : ""}
+        <button class="btn btn-primary" onclick="saveRole()">Save</button>
+      </div></div>
+    <p class="ed-hint" id="ed-hint"></p>
+    <div class="tree" id="tree"></div>`;
+  drawTree();
+}
+function dirty() { DRAFT.dirty = true; hint(); }
+function hint() {
+  const el = document.getElementById("ed-hint"); if (!el) return;
+  const n = DRAFT.tabs.size;
+  el.innerHTML = `Tick a page to give everything in it, or open it and tick only the tabs this role needs. ${n} tab${n === 1 ? "" : "s"} ticked.`
+    + (DRAFT.dirty ? ` <span class="dirty">Not saved yet - press Save.</span>` : (DRAFT.id ? ` Saved: every login with this role follows it.` : ""));
+}
+function boxState(leaves) {
+  const on = leaves.filter(l => DRAFT.tabs.has(l.id)).length;
+  return on === 0 ? "none" : on === leaves.length ? "all" : "some";
+}
+function cb(key, leaves, label, cls) {
+  const st = boxState(leaves), can = leaves.some(l => CAN_GIVE(l.id));
+  return `<input type="checkbox" data-k="${esc(key)}" ${st === "all" ? "checked" : ""} ${st === "some" ? 'data-some="1"' : ""} ${can ? "" : "disabled"} onclick="event.stopPropagation(); tick('${esc(key)}', this.checked)">`;
+}
+function drawTree() {
+  const html = TREE.map(p => {
+    const leaves = LEAVES_OF(p), st = boxState(leaves), on = leaves.filter(l => DRAFT.tabs.has(l.id)).length;
+    const single = leaves.length === 1 && !(p.children || []).some(c => c.always);
+    const open = !single && OPEN[p.id];
+    const rows = open ? (p.children || []).map(c => {
+      if (c.always) return `<div class="tr l1 fixed"><label><input type="checkbox" checked disabled> ${esc(c.label)} <span class="why">own password, take a backup - every login</span></label></div>`
+        + c.children.map(l => `<div class="tr l2"><label>${cb(l.id, [l])} ${esc(l.label)}</label></div>`).join("");
+      if (c.right) return `<div class="tr l1"><label>${cb(c.id, [c])} ${esc(c.label)}</label></div>`;
+      const kids = LEAVES_OF(c);
+      return `<div class="tr l1"><label>${cb(c.id, kids)} ${esc(c.label)}</label></div>`
+        + kids.map(l => `<div class="tr l2"><label>${cb(l.id, [l])} ${esc(l.label)}${l.id === "reports.labour.leavereport" ? ' <span class="why">shows the registers ticked under Staff &gt; Leave</span>' : ""}</label></div>`).join("");
+    }).join("") : "";
+    const cnt = single ? (st === "all" ? "given" : "") : `${on ? `${on} of ${leaves.length}` : "none"}${leaves.some(l => CAN_GIVE(l.id)) ? ` <a href="#" onclick="event.stopPropagation(); tick('${p.id}', true); return false;">all</a> <a href="#" onclick="event.stopPropagation(); tick('${p.id}', false); return false;">none</a>` : ""}`;
+    return `<div class="pgb ${open ? "open" : ""} ${on ? "" : "none"}"><div class="pgh" onclick="${single ? "" : `OPEN['${p.id}']=!OPEN['${p.id}']; drawTree();`}">
+        <span class="car">${single ? "" : open ? "&#9660;" : "&#9654;"}</span>${cb(p.id, leaves)} ${esc(p.label)}<span class="cnt">${cnt}</span></div>${rows}</div>`;
+  }).join("");
+  document.getElementById("tree").innerHTML = html;
+  document.querySelectorAll('#tree input[data-some]').forEach(i => i.indeterminate = true);
+  hint();
+}
+function nodeLeaves(key) {
+  const find = n => n.id === key ? n : (n.children || []).map(find).find(Boolean);
+  const n = TREE.map(find).find(Boolean); return n ? LEAVES_OF(n) : [];
+}
+function tick(key, on) {
+  nodeLeaves(key).forEach(l => { if (!CAN_GIVE(l.id)) return; if (on) DRAFT.tabs.add(l.id); else DRAFT.tabs.delete(l.id); });
+  if (on) OPEN[LEAF_PAGE[nodeLeaves(key)[0] && nodeLeaves(key)[0].id] || key] = true;
+  dirty(); drawTree();
+}
+function tickAll(on) {
+  TREE.forEach(p => LEAVES_OF(p).forEach(l => { if (!CAN_GIVE(l.id)) return; if (on) DRAFT.tabs.add(l.id); else DRAFT.tabs.delete(l.id); }));
+  TREE.forEach(p => OPEN[p.id] = on);
+  dirty(); drawTree();
+}
+function copyFrom(id) {
+  const r = ROLES.find(x => x.id === parseInt(id, 10)); if (!r) return;
+  DRAFT.tabs = new Set((r.tabs || []).filter(CAN_GIVE));
+  TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id)));
+  dirty(); drawTree(); status("ok", `Ticks copied from ${r.name}. Press Save to keep them.`);
+}
+async function saveRole() {
+  if (!(DRAFT.name || "").trim()) { status("warn", "Give the role a name first."); document.getElementById("r-name").focus(); return; }
+  try {
+    const r = await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: DRAFT.id, name: DRAFT.name, notes: DRAFT.notes, tabs: [...DRAFT.tabs] }) });
+    DRAFT.dirty = false; CUR = r.id;
+    status("ok", `${r.name} saved - ${r.members.length ? "every login with this role now follows it" : "give it to a login under Logins"}.`);
+    await loadAll(); pickRole(r.id);
+  } catch (e) { status("warn", errText(e)); }
+}
+// Leaving with changes not saved asks first.
+window.addEventListener("beforeunload", e => { if (DRAFT && DRAFT.dirty) { e.preventDefault(); e.returnValue = ""; } });
 function renderUsers() {
   // One line per login: who, what type, which role, a short summary of what
   // it opens (the full list on hover), and its actions together on the right.
   const typ = u => u.role === "admin" ? '<span class="pill r">Admin</span>' : u.role === "site" ? '<span class="pill gr">Site</span>' : '<span class="pill gr">Office</span>';
   const scr = u => {
     if (u.role === "admin") return { text: "Everything", full: "Everything" };
-    const l = u.screens.filter(s => s !== "settings").map(s => LABELS[s] || s);
+    // What it opens, page by page: "Store & Purchasing 9 of 13".
+    const mine = new Set(u.tabs || []);
+    const l = TREE.map(p => { const all = LEAVES_OF(p), n = all.filter(x => mine.has(x.id)).length;
+      return n ? (n === all.length ? p.label : `${p.label} ${n} of ${all.length}`) : null; }).filter(Boolean);
     if (!l.length) return { text: "Nothing yet", full: "" };
     return { text: `<div class="scrl"><span class="lst">${esc(l.slice(0, 2).join(", "))}</span>${l.length > 2 ? `<span class="more">+${l.length - 2} more</span>` : ""}</div>`, full: l.join(", ") };
   };
@@ -345,7 +452,7 @@ function renderUsers() {
 }
 // A login that is not an admin acts only on logins that open no more than it does.
 function mayTouch(u) { if (ME.isAdmin) return true; if (u.role === "admin") return false;
-  const mine = new Set(ME.screens || []); return u.screens.every(x => x === "settings" || mine.has(x)); }
+  const mine = new Set([...(ME.screens || []), ...(ME.tabs || [])]); return [...u.screens, ...(u.tabs || [])].every(x => x === "settings" || mine.has(x)); }
 let PW_USER = null;
 function openPw(uid) { const u = USERS.find(x => x.id === uid); PW_USER = uid; document.getElementById("pw-title").textContent = `New password for ${u.username}`; document.getElementById("pw-new").value = ""; document.getElementById("pw-msg").textContent = ""; openDlg("dlg-pw"); setTimeout(() => document.getElementById("pw-new").focus(), 50); }
 async function savePw() {
@@ -357,24 +464,10 @@ async function removeUser(uid) {
   if (!(await ask(`Delete the login ${u.username}? They will not be able to sign in again. What they entered stays in the records.`, "Delete", true))) return;
   try { await apiCall(`/users/${uid}`, { method: "DELETE" }); status("ok", `${u.username} removed.`); await loadAll(); } catch (e) { status("warn", errText(e)); }
 }
-function openRole(id) {
-  const r = id ? ROLES.find(x => x.id === id) : null; editingRole = r ? r.id : null;
-  document.getElementById("role-title").textContent = r ? `Edit ${r.name}` : "New role";
-  document.getElementById("r-name").value = r ? r.name : ""; document.getElementById("r-notes").value = r ? r.notes : "";
-  document.getElementById("r-rights").innerHTML = GROUPED().map(([pg, keys]) => `<div class="rgroup"><div class="rpage">${esc(pg)}</div>${pg === "Settings" ? `<label class="muted"><input type="checkbox" checked disabled> General - change own password, take a backup (every login)</label>` : ""}${keys.map(s =>
-    `<label><input type="checkbox" value="${esc(s)}" ${r && r.screens.includes(s) ? "checked" : ""}> ${esc(LABELS[s] || s)}</label>`).join("")}</div>`).join("");
-  document.getElementById("role-msg").textContent = ""; openDlg("dlg-role");
-}
-async function saveRole() {
-  const screens = [...document.querySelectorAll("#r-rights input:checked:not(:disabled)")].map(i => i.value);
-  try { await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: editingRole, name: document.getElementById("r-name").value, notes: document.getElementById("r-notes").value, screens }) });
-    closeDlg("dlg-role"); status("ok", "Role saved - every login that carries it now has these rights."); await loadAll();
-  } catch (e) { document.getElementById("role-msg").textContent = errText(e); }
-}
 async function removeRole(id) {
   const r = ROLES.find(x => x.id === id);
   if (!(await ask(`Delete the role ${r.name}? The ${r.members.length} login(s) carrying it keep the rights they have today; they just stop following the role.`, "Delete", true))) return;
-  try { await apiCall(`/permissions/roles/${id}`, { method: "DELETE" }); await loadAll(); } catch (e) { status("warn", errText(e)); }
+  try { await apiCall(`/permissions/roles/${id}`, { method: "DELETE" }); DRAFT = null; CUR = null; await loadAll(); status("ok", `${r.name} deleted.`); } catch (e) { status("warn", errText(e)); }
 }
 function openUser() {
   ["u-username", "u-full_name", "u-password"].forEach(id => document.getElementById(id).value = "");

@@ -11899,6 +11899,7 @@ async function applyScreenPermissions(prefetched) {
   try {
     const me = (prefetched && await prefetched) || await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
+    MY_TABS = Array.isArray(me.tabs) ? me.tabs : null;
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
     // call returns found it empty and hid the buttons from everybody,
@@ -11955,6 +11956,7 @@ function rememberNav() {
   } catch (e) {}
 }
 let MY_SCREENS = [];
+let MY_TABS = null;   // Settings > Access ticks, page.tab.sub
 
 // Emptying the company's records is an admin decision, taken once,
 // with the words typed out - not something to be clicked past.

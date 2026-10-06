@@ -1,0 +1,874 @@
+[
+ {
+  "id": "dashboard",
+  "label": "Dashboard",
+  "children": [
+   {
+    "id": "dashboard.dashboard",
+    "label": "Overview",
+    "right": [
+     "dashboard"
+    ],
+    "grant": [
+     "dashboard"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "attendance",
+  "label": "Attendance",
+  "children": [
+   {
+    "id": "attendance.attendance",
+    "label": "Daily attendance",
+    "right": [
+     "attendance"
+    ],
+    "grant": [
+     "attendance"
+    ]
+   },
+   {
+    "id": "attendance.livecard",
+    "label": "Live card",
+    "right": [
+     "livecard"
+    ],
+    "grant": [
+     "livecard"
+    ]
+   },
+   {
+    "id": "attendance.masterdata",
+    "label": "Labour master data",
+    "right": [
+     "masterdata"
+    ],
+    "grant": [
+     "masterdata"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "people",
+  "label": "Staff",
+  "children": [
+   {
+    "id": "people.register",
+    "label": "Register",
+    "children": [
+     {
+      "id": "people.register.labour",
+      "label": "Labour",
+      "right": [
+       "people_labour"
+      ],
+      "grant": [
+       "people_labour"
+      ]
+     },
+     {
+      "id": "people.register.office",
+      "label": "Office staff (with salaries)",
+      "right": [
+       "people_office"
+      ],
+      "grant": [
+       "people_office"
+      ]
+     },
+     {
+      "id": "people.register.local",
+      "label": "Local staff",
+      "right": [
+       "people_local"
+      ],
+      "grant": [
+       "people_local"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "people.due",
+    "label": "Documents due",
+    "children": [
+     {
+      "id": "people.due.labour",
+      "label": "Labour",
+      "right": [
+       "people_labour"
+      ],
+      "grant": [
+       "people_labour"
+      ]
+     },
+     {
+      "id": "people.due.office",
+      "label": "Office staff (with salaries)",
+      "right": [
+       "people_office"
+      ],
+      "grant": [
+       "people_office"
+      ]
+     },
+     {
+      "id": "people.due.local",
+      "label": "Local staff",
+      "right": [
+       "people_local"
+      ],
+      "grant": [
+       "people_local"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "people.leave",
+    "label": "Leave",
+    "children": [
+     {
+      "id": "people.leave.labour",
+      "label": "Labour",
+      "right": [
+       "people_labour"
+      ],
+      "grant": [
+       "people_labour"
+      ]
+     },
+     {
+      "id": "people.leave.office",
+      "label": "Office staff (with salaries)",
+      "right": [
+       "people_office"
+      ],
+      "grant": [
+       "people_office"
+      ]
+     },
+     {
+      "id": "people.leave.local",
+      "label": "Local staff",
+      "right": [
+       "people_local"
+      ],
+      "grant": [
+       "people_local"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "people.bday",
+    "label": "Birthdays",
+    "children": [
+     {
+      "id": "people.bday.labour",
+      "label": "Labour",
+      "right": [
+       "people_labour"
+      ],
+      "grant": [
+       "people_labour"
+      ]
+     },
+     {
+      "id": "people.bday.office",
+      "label": "Office staff (with salaries)",
+      "right": [
+       "people_office"
+      ],
+      "grant": [
+       "people_office"
+      ]
+     },
+     {
+      "id": "people.bday.local",
+      "label": "Local staff",
+      "right": [
+       "people_local"
+      ],
+      "grant": [
+       "people_local"
+      ]
+     },
+     {
+      "id": "people.bday.clients",
+      "label": "Clients",
+      "right": [
+       "people_office"
+      ],
+      "grant": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "payroll",
+  "label": "Payroll",
+  "children": [
+   {
+    "id": "payroll.labourpay",
+    "label": "Labour payroll",
+    "children": [
+     {
+      "id": "payroll.labourpay.combine",
+      "label": "Salary cards",
+      "right": [
+       "combine"
+      ],
+      "grant": [
+       "combine"
+      ]
+     },
+     {
+      "id": "payroll.labourpay.adjust",
+      "label": "Additions & deductions",
+      "right": [
+       "adjustments"
+      ],
+      "grant": [
+       "adjustments"
+      ]
+     },
+     {
+      "id": "payroll.labourpay.errorcheck",
+      "label": "Check before you pay",
+      "right": [
+       "errorcheck"
+      ],
+      "grant": [
+       "errorcheck"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "payroll.hrpayroll",
+    "label": "Office payroll",
+    "children": [
+     {
+      "id": "payroll.hrpayroll.cycle",
+      "label": "Salary cycle & statements",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.leave",
+      "label": "Absence",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.items",
+      "label": "Additions & deductions",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.loans",
+      "label": "Loans",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.staff",
+      "label": "Staff register",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.increments",
+      "label": "Increments",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     },
+     {
+      "id": "payroll.hrpayroll.gratuity",
+      "label": "Gratuity",
+      "right": [
+       "hrpayroll"
+      ],
+      "grant": [
+       "hrpayroll"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "store",
+  "label": "Store & Purchasing",
+  "children": [
+   {
+    "id": "store.store",
+    "label": "Stock",
+    "children": [
+     {
+      "id": "store.store.home",
+      "label": "Stock on hand",
+      "right": [
+       "store"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "store.store.give",
+      "label": "Move material",
+      "right": [
+       "storekeeper"
+      ],
+      "grant": [
+       "store",
+       "storekeeper"
+      ]
+     },
+     {
+      "id": "store.store.arrive",
+      "label": "Material arrived",
+      "right": [
+       "storekeeper"
+      ],
+      "grant": [
+       "store",
+       "storekeeper"
+      ]
+     },
+     {
+      "id": "store.store.other",
+      "label": "Returns, lost & corrections",
+      "right": [
+       "store"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "store.store.items",
+      "label": "Material list",
+      "right": [
+       "store"
+      ],
+      "grant": [
+       "store"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "store.rentals",
+    "label": "Rentals",
+    "children": [
+     {
+      "id": "store.rentals.hire",
+      "label": "On rent",
+      "right": [
+       "store"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "store.rentals.returns",
+      "label": "Return notes",
+      "right": [
+       "store"
+      ],
+      "grant": [
+       "store"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "store.requests",
+    "label": "Requests",
+    "children": [
+     {
+      "id": "store.requests.requests",
+      "label": "Material requests",
+      "right": [
+       "requests"
+      ],
+      "grant": [
+       "requests"
+      ]
+     },
+     {
+      "id": "store.requests.approvals",
+      "label": "Approvals",
+      "right": [
+       "approvals"
+      ],
+      "grant": [
+       "approvals"
+      ]
+     },
+     {
+      "id": "store.requests.followup",
+      "label": "Order follow-up",
+      "right": [
+       "requests"
+      ],
+      "grant": [
+       "requests"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "store.purchasing",
+    "label": "Purchasing",
+    "children": [
+     {
+      "id": "store.purchasing.purchase",
+      "label": "Purchase orders",
+      "right": [
+       "approvals"
+      ],
+      "grant": [
+       "approvals"
+      ]
+     },
+     {
+      "id": "store.purchasing.lporegister",
+      "label": "LPO register",
+      "right": [
+       "approvals"
+      ],
+      "grant": [
+       "approvals"
+      ]
+     },
+     {
+      "id": "store.purchasing.suppliers",
+      "label": "Suppliers",
+      "right": [
+       "approvals"
+      ],
+      "grant": [
+       "approvals"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "expiry",
+  "label": "Expiry Reminder",
+  "children": [
+   {
+    "id": "expiry.expiry",
+    "label": "Expiry reminder",
+    "children": [
+     {
+      "id": "expiry.expiry.people",
+      "label": "People",
+      "right": [
+       "expiry"
+      ],
+      "grant": [
+       "expiry"
+      ]
+     },
+     {
+      "id": "expiry.expiry.company",
+      "label": "Company & other documents",
+      "right": [
+       "expiry"
+      ],
+      "grant": [
+       "expiry"
+      ]
+     },
+     {
+      "id": "expiry.expiry.pdc",
+      "label": "PDCs",
+      "right": [
+       "pdc"
+      ],
+      "grant": [
+       "pdc"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "accounts",
+  "label": "Accounts",
+  "children": [
+   {
+    "id": "accounts.taxinv",
+    "label": "Tax Invoice",
+    "right": [
+     "accounts_invoices"
+    ],
+    "grant": [
+     "accounts_invoices"
+    ]
+   },
+   {
+    "id": "accounts.proforma",
+    "label": "Proforma Invoice",
+    "right": [
+     "accounts_invoices"
+    ],
+    "grant": [
+     "accounts_invoices"
+    ]
+   },
+   {
+    "id": "accounts.petty",
+    "label": "Petty cash",
+    "children": [
+     {
+      "id": "accounts.petty.site",
+      "label": "Site",
+      "right": [
+       "petty_site"
+      ],
+      "grant": [
+       "petty_site"
+      ]
+     },
+     {
+      "id": "accounts.petty.pro",
+      "label": "PRO",
+      "right": [
+       "petty_pro"
+      ],
+      "grant": [
+       "petty_pro"
+      ]
+     },
+     {
+      "id": "accounts.petty.office",
+      "label": "Office",
+      "right": [
+       "petty_office"
+      ],
+      "grant": [
+       "petty_office"
+      ]
+     },
+     {
+      "id": "accounts.petty.naveen",
+      "label": "Naveen",
+      "right": [
+       "petty_naveen"
+      ],
+      "grant": [
+       "petty_naveen"
+      ]
+     },
+     {
+      "id": "accounts.petty.praveen",
+      "label": "Praveen",
+      "right": [
+       "petty_praveen"
+      ],
+      "grant": [
+       "petty_praveen"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "accounts.projects",
+    "label": "Project payments",
+    "right": [
+     "accounts_projects"
+    ],
+    "grant": [
+     "accounts_projects"
+    ]
+   },
+   {
+    "id": "accounts.register",
+    "label": "Register (cash register, own password)",
+    "right": [
+     "accounts_register"
+    ],
+    "grant": [
+     "accounts_register"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "reports",
+  "label": "Reports",
+  "children": [
+   {
+    "id": "reports.labour",
+    "label": "Labour",
+    "children": [
+     {
+      "id": "reports.labour.builder",
+      "label": "Cycle report builder",
+      "right": [
+       "reports"
+      ],
+      "grant": [
+       "reports"
+      ]
+     },
+     {
+      "id": "reports.labour.monthly",
+      "label": "Monthly report",
+      "right": [
+       "reports"
+      ],
+      "grant": [
+       "reports"
+      ]
+     },
+     {
+      "id": "reports.labour.cards",
+      "label": "Salary cards",
+      "right": [
+       "combine"
+      ],
+      "grant": [
+       "combine"
+      ]
+     },
+     {
+      "id": "reports.labour.leavereport",
+      "label": "Leave report",
+      "right": [
+       "people_labour",
+       "people_office",
+       "people_local"
+      ],
+      "grant": []
+     }
+    ]
+   },
+   {
+    "id": "reports.storerep",
+    "label": "Store & purchasing",
+    "children": [
+     {
+      "id": "reports.storerep.stock",
+      "label": "Current stock",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.by_site",
+      "label": "At sites",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.usage",
+      "label": "Issued to sites",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.site_cost",
+      "label": "Site costs",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.assets",
+      "label": "Assets",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.issues",
+      "label": "Tools & equipment out",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.lost",
+      "label": "Lost / damaged",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.hired",
+      "label": "On rent",
+      "right": [
+       "store",
+       "approvals",
+       "requests"
+      ],
+      "grant": [
+       "store"
+      ]
+     },
+     {
+      "id": "reports.storerep.mr_history",
+      "label": "Requests",
+      "right": [
+       "requests",
+       "approvals"
+      ],
+      "grant": [
+       "requests"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "settings",
+  "label": "Settings",
+  "children": [
+   {
+    "id": "settings.general",
+    "label": "General",
+    "always": true,
+    "children": [
+     {
+      "id": "settings.general.company",
+      "label": "Store in-charge, LPO and invoice signatures",
+      "right": [
+       "settings_company"
+      ],
+      "grant": [
+       "settings_company"
+      ]
+     },
+     {
+      "id": "settings.general.data",
+      "label": "Restore or delete backups",
+      "right": [
+       "settings_data"
+      ],
+      "grant": [
+       "settings_data"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "settings.companies",
+    "label": "Companies & sites",
+    "right": [
+     "settings_companies"
+    ],
+    "grant": [
+     "settings_companies"
+    ]
+   },
+   {
+    "id": "settings.logins",
+    "label": "Logins",
+    "right": [
+     "settings_logins"
+    ],
+    "grant": [
+     "settings_logins"
+    ]
+   },
+   {
+    "id": "settings.access",
+    "label": "Access",
+    "right": [
+     "settings_access"
+    ],
+    "grant": [
+     "settings_access"
+    ]
+   },
+   {
+    "id": "settings.activity",
+    "label": "Activity monitor",
+    "right": [
+     "activity"
+    ],
+    "grant": [
+     "activity"
+    ]
+   }
+  ]
+ }
+]

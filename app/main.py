@@ -41,6 +41,56 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Infinia Labour Tool API")
 
+import tabrights  # noqa: E402
+
+
+async def _tab_gate(request: Request):
+    """Settings > Access tab by tab: an endpoint that belongs to one tab
+    (tabrights.GATES) is refused to a login without that tab ticked. Who
+    is asking is read from the same token the endpoint reads; a request
+    with no valid sign-in is left to the endpoint to refuse."""
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    if not path or (request.method, path) not in tabrights.GATES:
+        return
+    body = None
+    if tabrights.needs_body(request.method, path):
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+    db = SessionLocal()
+    try:
+        tok = (request.headers.get("authorization") or "")
+        user = None
+        try:
+            if tok.lower().startswith("bearer "):
+                user = auth.get_user_from_token_string(tok[7:].strip(), db)
+            elif request.query_params.get("token"):
+                user = auth.get_download_user_from_token(request.query_params.get("token"), db)
+        except HTTPException:
+            user = None
+        # A login never ticked tab by tab keeps exactly what its broad
+        # rights allowed before; the tab checks are for ticked logins.
+        if user is None or user.role == "admin" or not tabrights.split(user.permissions)[2]:
+            return
+        params = dict(request.query_params)
+        params.update(request.path_params or {})
+        need = tabrights.need_for(request.method, path, params, body, db)
+        if not need:
+            return
+        if not set(need) & set(effective_tabs(user)):
+            names = tabrights.PATH_LABEL.get(need[0], need[0])
+            if len(need) > 1:
+                names += " (or " + ", ".join(tabrights.LEAVES[n]["label"] if n in tabrights.LEAVES else n for n in need[1:4]) + ")"
+            raise HTTPException(status_code=403,
+                detail=f"Not ticked for this login: {names}. An admin can tick it under Settings > Access.")
+    finally:
+        db.close()
+
+
+app.router.dependencies.append(Depends(_tab_gate))
+
 
 # A report opened in its own browser tab that cannot be made (no cards for
 # that month, a link that has expired) used to show the raw server reply -
@@ -648,6 +698,19 @@ def effective_permissions(user: models.User) -> list:
     return list(ROLE_DEFAULTS.get(user.role, ROLE_DEFAULTS["site"]))
 
 
+def effective_tabs(user: models.User) -> list:
+    """The tabs this login may open (Settings > Access): every tab for an
+    admin; its own ticks; or, never ticked tab by tab, every tab its broad
+    rights opened before."""
+    if user.role == "admin":
+        return sorted(tabrights.LEAVES)
+    return tabrights.tabs_of(user.permissions, effective_permissions(user))
+
+
+def has_tab(user: models.User, *tabs) -> bool:
+    return user is not None and (user.role == "admin" or bool(set(tabs) & set(effective_tabs(user))))
+
+
 def require_screen(screen: str):
     """
     Dependency that blocks an endpoint unless the user may open the screen
@@ -683,10 +746,10 @@ def guard_rights(actor: models.User, screens, what: str = "give"):
     used to climb above what the login was given."""
     if actor.role == "admin":
         return
-    mine = set(effective_permissions(actor))
+    mine = set(effective_permissions(actor)) | set(effective_tabs(actor))
     over = sorted({s for s in (screens or []) if s and s != "settings"} - mine)
     if over:
-        labels = ", ".join(over)
+        labels = ", ".join(tabrights.PATH_LABEL.get(x, x) for x in over)
         raise HTTPException(status_code=403,
             detail=f"Only an admin can {what} rights you do not have yourself: {labels}.")
 
@@ -698,7 +761,7 @@ def guard_target(actor: models.User, target: models.User, what: str):
         return
     if target.role == "admin":
         raise HTTPException(status_code=403, detail=f"Only an admin can {what} an admin login.")
-    guard_rights(actor, effective_permissions(target), f"{what} a login holding")
+    guard_rights(actor, list(effective_permissions(target)) + list(effective_tabs(target)), f"{what} a login holding")
 
 
 def log_action(db: Session, user_id, action: str, details: str = ""):
@@ -11051,7 +11114,7 @@ def list_screens(user: models.User = Depends(auth.get_current_user)):
 
 @app.get("/permissions/me")
 def my_permissions(user: models.User = Depends(auth.get_current_user)):
-    return {"role": user.role, "screens": effective_permissions(user)}
+    return {"role": user.role, "screens": effective_permissions(user), "tabs": effective_tabs(user)}
 
 
 @app.post("/users/{user_id}/permissions")
