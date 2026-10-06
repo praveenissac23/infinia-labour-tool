@@ -1286,6 +1286,7 @@
               <button class="btn btn-dark" id="unfilled-btn" onclick="toggleUnfilled()">Unfilled Emp</button>
               <span id="unfilled-note" style="display:none; font-size:12px; color:#B26A00; margin-left:4px;"></span>
                 <button class="btn btn-danger" onclick="openClearDayModal()">Clear Day</button>
+                <button class="btn btn-primary" id="daily-report-btn" onclick="openDailyReport()" title="Present, absent, sick, site-wise numbers or names for the date above">Daily report</button>
               </div>
             </div>
           </div>
@@ -15679,6 +15680,127 @@ async function addIncrement() {
   new MutationObserver(() => { if (!t) t = setTimeout(run, 120); }).observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(run, 500);
 })();
+</script>
+
+<div id="dr-modal" onclick="if (event.target === this) closeDailyReport()">
+  <div class="dr-box">
+    <span class="dr-x" onclick="closeDailyReport()">&times;</span>
+    <h3 id="dr-title">Daily report</h3>
+    <div class="dr-sub">From the attendance saved for this day. Preview, PDF and Excel give the same as the screen.</div>
+    <div class="dr-bar">
+      <label>Report<select id="dr-report" onchange="loadDailyReport()">
+        <option value="summary">Site-wise numbers</option><option value="present">Present - names</option>
+        <option value="absent">Absentees - names</option><option value="sick">Sick / medical - names</option>
+        <option value="leave">On leave - names</option><option value="halfday">Half day - names</option>
+        <option value="unmarked">Not marked yet</option><option value="ot">Overtime - names and hours</option>
+        <option value="everyone">Site-wise labour list (everyone)</option></select></label>
+      <label>Site<select id="dr-site" onchange="loadDailyReport()"><option value="">All sites</option></select></label>
+      <label>Trade<select id="dr-trade" onchange="loadDailyReport()"><option value="">All trades</option></select></label>
+      <div class="dr-acts"><button class="btn btn-dark" onclick="dailyReportOut('view')">Preview</button><button class="btn btn-dark" onclick="dailyReportOut('pdf')">Export PDF</button>
+        <button class="btn btn-dark" onclick="dailyReportOut('excel')">Export Excel</button><button class="btn btn-dark" onclick="dailyReportCopy()" title="Copies the report as text to paste into WhatsApp">Copy for WhatsApp</button></div>
+    </div>
+    <div class="dr-chips" id="dr-chips"></div>
+    <div id="dr-body"></div>
+  </div>
+</div>
+<style>
+#dr-modal{position:fixed;inset:0;background:rgba(30,24,20,.42);z-index:3000;display:none;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto}
+#dr-modal .dr-box{background:#fff;border-radius:12px;width:100%;max-width:1080px;padding:18px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);font-size:13px}
+#dr-modal h3{margin:0;font-size:17px}#dr-modal .dr-sub{color:#888;font-size:12px;margin:2px 0 12px}
+#dr-modal .dr-bar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+#dr-modal label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;color:#6B7075}
+#dr-modal select{height:34px;border:1px solid #D5D9DE;border-radius:7px;padding:0 8px;font-size:13px;min-width:150px;background:#fff}
+#dr-modal .dr-acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+#dr-modal .dr-chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+#dr-modal .dr-chip{padding:4px 12px;border-radius:999px;font-weight:700;font-size:12px;border:1px solid;cursor:pointer}
+#dr-modal .dr-x{float:right;cursor:pointer;color:#999;font-size:22px;line-height:1}
+#dr-modal table{width:100%;border-collapse:collapse}
+#dr-modal th{text-align:left;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#666;padding:7px 8px;background:#FAF8F5;border-bottom:1px solid #E4E0DB;white-space:nowrap}
+#dr-modal td{padding:6px 8px;border-bottom:1px solid #F0EDE8}
+#dr-modal th.n,#dr-modal td.n{text-align:right;font-variant-numeric:tabular-nums}
+#dr-modal tr.tot td{background:#C6EFCE;font-weight:700}#dr-modal tr.grp td{background:#F4F1EC;font-weight:700;color:#5B6167;font-size:12px}
+#dr-modal .dr-grid{max-height:calc(100vh - 290px);overflow:auto;border:1px solid #EEE9E3;border-radius:8px}
+#dr-modal .dr-grid thead th{position:sticky;top:0;z-index:1}
+</style>
+<script>
+// ---- Daily report (Attendance > Daily attendance) --------------------------
+let DR = null;
+const DR_COL = { Present: "#1E7A3A", Absent: "#C0392B", Sick: "#B26A00", Medical: "#B26A00", "Half day": "#8A6100", Leave: "#1F5F80", Off: "#666", "Not marked": "#888" };
+const DR_PILL = { Present: "present", Absent: "absent", Sick: "sick", Medical: "sick", "Half day": "halfday", Leave: "leave", "Not marked": "unmarked" };
+function openDailyReport() {
+  const day = (document.getElementById("date-picker") || {}).value;
+  if (!day) { alert("Pick the date first."); return; }
+  document.getElementById("dr-report").value = "summary";
+  document.getElementById("dr-site").value = ""; document.getElementById("dr-trade").value = "";
+  document.getElementById("dr-modal").style.display = "flex";
+  loadDailyReport();
+}
+function closeDailyReport() { document.getElementById("dr-modal").style.display = "none"; }
+function drParams() {
+  const v = id => encodeURIComponent(document.getElementById(id).value || "");
+  return `day=${encodeURIComponent(document.getElementById("date-picker").value)}&report=${v("dr-report")}&site=${v("dr-site")}&trade=${v("dr-trade")}`;
+}
+function drPick(report) { document.getElementById("dr-report").value = report; loadDailyReport(); }
+async function loadDailyReport() {
+  const body = document.getElementById("dr-body");
+  body.innerHTML = '<div class="empty-note">Loading&hellip;</div>';
+  try { DR = await apiCall("/attendance/report/daily?" + drParams()); }
+  catch (e) { body.innerHTML = `<div class="empty-note">Could not load: ${escapeHtml(errText(e))}</div>`; return; }
+  document.getElementById("dr-title").textContent = `Daily report - ${new Date(DR.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "short", year: "numeric" })}`;
+  const fill = (id, list, all) => { const el = document.getElementById(id), cur = el.value;
+    el.innerHTML = `<option value="">${all}</option>` + list.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(id === "dr-trade" ? x.charAt(0) + x.slice(1).toLowerCase() : x)}</option>`).join("");
+    el.value = list.includes(cur) ? cur : ""; };
+  fill("dr-site", DR.sites, "All sites"); fill("dr-trade", DR.trades, "All trades");
+  document.getElementById("dr-chips").innerHTML = Object.entries(DR.counts).filter(([, n]) => n).map(([k, n]) =>
+    `<span class="dr-chip" style="color:${DR_COL[k]};border-color:${DR_COL[k]};background:${DR_COL[k]}12" ${DR_PILL[k] ? `onclick="drPick('${DR_PILL[k]}')" title="Show the names"` : ""}>${n} ${k}</span>`).join("")
+    || '<span class="muted">Nothing marked for this day yet.</span>';
+  const rows = DR.rows;
+  if (!rows.length) { body.innerHTML = `<div class="empty-note">Nobody ${DR.report === "summary" ? "marked" : "in this list"} for this day.</div>`; return; }
+  const cols = Object.keys(rows[0]).filter(c => !(DR.report !== "summary" && c === "Site"));
+  const num = c => rows.every(r => r[c] === "" || typeof r[c] === "number");
+  const cell = (r, c) => { const v = r[c];
+    if (c === "Morning" || c === "Afternoon") return `<td style="color:${DR_COL[v] || "#333"}">${escapeHtml(v)}</td>`;
+    if (c === "Name") return `<td><b>${escapeHtml(v)}</b></td>`;
+    return `<td class="${num(c) ? "n" : ""}">${v === 0 && DR.report === "summary" ? '<span style="color:#ccc">-</span>' : escapeHtml(String(v))}</td>`; };
+  let html = `<div class="dr-grid"><table><thead><tr>${DR.report === "summary" ? "" : '<th style="width:36px">#</th>'}${cols.map(c => `<th class="${num(c) ? "n" : ""}">${c}</th>`).join("")}</tr></thead><tbody>`;
+  if (DR.report === "summary") {
+    html += rows.map(r => `<tr class="${r.Site === "Total" ? "tot" : ""}">${cols.map(c => c === "Site" ? `<td><b>${escapeHtml(r.Site)}</b></td>` : cell(r, c)).join("")}</tr>`).join("");
+  } else {
+    let i = 0, last = null;
+    const grouped = rows[0].Site !== undefined;
+    for (const r of rows) {
+      if (grouped && r.Site !== last) { last = r.Site; html += `<tr class="grp"><td colspan="${cols.length + 1}">Site ${escapeHtml(r.Site)} - ${rows.filter(x => x.Site === r.Site).length}</td></tr>`; }
+      html += `<tr><td>${++i}</td>${cols.map(c => cell(r, c)).join("")}</tr>`;
+    }
+    html += `<tr class="tot"><td colspan="${cols.length + 1}">${rows.length} - ${escapeHtml(DR.label.toLowerCase())}</td></tr>`;
+  }
+  body.innerHTML = html + "</tbody></table></div>";
+}
+async function dailyReportOut(fmt) {
+  await refreshDownloadToken();
+  const t = encodeURIComponent(cachedDownloadToken);
+  window.open(`${API}/export/attendance/daily${fmt === "view" ? "/view" : ""}?token=${t}&${drParams()}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+}
+// Plain text for WhatsApp: the title, the counts, then the list.
+async function dailyReportCopy() {
+  if (!DR) return;
+  const lines = [`*${DR.title.replace("Daily Report - ", "Daily report - ")}*`, DR.sub.replace(/\s+\|\s+/g, " | "),
+    Object.entries(DR.counts).filter(([, n]) => n).map(([k, n]) => `${k}: ${n}`).join(", "), ""];
+  if (DR.report === "summary") {
+    for (const r of DR.rows) lines.push(`${r.Site === "Total" ? "*Total*" : "Site " + r.Site}: ` + Object.entries(r).filter(([k, v]) => k !== "Site" && v).map(([k, v]) => `${k} ${v}`).join(", "));
+  } else {
+    let last = null, i = 0;
+    for (const r of DR.rows) {
+      if (r.Site !== undefined && r.Site !== last) { last = r.Site; lines.push(`*Site ${r.Site}*`); }
+      lines.push(`${++i}. ${r.Code} ${r.Name}${r.Trade ? " (" + r.Trade + ")" : ""}${r.OT ? " - OT " + r.OT : ""}${DR.report === "absent" && r.Morning !== r.Afternoon ? ` - ${r.Morning}/${r.Afternoon}` : ""}`);
+    }
+  }
+  const text = lines.join("\n");
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  showStatus("att-status", "ok", "Copied - paste it into WhatsApp.");
+  const b = [...document.querySelectorAll("#dr-modal .dr-acts button")].pop(); if (b) { const o = b.textContent; b.textContent = "Copied ✓"; setTimeout(() => b.textContent = o, 1800); }
+}
 </script>
 </body>
 </html>

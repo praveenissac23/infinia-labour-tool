@@ -11140,6 +11140,141 @@ def _hr_file(title, rows, sub, format, money, stem):
         headers={"Content-Disposition": f"attachment; filename=Infinia_{stem}.pdf"})
 
 
+# ---------------------------------------------------------------------
+# DAILY REPORT - Attendance > Daily attendance > Daily report
+# ---------------------------------------------------------------------
+# One day's attendance read back any way it is wanted: numbers per site,
+# or the names of who was present, absent, sick, on leave, on half day,
+# on overtime, or not marked yet - for one site or trade or all. The
+# screen, the PDF, the Excel and the WhatsApp text all come from here.
+DAILY_REPORTS = {
+    "summary": "Site-wise numbers", "present": "Present", "absent": "Absentees", "sick": "Sick / medical",
+    "leave": "On leave", "halfday": "Half day", "ot": "Overtime", "everyone": "Site-wise labour list",
+    "unmarked": "Not marked yet",
+}
+DAILY_COLS = ["Present", "Absent", "Sick", "Medical", "Half day", "Leave", "Off"]
+
+
+def _day_status(r):
+    am, pm = (r.am or "").strip(), (r.pm or "").strip()
+    if not am and not pm:
+        return ""
+    if am == pm or not pm or not am:
+        s = am or pm
+    elif "Present" in (am, pm):
+        s = "Half day"
+    else:
+        s = am
+    if s in ("Half", "Half Day"):
+        s = "Half day"
+    if s in ("Present", "Absent", "Sick", "Medical", "Leave", "Half day", "Terminated"):
+        return s
+    return "Off"          # Sunday, holiday, rest day
+
+
+def daily_report_parts(db, day, report="summary", site="", trade=""):
+    if report not in DAILY_REPORTS:
+        raise HTTPException(status_code=400, detail="No such daily report.")
+    site, trade = (site or "").strip(), (trade or "").strip().upper()
+    rows = db.query(models.DailyRow).filter(models.DailyRow.full_date == day).all()
+    marked = [r for r in rows if _day_status(r) and _day_status(r) != "Terminated"]
+    staff = {e.emp_no: e for e in _labour(db.query(models.Employee)).all()}
+    trade_of = lambda r: ((staff.get(r.emp_no).trade if staff.get(r.emp_no) else "") or r.trade or "").strip().upper()
+    sites = sorted({r.site for r in marked if r.site}, key=lambda x: (len(x), x))
+    trades = sorted({trade_of(r) for r in marked if trade_of(r)})
+    pick = [r for r in marked if (not site or (r.site or "") == site) and (not trade or trade_of(r) == trade)]
+    counts = {c: sum(1 for r in pick if _day_status(r) == c) for c in DAILY_COLS}
+    # Workers on the books that day with nothing marked.
+    done = {r.emp_no for r in rows if _day_status(r)}
+    expected = [e for e in staff.values() if e.active and on_books_on(e, day) and e.emp_no not in done
+                and (not trade or (e.trade or "").strip().upper() == trade)]
+    counts["Not marked"] = 0 if site else len(expected)
+    when = f"{day:%A %d %b %Y}"
+    scope = " - ".join(x for x in [f"Site {site}" if site else "", trade.title() if trade else ""] if x)
+    title = f"Daily Report - {DAILY_REPORTS[report]}"
+    sub = when + (f"   |   {scope}" if scope else "")
+    out = []
+    if report == "summary":
+        groups = {}
+        for r in pick:
+            groups.setdefault(r.site or "", []).append(r)
+        keys = sorted(groups, key=lambda x: (x == "", len(x), x))
+        for k in keys:
+            g = groups[k]
+            line = {"Site": k or "No site (leave / office)"}
+            for c in DAILY_COLS:
+                line[c] = sum(1 for r in g if _day_status(r) == c)
+            line["OT hrs"] = round(sum((r.ot or 0) for r in g if _day_status(r) in ("Present", "Half day")), 2)
+            line["Total"] = len(g)
+            out.append(line)
+        if out:
+            tot = {"Site": "Total"}
+            for c in DAILY_COLS + ["OT hrs", "Total"]:
+                tot[c] = round(sum(x[c] for x in out), 2)
+            out.append(tot)
+        # A column nobody is in is left off.
+        if out:
+            keep = [k for k in out[0] if k in ("Site", "Total") or any(x[k] for x in out[:-1])]
+            out = [{k: x[k] for k in keep} for x in out]
+    elif report == "unmarked":
+        last = {}
+        for emp_no, s in (db.query(models.DailyRow.emp_no, models.DailyRow.site)
+                          .filter(models.DailyRow.full_date < day, models.DailyRow.site != "")
+                          .order_by(models.DailyRow.full_date).all()):
+            last[emp_no] = s
+        for e in sorted(expected, key=lambda e: (last.get(e.emp_no, "~"), e.emp_no)):
+            out.append({"Code": e.emp_no, "Name": e.name, "Trade": (e.trade or "").title(), "Last site": last.get(e.emp_no, "")})
+    else:
+        want = {"present": {"Present", "Half day"}, "absent": {"Absent", "Half day"}, "sick": {"Sick", "Medical"},
+                "leave": {"Leave"}, "halfday": {"Half day"}, "everyone": set(DAILY_COLS)}.get(report)
+        lst = [r for r in pick if (want is None and (r.ot or 0) > 0 and _day_status(r) in ("Present", "Half day"))
+               or (want is not None and _day_status(r) in want)]
+        lst.sort(key=lambda r: (r.site == "", len(r.site or ""), r.site or "", r.emp_no))
+        for r in lst:
+            worked = _day_status(r) in ("Present", "Half day")
+            out.append({"Site": r.site or "-", "Code": r.emp_no, "Name": r.emp_name or (staff[r.emp_no].name if r.emp_no in staff else ""),
+                        "Trade": trade_of(r).title(), "Morning": r.am or "-", "Afternoon": r.pm or "-",
+                        "OT": (r.ot or 0) if worked and (r.ot or 0) else "", "Engineer": r.engineer or "", "Comments": r.comments or ""})
+        if out:
+            keep = [k for k in out[0] if k in ("Site", "Code", "Name") or any(str(x[k]).strip() for x in out)]
+            out = [{k: x[k] for k in keep} for x in out]
+    return {"title": title, "sub": sub, "report": report, "label": DAILY_REPORTS[report], "date": day.isoformat(),
+            "counts": counts, "sites": sites, "trades": trades, "rows": out}
+
+
+@app.get("/attendance/report/daily")
+def daily_report(day: date, report: str = "summary", site: str = "", trade: str = "",
+                 db: Session = Depends(get_db), user: models.User = Depends(require_screen("attendance"))):
+    return daily_report_parts(db, day, report, site, trade)
+
+
+def _daily_reader(token, db):
+    user = auth.get_download_user_from_token(token, db)
+    if "attendance" not in effective_permissions(user):
+        raise HTTPException(status_code=403, detail="Not available to this login.")
+    return user
+
+
+@app.get("/export/attendance/daily")
+def export_daily_report(token: str, day: date, report: str = "summary", site: str = "", trade: str = "",
+                        format: str = "pdf", db: Session = Depends(get_db)):
+    _daily_reader(token, db)
+    d = daily_report_parts(db, day, report, site, trade)
+    rows = d["rows"] or [{"": "Nothing to show for this day."}]
+    return _hr_file(d["title"], rows, d["sub"], format, [], f"Daily_Report_{day:%Y_%m_%d}")
+
+
+@app.get("/export/attendance/daily/view")
+def view_daily_report(token: str, day: date, report: str = "summary", site: str = "", trade: str = "",
+                      db: Session = Depends(get_db)):
+    user = _daily_reader(token, db)
+    d = daily_report_parts(db, day, report, site, trade)
+    t = quote(auth.create_view_token(user.username), safe="")
+    url = f"/export/attendance/daily?token={t}&day={day.isoformat()}&report={quote(report)}&site={quote(site)}&trade={quote(trade)}"
+    rows = d["rows"] or [{"": "Nothing to show for this day."}]
+    return _preview_page(d["title"], d["sub"], rows, url + "&format=pdf", url + "&format=excel")
+
+
 @app.get("/permissions/screens")
 def list_screens(user: models.User = Depends(auth.get_current_user)):
     return {"screens": ALL_SCREENS, "role_defaults": ROLE_DEFAULTS}

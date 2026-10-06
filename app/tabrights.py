@@ -229,6 +229,10 @@ GATES = {
     ("GET", "/employees/expiries"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
     ("POST", "/employees/expiries"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
     ("DELETE", "/employees/expiries/{xid}"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
+    # Attendance > Daily report
+    ("GET", "/attendance/report/daily"): ["attendance.attendance"],
+    ("GET", "/export/attendance/daily"): ["attendance.attendance"],
+    ("GET", "/export/attendance/daily/view"): ["attendance.attendance"],
     # Accounts: tax and proforma invoices
     ("GET", "/employees/accounts/invoices"): _invoice_kind,
     ("GET", "/employees/accounts/invoices/next"): _invoice_kind,

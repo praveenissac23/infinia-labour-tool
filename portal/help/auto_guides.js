@@ -29,7 +29,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Attendance > Daily attendance",
   "auto": true,
-  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  71  clear day     screen buttons what is",
+  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  71  clear day daily report     screen buttons what is",
   "go": {
    "page": "attendance",
    "tab": "attendance"
@@ -59,11 +59,15 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"openClearDayModal()\"]"
    },
    {
-    "say": "6. ◀.",
+    "say": "6. Daily report: Present, absent, sick, site-wise numbers or names for the date above.",
+    "el": "#daily-report-btn"
+   },
+   {
+    "say": "7. ◀.",
     "el": "button[onclick=\"shiftCalendarCycle('attendance', -1)\"]"
    },
    {
-    "say": "7. ▶.",
+    "say": "8. ▶.",
     "el": "button[onclick=\"shiftCalendarCycle('attendance', 1)\"]"
    }
   ]
@@ -1059,7 +1063,7 @@ window.HELP_AUTO = [
    },
    {
     "say": "1. Record delivery.",
-    "el": "button[onclick=\"event.stopPropagation(); openReceive(4)\"]"
+    "el": "button[onclick=\"event.stopPropagation(); openReceive(1)\"]"
    },
    {
     "say": "2. Record a direct purchase.",
@@ -1248,7 +1252,8 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"event.stopPropagation(); setRequestStatus(2,'approved')\"]"
    },
    {
-    "say": "6. Raise LPO: Raise the LPO - this material is waiting there."
+    "say": "6. Raise LPO: Raise the LPO - this material is waiting there.",
+    "el": "button[onclick=\"event.stopPropagation(); switchScreen('purchase')\"]"
    }
   ]
  },
