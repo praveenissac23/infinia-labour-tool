@@ -113,14 +113,13 @@ PAGES = {
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
             sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
     "reports": ("Reports", [
-        tab("labour", "pgreports", "Labour", ["reports", "combine"] + PEOPLE_RIGHTS, subs=[
+        tab("labour", "pgreports", "Labour", ["reports", "combine"], subs=[
             sub("builder", "Cycle report builder", screen="reports"),
             sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             # Reports shows the card downloads only; the additions and
             # deductions editor lives under Payroll.
-            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
-            # Who is on leave, pending, due back - filled in on Staff > Leave.
-            sub("leavereport", "Leave report", right=PEOPLE_RIGHTS, people="leave-register")]),
+            # Leave is reported on Staff > Leave, not repeated here.
+            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"])]),
         # Office payroll and Staff are not repeated here: they are pages of
         # their own (Payroll > Office payroll, Staff).
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[
@@ -175,9 +174,9 @@ ACCESS_GRANTS = {
     **{f"reports.storerep.{k}": ["store"] for k in ("stock", "by_site", "usage", "site_cost", "assets", "issues", "lost", "hired")},
     "reports.storerep.mr_history": ["requests"],
     # The leave report shows the registers this login has on Staff > Leave.
-    "reports.labour.leavereport": [],
 }
-STAFF_TREE = [("register", "Register"), ("due", "Documents due"), ("leave", "Leave"), ("bday", "Birthdays")]
+# Documents due are kept on Expiry Reminder; leave on Staff > Leave.
+STAFF_TREE = [("register", "Register"), ("leave", "Leave"), ("bday", "Birthdays")]
 STAFF_GROUPS = [("labour", "Labour", "people_labour"), ("office", "Office staff (with salaries)", "people_office"),
                 ("local", "Local staff", "people_local")]
 

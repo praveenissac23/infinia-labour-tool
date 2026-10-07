@@ -92,42 +92,6 @@
     ]
    },
    {
-    "id": "people.due",
-    "label": "Documents due",
-    "children": [
-     {
-      "id": "people.due.labour",
-      "label": "Labour",
-      "right": [
-       "people_labour"
-      ],
-      "grant": [
-       "people_labour"
-      ]
-     },
-     {
-      "id": "people.due.office",
-      "label": "Office staff (with salaries)",
-      "right": [
-       "people_office"
-      ],
-      "grant": [
-       "people_office"
-      ]
-     },
-     {
-      "id": "people.due.local",
-      "label": "Local staff",
-      "right": [
-       "people_local"
-      ],
-      "grant": [
-       "people_local"
-      ]
-     }
-    ]
-   },
-   {
     "id": "people.leave",
     "label": "Leave",
     "children": [
@@ -670,16 +634,6 @@
       "grant": [
        "combine"
       ]
-     },
-     {
-      "id": "reports.labour.leavereport",
-      "label": "Leave report",
-      "right": [
-       "people_labour",
-       "people_office",
-       "people_local"
-      ],
-      "grant": []
      }
     ]
    },

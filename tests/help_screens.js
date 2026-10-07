@@ -80,7 +80,7 @@ const only = process.argv.slice(2);
       const out = [];
       for (const [key, cfg] of Object.entries(ALL_PAGES)) {
         if (key === 'people') {
-          for (const [v, l] of [['register', 'Register'], ['due', 'Documents due'], ['vacation', 'Leave'], ['bday', 'Birthdays']])
+          for (const [v, l] of [['register', 'Register'], ['vacation', 'Leave'], ['bday', 'Birthdays']])
             out.push({ id: 'scr-people-' + v, page: 'people', tab: 'people', title: `Staff > ${l}`, view: v });
           continue;
         }

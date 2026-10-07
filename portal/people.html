@@ -144,7 +144,7 @@ if (window.PG_EMBED) {
 })();
 function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; } document.documentElement.classList.remove("resuming"); var s = document.getElementById("early-resume"); if (s) s.remove(); document.getElementById("login").style.display = "flex"; }
 </script>
-<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "people_labour", "people_local", "people_office", "reports", "requests", "store"], "settings": ["activity", "settings", "settings_access", "settings_companies", "settings_logins"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
+<script id="pg-menu-rights">const PG_MENU_RIGHTS = {"dashboard": ["dashboard"], "attendance": ["attendance", "livecard", "masterdata"], "payroll": ["adjustments", "combine", "errorcheck", "hrpayroll"], "expiry": ["expiry", "pdc"], "accounts": ["accounts_invoices", "accounts_projects", "accounts_register", "petty_naveen", "petty_office", "petty_praveen", "petty_pro", "petty_site"], "store": ["approvals", "requests", "store"], "reports": ["approvals", "combine", "reports", "requests", "store"], "settings": ["activity", "settings", "settings_access", "settings_companies", "settings_logins"], "people": ["people_labour", "people_local", "people_office"], "access": ["access"]};</script>
 </head>
 <body>
 
@@ -172,7 +172,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
   </div>
   <div class="main">
     <div class="top"><h1 id="page-title">Staff</h1><div class="who"><span id="who-name"></span> <button class="signout" onclick="signOut()">Sign out</button></div></div>
-    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="due" onclick="showView('due')">Documents due</span><span class="viewtab" data-view="vacation" onclick="showView('vacation')">Leave</span><span class="viewtab" data-view="bday" onclick="showView('bday')">&#127874; Birthdays</span></div>
+    <div class="viewtabs"><span class="viewtab active" data-view="register" onclick="showView('register')">Register</span><span class="viewtab" data-view="vacation" onclick="showView('vacation')">Leave</span><span class="viewtab" data-view="bday" onclick="showView('bday')">&#127874; Birthdays</span></div>
     <div class="content">
       <div class="status" id="status"></div>
 
@@ -605,8 +605,8 @@ async function start() {
   ME.tabs = ME.tabs || [];
   ME.has = t => ME.role === "admin" || ME.tabs.includes(t);
   ME.vg = v => ["labour", "office", "local"].filter(g => ME.role === "admin" || (ME.screens.includes("people_" + g) && ME.tabs.includes(`people.${v}.${g}`)));
-  ME.groups = ["labour", "office", "local"].filter(g => ["register", "due", "leave", "bday"].some(v => ME.vg(v).includes(g)));
-  ME.views = { register: ME.vg("register").length > 0, due: ME.vg("due").length > 0, vacation: ME.vg("leave").length > 0,
+  ME.groups = ["labour", "office", "local"].filter(g => ["register", "leave", "bday"].some(v => ME.vg(v).includes(g)));
+  ME.views = { register: ME.vg("register").length > 0, due: false, vacation: ME.vg("leave").length > 0,
                leave: ME.vg("leave").length > 0, bday: ME.vg("bday").length > 0 || ME.has("people.bday.clients") };
   document.querySelectorAll(".viewtab[data-view]").forEach(el => { el.style.display = ME.views[el.dataset.view] ? "" : "none"; });
   if (!Object.values(ME.views).some(Boolean)) {

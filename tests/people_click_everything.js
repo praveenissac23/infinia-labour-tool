@@ -146,13 +146,9 @@ const ck = (label, ok, ctx) => { console.log((ok ? 'PASS ' : 'FAIL ') + label + 
   ck('a record added by mistake can be removed while nothing hangs off it', gone === true, gone);
 
   // ---- Documents due and leave balances ---------------------------------------------------
-  await p.click('.viewtab[data-view="due"]'); await p.waitForTimeout(900);
-  ck('Documents due opens', await p.locator('#view-due').isVisible() && (await p.locator('#due-count').textContent()).includes('document'));
-  for (const d of ['30', '180', '90']) { await p.click(`#due-days button[data-v="${d}"]`); pressed++; await p.waitForTimeout(500); }
-  for (const g of ['labour', 'office', '']) { await p.click(`#due-group button[data-v="${g}"]`); pressed++; await p.waitForTimeout(500); }
-  for (const text of ['Preview', 'Export PDF', 'Export Excel']) { await p.click(`#view-due button:has-text("${text}")`); pressed++; await p.waitForTimeout(600); }
+  // Documents due moved to Expiry Reminder: no tab on Staff.
+  ck('Documents due is not on Staff', await p.locator('.viewtab[data-view="due"]').count() === 0);
   ck('Leave balances is no longer a view of its own', await p.locator('.viewtab[data-view="leave"]').count() === 0);
-  ck('the three report buttons opened three tabs', newPages.length === 3, newPages.length);
   for (const pg of newPages) { await pg.waitForLoadState().catch(() => {}); ck(`opened: ${((await pg.url()).split('/export/')[1] || pg.url()).split('&token')[0]}`, !/"detail"/.test(await pg.content().catch(() => '"detail"'))); await pg.close().catch(() => {}); }
   newPages.length = 0;
   const openBtn = p.locator('#lv-body button:has-text("Open")').first();

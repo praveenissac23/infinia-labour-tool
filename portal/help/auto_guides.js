@@ -578,7 +578,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > Company & other documents",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   company   other documents 3expireddocuments   renew now 1due in 7 daysdocuments   start renewal save preview export pdf export excel screen buttons what is",
+  "words": "expiry reminder   expiry reminder   company   other documents 4expireddocuments   renew now 0due in 7 daysdocuments   start renewal save preview export pdf export excel screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -589,11 +589,11 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > Company & other documents. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 3Expireddocuments - renew now.",
+    "say": "1. 4Expireddocuments - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
-    "say": "2. 1Due in 7 daysdocuments - start renewal.",
+    "say": "2. 0Due in 7 daysdocuments - start renewal.",
     "el": "button[onclick=\"expCard('week')\"]"
    },
    {
@@ -1485,44 +1485,6 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-reports-labour-leavereport",
-  "area": "Every screen",
-  "title": "Reports > Labour > Leave report",
-  "auto": true,
-  "words": "reports   labour   leave report labour office local preview export pdf export excel screen buttons what is",
-  "go": {
-   "page": "reports",
-   "tab": "labour",
-   "sub": "leavereport"
-  },
-  "steps": [
-   {
-    "say": "This is Reports > Labour > Leave report. The numbers on the picture match the list below."
-   },
-   {
-    "say": "1. Labour."
-   },
-   {
-    "say": "2. Office."
-   },
-   {
-    "say": "3. Local."
-   },
-   {
-    "say": "4. Preview: opens it on screen to read or print.",
-    "el": "button[onclick=\"pgRepOpen()\"]"
-   },
-   {
-    "say": "5. Export PDF: downloads it as a PDF.",
-    "el": "button[onclick=\"pgRepDownload('pdf')\"]"
-   },
-   {
-    "say": "6. Export Excel: downloads it as an Excel sheet.",
-    "el": "button[onclick=\"pgRepDownload('excel')\"]"
-   }
-  ]
- },
- {
   "id": "scr-reports-storerep-stock",
   "area": "Every screen",
   "title": "Reports > Store & purchasing > Current stock",
@@ -2005,56 +1967,6 @@ window.HELP_AUTO = [
    },
    {
     "say": "12. Documents."
-   }
-  ]
- },
- {
-  "id": "scr-people-due",
-  "area": "Every screen",
-  "title": "Staff > Documents due",
-  "auto": true,
-  "words": "staff   documents due 30 days 90 days 180 days all registers labour office local preview export pdf export excel open screen buttons what is",
-  "go": {
-   "page": "people",
-   "tab": "people"
-  },
-  "steps": [
-   {
-    "say": "This is Staff > Documents due. The numbers on the picture match the list below.",
-    "run": "var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('due');"
-   },
-   {
-    "say": "1. 30 days."
-   },
-   {
-    "say": "2. 90 days."
-   },
-   {
-    "say": "3. 180 days."
-   },
-   {
-    "say": "4. All registers."
-   },
-   {
-    "say": "5. Labour."
-   },
-   {
-    "say": "6. Office."
-   },
-   {
-    "say": "7. Local."
-   },
-   {
-    "say": "8. Preview: opens it on screen to read or print."
-   },
-   {
-    "say": "9. Export PDF: downloads it as a PDF."
-   },
-   {
-    "say": "10. Export Excel: downloads it as an Excel sheet."
-   },
-   {
-    "say": "11. Open."
    }
   ]
  },
