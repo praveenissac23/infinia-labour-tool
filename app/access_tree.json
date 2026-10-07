@@ -462,6 +462,16 @@
     "label": "Expiry reminder",
     "children": [
      {
+      "id": "expiry.expiry.all",
+      "label": "All together",
+      "right": [
+       "expiry"
+      ],
+      "grant": [
+       "expiry"
+      ]
+     },
+     {
       "id": "expiry.expiry.people",
       "label": "People",
       "right": [

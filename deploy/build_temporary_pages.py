@@ -75,6 +75,8 @@ PAGES = {
     # right of their own that shows no pay.
     "expiry": ("Expiry Reminder", [
         tab("expiry", "expiry", "Expiry reminder", ["expiry", "pdc"], subs=[
+            # Everything that expires in one list, first - so nothing is missed.
+            sub("all", "All together", screen="expiry", right="expiry", go="hrDocMode('all')"),
             sub("people", "People", screen="expiry", right="expiry", go="hrDocMode('people')"),
             sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')"),
             # Post-dated cheques: a screen of its own and a right of its own.

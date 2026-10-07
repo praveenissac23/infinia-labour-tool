@@ -2141,9 +2141,33 @@
               <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">
                 <h2 style="margin:0;">Expiry tracker</h2>
                 <div class="pc-kind" id="hr-doc-mode">
+                  <button type="button" data-m="all" onclick="hrDocMode('all')">All together</button>
                   <button type="button" class="on" data-m="people" onclick="hrDocMode('people')">People</button>
                   <button type="button" data-m="company" onclick="hrDocMode('company')">Company &amp; other documents</button>
                 </div>
+              </div>
+              <!-- People's and the company's documents in one list, soonest first -->
+              <div id="hr-doc-all" style="display:none;">
+                <p style="font-size:12px; color:#888; margin:0 0 10px;">Every document that expires - staff, labour, vehicles, licences, NOCs, permits - in one list, soonest first, so nothing is missed. Click a line to renew or correct it.</p>
+                <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                  <select id="hr-all-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderAllDocs()">
+                    <option value="30" selected>Expired or due in 30 days</option>
+                    <option value="7">Expired or due in 7 days</option>
+                    <option value="0">Expired only</option>
+                    <option value="w">Due in 7 days</option>
+                    <option value="m">Due in 8 to 30 days</option>
+                    <option value="90">Expired or due in 90 days</option>
+                    <option value="-1">Everything on file</option>
+                  </select>
+                  <select id="hr-all-type" class="hr-dd" style="width:190px;" onchange="renderAllDocs()">
+                    <option value="">People and company</option><option value="person">People only</option><option value="company">Company only</option>
+                  </select>
+                  <input type="text" id="hr-all-search" placeholder="Search name, item, number" style="width:240px;" oninput="renderAllDocs()">
+                </div>
+                <p class="hr-nil" id="hr-all-count" style="margin:0 0 6px; font-size:12px;"></p>
+                <div class="grid-wrap" style="max-height:calc(100vh - 380px);"><table><thead><tr>
+                  <th>For</th><th>Name / item</th><th>Document</th><th>Number</th><th>Expires</th><th>Standing</th>
+                </tr></thead><tbody id="hr-all-body"></tbody></table></div>
               </div>
               <div id="hr-doc-people">
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
@@ -13900,15 +13924,17 @@ async function expLoadSummary() {
 function expDrawCards() {
   if (!EXP_SUM || !EXP_SUM.people) return;
   const company = document.getElementById("hr-doc-company").style.display !== "none";
-  const n = company ? EXP_SUM.company : EXP_SUM.people;
-  const who = company ? "documents" : "people";
+  const all = expIsAll();
+  const n = all ? expAllCounts() : company ? EXP_SUM.company : EXP_SUM.people;
+  const who = all || company ? "documents" : "people";
   const c = (k, cls, label, sub, v) => `<button type="button" class="exp-card ${cls}${v ? " has" : " zero"}" data-k="${k}" onclick="expCard('${k}')">
       <b>${v}</b><span>${label}</span><small>${sub}</small></button>`;
   document.getElementById("exp-cards").innerHTML =
     c("expired", "red", "Expired", `${who} - renew now`, n.expired) +
     c("week", "amber", "Due in 7 days", `${who} - start renewal`, n.week) +
     c("month", "yellow", "Due in 8 to 30 days", `${who} - plan ahead`, n.month) +
-    (company ? c("all", "grey", "All company documents", "everything on file", n.all)
+    (all ? c("all", "grey", "All documents", "people and company, everything on file", n.all) :
+     company ? c("all", "grey", "All company documents", "everything on file", n.all)
              : c("missing", "grey", "Missing documents", "people with nothing on file", EXP_SUM.missing));
   expCardsMark();
 }
@@ -13917,14 +13943,15 @@ function expCard(k) {
   const v = { expired: "0", week: "w", month: "m", missing: "missing", all: "-1" }[k];
   if (k === "missing") { hrDocMode("people"); if (typeof pgSub === "function") try { pgSub("people"); } catch (e) {} }
   const company = document.getElementById("hr-doc-company").style.display !== "none";
+  if (expIsAll() && k !== "missing") { document.getElementById("hr-all-within").value = v; expCardsMark(); renderAllDocs(); return; }
   if (company && k !== "missing") document.getElementById("hr-exp-within").value = v;
   else document.getElementById("hr-doc-within").value = k === "all" ? "-1" : v;
   expCardsMark(); renderDocuments(); renderExpiries();
 }
 function expCardsMark() {
-  const company = document.getElementById("hr-doc-company").style.display !== "none";
-  const v = document.getElementById(company ? "hr-exp-within" : "hr-doc-within").value;
-  const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company ? "all" : "" }[v];
+  const company = document.getElementById("hr-doc-company").style.display !== "none", all = expIsAll();
+  const v = document.getElementById(all ? "hr-all-within" : company ? "hr-exp-within" : "hr-doc-within").value;
+  const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company || all ? "all" : "" }[v];
   document.querySelectorAll("#exp-cards .exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
 // The menu number: documents needing action, plus - for admin and the
@@ -14135,8 +14162,60 @@ function hrDocMode(m) {
   document.querySelectorAll("#hr-doc-mode button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   document.getElementById("hr-doc-people").style.display = m === "people" ? "" : "none";
   document.getElementById("hr-doc-company").style.display = m === "company" ? "" : "none";
-  if (m === "company") loadExpiries(); else loadDocuments();
+  document.getElementById("hr-doc-all").style.display = m === "all" ? "" : "none";
+  if (m === "all") loadAllDocs();
+  else if (m === "company") loadExpiries(); else loadDocuments();
   expDrawCards();
+}
+// ---- All together: people's and the company's documents in one list ----------
+const expIsAll = () => document.getElementById("hr-doc-all").style.display !== "none";
+let HR_ALL = [];
+async function loadAllDocs() {
+  const [d, c] = await Promise.all([apiCall("/employees/documents").catch(() => null), apiCall("/employees/expiries").catch(() => null)]);
+  if (d) HR_DOCS = d.rows || [];
+  if (c) HR_EXP = c;
+  HR_ALL = [
+    ...(d ? HR_DOCS : []).map(x => ({ src: "person", id: x.id, who: x.staff ? "Staff" : "Labour", name: x.name, code: x.emp_no, sub: x.company || "",
+      doc: x.kind_label, number: x.number || "", expires_on: x.expires_on, days_left: x.days_left, status: x.status })),
+    ...(c ? HR_EXP.rows : []).map(r => ({ src: "company", id: r.id, who: r.category || "Company", name: r.item, code: "", sub: r.notes || "",
+      doc: r.kind, number: r.number || "", expires_on: r.expires_on, days_left: r.days_left, status: r.status })),
+  ].sort((a, b) => (a.days_left ?? 1e9) - (b.days_left ?? 1e9));
+  renderAllDocs(); expDrawCards();
+}
+function expAllCounts() {
+  const n = x => x.days_left;
+  return { expired: HR_ALL.filter(x => x.status === "expired").length,
+           week: HR_ALL.filter(x => n(x) !== null && n(x) >= 0 && n(x) <= 7).length,
+           month: HR_ALL.filter(x => n(x) !== null && n(x) >= 8 && n(x) <= 30).length, all: HR_ALL.length };
+}
+function renderAllDocs() {
+  const wv = document.getElementById("hr-all-within").value, type = document.getElementById("hr-all-type").value;
+  const q = (document.getElementById("hr-all-search").value || "").toLowerCase().trim();
+  const within = wv === "w" || wv === "m" ? -2 : parseInt(wv, 10);
+  const rows = HR_ALL.filter(r => (!type || r.src === type) &&
+    (!q || `${r.name} ${r.code} ${r.number} ${r.doc} ${r.who}`.toLowerCase().includes(q)) &&
+    (wv === "w" ? r.days_left !== null && r.days_left >= 0 && r.days_left <= 7 :
+     wv === "m" ? r.days_left !== null && r.days_left >= 8 && r.days_left <= 30 :
+     within < 0 || (within === 0 ? r.status === "expired" : (r.days_left ?? 1e9) <= within)));
+  const c = k => rows.filter(r => r.status === k).length;
+  document.getElementById("hr-all-count").textContent = `${rows.length} document${rows.length === 1 ? "" : "s"} - ${c("expired")} expired, ${c("urgent")} due in 30 days, ${c("soon")} in 90`;
+  document.getElementById("hr-all-body").innerHTML = rows.map(r => {
+    const n = r.days_left;
+    const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago` : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
+    const tag = (t, bg, fg) => `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(t)}</span>`;
+    const pill = r.src === "person" ? (r.who === "Staff" ? tag("Staff", "#E3F0F7", "#1F5F80") : tag("Labour", "#EEE", "#555")) : tag(r.who, "#FFF3D6", "#8A6100");
+    return `<tr style="cursor:pointer;" onclick="expAllOpen('${r.src}', ${r.id})" title="Click to renew or correct">
+      <td>${pill}</td><td class="txt"><b>${escapeHtml(r.name)}</b>${r.code ? ` <span class="hr-nil">${escapeHtml(r.code)}</span>` : ""}</td>
+      <td class="txt">${escapeHtml(r.doc)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
+      <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub" style="display:block;">${when}</span>` : ""}</td>
+      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status] || ""}</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="hr-nil" style="padding:14px;">${HR_ALL.length ? "Nothing in this range - all clear." : "Nothing on file yet."}</td></tr>`;
+}
+// A line opens where it is kept, ready to renew.
+function expAllOpen(src, id) {
+  const tab = src === "person" ? "people" : "company";
+  try { if (typeof pgSub === "function") pgSub(tab); else hrDocMode(tab); } catch (e) { hrDocMode(tab); }
+  setTimeout(() => { if (src === "person") hrEditDoc(id); else hrEditExpiry(id); }, 700);
 }
 async function loadExpiries() {
   try { HR_EXP = await apiCall("/employees/expiries"); } catch (e) { expMsg("err", errText(e)); return; }

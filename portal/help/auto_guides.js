@@ -263,7 +263,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Salary cycle & statements",
   "auto": true,
-  "words": "payroll   office payroll   salary cycle   statements office staff local staff pay full month now preview export pdf export excel consolidated statement  office   local  approve   lock screen buttons what is",
+  "words": "payroll   office payroll   salary cycle   statements office staff local staff pay full month now preview export pdf export excel consolidated statement  office   local  screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -300,10 +300,6 @@ window.HELP_AUTO = [
    {
     "say": "7. Consolidated statement (office + local).",
     "el": "button[onclick=\"previewConsolidated(true)\"]"
-   },
-   {
-    "say": "8. Approve & lock: approves it.",
-    "el": "button[onclick=\"hrAllUse(3); approvePayrollRun()\"]"
    }
   ]
  },
@@ -525,6 +521,31 @@ window.HELP_AUTO = [
    {
     "say": "3. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('gratuity','excel')\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-expiry-expiry-all",
+  "area": "Every screen",
+  "title": "Expiry Reminder > Expiry reminder > All together",
+  "auto": true,
+  "words": "expiry reminder   expiry reminder   all together 5expireddocuments   renew now 8due in 7 daysdocuments   start renewal screen buttons what is",
+  "go": {
+   "page": "expiry",
+   "tab": "expiry",
+   "sub": "all"
+  },
+  "steps": [
+   {
+    "say": "This is Expiry Reminder > Expiry reminder > All together. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. 5Expireddocuments - renew now.",
+    "el": "button[onclick=\"expCard('expired')\"]"
+   },
+   {
+    "say": "2. 8Due in 7 daysdocuments - start renewal.",
+    "el": "button[onclick=\"expCard('week')\"]"
    }
   ]
  },

@@ -223,10 +223,10 @@ GATES = {
     ("GET", "/export/payroll/settlement"): HR("gratuity"), ("GET", "/export/payroll/settlement/view"): HR("gratuity"),
     ("GET", "/export/payroll/gratuity"): HR("gratuity"), ("GET", "/export/payroll/gratuity/view"): HR("gratuity"),
     # Expiry reminder: people's documents, and the company's own
-    ("GET", "/employees/documents"): ["expiry.expiry.people", "payroll.hrpayroll.staff"],
+    ("GET", "/employees/documents"): ["expiry.expiry.people", "expiry.expiry.all", "payroll.hrpayroll.staff"],
     ("POST", "/employees/documents"): ["expiry.expiry.people", "payroll.hrpayroll.staff"],
     ("DELETE", "/employees/documents/{doc_id}"): ["expiry.expiry.people", "payroll.hrpayroll.staff"],
-    ("GET", "/employees/expiries"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
+    ("GET", "/employees/expiries"): ["expiry.expiry.company", "expiry.expiry.all", "payroll.hrpayroll.staff"],
     ("POST", "/employees/expiries"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
     ("DELETE", "/employees/expiries/{xid}"): ["expiry.expiry.company", "payroll.hrpayroll.staff"],
     # Attendance > Daily report
