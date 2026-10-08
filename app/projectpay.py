@@ -407,7 +407,7 @@ def _html(r, detail, pdf_url, excel_url):
         f'<div><span>{escape(lab)}</span><b style="color:{col}">{escape(val)}</b>'
         + (f'<span class="bar big"><i style="width:{min(100, b)}%"></i></span>' if b is not None else f"<small>{escape(note)}</small>") + "</div>"
         for lab, val, note, col, b in _kpis(r)) + "</div>"
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>Project Payment Tracker - {_title(detail)}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
 .page{{max-width:1280px;margin:18px auto;background:#fff;padding:28px 32px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}

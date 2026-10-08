@@ -293,7 +293,7 @@ def _html(s, pdf_url, excel_url):
     grat = "".join(f"<tr><td>{a}</td><td class='n'>{b}</td><td class='n'>{c}</td><td class='n'>{d}</td><td class='n'>{x}</td></tr>"
                    for a, b, c, d, x in _grat_rows(s))
     net = s["net"]
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>Final Settlement - {escape(e['name'])}</title><style>
 :root{{--ink:#1d2433;--mute:#6b7280;--line:#dfe3ea;--head:#1f2d45;--soft:#f5f7fa;--bg:#e9ecf1}}
 *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);font:13px/1.45 Arial,Helvetica,sans-serif;color:var(--ink)}}

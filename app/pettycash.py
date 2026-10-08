@@ -257,7 +257,7 @@ def _html(r, pdf_url, excel_url):
     body = "".join(f"<tr class='{'bf' if ln['bf'] else ''}'>" + "".join(cell(c, ln) for c in spec) + "</tr>" for ln in _lines(r))
     ntext = len(spec) - 3
     head = "".join(f'<th class="{"n" if c["key"] in NUM else ("l" if c["key"] in ("desc", "sup") else "")}">{escape(c["label"])}</th>' for c in spec)
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
 .page{{max-width:1000px;margin:18px auto;background:#fff;padding:30px 36px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}

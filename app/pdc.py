@@ -292,7 +292,7 @@ def _html(t, pdf_url, excel_url):
     body = "".join(line(r) for r in t["rows"])
     foot = ("<tr><td class='l'>TOTAL (Monthly)</td>" + "".join(f"<td class='n'>{_money(v)}</td>" for v in
             (([t["overdue"]] if t["overdue"] else []) + t["totals"] + [t["grand"]])) + "</tr>")
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>PDC Tracker - {escape(t['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
 .bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end}}

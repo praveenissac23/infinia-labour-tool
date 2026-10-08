@@ -2746,7 +2746,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
         for c in cards)
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
@@ -7427,7 +7427,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
                if _map.startswith("http") else "")
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          background:#F1EFEA; color:#1F2429; }}
@@ -7786,7 +7786,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{e(note.get('ref') or 'Return Note')}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
@@ -8038,7 +8038,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
              f'<thead><tr>{head}</tr></thead><tbody>{body}{foot}</tbody></table>')
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
