@@ -1249,7 +1249,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="e4549692afff";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="cb44b304d183";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2298,7 +2298,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div id="hr-doc-all" style="display:none;">
                 <p style="font-size:12px; color:#888; margin:0 0 10px;">Every document that expires - staff, labour, vehicles, licences, NOCs, permits - in one list, soonest first, so nothing is missed. Click a line to renew or correct it.</p>
                 <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                  <select id="hr-all-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderAllDocs()">
+                  <select id="exp-all-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderAllDocs()">
                     <option value="30" selected>Expired or due in 30 days</option>
                     <option value="7">Expired or due in 7 days</option>
                     <option value="0">Expired only</option>
@@ -2307,15 +2307,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                     <option value="90">Expired or due in 90 days</option>
                     <option value="-1">Everything on file</option>
                   </select>
-                  <select id="hr-all-type" class="hr-dd" style="width:190px;" onchange="renderAllDocs()">
+                  <select id="exp-all-type" class="hr-dd" style="width:190px;" onchange="renderAllDocs()">
                     <option value="">People and company</option><option value="person">People only</option><option value="company">Company only</option>
                   </select>
-                  <input type="text" id="hr-all-search" placeholder="Search name, item, number" style="width:240px;" oninput="renderAllDocs()">
+                  <input type="text" id="exp-all-search" placeholder="Search name, item, number" style="width:240px;" oninput="renderAllDocs()">
                 </div>
-                <p class="hr-nil" id="hr-all-count" style="margin:0 0 6px; font-size:12px;"></p>
+                <p class="hr-nil" id="exp-all-count" style="margin:0 0 6px; font-size:12px;"></p>
                 <div class="grid-wrap" style="max-height:calc(100vh - 380px);"><table><thead><tr>
                   <th>For</th><th>Name / item</th><th>Document</th><th>Number</th><th>Expires</th><th>Standing</th>
-                </tr></thead><tbody id="hr-all-body"></tbody></table></div>
+                </tr></thead><tbody id="exp-all-body"></tbody></table></div>
               </div>
               <div id="hr-doc-people">
               <p style="font-size:12px; color:#888; margin:0 0 10px;">
@@ -14173,14 +14173,14 @@ function expCard(k) {
   const v = { expired: "0", week: "w", month: "m", missing: "missing", all: "-1" }[k];
   if (k === "missing") { hrDocMode("people"); if (typeof pgSub === "function") try { pgSub("people"); } catch (e) {} }
   const company = document.getElementById("hr-doc-company").style.display !== "none";
-  if (expIsAll() && k !== "missing") { document.getElementById("hr-all-within").value = v; expCardsMark(); renderAllDocs(); return; }
+  if (expIsAll() && k !== "missing") { document.getElementById("exp-all-within").value = v; expCardsMark(); renderAllDocs(); return; }
   if (company && k !== "missing") document.getElementById("hr-exp-within").value = v;
   else document.getElementById("hr-doc-within").value = k === "all" ? "-1" : v;
   expCardsMark(); renderDocuments(); renderExpiries();
 }
 function expCardsMark() {
   const company = document.getElementById("hr-doc-company").style.display !== "none", all = expIsAll();
-  const v = document.getElementById(all ? "hr-all-within" : company ? "hr-exp-within" : "hr-doc-within").value;
+  const v = document.getElementById(all ? "exp-all-within" : company ? "hr-exp-within" : "hr-doc-within").value;
   const k = { "0": "expired", "w": "week", "m": "month", "missing": "missing", "-1": company || all ? "all" : "" }[v];
   document.querySelectorAll("#exp-cards .exp-card").forEach(b => b.classList.toggle("on", b.dataset.k === k));
 }
@@ -14419,8 +14419,8 @@ function expAllCounts() {
            month: HR_ALL.filter(x => n(x) !== null && n(x) >= 8 && n(x) <= 30).length, all: HR_ALL.length };
 }
 function renderAllDocs() {
-  const wv = document.getElementById("hr-all-within").value, type = document.getElementById("hr-all-type").value;
-  const q = (document.getElementById("hr-all-search").value || "").toLowerCase().trim();
+  const wv = document.getElementById("exp-all-within").value, type = document.getElementById("exp-all-type").value;
+  const q = (document.getElementById("exp-all-search").value || "").toLowerCase().trim();
   const within = wv === "w" || wv === "m" ? -2 : parseInt(wv, 10);
   const rows = HR_ALL.filter(r => (!type || r.src === type) &&
     (!q || `${r.name} ${r.code} ${r.number} ${r.doc} ${r.who}`.toLowerCase().includes(q)) &&
@@ -14428,8 +14428,8 @@ function renderAllDocs() {
      wv === "m" ? r.days_left !== null && r.days_left >= 8 && r.days_left <= 30 :
      within < 0 || (within === 0 ? r.status === "expired" : (r.days_left ?? 1e9) <= within)));
   const c = k => rows.filter(r => r.status === k).length;
-  document.getElementById("hr-all-count").textContent = `${rows.length} document${rows.length === 1 ? "" : "s"} - ${c("expired")} expired, ${c("urgent")} due in 30 days, ${c("soon")} in 90`;
-  document.getElementById("hr-all-body").innerHTML = rows.map(r => {
+  document.getElementById("exp-all-count").textContent = `${rows.length} document${rows.length === 1 ? "" : "s"} - ${c("expired")} expired, ${c("urgent")} due in 30 days, ${c("soon")} in 90`;
+  document.getElementById("exp-all-body").innerHTML = rows.map(r => {
     const n = r.days_left;
     const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago` : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
     const tag = (t, bg, fg) => `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(t)}</span>`;
