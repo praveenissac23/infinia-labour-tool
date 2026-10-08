@@ -1,0 +1,318 @@
+{
+ "site": [
+  {
+   "date": "2026-09-08",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 18.0
+  },
+  {
+   "date": "2026-09-10",
+   "description": "Machinery Repair & Maintenance",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 45.0
+  },
+  {
+   "date": "2026-09-10",
+   "description": "Boom loader for Concrete Materials Shifting",
+   "supplier": "MOHD SHAHZEB TRANSPORT AND RENTAL LLC",
+   "site": "",
+   "received": 0.0,
+   "paid": 150.0
+  },
+  {
+   "date": "2026-09-11",
+   "description": "Cash received",
+   "supplier": "",
+   "site": "",
+   "received": 5000.0,
+   "paid": 0.0
+  },
+  {
+   "date": "2026-09-11",
+   "description": "From Jomon petty cash (To Shaiju)",
+   "supplier": "",
+   "site": "",
+   "received": 1000.0,
+   "paid": 0.0
+  },
+  {
+   "date": "2026-09-11",
+   "description": "Fuel for Compactor & Generators",
+   "supplier": "Enoc Retail LLC",
+   "site": "",
+   "received": 0.0,
+   "paid": 75.0
+  },
+  {
+   "date": "2026-09-11",
+   "description": "Painting Material Purchase",
+   "supplier": "Jasi Building Materials Tr LLC",
+   "site": "",
+   "received": 0.0,
+   "paid": 68.0
+  },
+  {
+   "date": "2026-09-12",
+   "description": "Materials for Temporary Electrical Supply, Site Refreshment & Grocery Expenses, Water Tapping work for Temporary DEWA Connection",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 405.0
+  },
+  {
+   "date": "2026-09-12",
+   "description": "Building Materials for Sites, Fuel for Compactor & Generators",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 249.0
+  },
+  {
+   "date": "2026-09-12",
+   "description": "Employee Advance, Labour Camp Expenses, Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 857.0
+  },
+  {
+   "date": "2026-09-14",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 330.0
+  },
+  {
+   "date": "2026-09-14",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 20.0
+  },
+  {
+   "date": "2026-09-14",
+   "description": "Transportation for site work",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 45.0
+  },
+  {
+   "date": "2026-09-15",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 16.0
+  },
+  {
+   "date": "2026-09-15",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 134.0
+  },
+  {
+   "date": "2026-09-16",
+   "description": "Adhesive for Pool Tile Fixing, Fuel for Compactor & Generators",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 341.6
+  },
+  {
+   "date": "2026-09-17",
+   "description": "Cash received",
+   "supplier": "",
+   "site": "",
+   "received": 5000.0,
+   "paid": 0.0
+  },
+  {
+   "date": "2026-09-18",
+   "description": "Fuel for Compactor & Generators",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 140.0
+  },
+  {
+   "date": "2026-09-18",
+   "description": "Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 36.0
+  },
+  {
+   "date": "2026-09-18",
+   "description": "Site Refreshment & Grocery Expenses, Sonic Battery for Generator, Voltage Regulator for Printer",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 1119.5
+  },
+  {
+   "date": "2026-09-19",
+   "description": "Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 60.0
+  },
+  {
+   "date": "2026-09-19",
+   "description": "Employee Advance, Generator Repair & Maintenance, Labour Camp Expenses, Labour's Benefit for Additional Work, Leaf Blower - 1200w - Dongcheng, Site Refreshment & Grocery Expenses, Tip for Security or Drivers, Vehicle Repair and Maintenance Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 955.48
+  },
+  {
+   "date": "2026-09-21",
+   "description": "Labour's Benefit for Additional Work",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 20.0
+  },
+  {
+   "date": "2026-09-24",
+   "description": "Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 10.0
+  },
+  {
+   "date": "2026-09-24",
+   "description": "Boom Loader for site materials shifting, Chemical Anchoring for wall steel fixing, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 394.75
+  },
+  {
+   "date": "2026-09-25",
+   "description": "Building Materials for Tile Works",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 34.02
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Building Materials for Sites, Labour Camp Expenses, Vehicle Repair and Maintenance Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 225.0
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 190.0
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Fuel for Compactor & Generators, Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses, Tip for Security or Drivers",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 207.3
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Building Materials for Tile Works, Chemical Anchoring for wall steel fixing",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 223.81
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Boom Loader for site materials shifting, Building Materials for Concrete Work, Building Materials for Sites, Chemical Anchoring for wall steel fixing, Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 932.98
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Tip for Security or Drivers",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 20.0
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Telephone Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 50.0
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Adhesive for Tile Fixing, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 91.0
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Fuel for Compactor & Generators",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 140.0
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Building Materials for Sites, Site Refreshment & Grocery Expenses, Tip for Security or Drivers, Vehicle Repair and Maintenance Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 268.0
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Building Materials for Concrete Work, Cleaning Materials for sites, Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 724.75
+  },
+  {
+   "date": "2026-10-02",
+   "description": "Labour's Benefit for Additional Work, Site Refreshment & Grocery Expenses",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 126.0
+  }
+ ],
+ "pro": [
+  {
+   "date": "2026-09-11",
+   "description": "To Shaiju - site petty cash",
+   "supplier": "",
+   "site": "",
+   "received": 0.0,
+   "paid": 1000.0
+  }
+ ]
+}
