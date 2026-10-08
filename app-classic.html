@@ -16006,7 +16006,7 @@ async function pushAfterLogin() {
   if (!phone || navigator.webdriver) return;
   let later = 0; try { later = +localStorage.getItem("push_banner_later") || 0; } catch (e) {}
   if (Date.now() - later < 3 * 24 * 3600 * 1000) return;
-  if (PUSH_OK && Notification.permission !== "default") {
+  if (PUSH_OK && Notification.permission !== "default" && !(IS_IOS && !IS_STANDALONE)) {
     // Already allowed: make sure the server still has this phone.
     if (Notification.permission === "granted") { const s = await pushSub().catch(() => null); if (s) apiCall("/notifications/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...s.toJSON(), device: pushDevice() }) }).catch(() => {}); }
     return;

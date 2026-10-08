@@ -1247,7 +1247,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="2a0b1bc33469";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="84d41af2393f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -16212,7 +16212,7 @@ async function pushAfterLogin() {
   if (!phone || navigator.webdriver) return;
   let later = 0; try { later = +localStorage.getItem("push_banner_later") || 0; } catch (e) {}
   if (Date.now() - later < 3 * 24 * 3600 * 1000) return;
-  if (PUSH_OK && Notification.permission !== "default") {
+  if (PUSH_OK && Notification.permission !== "default" && !(IS_IOS && !IS_STANDALONE)) {
     // Already allowed: make sure the server still has this phone.
     if (Notification.permission === "granted") { const s = await pushSub().catch(() => null); if (s) apiCall("/notifications/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...s.toJSON(), device: pushDevice() }) }).catch(() => {}); }
     return;
