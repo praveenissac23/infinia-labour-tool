@@ -786,7 +786,7 @@ def _where_from(request):
 
 
 @app.post("/auth/login", response_model=schemas.TokenResponse)
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not user.active or not auth.verify_password(form_data.password, user.hashed_password):
         # A refused sign-in is logged under the login it named (when it
@@ -794,8 +794,14 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         if user:
             log_action(db, user.id, "login_failed", f"wrong password {_where_from(request)}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
-    token = auth.create_access_token({"sub": user.username})
-    log_action(db, user.id, "login", _where_from(request))
+    # "Keep me signed in on this phone": a month-long sign-in, kept by the
+    # phone and guarded by its own lock.
+    try:
+        remember = str((await request.form()).get("remember") or "") == "1"
+    except Exception:
+        remember = False
+    token = auth.create_access_token({"sub": user.username}, remember=remember)
+    log_action(db, user.id, "login", _where_from(request) + (" - kept signed in" if remember else ""))
     maybe_create_auto_backup(db)
     return schemas.TokenResponse(access_token=token, username=user.username,
                                   role=user.role, full_name=user.full_name)

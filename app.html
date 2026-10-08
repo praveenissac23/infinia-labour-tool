@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Infinia App</title>
+<script>/* A sign-in kept on this phone ("Keep me signed in") comes back before anything else runs. */
+try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infinia_keep")) sessionStorage.setItem("infinia_token", localStorage.getItem("infinia_keep")); } catch (e) {}</script>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#2E3238">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1247,7 +1249,7 @@
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="84d41af2393f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="e4549692afff";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1276,6 +1278,8 @@
     <input type="password" id="login-password" placeholder="Password">
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
       <input type="checkbox" onchange="togglePassword('login-password', this)" style="width:auto; margin-right:5px;"> Show password</label>
+    <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;" title="Stays signed in for 30 days - your phone's own lock (Face ID, fingerprint, PIN) protects it">
+      <input type="checkbox" id="login-keep" style="width:auto; margin-right:5px;"> Keep me signed in on this phone</label>
     <button onclick="doLogin()">Sign In</button>
     <div id="login-error"></div>
   </div>
@@ -4116,7 +4120,7 @@ async function doLogin() {
     const res = await fetch(API + "/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+      body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&remember=${document.getElementById("login-keep").checked ? 1 : 0}`
     });
     if (!res.ok) throw new Error("Incorrect username or password.");
     const data = await res.json();
@@ -4124,6 +4128,8 @@ async function doLogin() {
     CURRENT_ROLE = data.role;
     CURRENT_USERNAME = data.username || "";
     sessionStorage.setItem("infinia_token", TOKEN);
+    // Kept on the phone itself when asked, so closing the app does not sign out.
+    try { if (document.getElementById("login-keep").checked) localStorage.setItem("infinia_keep", TOKEN); else localStorage.removeItem("infinia_keep"); } catch (e) {}
     document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
     try { sessionStorage.setItem("infinia_who", `${data.full_name} (${data.role})`); } catch (e) {}
     document.getElementById("login-screen").style.display = "none";
@@ -4135,7 +4141,7 @@ async function doLogin() {
 }
 
 function doLogout() {
-  try { sessionStorage.removeItem("infinia_user"); sessionStorage.removeItem("infinia_stock_home"); } catch (e) {}
+  try { sessionStorage.removeItem("infinia_user"); sessionStorage.removeItem("infinia_stock_home"); localStorage.removeItem("infinia_keep"); } catch (e) {}
   sessionStorage.removeItem("infinia_token");
   location.reload();
 }
@@ -12632,7 +12638,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
       // Only a sign-in the server refuses ends it. A dropped or slow
       // connection (a weak site network) tries again instead of throwing
       // the person back to the sign-in box.
-      if (e && e.status === 401) sessionStorage.removeItem("infinia_token");
+      if (e && e.status === 401) { sessionStorage.removeItem("infinia_token"); try { localStorage.removeItem("infinia_keep"); } catch (x) {} }
       else setTimeout(tryResume, 2500);
     });
   }
