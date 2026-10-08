@@ -25,15 +25,30 @@ import urllib.request
 from datetime import datetime
 from urllib.parse import urlparse
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from database import Base
+
+# The crypto library is loaded only when a notification is actually
+# signed or sent - never at start-up - so a server without it still
+# serves the whole app; only phone notifications are off.
+def _crypto():
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    return hashes, serialization, ec, decode_dss_signature, AESGCM, HKDF
+
+
+def available():
+    try:
+        _crypto()
+        return True
+    except Exception:
+        return False
+
 
 CONTACT = "mailto:engineers@infinia.ae"
 EVERY_SECONDS = 120
@@ -74,6 +89,7 @@ def unb64u(s: str) -> bytes:
 
 def vapid_keys(db, models):
     """(private key, public key as base64url) - made once and kept."""
+    hashes, serialization, ec, decode_dss_signature, AESGCM, HKDF = _crypto()
     row = db.query(models.Setting).filter(models.Setting.key == "vapid_private").first()
     if not row:
         key = ec.generate_private_key(ec.SECP256R1())
@@ -88,6 +104,7 @@ def vapid_keys(db, models):
 
 
 def _vapid_header(key, pub_b64, endpoint):
+    hashes, serialization, ec, decode_dss_signature, AESGCM, HKDF = _crypto()
     u = urlparse(endpoint)
     head = b64u(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode())
     body = b64u(json.dumps({"aud": f"{u.scheme}://{u.netloc}", "exp": int(time.time()) + 12 * 3600,
@@ -99,11 +116,13 @@ def _vapid_header(key, pub_b64, endpoint):
 
 
 def _hkdf(salt, ikm, info, n):
+    hashes, serialization, ec, decode_dss_signature, AESGCM, HKDF = _crypto()
     return HKDF(algorithm=hashes.SHA256(), length=n, salt=salt, info=info).derive(ikm)
 
 
 def encrypt(payload: bytes, p256dh: str, auth: str, salt: bytes = None, server_key=None) -> bytes:
     """RFC 8291 aes128gcm: only the phone holding the matching key can read it."""
+    hashes, serialization, ec, decode_dss_signature, AESGCM, HKDF = _crypto()
     ua_pub_bytes = unb64u(p256dh)
     auth_secret = unb64u(auth)
     ua_pub = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), ua_pub_bytes)

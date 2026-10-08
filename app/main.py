@@ -11289,8 +11289,14 @@ def my_permissions(user: models.User = Depends(auth.get_current_user)):
 # ---------------------------------------------------------------------
 # PHONE NOTIFICATIONS - see push.py
 # ---------------------------------------------------------------------
+def _push_ready():
+    if not push.available():
+        raise HTTPException(status_code=503, detail="Phone notifications are not set up on this server yet (the cryptography library is missing).")
+
+
 @app.get("/notifications/push/key")
 def push_key(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    _push_ready()
     _, pub = push.vapid_keys(db, models)
     return {"key": pub}
 
@@ -11336,6 +11342,7 @@ def push_status(db: Session = Depends(get_db), user: models.User = Depends(auth.
 
 @app.post("/notifications/push/test")
 def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    _push_ready()
     key, pub = push.vapid_keys(db, models)
     subs = db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).all()
     if not subs:
@@ -11361,7 +11368,7 @@ def _notes_for(db, user):
 
 @app.on_event("startup")
 def _start_push_loop():
-    if os.environ.get("INFINIA_NO_PUSH") != "1":
+    if os.environ.get("INFINIA_NO_PUSH") != "1" and push.available():
         push.start_loop(SessionLocal, models, _notes_for)
 
 
