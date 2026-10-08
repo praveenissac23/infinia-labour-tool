@@ -11325,7 +11325,7 @@ def push_subscribe(payload: dict = Body(...), db: Session = Depends(get_db),
     # What is already waiting is not pushed all at once to a phone that
     # has just signed up - only what comes after.
     push.push_new(SessionLocal, models, _notes_for, seed=True, only_user=user.id)
-    log_action(db, user.id, "push_on", s.device or "a phone")
+    log_action(db, user.id, "push_on", s.device or "a device")
     return {"ok": True, "devices": db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).count()}
 
 
@@ -11352,7 +11352,7 @@ def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
     key, pub = push.vapid_keys(db, models)
     subs = db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).all()
     if not subs:
-        raise HTTPException(status_code=400, detail="No phone is signed up for notifications on this login yet.")
+        raise HTTPException(status_code=400, detail="No device is signed up for notifications on this login yet.")
     res = []
     for s in subs:
         st = push.send(key, pub, s, {"title": "Infinia", "body": "Test notification - phone notifications are working.",

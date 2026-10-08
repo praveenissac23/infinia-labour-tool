@@ -1119,7 +1119,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
       <input type="checkbox" onchange="togglePassword('login-password', this)" style="width:auto; margin-right:5px;"> Show password</label>
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;" title="Stays signed in for 30 days - your phone's own lock (Face ID, fingerprint, PIN) protects it">
-      <input type="checkbox" id="login-keep" style="width:auto; margin-right:5px;"> Keep me signed in on this phone</label>
+      <input type="checkbox" id="login-keep" style="width:auto; margin-right:5px;"> Keep me signed in on this device</label>
     <button onclick="doLogin()">Sign In</button>
     <div id="login-error"></div>
   </div>
@@ -3224,18 +3224,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="status-msg" id="settings-status"></div>
           <div class="card" id="pg-notif-card">
             <h2>My notifications</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">What the bell and this phone tell you about. Untick anything you do not want; it applies to this login everywhere.</p>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">What the bell and your devices tell you about. Untick anything you do not want; it applies to this login everywhere.</p>
             <div id="notif-groups" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:4px 18px;"></div>
             <div class="form-row" style="margin-top:10px;"><button class="btn btn-primary" onclick="notifSave()">Save</button><span id="notif-msg" style="font-size:12px; color:#888; margin-left:8px;"></span></div>
           </div>
           <div class="card" id="pg-push-card">
-            <h2>Phone notifications</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 10px;">New requests, approvals, late orders, low stock, missing attendance and expiring documents - whatever this login can open - arrive on this phone like a message, even when the app is closed.</p>
+            <h2>Notifications on this device</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">New requests, approvals, late orders, low stock, missing attendance and expiring documents - whatever this login can open - arrive on this device like a message - on a phone even when the app is closed; on a laptop while Chrome or Edge is open. Turn it on separately on each device you use.</p>
             <div id="push-state" style="font-size:13px; margin-bottom:10px;"></div>
             <div class="form-row" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-primary" id="push-on-btn" onclick="pushEnable()">Turn on for this phone</button>
+              <button class="btn btn-primary" id="push-on-btn" onclick="pushEnable()">Turn on for this device</button>
               <button class="btn btn-dark" id="push-test-btn" onclick="pushTest()">Send a test</button>
-              <button class="btn btn-dark" id="push-off-btn" onclick="pushDisable()">Turn off for this phone</button>
+              <button class="btn btn-dark" id="push-off-btn" onclick="pushDisable()">Turn off for this device</button>
             </div>
           </div>
           <div class="card">
@@ -15964,7 +15964,7 @@ async function pushEnable() {
   if (!PUSH_OK) { pushExplain(); return; }
   if (IS_IOS && !IS_STANDALONE) { pushExplain(); return; }
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") { showStatus("settings-status", "warn", "Notifications are blocked for this app - allow them in the phone's settings, then try again."); pushPaint(); return; }
+  if (perm !== "granted") { showStatus("settings-status", "warn", "Notifications are blocked for Infinia - allow them in the browser or phone settings, then try again."); pushPaint(); return; }
   try {
     const reg = SW_REG || await navigator.serviceWorker.ready;
     const { key } = await apiCall("/notifications/push/key");
@@ -15974,24 +15974,24 @@ async function pushEnable() {
     await apiCall("/notifications/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...sub.toJSON(), device: pushDevice() }) });
     document.getElementById("push-banner").style.display = "none";
-    showStatus("settings-status", "ok", "Notifications are on for this phone.");
+    showStatus("settings-status", "ok", "Notifications are on for this device.");
   } catch (e) { showStatus("settings-status", "err", "Could not turn notifications on: " + errText(e)); }
   pushPaint();
 }
 async function pushDisable() {
   try { const sub = await pushSub(); if (sub) { await apiCall("/notifications/push/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); } }
   catch (e) {}
-  showStatus("settings-status", "ok", "Notifications are off for this phone."); pushPaint();
+  showStatus("settings-status", "ok", "Notifications are off for this device."); pushPaint();
 }
 async function pushTest() {
   try { const r = await apiCall("/notifications/push/test", { method: "POST" });
-    showStatus("settings-status", r.sent ? "ok" : "warn", r.sent ? `Test sent to ${r.sent} device${r.sent === 1 ? "" : "s"} - it should arrive in a few seconds.` : "The test could not be delivered - turn notifications off and on again on the phone."); }
+    showStatus("settings-status", r.sent ? "ok" : "warn", r.sent ? `Test sent to ${r.sent} device${r.sent === 1 ? "" : "s"} - it should arrive in a few seconds.` : "The test could not be delivered - turn notifications off and on again on that device."); }
   catch (e) { showStatus("settings-status", "warn", errText(e)); }
 }
 function pushExplain() {
   const msg = IS_IOS && !IS_STANDALONE
     ? "On iPhone, notifications work from the app on the home screen: in Safari tap the Share button, then 'Add to Home Screen', open Infinia from the new icon and turn notifications on there."
-    : "This browser cannot show phone notifications. On Android use Chrome; on iPhone add the app to the home screen first.";
+    : "This browser cannot show notifications. On a laptop or Android use Chrome or Edge; on iPhone add the app to the home screen first.";
   showStatus("settings-status", "warn", msg);
   const t = document.getElementById("push-banner-text"); if (t) t.textContent = msg;
 }
@@ -16015,9 +16015,9 @@ async function pushPaint() {
   let sub = null; try { sub = await pushSub(); } catch (e) {}
   let devices = []; try { devices = (await apiCall("/notifications/push/status")).devices || []; } catch (e) {}
   const here = PUSH_OK && sub && Notification.permission === "granted";
-  el.innerHTML = (!PUSH_OK ? '<b style="color:#B26A00;">This browser cannot show notifications.</b> ' + (IS_IOS ? "Add Infinia to the home screen (Share &rsaquo; Add to Home Screen) and open it from there." : "Use Chrome on Android.")
+  el.innerHTML = (!PUSH_OK ? '<b style="color:#B26A00;">This browser cannot show notifications.</b> ' + (IS_IOS ? "Add Infinia to the home screen (Share &rsaquo; Add to Home Screen) and open it from there." : "Use Chrome or Edge.")
     : IS_IOS && !IS_STANDALONE ? '<b style="color:#B26A00;">On iPhone: add Infinia to the home screen first</b> - Share &rsaquo; Add to Home Screen - then open it from the icon and turn notifications on.'
-    : here ? '<b style="color:#1E7A3A;">On for this phone.</b>' : Notification.permission === "denied" ? '<b style="color:#C0392B;">Blocked</b> - allow notifications for Infinia in the phone settings.' : "Off for this phone.")
+    : here ? '<b style="color:#1E7A3A;">On for this device.</b>' : Notification.permission === "denied" ? '<b style="color:#C0392B;">Blocked</b> - allow notifications for Infinia in this browser or the phone settings.' : "Off for this device.")
     + (devices.length ? ` <span style="color:#888;">This login gets them on ${devices.length} device${devices.length === 1 ? "" : "s"}: ${devices.map(d => escapeHtml(d.device)).join(", ")}.</span>` : "");
   if (on) on.style.display = here ? "none" : "";
   if (off) off.style.display = here ? "" : "none";
@@ -16039,7 +16039,7 @@ async function pushAfterLogin() {
   }
   const t = document.getElementById("push-banner-text");
   if (IS_IOS && !IS_STANDALONE) { t.innerHTML = "<b>Get Infinia on your home screen</b> with notifications: tap Share, then <b>Add to Home Screen</b>."; document.getElementById("push-banner-go").style.display = "none"; }
-  else if (PUSH_OK) t.innerHTML = "<b>Get notifications on this phone</b> - new requests, approvals, late orders and expiries.";
+  else if (PUSH_OK) t.innerHTML = "<b>Get notifications on this device</b> - new requests, approvals, late orders and expiries.";
   else return;
   document.getElementById("push-banner").style.display = "block";
 }
