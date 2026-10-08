@@ -503,9 +503,17 @@ def col_fractions(rows, cols, money_cols=None, total_cols=None):
             if not p:
                 widths.append(n)                                   # tokens: their full width
             elif want <= room:
-                widths.append(n + (room - want) * n / want)        # spare room goes to the words
+                widths.append(n)                                   # words: what their longest line needs
             else:
                 widths.append(max(min(n, 90.0), room * n / want))  # words squeeze, with a floor
+        # Spare page is shared by every column in proportion - a little air
+        # in each - rather than piled onto the one column of names, which
+        # left an inch of white after every material while Unit and Type
+        # broke into pieces.
+        spare = page - sum(widths)
+        if spare > 0.5:
+            tot = sum(widths) or 1.0
+            widths = [w + spare * w / tot for w in widths]
         over = sum(widths) - page
         if over > 0.5:   # the floors pushed past the page: take it back from the wider word columns
             give = [(w - min(n, 90.0)) if p else 0.0 for w, n, p in zip(widths, need, prose)]

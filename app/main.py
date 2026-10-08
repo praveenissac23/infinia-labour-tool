@@ -11288,7 +11288,7 @@ def view_daily_report(token: str, day: date, report: str = "summary", site: str 
     t = quote(auth.create_view_token(user.username), safe="")
     url = f"/export/attendance/daily?token={t}&day={day.isoformat()}&report={quote(report)}&site={quote(site)}&trade={quote(trade)}"
     rows = d["rows"] or [{"": "Nothing to show for this day."}]
-    return _preview_page(d["title"], d["sub"], rows, url + "&format=pdf", url + "&format=excel")
+    return _preview_page(d["title"], d["sub"], rows, url, url)
 
 
 @app.get("/permissions/screens")
