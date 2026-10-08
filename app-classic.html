@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Infinia App</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#2E3238">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Infinia">
+<link rel="apple-touch-icon" href="/portal/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <style>
   :root {
@@ -3211,6 +3218,16 @@
         <!-- ============ SETTINGS SCREEN ============ -->
         <div class="screen" id="screen-settings">
           <div class="status-msg" id="settings-status"></div>
+          <div class="card" id="pg-push-card">
+            <h2>Phone notifications</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">New requests, approvals, late orders, low stock, missing attendance and expiring documents - whatever this login can open - arrive on this phone like a message, even when the app is closed.</p>
+            <div id="push-state" style="font-size:13px; margin-bottom:10px;"></div>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-primary" id="push-on-btn" onclick="pushEnable()">Turn on for this phone</button>
+              <button class="btn btn-dark" id="push-test-btn" onclick="pushTest()">Send a test</button>
+              <button class="btn btn-dark" id="push-off-btn" onclick="pushDisable()">Turn off for this phone</button>
+            </div>
+          </div>
           <div class="card">
             <h2>Change Your Password</h2>
             <div class="form-row">
@@ -11963,6 +11980,7 @@ async function applyScreenPermissions(prefetched) {
     const me = (prefetched && await prefetched) || await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
     MY_TABS = Array.isArray(me.tabs) ? me.tabs : null;
+    setTimeout(() => { try { pushAfterLogin(); } catch (e) {} }, 1200);
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
     // call returns found it empty and hid the buttons from everybody,
@@ -15883,6 +15901,121 @@ async function dailyReportCopy() {
   catch (e) { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
   showStatus("att-status", "ok", "Copied - paste it into WhatsApp.");
   const b = [...document.querySelectorAll("#dr-modal .dr-acts button")].pop(); if (b) { const o = b.textContent; b.textContent = "Copied ✓"; setTimeout(() => b.textContent = o, 1800); }
+}
+</script>
+
+<div id="push-banner" style="display:none; position:fixed; left:12px; right:12px; bottom:12px; z-index:2600; max-width:560px; margin:0 auto;
+     background:#2E3238; color:#fff; border-radius:12px; padding:12px 14px; box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px;">
+  <div style="display:flex; gap:12px; align-items:center;">
+    <img src="/portal/icon-192.png" alt="" style="width:36px; height:36px; border-radius:8px; flex:none;">
+    <div style="flex:1;" id="push-banner-text"></div>
+    <button class="btn btn-primary" id="push-banner-go" onclick="pushEnable()" style="white-space:nowrap;">Turn on</button>
+    <span onclick="pushBannerLater()" style="cursor:pointer; color:#aaa; font-size:20px; line-height:1; padding:0 2px;" title="Not now">&times;</span>
+  </div>
+</div>
+<script>
+// ---- Phone app: home-screen install and phone notifications ------------------
+const PUSH_OK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_STANDALONE = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+let SW_REG = null;
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").then(r => { SW_REG = r; }).catch(() => {});
+  // A notification tapped while the app is open: go to the item.
+  navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "infinia-open") pushOpenUrl(e.data.url); });
+}
+function pushOpenUrl(url) {
+  try {
+    const q = new URL(url, location.origin).searchParams;
+    const screen = q.get("n_screen"), target = q.get("n_target"), id = q.get("n_id");
+    if (screen && typeof openNotification === "function") openNotification(id || "", screen, target || "");
+  } catch (e) {}
+}
+// Opened from a notification: the address says where to go.
+function pushArrival() {
+  if (!/[?&]n_screen=/.test(location.search)) return;
+  const url = location.href;
+  history.replaceState(null, "", location.pathname + location.hash);
+  setTimeout(() => pushOpenUrl(url), 600);
+}
+function pushDevice() {
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua) ? "Android" : IS_IOS ? "iPhone" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Computer";
+  return `${os}${IS_STANDALONE ? " (app)" : " (browser)"}`;
+}
+async function pushSub() {
+  if (!PUSH_OK) return null;
+  const reg = SW_REG || await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+async function pushEnable() {
+  if (!PUSH_OK) { pushExplain(); return; }
+  if (IS_IOS && !IS_STANDALONE) { pushExplain(); return; }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") { showStatus("settings-status", "warn", "Notifications are blocked for this app - allow them in the phone's settings, then try again."); pushPaint(); return; }
+  try {
+    const reg = SW_REG || await navigator.serviceWorker.ready;
+    const { key } = await apiCall("/notifications/push/key");
+    const raw = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((key.length + 3) % 4)), c => c.charCodeAt(0));
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+    await apiCall("/notifications/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...sub.toJSON(), device: pushDevice() }) });
+    document.getElementById("push-banner").style.display = "none";
+    showStatus("settings-status", "ok", "Notifications are on for this phone.");
+  } catch (e) { showStatus("settings-status", "err", "Could not turn notifications on: " + errText(e)); }
+  pushPaint();
+}
+async function pushDisable() {
+  try { const sub = await pushSub(); if (sub) { await apiCall("/notifications/push/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); } }
+  catch (e) {}
+  showStatus("settings-status", "ok", "Notifications are off for this phone."); pushPaint();
+}
+async function pushTest() {
+  try { const r = await apiCall("/notifications/push/test", { method: "POST" });
+    showStatus("settings-status", r.sent ? "ok" : "warn", r.sent ? `Test sent to ${r.sent} device${r.sent === 1 ? "" : "s"} - it should arrive in a few seconds.` : "The test could not be delivered - turn notifications off and on again on the phone."); }
+  catch (e) { showStatus("settings-status", "warn", errText(e)); }
+}
+function pushExplain() {
+  const msg = IS_IOS && !IS_STANDALONE
+    ? "On iPhone, notifications work from the app on the home screen: in Safari tap the Share button, then 'Add to Home Screen', open Infinia from the new icon and turn notifications on there."
+    : "This browser cannot show phone notifications. On Android use Chrome; on iPhone add the app to the home screen first.";
+  showStatus("settings-status", "warn", msg);
+  const t = document.getElementById("push-banner-text"); if (t) t.textContent = msg;
+}
+async function pushPaint() {
+  const el = document.getElementById("push-state"); if (!el) return;
+  const on = document.getElementById("push-on-btn"), off = document.getElementById("push-off-btn"), test = document.getElementById("push-test-btn");
+  let sub = null; try { sub = await pushSub(); } catch (e) {}
+  let devices = []; try { devices = (await apiCall("/notifications/push/status")).devices || []; } catch (e) {}
+  const here = PUSH_OK && sub && Notification.permission === "granted";
+  el.innerHTML = (!PUSH_OK ? '<b style="color:#B26A00;">This browser cannot show notifications.</b> ' + (IS_IOS ? "Add Infinia to the home screen (Share &rsaquo; Add to Home Screen) and open it from there." : "Use Chrome on Android.")
+    : IS_IOS && !IS_STANDALONE ? '<b style="color:#B26A00;">On iPhone: add Infinia to the home screen first</b> - Share &rsaquo; Add to Home Screen - then open it from the icon and turn notifications on.'
+    : here ? '<b style="color:#1E7A3A;">On for this phone.</b>' : Notification.permission === "denied" ? '<b style="color:#C0392B;">Blocked</b> - allow notifications for Infinia in the phone settings.' : "Off for this phone.")
+    + (devices.length ? ` <span style="color:#888;">This login gets them on ${devices.length} device${devices.length === 1 ? "" : "s"}: ${devices.map(d => escapeHtml(d.device)).join(", ")}.</span>` : "");
+  if (on) on.style.display = here ? "none" : "";
+  if (off) off.style.display = here ? "" : "none";
+  if (test) test.style.display = devices.length ? "" : "none";
+}
+function pushBannerLater() { try { localStorage.setItem("push_banner_later", String(Date.now())); } catch (e) {} document.getElementById("push-banner").style.display = "none"; }
+// After signing in: offer notifications once in a while on a phone that has not decided.
+async function pushAfterLogin() {
+  pushArrival();
+  pushPaint();
+  const phone = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || IS_IOS;
+  if (!phone || navigator.webdriver) return;
+  let later = 0; try { later = +localStorage.getItem("push_banner_later") || 0; } catch (e) {}
+  if (Date.now() - later < 3 * 24 * 3600 * 1000) return;
+  if (PUSH_OK && Notification.permission !== "default" && !(IS_IOS && !IS_STANDALONE)) {
+    // Already allowed: make sure the server still has this phone.
+    if (Notification.permission === "granted") { const s = await pushSub().catch(() => null); if (s) apiCall("/notifications/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...s.toJSON(), device: pushDevice() }) }).catch(() => {}); }
+    return;
+  }
+  const t = document.getElementById("push-banner-text");
+  if (IS_IOS && !IS_STANDALONE) { t.innerHTML = "<b>Get Infinia on your home screen</b> with notifications: tap Share, then <b>Add to Home Screen</b>."; document.getElementById("push-banner-go").style.display = "none"; }
+  else if (PUSH_OK) t.innerHTML = "<b>Get notifications on this phone</b> - new requests, approvals, late orders and expiries.";
+  else return;
+  document.getElementById("push-banner").style.display = "block";
 }
 </script>
 </body>

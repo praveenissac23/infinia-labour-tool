@@ -138,7 +138,7 @@ PAGES = {
             sub("mr_history", "Requests", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
-            ["#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
+            ["#pg-push-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
         tab("logins", "pglogins", "Logins", "settings_logins"),
         tab("access", "pgaccess", "Access", "settings_access"),

@@ -37,6 +37,7 @@ import payroll_cycle as pcyc
 import reports as rp
 import export_web
 
+import push  # noqa: E402  (its tables are made with the rest)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Infinia Labour Tool API")
@@ -11283,6 +11284,85 @@ def list_screens(user: models.User = Depends(auth.get_current_user)):
 @app.get("/permissions/me")
 def my_permissions(user: models.User = Depends(auth.get_current_user)):
     return {"role": user.role, "screens": effective_permissions(user), "tabs": effective_tabs(user)}
+
+
+# ---------------------------------------------------------------------
+# PHONE NOTIFICATIONS - see push.py
+# ---------------------------------------------------------------------
+@app.get("/notifications/push/key")
+def push_key(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    _, pub = push.vapid_keys(db, models)
+    return {"key": pub}
+
+
+@app.post("/notifications/push/subscribe")
+def push_subscribe(payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = Depends(auth.get_current_user)):
+    ep = str(payload.get("endpoint") or "").strip()
+    keys = payload.get("keys") or {}
+    if not ep.startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
+        raise HTTPException(status_code=400, detail="That is not a push address this phone can use.")
+    s = db.query(push.PushSubscription).filter(push.PushSubscription.endpoint == ep).first()
+    if not s:
+        s = push.PushSubscription(endpoint=ep)
+        db.add(s)
+    s.user_id = user.id
+    s.p256dh, s.auth = keys["p256dh"], keys["auth"]
+    s.device = str(payload.get("device") or "")[:120]
+    db.commit()
+    # What is already waiting is not pushed all at once to a phone that
+    # has just signed up - only what comes after.
+    push.push_new(SessionLocal, models, _notes_for, seed=True, only_user=user.id)
+    log_action(db, user.id, "push_on", s.device or "a phone")
+    return {"ok": True, "devices": db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).count()}
+
+
+@app.post("/notifications/push/unsubscribe")
+def push_unsubscribe(payload: dict = Body(...), db: Session = Depends(get_db),
+                     user: models.User = Depends(auth.get_current_user)):
+    ep = str(payload.get("endpoint") or "").strip()
+    db.query(push.PushSubscription).filter(push.PushSubscription.endpoint == ep,
+                                           push.PushSubscription.user_id == user.id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/notifications/push/status")
+def push_status(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    subs = db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).all()
+    return {"devices": [{"device": s.device or "Phone", "since": s.created_at.isoformat() if s.created_at else "",
+                         "last_ok": s.last_ok.isoformat() if s.last_ok else ""} for s in subs]}
+
+
+@app.post("/notifications/push/test")
+def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    key, pub = push.vapid_keys(db, models)
+    subs = db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).all()
+    if not subs:
+        raise HTTPException(status_code=400, detail="No phone is signed up for notifications on this login yet.")
+    res = []
+    for s in subs:
+        st = push.send(key, pub, s, {"title": "Infinia", "body": "Test notification - phone notifications are working.",
+                                     "tag": "test", "url": "/"})
+        if st in (404, 410):
+            db.delete(s)
+        elif st in (200, 201, 202):
+            s.last_ok = datetime.utcnow()
+        res.append(st)
+    db.commit()
+    ok = sum(1 for x in res if x in (200, 201, 202))
+    return {"sent": ok, "devices": len(subs), "statuses": res}
+
+
+def _notes_for(db, user):
+    """The bell's list for one login - what its phone is told about."""
+    return get_notifications(db=db, user=user).get("notifications", [])
+
+
+@app.on_event("startup")
+def _start_push_loop():
+    if os.environ.get("INFINIA_NO_PUSH") != "1":
+        push.start_loop(SessionLocal, models, _notes_for)
 
 
 @app.post("/users/{user_id}/permissions")

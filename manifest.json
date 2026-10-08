@@ -1,0 +1,17 @@
+{
+  "name": "Infinia Contracting",
+  "short_name": "Infinia",
+  "description": "Infinia Contracting - attendance, store, payroll and approvals",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B0B0C",
+  "theme_color": "#2E3238",
+  "icons": [
+    { "src": "/portal/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/portal/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/portal/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
