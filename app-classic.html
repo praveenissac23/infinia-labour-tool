@@ -980,6 +980,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* The monthly report's Notes column: a line against each worker,
      typed straight into the row and saved as you leave the box. */
   .col-notes { min-width: 260px; text-align: left !important; }
+  /* The report preview is a sheet of figures: every column as wide as
+     what is in it and no wider, so a number is not an inch from the
+     next - the box fits the table instead of the table being stretched
+     to fill the box. */
+  #report-preview-card .grid-wrap { display: inline-block; max-width: 100%; vertical-align: top; }
+  #report-preview-card table { width: auto; }
+  #report-preview-card th, #report-preview-card td { padding-left: 14px; padding-right: 14px; white-space: nowrap; }
+  #report-preview-card td.col-notes, #report-preview-card th.col-notes { white-space: normal; }
+  /* A heading folds onto two lines rather than holding a column of
+     two-digit figures open to the width of "DAYS PRESENT". */
+  #report-preview-card th { vertical-align: bottom; line-height: 1.2; }
+  #report-preview-card th .hw { display: inline-block; max-width: 10em; white-space: normal; }
   .adj-lines { font-size: 12.5px; line-height: 1.4; margin-bottom: 4px; color: #222; }
   .adj-lines div::before { content: "\2022  "; color: #B45A4E; }
   .note-cell { width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px;
@@ -5775,7 +5787,7 @@ function renderReportPreview() {
                 ondrop="colDrop(event, '${c.key}')"
                 ondragend="colDragEnd()"
                 title="Drag to move this column, click to sort"
-                onclick="sortReportBy('${c.key}')">${c.label}${arrow}</th>`;
+                onclick="sortReportBy('${c.key}')"><span class="hw">${c.label}${arrow}</span></th>`;
   }).join("") + (monthlyMode
     ? `<th class="col-notes" title="This month's adjustments, and a note against this worker for management. The note saves as you leave the box.">Adjustments &amp; Notes</th>`
     : "");
@@ -15785,6 +15797,8 @@ async function addIncrement() {
       }
       if (skip || !seen || numeric < seen) continue;
       for (const r of rows) { const td = r.cells[c]; if (td) td.classList.add("auto-num"); }
+      // The totals line follows its column, so a total sits under its figures.
+      if (tbl.tFoot) for (const r of tbl.tFoot.rows) { const td = r.cells[c]; if (td && td.colSpan === 1) td.classList.add("auto-num"); }
       if (head && head.cells[c] && !ALIGNED.some(k => head.cells[c].classList.contains(k))) head.cells[c].classList.add("auto-num");
     }
   }
