@@ -11414,6 +11414,57 @@ MR_STATUS_WORDS = {
 }
 
 
+# ---- Which notifications: the role's allow-list, then the person's own choice ----
+# Each bell / phone item has a kind; these are the groups a role is
+# ticked for on Settings > Access and a person can switch off for
+# themselves on Settings > General.
+NOTIF_GROUPS = [
+    ("requests", "Material requests - new, late, status changes", ("request", "late", "status"), ("approvals", "requests")),
+    ("purchase", "Purchasing - orders to raise, deliveries due", ("purchase",), ("approvals",)),
+    ("store", "Store - low stock, rentals due back", ("low", "rental"), ("store",)),
+    ("attendance", "Attendance - missing or incomplete days", ("attendance",), ("attendance",)),
+    ("expiry", "Expiry reminder - documents, licences, NOCs", ("expiry",), ("expiry",)),
+    ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
+]
+NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
+
+
+def notif_groups_for(db, user):
+    """(allowed by the role, switched off by the person). Admin: all allowed."""
+    allowed = {g for g, *_ in NOTIF_GROUPS}
+    if user.role != "admin" and user.access_role_id:
+        r = db.query(models.AccessRole).filter(models.AccessRole.id == user.access_role_id).first()
+        if r is not None and r.notif is not None:
+            allowed = {x for x in (r.notif or "").split(",") if x}
+    off = {x for x in (user.notif_off or "").split(",") if x}
+    return allowed, off
+
+
+def notif_filter(db, user, items):
+    allowed, off = notif_groups_for(db, user)
+    keep = allowed - off
+    return [n for n in items if NOTIF_KIND_GROUP.get(n.get("kind"), "requests") in keep]
+
+
+@app.get("/notifications/settings")
+def notif_settings(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    allowed, off = notif_groups_for(db, user)
+    rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS)
+    return {"groups": [{"id": g, "label": l, "allowed": g in allowed and any(r in rights for r in needs),
+                        "on": g in allowed and g not in off} for g, l, _, needs in NOTIF_GROUPS]}
+
+
+@app.post("/notifications/settings")
+def save_notif_settings(payload: dict = Body(...), db: Session = Depends(get_db),
+                        user: models.User = Depends(auth.get_current_user)):
+    """The person's own switches: which of the allowed groups stay on."""
+    on = {str(x) for x in (payload.get("on") or [])}
+    ids = {g for g, *_ in NOTIF_GROUPS}
+    user.notif_off = ",".join(sorted(g for g in ids if g not in on))
+    db.commit()
+    return notif_settings(db=db, user=user)
+
+
 @app.get("/notifications")
 def get_notifications(db: Session = Depends(get_db),
                        user: models.User = Depends(auth.get_current_user)):
@@ -11460,6 +11511,17 @@ def get_notifications(db: Session = Depends(get_db),
                              "when": m.needed_by.isoformat(), "level": "warn"})
 
     # ---- Site staff: what happened to their requests -----------------
+    # ---- Purchasing: approved and waiting for an LPO -------------------
+    if "approvals" in allowed:
+        for m in reqs:
+            if m.status == "approved":
+                out.append({"id": f"lpo-{m.id}", "kind": "purchase", "request_id": m.id,
+                             "title": f"{m.ref} approved - raise the LPO",
+                             "detail": f"{_mr_lines(m)}" + (f" for site {m.site}" if m.site else "")
+                                       + (f", needed by {m.needed_by.isoformat()}" if m.needed_by else ""),
+                             "screen": "approvals", "target": m.ref,
+                             "when": (m.updated_at or m.requested_on).isoformat()[:10], "level": "info"})
+
     if "requests" in allowed:
         for m in reqs:
             upd = m.updated_at.date() if m.updated_at else None
@@ -11563,6 +11625,7 @@ def get_notifications(db: Session = Depends(get_db),
     out.sort(key=lambda n: (order.get(n["level"], 3), n["when"]), reverse=False)
     out.sort(key=lambda n: n["when"], reverse=True)
     out.sort(key=lambda n: order.get(n["level"], 3))
+    out = notif_filter(db, user, out)
     return {"notifications": out[:60], "count": len(out)}
 
 

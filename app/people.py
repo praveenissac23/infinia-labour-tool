@@ -1278,6 +1278,7 @@ def _role_dict(r, db):
     return {"id": r.id, "name": r.name, "notes": r.notes or "",
             "screens": [s for s in (r.screens or "").split(",") if s and s in M.ALL_SCREENS],
             "tabs": _role_tabs(r.screens),
+            "notif": None if r.notif is None else [x for x in (r.notif or "").split(",") if x],
             "members": [{"id": u.id, "username": u.username, "full_name": u.full_name, "active": u.active}
                         for u in members]}
 
@@ -1286,7 +1287,8 @@ def _role_dict(r, db):
 def list_roles(db: Session = Depends(get_db), user: models.User = ROLES_READ):
     return {"rows": [_role_dict(r, db) for r in db.query(models.AccessRole).order_by(models.AccessRole.name).all()],
             "screens": M.ALL_SCREENS, "role_defaults": M.ROLE_DEFAULTS,
-            "labels": SCREEN_LABELS, "pages": RIGHT_PAGES, "tree": tabrights.TREE}
+            "labels": SCREEN_LABELS, "pages": RIGHT_PAGES, "tree": tabrights.TREE,
+            "notif_groups": [{"id": g, "label": l} for g, l, _, _ in M.NOTIF_GROUPS]}
 
 
 SCREEN_LABELS = {
@@ -1362,6 +1364,9 @@ def save_role(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
         r = models.AccessRole(name=name)
         db.add(r)
     r.name = name; r.screens = stored; r.notes = (payload.get("notes") or "").strip()
+    if payload.get("notif") is not None:
+        ids = {g for g, *_ in M.NOTIF_GROUPS}
+        r.notif = ",".join(sorted(str(x) for x in payload["notif"] if str(x) in ids))
     db.flush()
     # Everyone carrying the role gets its new rights, straight away.
     for u in db.query(models.User).filter(models.User.access_role_id == r.id).all():

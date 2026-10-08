@@ -39,6 +39,9 @@ class User(Base):
     access_role_id = Column(Integer, nullable=True)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Notifications this person has switched off, comma-separated kinds
+    # (purchase, expiry ...). Empty = everything the role allows.
+    notif_off = Column(Text, default="")
 
 
 class Employee(Base):
@@ -1011,6 +1014,9 @@ class AccessRole(Base):
     """
     __tablename__ = "access_roles"
     id = Column(Integer, primary_key=True)
+    # Notifications this role may receive (comma-separated kinds).
+    # NULL = not set yet: everything its rights allow, as before.
+    notif = Column(Text, nullable=True)
     name = Column(String, unique=True, nullable=False)
     screens = Column(Text, default="")             # comma-separated, like users.permissions
     notes = Column(String, default="")

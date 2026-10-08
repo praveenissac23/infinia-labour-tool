@@ -3222,6 +3222,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         <!-- ============ SETTINGS SCREEN ============ -->
         <div class="screen" id="screen-settings">
           <div class="status-msg" id="settings-status"></div>
+          <div class="card" id="pg-notif-card">
+            <h2>My notifications</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">What the bell and this phone tell you about. Untick anything you do not want; it applies to this login everywhere.</p>
+            <div id="notif-groups" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:4px 18px;"></div>
+            <div class="form-row" style="margin-top:10px;"><button class="btn btn-primary" onclick="notifSave()">Save</button><span id="notif-msg" style="font-size:12px; color:#888; margin-left:8px;"></span></div>
+          </div>
           <div class="card" id="pg-push-card">
             <h2>Phone notifications</h2>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">New requests, approvals, late orders, low stock, missing attendance and expiring documents - whatever this login can open - arrive on this phone like a message, even when the app is closed.</p>
@@ -6692,7 +6698,7 @@ async function fillNotificationLines(id) {
 }
 
 const NOTIF_ICON = { request: "\u{1F4E5}", late: "\u23F0", status: "\u{1F4E6}", low: "\u{1F4C9}",
-                     rental: "\u{1F501}", attendance: "\u{1F4CB}" };
+                     rental: "\u{1F501}", attendance: "\u{1F4CB}", purchase: "\u{1F9FE}", expiry: "\u{1F4C4}", pdc: "\u{1F4B3}" };
 
 function renderBell() {
   const wrap = document.getElementById("bell-wrap");
@@ -15989,7 +15995,21 @@ function pushExplain() {
   showStatus("settings-status", "warn", msg);
   const t = document.getElementById("push-banner-text"); if (t) t.textContent = msg;
 }
+async function notifPaint() {
+  const box = document.getElementById("notif-groups"); if (!box) return;
+  let d; try { d = await apiCall("/notifications/settings"); } catch (e) { box.innerHTML = ""; return; }
+  box.innerHTML = d.groups.map(g => `<label style="display:flex; gap:8px; align-items:center; font-size:13px; padding:4px 0; ${g.allowed ? "" : "color:#aaa;"}" title="${g.allowed ? "" : "Not available to this login"}">
+    <input type="checkbox" value="${g.id}" ${g.on ? "checked" : ""} ${g.allowed ? "" : "disabled"} style="width:auto;"> ${escapeHtml(g.label)}</label>`).join("");
+}
+async function notifSave() {
+  const on = [...document.querySelectorAll("#notif-groups input:checked")].map(i => i.value);
+  try { await apiCall("/notifications/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
+    document.getElementById("notif-msg").textContent = "Saved."; setTimeout(() => document.getElementById("notif-msg").textContent = "", 2500);
+    if (typeof loadNotifications === "function") loadNotifications();
+  } catch (e) { document.getElementById("notif-msg").textContent = errText(e); }
+}
 async function pushPaint() {
+  notifPaint();
   const el = document.getElementById("push-state"); if (!el) return;
   const on = document.getElementById("push-on-btn"), off = document.getElementById("push-off-btn"), test = document.getElementById("push-test-btn");
   let sub = null; try { sub = await pushSub(); } catch (e) {}

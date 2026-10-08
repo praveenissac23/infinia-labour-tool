@@ -313,7 +313,7 @@ function setTab(t) {
   document.getElementById("pane-roles").style.display = t === "roles" ? "" : "none"; document.getElementById("pane-users").style.display = t === "users" ? "" : "none";
 }
 async function loadAll() {
-  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; TREE = d.tree || []; indexTree();
+  try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; TREE = d.tree || []; NOTIF = d.notif_groups || []; indexTree();
         USERS = VIEW === "users" || ME.isAdmin || (ME.screens || []).includes("settings_logins") ? (await apiCall("/permissions/roles/users")).rows : []; }
   catch (e) { status("warn", errText(e)); }
   if (DRAFT && DRAFT.id && !DRAFT.dirty) { const r = ROLES.find(x => x.id === DRAFT.id); if (r) DRAFT.tabs = new Set(r.tabs || []); else DRAFT = null; }
@@ -322,7 +322,7 @@ async function loadAll() {
   renderRoles(); renderUsers();
 }
 // ---- Roles: tick page by page, tab by tab ---------------------------------
-let TREE = [], CUR = null, DRAFT = null, OPEN = {};
+let TREE = [], NOTIF = [], CUR = null, DRAFT = null, OPEN = {};
 const LEAVES_OF = n => n.right ? [n] : (n.children || []).flatMap(LEAVES_OF);
 const LEAF_PAGE = {};
 function indexTree() { TREE.forEach(p => LEAVES_OF(p).forEach(l => LEAF_PAGE[l.id] = p.id)); }
@@ -331,13 +331,13 @@ const CAN_GIVE = id => ME.isAdmin || (ME.tabs || []).includes(id);
 function pickRole(id) {
   if (DRAFT && DRAFT.dirty && !confirm("Leave without saving the changes to " + (DRAFT.name || "this role") + "?")) return;
   const r = ROLES.find(x => x.id === id); if (!r) return;
-  CUR = r.id; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), dirty: false };
+  CUR = r.id; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), notif: new Set(r.notif === null || r.notif === undefined ? NOTIF.map(g => g.id) : r.notif), dirty: false };
   OPEN = {}; TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id)));
   renderRoles();
 }
 function newRole() {
   if (DRAFT && DRAFT.dirty && !confirm("Leave without saving the changes to " + (DRAFT.name || "this role") + "?")) return;
-  CUR = null; DRAFT = { id: null, name: "", notes: "", tabs: new Set(), dirty: false }; OPEN = {};
+  CUR = null; DRAFT = { id: null, name: "", notes: "", tabs: new Set(), notif: new Set(NOTIF.map(g => g.id)), dirty: false }; OPEN = {};
   renderRoles(); const n = document.getElementById("r-name"); if (n) n.focus();
 }
 function renderRoles() {
@@ -359,6 +359,9 @@ function renderRoles() {
         <button class="btn btn-primary" onclick="saveRole()">Save</button>
       </div></div>
     <p class="ed-hint" id="ed-hint"></p>
+    <div class="pgb open" style="margin-bottom:12px;"><div class="pgh" style="cursor:default;"><span class="car"></span>&#128276; Notifications this role may receive<span class="cnt">${DRAFT.notif.size} of ${NOTIF.length}</span></div>
+      ${NOTIF.map(g => `<div class="tr l1"><label><input type="checkbox" ${DRAFT.notif.has(g.id) ? "checked" : ""} onchange="DRAFT.notif[this.checked ? 'add' : 'delete']('${g.id}'); dirty(); renderRoles()"> ${esc(g.label)}</label></div>`).join("")}
+      <div class="tr" style="color:#888; font-size:12px;">Each person can switch any of these off for themselves under Settings. A group only shows when the role also has the matching tab.</div></div>
     <div class="tree" id="tree"></div>`;
   drawTree();
 }
@@ -421,7 +424,7 @@ function copyFrom(id) {
 async function saveRole() {
   if (!(DRAFT.name || "").trim()) { status("warn", "Give the role a name first."); document.getElementById("r-name").focus(); return; }
   try {
-    const r = await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: DRAFT.id, name: DRAFT.name, notes: DRAFT.notes, tabs: [...DRAFT.tabs] }) });
+    const r = await apiCall("/permissions/roles", { method: "POST", body: JSON.stringify({ id: DRAFT.id, name: DRAFT.name, notes: DRAFT.notes, tabs: [...DRAFT.tabs], notif: [...DRAFT.notif] }) });
     DRAFT.dirty = false; CUR = r.id;
     status("ok", `${r.name} saved - ${r.members.length ? "every login with this role now follows it" : "give it to a login under Logins"}.`);
     await loadAll(); pickRole(r.id);
