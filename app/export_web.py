@@ -75,7 +75,31 @@ PREVIEW_BAR_CSS = (
     ".pvbar a.btn{display:inline-block;text-decoration:none;font:600 13px Arial,Helvetica,sans-serif;padding:7px 14px;"
     "border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26;cursor:pointer}"
     ".pvbar a.btn.dark{background:#2E3238;border-color:#2E3238;color:#fff}"
+    ".pvbar a.btn.wa,.bar a.btn.wa{background:#25D366;border-color:#25D366;color:#fff}"
     "@media print{.pvbar{display:none!important}}")
+
+
+# Share: on a phone (and desktop Safari) the PDF goes straight to the share
+# sheet - WhatsApp, mail, anything; where the browser cannot hand a file
+# over, the PDF is downloaded and WhatsApp Web opened to attach it.
+SHARE_JS = """<script>
+(function(){var b=document.getElementById("pv-share");if(!b)return;var url=b.getAttribute("data-pdf"),name=b.getAttribute("data-name")||"Infinia.pdf";
+var can=false;try{var probe=new File([new Blob(["x"],{type:"application/pdf"})],"p.pdf",{type:"application/pdf"});can=!!(navigator.canShare&&navigator.share&&navigator.canShare({files:[probe]}));}catch(e){}
+b.addEventListener("click",async function(ev){ev.preventDefault();var was=b.textContent;
+if(!can){var a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.open("https://web.whatsapp.com/","_blank","noopener");return;}
+b.textContent="Preparing...";try{var r=await fetch(url);if(!r.ok)throw new Error("x");var f=new File([await r.blob()],name,{type:"application/pdf"});
+if(navigator.canShare({files:[f]}))await navigator.share({files:[f],title:name});else throw new Error("x");}
+catch(e){if(!e||e.name!=="AbortError"){var a2=document.createElement("a");a2.href=url;a2.download=name;document.body.appendChild(a2);a2.click();a2.remove();window.open("https://web.whatsapp.com/","_blank","noopener");}}
+finally{b.textContent=was;}});})();
+</script>"""
+
+
+def share_button(pdf_url, title):
+    from html import escape as _e
+    import re as _re
+    name = _re.sub(r"[^A-Za-z0-9]+", "_", title or "Infinia").strip("_")[:60] or "Infinia"
+    return (f'<a class="btn wa" id="pv-share" href="#" data-pdf="{_e(pdf_url)}" data-name="{_e(name)}.pdf" '
+            'title="Send the PDF - WhatsApp, mail or any app">Share</a>')
 
 
 def preview_bar(title, subtitle, pdf_url, excel_url):
@@ -84,7 +108,8 @@ def preview_bar(title, subtitle, pdf_url, excel_url):
             f'<span class="who">{_e(subtitle or "")}</span><span class="sp"></span>'
             f'<a class="btn dark" href="{_e(pdf_url)}">Download PDF</a>'
             f'<a class="btn" href="{_e(excel_url)}">Download Excel</a>'
-            '<a class="btn" href="#" onclick="window.print();return false;">Print</a></div>')
+            '<a class="btn" href="#" onclick="window.print();return false;">Print</a>'
+            + share_button(pdf_url, title) + '</div>' + SHARE_JS)
 
 
 def logo_data_uri():

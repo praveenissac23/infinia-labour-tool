@@ -2758,6 +2758,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   .page {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
            background:white; padding:8mm; box-sizing:border-box;
            box-shadow:0 1px 6px rgba(0,0,0,.14); page-break-after:always; }}
@@ -2804,8 +2805,10 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
     <a class="btn dark" href="{pdf_url}">Download PDF</a>
     <a class="btn" href="{excel_url}">Download Excel</a>
     <a class="btn" href="#" onclick="window.print();return false;">Print</a>
+    {export_web.share_button(pdf_url, title)}
   </div>
   {sheets}
+  {export_web.SHARE_JS}
 </body></html>""")
 
 
@@ -7795,6 +7798,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   .sheet {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
             background:white; padding:10mm 12mm; box-sizing:border-box;
             box-shadow:0 1px 6px rgba(0,0,0,.14); font-size:8.5pt; }}
@@ -7842,7 +7846,9 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
     <a class="btn dark" href="{pdf_url}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="{excel_url}&amp;format=excel">Download Excel</a>
     <a class="btn" href="#" onclick="window.print();return false;">Print</a>
+    {export_web.share_button(pdf_url + "&format=pdf", note.get('ref') or 'Return Note')}
   </div>
+  {export_web.SHARE_JS}
   <div class="sheet">
     <div class="band">
       <div class="lg">{logo_html}</div>
@@ -8044,6 +8050,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
   a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   /* A4 the way round this report prints. */
   .page {{ width:{page_w}; max-width:calc(100% - 24px); margin:16px auto;
            background:white; padding:10mm 8mm 12mm; box-sizing:border-box;
@@ -8091,7 +8098,9 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     <a class="btn dark" id="dl-pdf" href="{pdf_url}&amp;format=pdf">Download PDF</a>
     <a class="btn" id="dl-xls" href="{excel_url}&amp;format=excel">Download Excel</a>
     <a class="btn" href="#" onclick="window.print();return false;">Print</a>
+    {export_web.share_button(pdf_url + "&format=pdf", title)}
   </div>
+  {export_web.SHARE_JS}
   <div class="page">
     <div class="mark">{logo_html}</div>
     <div class="head">
