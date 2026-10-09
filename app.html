@@ -1261,7 +1261,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="510b775a5664";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="42e632063e6c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1974,14 +1974,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-gray" onclick="labIncCancelEdit()">Cancel</button>
               </div>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;" id="labinc-new">
-                <label class="hr-field"><span>Worker</span><select id="labinc-emp" style="width:230px;"></select></label>
-                <label class="hr-field"><span>Effective from</span><select id="labinc-from" style="width:190px;"></select></label>
-                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="labinc-amount" style="width:110px;"></label>
-                <label class="hr-field"><span>Goes onto</span><select id="labinc-onto" style="width:210px;">
-                  <option value="allowance">Allowance (house rule)</option>
-                  <option value="basic">The basic</option>
+                <label class="hr-field"><span>Worker</span><select id="labinc-emp" style="width:285px;"></select></label>
+                <label class="hr-field"><span>Effective from</span><select id="labinc-from" style="width:200px;"></select></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="labinc-amount" style="width:100px;"></label>
+                <label class="hr-field"><span>Goes onto</span><select id="labinc-onto" style="width:140px;">
+                  <option value="allowance">Allowance</option>
+                  <option value="basic">Basic</option>
                 </select></label>
-                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-reason" style="width:200px;"></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-reason" style="width:170px;"></label>
                 <button class="btn btn-primary" onclick="labIncAdd()">Record increment</button>
               </div>
               <div class="status-msg" id="labinc-status" style="margin-top:8px;"></div>
@@ -13319,13 +13319,14 @@ async function labIncForm() {
     let emps = []; try { emps = await apiCall("/employees"); } catch (e) {}
     emps = (emps || []).filter(e => !e.staff && e.active !== false && !e.terminated_on)
       .sort((a, b) => String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
-    sel.innerHTML = `<option value="">Pick a worker</option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)} (${hrMoney(e.total_salary)})</option>`).join("");
+    sel.innerHTML = `<option value="">Pick a worker</option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)} - ${hrMoney(e.total_salary)}</option>`).join("");
   }
   // this cycle starts on the 26th; the last one a month before
   const t = new Date(), y = t.getFullYear(), m = t.getMonth();
   const cs = t.getDate() >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
   const ls = new Date(cs.getFullYear(), cs.getMonth() - 1, 26);
-  const d = x => x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const d = x => `${x.getDate()} ${MON3[x.getMonth()]} ${x.getFullYear()}`;
   document.getElementById("labinc-from").innerHTML = `<option value="this">This cycle (${d(cs)})</option><option value="previous">Last cycle (${d(ls)})</option>`;
 }
 async function labIncAdd() {
