@@ -2095,15 +2095,17 @@ def build_lpo_pdf(po: dict):
                      P(f"{amount * taxpc / 100:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
     widths = [W * x for x in (0.05, 0.40, 0.09, 0.11, 0.08, 0.11, 0.16)]
-    lt = Table(data, colWidths=widths, repeatRows=1)
-    lt.setStyle(TableStyle([
+    line_style = [
         ("BACKGROUND", (0, 0), (-1, 0), dark),
         ("GRID", (0, 0), (-1, -1), 0.5, grid),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-    ]))
+    ]
+    lt = Table(data, colWidths=widths, repeatRows=1)
+    lt.setStyle(TableStyle(line_style))
     el.append(lt)
+    lines_at = len(el) - 1
 
     # ---- Notes and terms on the left, money on the right
     disc = float(po.get("discount_pct") or 0)
@@ -2172,6 +2174,20 @@ def build_lpo_pdf(po: dict):
         ("TOPPADDING", (0, 0), (-1, -1), 6),
     ]))
     el.append(foot)
+
+    # Every order the same shape on the page: the line table runs down to
+    # just above the terms and the signature, its columns ruled to the
+    # bottom, so one item and twenty items both fill the A4 sheet. An
+    # order too long for one page simply carries on to the next.
+    used = sum(f.wrap(W, doc.height)[1] for f in el)
+    # the page frame keeps 6pt inside each edge; a little more in hand so
+    # the signature never tips onto a second sheet
+    gap = doc.height - 12 - used - 10
+    if gap > 12:
+        filled = Table(data + [[""] * len(widths)], colWidths=widths, repeatRows=1,
+                       rowHeights=[None] * len(data) + [gap])
+        filled.setStyle(TableStyle(line_style))
+        el[lines_at] = filled
 
     doc.build(el)
     buf.seek(0)

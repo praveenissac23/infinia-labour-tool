@@ -980,6 +980,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* The monthly report's Notes column: a line against each worker,
      typed straight into the row and saved as you leave the box. */
   .col-notes { min-width: 260px; text-align: left !important; }
+  .exp-started { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 700; color: #1E7A3A; }
+  .exp-start-btn { white-space: nowrap; }
+  .exp-start-btn.on { background: #E6F4EA; border-color: #9CD3AE; color: #1E7A3A; }
   /* The report preview is a sheet of figures: every column as wide as
      what is in it and no wider, so a number is not an inch from the
      next - the box fits the table instead of the table being stretched
@@ -2248,7 +2251,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 </div>
                 <p class="hr-nil" id="exp-all-count" style="margin:0 0 6px; font-size:12px;"></p>
                 <div class="grid-wrap" style="max-height:calc(100vh - 380px);"><table><thead><tr>
-                  <th>For</th><th>Name / item</th><th>Document</th><th>Number</th><th>Expires</th><th>Standing</th>
+                  <th>For</th><th>Name / item</th><th>Document</th><th>Number</th><th>Expires</th><th>Standing</th><th style="width:1%;"></th>
                 </tr></thead><tbody id="exp-all-body"></tbody></table></div>
               </div>
               <div id="hr-doc-people">
@@ -14232,9 +14235,39 @@ const HR_DOC_RANK = { expired: 0, urgent: 1, soon: 2, valid: 3 };
 const HR_DOC_WORD = { expired: "Expired", urgent: "Due in 30 days",
                       soon: "Due in 90 days", valid: "Valid" };
 
+// ---- "Renewal started": the reminders stop for that document, the page shows it as before ----
+let EXP_STARTED = {};
+async function expLoadStarted() {
+  try { const d = await apiCall("/employees/expiry/started"); EXP_STARTED = {}; (d.rows || []).forEach(r => EXP_STARTED[`${r.type}:${r.id}`] = r); }
+  catch (e) { EXP_STARTED = {}; }
+}
+const expStarted = (type, id) => EXP_STARTED[`${type}:${id}`];
+function expStartedTag(type, id) {
+  const m = expStarted(type, id);
+  return m ? `<span class="exp-started" title="Renewal started by ${escapeAttr(m.by)} - reminders stopped until the new date is entered">&#10003; Started</span>` : "";
+}
+function expStartBtn(type, id) {
+  const m = expStarted(type, id);
+  return m ? `<button class="btn btn-gray hr-mini exp-start-btn on" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, false)" title="Started by ${escapeAttr(m.by)} - click to undo">&#10003; Started</button>`
+           : `<button class="btn btn-gray hr-mini exp-start-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true)" title="Renewal is in hand - stop the reminders for this document">Mark started</button>`;
+}
+async function expMarkStarted(type, id, on) {
+  try {
+    await apiCall("/employees/expiry/started", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, on }) });
+    await expLoadStarted();
+    if (expIsAll()) renderAllDocs();
+    if (document.getElementById("hr-doc-company").style.display !== "none") renderExpiries();
+    if (document.getElementById("hr-doc-people").style.display !== "none") renderDocuments();
+    const box = document.getElementById(type === "person" ? "hr-doc-editing" : "hr-exp-editing");
+    if (box && box.style.display !== "none" && +box.dataset.id === id) (type === "person" ? hrEditDoc : hrEditExpiry)(id);
+    expMsg("ok", on ? "Marked started - no more reminders for it until the new date is entered." : "Reminders back on for it.");
+    if (typeof loadNotifications === "function") loadNotifications();
+  } catch (e) { expMsg("err", errText(e)); }
+}
 async function loadDocuments() {
   try { HR_DOCS = (await apiCall("/employees/documents")).rows || []; }
   catch (e) { expMsg("err", errText(e)); return; }
+  await expLoadStarted();
   renderDocuments();
 }
 
@@ -14245,7 +14278,7 @@ function hrDocCell(x, emp, kind) {
   const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago`
              : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
   return `<td class="hr-d hr-d-${x.status}" onclick="hrEditDoc(${x.id})"
-              title="Click to renew or correct">${hrDate(x.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>`;
+              title="Click to renew or correct">${hrDate(x.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}${expStartedTag("person", x.id)}</td>`;
 }
 
 function renderDocuments() {
@@ -14342,6 +14375,7 @@ function hrEditDoc(id) {
   const box = document.getElementById("hr-doc-editing");
   box.dataset.id = id;
   box.innerHTML = `Editing <b>${escapeHtml(x.kind_label)}</b> for ${escapeHtml(x.name)}
+    <span style="margin-left:10px;">${expStartBtn("person", id)}</span>
     <a href="#" onclick="deleteDocument(${id});return false;" style="color:var(--red); margin-left:10px;">Remove it</a>
     <a href="#" onclick="hrClearDoc();return false;" style="margin-left:10px;">Cancel</a>`;
   box.className = "status-msg warn"; box.style.display = "";
@@ -14421,6 +14455,7 @@ async function loadAllDocs() {
     ...(c ? HR_EXP.rows : []).map(r => ({ src: "company", id: r.id, who: r.category || "Company", name: r.item, code: "", sub: r.notes || "",
       doc: r.kind, number: r.number || "", expires_on: r.expires_on, days_left: r.days_left, status: r.status })),
   ].sort((a, b) => (a.days_left ?? 1e9) - (b.days_left ?? 1e9));
+  await expLoadStarted();
   renderAllDocs(); expDrawCards();
 }
 function expAllCounts() {
@@ -14449,8 +14484,9 @@ function renderAllDocs() {
       <td>${pill}</td><td class="txt"><b>${escapeHtml(r.name)}</b>${r.code ? ` <span class="hr-nil">${escapeHtml(r.code)}</span>` : ""}</td>
       <td class="txt">${escapeHtml(r.doc)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
       <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub" style="display:block;">${when}</span>` : ""}</td>
-      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status] || ""}</td></tr>`;
-  }).join("") || `<tr><td colspan="6" class="hr-nil" style="padding:14px;">${HR_ALL.length ? "Nothing in this range - all clear." : "Nothing on file yet."}</td></tr>`;
+      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status] || ""}</td>
+      <td style="text-align:right;">${r.status === "valid" && !expStarted(r.src, r.id) ? "" : expStartBtn(r.src, r.id)}</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="hr-nil" style="padding:14px;">${HR_ALL.length ? "Nothing in this range - all clear." : "Nothing on file yet."}</td></tr>`;
 }
 // A line opens where it is kept, ready to renew.
 function expAllOpen(src, id) {
@@ -14467,6 +14503,7 @@ async function loadExpiries() {
   const used = [...new Set(HR_EXP.rows.map(r => r.category).filter(Boolean))].sort();
   f.innerHTML = `<option value="">All categories</option>` + used.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
   f.value = used.includes(keep) ? keep : "";
+  await expLoadStarted();
   renderExpiries();
 }
 function renderExpiries() {
@@ -14488,7 +14525,7 @@ function renderExpiries() {
       <td class="txt">${escapeHtml(r.category)}</td><td class="txt"><b>${escapeHtml(r.item)}</b></td>
       <td class="txt">${escapeHtml(r.kind)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
       <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>
-      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}</td>
+      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}${r.status === "valid" && !expStarted("company", r.id) ? "" : `<div style="margin-top:3px;">${expStartBtn("company", r.id)}</div>`}</td>
       <td class="txt">${escapeHtml(r.notes) || '<span class="hr-nil">-</span>'}</td></tr>`;
   }).join("") || `<tr><td colspan="7" class="hr-nil" style="padding:14px;">${HR_EXP.rows.length ? "Nothing matches." : "Nothing on file yet - add a vehicle, the trade licence, anything that expires."}</td></tr>`;
 }
@@ -14500,6 +14537,7 @@ function hrEditExpiry(id) {
   const box = document.getElementById("hr-exp-editing");
   box.dataset.id = id;
   box.innerHTML = `Editing <b>${escapeHtml(r.kind)}</b> for ${escapeHtml(r.item)}
+    <span style="margin-left:10px;">${expStartBtn("company", id)}</span>
     <a href="#" onclick="deleteExpiry(${id});return false;" style="color:var(--red); margin-left:10px;">Remove it</a>
     <a href="#" onclick="hrClearExpiry();return false;" style="margin-left:10px;">Cancel</a>`;
   box.style.display = "";

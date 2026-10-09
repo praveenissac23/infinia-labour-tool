@@ -7446,10 +7446,16 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
                 padding:3px 8px; border-radius:4px; }}
   /* The order prints on a portrait A4, so it is shown on one - what is
      checked on screen is the sheet that comes out of the printer. */
-  .sheet {{ width:210mm; max-width:calc(100% - 24px);
+  .sheet {{ width:210mm; max-width:calc(100% - 24px); min-height:297mm;
             margin:16px auto; background:white; padding:12mm 12mm;
             box-sizing:border-box; box-shadow:0 1px 6px rgba(0,0,0,.14);
-            font-size:12.5px; }}
+            font-size:12.5px; display:flex; flex-direction:column; }}
+  /* The line table runs down the sheet, its columns ruled to the bottom,
+     so one item or twenty the order fills the A4 page - as the PDF does. */
+  .lines-wrap {{ flex:1; display:flex; flex-direction:column; min-height:0; }}
+  .lines-wrap table.lines {{ flex:1; height:100%; }}
+  table.lines tbody tr {{ height:1px; }}
+  table.lines tbody tr.fill {{ height:auto; }}
   .head {{ display:flex; justify-content:space-between; align-items:flex-start;
            border:1px solid #999; padding:10px 12px; }}
   .co {{ display:flex; align-items:center; gap:16px; }}
@@ -7480,7 +7486,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .sigbox {{ height:52px; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}
-    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; }}
+    .sheet {{ width:auto; margin:0; padding:0; box-shadow:none; min-height:262mm; }}
     @page {{ size:A4 portrait; margin:10mm; }}
   }}
 </style></head><body>
@@ -7698,10 +7704,10 @@ def _lpo_html(o):
         <div class="half"><div class="boxhead">VENDOR DETAILS</div>
           <table class="pairs">{right}</table></div>
       </div>
-      <table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
+      <div class="lines-wrap"><table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
         <th class="r">Qty</th><th class="r">Rate</th><th class="r">Tax %</th>
         <th class="r">Tax</th><th class="r">Amount</th></tr></thead>
-        <tbody>{''.join(rows)}</tbody></table>
+        <tbody>{''.join(rows)}<tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>
       <div class="foot">
         <div class="terms">
           {f'<div class="lbl">Notes</div>{notes}' if notes else ''}
@@ -11777,17 +11783,23 @@ def get_notifications(db: Session = Depends(get_db),
     if "expiry" in allowed:
         try:
             import expiry as _ex
-            s = _ex.summary(db)
-            if s["expired"] or s["week"]:
-                bits = [f"{s['expired']} expired" if s["expired"] else "",
-                        f"{s['week']} due within 7 days" if s["week"] else "",
-                        f"{s['month']} within 30" if s["month"] else ""]
-                first = ", ".join(f"{i['who']} ({i['what']})" for i in s["attention"][:3])
+            # Documents marked "renewal started" are left out: the page
+            # still shows them, the reminders stop.
+            its = _ex.notice_items(db)
+            exp_n = sum(1 for i in its if i["days_left"] < 0)
+            week_n = sum(1 for i in its if 0 <= i["days_left"] <= 7)
+            month_n = sum(1 for i in its if 8 <= i["days_left"] <= 30)
+            attention = sorted((i for i in its if i["days_left"] <= 7), key=lambda i: i["days_left"])
+            if exp_n or week_n:
+                bits = [f"{exp_n} expired" if exp_n else "",
+                        f"{week_n} due within 7 days" if week_n else "",
+                        f"{month_n} within 30" if month_n else ""]
+                first = ", ".join(f"{i['who']} ({i['what']})" for i in attention[:3])
                 out.append({"id": f"expiry-{today}", "kind": "expiry",
                             "title": "Expiries: " + ", ".join(b for b in bits if b),
-                            "detail": first + (f" and {len(s['attention']) - 3} more" if len(s["attention"]) > 3 else ""),
-                            "screen": "expiry", "when": today.isoformat(), "count": s["expired"] + s["week"],
-                            "level": "warn" if s["expired"] else "info"})
+                            "detail": first + (f" and {len(attention) - 3} more" if len(attention) > 3 else ""),
+                            "screen": "expiry", "when": today.isoformat(), "count": exp_n + week_n,
+                            "level": "warn" if exp_n else "info"})
         except Exception:
             pass
 

@@ -19,15 +19,51 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 
 from fastapi import APIRouter, Depends, Body, HTTPException
+from sqlalchemy import Column, Integer, String, Date, DateTime, UniqueConstraint
 from sqlalchemy.orm import Session
 
 import main as M
 import models, mailer
-from database import get_db, SessionLocal
+from database import get_db, SessionLocal, Base, engine
 
 router = APIRouter()
 MILESTONES = {90, 30, 14, 7, 3, 1, 0}
 REQUIRED = [("eid", "Emirates ID"), ("visa", "Visa / labour card"), ("passport", "Passport")]
+
+
+class ExpiryStarted(Base):
+    """'Renewal started' against one document: its reminders stop (bell,
+    phone, email) while it still shows on the page as it is. Kept with
+    the expiry date it was marked against - once the renewed date is
+    entered the mark no longer matches, so the next renewal is reminded
+    about as usual."""
+    __tablename__ = "expiry_started"
+    __table_args__ = (UniqueConstraint("doc_type", "doc_id", name="uq_expiry_started"),)
+    id = Column(Integer, primary_key=True)
+    doc_type = Column(String, nullable=False)       # person | company
+    doc_id = Column(Integer, nullable=False)
+    expires_on = Column(Date, nullable=True)
+    marked_by = Column(String, default="")
+    marked_at = Column(DateTime, default=datetime.utcnow)
+
+
+ExpiryStarted.__table__.create(bind=engine, checkfirst=True)
+
+
+def started_keys(db):
+    """{(type, id): row} for marks that still match the document's date."""
+    return {(r.doc_type, r.doc_id): r for r in db.query(ExpiryStarted).all()}
+
+
+def _is_started(item, marks):
+    m = marks.get((item["type"], item["id"]))
+    return bool(m) and (m.expires_on.isoformat() if m.expires_on else None) == (item.get("expires_on") or None)
+
+
+def notice_items(db):
+    """What the reminders talk about: everything due, less what is marked started."""
+    marks = started_keys(db)
+    return [i for i in _items(db) if not _is_started(i, marks)]
 
 
 def _items(db):
@@ -87,7 +123,7 @@ def summary(db):
 
 def digest(db):
     """What needs saying today - short on purpose."""
-    items = sorted((i for i in _items(db) if i["days_left"] < 0 or i["days_left"] in MILESTONES),
+    items = sorted((i for i in notice_items(db) if i["days_left"] < 0 or i["days_left"] in MILESTONES),
                    key=lambda i: i["days_left"])
     return items
 
@@ -100,6 +136,10 @@ def _when(n):
 def mail_body(db):
     items = digest(db)
     s = summary(db)
+    its = notice_items(db)        # marked "renewal started" are not counted in the reminder
+    s = {**s, "expired": sum(1 for i in its if i["days_left"] < 0),
+         "week": sum(1 for i in its if 0 <= i["days_left"] <= 7),
+         "month": sum(1 for i in its if 8 <= i["days_left"] <= 30)}
     today = M._dubai_today()
     head = (f"{s['expired']} expired, {s['week']} due within 7 days, {s['month']} within 30 days"
             + (f", {s['missing']} people with a document missing" if s["missing"] else ""))
@@ -128,6 +168,45 @@ def mail_body(db):
 
 
 # ---- The page ------------------------------------------------------------
+
+@router.get("/employees/expiry/started")
+def get_started(db: Session = Depends(get_db), user: models.User = M.DOCS):
+    items = {(i["type"], i["id"]): i for i in _items(db)}
+    out = []
+    for (t, i), m in started_keys(db).items():
+        it = items.get((t, i))
+        current = bool(it) and _is_started(it, {(t, i): m})
+        if current:
+            out.append({"type": t, "id": i, "by": m.marked_by, "at": m.marked_at.isoformat() if m.marked_at else ""})
+    return {"rows": out}
+
+
+@router.post("/employees/expiry/started")
+def set_started(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = M.DOCS):
+    t = (payload.get("type") or "").strip()
+    try:
+        i = int(payload.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Which document?")
+    if t not in ("person", "company"):
+        raise HTTPException(status_code=400, detail="Which document?")
+    item = next((x for x in _items(db) if x["type"] == t and x["id"] == i), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="That document is not on file.")
+    row = db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == t, ExpiryStarted.doc_id == i).first()
+    if payload.get("on", True):
+        if not row:
+            row = ExpiryStarted(doc_type=t, doc_id=i); db.add(row)
+        row.expires_on = M._as_date(item["expires_on"])
+        row.marked_by = user.full_name or user.username
+        row.marked_at = datetime.utcnow()
+        M.log_action(db, user.id, "expiry_started", f"{item['who']}: {item['what']} {item['expires_on']}")
+    elif row:
+        db.delete(row)
+        M.log_action(db, user.id, "expiry_started_off", f"{item['who']}: {item['what']}")
+    db.commit()
+    return {"ok": True, "on": bool(payload.get("on", True))}
+
 
 @router.get("/employees/expiry/summary")
 def get_summary(db: Session = Depends(get_db), user: models.User = M.DOCS):
