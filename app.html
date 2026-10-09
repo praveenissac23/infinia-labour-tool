@@ -985,8 +985,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
      what is in it and no wider, so a number is not an inch from the
      next - the box fits the table instead of the table being stretched
      to fill the box. */
-  #report-preview-card .grid-wrap { display: inline-block; max-width: 100%; vertical-align: top; }
-  #report-preview-card table { width: auto; }
+  /* Full width, but the spare room goes to the name column: every
+     figure column is only as wide as its figures (width:1% shrinks it
+     to fit), so numbers sit together instead of an inch apart. */
+  #report-preview-card .grid-wrap { display: block; }
+  #report-preview-card table { width: 100%; }
+  #report-preview-card th.auto-num, #report-preview-card td.auto-num { width: 1%; }
+  #report-preview-card th:first-child, #report-preview-card td:first-child { width: 1%; }
   #report-preview-card th, #report-preview-card td { padding-left: 14px; padding-right: 14px; white-space: nowrap; }
   #report-preview-card td.col-notes, #report-preview-card th.col-notes { white-space: normal; }
   /* A heading folds onto two lines rather than holding a column of
@@ -1261,7 +1266,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="42e632063e6c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="748bc3897c6d";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
