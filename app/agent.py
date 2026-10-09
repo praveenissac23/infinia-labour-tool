@@ -107,7 +107,7 @@ def _admin(user):
         raise HTTPException(status_code=403, detail="Only an admin login can connect Claude to the app.")
 
 
-@router.get("/settings/agent")
+@router.get(PREFIX + "/link")
 def agent_status(request: Request, db: Session = Depends(get_db),
                  user: models.User = Depends(auth.get_current_user)):
     _admin(user)
@@ -116,7 +116,7 @@ def agent_status(request: Request, db: Session = Depends(get_db),
             "url": f"{_base_url(request, db)}{PREFIX}/mcp/{row.value}" if row and row.value else ""}
 
 
-@router.post("/settings/agent")
+@router.post(PREFIX + "/link")
 def agent_new_link(request: Request, payload: dict = Body(default={}), db: Session = Depends(get_db),
                    user: models.User = Depends(auth.get_current_user)):
     """A new private link - the old one stops working at once."""
@@ -139,7 +139,7 @@ def agent_new_link(request: Request, payload: dict = Body(default={}), db: Sessi
     return {"on": True, "url": f"{_base_url(request, db)}{PREFIX}/mcp/{key}"}
 
 
-@router.delete("/settings/agent")
+@router.delete(PREFIX + "/link")
 def agent_off(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     _admin(user)
     row = _key_row(db, user.id)

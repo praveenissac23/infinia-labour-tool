@@ -16118,7 +16118,7 @@ async function notifSave() {
 async function agentPaint() {
   const card = document.getElementById("pg-agent-card"); if (!card) return;
   if (CURRENT_ROLE !== "admin") { card.remove(); return; }
-  let d = { on: false, url: "" }; try { d = await apiCall("/settings/agent"); } catch (e) {}
+  let d = { on: false, url: "" }; try { d = await apiCall("/reports/ask/link"); } catch (e) {}
   agentShow(d);
 }
 function agentShow(d) {
@@ -16132,12 +16132,12 @@ function agentShow(d) {
 }
 async function agentNew(again) {
   if (again && !confirm("Make a new link? The old link stops working at once - you will need to add the new one to Claude.")) return;
-  try { agentShow(await apiCall("/settings/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin: location.origin }) })); showStatus("settings-status", "ok", "Link ready - copy it into Claude."); }
+  try { agentShow(await apiCall("/reports/ask/link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin: location.origin }) })); showStatus("settings-status", "ok", "Link ready - copy it into Claude."); }
   catch (e) { showStatus("settings-status", "err", errText(e)); }
 }
 async function agentOff() {
   if (!confirm("Turn off? Claude will no longer be able to read the app until you turn it on again.")) return;
-  try { agentShow(await apiCall("/settings/agent", { method: "DELETE" })); showStatus("settings-status", "ok", "Turned off."); }
+  try { agentShow(await apiCall("/reports/ask/link", { method: "DELETE" })); showStatus("settings-status", "ok", "Turned off."); }
   catch (e) { showStatus("settings-status", "err", errText(e)); }
 }
 function agentCopy() {

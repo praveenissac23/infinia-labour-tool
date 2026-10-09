@@ -24,9 +24,9 @@ def tok(u):
     return {"Authorization": "Bearer " + c.post("/auth/login", data={"username": u, "password": "p"}).json()["access_token"]}
 B, K = tok("boss"), tok("clerk")
 
-ck("a non-admin cannot turn it on", c.post("/settings/agent", headers=K).status_code == 403)
-ck("off to begin with", c.get("/settings/agent", headers=B).json()["on"] is False)
-url = c.post("/settings/agent", headers=B).json()["url"]
+ck("a non-admin cannot turn it on", c.post("/reports/ask/link", headers=K).status_code == 403)
+ck("off to begin with", c.get("/reports/ask/link", headers=B).json()["on"] is False)
+url = c.post("/reports/ask/link", headers=B).json()["url"]
 path = url.split("://", 1)[1].split("/", 1)[1]; path = "/" + path
 ck("admin gets a private link under /reports/", path.startswith("/reports/ask/mcp/") and len(path) > 50, path)
 
@@ -88,10 +88,10 @@ ck("an invented file name is 404", c.get("/reports/ask/file/AAAAAAAAAAAAAAAAAAAA
 db = SessionLocal()
 ck("questions are logged", db.query(models.AuditLog).filter(models.AuditLog.action == "agent_query").count() >= 3)
 db.close()
-url2 = c.post("/settings/agent", headers=B, json={"origin": "https://app.infinia.ae"}).json()["url"]
+url2 = c.post("/reports/ask/link", headers=B, json={"origin": "https://app.infinia.ae"}).json()["url"]
 ck("the link uses the address the browser was on", url2.startswith("https://app.infinia.ae/reports/ask/mcp/"), url2)
 ck("a new link stops the old one", rpc("tools/list").status_code == 404)
-c.delete("/settings/agent", headers=B)
+c.delete("/reports/ask/link", headers=B)
 p2 = "/" + url2.split("://", 1)[1].split("/", 1)[1]
 ck("turned off: link refused", rpc("tools/list", p=p2).status_code == 404)
 
