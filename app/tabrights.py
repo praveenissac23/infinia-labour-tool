@@ -220,6 +220,8 @@ GATES = {
     ("DELETE", "/employees/increments/{change_id}"): HR("increments"),
     ("GET", "/export/payroll/increments"): HR("increments"), ("GET", "/export/payroll/increments/view"): HR("increments"),
     ("GET", "/employees/labour-increments"): ["payroll.labourpay.increments"],
+    ("POST", "/employees/labour-increments"): ["payroll.labourpay.increments"],
+    ("PUT", "/employees/labour-increments/{change_id}"): ["payroll.labourpay.increments"],
     ("GET", "/export/labour-increments"): ["payroll.labourpay.increments"],
     ("GET", "/export/labour-increments/view"): ["payroll.labourpay.increments"],
     ("GET", "/employees/staff/{emp_no}/settlement"): HR("gratuity"),

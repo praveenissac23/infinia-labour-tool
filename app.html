@@ -1261,7 +1261,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="8ac91742a4d4";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="510b775a5664";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1958,23 +1958,55 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
           <!-- Labour payroll > Increments: every change to a labourer's rate.
                The rate itself is changed on Labour master data. -->
-          <div class="card" id="pg-labinc-card" style="display:none;">
-            <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
-              <h2 style="margin:0 12px 0 0;">Labour salary history</h2>
-              <select id="labinc-filter" style="width:240px;" onchange="labIncPaint()"><option value="">Everyone</option></select>
-              <button class="btn btn-dark" onclick="labIncOut('view')">Preview</button>
-              <button class="btn btn-dark" onclick="labIncOut('pdf')">Export PDF</button>
-              <button class="btn btn-dark" onclick="labIncOut('excel')">Export Excel</button>
+          <div id="pg-labinc-card" style="display:none;">
+            <div class="card">
+              <h2 id="labinc-form-title">Record an increment</h2>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;" id="labinc-form-note">
+                A rise starts with this cycle, or with the last one if it was agreed late; cycles before it keep the rate they were paid at.
+                By house rule a rise goes onto the allowance and the basic stays.</p>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end; display:none;" id="labinc-edit">
+                <span id="labinc-edit-who" style="font-weight:600; padding-bottom:9px;"></span>
+                <label class="hr-field"><span>From</span><input type="date" id="labinc-e-date" style="width:150px;"></label>
+                <label class="hr-field"><span>Basic</span><input type="text" inputmode="decimal" id="labinc-e-basic" style="width:110px;"></label>
+                <label class="hr-field"><span>Allowance</span><input type="text" inputmode="decimal" id="labinc-e-allow" style="width:110px;"></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-e-reason" style="width:220px;"></label>
+                <button class="btn btn-primary" onclick="labIncSaveEdit()">Save</button>
+                <button class="btn btn-gray" onclick="labIncCancelEdit()">Cancel</button>
+              </div>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;" id="labinc-new">
+                <label class="hr-field"><span>Worker</span><select id="labinc-emp" style="width:230px;"></select></label>
+                <label class="hr-field"><span>Effective from</span><select id="labinc-from" style="width:190px;"></select></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="labinc-amount" style="width:110px;"></label>
+                <label class="hr-field"><span>Goes onto</span><select id="labinc-onto" style="width:210px;">
+                  <option value="allowance">Allowance (house rule)</option>
+                  <option value="basic">The basic</option>
+                </select></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-reason" style="width:200px;"></label>
+                <button class="btn btn-primary" onclick="labIncAdd()">Record increment</button>
+              </div>
+              <div class="status-msg" id="labinc-status" style="margin-top:8px;"></div>
             </div>
-            <p style="font-size:12px; color:#888; margin:6px 0 0;">A worker's rate is changed on Labour master data; each change is listed here from the date it applies.</p>
-            <div class="grid-wrap" style="max-height:62vh; margin-top:10px;">
-              <table class="hr-grid">
-                <thead><tr>
-                  <th>Code</th><th class="txt">Name</th><th class="txt">Trade</th><th>From</th><th>Change</th>
-                  <th class="num">Increase</th><th class="num">Basic</th><th class="num">Salary</th><th class="txt">Reason</th>
-                </tr></thead>
-                <tbody id="labinc-body"></tbody>
-              </table>
+            <div class="card">
+              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <h2 style="margin:0 12px 0 0;">Salary history</h2>
+                <select id="labinc-filter" style="width:220px;" onchange="labIncPaint()"><option value="">Everyone</option></select>
+                <button class="btn btn-dark" onclick="labIncOut('view')">Preview</button>
+                <button class="btn btn-dark" onclick="labIncOut('pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="labIncOut('excel')">Export Excel</button>
+              </div>
+              <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
+                <table class="hr-grid">
+                  <thead><tr>
+                    <th style="width:7%;">Code</th><th class="txt" style="width:17%;">Name</th>
+                    <th style="width:11%;">From</th><th style="width:9%;">Change</th>
+                    <th class="num" style="width:9%;">Increase</th>
+                    <th class="num" style="width:9%;">Basic</th><th class="num" style="width:9%;">Allowance</th>
+                    <th class="num" style="width:9%;">Salary</th><th class="txt" style="width:13%;">Reason</th>
+                    <th style="width:7%;"></th>
+                  </tr></thead>
+                  <tbody id="labinc-body"></tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -13266,7 +13298,7 @@ function hrReportUrl(which) {
   return `/export/payroll/${which}?`;
 }
 
-// ---- Labour payroll > Increments ---------------------------------------------
+// ---- Labour payroll > Increments - laid out exactly like the office's ----------
 let LAB_INCS = [];
 async function labIncLoad() {
   document.getElementById("pg-labinc-card").style.display = "";
@@ -13279,26 +13311,94 @@ async function labIncLoad() {
   f.innerHTML = `<option value="">Everyone</option>` + people.map(([c, n]) => `<option value="${escapeAttr(c)}">${escapeHtml(c)} - ${escapeHtml(n)}</option>`).join("");
   f.value = keep;
   labIncPaint();
+  labIncForm();
+}
+async function labIncForm() {
+  const sel = document.getElementById("labinc-emp");
+  if (!sel.options.length) {
+    let emps = []; try { emps = await apiCall("/employees"); } catch (e) {}
+    emps = (emps || []).filter(e => !e.staff && e.active !== false && !e.terminated_on)
+      .sort((a, b) => String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
+    sel.innerHTML = `<option value="">Pick a worker</option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)} (${hrMoney(e.total_salary)})</option>`).join("");
+  }
+  // this cycle starts on the 26th; the last one a month before
+  const t = new Date(), y = t.getFullYear(), m = t.getMonth();
+  const cs = t.getDate() >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
+  const ls = new Date(cs.getFullYear(), cs.getMonth() - 1, 26);
+  const d = x => x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  document.getElementById("labinc-from").innerHTML = `<option value="this">This cycle (${d(cs)})</option><option value="previous">Last cycle (${d(ls)})</option>`;
+}
+async function labIncAdd() {
+  const emp = document.getElementById("labinc-emp").value, amt = document.getElementById("labinc-amount").value.replace(/,/g, "").trim();
+  if (!emp) { showStatus("labinc-status", "warn", "Pick the worker."); return; }
+  if (!amt || isNaN(+amt) || +amt === 0) { showStatus("labinc-status", "warn", "Enter the increase."); return; }
+  try {
+    const r = await apiCall("/employees/labour-increments", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emp_no: emp, amount: +amt, onto: document.getElementById("labinc-onto").value,
+                             from: document.getElementById("labinc-from").value, reason: document.getElementById("labinc-reason").value }) });
+    showStatus("labinc-status", "ok", r.detail || "Recorded.");
+    document.getElementById("labinc-amount").value = ""; document.getElementById("labinc-reason").value = "";
+    document.getElementById("labinc-emp").innerHTML = "";   // salaries in the list have changed
+    labIncLoad();
+  } catch (e) { showStatus("labinc-status", "err", errText(e)); }
 }
 function labIncPaint() {
   const who = document.getElementById("labinc-filter").value;
-  const kind = { opening: "Starting rate", rate: "Rate change", joining: "Joined", increment: "Increment", correction: "Correction" };
+  const kind = { joining: "Joined", increment: "Increment", correction: "Correction" };
   const rows = LAB_INCS.filter(r => !who || r.emp_no === who)
     .sort((a, b) => String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }) || a.effective_on.localeCompare(b.effective_on));
   let last = null;
   document.getElementById("labinc-body").innerHTML = rows.map(r => {
     const first = r.emp_no !== last; last = r.emp_no;
-    return `<tr${first ? ' class="hr-first"' : ""}>
+    const cls = [first ? "hr-first" : "", r.future ? "hr-warn" : ""].filter(Boolean).join(" ");
+    return `
+    <tr${cls ? ` class="${cls}"` : ""}>
       <td>${first ? escapeHtml(r.emp_no) : ""}</td>
       <td class="txt">${first ? xlink(r.name, `xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(${jsq(r.emp_no)}))`, "masterdata", "Open his record on Master Data") : ""}</td>
-      <td class="txt">${first ? escapeHtml(r.trade || "") : ""}</td>
       <td>${r.effective_on === "2000-01-01" ? '<span class="hr-nil">-</span>' : hrDate(r.effective_on)}${r.future ? '<span class="sub">not yet due</span>' : ""}</td>
       <td>${kind[r.kind] || hrCap(r.kind)}</td>
       <td class="num">${r.amount ? (r.amount > 0 ? "+" : "") + hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
       <td class="num">${hrMoney(r.basic)}</td>
+      <td class="num">${hrMoney(r.allowance)}</td>
       <td class="num strong">${hrMoney(r.gross)}</td>
-      <td class="txt">${escapeHtml(r.reason)}</td></tr>`;
-  }).join("") || `<tr><td colspan="9" class="hr-nil" style="padding:14px;">No rate changes recorded for labour yet.</td></tr>`;
+      <td class="txt">${escapeHtml(r.reason)}</td>
+      <td><button class="btn btn-gray hr-mini" onclick="labIncEdit(${r.id})">Edit</button></td>
+    </tr>`; }).join("") ||
+    `<tr><td colspan="10" class="hr-nil" style="padding:14px;">Nothing recorded yet.</td></tr>`;
+}
+let LAB_INC_EDIT = null;
+function labIncEdit(id) {
+  const r = LAB_INCS.find(x => x.id === id); if (!r) return;
+  LAB_INC_EDIT = id;
+  document.getElementById("labinc-form-title").textContent = "Correct the salary history";
+  document.getElementById("labinc-form-note").textContent = "Put the figures as they should read. His current rate follows the latest step, and his salary cards are worked out again.";
+  document.getElementById("labinc-new").style.display = "none";
+  document.getElementById("labinc-edit").style.display = "";
+  document.getElementById("labinc-edit-who").textContent = `${r.emp_no} - ${r.name}`;
+  const d = document.getElementById("labinc-e-date"); d.value = r.effective_on === "2000-01-01" ? "" : r.effective_on; d.disabled = r.effective_on === "2000-01-01";
+  document.getElementById("labinc-e-basic").value = r.basic;
+  document.getElementById("labinc-e-allow").value = r.allowance;
+  document.getElementById("labinc-e-reason").value = r.reason || "";
+  document.getElementById("pg-labinc-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function labIncCancelEdit() {
+  LAB_INC_EDIT = null;
+  document.getElementById("labinc-form-title").textContent = "Record an increment";
+  document.getElementById("labinc-form-note").textContent = "A rise starts with this cycle, or with the last one if it was agreed late; cycles before it keep the rate they were paid at. By house rule a rise goes onto the allowance and the basic stays.";
+  document.getElementById("labinc-new").style.display = "";
+  document.getElementById("labinc-edit").style.display = "none";
+}
+async function labIncSaveEdit() {
+  if (!LAB_INC_EDIT) return;
+  const num = id => +String(document.getElementById(id).value).replace(/,/g, "");
+  const body = { basic: num("labinc-e-basic"), allowance: num("labinc-e-allow"), reason: document.getElementById("labinc-e-reason").value };
+  const d = document.getElementById("labinc-e-date"); if (!d.disabled && d.value) body.effective_on = d.value;
+  if (isNaN(body.basic) || isNaN(body.allowance)) { showStatus("labinc-status", "warn", "Basic and allowance must be numbers."); return; }
+  try {
+    const r = await apiCall(`/employees/labour-increments/${LAB_INC_EDIT}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    showStatus("labinc-status", "ok", r.detail || "Corrected.");
+    labIncCancelEdit(); document.getElementById("labinc-emp").innerHTML = ""; labIncLoad();
+  } catch (e) { showStatus("labinc-status", "err", errText(e)); }
 }
 async function labIncOut(fmt) {
   const who = document.getElementById("labinc-filter").value;

@@ -10900,7 +10900,7 @@ def _history_parts(db, emp_no=""):
 
 # Labour rate changes - Labour payroll > Increments. A labourer's rate is
 # changed on Labour master data; this is the record of every change.
-LABOUR_INC_MONEY = ["Increase", "Basic", "Salary"]
+LABOUR_INC_MONEY = ["Increase", "Basic", "Allowance", "Salary"]
 
 
 def _require_labour_pay(user):
@@ -10912,6 +10912,78 @@ def _require_labour_pay(user):
 def list_labour_increments(emp_no: str = "", db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("combine"))):
     return {"rows": _tidy_rate_history(list_increments(emp_no=emp_no, db=db, user=user, labour=True)["rows"])}
+
+
+@app.post("/employees/labour-increments")
+def add_labour_increment(payload: dict = Body(...), db: Session = Depends(get_db),
+                         user: models.User = Depends(require_screen("masterdata"))):
+    """A labourer's rise, recorded the way Master Data records a new rate:
+    from this cycle, or from the last one for a rise agreed late. Cycles
+    before it keep the rate they were paid at. By the same house rule as
+    the office, a rise goes onto the allowance and the basic stays."""
+    emp_no = str(payload.get("emp_no") or "").strip()
+    e = find_by_code(db, emp_no)
+    if not e or e.staff:
+        raise HTTPException(status_code=404, detail=f"No labourer with number {emp_no}.")
+    try:
+        amount = round(float(payload.get("amount") or 0), 2)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="The increase must be a number.")
+    if not amount:
+        raise HTTPException(status_code=400, detail="How much is the increment?")
+    onto = (payload.get("onto") or "allowance").strip().lower()
+    old_basic, old_total = float(e.basic_salary or 0), float(e.total_salary or 0)
+    new_basic = round(old_basic + (amount if onto == "basic" else 0), 2)
+    new_total = round(old_total + amount, 2)
+    if new_total <= 0 or new_basic < 0 or new_basic > new_total + 0.005:
+        raise HTTPException(status_code=400, detail="That would leave his salary below zero or below the basic.")
+    cs, _, _ = pcyc.cycle_bounds_for(_dubai_today())
+    late = (payload.get("from") or "this") == "previous"
+    start = pcyc.cycle_bounds_for(cs - timedelta(days=1))[0] if late else cs
+    reason = (payload.get("reason") or "").strip() or "Increment"
+    _record_labour_rate(db, e, new_basic, new_total, start, reason, user.id)
+    e.basic_salary, e.total_salary = new_basic, new_total
+    db.commit()
+    for (cycle,) in db.query(models.EmployeeSummary.month_year).filter(
+            models.EmployeeSummary.emp_no == e.emp_no).distinct().all():
+        services.recalculate_summary(db, e, cycle)
+    log_action(db, user.id, "labour_increment",
+               f"{e.emp_no} {amount:+,.2f} from {start.isoformat()} ({'basic' if onto == 'basic' else 'allowance'})")
+    return {"ok": True, "detail": f"{e.name}: {amount:+,.2f} from {start.strftime('%d %b %Y')} - salary now {new_total:,.2f}."}
+
+
+@app.put("/employees/labour-increments/{change_id}")
+def edit_labour_increment(change_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                          user: models.User = Depends(require_screen("masterdata"))):
+    """Correct a step in a labourer's rate history - a rate typed wrong.
+    The figures are given as they should read. His current rate follows
+    the latest step, and his cycles are worked out again from the
+    corrected history."""
+    c = db.query(models.SalaryChange).filter(models.SalaryChange.id == change_id).first()
+    e = db.query(models.Employee).filter(models.Employee.id == c.employee_id).first() if c else None
+    if not c or not e or e.staff:
+        raise HTTPException(status_code=404, detail="That entry is not on file.")
+    if payload.get("effective_on") and c.kind != "opening":
+        c.effective_on = _as_date(payload["effective_on"]) or c.effective_on
+    if "basic" in payload:
+        c.basic = _num(payload["basic"])
+    if "allowance" in payload:
+        c.allowance = _num(payload["allowance"])
+    if (c.basic or 0) < 0 or (c.allowance or 0) < 0:
+        raise HTTPException(status_code=400, detail="Basic and allowance cannot be below zero.")
+    if "reason" in payload:
+        c.reason = (payload.get("reason") or "").strip()
+    db.flush()
+    latest = (db.query(models.SalaryChange).filter(models.SalaryChange.employee_id == e.id)
+                .order_by(models.SalaryChange.effective_on.desc(), models.SalaryChange.id.desc()).first())
+    e.basic_salary = round(latest.basic or 0, 2)
+    e.total_salary = round((latest.basic or 0) + (latest.allowance or 0), 2)
+    db.commit()
+    for (cycle,) in db.query(models.EmployeeSummary.month_year).filter(
+            models.EmployeeSummary.emp_no == e.emp_no).distinct().all():
+        services.recalculate_summary(db, e, cycle)
+    log_action(db, user.id, "labour_rate_corrected", f"{e.emp_no} {c.effective_on}")
+    return {"ok": True, "detail": f"{e.name}: corrected - salary now {e.total_salary:,.2f}."}
 
 
 def _tidy_rate_history(rows):
@@ -10939,6 +11011,8 @@ def _tidy_rate_history(rows):
             if prev is not None and abs(r["gross"] - prev["gross"]) < 0.005 and abs(r["basic"] - prev["basic"]) < 0.005:
                 continue
             r["amount"] = round(r["gross"] - prev["gross"], 2) if prev is not None else 0
+            # the same words the office history uses
+            r["kind"] = "joining" if prev is None else ("increment" if r["amount"] >= 0 else "correction")
             out.append(r)
             prev = r
     return out
@@ -10975,7 +11049,7 @@ def _history_rows(rows, labour):
 
 def _labour_history_parts(db, emp_no=""):
     d = list_increments(emp_no=emp_no, db=db, user=None, labour=True)
-    out, people = _history_rows(_tidy_rate_history(d["rows"]), True)
+    out, people = _history_rows(_tidy_rate_history(d["rows"]), False)
     sub = f"{people} workers   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
     return out, "Labour Salary History", sub
 
