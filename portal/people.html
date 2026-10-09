@@ -119,13 +119,13 @@
   .lc-months div.cur { color: var(--red); }
   .lc-p { display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px; height: 46px; border-bottom: 1px solid #F3F0EA; cursor: default; min-width: 0; }
   .lc-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; color: white; flex: none; }
-  .lc-p b { font-weight: 600; display: block; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .lc-p b { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.15; overflow: hidden; font-size: 12.5px; word-break: break-word; }
   .lc-p small { color: #6B7280; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .lc-right { position: relative; }
   .lc-ln { position: relative; height: 46px; border-bottom: 1px solid #F3F0EA; }
   .lc-sep { position: absolute; top: 40px; bottom: 0; width: 1px; background: #F1EEE8; }
-  .lc-clash { position: absolute; top: 40px; bottom: 0; background: rgba(192,57,43,.08); border-left: 1px dashed rgba(192,57,43,.55); border-right: 1px dashed rgba(192,57,43,.55); pointer-events: none; }
-  .lc-clash.two { background: rgba(224,168,0,.10); border-color: rgba(200,150,0,.6); }
+  .lc-clash { position: absolute; top: 40px; bottom: 0; background: rgba(192,57,43,.10); pointer-events: none; }
+  .lc-clash.two { background: rgba(224,168,0,.13); }
   .lc-today { position: absolute; top: 40px; bottom: 0; border-left: 2px dashed var(--red); z-index: 3; pointer-events: none; }
   .lc-todaychip { position: absolute; top: 25px; transform: translateX(-50%); background: var(--red); color: white; font-size: 9.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px 6px 0 0; z-index: 4; line-height: 13px; }
   .lc-bar { position: absolute; top: 11px; height: 24px; min-width: 8px; border-radius: 999px; color: white; font-size: 11px; font-weight: 600; line-height: 24px; padding: 0 9px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.12); cursor: pointer; z-index: 2; box-sizing: border-box; letter-spacing: -.1px; }
@@ -1160,16 +1160,30 @@ async function loadVacCal() {
   const months = `<div class="lc-hd lc-months" style="grid-template-columns:${mdays.map(n => n + "fr").join(" ")}">${MON.map((m, i) => `<div class="${i === curM ? "cur" : ""}">${m}</div>`).join("")}</div>`;
   let acc = 0; const seps = mdays.slice(0, 11).map(n => { acc += n; return `<div class="lc-sep" style="left:${acc / span * 100}%"></div>`; }).join("");
   const clashes = lcClashes(shown, y0, y1);
-  const bands = clashes.map(c => `<div class="lc-clash${c.who.length < 3 ? " two" : ""}" style="left:${pct(c.a)}%;width:${pct(c.b + 1) - pct(c.a)}%" title="${c.who.length} away together ${lcRange(c.a, c.b)}: ${esc(c.who.map(w => w.name).join(", "))}"></div>`).join("");
+  // Back-to-back runs (2 away, then 3, then 2) are one shaded stretch -
+  // drawn per run they stacked into stripes.
+  const runs = [];
+  clashes.forEach(c => { const l = runs[runs.length - 1];
+    if (l && c.a <= l.b + 1) { l.b = Math.max(l.b, c.b); l.n = Math.max(l.n, c.who.length); }
+    else runs.push({ a: c.a, b: c.b, n: c.who.length }); });
+  const bands = runs.map(r => `<div class="lc-clash${r.n < 3 ? " two" : ""}" style="left:${pct(r.a)}%;width:${pct(r.b + 1) - pct(r.a)}%" title="Up to ${r.n} away together, ${lcRange(r.a, r.b)}"></div>`).join("");
   const todayLine = today >= y0 && today <= y1 ? `<div class="lc-today" style="left:${pct(today)}%"></div><div class="lc-todaychip" style="left:${pct(today)}%">Today</div>` : "";
   const lanes = people.map(p => `<div class="lc-ln">${shown.filter(s => s.r.emp_no === p.emp_no).map(s => {
       const n = s.b - s.a + 1, r = s.r;
       const tip = `${r.name} · ${r.leave_type_label} · ${dmy(lcIso(s.a))} – ${dmy(lcIso(s.b))} (${n} day${n === 1 ? "" : "s"}) · ${r.standing}${r.days_late ? " " + r.days_late + " days" : ""}${r.approved_by ? " · approved by " + r.approved_by : ""}`;
       const lab = lcRange(s.a, s.b) + (r.standing === "Overdue" ? ` · ${r.days_late} d overdue` : "");
-      return `<div class="lc-bar lc-${s.kind}" data-lab="${esc(lab)}" style="left:${pct(s.a)}%;width:${pct(s.b + 1) - pct(s.a)}%" title="${esc(tip)}" onclick="openVac(${r.id})">${esc(lab)}</div>`;
+      // Placed by rule, not measured, so it lands the same on screen and on
+      // paper: inside the bar when the dates fit even at A4 width (about
+      // 2.3px a day), else beside it - right, or left near the year end.
+      const PX_DAY = 2.3, textPx = lab.length * 6.3 + 18, barPx = (Math.min(s.b, y1) - Math.max(s.a, y0) + 1) * PX_DAY;
+      const L = pct(s.a), R = pct(s.b + 1), labPct = textPx / (span * PX_DAY) * 100;
+      const bar = `<div class="lc-bar lc-${s.kind}${textPx <= barPx ? "" : " out"}" style="left:${L}%;width:${R - L}%" title="${esc(tip)}" onclick="openVac(${r.id})">${textPx <= barPx ? esc(lab) : ""}</div>`;
+      if (textPx <= barPx) return bar;
+      const side = R + labPct <= 100 ? `left:${R}%;margin-left:6px` : `right:${100 - L}%;margin-right:6px`;
+      return bar + `<span class="lc-lab" style="${side}">${esc(lab)}</span>`;
     }).join("")}</div>`).join("");
   const who = people.map(p => `<div class="lc-p">${lcAv(p)}<div style="min-width:0"><b title="${esc(p.name)}">${esc(p.name)}</b><small>${esc(p.emp_no)}${p.designation ? " · " + esc(p.designation) : ""}</small></div></div>`).join("");
-  const legend = `<div class="lc-legend"><span><i class="lc-past"></i>Gone and back</span><span><i class="lc-now"></i>Away now</span><span><i class="lc-next"></i>Approved, not gone yet</span><span><i class="lc-late"></i>Overdue</span><span><i class="lc-pend"></i>Pending</span><span><i style="background:rgba(192,57,43,.12);border:1px dashed #C0392B"></i>Days more than one is away</span></div>`;
+  const legend = `<div class="lc-legend"><span><i class="lc-past"></i>Gone and back</span><span><i class="lc-now"></i>Away now</span><span><i class="lc-next"></i>Approved, not gone yet</span><span><i class="lc-late"></i>Overdue</span><span><i class="lc-pend"></i>Pending</span><span><i style="background:rgba(224,168,0,.3)"></i>2 away together</span><span><i style="background:rgba(192,57,43,.25)"></i>3 or more away together</span></div>`;
   const board = people.length
     ? `<div class="lc-board"><div class="lc-scroll"><div class="lc-in"><div class="lc-left"><div class="lc-hd who">Staff · ${people.length}</div>${who}</div><div class="lc-right">${months}${seps}${bands}${todayLine}${lanes}</div></div></div>${legend}</div>`
     : `<div class="lc-board"><div class="lc-none">No leave on file for ${Y}${P.vacGroup === "office" ? " (office staff)" : " (labour)"} - + Add leave to enter one.</div></div>`;
@@ -1178,7 +1192,6 @@ async function loadVacCal() {
   const cards = clashes.map(c => `<div class="lc-cl${c.who.length < 3 ? " two" : ""}${c.b < today ? " done" : ""}"><b>${c.who.length >= 3 ? "&#9888; " : ""}${lcRange(c.a, c.b)} · ${c.who.length} away together${c.b < today ? " (past)" : ""}</b><div class="avs">${c.who.map(lcAv).join("")}<span class="t">${esc(c.who.map(w => w.name).join(", "))}</span></div></div>`).join("");
   box.innerHTML = tiles + board + (clashes.length ? `<div class="lc-h">Away together in ${Y}</div><div class="lc-cls">${cards}</div>` : "");
   requestAnimationFrame(() => {
-    lcFitLabels();
     // A narrow screen opens on the current month, not on January.
     const sc = box.querySelector(".lc-scroll"), right = box.querySelector(".lc-right");
     if (sc && right && sc.scrollWidth > sc.clientWidth && today >= y0 && today <= y1)
@@ -1190,11 +1203,14 @@ async function loadVacCal() {
   });
 }
 // A bar too short for its dates gets them written beside it instead.
-function lcFitLabels() {
-  document.querySelectorAll("#vc-cal .lc-bar").forEach(b => {
+function lcFitLabels(root) {
+  root = root || document;
+  root.querySelectorAll("#vc-cal .lc-lab").forEach(l => l.remove());
+  root.querySelectorAll("#vc-cal .lc-bar").forEach(b => {
+    b.classList.remove("out");
     if (b.scrollWidth <= b.clientWidth + 1) return;
     b.classList.add("out");
-    const ln = b.parentElement, lab = document.createElement("span");
+    const ln = b.parentElement, lab = (b.ownerDocument || document).createElement("span");
     lab.className = "lc-lab"; lab.textContent = b.dataset.lab; ln.appendChild(lab);
     // In percent of the line, so the label stays beside its bar at any width
     // (the Preview and the printed page are not as wide as the screen).
@@ -1210,17 +1226,21 @@ function vacCalOpen(print) {
   const w = window.open("", "_blank"); if (!w) { status("warn", "Allow pop-ups to open the calendar."); return; }
   const grp = P.vacGroup === "office" ? "Office staff" : "Labour";
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Leave calendar ${P.vacYear} - ${grp}</title><style>${css}
-    @page { size: A4 landscape; margin: 10mm; } body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page { size: A4 landscape; margin: 0; } body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .lc-cl, .lc-board, .lc-tile { break-inside: avoid; }
     .pv-bar { position: sticky; top: 0; z-index: 20; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: white; border-bottom: 1px solid #E8E4DC; padding: 10px 16px; margin: -16px -16px 14px; }
     .pv-bar h1 { font-size: 16px; margin: 0; flex: 1; }
     .pv-page { padding: 16px; } .pv-print-h { display: none; }
-    @media print { .pv-bar { display: none; } .pv-print-h { display: block; } .pv-page { padding: 0; } .lc-in { min-width: 0; } .lc-scroll { overflow: visible; } }</style></head>
+    @media print { .pv-bar { display: none; } .pv-print-h { display: block; } .pv-page { padding: 10mm 10mm 8mm; } .lc-in { min-width: 0; } .lc-scroll { overflow: visible; }
+      .lc-bar, .lc-tile, .lc-cl, .lc-board { box-shadow: none !important; } .lc-bar:hover { transform: none; filter: none; } }
+    .lc-in { grid-template-columns: 230px 1fr; }</style></head>
     <body><div class="pv-page"><div class="pv-bar"><h1>Leave calendar ${P.vacYear} · ${grp}</h1>
       <button class="btn btn-dark" onclick="window.print()">Export PDF / Print</button><button class="btn btn-gray" onclick="window.close()">Close</button></div>
-    <h2 class="pv-print-h" style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2>${document.getElementById("vc-cal").innerHTML}</div>
+    <h2 class="pv-print-h" style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2><div id="vc-cal">${document.getElementById("vc-cal").innerHTML}</div></div>
     ${print ? "<script>setTimeout(function(){ window.print(); }, 400);<\/script>" : ""}</body></html>`);
   w.document.close();
+  // the dates beside short bars are placed again for this page's width
+
 }
 let VAC_PEOPLE = [];
 async function vacPeople(group) {
