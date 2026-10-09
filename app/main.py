@@ -7499,7 +7499,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
     <a class="btn" href="#" onclick="window.print();return false;">Print</a>
-    <a class="btn wa" id="wa-share" href="https://web.whatsapp.com/" target="_blank" rel="noopener">Share on WhatsApp</a>
+    <a class="btn wa" id="wa-share" href="https://web.whatsapp.com/" target="_blank" rel="noopener" title="Send the PDF - WhatsApp, mail or any app">Share</a>
     {map_btn}
   </div>
   <div class="hint" id="wa-hint"></div>
@@ -7526,7 +7526,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
                        && navigator.canShare({{ files: [probe] }}));
   }} catch (e) {{ canShareFiles = false; }}
   hint.textContent = canShareFiles
-    ? "Opens your share sheet - choose WhatsApp, then the person to send it to."
+    ? "Opens your share sheet - WhatsApp, mail or any app."
     : "Opens WhatsApp Web and downloads the order - pick the chat there and attach it.";
 
   document.getElementById("wa-share").addEventListener("click", async function (ev) {{

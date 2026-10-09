@@ -288,7 +288,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <button class="btn btn-dark" onclick="download('leave-register','pdf')">Export PDF</button>
             <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button></span>
             <span id="vc-cal-acts" style="display:none;"><button class="btn btn-dark" onclick="vacCalOpen(false)">Preview</button>
-            <button class="btn btn-dark" onclick="vacCalOpen(true)">Export PDF</button>
+            <button class="btn btn-dark" onclick="vacCalPdf()">Export PDF</button>
             <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button></span>
           </div>
           <div id="vc-cal" style="display:none;"></div>
@@ -1219,8 +1219,13 @@ function lcFitLabels(root) {
     else { lab.style.right = ((W - L) / W * 100) + "%"; lab.style.marginRight = "6px"; }
   });
 }
-// The calendar as it is on screen, on its own page: Preview shows it with a
-// print button; Export PDF opens the print dialog straight away (Save as PDF).
+// The calendar as a real PDF, made on the server - to download, or to hand
+// to WhatsApp, mail or any app through the phone's share sheet.
+async function lcPdfUrl() { return `/export/leave-calendar?group=${P.vacGroup}&year=${P.vacYear}&token=${encodeURIComponent(await dl())}`; }
+async function vacCalPdf() {
+  const a = document.createElement("a"); a.href = await lcPdfUrl(); a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+}
+// The calendar on its own page, with Download PDF, Share and Print above it.
 function vacCalOpen(print) {
   const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
   const w = window.open("", "_blank"); if (!w) { status("warn", "Allow pop-ups to open the calendar."); return; }
@@ -1235,8 +1240,31 @@ function vacCalOpen(print) {
       .lc-bar, .lc-tile, .lc-cl, .lc-board { box-shadow: none !important; } .lc-bar:hover { transform: none; filter: none; } }
     .lc-in { grid-template-columns: 230px 1fr; }</style></head>
     <body><div class="pv-page"><div class="pv-bar"><h1>Leave calendar ${P.vacYear} · ${grp}</h1>
-      <button class="btn btn-dark" onclick="window.print()">Export PDF / Print</button><button class="btn btn-gray" onclick="window.close()">Close</button></div>
+      <button class="btn btn-dark" id="pv-dl">Download PDF</button><button class="btn btn-gray" onclick="window.print()">Print</button>
+      <button class="btn" id="pv-share" style="background:#25D366;border-color:#25D366;color:#fff;" title="Send the PDF - WhatsApp, mail or any app">Share</button>
+      <button class="btn btn-gray" onclick="window.close()">Close</button></div>
     <h2 class="pv-print-h" style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2><div id="vc-cal">${document.getElementById("vc-cal").innerHTML}</div></div>
+    <script>
+    (function () {
+      var name = ${JSON.stringify("Leave_Calendar_" + P.vacYear + "_" + (P.vacGroup === "office" ? "Office" : "Labour") + ".pdf")};
+      async function url() { if (!window.opener || window.opener.closed) throw new Error("closed"); return await window.opener.lcPdfUrl(); }
+      document.getElementById("pv-dl").onclick = async function () {
+        try { var a = document.createElement("a"); a.href = await url(); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+        catch (e) { alert("Open the calendar again from the app to download."); }
+      };
+      var b = document.getElementById("pv-share");
+      b.onclick = async function () {
+        var was = b.textContent; b.textContent = "Preparing...";
+        try {
+          var r = await fetch(await url()); if (!r.ok) throw new Error("x");
+          var f = new File([await r.blob()], name, { type: "application/pdf" });
+          if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: name }); }
+          else { var a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = name; document.body.appendChild(a); a.click(); a.remove(); window.open("https://web.whatsapp.com/", "_blank", "noopener"); }
+        } catch (e) { if (!e || e.name !== "AbortError") alert("Could not share - try Download PDF."); }
+        finally { b.textContent = was; }
+      };
+    })();
+    <\/script>
     ${print ? "<script>setTimeout(function(){ window.print(); }, 400);<\/script>" : ""}</body></html>`);
   w.document.close();
   // the dates beside short bars are placed again for this page's width

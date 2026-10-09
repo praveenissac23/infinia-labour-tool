@@ -227,6 +227,7 @@ def check(name, preview_url, pdf_url, excel_url, table=True):
        "data:image/png;base64," in body or "infinia contracting" in body.lower())
     ck(f"{name}: with PDF, Excel and Print on it",
        "Download PDF" in body and "Download Excel" in body and "window.print()" in body)
+    ck(f"{name}: and Share (WhatsApp, mail, any app)", 'id="pv-share"' in body or 'id="wa-share"' in body)
     ck(f"{name}: headings read as headings, not field names",
        not any(f">{k}<" in body for k in
                ("given_to", "emp_no", "item_type", "qty_requested", "reorder_level",

@@ -291,6 +291,44 @@ def export_invoice(iid: int, token: str, db: Session = Depends(get_db)):
     return _pdf_response(db, x)
 
 
+@router.get("/export/accounts/invoice/{iid}/view")
+def view_invoice(iid: int, token: str, db: Session = Depends(get_db)):
+    """The invoice on its own page with Download PDF, Print and Share above
+    it - Share hands the PDF to WhatsApp, mail or any app on a phone."""
+    from fastapi.responses import HTMLResponse
+    from urllib.parse import quote
+    import export_web
+    u = auth.get_download_user_from_token(token, db)
+    if INV_RIGHT not in M.effective_permissions(u):
+        raise HTTPException(status_code=403, detail="Invoices are for accounts only.")
+    x = db.get(Invoice, iid)
+    if not x:
+        raise HTTPException(status_code=404, detail="That invoice is not on file.")
+    t = quote(auth.create_view_token(u.username), safe="")
+    pdf = f"/export/accounts/invoice/{iid}?token={t}"
+    title = ("Tax Invoice " if x.kind == "tax" else "Proforma Invoice ") + x.number
+    d = _dict(x)
+    sub = " - ".join(v for v in (d.get("client") or "", f"AED {float(d.get('total') or 0):,.2f}") if v)
+    return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><title>{escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>{export_web.PREVIEW_BAR_CSS}
+  body {{ margin:0; background:#F1EFEA; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
+  .doc {{ width:min(210mm, calc(100% - 24px)); height:calc(100vh - 90px); margin:12px auto; background:white;
+          box-shadow:0 1px 6px rgba(0,0,0,.14); }}
+  .doc iframe {{ width:100%; height:100%; border:0; }}
+  .phone {{ display:none; text-align:center; color:#666; font-size:14px; padding:30px 16px; }}
+  @media (max-width: 700px) {{ .doc {{ display:none; }} .phone {{ display:block; }} }}
+</style></head><body>
+<div class="pvbar"><h1>{escape(title)}</h1><span class="who">{escape(sub)}</span><span class="sp"></span>
+  <a class="btn dark" href="{escape(pdf)}" target="_blank">Download PDF</a>
+  <a class="btn" href="{escape(pdf)}" target="_blank">Print</a>
+  {export_web.share_button(pdf, title)}</div>
+{export_web.SHARE_JS}
+<div class="doc"><iframe src="{escape(pdf)}#view=FitH" title="{escape(title)}"></iframe></div>
+<div class="phone">Tap <b>Share</b> to send it on WhatsApp or mail, or <b>Download PDF</b> to open it.</div>
+</body></html>""")
+
+
 @router.get("/export/accounts/invoices")
 def export_invoice_register(token: str, kind: str = "tax", format: str = "excel", db: Session = Depends(get_db)):
     """The list of invoices in the app's standard report: Preview (on

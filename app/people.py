@@ -1245,6 +1245,241 @@ def _report(kind, db, user, group="", emp_no="", days=90, company_id=None, show=
     raise HTTPException(status_code=404, detail="No such report.")
 
 
+# ---- Leave calendar as a PDF: the year, one line a person ---------------------
+LC_COLOURS = {"Returned": "#B3AEA4", "On leave": "#3478B8", "Approved": "#34A465",
+              "Overdue": "#D2483B", "Pending": "#E5BE55"}
+
+
+def _lc_spells(rows, today):
+    """The days each spell covers - from the day he goes to the day before he
+    is back (or due back); someone still away runs to today. Same rule as
+    the calendar on screen."""
+    out = []
+    for r in rows:
+        if not r.get("leave_on") or r.get("standing") == "Cancelled":
+            continue
+        a = M._as_date(r["leave_on"])
+        if r.get("return_on"):
+            b = M._as_date(r["return_on"]) - timedelta(days=1)
+        elif r.get("due_back"):
+            b = M._as_date(r["due_back"]) - timedelta(days=1)
+        else:
+            b = a
+        b = max(a, b)
+        if r.get("standing") == "Overdue" or (r.get("standing") == "On leave" and not r.get("due_back")):
+            b = max(b, today)
+        out.append({"r": r, "a": a, "b": b})
+    return out
+
+
+def _lc_runs(spells, a0, b0):
+    """Runs of days on which two or more people are away: (first, last, most, names)."""
+    runs, day = [], a0
+    cur = None
+    while day <= b0:
+        who = sorted({s["r"]["name"] for s in spells if s["a"] <= day <= s["b"]})
+        if len(who) >= 2:
+            if cur and cur["b"] == day - timedelta(days=1) and cur["who"] == who:
+                cur["b"] = day
+            else:
+                cur = {"a": day, "b": day, "who": who}
+                runs.append(cur)
+        else:
+            cur = None
+        day += timedelta(days=1)
+    return runs
+
+
+def build_leave_calendar_pdf(rows, year, title, today):
+    import io
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    import export_web
+
+    buf = io.BytesIO()
+    W, H = landscape(A4)
+    c = canvas.Canvas(buf, pagesize=(W, H))
+    c.setTitle(title)
+    M_L, M_R, M_T, M_B = 12 * mm, 12 * mm, 12 * mm, 12 * mm
+    y0, y1 = date(year, 1, 1), date(year, 12, 31)
+    span = (y1 - y0).days + 1
+    spells = [s for s in _lc_spells(rows, today) if s["b"] >= y0 and s["a"] <= y1]
+    people = {}
+    for s in spells:
+        people.setdefault(s["r"]["emp_no"], s["r"])
+    first = {e: min(s["a"] for s in spells if s["r"]["emp_no"] == e) for e in people}
+    order = sorted(people, key=lambda e: (first[e], people[e]["name"]))
+    runs = _lc_runs(spells, y0, y1)
+    merged = []
+    for r in runs:
+        if merged and r["a"] <= merged[-1]["b"] + timedelta(days=1):
+            merged[-1]["b"] = max(merged[-1]["b"], r["b"]); merged[-1]["n"] = max(merged[-1]["n"], len(r["who"]))
+        else:
+            merged.append({"a": r["a"], "b": r["b"], "n": len(r["who"])})
+
+    NAME_W = 58 * mm
+    gx0, gx1 = M_L + NAME_W, W - M_R
+    gw = gx1 - gx0
+    X = lambda d: gx0 + gw * ((min(max(d, y0), y1 + timedelta(days=1)) - y0).days / span)
+    mons = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    def page_head():
+        logo = export_web._logo_image(width_mm=42) if hasattr(export_web, "_logo_image") else None
+        top = H - M_T
+        if logo:
+            try:
+                logo.drawOn(c, M_L, top - logo.drawHeight)
+            except Exception:
+                pass
+        c.setFillColor(colors.HexColor("#1F2429")); c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(W / 2, top - 14, title)
+        away = sum(1 for s in spells if s["r"]["standing"] == "On leave")
+        late = sum(1 for s in spells if s["r"]["standing"] == "Overdue")
+        nxt = sum(1 for s in spells if s["r"]["standing"] == "Approved")
+        ahead = sum(1 for r in _lc_runs(_lc_spells(rows, today), today, today + timedelta(days=365)))
+        c.setFont("Helvetica", 8.5); c.setFillColor(colors.HexColor("#555555"))
+        c.drawCentredString(W / 2, top - 27, f"Away now {away}   |   Approved, not gone yet {nxt}   |   Overdue {late}   |   "
+                                             f"Clashes ahead {ahead}   |   As at {today:%d %b %Y}")
+        return top - 40
+
+    top = page_head()
+    HEAD_H = 7 * mm
+    LEG_H = 8 * mm
+    avail = top - M_B - HEAD_H - LEG_H - 6
+    n = max(len(order), 1)
+    row_h = max(6.5 * mm, min(10 * mm, avail / n))
+    per_page = max(1, int(avail // row_h))
+
+    def grid(rows_here, gy_top):
+        gy_bot = gy_top - HEAD_H - row_h * len(rows_here)
+        # month header and lines
+        c.setFillColor(colors.HexColor("#F5F3EE")); c.rect(M_L, gy_top - HEAD_H, W - M_L - M_R, HEAD_H, stroke=0, fill=1)
+        c.setFont("Helvetica-Bold", 7.5)
+        for m in range(12):
+            a, b = date(year, m + 1, 1), (date(year, m + 2, 1) if m < 11 else date(year + 1, 1, 1))
+            xa, xb = X(a), X(b)
+            c.setFillColor(colors.HexColor("#C0392B") if (today.year == year and today.month == m + 1) else colors.HexColor("#6B7280"))
+            c.drawCentredString((xa + xb) / 2, gy_top - HEAD_H + 2.4 * mm, mons[m].upper())
+            if m:
+                c.setStrokeColor(colors.HexColor("#ECE8E1")); c.setLineWidth(0.5); c.line(xa, gy_top - HEAD_H, xa, gy_bot)
+        c.setFillColor(colors.HexColor("#6B7280")); c.drawString(M_L + 2 * mm, gy_top - HEAD_H + 2.4 * mm, f"STAFF  {len(order)}")
+        # shared days, behind the bars
+        for r in merged:
+            c.setFillColor(colors.Color(0.88, 0.66, 0.0, alpha=0.16) if r["n"] < 3 else colors.Color(0.75, 0.22, 0.17, alpha=0.14))
+            c.rect(X(r["a"]), gy_bot, X(r["b"] + timedelta(days=1)) - X(r["a"]), gy_top - HEAD_H - gy_bot, stroke=0, fill=1)
+        # rows
+        for i, e in enumerate(rows_here):
+            p = people[e]
+            ry = gy_top - HEAD_H - row_h * (i + 1)
+            c.setStrokeColor(colors.HexColor("#EEEAE3")); c.setLineWidth(0.5); c.line(M_L, ry, gx1, ry)
+            c.setFillColor(colors.HexColor("#1F2429")); c.setFont("Helvetica-Bold", 8)
+            name = p["name"]
+            while stringWidth(name, "Helvetica-Bold", 8) > NAME_W - 4 * mm and len(name) > 4:
+                name = name[:-2]
+            if name != p["name"]:
+                name = name.rstrip() + "…"
+            c.drawString(M_L + 2 * mm, ry + row_h * 0.55, name)
+            c.setFont("Helvetica", 6.8); c.setFillColor(colors.HexColor("#6B7280"))
+            c.drawString(M_L + 2 * mm, ry + row_h * 0.2, f"{p['emp_no']}" + (f" · {p['designation']}" if p.get("designation") else "")[:40])
+            bh = row_h * 0.5
+            for s in [s for s in spells if s["r"]["emp_no"] == e]:
+                xa, xb = X(s["a"]), X(s["b"] + timedelta(days=1))
+                bw = max(xb - xa, 2.5)
+                st = s["r"]["standing"]
+                c.setFillColor(colors.HexColor(LC_COLOURS.get(st, "#B3AEA4")))
+                c.roundRect(xa, ry + (row_h - bh) / 2, bw, bh, bh / 2, stroke=0, fill=1)
+                a_txt = f"{s['a'].day} {mons[s['a'].month - 1]}"
+                b_txt = f"{s['b'].day} {mons[s['b'].month - 1]}"
+                lab = (f"{s['a'].day} – {b_txt}" if (s["a"].month == s["b"].month and s["a"].year == s["b"].year and s["a"] != s["b"])
+                       else b_txt if s["a"] == s["b"] else f"{a_txt} – {b_txt}")
+                if st == "Overdue" and s["r"].get("days_late"):
+                    lab += f" · {s['r']['days_late']} d overdue"
+                tw = stringWidth(lab, "Helvetica-Bold", 7)
+                ty = ry + row_h / 2 - 2.4
+                if tw + 8 <= bw:
+                    c.setFillColor(colors.white if st != "Pending" else colors.HexColor("#4A3800"))
+                    c.setFont("Helvetica-Bold", 7); c.drawString(xa + 4, ty, lab)
+                else:
+                    c.setFillColor(colors.HexColor("#374151")); c.setFont("Helvetica-Bold", 7)
+                    if xa + bw + 4 + tw <= gx1:
+                        c.drawString(xa + bw + 4, ty, lab)
+                    else:
+                        c.drawRightString(xa - 4, ty, lab)
+        # today
+        if y0 <= today <= y1:
+            tx = X(today)
+            c.setStrokeColor(colors.HexColor("#C0392B")); c.setLineWidth(1); c.setDash(3, 2)
+            c.line(tx, gy_top - HEAD_H, tx, gy_bot); c.setDash()
+        c.setStrokeColor(colors.HexColor("#E2DED6")); c.setLineWidth(0.6)
+        c.rect(M_L, gy_bot, W - M_L - M_R, gy_top - gy_bot, stroke=1, fill=0)
+        c.line(gx0, gy_bot, gx0, gy_top)
+        return gy_bot
+
+    def legend(yy):
+        items = [("Gone and back", LC_COLOURS["Returned"]), ("Away now", LC_COLOURS["On leave"]),
+                 ("Approved, not gone yet", LC_COLOURS["Approved"]), ("Overdue", LC_COLOURS["Overdue"]),
+                 ("Pending", LC_COLOURS["Pending"])]
+        x = M_L
+        c.setFont("Helvetica", 7.5)
+        for label, col in items:
+            c.setFillColor(colors.HexColor(col)); c.roundRect(x, yy, 14, 5, 2.5, stroke=0, fill=1)
+            c.setFillColor(colors.HexColor("#555555")); c.drawString(x + 18, yy, label); x += 26 + stringWidth(label, "Helvetica", 7.5)
+        for label, col in (("2 away together", colors.Color(0.88, 0.66, 0.0, alpha=0.35)),
+                           ("3 or more away together", colors.Color(0.75, 0.22, 0.17, alpha=0.3))):
+            c.setFillColor(col); c.rect(x, yy - 1, 14, 7, stroke=0, fill=1)
+            c.setFillColor(colors.HexColor("#555555")); c.drawString(x + 18, yy, label); x += 26 + stringWidth(label, "Helvetica", 7.5)
+
+    if not order:
+        c.setFont("Helvetica", 11); c.setFillColor(colors.HexColor("#777777"))
+        c.drawCentredString(W / 2, H / 2, f"No leave on file for {year}.")
+    else:
+        idx = 0
+        while idx < len(order):
+            chunk = order[idx: idx + per_page]
+            bottom = grid(chunk, top)
+            legend(bottom - LEG_H + 2 * mm)
+            idx += per_page
+            if idx < len(order):
+                c.showPage(); top = page_head()
+        # the clashes, spelled out
+        lines = [f"{r['a'].day} {mons[r['a'].month - 1]} – {r['b'].day} {mons[r['b'].month - 1]}  ·  "
+                 f"{len(r['who'])} away together: {', '.join(r['who'])}" + ("  (past)" if r["b"] < today else "")
+                 for r in runs]
+        if lines:
+            yy = bottom - LEG_H - 8 * mm
+            if yy < M_B + 20 * mm:
+                c.showPage(); top = page_head(); yy = top - 6 * mm
+            c.setFont("Helvetica-Bold", 9); c.setFillColor(colors.HexColor("#1F2429"))
+            c.drawString(M_L, yy, f"Away together in {year}"); yy -= 13
+            c.setFont("Helvetica", 8)
+            for ln in lines:
+                if yy < M_B:
+                    c.showPage(); top = page_head(); yy = top - 6 * mm; c.setFont("Helvetica", 8)
+                c.setFillColor(colors.HexColor("#9A9389") if "(past)" in ln else colors.HexColor("#1F2429"))
+                c.drawString(M_L + 2 * mm, yy, ln[:180]); yy -= 11
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+@router.get("/export/leave-calendar")
+def export_leave_calendar(token: str, group: str = "labour", year: int = 0, db: Session = Depends(get_db)):
+    """The leave calendar as a PDF - the same year, bars and clashes the
+    screen shows, on landscape A4, for sharing and printing."""
+    from fastapi.responses import StreamingResponse
+    user = _reader(token, db)
+    today = M._dubai_today()
+    year = year or today.year
+    d = leave_register(group=group, show="", db=db, user=user)
+    grp = "Office staff" if group == "office" else "Labour"
+    buf = build_leave_calendar_pdf(d["rows"], year, f"Leave calendar {year} - {grp}", today)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="Infinia_Leave_Calendar_{year}_{grp.split()[0]}.pdf"'})
+
+
 @router.get("/export/people/{kind}")
 def export_people(kind: str, token: str, format: str = "pdf", group: str = "", emp_no: str = "",
                   days: int = 90, company_id: int = None, show: str = "", db: Session = Depends(get_db)):

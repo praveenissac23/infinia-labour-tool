@@ -15199,7 +15199,7 @@ async function invSave(openPdf) {
     if (INV_EDIT) await apiCall(`/employees/accounts/invoices/${INV_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
     else id = (await apiCall("/employees/accounts/invoices", { method: "POST", body: JSON.stringify(body) })).id;
     const msg = `${body.number} saved - AED ${document.getElementById("inv-tot").textContent.replace("AED ", "")}.`;
-    if (win) win.location = await invPdfUrl(id);
+    if (win) win.location = await invViewUrl(id);
     INV_EDIT = null; await invLoad(); invReset(); showStatus("inv-status", "ok", msg);
   } catch (e) { if (win) win.close(); showStatus("inv-status", "err", errText(e)); }
   finally { btns.forEach(b => b.disabled = false); }
@@ -15208,7 +15208,12 @@ async function invPdfUrl(id) {
   await refreshDownloadToken();
   return `${API}/export/accounts/invoice/${id}?token=${encodeURIComponent(cachedDownloadToken || "")}`;
 }
-async function invPdf(id) { const w = window.open("", "_blank"); const u = await invPdfUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
+// Opens the invoice's own page: the PDF with Download, Print and Share above it.
+async function invViewUrl(id) {
+  await refreshDownloadToken();
+  return `${API}/export/accounts/invoice/${id}/view?token=${encodeURIComponent(cachedDownloadToken || "")}`;
+}
+async function invPdf(id) { const w = window.open("", "_blank"); const u = await invViewUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
 async function invList(kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
