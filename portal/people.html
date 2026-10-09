@@ -287,7 +287,9 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <span id="vc-list-acts"><button class="btn btn-dark" onclick="preview('leave-register')">Preview</button>
             <button class="btn btn-dark" onclick="download('leave-register','pdf')">Export PDF</button>
             <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button></span>
-            <button class="btn btn-dark" id="vc-cal-print" style="display:none;" onclick="vacCalPrint()">Print / PDF</button>
+            <span id="vc-cal-acts" style="display:none;"><button class="btn btn-dark" onclick="vacCalOpen(false)">Preview</button>
+            <button class="btn btn-dark" onclick="vacCalOpen(true)">Export PDF</button>
+            <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button></span>
           </div>
           <div id="vc-cal" style="display:none;"></div>
           <div id="vc-list">
@@ -1076,7 +1078,7 @@ function setVacMode(m, quiet) {
   document.getElementById("vc-show").style.display = cal ? "none" : "";
   document.getElementById("vc-year").style.display = cal ? "" : "none";
   document.getElementById("vc-list-acts").style.display = cal ? "none" : "";
-  document.getElementById("vc-cal-print").style.display = cal ? "" : "none";
+  document.getElementById("vc-cal-acts").style.display = cal ? "" : "none";
   try { localStorage.setItem("people_vac_mode", m); } catch (e) {}
   if (!quiet) loadVac();
 }
@@ -1194,21 +1196,30 @@ function lcFitLabels() {
     b.classList.add("out");
     const ln = b.parentElement, lab = document.createElement("span");
     lab.className = "lc-lab"; lab.textContent = b.dataset.lab; ln.appendChild(lab);
-    const L = b.offsetLeft, R = L + b.offsetWidth;
-    if (R + 6 + lab.offsetWidth <= ln.clientWidth) lab.style.left = (R + 6) + "px";
-    else lab.style.left = Math.max(0, L - 6 - lab.offsetWidth) + "px";
+    // In percent of the line, so the label stays beside its bar at any width
+    // (the Preview and the printed page are not as wide as the screen).
+    const W = ln.clientWidth, L = b.offsetLeft, R = L + b.offsetWidth;
+    if (R + 6 + lab.offsetWidth <= W) { lab.style.left = (R / W * 100) + "%"; lab.style.marginLeft = "6px"; }
+    else { lab.style.right = ((W - L) / W * 100) + "%"; lab.style.marginRight = "6px"; }
   });
 }
-// The calendar as it is on screen, on a landscape page - print it or save as PDF.
-function vacCalPrint() {
+// The calendar as it is on screen, on its own page: Preview shows it with a
+// print button; Export PDF opens the print dialog straight away (Save as PDF).
+function vacCalOpen(print) {
   const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
-  const w = window.open("", "_blank"); if (!w) { status("warn", "Allow pop-ups to print the calendar."); return; }
+  const w = window.open("", "_blank"); if (!w) { status("warn", "Allow pop-ups to open the calendar."); return; }
   const grp = P.vacGroup === "office" ? "Office staff" : "Labour";
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Leave calendar ${P.vacYear} - ${grp}</title><style>${css}
     @page { size: A4 landscape; margin: 10mm; } body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .lc-in { min-width: 0; } .lc-scroll { overflow: visible; } .lc-cl, .lc-board, .lc-tile { break-inside: avoid; }</style></head>
-    <body><h2 style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2>${document.getElementById("vc-cal").innerHTML}
-    <script>setTimeout(function(){ window.print(); }, 400);<\/script></body></html>`);
+    .lc-cl, .lc-board, .lc-tile { break-inside: avoid; }
+    .pv-bar { position: sticky; top: 0; z-index: 20; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: white; border-bottom: 1px solid #E8E4DC; padding: 10px 16px; margin: -16px -16px 14px; }
+    .pv-bar h1 { font-size: 16px; margin: 0; flex: 1; }
+    .pv-page { padding: 16px; } .pv-print-h { display: none; }
+    @media print { .pv-bar { display: none; } .pv-print-h { display: block; } .pv-page { padding: 0; } .lc-in { min-width: 0; } .lc-scroll { overflow: visible; } }</style></head>
+    <body><div class="pv-page"><div class="pv-bar"><h1>Leave calendar ${P.vacYear} · ${grp}</h1>
+      <button class="btn btn-dark" onclick="window.print()">Export PDF / Print</button><button class="btn btn-gray" onclick="window.close()">Close</button></div>
+    <h2 class="pv-print-h" style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2>${document.getElementById("vc-cal").innerHTML}</div>
+    ${print ? "<script>setTimeout(function(){ window.print(); }, 400);<\/script>" : ""}</body></html>`);
   w.document.close();
 }
 let VAC_PEOPLE = [];
