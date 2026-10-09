@@ -565,7 +565,13 @@ def leave_register(group: str = "", show: str = "", db: Session = Depends(get_db
     yet), returned."""
     today = M._dubai_today()
     groups = allowed_groups(user, "leave")
-    if group:
+    if group == "office":
+        # On the leave register office and local staff are one list:
+        # whichever of the two this login may see.
+        groups = set(groups) & {"office", "local"}
+        if not groups:
+            raise HTTPException(status_code=403, detail="Not available to this login: the Office staff register.")
+    elif group:
         _may(user, group, "leave")
         groups = {group}
     rows = (db.query(models.LeaveRecord, models.Employee, models.PeopleProfile)

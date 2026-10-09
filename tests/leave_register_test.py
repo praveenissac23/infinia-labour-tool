@@ -18,6 +18,10 @@ db.add(models.Employee(emp_no='F-754', name='HARI SHANKAR CHAUHAN', trade='MASON
 db.add(models.Employee(emp_no='F-716', name='AVINAS PASWAN', trade='STEEL FIXER', total_salary=1500, basic_salary=900, active=True))
 db.add(models.Employee(emp_no='IC001', name='JOMON THOMAS', designation='P.R.O', staff=True, pay_group='staff',
                        total_salary=6500, basic_salary=2600, active=True))
+db.add(models.Employee(emp_no='IC015', name='KHADIJA FARIS', designation='Admin', staff=True, pay_group='local',
+                       total_salary=9000, basic_salary=5000, active=True))
+db.add(models.User(username='lochr', hashed_password=auth.hash_password('p'), full_name='Local HR', role='office',
+                   permissions='people_local'))
 db.commit(); db.close()
 
 c = TestClient(main.app)
@@ -93,6 +97,19 @@ ck('the file lists his leave', len(f['leave_spells']) == 3 and f['leave'].get('f
 r = c.post('/employees/people/leave-register', headers=HR, json={'emp_no': 'F-716', 'leave_type': 'sick', 'leave_on': d(-10), 'return_on': d(-5), 'status': 'returned'})
 f = c.get('/employees/people/F-716', headers=HR).json()
 ck('sick leave does not touch the annual balance', f['leave']['taken'] == 58, f['leave']['taken'])
+
+# On the leave register, Office takes in the local staff.
+c.post('/employees/people/leave-register', headers=H, json={'emp_no': 'IC001', 'leave_on': d(20), 'return_on': d(40), 'status': 'approved'})
+c.post('/employees/people/leave-register', headers=H, json={'emp_no': 'IC015', 'leave_on': d(25), 'return_on': d(35), 'status': 'approved'})
+off = [x['emp_no'] for x in c.get('/employees/people/leave-register?group=office', headers=H).json()['rows']]
+ck('office leave register lists office and local staff together', sorted(off) == ['IC001', 'IC015'], off)
+ck('labour list has no office or local staff',
+   not [x for x in c.get('/employees/people/leave-register?group=labour', headers=H).json()['rows'] if x['emp_no'].startswith('IC')])
+loc = c.get('/employees/people/leave-register?group=office', headers=tok('lochr'))
+ck('a local-only login sees only the local staff under Office',
+   loc.status_code == 200 and [x['emp_no'] for x in loc.json()['rows']] == ['IC015'], loc.text[:200])
+x = c.get(f'/export/people/leave-register?group=office&token={T}&format=pdf')
+ck('office leave register prints', x.status_code == 200 and x.content[:4] == b'%PDF', x.status_code)
 
 ck('delete', c.delete(f'/employees/people/leave-register/{hari}', headers=HR).json().get('ok'))
 

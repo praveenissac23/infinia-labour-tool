@@ -98,6 +98,67 @@
   .empty { color: #888; padding: 30px; text-align: center; }
   .sec-h { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px; }
 
+  /* ---- leave calendar ---- */
+  .lc-yr { display: inline-flex; align-items: center; border: 1px solid #E4DCD2; border-radius: 999px; background: white; padding: 2px; }
+  .lc-yr button { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 50%; font-size: 17px; color: #6A5C55; line-height: 1; }
+  .lc-yr button:hover { background: #F4EDE5; } .lc-yr b { padding: 0 8px; font-size: 14px; min-width: 40px; text-align: center; }
+  .lc-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 14px; }
+  .lc-tile { border: 1px solid #EEE9E2; border-radius: 14px; padding: 13px 15px; display: flex; align-items: center; gap: 13px; background: white; min-width: 0; }
+  .lc-tile .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; font-weight: 800; flex: none; }
+  .lc-tile .n { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -.5px; }
+  .lc-tile .l { color: #6B7280; font-size: 12px; margin-top: 3px; }
+  .lc-tile .w { font-size: 11.5px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lc-tile.hot { border: 2px solid var(--red); }
+  .lc-board { border: 1px solid #EEE9E2; border-radius: 16px; overflow: hidden; background: white; }
+  .lc-scroll { overflow-x: auto; }
+  .lc-in { display: grid; grid-template-columns: 220px 1fr; min-width: 980px; }
+  .lc-hd { height: 40px; border-bottom: 1px solid #E8E4DC; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: #6B7280; }
+  .lc-hd.who { padding: 14px 18px 0; }
+  .lc-months { display: grid; }
+  .lc-months div { text-align: center; padding-top: 14px; }
+  .lc-months div.cur { color: var(--red); }
+  .lc-p { display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px; height: 46px; border-bottom: 1px solid #F3F0EA; cursor: default; min-width: 0; }
+  .lc-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; color: white; flex: none; }
+  .lc-p b { font-weight: 600; display: block; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .lc-p small { color: #6B7280; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .lc-right { position: relative; }
+  .lc-ln { position: relative; height: 46px; border-bottom: 1px solid #F3F0EA; }
+  .lc-sep { position: absolute; top: 40px; bottom: 0; width: 1px; background: #F1EEE8; }
+  .lc-clash { position: absolute; top: 40px; bottom: 0; background: rgba(192,57,43,.08); border-left: 1px dashed rgba(192,57,43,.55); border-right: 1px dashed rgba(192,57,43,.55); pointer-events: none; }
+  .lc-clash.two { background: rgba(224,168,0,.10); border-color: rgba(200,150,0,.6); }
+  .lc-today { position: absolute; top: 40px; bottom: 0; border-left: 2px dashed var(--red); z-index: 3; pointer-events: none; }
+  .lc-todaychip { position: absolute; top: 25px; transform: translateX(-50%); background: var(--red); color: white; font-size: 9.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px 6px 0 0; z-index: 4; line-height: 13px; }
+  .lc-bar { position: absolute; top: 11px; height: 24px; min-width: 8px; border-radius: 999px; color: white; font-size: 11px; font-weight: 600; line-height: 24px; padding: 0 9px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.12); cursor: pointer; z-index: 2; box-sizing: border-box; letter-spacing: -.1px; }
+  .lc-bar:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  .lc-bar.out { color: transparent; padding: 0; }
+  .lc-lab { position: absolute; top: 15px; font-size: 11px; font-weight: 600; color: #374151; white-space: nowrap; z-index: 2; pointer-events: none; }
+  .lc-past { background: linear-gradient(90deg,#BDB9B0,#A9A59B); box-shadow: none; }
+  .lc-now  { background: linear-gradient(90deg,#2F6FA8,#3F8BD0); }
+  .lc-next { background: linear-gradient(90deg,#2E9E5B,#3DBE74); }
+  .lc-late { background: linear-gradient(90deg,#C0392B,#E0574A); }
+  .lc-pend { background: repeating-linear-gradient(135deg,#F3D27A 0 6px,#E8C25C 6px 12px); color: #4A3800; box-shadow: none; }
+  .lc-legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 12px 18px; font-size: 12px; color: #6B7280; border-top: 1px solid #E8E4DC; }
+  .lc-legend i { display: inline-block; width: 22px; height: 10px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }
+  .lc-none { padding: 40px; text-align: center; color: #888; }
+  .lc-cls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+  .lc-cl { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; border: 1px solid #EEE9E2; border-left: 4px solid var(--red); border-radius: 14px; padding: 12px 16px; background: white; }
+  .lc-cl.two { border-left-color: #E0A800; } .lc-cl.done { opacity: .55; }
+  .lc-cl b { display: block; font-size: 13.5px; }
+  .lc-cl .avs { display: flex; align-items: center; }
+  .lc-cl .avs .lc-av { width: 26px; height: 26px; font-size: 10px; margin-right: -8px; border: 2px solid white; }
+  .lc-cl .avs .t { margin-left: 16px; color: #6B7280; font-size: 12px; }
+  .lc-h { font-size: 13px; font-weight: 700; margin: 16px 0 0; color: #444; }
+  @media (max-width: 760px) {
+    .lc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lc-cls { grid-template-columns: 1fr; }
+    .lc-in { grid-template-columns: 140px 1fr; min-width: 1100px; }
+    .lc-tile .ic { display: none; }
+    .lc-tile .w { white-space: normal; }
+    .lc-p { padding: 0 8px 0 10px; } .lc-hd.who { padding-left: 10px; }
+  }
+  /* Names stay in view while the year scrolls sideways. */
+  .lc-left { position: sticky; left: 0; z-index: 6; background: white; box-shadow: 1px 0 0 #E8E4DC; }
+
   /* ---- dialogs ---- */
   .dlg { position: fixed; inset: 0; background: rgba(30,24,20,.42); z-index: 2500; display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
   .dlg-box { background: white; border-radius: 12px; padding: 22px 24px; width: 100%; max-width: 980px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
@@ -217,17 +278,23 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
       <div id="view-vacation" style="display:none;">
         <div class="card r">
           <div class="row">
-            <span class="seg" id="vc-group"><button class="on" data-v="labour" onclick="setVacGroup('labour')">Labour</button><button data-v="office" onclick="setVacGroup('office')">Office</button><button data-v="local" onclick="setVacGroup('local')">Local</button></span>
+            <span class="seg" id="vc-group"><button class="on" data-v="labour" onclick="setVacGroup('labour')">Labour</button><button data-v="office" onclick="setVacGroup('office')">Office</button></span>
+            <span class="seg" id="vc-mode"><button class="on" data-v="list" onclick="setVacMode('list')">List</button><button data-v="cal" onclick="setVacMode('cal')">Calendar</button></span>
+            <span class="lc-yr" id="vc-year" style="display:none;"><button onclick="vacYear(-1)" title="Year before">&#8249;</button><b id="vc-year-n"></b><button onclick="vacYear(1)" title="Year after">&#8250;</button></span>
             <span class="seg" id="vc-show"><button class="on" data-v="" onclick="setVacShow('')">All</button><button data-v="away" onclick="setVacShow('away')">On leave</button><button data-v="pending" onclick="setVacShow('pending')">Pending</button><button data-v="upcoming" onclick="setVacShow('upcoming')">Approved</button><button data-v="returned" onclick="setVacShow('returned')">Returned</button></span>
             <span class="grow"></span>
             <button class="btn btn-primary" onclick="openVac()">+ Add leave</button>
-            <button class="btn btn-dark" onclick="preview('leave-register')">Preview</button>
+            <span id="vc-list-acts"><button class="btn btn-dark" onclick="preview('leave-register')">Preview</button>
             <button class="btn btn-dark" onclick="download('leave-register','pdf')">Export PDF</button>
-            <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button>
+            <button class="btn btn-dark" onclick="download('leave-register','excel')">Export Excel</button></span>
+            <button class="btn btn-dark" id="vc-cal-print" style="display:none;" onclick="vacCalPrint()">Print / PDF</button>
           </div>
+          <div id="vc-cal" style="display:none;"></div>
+          <div id="vc-list">
           <p class="muted" id="vc-count"></p>
           <div class="grid-wrap"><table><thead><tr><th>Staff</th><th>Code</th><th>Designation</th><th>Leave type</th><th>Date of leave</th><th>Date of return</th><th class="num">Days</th><th>Status</th><th>Approved by</th><th>Home contact</th><th>Remark</th></tr></thead><tbody id="vc-body"></tbody></table></div>
           <p class="muted" style="margin-top:8px;">Click a line to change it. Approved leave shows <b>On leave</b> from the day he goes and <b>Overdue</b> once the return date (or leave date + approved days) has passed; mark <b>Returned</b> when he is back.</p>
+          </div>
         </div>
       </div>
 
@@ -625,11 +692,14 @@ async function start() {
   const reg = ME.vg("register"), lv = ME.vg("leave");
   if (!reg.includes(P.group)) P.group = reg[0] || "labour";
   // Segments offer only the registers this login may see on that view.
-  [["#due-group", ME.vg("due")], ["#lv-group", lv], ["#vc-group", lv], ["#n-group", reg], ["#bd-group", ME.vg("bday")]].forEach(([sel, ok]) =>
+  // On the leave register office and local staff are one list, "Office".
+  const vcOk = lv.concat(lv.includes("local") ? ["office"] : []);
+  [["#due-group", ME.vg("due")], ["#lv-group", lv], ["#vc-group", vcOk], ["#n-group", reg], ["#bd-group", ME.vg("bday")]].forEach(([sel, ok]) =>
     document.querySelectorAll(sel + " button").forEach(b => { if (b.dataset.v && b.dataset.v !== "client" && !ok.includes(b.dataset.v)) b.remove(); }));
   if (!lv.includes(P.leaveGroup)) { P.leaveGroup = lv[0] || "labour"; segSet(document.getElementById("lv-group"), P.leaveGroup); }
   if (!ME.has("people.bday.clients")) { document.getElementById("bd-client-btn").remove(); document.getElementById("bd-add").remove(); }
-  if (!lv.includes(P.vacGroup)) { P.vacGroup = lv[0] || "labour"; segSet(document.getElementById("vc-group"), P.vacGroup); }
+  if (!vcOk.includes(P.vacGroup)) { P.vacGroup = vcOk.includes("labour") ? "labour" : "office"; segSet(document.getElementById("vc-group"), P.vacGroup); }
+  try { if (localStorage.getItem("people_vac_mode") === "cal") setVacMode("cal", true); } catch (e) {}
   window.PG_READY = true;
   // Sent here from elsewhere in the app while the page was still opening.
   if (window.PG_PENDING) { const [c, k] = window.PG_PENDING; window.PG_PENDING = null; goPersonDoc(c, k); return; }
@@ -980,6 +1050,7 @@ const VAC_PILL = { "On leave": "b", "Overdue": "r", "Pending": "y", "Approved": 
 function setVacGroup(g) { P.vacGroup = g; segSet(document.getElementById("vc-group"), g); loadVac(); }
 function setVacShow(v) { P.vacShow = v; segSet(document.getElementById("vc-show"), v); loadVac(); }
 async function loadVac() {
+  if (P.vacMode === "cal") return loadVacCal();
   let d = { rows: [], counts: {} };
   try { d = await apiCall(`/employees/people/leave-register?group=${P.vacGroup}&show=${P.vacShow || ""}`); } catch (e) { status("warn", errText(e)); }
   P.vac = d.rows; const c = d.counts || {};
@@ -993,9 +1064,158 @@ async function loadVac() {
     <td>${or(r.approved_by)}</td><td style="white-space:nowrap;">${or(r.home_phone)}</td><td>${or(r.remark)}</td></tr>`).join("")
     || `<tr><td colspan="11" class="muted">No leave on file${P.vacShow ? " for this filter" : ""} - + Add leave to enter one.</td></tr>`;
 }
+// ---- Leave calendar: the whole year, one line a person ------------------------
+// Every spell of leave on file - gone and back, away now, approved and not
+// gone yet - drawn on the year, so two people being away together is seen
+// before the second one is approved, not after.
+function setVacMode(m, quiet) {
+  P.vacMode = m; segSet(document.getElementById("vc-mode"), m);
+  const cal = m === "cal";
+  document.getElementById("vc-list").style.display = cal ? "none" : "";
+  document.getElementById("vc-cal").style.display = cal ? "" : "none";
+  document.getElementById("vc-show").style.display = cal ? "none" : "";
+  document.getElementById("vc-year").style.display = cal ? "" : "none";
+  document.getElementById("vc-list-acts").style.display = cal ? "none" : "";
+  document.getElementById("vc-cal-print").style.display = cal ? "" : "none";
+  try { localStorage.setItem("people_vac_mode", m); } catch (e) {}
+  if (!quiet) loadVac();
+}
+function vacYear(step) { P.vacYear = (P.vacYear || new Date().getFullYear()) + step; loadVacCal(); }
+const LC_DAY = 86400000;
+const lcDay = iso => { const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return Math.round(Date.UTC(y, m - 1, d) / LC_DAY); };
+const lcIso = n => new Date(n * LC_DAY).toISOString().slice(0, 10);
+const lcDm = n => { const d = new Date(n * LC_DAY); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+function lcRange(a, b) {
+  const A = new Date(a * LC_DAY), B = new Date(b * LC_DAY);
+  if (a === b) return lcDm(a);
+  if (A.getUTCMonth() === B.getUTCMonth() && A.getUTCFullYear() === B.getUTCFullYear()) return `${A.getUTCDate()} – ${lcDm(b)}`;
+  return `${lcDm(a)} – ${lcDm(b)}`;
+}
+const LC_COLS = ["#2F6FA8", "#7B5EA7", "#2E9E5B", "#C0392B", "#B8860B", "#E07A3F", "#16857A", "#8E4B6E", "#4F6D8F", "#9C6B30"];
+function lcAv(r) {
+  let h = 0; for (const c of String(r.emp_no || r.name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const ini = String(r.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  return `<span class="lc-av" style="background:${LC_COLS[h % LC_COLS.length]}">${esc(ini)}</span>`;
+}
+const LC_KIND = { "Returned": "past", "On leave": "now", "Approved": "next", "Overdue": "late", "Pending": "pend" };
+// The days a spell covers: from the day he goes to the day before he is
+// back (or due back). Someone still away is drawn up to today.
+function lcSpell(r, today) {
+  if (!r.leave_on || r.standing === "Cancelled") return null;
+  const a = lcDay(r.leave_on);
+  let b = r.return_on ? lcDay(r.return_on) - 1 : (r.due_back ? lcDay(r.due_back) - 1 : a);
+  if (b < a) b = a;
+  if (r.standing === "Overdue" || (r.standing === "On leave" && !r.due_back)) b = Math.max(b, today);
+  return { r, a, b, kind: LC_KIND[r.standing] || "past" };
+}
+// Runs of days on which two or more people are away, with who.
+function lcClashes(spells, from, to) {
+  const out = []; let cur = null;
+  for (let d = from; d <= to; d++) {
+    const who = [...new Map(spells.filter(s => s.a <= d && s.b >= d).map(s => [s.r.emp_no, s.r])).values()];
+    const key = who.map(w => w.emp_no).sort().join("|");
+    if (who.length >= 2) {
+      if (cur && cur.key === key && cur.b === d - 1) cur.b = d;
+      else { cur = { key, a: d, b: d, who }; out.push(cur); }
+    } else cur = null;
+  }
+  return out;
+}
+async function loadVacCal() {
+  const box = document.getElementById("vc-cal");
+  let d = { rows: [] };
+  try { d = await apiCall(`/employees/people/leave-register?group=${P.vacGroup}`); } catch (e) { status("warn", errText(e)); }
+  P.vac = d.rows || [];
+  const today = lcDay(d.date || new Date().toISOString());
+  const Y = P.vacYear || (P.vacYear = Number(String(d.date || new Date().toISOString()).slice(0, 4)));
+  document.getElementById("vc-year-n").textContent = Y;
+  const y0 = lcDay(`${Y}-01-01`), y1 = lcDay(`${Y}-12-31`), span = y1 - y0 + 1;
+  const pct = n => ((Math.min(Math.max(n, y0), y1 + 1) - y0) / span * 100);
+  const all = P.vac.map(r => lcSpell(r, today)).filter(Boolean);
+
+  // ---- the four tiles: what needs knowing before reading the chart
+  const by = st => all.filter(s => s.r.standing === st);
+  const names = (list, f) => list.length ? list.map(f).join(", ") : "Nobody";
+  const away = by("On leave"), late = by("Overdue");
+  const next = by("Approved").sort((x, y) => x.a - y.a);
+  const ahead = lcClashes(all, today, today + 365);
+  const tile = (ic, bg, fg, n, l, w, hot) => `<div class="lc-tile${hot ? " hot" : ""}"><div class="ic" style="background:${bg};color:${fg}">${ic}</div><div style="min-width:0"><div class="n">${n}</div><div class="l">${l}</div><div class="w" title="${esc(w)}">${esc(w)}</div></div></div>`;
+  const tiles = `<div class="lc-tiles">
+    ${tile("&#9992;", "#E3F0F7", "#1F5F80", away.length, "Away now", names(away, s => `${s.r.name}${s.r.due_back ? " · back " + lcDm(lcDay(s.r.due_back)) : ""}`))}
+    ${tile("&#9654;", "#E6F4EA", "#1E7A3A", next.length, "Approved, not gone yet", next.length ? `Next: ${next[0].r.name} · ${lcDm(next[0].a)}` : "Nobody")}
+    ${tile("!", "#FBE4E1", "#A5301F", late.length, "Overdue - not back", names(late, s => `${s.r.name} · ${s.r.days_late} d`))}
+    ${tile("&#9888;", ahead.length ? "#C0392B" : "#EEE", ahead.length ? "white" : "#888", ahead.length, "Clashes ahead",
+           ahead.length ? `${ahead[0].who.length} away together, ${lcRange(ahead[0].a, ahead[0].b)}` : "No one away together", ahead.length)}
+  </div>`;
+
+  // ---- the year
+  const shown = all.filter(s => s.b >= y0 && s.a <= y1);
+  const people = [...new Map(shown.map(s => [s.r.emp_no, s.r])).values()];
+  const first = e => Math.min(...shown.filter(s => s.r.emp_no === e).map(s => s.a));
+  people.sort((x, y) => first(x.emp_no) - first(y.emp_no) || String(x.name).localeCompare(y.name));
+  const mdays = [...Array(12)].map((_, m) => new Date(Date.UTC(Y, m + 1, 0)).getUTCDate());
+  const curM = Y === new Date(today * LC_DAY).getUTCFullYear() ? new Date(today * LC_DAY).getUTCMonth() : -1;
+  const months = `<div class="lc-hd lc-months" style="grid-template-columns:${mdays.map(n => n + "fr").join(" ")}">${MON.map((m, i) => `<div class="${i === curM ? "cur" : ""}">${m}</div>`).join("")}</div>`;
+  let acc = 0; const seps = mdays.slice(0, 11).map(n => { acc += n; return `<div class="lc-sep" style="left:${acc / span * 100}%"></div>`; }).join("");
+  const clashes = lcClashes(shown, y0, y1);
+  const bands = clashes.map(c => `<div class="lc-clash${c.who.length < 3 ? " two" : ""}" style="left:${pct(c.a)}%;width:${pct(c.b + 1) - pct(c.a)}%" title="${c.who.length} away together ${lcRange(c.a, c.b)}: ${esc(c.who.map(w => w.name).join(", "))}"></div>`).join("");
+  const todayLine = today >= y0 && today <= y1 ? `<div class="lc-today" style="left:${pct(today)}%"></div><div class="lc-todaychip" style="left:${pct(today)}%">Today</div>` : "";
+  const lanes = people.map(p => `<div class="lc-ln">${shown.filter(s => s.r.emp_no === p.emp_no).map(s => {
+      const n = s.b - s.a + 1, r = s.r;
+      const tip = `${r.name} · ${r.leave_type_label} · ${dmy(lcIso(s.a))} – ${dmy(lcIso(s.b))} (${n} day${n === 1 ? "" : "s"}) · ${r.standing}${r.days_late ? " " + r.days_late + " days" : ""}${r.approved_by ? " · approved by " + r.approved_by : ""}`;
+      const lab = lcRange(s.a, s.b) + (r.standing === "Overdue" ? ` · ${r.days_late} d overdue` : "");
+      return `<div class="lc-bar lc-${s.kind}" data-lab="${esc(lab)}" style="left:${pct(s.a)}%;width:${pct(s.b + 1) - pct(s.a)}%" title="${esc(tip)}" onclick="openVac(${r.id})">${esc(lab)}</div>`;
+    }).join("")}</div>`).join("");
+  const who = people.map(p => `<div class="lc-p">${lcAv(p)}<div style="min-width:0"><b title="${esc(p.name)}">${esc(p.name)}</b><small>${esc(p.emp_no)}${p.designation ? " · " + esc(p.designation) : ""}</small></div></div>`).join("");
+  const legend = `<div class="lc-legend"><span><i class="lc-past"></i>Gone and back</span><span><i class="lc-now"></i>Away now</span><span><i class="lc-next"></i>Approved, not gone yet</span><span><i class="lc-late"></i>Overdue</span><span><i class="lc-pend"></i>Pending</span><span><i style="background:rgba(192,57,43,.12);border:1px dashed #C0392B"></i>Days more than one is away</span></div>`;
+  const board = people.length
+    ? `<div class="lc-board"><div class="lc-scroll"><div class="lc-in"><div class="lc-left"><div class="lc-hd who">Staff · ${people.length}</div>${who}</div><div class="lc-right">${months}${seps}${bands}${todayLine}${lanes}</div></div></div>${legend}</div>`
+    : `<div class="lc-board"><div class="lc-none">No leave on file for ${Y}${P.vacGroup === "office" ? " (office staff)" : " (labour)"} - + Add leave to enter one.</div></div>`;
+
+  // ---- the clashes, spelled out
+  const cards = clashes.map(c => `<div class="lc-cl${c.who.length < 3 ? " two" : ""}${c.b < today ? " done" : ""}"><b>${c.who.length >= 3 ? "&#9888; " : ""}${lcRange(c.a, c.b)} · ${c.who.length} away together${c.b < today ? " (past)" : ""}</b><div class="avs">${c.who.map(lcAv).join("")}<span class="t">${esc(c.who.map(w => w.name).join(", "))}</span></div></div>`).join("");
+  box.innerHTML = tiles + board + (clashes.length ? `<div class="lc-h">Away together in ${Y}</div><div class="lc-cls">${cards}</div>` : "");
+  requestAnimationFrame(() => {
+    lcFitLabels();
+    // A narrow screen opens on the current month, not on January.
+    const sc = box.querySelector(".lc-scroll"), right = box.querySelector(".lc-right");
+    if (sc && right && sc.scrollWidth > sc.clientWidth && today >= y0 && today <= y1)
+    {
+      const x = right.getBoundingClientRect().left - sc.getBoundingClientRect().left + sc.scrollLeft + right.offsetWidth * pct(today) / 100;
+      const names = box.querySelector(".lc-left").offsetWidth;
+      sc.scrollLeft = Math.max(0, x - names - (sc.clientWidth - names) * 0.45);
+    }
+  });
+}
+// A bar too short for its dates gets them written beside it instead.
+function lcFitLabels() {
+  document.querySelectorAll("#vc-cal .lc-bar").forEach(b => {
+    if (b.scrollWidth <= b.clientWidth + 1) return;
+    b.classList.add("out");
+    const ln = b.parentElement, lab = document.createElement("span");
+    lab.className = "lc-lab"; lab.textContent = b.dataset.lab; ln.appendChild(lab);
+    const L = b.offsetLeft, R = L + b.offsetWidth;
+    if (R + 6 + lab.offsetWidth <= ln.clientWidth) lab.style.left = (R + 6) + "px";
+    else lab.style.left = Math.max(0, L - 6 - lab.offsetWidth) + "px";
+  });
+}
+// The calendar as it is on screen, on a landscape page - print it or save as PDF.
+function vacCalPrint() {
+  const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
+  const w = window.open("", "_blank"); if (!w) { status("warn", "Allow pop-ups to print the calendar."); return; }
+  const grp = P.vacGroup === "office" ? "Office staff" : "Labour";
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Leave calendar ${P.vacYear} - ${grp}</title><style>${css}
+    @page { size: A4 landscape; margin: 10mm; } body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .lc-in { min-width: 0; } .lc-scroll { overflow: visible; } .lc-cl, .lc-board, .lc-tile { break-inside: avoid; }</style></head>
+    <body><h2 style="margin:0 0 10px;font-size:18px;">Leave calendar ${P.vacYear} · ${grp}</h2>${document.getElementById("vc-cal").innerHTML}
+    <script>setTimeout(function(){ window.print(); }, 400);<\/script></body></html>`);
+  w.document.close();
+}
 let VAC_PEOPLE = [];
 async function vacPeople(group) {
   try { VAC_PEOPLE = (await apiCall(`/employees/people?group=${group}`)).rows || []; } catch (e) { VAC_PEOPLE = []; }
+  // "Office" on the leave register takes in the local staff too.
+  if (group === "office") { try { VAC_PEOPLE = VAC_PEOPLE.concat((await apiCall(`/employees/people?group=local`)).rows || []); } catch (e) {} }
   document.getElementById("v-people").innerHTML = VAC_PEOPLE.map(p => `<option value="${esc(p.emp_no)} - ${esc(p.name)}">`).join("");
 }
 function vacPick() { const v = document.getElementById("v-who").value.trim(); const code = v.split(" - ")[0].trim().toUpperCase();
