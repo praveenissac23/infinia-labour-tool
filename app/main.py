@@ -10911,13 +10911,43 @@ def _require_labour_pay(user):
 @app.get("/employees/labour-increments")
 def list_labour_increments(emp_no: str = "", db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("combine"))):
-    return list_increments(emp_no=emp_no, db=db, user=user, labour=True)
+    return {"rows": _tidy_rate_history(list_increments(emp_no=emp_no, db=db, user=user, labour=True)["rows"])}
+
+
+def _tidy_rate_history(rows):
+    """A labourer's rate as it actually stood, date by date.
+
+    A rate typed wrong on Master Data and put right a minute later is
+    stored as two or three changes on the same day; shown as they are,
+    the history read 1,100 > 300 > 1,300. Here each date keeps only the
+    rate it was finally left at (the last entry made - the one payroll
+    uses), the increase is worked out from the rate before it, and a
+    "change" that changed nothing is dropped. What is stored, and what
+    is paid, is untouched."""
+    out = []
+    by_emp = {}
+    for r in rows:
+        by_emp.setdefault(r["emp_no"], []).append(r)
+    for emp, rs in by_emp.items():
+        rs.sort(key=lambda r: (r["effective_on"], r["id"]))
+        last_of_day = {}
+        for r in rs:
+            last_of_day[r["effective_on"]] = r          # later id wins
+        prev = None
+        for day in sorted(last_of_day):
+            r = dict(last_of_day[day])
+            if prev is not None and abs(r["gross"] - prev["gross"]) < 0.005 and abs(r["basic"] - prev["basic"]) < 0.005:
+                continue
+            r["amount"] = round(r["gross"] - prev["gross"], 2) if prev is not None else 0
+            out.append(r)
+            prev = r
+    return out
 
 
 def _history_rows(rows, labour):
     """One block per person: code and name on his first line only, as on
     the screen - not repeated down every line of his history."""
-    rows = sorted(rows, key=lambda r: (r["emp_no"], r["effective_on"]))
+    rows = sorted(rows, key=lambda r: (r["emp_no"], r["effective_on"], r.get("id", 0)))
     kind = {"joining": "Joined", "increment": "Increment", "correction": "Correction",
             "opening": "Starting rate", "rate": "Rate change"}
     out, last, n = [], None, 0
@@ -10945,7 +10975,7 @@ def _history_rows(rows, labour):
 
 def _labour_history_parts(db, emp_no=""):
     d = list_increments(emp_no=emp_no, db=db, user=None, labour=True)
-    out, people = _history_rows(d["rows"], True)
+    out, people = _history_rows(_tidy_rate_history(d["rows"]), True)
     sub = f"{people} workers   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
     return out, "Labour Salary History", sub
 
