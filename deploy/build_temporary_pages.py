@@ -61,7 +61,8 @@ PAGES = {
         tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck", "adjustments"], subs=[
             sub("combine", "Salary cards", screen="combine", right="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
             sub("adjust", "Additions & deductions", screen="combine", right="adjustments", show=["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]),
-            sub("errorcheck", "Check before you pay", screen="errorcheck")]),
+            sub("errorcheck", "Check before you pay", screen="errorcheck"),
+            sub("increments", "Increments", screen="combine", right="combine", go="labIncLoad()", show=["#pg-labinc-card"])]),
         tab("hrpayroll", "hrpayroll", "Office payroll", "hrpayroll", subs=[
             sub("cycle", "Salary cycle & statements", screen="hrpayroll", go="hrTab('payroll')"),
             sub("leave", "Absence", screen="hrpayroll", go="hrTab('leave')"),

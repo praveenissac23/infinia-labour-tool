@@ -9081,8 +9081,12 @@ def delete_expiry(xid: int, db: Session = Depends(get_db), user: models.User = D
 
 @app.get("/employees/increments")
 def list_increments(emp_no: str = "", db: Session = Depends(get_db),
-                     user: models.User = HR):
-    emps = {e.id: e for e in db.query(models.Employee).all()}
+                     user: models.User = HR, labour: bool = False):
+    """The salary history. Office payroll sees office (and local) staff
+    only; a labourer's rate changes belong to Labour payroll
+    (labour=True, from /employees/labour-increments)."""
+    emps = {e.id: e for e in db.query(models.Employee).all()
+            if bool(e.staff) != bool(labour)}
     q = db.query(models.SalaryChange)
     if emp_no.strip():
         e = db.query(models.Employee).filter(
@@ -9093,7 +9097,7 @@ def list_increments(emp_no: str = "", db: Session = Depends(get_db),
         e = emps.get(c.employee_id)
         if not e:
             continue
-        rows.append({"id": c.id, "emp_no": e.emp_no, "name": e.name,
+        rows.append({"id": c.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or e.designation or "",
                       "effective_on": c.effective_on.isoformat(),
                       "kind": c.kind, "amount": round(c.amount or 0, 2),
                       "basic": round(c.basic or 0, 2),
@@ -10889,18 +10893,79 @@ HISTORY_MONEY = ["Increase", "Basic", "Allowance", "Salary"]
 
 def _history_parts(db, emp_no=""):
     d = list_increments(emp_no=emp_no, db=db, user=None)
-    rows = sorted(d["rows"], key=lambda r: (r["emp_no"], r["effective_on"]))
-    kind = {"joining": "Joined", "increment": "Increment", "correction": "Correction"}
-    out = []
-    for i, r in enumerate(rows, 1):
-        out.append({"Sr.": i, "Emp. Code": r["emp_no"], "Employee Name": r["name"],
-                    "From": _dmy(_as_date(r["effective_on"])),
-                    "Change": kind.get(r["kind"], r["kind"].title()) + (" (due)" if r["future"] else ""),
-                    "Increase": r["amount"], "Basic": r["basic"], "Allowance": r["allowance"],
-                    "Salary": r["gross"], "Reason": r["reason"] or "-"})
-    people = len({r["emp_no"] for r in rows})
+    out, people = _history_rows(d["rows"], False)
     sub = f"{people} staff   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
     return out, "Salary History", sub
+
+
+# Labour rate changes - Labour payroll > Increments. A labourer's rate is
+# changed on Labour master data; this is the record of every change.
+LABOUR_INC_MONEY = ["Increase", "Basic", "Salary"]
+
+
+def _require_labour_pay(user):
+    if "combine" not in effective_permissions(user):
+        raise HTTPException(status_code=403, detail="Not available to this login: Labour payroll.")
+
+
+@app.get("/employees/labour-increments")
+def list_labour_increments(emp_no: str = "", db: Session = Depends(get_db),
+                           user: models.User = Depends(require_screen("combine"))):
+    return list_increments(emp_no=emp_no, db=db, user=user, labour=True)
+
+
+def _history_rows(rows, labour):
+    """One block per person: code and name on his first line only, as on
+    the screen - not repeated down every line of his history."""
+    rows = sorted(rows, key=lambda r: (r["emp_no"], r["effective_on"]))
+    kind = {"joining": "Joined", "increment": "Increment", "correction": "Correction",
+            "opening": "Starting rate", "rate": "Rate change"}
+    out, last, n = [], None, 0
+    for r in rows:
+        first = r["emp_no"] != last
+        last = r["emp_no"]
+        if first:
+            n += 1
+        # " " not "": an empty cell prints as "-", and these are meant blank.
+        line = {"Sr.": n if first else " ", "Emp. Code": r["emp_no"] if first else " ",
+                "Employee Name": r["name"] if first else " "}
+        if labour:
+            line["Trade"] = (r.get("trade") or "-") if first else " "
+        # A rate on file before any change was recorded, with no joining
+        # date to hang it on, is dated 1 Jan 2000 - shown as no date.
+        line.update({"From": "-" if r["effective_on"] == "2000-01-01" else _dmy(_as_date(r["effective_on"])),
+                     "Change": kind.get(r["kind"], r["kind"].title()) + (" (due)" if r["future"] else ""),
+                     "Increase": r["amount"], "Basic": r["basic"]})
+        if not labour:
+            line["Allowance"] = r["allowance"]
+        line.update({"Salary": r["gross"], "Reason": r["reason"] or "-"})
+        out.append(line)
+    return out, n
+
+
+def _labour_history_parts(db, emp_no=""):
+    d = list_increments(emp_no=emp_no, db=db, user=None, labour=True)
+    out, people = _history_rows(d["rows"], True)
+    sub = f"{people} workers   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
+    return out, "Labour Salary History", sub
+
+
+@app.get("/export/labour-increments")
+def export_labour_history(token: str, emp_no: str = "", format: str = "pdf",
+                          db: Session = Depends(get_db)):
+    _require_labour_pay(auth.get_download_user_from_token(token, db))
+    rows, title, sub = _labour_history_parts(db, emp_no)
+    return _hr_file(title, rows, sub, format, LABOUR_INC_MONEY, "Labour_Salary_History", totals=[])
+
+
+@app.get("/export/labour-increments/view")
+def view_labour_history(token: str, emp_no: str = "", db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    _require_labour_pay(user)
+    t = quote(auth.create_view_token(user.username), safe="")
+    rows, title, sub = _labour_history_parts(db, emp_no)
+    url = f"/export/labour-increments?emp_no={quote(emp_no)}&token={t}"
+    return _preview_page(title, sub, rows, url, url, money_cols=LABOUR_INC_MONEY, total_cols=[])
 
 
 @app.get("/export/payroll/increments")
@@ -10908,7 +10973,7 @@ def export_history(token: str, emp_no: str = "", format: str = "pdf",
                     db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
     rows, title, sub = _history_parts(db, emp_no)
-    return _hr_file(title, rows, sub, format, HISTORY_MONEY, "Salary_History")
+    return _hr_file(title, rows, sub, format, HISTORY_MONEY, "Salary_History", totals=[])
 
 
 @app.get("/export/payroll/increments/view")
@@ -11141,17 +11206,20 @@ def view_staff_register(token: str, db: Session = Depends(get_db)):
                          total_cols=["Gross"])
 
 
-def _hr_file(title, rows, sub, format, money, stem):
+def _hr_file(title, rows, sub, format, money, stem, totals=None):
     """One sheet, as paper or as a spreadsheet. Which way up the page
-    goes is left to the data, the same as every other report here."""
+    goes is left to the data, the same as every other report here.
+    totals: the columns that add up (default: the money ones); a salary
+    history adds up nothing - salaries over the years are not a sum."""
+    totals = money if totals is None else totals
     if format == "excel":
         buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money,
-                                                   total_cols=money)
+                                                   total_cols=totals)
         return StreamingResponse(
             buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Infinia_{stem}.xlsx"})
     buf = export_web.build_store_report_pdf(title, rows, sub, money_cols=money,
-                                             total_cols=money)
+                                             total_cols=totals)
     return StreamingResponse(buf, media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Infinia_{stem}.pdf"})
 

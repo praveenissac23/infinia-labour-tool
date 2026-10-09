@@ -210,6 +210,16 @@
       "grant": [
        "errorcheck"
       ]
+     },
+     {
+      "id": "payroll.labourpay.increments",
+      "label": "Increments",
+      "right": [
+       "combine"
+      ],
+      "grant": [
+       "combine"
+      ]
      }
     ]
    },

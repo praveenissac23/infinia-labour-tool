@@ -117,6 +117,10 @@ c.post("/attendance/save", json={"month_year": CYCLE, "rows": [
      "site": "901", "engineer": "AKHIL", "ot": 2, "bh": 0, "comments": ""}
     for d in range(1, 6)]}, headers=H)
 
+# A rate change, so Labour payroll > Increments has something to print.
+c.post("/employees", json={"emp_no": "S-001", "name": "Ahmad Ali", "trade": "Mason",
+                           "basic_salary": 1600, "total_salary": 1600, "company": "Infinia"}, headers=H)
+
 T = c.post("/auth/download-token", headers=H).json()["token"]
 ORDER_ID = c.get("/store/purchase/orders", headers=H).json()[0]["id"]
 
@@ -176,6 +180,10 @@ REPORTS["attendance reminder"] = (
     f"/export/{CYCLE}/attendance-needed/view?token={T}&emp_nos=S-001",
     f"/export/{CYCLE}/attendance-needed?token={T}&emp_nos=S-001&format=pdf",
     f"/export/{CYCLE}/attendance-needed?token={T}&emp_nos=S-001&format=excel")
+REPORTS["labour salary history"] = (
+    f"/export/labour-increments/view?token={T}",
+    f"/export/labour-increments?token={T}&format=pdf",
+    f"/export/labour-increments?token={T}&format=excel")
 REPORTS["daily attendance report"] = (
     f"/export/attendance/daily/view?token={T}&day=2026-09-03",
     f"/export/attendance/daily?token={T}&day=2026-09-03&format=pdf",
@@ -295,7 +303,7 @@ checked_paths = {
     "/export/payroll/items/view", "/export/payroll/increments/view",
     "/export/payroll/gratuity/view",
     # Company & vehicle expiries: checked page by page by export_audit.js.
-    "/export/payroll/expiries/view", "/export/attendance/daily/view",
+    "/export/payroll/expiries/view", "/export/attendance/daily/view", "/export/labour-increments/view",
 }
 missed = sorted(set(views) - checked_paths)
 ck("every preview endpoint is covered by this sweep", not missed, missed)

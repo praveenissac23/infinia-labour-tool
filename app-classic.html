@@ -1819,6 +1819,28 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
           </div>
 
+          <!-- Labour payroll > Increments: every change to a labourer's rate.
+               The rate itself is changed on Labour master data. -->
+          <div class="card" id="pg-labinc-card" style="display:none;">
+            <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+              <h2 style="margin:0 12px 0 0;">Labour salary history</h2>
+              <select id="labinc-filter" style="width:240px;" onchange="labIncPaint()"><option value="">Everyone</option></select>
+              <button class="btn btn-dark" onclick="labIncOut('view')">Preview</button>
+              <button class="btn btn-dark" onclick="labIncOut('pdf')">Export PDF</button>
+              <button class="btn btn-dark" onclick="labIncOut('excel')">Export Excel</button>
+            </div>
+            <p style="font-size:12px; color:#888; margin:6px 0 0;">A worker's rate is changed on Labour master data; each change is listed here from the date it applies.</p>
+            <div class="grid-wrap" style="max-height:62vh; margin-top:10px;">
+              <table class="hr-grid">
+                <thead><tr>
+                  <th>Code</th><th class="txt">Name</th><th class="txt">Trade</th><th>From</th><th>Change</th>
+                  <th class="num">Increase</th><th class="num">Basic</th><th class="num">Salary</th><th class="txt">Reason</th>
+                </tr></thead>
+                <tbody id="labinc-body"></tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
 
         <div class="screen" id="screen-errorcheck">
@@ -5534,6 +5556,7 @@ async function removeEngineer(id, name) {
 // ============ REPORTS (column picker + live preview) ============
 let reportCatalog = null;
 let currentCustomReport = null;
+let reportRunNo = 0;
 let reportSortKey = null;
 let reportSortDir = 1;
 // Columns appear in the order they were ticked, and can be dragged into
@@ -6077,7 +6100,12 @@ async function loadReports() {
   // In the monthly report, changing the cycle changes whose notes are
   // on the right as well as whose figures are on the left.
   if (monthlyMode && monthlyNotesLoadedFor !== cycle) await loadMonthlyNotes();
-  document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Loading...</td></tr>`;
+  // Only the last run asked for is drawn: a slow earlier answer arriving
+  // after it must not paint over it. While it loads, the old totals go -
+  // a TOTAL line under "Loading..." read as a report with no rows.
+  const runNo = ++reportRunNo;
+  document.getElementById("report-body").innerHTML = `<tr><td class="empty-note" colspan="20">Loading...</td></tr>`;
+  document.getElementById("report-total-row").innerHTML = "";
   try {
     await initReportColumnPicker();
   } catch (e) {
@@ -6113,13 +6141,17 @@ async function loadReports() {
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
 
+  let got;
   try {
-    currentCustomReport = await apiCall(url);
+    got = await apiCall(url);
   } catch (e) {
+    if (runNo !== reportRunNo) return;
     showStatus("report-status", "err", "Could not load the report: " + errText(e));
     document.getElementById("report-body").innerHTML = `<tr><td class="empty-note">Could not load. Try again.</td></tr>`;
     return;
   }
+  if (runNo !== reportRunNo) return;
+  currentCustomReport = got;
   document.getElementById("report-note").textContent = currentCustomReport.note || "";
   renderReportPreview();
 }
@@ -13005,6 +13037,46 @@ function hrReportUrl(which) {
   if (which === "documents")
     return `/export/payroll/documents?within=${document.getElementById("hr-doc-within").value}`;
   return `/export/payroll/${which}?`;
+}
+
+// ---- Labour payroll > Increments ---------------------------------------------
+let LAB_INCS = [];
+async function labIncLoad() {
+  document.getElementById("pg-labinc-card").style.display = "";
+  document.getElementById("labinc-body").innerHTML = `<tr><td colspan="9" class="hr-nil" style="padding:14px;">Loading...</td></tr>`;
+  try { LAB_INCS = (await apiCall("/employees/labour-increments")).rows || []; }
+  catch (e) { document.getElementById("labinc-body").innerHTML = `<tr><td colspan="9" class="hr-nil" style="padding:14px;">${escapeHtml(errText(e))}</td></tr>`; return; }
+  const f = document.getElementById("labinc-filter"), keep = f.value;
+  const people = [...new Map(LAB_INCS.map(r => [r.emp_no, r.name])).entries()]
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
+  f.innerHTML = `<option value="">Everyone</option>` + people.map(([c, n]) => `<option value="${escapeAttr(c)}">${escapeHtml(c)} - ${escapeHtml(n)}</option>`).join("");
+  f.value = keep;
+  labIncPaint();
+}
+function labIncPaint() {
+  const who = document.getElementById("labinc-filter").value;
+  const kind = { opening: "Starting rate", rate: "Rate change", joining: "Joined", increment: "Increment", correction: "Correction" };
+  const rows = LAB_INCS.filter(r => !who || r.emp_no === who)
+    .sort((a, b) => String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }) || a.effective_on.localeCompare(b.effective_on));
+  let last = null;
+  document.getElementById("labinc-body").innerHTML = rows.map(r => {
+    const first = r.emp_no !== last; last = r.emp_no;
+    return `<tr${first ? ' class="hr-first"' : ""}>
+      <td>${first ? escapeHtml(r.emp_no) : ""}</td>
+      <td class="txt">${first ? xlink(r.name, `xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(${jsq(r.emp_no)}))`, "masterdata", "Open his record on Master Data") : ""}</td>
+      <td class="txt">${first ? escapeHtml(r.trade || "") : ""}</td>
+      <td>${r.effective_on === "2000-01-01" ? '<span class="hr-nil">-</span>' : hrDate(r.effective_on)}${r.future ? '<span class="sub">not yet due</span>' : ""}</td>
+      <td>${kind[r.kind] || hrCap(r.kind)}</td>
+      <td class="num">${r.amount ? (r.amount > 0 ? "+" : "") + hrMoney(r.amount) : '<span class="hr-nil">-</span>'}</td>
+      <td class="num">${hrMoney(r.basic)}</td>
+      <td class="num strong">${hrMoney(r.gross)}</td>
+      <td class="txt">${escapeHtml(r.reason)}</td></tr>`;
+  }).join("") || `<tr><td colspan="9" class="hr-nil" style="padding:14px;">No rate changes recorded for labour yet.</td></tr>`;
+}
+async function labIncOut(fmt) {
+  const who = document.getElementById("labinc-filter").value;
+  const base = fmt === "view" ? "/export/labour-increments/view" : "/export/labour-increments";
+  window.open(`${API}${base}?emp_no=${encodeURIComponent(who)}&token=${await hrToken()}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
 }
 
 async function previewHr(which) {
