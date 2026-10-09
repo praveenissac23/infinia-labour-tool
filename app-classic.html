@@ -3272,6 +3272,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <button class="btn btn-dark" id="push-off-btn" onclick="pushDisable()">Turn off for this device</button>
             </div>
           </div>
+          <div class="card" id="pg-agent-card">
+            <h2>Ask the app from Claude</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Connect this app to Claude and ask it anything about the app's data - "LPOs sent in the last 50 days", "every increment, both companies, as Excel". It can only read, never change anything; every question is kept in the Activity monitor. Admin logins only.</p>
+            <div id="agent-state" style="font-size:13px; margin-bottom:10px;"></div>
+            <div class="form-row" id="agent-link-row" style="gap:8px; flex-wrap:wrap; display:none;">
+              <input type="text" id="agent-url" readonly style="flex:1; min-width:280px; font-family:monospace; font-size:12px;" onclick="this.select()">
+              <button class="btn btn-primary" onclick="agentCopy()">Copy link</button>
+            </div>
+            <div class="form-row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-primary" id="agent-on-btn" onclick="agentNew()">Turn on</button>
+              <button class="btn btn-dark" id="agent-new-btn" onclick="agentNew(true)">Make a new link</button>
+              <button class="btn btn-dark" id="agent-off-btn" onclick="agentOff()">Turn off</button>
+            </div>
+            <ol id="agent-steps" style="font-size:12.5px; color:#555; margin:12px 0 0 18px; padding:0; line-height:1.7; display:none;">
+              <li>Copy the link above.</li>
+              <li>In Claude: <b>Settings &rsaquo; Connectors &rsaquo; Add custom connector</b>. Name it <b>Infinia</b>, paste the link, Add.</li>
+              <li>In any chat, turn on <b>Infinia</b> from the tools menu and ask your question.</li>
+            </ol>
+            <p style="font-size:11.5px; color:#999; margin:10px 0 0;">Keep the link private - anyone with it can read the app's data. If it is ever shared by mistake, press Make a new link: the old one stops at once.</p>
+          </div>
           <div class="card">
             <h2>Change Your Password</h2>
             <div class="form-row">
@@ -16094,8 +16114,40 @@ async function notifSave() {
     if (typeof loadNotifications === "function") loadNotifications();
   } catch (e) { document.getElementById("notif-msg").textContent = errText(e); }
 }
+// ---- Claude connector (admin only) -------------------------------------------
+async function agentPaint() {
+  const card = document.getElementById("pg-agent-card"); if (!card) return;
+  if (CURRENT_ROLE !== "admin") { card.remove(); return; }
+  let d = { on: false, url: "" }; try { d = await apiCall("/settings/agent"); } catch (e) {}
+  agentShow(d);
+}
+function agentShow(d) {
+  document.getElementById("agent-state").innerHTML = d.on ? '<b style="color:#1E7A3A;">On.</b> Add the link below to Claude once.' : "Off.";
+  document.getElementById("agent-url").value = d.url || "";
+  document.getElementById("agent-link-row").style.display = d.on ? "" : "none";
+  document.getElementById("agent-steps").style.display = d.on ? "" : "none";
+  document.getElementById("agent-on-btn").style.display = d.on ? "none" : "";
+  document.getElementById("agent-new-btn").style.display = d.on ? "" : "none";
+  document.getElementById("agent-off-btn").style.display = d.on ? "" : "none";
+}
+async function agentNew(again) {
+  if (again && !confirm("Make a new link? The old link stops working at once - you will need to add the new one to Claude.")) return;
+  try { agentShow(await apiCall("/settings/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin: location.origin }) })); showStatus("settings-status", "ok", "Link ready - copy it into Claude."); }
+  catch (e) { showStatus("settings-status", "err", errText(e)); }
+}
+async function agentOff() {
+  if (!confirm("Turn off? Claude will no longer be able to read the app until you turn it on again.")) return;
+  try { agentShow(await apiCall("/settings/agent", { method: "DELETE" })); showStatus("settings-status", "ok", "Turned off."); }
+  catch (e) { showStatus("settings-status", "err", errText(e)); }
+}
+function agentCopy() {
+  const el = document.getElementById("agent-url"); el.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject()).then(
+    () => showStatus("settings-status", "ok", "Link copied."), () => { document.execCommand("copy"); showStatus("settings-status", "ok", "Link copied."); });
+}
 async function pushPaint() {
   notifPaint();
+  agentPaint();
   const el = document.getElementById("push-state"); if (!el) return;
   const on = document.getElementById("push-on-btn"), off = document.getElementById("push-off-btn"), test = document.getElementById("push-test-btn");
   let sub = null; try { sub = await pushSub(); } catch (e) {}

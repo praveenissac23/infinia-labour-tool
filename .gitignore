@@ -22,3 +22,4 @@ env/
 *.bak
 *.log
 unpriced_items.csv
+app/agent_files/

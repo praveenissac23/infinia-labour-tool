@@ -11850,6 +11850,8 @@ import projectpay  # noqa: E402
 projectpay.create_tables(engine)
 app.include_router(projectpay.router)
 projectpay.seed_once(SessionLocal)
+import agent  # noqa: E402  - Claude connector: ask the app anything, read-only
+app.include_router(agent.router)
 
 
 @app.on_event("startup")

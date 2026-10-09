@@ -40,7 +40,7 @@ const SCREEN_OF = { petty: 'pettycash', projects: 'projpay', taxinv: 'invoices',
         ck(`${page}.html: tab ${s} shows its screen`, await p.locator(`#screen-${SCREEN_OF[s] || s}.active`).count() === 1 && await p.locator(`#pg-tabs .pg-tab.active[data-tab="${s}"]`).count() === 1);
         if (SCREEN_OF[s] === 'settings') {
           const shown = await p.locator('#screen-settings > .card:visible, #screen-settings > div[id]:visible').count();
-          const want = { general: 6, companies: 2, logins: 2 }[s];   // general: phone notifications, password, store in-charge, signature, backup
+          const want = { general: 7, companies: 2, logins: 2 }[s];   // general: notifications, device, Claude connector (admin), password, store in-charge, signature, backup
           ck(`${page}.html: ${s} shows only its part (${shown})`, shown === want, shown);
         }
         if (SCREEN_OF[s] === 'pgreports') {
