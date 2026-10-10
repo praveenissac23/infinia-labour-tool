@@ -81,7 +81,7 @@
       const wrap = document.createElement("div");
       wrap.className = "help-wrap";
       wrap.innerHTML = `<span class="help-glass">&#128269;</span>
-        <input id="help-search" type="search" autocomplete="off" placeholder="Search pages and tasks... e.g. LPO, petty cash, leave">
+        <input id="help-search" type="search" autocomplete="off" placeholder="What do you want to do?...">
         <div id="help-results" class="help-results"></div>`;
       const q = document.createElement("button");
       q.id = "help-q"; q.className = "help-q"; q.title = "Help for this page"; q.textContent = "?";
