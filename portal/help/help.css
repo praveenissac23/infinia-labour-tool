@@ -74,3 +74,7 @@
 .help-r .help-area.task { color: #16857A; background: #E8F5F3; }
 .help-where { display: block; margin: 1px 0 0 56px; font-size: 11px; color: #8A8178; }
 .help-results { max-height: 72vh; overflow-y: auto; }
+
+/* Where a search result lands: a short glow on the box to start with */
+@keyframes helpFlash { 0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0); } 25%, 70% { box-shadow: 0 0 0 4px rgba(192,57,43,.35); } }
+.help-flash { animation: helpFlash 2s ease; border-radius: 6px; }

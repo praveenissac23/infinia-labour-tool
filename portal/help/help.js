@@ -164,6 +164,19 @@
       .map(r => r.x).filter(x => { const k = JSON.stringify(x.go) + x.title; if (seen.has(k)) return false; seen.add(k); return true; });
   }
   let FOUND = [];
+  // Go there, and always show that something happened: a page opens at
+  // its top; a task brings its first box into view, lit up and ready to
+  // type in - even when that page was already open.
+  async function arrive(x) {
+    await goTo({ go: x.go });
+    await wait(350);
+    const first = x.guide && x.guide.steps && x.guide.steps.find(st => st.el && find(st.el));
+    const el = first ? find(first.el) : null;
+    if (!el) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("help-flash"); setTimeout(() => el.classList.remove("help-flash"), 2200);
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !el.disabled) setTimeout(() => { try { el.focus({ preventScroll: true }); } catch (e) {} }, 400);
+  }
   function renderResults() {
     const q = box.value.trim();
     if (!q) { list.style.display = "none"; return; }
@@ -174,7 +187,7 @@
     list.style.display = "block";
     list.querySelectorAll(".help-r").forEach(el => el.onclick = () => {
       const x = FOUND[+el.dataset.k]; list.style.display = "none"; box.value = ""; box.blur();
-      if (x) goTo({ go: x.go });
+      if (x) arrive(x);
     });
   }
   function openDrawer() { drawer.classList.add("open"); }
@@ -413,6 +426,6 @@
     const t = setInterval(() => { if ($(".help-hello")) { clearInterval(t); return; }
       try { if (!localStorage.getItem("infinia-help-hello") && $("#app-screen") && getComputedStyle($("#app-screen")).display !== "none") { welcome(); if ($(".help-hello")) clearInterval(t); } } catch (e) { clearInterval(t); } }, 1500);
   }
-  window.HELP = { search, findPlaces: find2, places, openGuide, openList, tour, endTour, allowed, find, goTo, step: i => step(i), get state() { return T; } };
+  window.HELP = { search, findPlaces: find2, places, arrive, openGuide, openList, tour, endTour, allowed, find, goTo, step: i => step(i), get state() { return T; } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

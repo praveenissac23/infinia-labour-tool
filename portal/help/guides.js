@@ -446,7 +446,7 @@ window.HELP_GUIDES = [
     tip: "Copy from... starts a role from another one. Nothing changes until you press Save." },
   { id: "staff-leave-add", area: "Staff", title: "How to enter someone's leave",
     words: "leave vacation annual leave going home ticket travel return date approved staff labour leave register",
-    go: { page: "people", tab: "people" },
+    go: { page: "people", tab: "people", view: "vacation" },
     steps: [
       { say: "Open Staff > Leave.", run: "var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('vacation');" },
       { say: "Press + Add leave and pick the person." },
@@ -455,7 +455,7 @@ window.HELP_GUIDES = [
     tip: "Overdue shows in red when the approved days have passed and he is not back." },
   { id: "bday-client", area: "Staff", title: "How to add a client's birthday",
     words: "birthday client birthday date of birth wish reminder",
-    go: { page: "people", tab: "people" },
+    go: { page: "people", tab: "people", view: "bday" },
     steps: [
       { say: "Open Staff > Birthdays.", run: "var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('bday');" },
       { say: "Press + Client birthday." },
