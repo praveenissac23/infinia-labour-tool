@@ -83,6 +83,17 @@ def totals(lines):
     return sub, vat, round(sub + vat, 2)
 
 
+def default_terms(kind):
+    """The terms printed when none have been set in the app."""
+    return [
+        "This proforma is valid for 15 days from the date above." if kind == "proforma" else "Payment is due within 30 days of the invoice date.",
+        "Payment by bank transfer to the account below, or by cheque in favour of Infinia Contracting L.L.C.",
+        "Please quote the invoice number on your payment and remittance advice.",
+        "Amounts are in UAE Dirhams. VAT is charged at 5% under UAE Federal Decree-Law No. 8 of 2017.",
+        "Any query on this invoice should be raised within 7 days of receipt.",
+    ]
+
+
 def build(inv, company=None, bank=None, signature=None):
     """inv: kind ('tax'|'proforma'), number, date_text, client, client_trn,
     client_address, project, plot, location, work, lines [{description,
@@ -180,8 +191,8 @@ def build(inv, company=None, bank=None, signature=None):
         return py - 31 * mm
 
     # ---- the line table, page by page ------------------------------------------
-    cols = [("#", 8 * mm, "center"), ("Description", 0, "left"), ("Net Amount", 27 * mm, "right"),
-            ("VAT %", 14 * mm, "right"), ("VAT", 22 * mm, "right"), ("Total (AED)", 28 * mm, "right")]
+    cols = [("#", 8 * mm, "center"), ("Description", 0, "left"), ("Net Amount", 25 * mm, "right"),
+            ("VAT %", 13 * mm, "right"), ("VAT", 20 * mm, "right"), ("Total (AED)", 27 * mm, "right")]
     tw = W - 2 * M
     cols[1] = ("Description", tw - sum(w for _, w, _ in cols), "left")
     xs = [M]
@@ -225,14 +236,21 @@ def build(inv, company=None, bank=None, signature=None):
     bhgt = 9 * mm + 13 + len(bank) * 11 + 3
     totals_drop = 8 * mm + 26 + 2 + 13 * mm - 5
     head_drop = max(totals_drop, 11 * mm + ph) + 9 * mm
-    END_ROOM = head_drop + max(bhgt, 11.5 * mm + sh + 4) + 6 * mm
+    terms = [t for t in (inv.get("terms") or default_terms(inv.get("kind"))) if str(t).strip()]
+    term_lines = sum(len(simpleSplit(t, "Helvetica", 8.4, W - 2 * M - 8 * mm)) for t in terms)
+    terms_h = (10 * mm + 6 * mm + term_lines * 11 + len(terms) * 2) if terms else 0
+    notes_h = 14 * mm
+    pay_h = max(bhgt, 11.5 * mm + sh + 4) + 8 * mm
+    # totals, terms and notes follow the last line; payment and signature
+    # are fixed at the foot - all of it must fit below the last line.
+    END_ROOM = head_drop + terms_h + notes_h + pay_h
     ry = head_row(chrome(True))
     table_top = ry
     for i, l in enumerate(lines, 1):
         d = str(l.get("description") or "")
         wrapped = simpleSplit(d, "Helvetica", 8.8, cols[1][1] - 6 * mm) or [""]
         rh = max(7.8 * mm, (len(wrapped) * 11) + 4.6 * mm)
-        need_after = END_ROOM if i == len(lines) else 0
+        need_after = head_drop if i == len(lines) else 0     # the totals stay with the last line
         if ry - rh < FOOT_ROOM + need_after:
             col_rules(table_top, ry)
             c.showPage(); pages[0] += 1
@@ -256,14 +274,13 @@ def build(inv, company=None, bank=None, signature=None):
         ry -= rh
     if not lines:
         text(M + 4 * mm, ry - 6 * mm, "No lines.", 9, col=MUTED); ry -= 9 * mm
-    if ry < FOOT_ROOM + END_ROOM:
+    if ry < FOOT_ROOM + head_drop:
         col_rules(table_top, ry)
         c.showPage(); pages[0] += 1
         ry = chrome(False); table_top = None
     # The table runs on down to the closing block.
     bottom = FOOT_ROOM + END_ROOM
-    if table_top is not None and ry > bottom:
-        ry = bottom
+    pass
     if table_top is not None:
         col_rules(table_top, ry)
     c.setStrokeColor(CHAR); c.setLineWidth(1.2); c.line(M, ry, M + tw, ry)
@@ -290,25 +307,60 @@ def build(inv, company=None, bank=None, signature=None):
     pw.drawOn(c, M, ry - 11 * mm - ph)
 
     # ---- payment details + signature ---------------------------------------------
-    by = min(totals_bottom, ry - 11 * mm - ph) - 9 * mm
-    bwid = 96 * mm
-    c.setFillColor(TINT); c.roundRect(M, by - bhgt, bwid, bhgt, 2 * mm, stroke=0, fill=1)
-    c.setFillColor(RED); c.rect(M, by - bhgt, 0.6 * mm, bhgt, stroke=0, fill=1)
-    text(M + 5 * mm, by - 6 * mm, "PAYMENT DETAILS", 7.5, "Helvetica-Bold", RED, spacing=0.8)
-    yb = by - 9 * mm - 13
-    for k, v in bank:
-        text(M + 5 * mm, yb, k, 8.3, col=MUTED)
-        text(M + 32 * mm, yb, v, 8.6, "Helvetica-Bold", INK)
-        yb -= 11
-    sx = W - M - 70 * mm
-    label(sx, by - 2 * mm, f"For {company['name']}")
-    if sig_wh:
-        try:
-            c.drawImage(ImageReader(signature), sx, by - 5 * mm - sh, width=sig_wh[0], height=sh, mask="auto")
-        except Exception:
-            pass
-    c.setStrokeColor(CHAR); c.setLineWidth(0.6); c.line(sx, by - 7 * mm - sh, W - M, by - 7 * mm - sh)
-    text(sx, by - 11.5 * mm - sh, "Authorised Signatory", 8, "Helvetica-Bold", INK)
+    words_bottom = ry - 11 * mm - ph
+    by = FOOT_ROOM + max(bhgt, 11.5 * mm + sh + 4) + 4 * mm      # anchored above the footer
+    # ---- terms & notes: the middle of the page ---------------------------
+    tt = min(totals_bottom, words_bottom) - 10 * mm
+    def draw_terms(top):
+        if terms:
+            label(M, top, "Terms & conditions")
+        ty_ = top - 6 * mm if terms else top + 6 * mm
+        for i, t in enumerate(terms, 1):
+            for j, ln in enumerate(simpleSplit(t, "Helvetica", 8.4, W - 2 * M - 8 * mm)):
+                if j == 0:
+                    text(M, ty_, f"{i}.", 8.4, col=MUTED)
+                text(M + 5 * mm, ty_, ln, 8.4, col=INK)
+                ty_ -= 11
+            ty_ -= 2
+        nt = inv.get("notes") or "Thank you for your business."
+        label(M, ty_ - 4 * mm, "Notes")
+        text(M, ty_ - 10 * mm, nt, 8.6, "Helvetica-Oblique", INK)
+
+    def draw_pay():
+        c.setStrokeColor(RULE); c.setLineWidth(0.6); c.line(M, by + 4 * mm, W - M, by + 4 * mm)
+        bwid = 96 * mm
+        c.setFillColor(TINT); c.roundRect(M, by - bhgt, bwid, bhgt, 2 * mm, stroke=0, fill=1)
+        c.setFillColor(RED); c.rect(M, by - bhgt, 0.6 * mm, bhgt, stroke=0, fill=1)
+        text(M + 5 * mm, by - 6 * mm, "PAYMENT DETAILS", 7.5, "Helvetica-Bold", RED, spacing=0.8)
+        yb = by - 9 * mm - 13
+        for k, v in bank:
+            text(M + 5 * mm, yb, k, 8.3, col=MUTED)
+            text(M + 32 * mm, yb, v, 8.6, "Helvetica-Bold", INK)
+            yb -= 11
+        sx = W - M - 70 * mm
+        label(sx, by - 2 * mm, f"For {company['name']}")
+        if sig_wh:
+            try:
+                c.drawImage(ImageReader(signature), sx, by - 5 * mm - sh, width=sig_wh[0], height=sh, mask="auto")
+            except Exception:
+                pass
+        c.setStrokeColor(CHAR); c.setLineWidth(0.6); c.line(sx, by - 7 * mm - sh, W - M, by - 7 * mm - sh)
+        text(sx, by - 11.5 * mm - sh, "Authorised Signatory", 8, "Helvetica-Bold", INK)
+
+    # Everything fits under the totals: terms and notes in the middle,
+    # payment and signature at the foot. Otherwise payment and signature
+    # stay on this page if they fit and the terms follow on the next; if
+    # even they do not fit, all of it moves on together.
+    rest = (terms_h - 10 * mm) + notes_h
+    if tt - rest - pay_h >= FOOT_ROOM - 4 * mm:
+        draw_terms(tt); draw_pay()
+    elif tt + 10 * mm - pay_h >= FOOT_ROOM - 4 * mm:
+        draw_pay()
+        c.showPage(); pages[0] += 1
+        draw_terms(chrome(False) - 4 * mm)
+    else:
+        c.showPage(); pages[0] += 1
+        draw_terms(chrome(False) - 4 * mm); draw_pay()
     c.showPage()
     c.save()
     buf.seek(0)

@@ -346,6 +346,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* ---- Filled in for you: one look for every "here is what we know" line ---- */
   .auto-hint { font-size: 12px; color: #4F6B5E; background: #F1F7F4; border: 1px solid #DDEBE3; border-radius: 8px; padding: 6px 10px; margin: 8px 0 0; display: inline-block; }
   .auto-hint:empty { display: none; }
+  .inv-terms { margin-top: 10px; border: 1px solid #ECE6DF; border-radius: 10px; padding: 8px 12px; background: #FCFAF7; }
+  .inv-terms summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #5B6167; }
+  .inv-terms-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .inv-terms textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; }
+  @media (max-width: 800px) { .inv-terms-grid { grid-template-columns: 1fr; } }
   /* ---- Project expense ---- */
   .px-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 12px; }
   .px-stat { border: 1px solid #ECE6DF; border-radius: 10px; padding: 10px 13px; background: #FCFAF7; min-width: 0; }
@@ -2524,6 +2529,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </div>
             </div>
             <div id="inv-sig-note" style="font-size:12px; color:#B26A00; margin-top:6px;"></div>
+            <details class="inv-terms" id="inv-terms" ontoggle="if (this.open) invTermsLoad()">
+              <summary>Terms &amp; conditions and note printed on every invoice</summary>
+              <div class="inv-terms-grid">
+                <label class="hr-field"><span>Tax invoice - one term a line</span><textarea id="inv-terms-tax" rows="6"></textarea></label>
+                <label class="hr-field"><span>Proforma invoice - one term a line</span><textarea id="inv-terms-proforma" rows="6"></textarea></label>
+              </div>
+              <div class="form-row" style="gap:10px; align-items:flex-end; margin-top:8px;">
+                <label class="hr-field" style="flex:1;"><span>Note</span><input type="text" id="inv-note" maxlength="200"></label>
+                <button class="btn btn-primary" onclick="invTermsSave()">Save terms</button>
+              </div>
+            </details>
             <div class="grid-wrap" style="max-height:62vh; margin-top:10px;"><table class="hr-grid inv-list">
               <thead><tr><th style="width:15%;" class="txt">Number</th><th style="width:9%;">Date</th><th class="txt" style="width:20%;">Client</th>
                 <th class="txt" style="width:17%;">Project</th><th style="width:10%; text-align:right;">Net</th><th style="width:8%; text-align:right;">VAT</th>
@@ -15562,6 +15578,18 @@ function invReset() {
 }
 // A project number used before brings its client and site along.
 let INV_SITES = null;
+async function invTermsLoad() {
+  try { const t = await apiCall("/employees/accounts/invoice-terms");
+    document.getElementById("inv-terms-tax").value = t.tax; document.getElementById("inv-terms-proforma").value = t.proforma;
+    document.getElementById("inv-note").value = t.note; } catch (e) { showStatus("inv-status", "err", errText(e)); }
+}
+async function invTermsSave() {
+  try { await apiCall("/employees/accounts/invoice-terms", { method: "POST", body: JSON.stringify({
+      tax: document.getElementById("inv-terms-tax").value, proforma: document.getElementById("inv-terms-proforma").value,
+      note: document.getElementById("inv-note").value }) });
+    showStatus("inv-status", "ok", "Terms saved - every invoice prints them from now on, old ones included.");
+  } catch (e) { showStatus("inv-status", "err", errText(e)); }
+}
 function invProjectPicked() {
   const p = document.getElementById("inv-pno").value.trim();
   const last = p && INV && INV.rows.find(r => r.project_no === p);

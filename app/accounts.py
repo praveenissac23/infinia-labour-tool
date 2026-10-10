@@ -271,9 +271,32 @@ def convert_proforma(iid: int, db: Session = Depends(get_db), user: models.User 
     return {"ok": True, "id": t.id, "number": t.number}
 
 
+def terms_for(db, kind):
+    raw = M.get_setting(db, f"invoice_terms_{kind}")
+    return [l.strip() for l in raw.splitlines() if l.strip()] if raw else invoice_pdf.default_terms(kind)
+
+
+@router.get("/employees/accounts/invoice-terms")
+def get_terms(db: Session = Depends(get_db), user: models.User = INV):
+    return {k: "\n".join(terms_for(db, k)) for k in ("tax", "proforma")} | {"note": M.get_setting(db, "invoice_note") or "Thank you for your business."}
+
+
+@router.post("/employees/accounts/invoice-terms")
+def set_terms(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = INV):
+    for k in ("tax", "proforma"):
+        if k in payload:
+            M.put_setting(db, f"invoice_terms_{k}", str(payload.get(k) or "").strip())
+    if "note" in payload:
+        M.put_setting(db, "invoice_note", str(payload.get("note") or "").strip())
+    M.log_action(db, user.id, "invoice_terms", "invoice terms changed")
+    return get_terms(db=db, user=user)
+
+
 def _pdf_response(db, x):
     d = _dict(x)
     d["date_text"] = f"{x.inv_date:%d %B %Y}"
+    d["terms"] = terms_for(db, x.kind)
+    d["notes"] = M.get_setting(db, "invoice_note") or "Thank you for your business."
     buf = invoice_pdf.build(d, company=_company(db, x.company_id), signature=invoice_signature())
     name = ("Tax_Invoice_" if x.kind == "tax" else "Proforma_") + x.number.replace("/", "-")
     return StreamingResponse(buf, media_type="application/pdf",
