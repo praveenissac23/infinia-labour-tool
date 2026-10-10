@@ -14400,7 +14400,7 @@ function expOpen() {
 async function expLoadSummary() {
   try { EXP_SUM = await apiCall("/employees/expiry/summary"); } catch (e) { return; }
   expDrawCards();
-  expBadge(EXP_SUM.expired + EXP_SUM.week);
+  expBadge(EXP_SUM.badge !== undefined ? EXP_SUM.badge : EXP_SUM.expired + EXP_SUM.week);
   if (document.getElementById("hr-doc-within").value === "missing") renderDocuments();
 }
 // The counters count what the open tab lists - people on People (one

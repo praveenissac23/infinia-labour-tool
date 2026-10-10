@@ -114,7 +114,11 @@ def summary(db):
     comp = [i["days_left"] for i in items if i["type"] == "company"]
     band = lambda xs: {"expired": sum(1 for d in xs if d < 0), "week": sum(1 for d in xs if 0 <= d <= 7),
                        "month": sum(1 for d in xs if 8 <= d <= 30)}
-    return {"expired": len(expired), "week": len(week), "month": len(month), "missing": len(miss),
+    # The menu number is the bell's number: expired or due in 7 days, less
+    # those marked "renewal started" - one figure wherever it is shown.
+    its = notice_items(db)
+    badge = sum(1 for i in its if i["days_left"] <= 7)
+    return {"expired": len(expired), "week": len(week), "month": len(month), "missing": len(miss), "badge": badge,
             "people": band(list(soonest.values())),
             "company": {**band(comp), "all": len(M.list_expiries(db=db, user=None)["rows"])},
             "missing_people": miss,

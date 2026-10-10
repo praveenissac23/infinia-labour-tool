@@ -1313,7 +1313,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="accb736dcb66";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="994dff165a9c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -14606,7 +14606,7 @@ function expOpen() {
 async function expLoadSummary() {
   try { EXP_SUM = await apiCall("/employees/expiry/summary"); } catch (e) { return; }
   expDrawCards();
-  expBadge(EXP_SUM.expired + EXP_SUM.week);
+  expBadge(EXP_SUM.badge !== undefined ? EXP_SUM.badge : EXP_SUM.expired + EXP_SUM.week);
   if (document.getElementById("hr-doc-within").value === "missing") renderDocuments();
 }
 // The counters count what the open tab lists - people on People (one
