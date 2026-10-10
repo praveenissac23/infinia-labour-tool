@@ -316,13 +316,15 @@ async function loadAll() {
   try { const d = await apiCall("/permissions/roles"); ROLES = d.rows; SCREENS = d.screens; LABELS = d.labels; PAGES = d.pages || []; TREE = d.tree || []; NOTIF = d.notif_groups || []; indexTree();
         USERS = VIEW === "users" || ME.isAdmin || (ME.screens || []).includes("settings_logins") ? (await apiCall("/permissions/roles/users")).rows : []; }
   catch (e) { status("warn", errText(e)); }
-  if (DRAFT && DRAFT.id && !DRAFT.dirty) { const r = ROLES.find(x => x.id === DRAFT.id); if (r) DRAFT.tabs = new Set(r.tabs || []); else DRAFT = null; }
-  if (!DRAFT && ROLES.length && VIEW === "roles") { CUR = ROLES[0].id; const r = ROLES[0]; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), dirty: false };
+  if (DRAFT && DRAFT.id && !DRAFT.dirty) { const r = ROLES.find(x => x.id === DRAFT.id); if (r) { DRAFT.tabs = new Set(r.tabs || []); DRAFT.notif = ROLE_NOTIF(r); } else DRAFT = null; }
+  if (!DRAFT && ROLES.length && VIEW === "roles") { CUR = ROLES[0].id; const r = ROLES[0]; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), notif: ROLE_NOTIF(r), dirty: false };
     TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id))); }
   renderRoles(); renderUsers();
 }
 // ---- Roles: tick page by page, tab by tab ---------------------------------
 let TREE = [], NOTIF = [], CUR = null, DRAFT = null, OPEN = {};
+// A role never set up for notifications receives every group.
+const ROLE_NOTIF = r => new Set(r.notif === null || r.notif === undefined ? NOTIF.map(g => g.id) : r.notif);
 const LEAVES_OF = n => n.right ? [n] : (n.children || []).flatMap(LEAVES_OF);
 const LEAF_PAGE = {};
 function indexTree() { TREE.forEach(p => LEAVES_OF(p).forEach(l => LEAF_PAGE[l.id] = p.id)); }
@@ -331,7 +333,7 @@ const CAN_GIVE = id => ME.isAdmin || (ME.tabs || []).includes(id);
 function pickRole(id) {
   if (DRAFT && DRAFT.dirty && !confirm("Leave without saving the changes to " + (DRAFT.name || "this role") + "?")) return;
   const r = ROLES.find(x => x.id === id); if (!r) return;
-  CUR = r.id; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), notif: new Set(r.notif === null || r.notif === undefined ? NOTIF.map(g => g.id) : r.notif), dirty: false };
+  CUR = r.id; DRAFT = { id: r.id, name: r.name, notes: r.notes || "", tabs: new Set(r.tabs || []), notif: ROLE_NOTIF(r), dirty: false };
   OPEN = {}; TREE.forEach(p => OPEN[p.id] = LEAVES_OF(p).some(l => DRAFT.tabs.has(l.id)));
   renderRoles();
 }
