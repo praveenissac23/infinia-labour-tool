@@ -238,7 +238,24 @@ def _petty(db, match, d1, d2):
 
 # ---- the whole picture ---------------------------------------------------------
 
+_CACHE = {}           # (from, to) -> (time, result): opening a project right after the list reuses the same figures
+_CACHE_SECONDS = 30
+
+
 def gather(db, date_from=None, date_to=None):
+    import time
+    key, now = (str(_d(date_from)), str(_d(date_to))), time.monotonic()
+    hit = _CACHE.get(key)
+    if hit and now - hit[0] < _CACHE_SECONDS:
+        return hit[1]
+    g = _gather(db, date_from, date_to)
+    for k in [k for k, v in _CACHE.items() if now - v[0] >= _CACHE_SECONDS]:
+        _CACHE.pop(k, None)
+    _CACHE[key] = (now, g)
+    return g
+
+
+def _gather(db, date_from=None, date_to=None):
     d1, d2 = _d(date_from), _d(date_to)
     projects = _projects(db)
     match = _site_matcher(projects)

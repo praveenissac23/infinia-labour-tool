@@ -378,6 +378,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .px-tabs button.on { background: #FDF4F3; border-color: var(--red); color: var(--red); }
   .px-tabs button small { color: #999; font-weight: 600; margin-left: 4px; }
   .px-dt td small { display: block; color: #8A8178; font-size: 11px; }
+  .px-modal { position: fixed; inset: 0; z-index: 950; background: rgba(20, 22, 25, .45); display: none; align-items: flex-start; justify-content: center; padding: 3vh 2vw; }
+  .px-modal.open { display: flex; }
+  .px-sheet { width: min(1320px, 100%); max-height: 94vh; display: flex; flex-direction: column; margin: 0 !important; box-shadow: 0 18px 50px rgba(0, 0, 0, .25); }
+  .px-sheet .px-d-wrap { flex: 1 1 auto; height: 50vh; min-height: 220px; max-height: none !important; overflow: auto; }
+  .px-busy { opacity: .55; transition: opacity .15s; }
+  body.px-lock { overflow: hidden; }
   @media (max-width: 1100px) { .px-stats, .px-cats { grid-template-columns: 1fr 1fr; } }
   .pp-ctrl { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .pp-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #555; height: 36px; white-space: nowrap; }
@@ -2614,7 +2620,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <p class="px-note">Labour is each worker's paid salary (OT and additions included) split by the sites his days were logged to. LPOs are net of VAT; orders to the store count when the material is issued to a site. Petty cash counts lines with the site filled in or the site number in the description; salary payments are left out because labour already counts them. Click a project for every line behind its figures.</p>
           </div>
 
-          <div class="card" id="px-detail" style="display:none;">
+          <div class="px-modal" id="px-modal" onclick="if (event.target === this) pxClose()">
+          <div class="card px-sheet" id="px-detail" role="dialog" aria-modal="true">
             <div class="pc-head">
               <div class="pc-title"><h2 style="margin:0;" id="px-d-title"></h2><span class="px-d-sub" id="px-d-sub"></span></div>
               <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pxExport('view', PX_CODE)">Preview</button><button type="button" class="btn btn-dark" onclick="pxExport('pdf', PX_CODE)">Export PDF</button><button type="button" class="btn btn-dark" onclick="pxExport('excel', PX_CODE)">Export Excel</button></div>
@@ -2623,7 +2630,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="px-cats" id="px-d-cats"></div>
             <div class="px-bar big" id="px-d-bar"></div>
             <div class="px-tabs" id="px-d-tabs"></div>
-            <div class="grid-wrap" style="max-height:62vh;"><table class="px-table px-dt" id="px-d-table"></table></div>
+            <div class="grid-wrap px-d-wrap"><table class="px-table px-dt" id="px-d-table"></table></div>
+          </div>
           </div>
         </div>
 
@@ -13202,11 +13210,16 @@ function pxPeriod() {
   document.getElementById("px-pf-to").style.display = r ? "" : "none";
   pxLoad();
 }
+let PX_SEQ = 0;
 async function pxLoad() {
-  const r = pxRange();
-  document.getElementById("px-body").innerHTML = `<tr><td colspan="10" class="hr-nil" style="padding:16px;">Working out every project's cost...</td></tr>`;
-  try { PX = await apiCall(`/employees/accounts/project-expense?date_from=${r.from}&date_to=${r.to}`); }
-  catch (e) { showStatus("px-status", "err", errText(e)); return; }
+  const r = pxRange(), seq = ++PX_SEQ, body = document.getElementById("px-body");
+  if (!PX) body.innerHTML = `<tr><td colspan="10" class="hr-nil" style="padding:16px;">Working out every project's cost...</td></tr>`;
+  else body.closest("table").classList.add("px-busy");
+  let data;
+  try { data = await apiCall(`/employees/accounts/project-expense?date_from=${r.from}&date_to=${r.to}`); }
+  catch (e) { if (seq === PX_SEQ) { body.closest("table").classList.remove("px-busy"); showStatus("px-status", "err", errText(e)); } return; }
+  if (seq !== PX_SEQ) return;              // a newer request is on its way
+  PX = data; body.closest("table").classList.remove("px-busy");
   pxDraw();
   if (PX_CODE) pxOpen(PX_CODE, true);
 }
@@ -13231,7 +13244,7 @@ function pxDraw() {
     stat("Not linked to a project", U.petty + U.lpo + U.labour, `petty ${pxM(U.petty)} - LPO ${pxM(U.lpo)}`, "warn");
   document.getElementById("px-body").innerHTML = rows.map(r => {
     const pct = r.contract ? r.total / r.contract * 100 : null;
-    return `<tr class="px-row${r.code === PX_CODE ? " on" : ""}" onclick="pxOpen('${escapeAttr(r.code)}')" title="Click for every line behind these figures">
+    return `<tr class="px-row${r.code === PX_CODE ? " on" : ""}" data-code="${escapeAttr(r.code)}" onclick="pxOpen('${escapeAttr(r.code)}')" title="Click for every line behind these figures">
       <td class="l proj"><b>${escapeHtml(r.code)}</b>${r.name ? ` ${escapeHtml(r.name)}` : ""}${r.plot ? `<small>Plot ${escapeHtml(r.plot)}</small>` : ""}</td>
       ${pxCell(r.contract)}${pxCell(r.labour)}${pxCell(r.lpo)}${pxCell(r.store)}${pxCell(r.petty)}
       <td class="n b">${pxM(r.total)}</td><td>${pxBar(r)}</td>
@@ -13251,13 +13264,22 @@ function pxDraw() {
     <li>Salary and wage payments through petty cash, AED ${pxM(U.petty_salary)}, are left out - labour already counts them from payroll.</li></ul>`;
 }
 async function pxOpen(code, quiet) {
-  PX_CODE = code; pxDraw();
-  const r = pxRange();
-  const card = document.getElementById("px-detail"); card.style.display = "";
-  document.getElementById("px-d-title").textContent = `Project ${code}`;
-  document.getElementById("px-d-table").innerHTML = `<tr><td class="hr-nil" style="padding:16px;">Loading...</td></tr>`;
-  try { PX_D = await apiCall(`/employees/accounts/project-expense/${encodeURIComponent(code)}?date_from=${r.from}&date_to=${r.to}`); }
-  catch (e) { showStatus("px-status", "err", errText(e)); return; }
+  PX_CODE = code;
+  document.querySelectorAll("#px-body tr.px-row").forEach(tr => tr.classList.toggle("on", tr.dataset.code === code));
+  const r = pxRange(), seq = ++PX_DSEQ;
+  const modal = document.getElementById("px-modal"), card = document.getElementById("px-detail");
+  if (!modal.classList.contains("open")) {
+    modal.classList.add("open"); document.body.classList.add("px-lock");
+    document.getElementById("px-d-title").textContent = `Project ${code}`;
+    document.getElementById("px-d-sub").textContent = "";
+    ["px-d-cats", "px-d-tabs"].forEach(id => document.getElementById(id).innerHTML = "");
+    document.getElementById("px-d-table").innerHTML = `<tr><td class="hr-nil" style="padding:16px;">Loading...</td></tr>`;
+  } else card.classList.add("px-busy");
+  let data;
+  try { data = await apiCall(`/employees/accounts/project-expense/${encodeURIComponent(code)}?date_from=${r.from}&date_to=${r.to}`); }
+  catch (e) { card.classList.remove("px-busy"); document.getElementById("px-d-table").innerHTML = `<tr><td class="hr-nil" style="padding:16px;">${escapeHtml(errText(e))}</td></tr>`; return; }
+  if (seq !== PX_DSEQ || PX_CODE !== code) return;
+  PX_D = data; card.classList.remove("px-busy");
   const p = PX_D.project;
   document.getElementById("px-d-title").textContent = `Project ${p.code}${p.name ? " - " + p.name : ""}`;
   document.getElementById("px-d-sub").textContent = [p.plot ? "Plot " + p.plot : "", PX_D.period].filter(Boolean).join(" - ");
@@ -13269,13 +13291,18 @@ async function pxOpen(code, quiet) {
     tile("From store", p.store, share(p.store), "sto") + tile("Petty cash", p.petty, share(p.petty), "pet");
   document.getElementById("px-d-bar").outerHTML = `<div id="px-d-bar">${pxBar(p, true)}</div>`;
   if (!quiet) {
-    card.scrollIntoView({ behavior: "smooth", block: "start" });
     const big = [["labour", p.labour], ["lpo", p.lpo], ["store", p.store], ["petty", p.petty]].sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
     if (big[1]) PX_TAB = big[0];
   }
   pxTab(PX_TAB);
 }
-function pxClose() { PX_CODE = null; PX_D = null; document.getElementById("px-detail").style.display = "none"; pxDraw(); }
+let PX_DSEQ = 0;
+function pxClose() {
+  PX_CODE = null; PX_D = null; PX_DSEQ++;
+  document.getElementById("px-modal").classList.remove("open"); document.body.classList.remove("px-lock");
+  document.querySelectorAll("#px-body tr.px-row.on").forEach(tr => tr.classList.remove("on"));
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && PX_CODE) pxClose(); });
 function pxTab(k) {
   PX_TAB = k; const d = PX_D; if (!d) return;
   const n = { labour: d.labour.length, lpo: d.lpo.length, store: d.store.length, petty: d.petty.length };
@@ -13305,6 +13332,7 @@ function pxTab(k) {
     body = d.petty.map(r => `<tr><td class="l">${D(r.date)}</td><td class="l">${escapeHtml(r.book)}</td><td class="l">${escapeHtml(r.description)}<small>${escapeHtml(r.supplier)}${r.supplier ? " - " : ""}linked by ${escapeHtml(r.how)}${r.split > 1 ? `, split over ${r.split} sites` : ""}</small></td><td class="n">${pxM(r.amount)}</td></tr>`).join("");
     foot = total(d.petty, 3);
   }
+  const wrap = document.querySelector("#px-detail .px-d-wrap"); if (wrap) wrap.scrollTop = 0;
   document.getElementById("px-d-table").innerHTML = `<thead>${head}</thead><tbody>${body || `<tr><td colspan="6" class="hr-nil" style="padding:14px;">Nothing in ${names[k].toLowerCase()} for this project.</td></tr>`}</tbody>${foot}`;
 }
 async function pxExport(fmt, code) {
