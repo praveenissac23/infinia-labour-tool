@@ -185,10 +185,9 @@ def build(inv, company=None, bank=None, signature=None):
         xs.append(xs[-1] + w)
 
     def col_rules(top, bot):
-        """Light column lines and side edges, header to the bottom of the table."""
-        c.setStrokeColor(RULE); c.setLineWidth(0.6)
-        for x0 in xs:
-            c.line(x0, top, x0, bot)
+        """The table stays open - no column lines; it only runs down to
+        the closing block so every invoice sits the same on the page."""
+        return
 
     def head_row(ty):
         hh = 9 * mm
@@ -257,7 +256,7 @@ def build(inv, company=None, bank=None, signature=None):
         col_rules(table_top, ry)
         c.showPage(); pages[0] += 1
         ry = chrome(False); table_top = None
-    # The table runs on, its columns ruled, down to the closing block.
+    # The table runs on down to the closing block.
     bottom = FOOT_ROOM + END_ROOM
     if table_top is not None and ry > bottom:
         ry = bottom
