@@ -2280,13 +2280,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <p style="font-size:12px; color:#888; margin:0 0 10px;">Every document that expires - staff, labour, vehicles, licences, NOCs, permits - in one list, soonest first, so nothing is missed. Click a line to renew or correct it.</p>
                 <div class="form-row" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                   <select id="exp-all-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderAllDocs()">
-                    <option value="30" selected>Expired or due in 30 days</option>
+                    <option value="30">Expired or due in 30 days</option>
                     <option value="7">Expired or due in 7 days</option>
                     <option value="0">Expired only</option>
                     <option value="w">Due in 7 days</option>
                     <option value="m">Due in 8 to 30 days</option>
                     <option value="90">Expired or due in 90 days</option>
-                    <option value="-1">Everything on file</option>
+                    <option value="-1" selected>Everything on file</option>
                   </select>
                   <select id="exp-all-type" class="hr-dd" style="width:190px;" onchange="renderAllDocs()">
                     <option value="">People and company</option><option value="person">People only</option><option value="company">Company only</option>
@@ -2316,14 +2316,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
               <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
                 <select id="hr-doc-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderDocuments()">
-                  <option value="30" selected>Expired or due in 30 days</option>
+                  <option value="30">Expired or due in 30 days</option>
                   <option value="7">Expired or due in 7 days</option>
                   <option value="0">Expired only</option>
                   <option value="w">Due in 7 days</option>
                   <option value="m">Due in 8 to 30 days</option>
                   <option value="90">Expired or due in 90 days</option>
                   <option value="missing">Missing documents</option>
-                  <option value="-1">Everyone</option>
+                  <option value="-1" selected>Everyone</option>
                 </select>
                 <select id="hr-doc-who" class="hr-dd" style="width:170px;" onchange="renderDocuments()">
                   <option value="all">Office and labour</option>
@@ -2368,13 +2368,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <div id="hr-exp-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
                 <div class="form-row" style="gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
                   <select id="hr-exp-within" class="hr-dd" style="width:230px;" onchange="expCardsMark(); renderExpiries()">
-                    <option value="30" selected>Expired or due in 30 days</option>
+                    <option value="30">Expired or due in 30 days</option>
                     <option value="7">Expired or due in 7 days</option>
                     <option value="0">Expired only</option>
                     <option value="w">Due in 7 days</option>
                     <option value="m">Due in 8 to 30 days</option>
                     <option value="90">Expired or due in 90 days</option>
-                    <option value="-1">Everything</option>
+                    <option value="-1" selected>Everything</option>
                   </select>
                   <select id="hr-exp-catf" class="hr-dd" style="width:170px;" onchange="renderExpiries()"></select>
                   <input type="text" id="hr-exp-search" placeholder="Search item or number" style="width:190px;" oninput="renderExpiries()">
