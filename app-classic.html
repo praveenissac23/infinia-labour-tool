@@ -15041,18 +15041,20 @@ function hrMenu(btn, ev) {
   if (ev) ev.stopPropagation();
   const m = btn.closest(".hr-menu"), was = m.classList.contains("open");
   hrMenuClose();
-  if (!was) {
-    m.classList.add("open");
-    const list = m.querySelector(".hr-menu-list"), r = btn.getBoundingClientRect();
-    if (list) {
-      list.style.position = "fixed"; list.style.right = "auto";
-      const w = list.offsetWidth, h = list.offsetHeight;
-      list.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px";
-      list.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - 4 - h) : r.bottom + 4) + "px";
-    }
-  }
+  if (!was) { m.classList.add("open"); hrMenuPlace(m); }
 }
-window.addEventListener("scroll", () => hrMenuClose(), true);
+// The open menu floats over the page (a table that scrolls cannot cut it
+// off) and follows its button when the page moves.
+function hrMenuPlace(m) {
+  const btn = m.querySelector(".hr-menu-btn"), list = m.querySelector(".hr-menu-list");
+  if (!btn || !list) return;
+  const r = btn.getBoundingClientRect();
+  list.style.position = "fixed"; list.style.right = "auto";
+  const w = list.offsetWidth, h = list.offsetHeight;
+  list.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px";
+  list.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - 4 - h) : r.bottom + 4) + "px";
+}
+window.addEventListener("scroll", () => document.querySelectorAll(".hr-menu.open").forEach(hrMenuPlace), true);
 document.addEventListener("click", ev => { if (!ev.target.closest || !ev.target.closest(".hr-menu")) hrMenuClose(); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") hrMenuClose(); });
 
