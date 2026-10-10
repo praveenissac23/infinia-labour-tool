@@ -119,8 +119,8 @@ def build(inv, company=None, bank=None, signature=None):
         """Accent bar, footer and - on page one - the full header."""
         # Light touches only: a slim red line across the top, and the
         # footer as quiet grey text over a hairline - no dark bands.
-        c.setFillColor(RED); c.rect(0, H - 2.2 * mm, W, 2.2 * mm, stroke=0, fill=1)
-        c.setStrokeColor(RED); c.setLineWidth(0.8); c.line(M, 14 * mm, W - M, 14 * mm)
+        c.setFillColor(RED); c.rect(0, H - 1.0 * mm, W, 1.0 * mm, stroke=0, fill=1)
+        c.setStrokeColor(RED); c.setLineWidth(0.4); c.line(M, 14 * mm, W - M, 14 * mm)
         text(M, 9.2 * mm, company["name"], 7.8, "Helvetica-Bold", CHAR, spacing=0.8)
         text(M, 5.4 * mm, f"{company['address']}   |   TRN {company['trn']}   |   {company['web']}", 7.2, col=MUTED)
         foot = "Not a tax invoice" if proforma else f"{title.title()} {inv.get('number', '')}"
@@ -143,7 +143,7 @@ def build(inv, company=None, bank=None, signature=None):
         for i, s in enumerate([company["address"], f"TRN {company['trn']}   |   {company['web']}"]):
             text(M, y - i * 11, s, 8.5, col=MUTED)
         text(W - M, top - 9 * mm, title, 25 if not proforma else 22, "Helvetica-Bold", CHAR, "right", spacing=1.2)
-        c.setFillColor(RED); c.rect(W - M - 30 * mm, top - 12.5 * mm, 30 * mm, 1.1 * mm, stroke=0, fill=1)
+        c.setFillColor(RED); c.rect(W - M - 30 * mm, top - 12.5 * mm, 30 * mm, 0.5 * mm, stroke=0, fill=1)
         meta = [("Proforma No." if proforma else "Invoice No.", inv.get("number", "")),
                 ("Date" if proforma else "Invoice Date", inv.get("date_text", ""))]
         my = top - 20 * mm
@@ -165,7 +165,7 @@ def build(inv, company=None, bank=None, signature=None):
         for i, (head, rows) in enumerate((("Bill To", bill), ("Project", proj))):
             x = M + i * (bw + 8 * mm)
             c.setFillColor(TINT); c.roundRect(x, py - 24 * mm, bw, 24 * mm, 2.2 * mm, stroke=0, fill=1)
-            c.setFillColor(RED); c.rect(x, py - 24 * mm, 1.2 * mm, 24 * mm, stroke=0, fill=1)
+            c.setFillColor(RED); c.rect(x, py - 24 * mm, 0.6 * mm, 24 * mm, stroke=0, fill=1)
             label(x + 6 * mm, py - 7 * mm, head)
             ly = py - 13.5 * mm
             for s, bold in rows[:3]:
@@ -192,7 +192,7 @@ def build(inv, company=None, bank=None, signature=None):
     def head_row(ty):
         hh = 9 * mm
         c.setFillColor(TINT); c.rect(M, ty - hh, tw, hh, stroke=0, fill=1)
-        c.setFillColor(RED); c.rect(M, ty - hh, tw, 0.8 * mm, stroke=0, fill=1)
+        c.setFillColor(RED); c.rect(M, ty - hh, tw, 0.35 * mm, stroke=0, fill=1)
         for (name, w, al), x0 in zip(cols, xs):
             tx = x0 + 3 * mm if al == "left" else x0 + w - 3 * mm if al == "right" else x0 + w / 2
             text(tx, ty - hh + 3.6 * mm, name.upper(), 7.5, "Helvetica-Bold", CHAR, al, spacing=0.6)
@@ -274,7 +274,7 @@ def build(inv, company=None, bank=None, signature=None):
     bh = 13 * mm
     c.setStrokeColor(CHAR); c.setLineWidth(1.2); c.line(tx0, yy + 6, W - M, yy + 6)
     c.setFillColor(TINT); c.rect(tx0, yy - bh + 5, 78 * mm, bh, stroke=0, fill=1)
-    c.setFillColor(RED); c.rect(tx0, yy - bh + 5, 1.2 * mm, bh, stroke=0, fill=1)
+    c.setFillColor(RED); c.rect(tx0, yy - bh + 5, 0.6 * mm, bh, stroke=0, fill=1)
     text(tx0 + 5 * mm, yy - bh / 2 + 3, "TOTAL" if proforma else "TOTAL DUE", 8, "Helvetica-Bold", MUTED, spacing=1)
     text(W - M - 4 * mm, yy - bh / 2 + 0.5, f"AED {money(total)}", 15, "Helvetica-Bold", CHAR, "right")
     totals_bottom = yy - bh + 5
@@ -289,7 +289,7 @@ def build(inv, company=None, bank=None, signature=None):
     by = min(totals_bottom, ry - 11 * mm - ph) - 9 * mm
     bwid = 96 * mm
     c.setFillColor(TINT); c.roundRect(M, by - bhgt, bwid, bhgt, 2 * mm, stroke=0, fill=1)
-    c.setFillColor(RED); c.rect(M, by - bhgt, 1.2 * mm, bhgt, stroke=0, fill=1)
+    c.setFillColor(RED); c.rect(M, by - bhgt, 0.6 * mm, bhgt, stroke=0, fill=1)
     text(M + 5 * mm, by - 6 * mm, "PAYMENT DETAILS", 7.5, "Helvetica-Bold", RED, spacing=0.8)
     yb = by - 9 * mm - 13
     for k, v in bank:
