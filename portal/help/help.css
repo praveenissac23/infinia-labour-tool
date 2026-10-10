@@ -69,3 +69,8 @@
   #help-search { width: 100%; }
   .help-results { left: 0; right: auto; width: 100%; }
 }
+/* Top search: pages and tasks */
+.help-r .help-area { width: 48px; box-sizing: border-box; text-align: center; padding: 1px 6px; border-radius: 4px; background: #FDF0EE; }
+.help-r .help-area.task { color: #16857A; background: #E8F5F3; }
+.help-where { display: block; margin: 1px 0 0 56px; font-size: 11px; color: #8A8178; }
+.help-results { max-height: 72vh; overflow-y: auto; }

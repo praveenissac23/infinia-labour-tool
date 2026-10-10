@@ -1313,7 +1313,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="d3fd4a6d77cb";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="33a510dcce12";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1392,7 +1392,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
       <div class="topbar">
         <h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>
         <div style="display:flex; align-items:center; gap:14px;">
-          <div class="help-wrap"><span class="help-glass">&#128269;</span><input id="help-search" type="search" autocomplete="off" placeholder="How do I...?  e.g. add stock, LPO, leave"><div id="help-results" class="help-results"></div></div>
+          <div class="help-wrap"><span class="help-glass">&#128269;</span><input id="help-search" type="search" autocomplete="off" placeholder="Search pages and tasks... e.g. LPO, petty cash, leave"><div id="help-results" class="help-results"></div></div>
           <button id="help-q" class="help-q" title="Help for this page">?</button>
           <button type="button" id="bday-chip" onclick="bdayShow(true)" title="Today's birthdays"></button>
           <span id="bell-wrap" style="position:relative; margin-right:16px; display:inline-block; visibility:hidden;">
@@ -17205,10 +17205,10 @@ async function pgRepUrl(format) {
 async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.open(u, "_blank"); }
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
-<link rel="stylesheet" href="/portal/help/help.css?v=47670d4177">
+<link rel="stylesheet" href="/portal/help/help.css?v=5d4271e134">
 <script src="/portal/help/guides.js?v=25538c3329"></script>
 <script src="/portal/help/auto_guides.js?v=0f431f02bf"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
-<script src="/portal/help/help.js?v=293dff7e28"></script>
+<script src="/portal/help/help.js?v=ca5f75150b"></script>
 </body>
 </html>

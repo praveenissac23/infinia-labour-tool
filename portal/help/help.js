@@ -81,7 +81,7 @@
       const wrap = document.createElement("div");
       wrap.className = "help-wrap";
       wrap.innerHTML = `<span class="help-glass">&#128269;</span>
-        <input id="help-search" type="search" autocomplete="off" placeholder="How do I...?  e.g. add stock, LPO, leave">
+        <input id="help-search" type="search" autocomplete="off" placeholder="Search pages and tasks... e.g. LPO, petty cash, leave">
         <div id="help-results" class="help-results"></div>`;
       const q = document.createElement("button");
       q.id = "help-q"; q.className = "help-q"; q.title = "Help for this page"; q.textContent = "?";
@@ -109,15 +109,73 @@
     body = drawer.querySelector(".help-db");
     drawer.querySelector(".help-x").onclick = closeDrawer;
   }
+  // ---- The top search: every page, tab and task this login may open ----
+  // Picking a result goes straight there. Help guides are on the "?".
+  function places() {
+    const out = [];
+    if (typeof ALL_PAGES === "undefined") return out;
+    const tabOk = t => { try { return typeof pgTabOk === "function" ? pgTabOk(t) : (typeof pgTabRightOk === "function" ? pgTabRightOk(t) : true); } catch (e) { return true; } };
+    const subOk = sb => { try { return typeof pgSubOk === "function" ? pgSubOk(sb) : true; } catch (e) { return true; } };
+    Object.values(ALL_PAGES).forEach(pg => {
+      if (!pg || !Array.isArray(pg.tabs)) return;
+      const tabs = pg.tabs.filter(tabOk);
+      if (!tabs.length) return;
+      out.push({ id: "pg:" + pg.key, kind: "Page", title: pg.title, where: "", go: { page: pg.key }, hay: pg.title });
+      tabs.forEach(t => {
+        if (!(t.label === pg.title && pg.tabs.length === 1))
+          out.push({ id: `tb:${pg.key}:${t.id}`, kind: "Page", title: t.label, where: pg.title, go: { page: pg.key, tab: t.id }, hay: `${pg.title} ${t.label}` });
+        (t.subs || []).filter(subOk).forEach(sb => out.push({ id: `sb:${pg.key}:${t.id}:${sb.id}`, kind: "Page", title: sb.label,
+          where: `${pg.title} › ${t.label}`, go: { page: pg.key, tab: t.id, sub: sb.id }, hay: `${pg.title} ${t.label} ${sb.label}` }));
+      });
+    });
+    // The Staff page is one page with views inside it.
+    if (out.some(x => x.id === "pg:people")) {
+      const has = r => { try { return typeof pgHas !== "function" || pgHas(r); } catch (e) { return true; } };
+      [["register", "labour", "Labour register", "people_labour"], ["register", "office", "Office staff register", "people_office"],
+       ["register", "local", "Local staff register", "people_local"], ["register", "left", "Staff who left", ["people_labour", "people_office", "people_local"]],
+       ["vacation", "", "Leave register (vacation, sick, emergency)", ["people_labour", "people_office", "people_local"]],
+       ["bday", "", "Birthdays", ["people_labour", "people_office", "people_local"]]]
+        .filter(v => has(v[3])).forEach(([view, group, label]) => out.push({ id: `pv:${view}:${group}`, kind: "Page", title: label, where: "Staff",
+          go: { page: "people", view, group }, hay: `staff people employees ${label} ${view === "vacation" ? "leave vacation holiday" : ""}` }));
+    }
+    // Tasks: what each written guide is for, opened at the page it happens on.
+    (window.HELP_GUIDES || []).filter(allowed).forEach(g => out.push({ id: "fn:" + g.id, kind: "Task", title: g.title.replace(/^How to /i, "").replace(/^\w/, c => c.toUpperCase()),
+      where: g.area, go: g.go, hay: `${g.title} ${g.words || ""} ${g.area || ""}`, guide: g }));
+    return out;
+  }
+  function find2(q) {
+    const qs = words(q).filter(w => !STOP.has(w));
+    if (!qs.length) return [];
+    const same = window.HELP_SAME || {};
+    const seen = new Set();
+    return places().map((x, i) => {
+      const title = words(x.title), hay = words(x.hay);
+      let score = 0, hits = 0;
+      for (const t of qs) {
+        let sc = match(t, hay) * (match(t, title) ? 1.3 : 1);
+        for (const y of words(same[t])) sc = Math.max(sc, match(y, hay) * 0.8);
+        if (sc) hits++;
+        score += sc;
+      }
+      // A page whose own name matches comes before a task on it.
+      return { x, i, score: score * (hits / qs.length) * (x.kind === "Page" ? 1.15 : 1) };
+    }).filter(r => r.score > 0.9).sort((a, b) => b.score - a.score || a.i - b.i)
+      .filter((r, _, all) => r.score >= all[0].score * 0.4)
+      .map(r => r.x).filter(x => { const k = JSON.stringify(x.go) + x.title; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  let FOUND = [];
   function renderResults() {
     const q = box.value.trim();
     if (!q) { list.style.display = "none"; return; }
-    const r = search(q).slice(0, 8);
-    list.innerHTML = r.length
-      ? r.map((g, k) => `<div class="help-r${k ? "" : " on"}" data-id="${g.id}"><span class="help-area">${esc(g.area)}</span>${esc(g.title)}</div>`).join("")
-      : `<div class="help-none">No guide for "${esc(q)}" yet. Try other words, or press <b>?</b> to see all topics.</div>`;
+    FOUND = find2(q).slice(0, 10);
+    list.innerHTML = FOUND.length
+      ? FOUND.map((x, k) => `<div class="help-r${k ? "" : " on"}" data-id="${esc(x.id)}" data-k="${k}"><span class="help-area${x.kind === "Task" ? " task" : ""}">${x.kind === "Task" ? "Task" : "Go to"}</span>${esc(x.title)}${x.where ? `<small class="help-where">${esc(x.where)}</small>` : ""}</div>`).join("")
+      : `<div class="help-none">Nothing called "${esc(q)}". Try another word - or press <b>?</b> for help.</div>`;
     list.style.display = "block";
-    list.querySelectorAll(".help-r").forEach(el => el.onclick = () => { list.style.display = "none"; openGuide(el.dataset.id); });
+    list.querySelectorAll(".help-r").forEach(el => el.onclick = () => {
+      const x = FOUND[+el.dataset.k]; list.style.display = "none"; box.value = ""; box.blur();
+      if (x) goTo({ go: x.go });
+    });
   }
   function openDrawer() { drawer.classList.add("open"); }
   function closeDrawer() { drawer.classList.remove("open"); }
@@ -180,6 +238,17 @@
     if (!PAGE || PAGE.key !== go.page) { pgGo(go.page); await wait(900); }
     if (go.tab) { pgTab(go.tab); await wait(500); }
     if (go.sub) { pgSub(go.sub); await wait(800); }
+    if (go.view) {                         // a view inside the Staff page
+      for (let i = 0; i < 30; i++) {
+        const f = document.getElementById("pg-staff-frame"), w = f && f.contentWindow;
+        let ready = false; try { ready = !!(w && typeof w.showView === "function" && w.eval("typeof ME !== 'undefined' && !!ME")); } catch (e) {}
+        if (ready) {
+          try { w.showView(go.view); if (go.group && typeof w.setGroup === "function") w.setGroup(go.group); } catch (e) {}
+          break;
+        }
+        await wait(200);
+      }
+    }
   }
   const visible = el => !!(el && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
   function find(sel) {
@@ -328,14 +397,14 @@
     const r = box.getBoundingClientRect(); if (!r.width) return;
     const done = () => { try { localStorage.setItem("infinia-help-hello", "1"); } catch (e) {} h.remove(); };
     const h = document.createElement("div"); h.className = "help-hello";
-    h.innerHTML = `<b>New: help is here</b>
-      <p>Type what you want to do in this box - for example <i>add stock</i>, <i>LPO</i> or <i>worker left</i>.</p>
-      <p>Open a guide and press <b>&#9654; Show me</b>: the app goes to the right page and circles each button for you.</p>
+    h.innerHTML = `<b>Find any page</b>
+      <p>Type in this box to jump to any page or task - for example <i>LPO</i>, <i>petty cash</i> or <i>leave</i>.</p>
+      <p>For help, press <b>?</b> - each guide has <b>&#9654; Show me</b>, which circles every button for you.</p>
       <div class="help-bb"><button class="help-bx" data-ok>Got it</button><span style="flex:1"></span><button class="help-bnext" data-try>Try it</button></div>`;
     document.body.appendChild(h);
     h.style.top = r.bottom + 12 + "px"; h.style.left = Math.max(12, Math.min(r.left, innerWidth - 340)) + "px";
     h.querySelector("[data-ok]").onclick = done;
-    h.querySelector("[data-try]").onclick = () => { done(); box.value = "add stock"; box.focus(); renderResults(); };
+    h.querySelector("[data-try]").onclick = () => { done(); box.value = "petty cash"; box.focus(); renderResults(); };
   }
 
   function boot() {
@@ -344,6 +413,6 @@
     const t = setInterval(() => { if ($(".help-hello")) { clearInterval(t); return; }
       try { if (!localStorage.getItem("infinia-help-hello") && $("#app-screen") && getComputedStyle($("#app-screen")).display !== "none") { welcome(); if ($(".help-hello")) clearInterval(t); } } catch (e) { clearInterval(t); } }, 1500);
   }
-  window.HELP = { search, openGuide, openList, tour, endTour, allowed, find, goTo, step: i => step(i), get state() { return T; } };
+  window.HELP = { search, findPlaces: find2, places, openGuide, openList, tour, endTour, allowed, find, goTo, step: i => step(i), get state() { return T; } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

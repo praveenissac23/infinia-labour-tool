@@ -21,16 +21,23 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.screenshot({ path: SH + 'help-0-hello.png' });
   await p.click('.help-hello [data-ok]');
   ck('"Got it" puts it away for good', !(await p.locator('.help-hello').count()) && await p.evaluate(() => localStorage.getItem('infinia-help-hello') === '1'));
-  const top = async q => { await p.fill('#help-search', q); await p.waitForTimeout(250); return p.evaluate(() => [...document.querySelectorAll('#help-results .help-r')].map(x => x.dataset.id)); };
+  // Guides are found from the "?" panel; the top box finds pages and tasks.
+  const top = async q => p.evaluate(q => HELP.search(q).map(g => g.id), q);
+  const bar = async q => { await p.fill('#help-search', q); await p.waitForTimeout(250); return p.evaluate(() => [...document.querySelectorAll('#help-results .help-r')].map(x => x.dataset.id)); };
   const cases = [['worker fired', 'worker-leaves'], ['resigned labour', 'worker-leaves'], ['termnate', 'worker-leaves'], ['how to buy cement', 'lpo'],
     ['LPO', 'lpo'], ['add stock', 'stock-add'], ['visa expiry', 'expiry-person'], ['mulkiya', 'expiry-company'], ['salary increase labour', 'worker-increment'],
     ['petty', 'petty'], ['send material to site', 'move'], ['broken', 'lost'], ['eid holiday', 'att-holiday'], ['payslip', 'labour-cards'], ['supplier', 'supplier']];
   for (const [q, want] of cases) { const r = await top(q); ck(`"${q}" finds "${want}" in the top 3`, r.slice(0, 3).includes(want), r.slice(0, 4)); }
-  await top('worker left');
+  const pr = await bar('petty cash');
+  ck('the top box finds the Petty cash page first', pr[0] === 'tb:accounts:petty', pr.slice(0, 3));
+  ck('and the task to enter petty cash', pr.some(x => x.startsWith('fn:')), pr);
   await p.screenshot({ path: SH + 'help-1-search.png' });
-  ck('nonsense gets a friendly "no guide" line', /No guide/.test(await (async () => { await top('zzqx'); return p.locator('#help-results').textContent(); })()));
-  await top('lpo'); await p.keyboard.press('Enter'); await p.waitForTimeout(900);
-  ck('Enter opens the guide in the side panel', await p.locator('.help-drawer.open .help-title').textContent() === 'How to make an LPO (purchase order)');
+  ck('nonsense gets a friendly line pointing to ?', /Nothing called/.test(await (async () => { await bar('zzqx'); return p.locator('#help-results').textContent(); })()));
+  await bar('project expense'); await p.keyboard.press('Enter'); await p.waitForTimeout(1500);
+  ck('Enter goes straight to the page', /p=accounts/.test(p.url()) && await p.locator('#pg-tabs .pg-tab.active').textContent() === 'Project expense', p.url());
+  await p.click('#help-q'); await p.waitForTimeout(400); await p.fill('.help-dsearch', 'lpo'); await p.waitForTimeout(300);
+  await p.locator('.help-dres .help-li').first().click(); await p.waitForTimeout(700);
+  ck('"?" finds and opens the guide in the side panel', await p.locator('.help-drawer.open .help-title').textContent() === 'How to make an LPO (purchase order)');
   const imgs = await p.evaluate(() => Promise.all([...document.querySelectorAll('.help-steps img')].map(i => i.decode().then(() => i.naturalWidth).catch(() => 0))));
   ck('every step has its picture, and each loads', imgs.length === 4 && imgs.every(w => w > 500), imgs);
   await p.screenshot({ path: SH + 'help-2-guide.png' });
@@ -59,7 +66,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('the store keeper finds store guides', mine.includes('Store'));
   ck('but no payroll or expiry guides', !mine.includes('Payroll') && !mine.includes('Expiry'), [...new Set(mine)]);
   await a.fill('#help-search', 'salary cards'); await a.waitForTimeout(300);
-  ck('searching "salary cards" shows him nothing about pay', !(await a.evaluate(() => [...document.querySelectorAll('#help-results .help-r')].some(x => /labour-cards|office/.test(x.dataset.id)))));
+  ck('searching "salary cards" shows him nothing about pay', !(await a.evaluate(() => [...document.querySelectorAll('#help-results .help-r')].some(x => /labour-cards|office|payroll/.test(x.dataset.id)))));
   ck('no script errors (store keeper)', a.errs.length === 0, a.errs);
   console.log(bad ? `${bad} FAILED` : 'HELP HOLDS UP');
   await b.close(); process.exit(bad ? 1 : 0);
