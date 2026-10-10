@@ -95,6 +95,8 @@ PAGES = {
             sub("praveen", "Praveen", screen="pettycash", right="petty_praveen", go="pcBook('praveen')")]),
         # Contract, payments and what remains, per project scope.
         tab("projects", "projpay", "Project payments", "accounts_projects"),
+        # What each project has cost: labour by site, LPOs, store issues, petty cash.
+        tab("projexp", "projexp", "Project expense", "accounts_expense", go="pxLoad()"),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [

@@ -327,6 +327,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Project payment tracker: contract, payments, remaining per
                # project scope - admin and the chief accountant only.
                "accounts_projects",
+               # Project expense: cost per project from labour, LPOs, store
+               # issues and petty cash - admin and the chief accountant.
+               "accounts_expense",
                # Settings, tab by tab. "settings" itself (own password,
                # take a backup) is on every login. These were admin only;
                # now each can be given to whoever should have it. Nobody
@@ -11968,6 +11971,8 @@ app.include_router(projectpay.router)
 projectpay.seed_once(SessionLocal)
 import agent  # noqa: E402  - Claude connector: ask the app anything, read-only
 app.include_router(agent.router)
+import projexpense  # noqa: E402  - Accounts > Project expense: cost per project
+app.include_router(projexpense.router)
 
 
 @app.on_event("startup")

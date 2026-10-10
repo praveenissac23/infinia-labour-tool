@@ -606,6 +606,16 @@
     ]
    },
    {
+    "id": "accounts.projexp",
+    "label": "Project expense",
+    "right": [
+     "accounts_expense"
+    ],
+    "grant": [
+     "accounts_expense"
+    ]
+   },
+   {
     "id": "accounts.register",
     "label": "Register (cash register, own password)",
     "right": [

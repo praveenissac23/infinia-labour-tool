@@ -343,6 +343,42 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-stat span { display: block; font-size: 11px; color: #8A8178; text-transform: uppercase; letter-spacing: .05em; }
   .pc-stat b { font-size: 17px; font-variant-numeric: tabular-nums; } .pc-stat.hand b { color: #2E7D32; } .pc-stat.hand.neg b { color: #C0392B; }
   /* Project payment tracker */
+  /* ---- Project expense ---- */
+  .px-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 12px; }
+  .px-stat { border: 1px solid #ECE6DF; border-radius: 10px; padding: 10px 13px; background: #FCFAF7; min-width: 0; }
+  .px-stat span { display: block; font-size: 11px; color: #8A8178; text-transform: uppercase; letter-spacing: .05em; }
+  .px-stat b { font-size: 18px; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
+  .px-stat small { display: block; font-size: 11px; color: #8A8178; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .px-stat.warn { background: #FFF7F5; border-color: #F1D5CF; } .px-stat.warn b { color: #B7322A; }
+  .px-stat i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .px-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .px-table th { background: #22262A; color: #fff; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+  .px-table th.l { text-align: left; } .px-table th.n { text-align: right; }
+  .px-table td { padding: 8px; border-bottom: 1px solid #EEE; vertical-align: middle !important; }
+  .px-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; } .px-table td.l { text-align: left; }
+  .px-table td.b { font-weight: 800; } .px-table td.nil { color: #C2BBB3; text-align: right; }
+  .px-table tbody tr.px-row { cursor: pointer; } .px-table tbody tr.px-row:hover td { background: #FBF6F1; }
+  .px-table tbody tr.px-row.on td { background: #FDF0EE; }
+  .px-table td.proj b { font-size: 14.5px; } .px-table td.proj small { display: block; font-size: 11px; color: #8A8178; }
+  .px-table tfoot td { font-weight: 800; background: #F5F3EE; border-top: 2px solid #E2DED6; }
+  .px-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+  .px-dot.lab, .px-seg.lab { background: #3478B8; } .px-dot.lpo, .px-seg.lpo { background: #D08A1E; }
+  .px-dot.sto, .px-seg.sto { background: #16857A; } .px-dot.pet, .px-seg.pet { background: #8E5EA7; }
+  .px-bar { display: flex; height: 9px; border-radius: 5px; overflow: hidden; background: #EEE9E2; min-width: 120px; }
+  .px-bar.big { height: 12px; margin: 4px 0 14px; } .px-seg { height: 100%; }
+  .px-pct { font-variant-numeric: tabular-nums; } .px-pct.hi { color: #B7322A; font-weight: 700; }
+  .px-unlinked { margin-top: 14px; border: 1px solid #F1D5CF; background: #FFF9F7; border-radius: 10px; padding: 10px 14px; }
+  .px-unlinked summary { cursor: pointer; font-weight: 700; color: #8C2F26; font-size: 13px; }
+  .px-unlinked ul { margin: 8px 0 2px 18px; padding: 0; font-size: 12.5px; color: #555; line-height: 1.7; }
+  .px-note { font-size: 11.5px; color: #8A8178; margin: 10px 0 0; line-height: 1.5; }
+  .px-d-sub { font-size: 12.5px; color: #777; }
+  .px-cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 8px; }
+  .px-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .px-tabs button { border: 1px solid #E4DCD2; background: white; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: #5B6167; cursor: pointer; }
+  .px-tabs button.on { background: #FDF4F3; border-color: var(--red); color: var(--red); }
+  .px-tabs button small { color: #999; font-weight: 600; margin-left: 4px; }
+  .px-dt td small { display: block; color: #8A8178; font-size: 11px; }
+  @media (max-width: 1100px) { .px-stats, .px-cats { grid-template-columns: 1fr 1fr; } }
   .pp-ctrl { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .pp-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #555; height: 36px; white-space: nowrap; }
   .pp-stat small { display: block; font-size: 11px; color: #8A8178; margin-top: 1px; }
@@ -2545,6 +2581,52 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
+        <!-- ============ PROJECT EXPENSE (Accounts) ============ -->
+        <div class="screen" id="screen-projexp">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title">
+                <h2 style="margin:0;">Project expense</h2>
+                <div class="pp-ctrl">
+                  <label class="pc-f"><span>Period</span><select id="px-period" onchange="pxPeriod()"><option value="all">All time</option><option value="year">This year</option><option value="range">Date range</option></select></label>
+                  <label class="pc-f" id="px-pf-from" style="display:none;"><span>From</span><input type="date" id="px-from" onchange="pxLoad()"></label>
+                  <label class="pc-f" id="px-pf-to" style="display:none;"><span>To</span><input type="date" id="px-to" onchange="pxLoad()"></label>
+                  <label class="pc-f"><span>Search</span><input type="text" id="px-q" placeholder="Project or plot" style="width:150px;" oninput="pxDraw()"></label>
+                </div>
+              </div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pxExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pxExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pxExport('excel')">Export Excel</button></div></div>
+            </div>
+            <div class="px-stats" id="px-stats"></div>
+            <div class="status-msg" id="px-status"></div>
+            <div class="grid-wrap" style="max-height:none;">
+              <table class="px-table">
+                <thead><tr>
+                  <th class="l">Project</th><th class="n">Contract</th>
+                  <th class="n"><i class="px-dot lab"></i>Labour</th><th class="n"><i class="px-dot lpo"></i>Materials - LPO</th>
+                  <th class="n"><i class="px-dot sto"></i>From store</th><th class="n"><i class="px-dot pet"></i>Petty cash</th>
+                  <th class="n">Total cost</th><th class="l" style="width:150px;">Cost split</th><th class="n">Cost of contract</th><th class="n">Received</th>
+                </tr></thead>
+                <tbody id="px-body"></tbody>
+                <tfoot id="px-foot"></tfoot>
+              </table>
+            </div>
+            <details class="px-unlinked" id="px-unlinked"><summary></summary><div></div></details>
+            <p class="px-note">Labour is each worker's paid salary (OT and additions included) split by the sites his days were logged to. LPOs are net of VAT; orders to the store count when the material is issued to a site. Petty cash counts lines with the site filled in or the site number in the description; salary payments are left out because labour already counts them. Click a project for every line behind its figures.</p>
+          </div>
+
+          <div class="card" id="px-detail" style="display:none;">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;" id="px-d-title"></h2><span class="px-d-sub" id="px-d-sub"></span></div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pxExport('view', PX_CODE)">Preview</button><button type="button" class="btn btn-dark" onclick="pxExport('pdf', PX_CODE)">Export PDF</button><button type="button" class="btn btn-dark" onclick="pxExport('excel', PX_CODE)">Export Excel</button></div>
+                <button type="button" class="btn btn-gray" onclick="pxClose()">Close</button></div>
+            </div>
+            <div class="px-cats" id="px-d-cats"></div>
+            <div class="px-bar big" id="px-d-bar"></div>
+            <div class="px-tabs" id="px-d-tabs"></div>
+            <div class="grid-wrap" style="max-height:62vh;"><table class="px-table px-dt" id="px-d-table"></table></div>
+          </div>
+        </div>
+
         <div class="screen" id="screen-cashreg">
           <div class="card reg-lock" id="reg-lock">
             <div class="reg-lock-ico">&#128274;</div>
@@ -4165,6 +4247,7 @@ function switchScreen(name) {
   if (name === "suppliers") loadSuppliersScreen();
   if (name === "pettycash") loadPettyCash();
   if (name === "projpay") ppLoad();
+  if (name === "projexp") pxLoad();
   if (name === "expiry") expOpen();
   if (name === "pdc") pdcOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -12009,7 +12092,7 @@ const SCREEN_LABELS = {
   settings: "Settings", activity: "Activity Monitor",
   hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
-  accounts_invoices: "Tax & proforma invoices", accounts_register: "Cash register", accounts_projects: "Project payment tracker",
+  accounts_invoices: "Tax & proforma invoices", accounts_register: "Cash register", accounts_projects: "Project payment tracker", accounts_expense: "Project expense",
   storekeeper: "Records stock in and out",
 };
 let permsUserId = null;
@@ -13102,6 +13185,134 @@ function hrReportUrl(which) {
   return `/export/payroll/${which}?`;
 }
 
+
+// ============ PROJECT EXPENSE ============
+let PX = null, PX_CODE = null, PX_D = null, PX_TAB = "labour";
+const pxM = v => (v || v === 0) ? Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+const pxCell = v => Math.abs(v || 0) < 0.005 ? `<td class="nil">-</td>` : `<td class="n">${pxM(v)}</td>`;
+function pxRange() {
+  const per = document.getElementById("px-period").value, y = new Date().getFullYear();
+  if (per === "year") return { from: `${y}-01-01`, to: `${y}-12-31` };
+  if (per === "range") return { from: document.getElementById("px-from").value, to: document.getElementById("px-to").value };
+  return { from: "", to: "" };
+}
+function pxPeriod() {
+  const r = document.getElementById("px-period").value === "range";
+  document.getElementById("px-pf-from").style.display = r ? "" : "none";
+  document.getElementById("px-pf-to").style.display = r ? "" : "none";
+  pxLoad();
+}
+async function pxLoad() {
+  const r = pxRange();
+  document.getElementById("px-body").innerHTML = `<tr><td colspan="10" class="hr-nil" style="padding:16px;">Working out every project's cost...</td></tr>`;
+  try { PX = await apiCall(`/employees/accounts/project-expense?date_from=${r.from}&date_to=${r.to}`); }
+  catch (e) { showStatus("px-status", "err", errText(e)); return; }
+  pxDraw();
+  if (PX_CODE) pxOpen(PX_CODE, true);
+}
+function pxBar(r, big) {
+  const t = (r.labour || 0) + (r.lpo || 0) + (r.store || 0) + (r.petty || 0);
+  if (t <= 0) return `<div class="px-bar${big ? " big" : ""}"></div>`;
+  const seg = (v, c, l) => v > 0 ? `<div class="px-seg ${c}" style="width:${v / t * 100}%" title="${l}: AED ${pxM(v)} (${(v / t * 100).toFixed(0)}%)"></div>` : "";
+  return `<div class="px-bar${big ? " big" : ""}">${seg(r.labour, "lab", "Labour")}${seg(r.lpo, "lpo", "Materials - LPO")}${seg(r.store, "sto", "From store")}${seg(r.petty, "pet", "Petty cash")}</div>`;
+}
+function pxDraw() {
+  if (!PX) return;
+  const q = (document.getElementById("px-q").value || "").toLowerCase().trim();
+  const rows = PX.rows.filter(r => !q || `${r.code} ${r.name} ${r.plot}`.toLowerCase().includes(q));
+  const T = PX.totals, U = PX.unlinked;
+  const stat = (lab, val, sub, cls, dot) => `<div class="px-stat ${cls || ""}"><span>${dot ? `<i class="px-dot ${dot}"></i>` : ""}${lab}</span><b>AED ${pxM(val)}</b><small>${sub}</small></div>`;
+  const pc = v => T.total ? `${(v / T.total * 100).toFixed(0)}% of all cost` : "&nbsp;";
+  document.getElementById("px-stats").innerHTML =
+    stat("Total cost", T.total, `${PX.rows.length} projects - ${PX.period}`) +
+    stat("Labour", T.labour, pc(T.labour), "", "lab") +
+    stat("Materials", T.lpo + T.store, `LPO ${pxM(T.lpo)} - store ${pxM(T.store)}`, "", "lpo") +
+    stat("Petty cash", T.petty, pc(T.petty), "", "pet") +
+    stat("Not linked to a project", U.petty + U.lpo + U.labour, `petty ${pxM(U.petty)} - LPO ${pxM(U.lpo)}`, "warn");
+  document.getElementById("px-body").innerHTML = rows.map(r => {
+    const pct = r.contract ? r.total / r.contract * 100 : null;
+    return `<tr class="px-row${r.code === PX_CODE ? " on" : ""}" onclick="pxOpen('${escapeAttr(r.code)}')" title="Click for every line behind these figures">
+      <td class="l proj"><b>${escapeHtml(r.code)}</b>${r.name ? ` ${escapeHtml(r.name)}` : ""}${r.plot ? `<small>Plot ${escapeHtml(r.plot)}</small>` : ""}</td>
+      ${pxCell(r.contract)}${pxCell(r.labour)}${pxCell(r.lpo)}${pxCell(r.store)}${pxCell(r.petty)}
+      <td class="n b">${pxM(r.total)}</td><td>${pxBar(r)}</td>
+      <td class="n"><span class="px-pct${pct !== null && pct > 85 ? " hi" : ""}">${pct === null ? "-" : pct.toFixed(1) + "%"}</span></td>${pxCell(r.received)}</tr>`;
+  }).join("") || `<tr><td colspan="10" class="hr-nil" style="padding:16px;">No project costs for this period.</td></tr>`;
+  const sum = k => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  document.getElementById("px-foot").innerHTML = rows.length ? `<tr><td class="l">TOTAL - ${rows.length} projects</td>${pxCell(sum("contract"))}${pxCell(sum("labour"))}${pxCell(sum("lpo"))}${pxCell(sum("store"))}${pxCell(sum("petty"))}
+    <td class="n">${pxM(sum("total"))}</td><td>${pxBar({ labour: sum("labour"), lpo: sum("lpo"), store: sum("store"), petty: sum("petty") })}</td><td class="n">${sum("contract") ? (sum("total") / sum("contract") * 100).toFixed(1) + "%" : "-"}</td>${pxCell(sum("received"))}</tr>` : "";
+  const books = Object.entries(U.petty_by_book || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([b, v]) => `${b} ${pxM(v)}`).join(", ");
+  const box = document.getElementById("px-unlinked");
+  box.querySelector("summary").textContent = `Not linked to a project: AED ${pxM(U.petty + U.lpo + U.labour)} - see what is missing`;
+  box.querySelector("div").innerHTML = `<ul>
+    <li><b>Petty cash: AED ${pxM(U.petty)}</b> on ${U.petty_n} lines with no site - ${books || "none"}. Many are office and visa costs; for site spending fill the <b>Site</b> box, or write the site number in the description, and it moves to that project.</li>
+    <li><b>LPOs: AED ${pxM(U.lpo)}</b> on ${U.lpo_n} orders whose project location names no site.</li>
+    <li><b>LPOs to the store: AED ${pxM(U.lpo_store)}</b> - stock; it counts on a project when issued to that site.</li>
+    <li><b>Labour: AED ${pxM(U.labour)}</b> on days logged to no site, or to a site that is not a project.</li>
+    <li>Salary and wage payments through petty cash, AED ${pxM(U.petty_salary)}, are left out - labour already counts them from payroll.</li></ul>`;
+}
+async function pxOpen(code, quiet) {
+  PX_CODE = code; pxDraw();
+  const r = pxRange();
+  const card = document.getElementById("px-detail"); card.style.display = "";
+  document.getElementById("px-d-title").textContent = `Project ${code}`;
+  document.getElementById("px-d-table").innerHTML = `<tr><td class="hr-nil" style="padding:16px;">Loading...</td></tr>`;
+  try { PX_D = await apiCall(`/employees/accounts/project-expense/${encodeURIComponent(code)}?date_from=${r.from}&date_to=${r.to}`); }
+  catch (e) { showStatus("px-status", "err", errText(e)); return; }
+  const p = PX_D.project;
+  document.getElementById("px-d-title").textContent = `Project ${p.code}${p.name ? " - " + p.name : ""}`;
+  document.getElementById("px-d-sub").textContent = [p.plot ? "Plot " + p.plot : "", PX_D.period].filter(Boolean).join(" - ");
+  const t = p.total || 0, share = v => t ? `${(v / t * 100).toFixed(0)}% of cost` : "&nbsp;";
+  const tile = (lab, v, sub, dot, cls) => `<div class="px-stat ${cls || ""}"><span>${dot ? `<i class="px-dot ${dot}"></i>` : ""}${lab}</span><b>AED ${pxM(v)}</b><small>${sub}</small></div>`;
+  document.getElementById("px-d-cats").innerHTML =
+    tile("Total cost", t, p.contract ? `${(t / p.contract * 100).toFixed(1)}% of contract ${pxM(p.contract)}` : "no contract on file") +
+    tile("Labour", p.labour, share(p.labour), "lab") + tile("Materials - LPO", p.lpo, share(p.lpo), "lpo") +
+    tile("From store", p.store, share(p.store), "sto") + tile("Petty cash", p.petty, share(p.petty), "pet");
+  document.getElementById("px-d-bar").outerHTML = `<div id="px-d-bar">${pxBar(p, true)}</div>`;
+  if (!quiet) {
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    const big = [["labour", p.labour], ["lpo", p.lpo], ["store", p.store], ["petty", p.petty]].sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
+    if (big[1]) PX_TAB = big[0];
+  }
+  pxTab(PX_TAB);
+}
+function pxClose() { PX_CODE = null; PX_D = null; document.getElementById("px-detail").style.display = "none"; pxDraw(); }
+function pxTab(k) {
+  PX_TAB = k; const d = PX_D; if (!d) return;
+  const n = { labour: d.labour.length, lpo: d.lpo.length, store: d.store.length, petty: d.petty.length };
+  const names = { labour: "Labour", lpo: "Materials - LPO", store: "From store", petty: "Petty cash" };
+  document.getElementById("px-d-tabs").innerHTML = Object.keys(names).map(x => `<button class="${x === k ? "on" : ""}" onclick="pxTab('${x}')">${names[x]}<small>${n[x]}</small></button>`).join("");
+  const D = v => v ? hrDate(v) : "";
+  let head = "", body = "", foot = "";
+  const total = (rows, span) => rows.length ? `<tfoot><tr><td class="l" colspan="${span}">TOTAL</td><td class="n">${pxM(rows.reduce((a, r) => a + (r.amount || 0), 0))}</td></tr></tfoot>` : "";
+  if (k === "labour") {
+    head = `<tr><th class="l">Cycle</th><th class="l">Worker</th><th class="n">Days</th><th class="n">OT hours</th><th class="n">Cost (AED)</th></tr>`;
+    let last = null;
+    body = d.labour.map(r => { const first = r.cycle !== last; last = r.cycle;
+      const c = d.labour_cycles.find(x => x.cycle === r.cycle);
+      return (first ? `<tr style="background:#F7F4F1;"><td class="l b" colspan="2">${escapeHtml(r.cycle)} <span class="hr-nil" style="font-weight:600;">- ${c.workers} workers</span></td><td class="n b">${c.days}</td><td class="n b">${c.ot}</td><td class="n b">${pxM(c.amount)}</td></tr>` : "") +
+        `<tr><td></td><td class="l">${escapeHtml(r.emp_no)} - ${escapeHtml(r.name)}</td><td class="n">${r.days}</td><td class="n">${r.ot}</td><td class="n">${pxM(r.amount)}</td></tr>`; }).join("");
+    foot = total(d.labour, 4);
+  } else if (k === "lpo") {
+    head = `<tr><th class="l">Date</th><th class="l">LPO</th><th class="l">Supplier and items</th><th class="n">VAT (not a cost)</th><th class="n">Cost (AED)</th></tr>`;
+    body = d.lpo.map(r => `<tr><td class="l">${D(r.date)}</td><td class="l b">${escapeHtml(r.ref)}</td><td class="l">${escapeHtml(r.supplier)}<small>${escapeHtml(r.items)}${r.split > 1 ? ` - split over ${r.split} sites (${escapeHtml(r.location)})` : ""}</small></td><td class="n">${pxM(r.vat)}</td><td class="n">${pxM(r.amount)}</td></tr>`).join("");
+    foot = total(d.lpo, 4);
+  } else if (k === "store") {
+    head = `<tr><th class="l">Date</th><th class="l">Movement</th><th class="l">Material</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Cost (AED)</th></tr>`;
+    body = d.store.map(r => `<tr><td class="l">${D(r.date)}</td><td class="l">${escapeHtml(r.kind)}</td><td class="l">${escapeHtml(r.item)}<small>${escapeHtml(r.code)} - priced by ${escapeHtml(r.priced_by)}</small></td><td class="n">${r.qty} ${escapeHtml(r.unit)}</td><td class="n">${pxM(r.rate)}</td><td class="n">${pxM(r.amount)}</td></tr>`).join("");
+    foot = total(d.store, 5);
+  } else {
+    head = `<tr><th class="l">Date</th><th class="l">Book</th><th class="l">Description</th><th class="n">Cost (AED)</th></tr>`;
+    body = d.petty.map(r => `<tr><td class="l">${D(r.date)}</td><td class="l">${escapeHtml(r.book)}</td><td class="l">${escapeHtml(r.description)}<small>${escapeHtml(r.supplier)}${r.supplier ? " - " : ""}linked by ${escapeHtml(r.how)}${r.split > 1 ? `, split over ${r.split} sites` : ""}</small></td><td class="n">${pxM(r.amount)}</td></tr>`).join("");
+    foot = total(d.petty, 3);
+  }
+  document.getElementById("px-d-table").innerHTML = `<thead>${head}</thead><tbody>${body || `<tr><td colspan="6" class="hr-nil" style="padding:14px;">Nothing in ${names[k].toLowerCase()} for this project.</td></tr>`}</tbody>${foot}`;
+}
+async function pxExport(fmt, code) {
+  const r = pxRange();
+  await refreshDownloadToken();
+  const base = fmt === "view" ? "/export/accounts/project-expense/view" : "/export/accounts/project-expense";
+  window.open(`${API}${base}?token=${encodeURIComponent(cachedDownloadToken || "")}&code=${encodeURIComponent(code || "")}&date_from=${r.from}&date_to=${r.to}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+}
 // ---- Labour payroll > Increments - laid out exactly like the office's ----------
 let LAB_INCS = [];
 async function labIncLoad() {

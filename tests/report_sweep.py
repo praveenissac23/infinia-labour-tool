@@ -188,6 +188,10 @@ REPORTS["daily attendance report"] = (
     f"/export/attendance/daily/view?token={T}&day=2026-09-03",
     f"/export/attendance/daily?token={T}&day=2026-09-03&format=pdf",
     f"/export/attendance/daily?token={T}&day=2026-09-03&format=excel")
+REPORTS["project expense"] = (
+    f"/export/accounts/project-expense/view?token={T}",
+    f"/export/accounts/project-expense?token={T}&format=pdf",
+    f"/export/accounts/project-expense?token={T}&format=excel")
 
 # The salary cards are a document of their own - a card a page, not a
 # table - so they are checked for the same furniture but not for
@@ -292,7 +296,7 @@ checked_paths = {
     "/export/store/purchase-report/view", "/export/store/suppliers/report/view",
     "/export/store/request/{req_id}/view", "/export/store/return/{return_id}/view",
     "/export/purchase/{order_id}/view", "/export/employees/report/view",
-    "/export/{month_year}/custom-report/view",
+    "/export/{month_year}/custom-report/view", "/export/accounts/project-expense/view",
     "/export/{month_year}/attendance-needed/view", "/export/{month_year}/cards/view",
     # Office HR and payroll. These carry pay for named office staff, so
     # they are checked by office_payroll_test.py against the signed
