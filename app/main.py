@@ -6801,8 +6801,7 @@ def lpo_pending_lines(db: Session = Depends(get_db),
     # charge, so an order raised from a request needs neither typed.
     # The man who raised the request is the man the supplier should ring
     # about it, so his number travels with the line.
-    eng_mobile = {e.name.strip().lower(): (e.mobile or "")
-                  for e in db.query(models.Engineer).all()}
+    eng_mobile = _lpo_people(db)["phones"]
     site_info = {s.code: {"plot_no": s.plot_no or "", "project_name": s.project_name or "",
                           "incharge": s.incharge or "", "incharge_mobile": s.incharge_mobile or "",
                           "address": s.address or "", "map_url": s.map_url or ""}
@@ -6876,7 +6875,38 @@ def next_lpo_number(db: Session = Depends(get_db),
             "store_incharge": get_setting(db, "store_incharge"),
             "store_incharge_mobile": get_setting(db, "store_incharge_mobile"),
             "terms_default": DEFAULT_LPO_TERMS,
-            "terms_rental": RENTAL_LPO_TERMS, "terms_material": MATERIAL_LPO_TERMS}
+            "terms_rental": RENTAL_LPO_TERMS, "terms_material": MATERIAL_LPO_TERMS,
+            **_lpo_people(db)}
+
+
+def _lpo_people(db):
+    """Everyone an order can name as our contact, each with his number, and
+    every site with its plot and its man - sent with the form so it fills
+    itself whatever the login may otherwise open. A number is taken from
+    the engineer list, else the site record, else the person's own file."""
+    phone = {}
+    def put(name, mob):
+        k = (name or "").strip().lower()
+        if k and (mob or "").strip() and not phone.get(k):
+            phone[k] = (mob or "").strip()
+    for e in db.query(models.Engineer).all():
+        put(e.name, e.mobile)
+    sites = db.query(models.Site).all()
+    for st in sites:
+        put(st.incharge, st.incharge_mobile)
+    for e, p in (db.query(models.Employee, models.PeopleProfile)
+                   .join(models.PeopleProfile, models.PeopleProfile.employee_id == models.Employee.id)
+                   .filter(models.Employee.active == True).all()):  # noqa: E712
+        put(e.name, p.mobile)
+    names = []
+    for n in [e.name for e in db.query(models.Engineer).all()] + [st.incharge for st in sites]:
+        n = (n or "").strip()
+        if n and n.lower() not in {x["name"].lower() for x in names}:
+            names.append({"name": n, "mobile": phone.get(n.lower(), "")})
+    return {"contacts": names, "phones": phone,
+            "sites": [{"code": st.code, "plot_no": st.plot_no or "", "project_name": st.project_name or "",
+                       "incharge": st.incharge or "", "incharge_mobile": phone.get((st.incharge or "").strip().lower(), "")}
+                      for st in sites]}
 
 
 @app.get("/store/purchase/rate-history")

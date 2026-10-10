@@ -1313,7 +1313,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="994dff165a9c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="32cb56306159";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -11446,8 +11446,14 @@ async function lpoFromTicked() {
   // engineer list. The store in-charge and the site engineer are both
   // in the picker if somebody else should take it.
   const asked = picked.find(p => p.requested_by) || {};
-  buildContactList(asked.requested_by || lpoDefaults.store_incharge || first.incharge || "");
-  if (asked.requested_by_mobile) document.getElementById("lpo-mobile").value = asked.requested_by_mobile;
+  // Raised by a login that is not a person on site (Administrator, the
+  // store): the site's engineer is the one the supplier should ring.
+  const site1 = lpoSite(sites.join(","));
+  const who = asked.requested_by && (asked.requested_by_mobile || lpoKnown(asked.requested_by)) ? asked.requested_by
+            : (first.incharge || (site1 && site1.incharge) || asked.requested_by || lpoDefaults.store_incharge || "");
+  if (!first.plot_no && site1 && site1.plot_no) document.getElementById("lpo-plot").value = site1.plot_no;
+  buildContactList(who);
+  if (who === asked.requested_by && asked.requested_by_mobile) document.getElementById("lpo-mobile").value = asked.requested_by_mobile;
   const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
   if (needed) document.getElementById("lpo-delivery").value = needed;
   lpoLines = [];
@@ -11790,15 +11796,36 @@ function onLpoTermsSet() {
 
 // Typing a project location on an order raised from nothing fills the
 // same details the queue would have brought with it.
+// The site record and a person's number, from what came with the form
+// (so it works for any login), else from the lists already loaded.
+function lpoSite(code) {
+  code = (code || "").split(",")[0].trim().toLowerCase();
+  if (!code) return null;
+  return (lpoDefaults.sites || []).find(x => (x.code || "").toLowerCase() === code)
+      || (sites || []).find(x => (x.code || "").toLowerCase() === code) || null;
+}
+function lpoPhone(name) {
+  const k = (name || "").trim().toLowerCase();
+  if (!k) return "";
+  if (lpoDefaults.store_incharge && k === lpoDefaults.store_incharge.toLowerCase() && lpoDefaults.store_incharge_mobile)
+    return lpoDefaults.store_incharge_mobile;
+  const ph = (lpoDefaults.phones || {})[k];
+  if (ph) return ph;
+  const eng = (engineers || []).find(e => (e.name || "").toLowerCase() === k);
+  if (eng && eng.mobile) return eng.mobile;
+  const st = (sites || []).find(x => (x.incharge || "").toLowerCase() === k && x.incharge_mobile);
+  return st ? st.incharge_mobile : "";
+}
+const lpoKnown = name => !!lpoPhone(name) || (lpoDefaults.contacts || []).some(c => c.name.toLowerCase() === (name || "").trim().toLowerCase());
 function onLpoSite() {
-  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
-  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
+  const s = lpoSite(document.getElementById("lpo-location").value);
   if (!s) return;
-  const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
-  fill("lpo-plot", s.plot_no);
-  buildContactList(document.getElementById("lpo-contact").value
-                   || lpoDefaults.store_incharge || s.incharge);
-  fill("lpo-mobile", lpoDefaults.store_incharge_mobile || s.incharge_mobile);
+  if (s.plot_no) document.getElementById("lpo-plot").value = s.plot_no;
+  // The site's engineer takes it, unless somebody other than the store
+  // in-charge has already been chosen.
+  const cur = (document.getElementById("lpo-contact").value || "").trim();
+  const isDefault = !cur || (lpoDefaults.store_incharge && cur.toLowerCase() === lpoDefaults.store_incharge.toLowerCase());
+  buildContactList(isDefault && s.incharge ? s.incharge : (cur || lpoDefaults.store_incharge || s.incharge));
 }
 
 // Who the supplier rings. The store in-charge unless somebody picks
@@ -11810,12 +11837,10 @@ function buildContactList(selected) {
   const add = n => { if (n && !names.some(x => x.toLowerCase() === n.toLowerCase())) names.push(n); };
   add(selected);                       // whoever asked, first
   add(lpoDefaults.store_incharge);
+  const s = lpoSite(document.getElementById("lpo-location").value);
+  if (s) add(s.incharge);               // the site's own man next
+  (lpoDefaults.contacts || []).forEach(c => add(c.name));
   (engineers || []).forEach(e => add(e.name));
-  // The site's own man, in case he is neither an engineer on the list
-  // nor the store in-charge.
-  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
-  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
-  if (s) add(s.incharge);
   sel.innerHTML = names.map(n =>
     `<option value="${n}"${selected && n.toLowerCase() === selected.toLowerCase() ? " selected" : ""}>${n}</option>`).join("")
     || `<option value="">No engineers on file</option>`;
@@ -11824,20 +11849,13 @@ function buildContactList(selected) {
 
 // Picking a name brings its number with it, so the two never disagree.
 function onLpoContact() {
-  const name = (document.getElementById("lpo-contact").value || "").trim().toLowerCase();
+  const name = (document.getElementById("lpo-contact").value || "").trim();
   const mob = document.getElementById("lpo-mobile");
   if (!name) return;
-  // An engineer's own number, the store in-charge's, or the site's -
-  // whichever name was picked, so the two boxes never disagree.
-  const eng = (engineers || []).find(e => (e.name || "").toLowerCase() === name);
-  if (eng && eng.mobile) { mob.value = eng.mobile; return; }
-  if (lpoDefaults.store_incharge && name === lpoDefaults.store_incharge.toLowerCase()) {
-    if (lpoDefaults.store_incharge_mobile) mob.value = lpoDefaults.store_incharge_mobile;
-    return;
-  }
-  const code = (document.getElementById("lpo-location").value || "").split(",")[0].trim();
-  const s = (sites || []).find(x => (x.code || "").toLowerCase() === code.toLowerCase());
-  if (s && (s.incharge || "").toLowerCase() === name && s.incharge_mobile) mob.value = s.incharge_mobile;
+  // Whichever name was picked brings its own number - engineer list,
+  // site record or his staff file - so the two boxes never disagree.
+  // Nobody on file: the box is emptied rather than left with someone else's.
+  mob.value = lpoPhone(name);
 }
 
 function onLpoSupplier() {
