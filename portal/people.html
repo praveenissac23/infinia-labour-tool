@@ -532,11 +532,11 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
     <div class="row">
       <label class="fld"><span>Leave type</span><select id="v-leave_type" style="width:170px;"><option value="annual">Annual leave</option><option value="sick">Sick leave</option><option value="emergency">Emergency leave</option><option value="unpaid">Unpaid leave</option><option value="other">Other</option></select></label>
       <label class="fld"><span>Date of leave *</span><input type="date" id="v-leave_on" onchange="vacDays()"></label>
-      <label class="fld"><span>Date of return</span><input type="date" id="v-return_on" onchange="vacDays()"></label>
-      <label class="fld"><span>Approved days</span><input type="number" id="v-approved_days" style="width:100px;" min="0"></label>
+      <label class="fld"><span>Date of return</span><input type="date" id="v-return_on" onchange="vacDays('return')"></label>
+      <label class="fld"><span>Approved days</span><input type="number" id="v-approved_days" style="width:100px;" min="0" oninput="vacDays('days')"></label>
     </div>
     <div class="row">
-      <label class="fld"><span>Status</span><span class="seg" id="v-status"><button data-v="pending" onclick="segSet(this.parentNode,'pending')">Pending</button><button data-v="approved" onclick="segSet(this.parentNode,'approved')">Approved</button><button data-v="returned" onclick="segSet(this.parentNode,'returned')">Returned</button><button data-v="cancelled" onclick="segSet(this.parentNode,'cancelled')">Cancelled</button></span></label>
+      <label class="fld"><span>Status</span><span class="seg" id="v-status"><button data-v="pending" onclick="segSet(this.parentNode,'pending')">Pending</button><button data-v="approved" onclick="segSet(this.parentNode,'approved'); vacApprover()">Approved</button><button data-v="returned" onclick="segSet(this.parentNode,'returned'); vacApprover()">Returned</button><button data-v="cancelled" onclick="segSet(this.parentNode,'cancelled')">Cancelled</button></span></label>
       <label class="fld"><span>Approved by</span><input type="text" id="v-approved_by" style="width:170px;"></label>
       <label class="fld"><span>Contact number - home country</span><input type="tel" id="v-home_phone" style="width:190px;"></label>
     </div>
@@ -1280,9 +1280,21 @@ async function vacPeople(group) {
 function vacPick() { const v = document.getElementById("v-who").value.trim(); const code = v.split(" - ")[0].trim().toUpperCase();
   return VAC_PEOPLE.find(p => String(p.emp_no).toUpperCase() === code) || null; }
 function vacWho() { const p = vacPick(); document.getElementById("v-who-note").textContent = p ? (p.designation || "") : ""; }
-function vacDays() {
-  const a = getVal("v-leave_on"), b = getVal("v-return_on"), d = document.getElementById("v-approved_days");
-  if (a && b && !d.value) { const n = Math.round((new Date(b) - new Date(a)) / 86400000); if (n > 0) d.value = n; }
+// Dates and days fill each other: the return date gives the days, the
+// days give the return date.
+function vacDays(src) {
+  const a = getVal("v-leave_on"), b = getVal("v-return_on"), d = document.getElementById("v-approved_days"), rt = document.getElementById("v-return_on");
+  // Whichever was changed last decides the other.
+  if (src === "days") {
+    if (a && d.value) { const x = new Date(a); x.setDate(x.getDate() + Number(d.value)); rt.value = x.toISOString().slice(0, 10); }
+    return;
+  }
+  if (a && b && (src === "return" || !d.value)) { const n = Math.round((new Date(b) - new Date(a)) / 86400000); if (n > 0) d.value = n; }
+}
+// Marking it approved names the person approving, unless a name is there.
+function vacApprover() {
+  const st = document.querySelector("#v-status button.on"), by = document.getElementById("v-approved_by");
+  if (st && st.dataset.v !== "pending" && st.dataset.v !== "cancelled" && !by.value && ME) by.value = ME.full_name || ME.username || "";
 }
 async function openVac(id, code) {
   // From a person's file: his own spells, and the person already picked.
@@ -1295,6 +1307,7 @@ async function openVac(id, code) {
   const w = document.getElementById("v-who"); w.value = who; w.disabled = !!(r || code); vacWho();
   ["leave_type", "leave_on", "return_on", "approved_days", "approved_by", "home_phone", "remark"].forEach(k => setVal("v-" + k, r ? r[k] : (k === "leave_type" ? "annual" : "")));
   if (!r && code && P.file) setVal("v-home_phone", P.file.profile.home_phone || "");
+  ["v-return_on", "v-approved_days"].forEach(id => delete document.getElementById(id).dataset.auto);
   segSet(document.getElementById("v-status"), r ? r.status : "pending");
   document.getElementById("v-del").style.display = r ? "" : "none";
   document.getElementById("vac-msg").textContent = ""; openDlg("dlg-vac");

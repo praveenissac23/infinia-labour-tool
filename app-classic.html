@@ -343,6 +343,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-stat span { display: block; font-size: 11px; color: #8A8178; text-transform: uppercase; letter-spacing: .05em; }
   .pc-stat b { font-size: 17px; font-variant-numeric: tabular-nums; } .pc-stat.hand b { color: #2E7D32; } .pc-stat.hand.neg b { color: #C0392B; }
   /* Project payment tracker */
+  /* ---- Filled in for you: one look for every "here is what we know" line ---- */
+  .auto-hint { font-size: 12px; color: #4F6B5E; background: #F1F7F4; border: 1px solid #DDEBE3; border-radius: 8px; padding: 6px 10px; margin: 8px 0 0; display: inline-block; }
+  .auto-hint:empty { display: none; }
   /* ---- Project expense ---- */
   .px-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 12px; }
   .px-stat { border: 1px solid #ECE6DF; border-radius: 10px; padding: 10px 13px; background: #FCFAF7; min-width: 0; }
@@ -2014,7 +2017,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="step-label"><span class="step-n">1</span> Who is asking, and for where</div>
             <div class="field-grid">
               <div class="field"><label>For site <span style="color:var(--red);">*</span></label>
-                <select id="mr-site"></select></div>
+                <select id="mr-site" onchange="this.dataset.auto = ''"></select></div>
               <div class="field"><label>Your name <span style="color:var(--red);">*</span></label>
                 <select id="mr-by" onchange="onRequesterChange(this)"></select></div>
               <div class="field"><label>Needed by <span style="color:var(--red);">*</span></label>
@@ -2304,13 +2307,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 or correct it - a renewal is simply the new expiry date. Any other document can be
                 added: pick "Other - type the name".</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;"></label>
+                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;" onchange="hrDocRenewal()"></label>
                 <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
                 <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
                 <datalist id="hr-doc-custom-list"></datalist>
-                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional"></label>
-                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;"></label>
-                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;"></label>
+                <label class="hr-field"><span>Number</span><input type="text" id="hr-doc-number" style="width:160px;" placeholder="Optional" oninput="this.dataset.auto = ''"></label>
+                <label class="hr-field"><span>Issued on</span><input type="date" id="hr-doc-issued" style="width:150px;" oninput="this.dataset.auto = ''"></label>
+                <label class="hr-field"><span>Expires on *</span><input type="date" id="hr-doc-expires" style="width:150px;" oninput="this.dataset.auto = ''"></label>
                 <button class="btn btn-primary" onclick="addDocument()">Save document</button>
               </div>
               <div id="hr-doc-editing" class="status-msg warn" style="display:none; margin:10px 0 0;"></div>
@@ -2410,13 +2413,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               on the day, and every day after until it is marked cleared. Rent or instalments? Pick how many months -
               the cheque number counts up by itself. Expected payments without a cheque (salaries) can go in too.</p>
             <div class="pdc-form">
-              <label class="hr-field"><span>Payee *</span><input type="text" id="pdc-payee" list="pdc-payee-list" placeholder="e.g. Desarch Scaffolding"></label>
+              <label class="hr-field"><span>Payee *</span><input type="text" id="pdc-payee" list="pdc-payee-list" placeholder="e.g. Desarch Scaffolding" onchange="pdcAuto('payee')"></label>
               <datalist id="pdc-payee-list"></datalist>
-              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451"></label>
-              <label class="hr-field"><span>Bank</span><input type="text" id="pdc-bank" list="pdc-bank-list" placeholder="e.g. ADCB"></label>
+              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451" oninput="this.dataset.auto = ''"></label>
+              <label class="hr-field"><span>Bank</span><input type="text" id="pdc-bank" list="pdc-bank-list" placeholder="e.g. ADCB" onchange="pdcAuto('bank')"></label>
               <datalist id="pdc-bank-list"></datalist>
               <label class="hr-field"><span>Cheque date *</span><input type="date" id="pdc-date"></label>
-              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00"></label>
+              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00" oninput="this.dataset.auto = ''"></label>
               <label class="hr-field"><span>For / notes</span><input type="text" id="pdc-notes" placeholder="e.g. Final 30% - 906"></label>
               <label class="hr-field" id="pdc-repeat-f"><span>Months</span><select id="pdc-repeat" class="hr-dd">
                 <option value="1">Just this one</option><option value="2">2 months</option><option value="3">3 months</option>
@@ -2720,10 +2723,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button type="button" data-k="received" onclick="pcKind('received')">Cash received</button>
               </div>
               <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
-              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400"></label>
-              <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off"></label>
+              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400" list="pc-desc-list" autocomplete="off" oninput="pcDescAuto()"><datalist id="pc-desc-list"></datalist></label>
+              <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off" oninput="this.dataset.auto = ''"></label>
               <datalist id="pc-sup-list"></datalist>
-              <label class="pc-f pc-site"><span>Site</span><select id="pc-site"></select></label>
+              <label class="pc-f pc-site"><span>Site</span><select id="pc-site" onchange="this.dataset.auto = ''"></select></label>
               <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
@@ -3122,7 +3125,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <div class="field-grid" style="margin-bottom:0; width:100%;">
                   <div class="field"><label>Who is taking it</label>
                     <input type="text" id="out-person" list="people-list"
-                           placeholder="Start typing a name or number"></div>
+                           placeholder="Start typing a name or number" oninput="this.dataset.auto = ''"></div>
                   <div class="field"><label>Coming from</label>
                     <select id="out-from" onchange="onMoveEnds()"></select></div>
                   <div class="field"><label>Going to</label>
@@ -3741,9 +3744,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div id="hr-staff-new" style="display:none;">
               <h2 class="hr-dlg-h">New staff member</h2>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Staff code *</span><input type="text" id="hr-n-code" style="width:100px;"></label>
+                <label class="hr-field"><span>Staff code *</span><input type="text" id="hr-n-code" style="width:100px;" oninput="this.dataset.auto = ''"></label>
                 <label class="hr-field"><span>Full name *</span><input type="text" id="hr-n-name" style="width:210px;"></label>
-                <label class="hr-field"><span>Company *</span><select id="hr-n-company" style="width:160px;"></select></label>
+                <label class="hr-field"><span>Company *</span><select id="hr-n-company" style="width:160px;" onchange="this.dataset.touched = '1'; hrNewCode()"></select></label>
                 <label class="hr-field"><span>Designation</span><input type="text" id="hr-n-designation" style="width:150px;"></label>
                 <label class="hr-field"><span>Joining date *</span><input type="date" id="hr-n-joined" style="width:150px;"></label>
               </div>
@@ -3969,9 +3972,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 A rise dated ahead waits for its month. By house rule a rise goes onto the
                 allowance and the basic stays, which keeps gratuity where it is.</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;" id="hr-inc-new">
-                <label class="hr-field"><span>Staff</span><select id="hr-inc-emp" class="hr-staff-pick" style="width:230px;"></select></label>
+                <label class="hr-field"><span>Staff</span><select id="hr-inc-emp" class="hr-staff-pick" style="width:230px;" onchange="hrIncDefaults()"></select></label>
                 <label class="hr-field"><span>Effective from</span><input type="date" id="hr-inc-date" style="width:150px;"></label>
-                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;"></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;" oninput="hrIncDefaults()"></label>
                 <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;">
                   <option value="allowance">Allowance (house rule)</option>
                   <option value="basic">The basic</option>
@@ -4077,6 +4080,29 @@ let selectedSummaryId = null;
 // character, so "F-1050" would sort BEFORE "F-891" (because "1" < "8"),
 // which looks wrong the moment emp numbers reach four digits.
 const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+// ---- Filled in for you ------------------------------------------------
+// The next free code in a series (IC024 -> IC025, F-799 -> F-800): the
+// commonest prefix among the codes on file, one past its highest number.
+// A separate block further on (IC101, IC201...) is a series of its own,
+// so the count runs on from the main run, not from the top block.
+function nextCode(codes) {
+  const by = {};
+  (codes || []).forEach(c => { const m = /^(.*?)(\d+)$/.exec(String(c || "").trim()); if (!m) return;
+    const k = m[1].toUpperCase(); (by[k] = by[k] || { nums: [], w: m[2].length }); by[k].nums.push(+m[2]); by[k].w = Math.max(by[k].w, m[2].length); });
+  const best = Object.entries(by).sort((a, b) => b[1].nums.length - a[1].nums.length)[0];
+  if (!best) return "";
+  const nums = [...new Set(best[1].nums)].sort((a, b) => a - b);
+  const runs = [[nums[0]]];
+  for (const n of nums.slice(1)) { if (n - runs[runs.length - 1].slice(-1)[0] > 20) runs.push([n]); else runs[runs.length - 1].push(n); }
+  const main = runs.reduce((a, b) => (b.length >= a.length ? b : a));     // the biggest run; the later one if equal
+  let next = main[main.length - 1] + 1;
+  while (nums.includes(next)) next++;
+  return best[0] + String(next).padStart(best[1].w, "0");
+}
+function todayIso() { return isoLocal(new Date()); }
+// Only an empty box is filled - anything typed is left alone.
+function hrFillEmpty(id, v) { const el = document.getElementById(id); if (el && !el.value && v) { el.value = v; el.dispatchEvent(new Event("change")); } }
+function firstOfNextMonth() { const d = new Date(); return isoLocal(new Date(d.getFullYear(), d.getMonth() + 1, 1)); }
 function natCompare(a, b) {
   return naturalCollator.compare(String(a ?? ""), String(b ?? ""));
 }
@@ -4295,7 +4321,7 @@ function switchScreen(name) {
       // Requesters come from the engineers list and past requests, so
       // the same person is always the same spelling.
       const mrBy = document.getElementById("mr-by");
-      if (mrBy) mrBy.innerHTML = requesterOptions();
+      if (mrBy) { mrBy.innerHTML = requesterOptions(); mrSiteFor(mrBy.value); }
       if (!sites.length) showStatus("mreq-status", "err", "The site list could not be loaded - check the connection and press Ctrl+Shift+R.");
       // A sensible needed-by beats an empty box: a week out for normal
       // requests, changeable in one click, so nothing is saved undated.
@@ -5230,6 +5256,10 @@ async function loadFormerWorkers() {
 }
 
 function renderMasterDataLists() {
+  // A new worker's form starts with the next free number and today.
+  const no = document.getElementById("md-emp-no"), jn = document.getElementById("md-emp-joined");
+  if (no && !no.value) { no.value = nextCode((employees || []).filter(e => !e.staff).map(e => e.emp_no)); no.dataset.auto = no.value; }
+  if (jn && !jn.value) jn.value = todayIso();
   const empBody = document.getElementById("md-emp-body");
   const sorted = [...employees].sort((a, b) => {
     const av = a[mdSortKey], bv = b[mdSortKey];
@@ -8267,6 +8297,12 @@ function requesterOptions() {
   (mrCache || []).forEach(r => { if (r.requested_by) add(r.requested_by, false); });
   let saved = "";
   try { saved = personName(localStorage.getItem("mrName") || ""); } catch (e) {}
+  // First time on this device: the person signed in, if he is on the list.
+  if (!saved) {
+    let me = ""; try { me = (sessionStorage.getItem("infinia_who") || "").replace(/\s*\([^)]*\)\s*$/, ""); } catch (e) {}
+    const hit = me && known.find(k => sameName(k.name, personName(me)));
+    if (hit) saved = hit.name;
+  }
   if (saved) add(saved, false);
   const opts = known.map(k => k.name).sort((a, b) => a.localeCompare(b));
   return '<option value="">-- choose --</option>' +
@@ -8285,6 +8321,15 @@ function onRequesterChange(sel) {
     } else sel.value = "";
   }
   try { localStorage.setItem("mrName", sel.value); } catch (e) {}
+  mrSiteFor(sel.value);
+}
+// The site an engineer runs is the site he is asking for - when he runs
+// exactly one and no site has been picked yet.
+function mrSiteFor(name) {
+  const box = document.getElementById("mr-site"); if (!box || (box.value && !box.dataset.auto)) return;
+  const mine = (sites || []).filter(x => x.incharge && sameName(personName(x.incharge), personName(name || "")));
+  box.value = mine.length === 1 ? mine[0].code : (box.dataset.auto ? "" : box.value);
+  box.dataset.auto = mine.length === 1 ? "1" : "";
 }
 
 function stockOptionsHtml() {
@@ -8600,6 +8645,14 @@ function moveLabel() {
 async function onMoveEnds() {
   const from = (document.getElementById("out-from").value || "").trim();
   const to = (document.getElementById("out-site").value || "").trim();
+  // Going to a site: its engineer is who takes it, unless a name is typed.
+  const who = document.getElementById("out-person");
+  if (to && (!who.value || who.dataset.auto)) {
+    if (!sites || !sites.length) { try { sites = await apiCall("/sites") || []; } catch (e) {} }
+    const st = (sites || []).find(x => (x.code || "") === to);
+    who.value = st && st.incharge ? st.incharge : (who.dataset.auto ? "" : who.value);
+    who.dataset.auto = st && st.incharge ? "1" : "";
+  }
   if (from && from === to) {
     showStatus("store-status", "warn", "Coming from and going to are the same place.");
   } else {
@@ -10030,7 +10083,9 @@ async function openOrderModal(ids) {
   document.getElementById("order-contact").value = known ? (known.contact_person || "") : "";
   document.getElementById("order-phone").value = known ? (known.phone || "") : "";
   fillSupplierPick("order", known ? known.name : "");
-  document.getElementById("order-expected").value = "";
+  // Expected: when the site said it is needed, the earliest of them.
+  const need = orderIds.map(id => (mrCache.find(r => r.id === id) || {}).needed_by).filter(Boolean).sort()[0];
+  document.getElementById("order-expected").value = need || "";
   showStatus("order-status", null);
   document.getElementById("order-modal-overlay").style.display = "flex";
 }
@@ -12734,11 +12789,11 @@ function hrTab(which) {
     if (HR_RUN) loadPayrollRun(HR_RUN.id); else if (HR_COMPANIES.length) openPayrollCycle();
   }
   if (which === "staff") loadStaff();
-  if (which === "loans") loadLoans();
-  if (which === "leave") loadLeave();
+  if (which === "loans") { loadLoans(); hrFillEmpty("hr-loan-date", todayIso()); }
+  if (which === "leave") { loadLeave(); hrFillEmpty("hr-leave-from", todayIso()); }
   if (which === "items") loadItems();
   if (which === "gratuity") loadGratuity();
-  if (which === "increments") loadIncrements();
+  if (which === "increments") { loadIncrements(); hrIncDefaults(); }
 }
 
 async function loadHrScreen() {
@@ -13680,10 +13735,26 @@ function hrOpenDlg(which) {
   document.getElementById("hr-dlg").style.display = "flex";
   hrNoDropdowns();
 }
+// The next code in the chosen company's own series (IC..., PI...).
+function hrNewCode() {
+  const code = document.getElementById("hr-n-code"); if (code.value && !code.dataset.auto) return;
+  const sel = document.getElementById("hr-n-company");
+  if (!sel.dataset.touched) {            // the company most staff are on, until one is picked
+    const n = {}; HR_STAFF.forEach(x => { n[x.company_id] = (n[x.company_id] || 0) + 1; });
+    const top = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
+    if (top && [...sel.options].some(o => o.value === String(top[0]))) sel.value = String(top[0]);
+  }
+  const co = sel.value;
+  const mine = HR_STAFF.filter(x => !co || String(x.company_id) === String(co)).map(x => x.emp_no);
+  code.value = nextCode(mine.length ? mine : HR_STAFF.map(x => x.emp_no)); code.dataset.auto = "1";
+}
 function hrCloseDlg() { document.getElementById("hr-dlg").style.display = "none"; }
 function hrNewStaff() {
   hrOpenDlg("new");
-  setTimeout(() => document.getElementById("hr-n-code").focus(), 50);
+  const code = document.getElementById("hr-n-code"), joined = document.getElementById("hr-n-joined");
+  hrNewCode();
+  if (!joined.value) joined.value = todayIso();
+  setTimeout(() => document.getElementById("hr-n-name").focus(), 50);
 }
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && document.getElementById("hr-dlg") &&
@@ -14094,6 +14165,7 @@ function hrLoanReset() {
   document.getElementById("hr-loan-emp").disabled = false;
   ["hr-loan-amount", "hr-loan-instalment", "hr-loan-terms", "hr-loan-date"]
     .forEach(id => document.getElementById(id).value = "");
+  document.getElementById("hr-loan-date").value = todayIso();
   document.getElementById("hr-loan-save").textContent = "Record loan";
   document.getElementById("hr-loan-cancel").style.display = "none";
   const d = document.getElementById("hr-loan-del"); if (d) d.remove();
@@ -14245,6 +14317,7 @@ function hrLeaveReset() {
   delete document.getElementById("hr-vac-month").dataset.touched;
   document.getElementById("hr-leave-half").checked = false;
   document.getElementById("hr-leave-cert").checked = false;
+  document.getElementById("hr-leave-from").value = todayIso();      // most absences are entered on the day
   document.getElementById("hr-leave-rule").value = "auto";
   document.getElementById("hr-leave-save").textContent = "Record";
   document.getElementById("hr-leave-cancel").style.display = "none";
@@ -14666,6 +14739,7 @@ function hrClearDoc() {
     .forEach(id => document.getElementById(id).value = "");
   const box = document.getElementById("hr-doc-editing");
   box.style.display = "none"; box.dataset.id = "";
+  const n = document.getElementById("hr-doc-auto"); if (n) n.textContent = "";
 }
 
 async function addDocument() {
@@ -14682,7 +14756,34 @@ async function addDocument() {
   } catch (e) { expMsg("err", errText(e)); }
 }
 
+// Renewing: the person and the document picked bring the number on file,
+// today as the issue date and the usual validity as the new expiry -
+// each box only if it is empty, all of it editable.
+const DOC_VALID_YEARS = { visa: 2, eid: 2, passport: 10, labour_card: 2, insurance: 1, contract: 2, medical: 2, driving: 5 };
+function hrDocRenewal() {
+  if (document.getElementById("hr-doc-editing").dataset.id) return;
+  const code = document.getElementById("hr-doc-emp").value.trim().toUpperCase(), kind = document.getElementById("hr-doc-kind").value;
+  let note = document.getElementById("hr-doc-auto");
+  if (!note) { note = document.createElement("div"); note.id = "hr-doc-auto"; note.className = "auto-hint";
+    document.getElementById("hr-doc-editing").before(note); }
+  note.textContent = "";
+  const num = document.getElementById("hr-doc-number"), iss = document.getElementById("hr-doc-issued"), exp = document.getElementById("hr-doc-expires");
+  // What we filled last time goes when the person or document changes;
+  // anything typed by hand stays.
+  [num, iss, exp].forEach(el => { if (el.dataset.auto) { el.value = ""; el.dataset.auto = ""; } });
+  if (!code || !kind || kind === "custom") return;
+  const old = (HR_DOCS || []).find(d => String(d.emp_no).toUpperCase() === code && d.kind === kind);
+  if (!old) return;
+  const put = (el, v) => { if (!el.value && v) { el.value = v; el.dataset.auto = "1"; } };
+  put(num, old.number);
+  put(iss, todayIso());
+  const yrs = DOC_VALID_YEARS[kind];
+  if (yrs && old.expires_on) { const d = new Date(old.expires_on); d.setFullYear(d.getFullYear() + yrs); put(exp, isoLocal(d)); }
+  note.textContent = `Renewing ${old.name}'s ${old.kind_label} (expires ${dmyShort(old.expires_on)}).` + (yrs ? ` New expiry set ${yrs} year${yrs > 1 ? "s" : ""} on - change it to the date on the new document.` : "");
+}
+function dmyShort(iso) { try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return iso; } }
 function hrDocKindChanged() {
+  hrDocRenewal();
   const custom = document.getElementById("hr-doc-kind").value === "custom";
   document.getElementById("hr-doc-custom-f").style.display = custom ? "" : "none";
   const names = [...new Set(HR_DOCS.filter(x => !["eid","visa","passport","labour_card","insurance","contract","medical","driving","certificate"].includes(x.kind)).map(x => x.kind_label))];
@@ -15046,10 +15147,32 @@ function pcDraw() {
     <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  // Descriptions used before, so a regular expense is one pick.
+  const descs = [...new Set(d.rows.map(r => (r.description || "").trim()).filter(Boolean))].slice(-200);
+  document.getElementById("pc-desc-list").innerHTML = descs.map(x => `<option value="${escapeAttr(x)}">`).join("");
 }
 
+// What the description already says: a site number in it picks the site
+// (which also puts the cost on that project); the same description as
+// before brings the supplier it had last time. Only empty boxes are filled.
+function pcDescAuto() {
+  const desc = document.getElementById("pc-desc").value, site = document.getElementById("pc-site");
+  if (!site.value || site.dataset.auto) {
+    const codes = (desc.match(/\b\d{3}\b/g) || []).filter(c => (PC_SITES || []).includes(c));
+    site.value = codes.length === 1 ? codes[0] : (site.dataset.auto ? "" : site.value);
+    site.dataset.auto = codes.length === 1 ? "1" : "";
+  }
+  const sup = document.getElementById("pc-sup");
+  if (!sup.value || sup.dataset.auto) {
+    const k = desc.trim().toLowerCase();
+    const prev = k.length > 3 && PC && (PC.rows || []).slice().reverse().find(r => (r.description || "").trim().toLowerCase() === k && r.supplier);
+    sup.value = prev ? prev.supplier : (sup.dataset.auto ? "" : sup.value);
+    sup.dataset.auto = prev ? "1" : "";
+  }
+}
 function pcReset() {
   PC_EDIT = null;
+  ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
   ["pc-desc", "pc-sup", "pc-amt"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("pc-site").value = "";
   document.getElementById("pc-date").value = pcToday();
@@ -15127,6 +15250,28 @@ async function pdcOpen() {
   if (!document.getElementById("pdc-from").value) document.getElementById("pdc-from").value = pdcToday().slice(0, 7);
   if (!document.getElementById("pdc-date").value) document.getElementById("pdc-date").value = pdcToday();
   await pdcLoad();
+  if (!PDC_EDIT) pdcAuto();
+}
+// A new cheque: the cheque book last written from, the next leaf in it,
+// and - once the payee is picked - what he was paid last time.
+// Only empty boxes are filled; anything typed stays.
+function pdcNextNo(bank) {
+  const nos = (PDC && PDC.rows || []).filter(r => !bank || (r.bank || "").toLowerCase() === bank.toLowerCase())
+    .map(r => String(r.cheque_no || "").trim()).filter(n => /^\d+$/.test(n));
+  if (!nos.length) return "";
+  const top = nos.reduce((a, b) => (Number(b) > Number(a) ? b : a));
+  return String(Number(top) + 1).padStart(top.length, "0");
+}
+function pdcAuto(which) {
+  if (PDC_EDIT || !PDC) return;
+  const bank = document.getElementById("pdc-bank"), no = document.getElementById("pdc-no"), payee = document.getElementById("pdc-payee"), amt = document.getElementById("pdc-amt");
+  const rows = (PDC.rows || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+  if (!bank.value && rows.length) { bank.value = rows[rows.length - 1].bank || ""; bank.dataset.auto = "1"; }
+  if (!no.value || no.dataset.auto) { no.value = pdcNextNo(bank.value); no.dataset.auto = no.value ? "1" : ""; }
+  if (which === "payee" && payee.value.trim()) {
+    const last = rows.slice().reverse().find(r => (r.payee || "").toLowerCase() === payee.value.trim().toLowerCase());
+    if (last && (!amt.value || amt.dataset.auto)) { amt.value = last.amount; amt.dataset.auto = "1"; }
+  }
 }
 async function pdcLoad() {
   try { PDC = await apiCall("/employees/pdc"); }
@@ -15238,6 +15383,8 @@ function pdcReset() {
   document.getElementById("pdc-save").textContent = "Add";
   document.getElementById("pdc-form-title").textContent = "Add a cheque";
   ["pdc-cancel", "pdc-del"].forEach(id => document.getElementById(id).style.display = "none");
+  ["pdc-no", "pdc-bank", "pdc-amt"].forEach(id => document.getElementById(id).dataset.auto = "");
+  pdcAuto();
   pdcDrawList();
 }
 function pdcEdit(id) {
@@ -15324,7 +15471,8 @@ async function invLoad() {
   co.value = was && INV.companies.some(c => String(c.id) === was) ? was : (main ? main.id : (INV.companies[0] || {}).id || "");
   document.getElementById("inv-co-f").style.display = INV.companies.length > 1 ? "" : "none";
   document.getElementById("inv-client-list").innerHTML = INV.clients.map(x => `<option value="${escapeAttr(x)}">`).join("");
-  const pnos = [...new Set(INV.rows.map(r => r.project_no).filter(Boolean))];
+  if (!INV_SITES) { try { INV_SITES = await apiCall("/sites") || []; } catch (e) { INV_SITES = []; } }
+  const pnos = [...new Set(INV.rows.map(r => r.project_no).filter(Boolean).concat(INV_SITES.map(x => x.code).filter(Boolean)))];
   document.getElementById("inv-pno-list").innerHTML = pnos.map(x => `<option value="${escapeAttr(x)}">`).join("");
   document.getElementById("inv-sig-note").textContent = INV.signature ? "" : "No signature & stamp yet - admin uploads the invoice signature in Settings > General.";
   invDrawList();
@@ -15413,6 +15561,7 @@ function invReset() {
   invNextNumber(); invDrawList();
 }
 // A project number used before brings its client and site along.
+let INV_SITES = null;
 function invProjectPicked() {
   const p = document.getElementById("inv-pno").value.trim();
   const last = p && INV && INV.rows.find(r => r.project_no === p);
@@ -15420,6 +15569,12 @@ function invProjectPicked() {
     ["client", "client_trn", "client_address", "project", "plot", "location"].forEach(k => {
       const el = document.getElementById(INV_FIELDS[k]); if (!el.value) el.value = last[k] || "";
     });
+  }
+  // A project's first invoice: plot, name and address from its site record.
+  const st = p && !INV_EDIT && (INV_SITES || []).find(x => (x.code || "") === p);
+  if (st) {
+    const put = (k, v) => { const el = document.getElementById(INV_FIELDS[k]); if (el && !el.value && v) el.value = v; };
+    put("plot", st.plot_no); put("project", st.project_name); put("location", st.address);
   }
   invNextNumber();
 }
@@ -16140,6 +16295,22 @@ function hrIncReset() {
   document.getElementById("hr-inc-form-title").textContent = "Record an increment";
   document.getElementById("hr-inc-new").style.display = "flex";
   document.getElementById("hr-inc-edit").style.display = "none";
+  hrIncDefaults();
+}
+// A rise usually starts with a month: the 1st of next month, unless one
+// was typed. Picking the person shows what he is on now and what the
+// rise makes it.
+function hrIncDefaults() {
+  const d = document.getElementById("hr-inc-date"); if (d && !d.value) d.value = firstOfNextMonth();
+  const p = hrPerson(document.getElementById("hr-inc-emp").value);
+  let hint = document.getElementById("hr-inc-now");
+  if (!hint) { hint = document.createElement("div"); hint.id = "hr-inc-now"; hint.className = "auto-hint";
+    document.getElementById("hr-inc-new").after(hint); }
+  if (!p) { hint.textContent = ""; return; }
+  const amt = hrNum(document.getElementById("hr-inc-amount").value) || 0;
+  const now = (p.basic || 0) + (p.allowance || 0);
+  hint.textContent = `Now: basic ${hrBox(p.basic || 0)} + allowance ${hrBox(p.allowance || 0)} = ${hrBox(now)}`
+    + (amt ? `  →  after the rise ${hrBox(now + amt)}` : "");
 }
 
 async function saveIncEdit() {
