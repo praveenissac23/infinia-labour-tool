@@ -645,6 +645,8 @@ def add_leave_record(payload: dict = Body(...), db: Session = Depends(get_db), u
     _leave_fields(r, payload)
     db.add(r)
     _save_home_phone(db, e, payload)
+    db.flush()
+    M.sync_spell_days(db, r, user)          # its days go on the absence register
     db.commit()
     M.log_action(db, user.id, "leave_added", f"{e.emp_no}: {LEAVE_TYPES[r.leave_type]} from {r.leave_on}")
     return _leave_dict(r, e, _profile(db, e), M._dubai_today())
@@ -659,6 +661,8 @@ def save_leave_record(rec_id: int, payload: dict = Body(...), db: Session = Depe
     _may(user, group_of(e, _profile(db, e, "leave")))
     _leave_fields(r, payload)
     _save_home_phone(db, e, payload)
+    db.flush()
+    M.sync_spell_days(db, r, user)
     db.commit()
     M.log_action(db, user.id, "leave_saved", f"{e.emp_no}: {LEAVE_STATUS[r.status]} {r.leave_on}")
     return _leave_dict(r, e, _profile(db, e), M._dubai_today())
@@ -671,6 +675,7 @@ def delete_leave_record(rec_id: int, db: Session = Depends(get_db), user: models
         raise HTTPException(status_code=404, detail="That leave is not on file.")
     e = r.employee
     _may(user, group_of(e, _profile(db, e, "leave")))
+    M.remove_spell_days(db, r)
     db.delete(r); db.commit()
     M.log_action(db, user.id, "leave_deleted", f"{e.emp_no}: {r.leave_on}")
     return {"ok": True}
@@ -961,6 +966,18 @@ def save_person(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
         else:
             v = (v or "").strip() if isinstance(v, str) else v
         setattr(p, k, v)
+    # The contract expiry is also the Labour contract document, which the
+    # expiry reminders watch - one date, kept in both places.
+    if "contract_expiry" in prof and p.contract_expiry:
+        d = (db.query(models.EmployeeDocument)
+               .filter(models.EmployeeDocument.employee_id == e.id, models.EmployeeDocument.kind == "contract").first())
+        if not d:
+            d = models.EmployeeDocument(employee_id=e.id, kind="contract", notes="")
+            db.add(d)
+        if d.expires_on != p.contract_expiry:
+            d.expires_on = p.contract_expiry
+        if p.contract_no:
+            d.number = p.contract_no
     db.commit()
     # A leaving date set here has the same effect as on Master Data: the
     # days after it on the attendance grid read Terminated.
@@ -1089,6 +1106,43 @@ def seed_leave_records(SessionLocal):
     except Exception as ex:                       # a failed seed must never stop the app
         db.rollback()
         print(f"Leave register seed skipped: {ex}")
+    finally:
+        db.close()
+
+
+def link_existing_leave(SessionLocal):
+    """Spells typed on both registers before they were linked: the absence
+    entries that sit wholly inside an approved spell are tied to it (only
+    the link is written - no day is added or taken away), so from now on
+    a change on either side reaches the other. Safe to run at every start."""
+    db = SessionLocal()
+    try:
+        linked = 0
+        for r in (db.query(models.LeaveRecord).join(models.Employee, models.Employee.id == models.LeaveRecord.employee_id)
+                    .filter(models.Employee.staff == True,  # noqa: E712
+                            models.LeaveRecord.status.in_(("approved", "returned"))).all()):
+            tag = M._lr_batch(r.id)
+            span = M._spell_days(r)
+            if not span or db.query(models.StaffLeave).filter(models.StaffLeave.batch == tag).first():
+                continue
+            lo, hi = span[0], span[-1]
+            near = (db.query(models.StaffLeave)
+                      .filter(models.StaffLeave.employee_id == r.employee_id,
+                              models.StaffLeave.on_date >= lo, models.StaffLeave.on_date <= hi).all())
+            for b in {l.batch for l in near if l.batch and not M._lr_id(l.batch)}:
+                whole = db.query(models.StaffLeave).filter(models.StaffLeave.batch == b).all()
+                if all(lo <= l.on_date <= hi and M._leave_kind(l) in M.MIRRORED_KINDS for l in whole):
+                    for l in whole:
+                        l.batch = tag
+                    for it in db.query(models.PayItem).filter(models.PayItem.source == f"leave:{b}").all():
+                        it.source = f"leave:{tag}"
+                    linked += 1
+        db.commit()
+        if linked:
+            print(f"Leave register: {linked} absence entr(ies) linked to their spell of leave")
+    except Exception as ex:                       # never stop the app over this
+        db.rollback()
+        print(f"Leave link skipped: {ex}")
     finally:
         db.close()
 

@@ -101,7 +101,9 @@ c.post('/employees/documents', json={'emp_no': 'IC022', 'kind': 'medical', 'numb
 c.post('/employees/documents', json={'emp_no': '101', 'kind': 'visa', 'number': 'V-1', 'expires_on': (today - timedelta(days=8)).isoformat()}, headers=H)
 f = c.get('/employees/people/IC022', headers=H).json()
 ck('is on his People file, with the new medical-fitness kind beside it',
-   {d['kind'] for d in f['documents']} == {'passport', 'medical'}, f['documents'])
+   {d['kind'] for d in f['documents']} == {'passport', 'medical', 'contract'}, f['documents'])
+ck('the contract expiry typed on his file is his Labour contract document too',
+   any(d['kind'] == 'contract' and d['expires_on'] == '2027-08-31' for d in f['documents']), f['documents'])
 due = c.get('/employees/people/documents-due?days=90', headers=H).json()['rows']
 ck('Documents due lists the expired visa first, then the medical', [d['kind'] for d in due] == ['visa', 'medical'], due)
 ck('and says which register each is on', due[0]['group'] == 'labour' and due[1]['group'] == 'office')

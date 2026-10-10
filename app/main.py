@@ -1482,6 +1482,10 @@ async def import_employees(file: UploadFile = File(...), mode: str = Form("add_o
                     existing.company = company
                 if pay_stated:
                     existing.pay_type = pay_type
+                # A new rate from the sheet goes into his rate history, which
+                # is what the card pays from - otherwise it would be ignored.
+                _record_labour_rate(db, existing, basic_salary, total_salary,
+                                    pcyc.cycle_bounds_for(_dubai_today())[0], "Changed by Master Data import", user.id)
                 existing.total_salary, existing.basic_salary = total_salary, basic_salary
                 existing.active = True
                 updated += 1
@@ -8821,6 +8825,10 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
         # everyone else are paid on the office statement.
         raise HTTPException(status_code=400, detail="The local staff statement is for UAE nationals on GPSSA "
                             "pension. Household and other staff are paid on the office staff statement.")
+    # The People register follows the statement he is paid on.
+    prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == e.id).first()
+    if prof and prof.group in ("office", "local"):
+        prof.group = "local" if e.pay_group == "local" else "office"
     was = (round(e.basic_salary or 0, 2), round(e.allowance or 0, 2))
     for f, col in (("joined_on", "joined_on"), ("probation_end", "probation_end")):
         if f in payload:
@@ -8999,6 +9007,15 @@ def save_document(payload: dict = Body(...), db: Session = Depends(get_db),
     d.issued_on = _as_date(payload.get("issued_on"))
     d.expires_on = expires
     d.notes = (payload.get("notes") or "").strip()
+    if kind == "contract":
+        # The same contract the People file shows - its number and expiry follow.
+        prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == e.id).first()
+        if not prof:
+            prof = models.PeopleProfile(employee_id=e.id)
+            db.add(prof)
+        prof.contract_expiry = expires
+        if d.number:
+            prof.contract_no = d.number
     db.commit(); db.refresh(d)
     log_action(db, user.id, "document_saved",
                f"{e.emp_no} {DOC_KINDS.get(kind, kind.replace('_', ' ').title())} -> {expires.isoformat()}"
@@ -9789,6 +9806,126 @@ def _leave_from_payload(payload):
     return kind, rule, start, end, (0.5 if half else 1.0), reason
 
 
+# ---- The absence register and the leave register are one record --------
+# A spell of leave on Staff > Leave (approved or returned) puts its days on
+# the absence register, which is what the salary cycle reads; a vacation,
+# sick or unpaid run entered on the absence register shows on the leave
+# register as its spell. The days of a spell carry the batch "lr<id>", so
+# each side always finds the other and nothing is typed twice.
+LEAVE_TYPE_KIND = {"annual": "vacation", "sick": "sick", "emergency": "unpaid",
+                   "unpaid": "unpaid", "other": "unpaid"}
+MIRRORED_KINDS = {"vacation", "sick", "unpaid"}
+
+
+def _lr_batch(rec_id):
+    return f"lr{rec_id}"
+
+
+def _lr_id(batch):
+    b = batch or ""
+    return int(b[2:]) if b.startswith("lr") and b[2:].isdigit() else None
+
+
+def _spell_days(r):
+    """The days a spell of leave keeps him away: the date of leave to the
+    day before the date of return, or for the days approved. None while
+    there is no end to it yet, or while it is not approved."""
+    if r.status not in ("approved", "returned") or not r.leave_on:
+        return None
+    if r.return_on:
+        last = r.return_on - timedelta(days=1)
+    elif r.approved_days:
+        last = r.leave_on + timedelta(days=int(r.approved_days) - 1)
+    else:
+        return None
+    if last < r.leave_on:
+        return []
+    return [r.leave_on + timedelta(days=i) for i in range((last - r.leave_on).days + 1)]
+
+
+def sync_spell_days(db, r, user):
+    """Bring the absence register into line with one spell of leave.
+    Only the days that change are touched."""
+    e = db.query(models.Employee).filter(models.Employee.id == r.employee_id).first()
+    batch = _lr_batch(r.id)
+    have = {l.on_date: l for l in db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all()}
+    days = _spell_days(r) if (e and e.staff) else []
+    if days is None:                       # no end yet: leave what is there alone
+        days = sorted(have) if r.status in ("approved", "returned") else []
+    kind = LEAVE_TYPE_KIND.get(r.leave_type or "annual", "unpaid")
+    want = {d: kind for d in days}
+    drop = [l for d, l in have.items() if d not in want or _leave_kind(l) != kind or l.employee_id != r.employee_id]
+    add = [d for d in want if d not in have or have[d] in drop]
+    # A month whose salary is already approved is history - it was paid
+    # as it stood, so its days are left exactly as they are. A day that is
+    # already on the register under another entry is the same leave typed
+    # before; it is not entered a second time.
+    locked = {}
+    def is_locked(emp_id, d):
+        if emp_id not in locked:
+            emp = db.query(models.Employee).get(emp_id)
+            locked[emp_id] = _approved_months(db, emp) if emp else set()
+        return _month_name(d) in locked[emp_id]
+    drop = [l for l in drop if not is_locked(l.employee_id, l.on_date)]
+    add = [d for d in add if not is_locked(r.employee_id, d)]
+    if add:
+        taken = {l.on_date for l in db.query(models.StaffLeave).filter(
+            models.StaffLeave.employee_id == r.employee_id,
+            models.StaffLeave.on_date >= min(add), models.StaffLeave.on_date <= max(add)).all()
+            if l.batch != batch}
+        add = [d for d in add if d not in taken]
+    if not drop and not add:
+        return 0
+    for l in drop:
+        db.delete(l)
+    db.flush()
+    for d in add:
+        db.add(models.StaffLeave(
+            employee_id=r.employee_id, on_date=d, portion=1.0, kind=kind, pay_rule="auto",
+            batch=batch, reason=LEAVE_KINDS[kind], paid=kind in _PAID_KINDS,
+            notes="From the leave register", created_by=user.id if user else None))
+    if kind != "vacation" or not want:
+        for it in db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").all():
+            if it.month_year not in locked.get(r.employee_id, set()):
+                db.delete(it)
+    return len(add) + len(drop)
+
+
+def remove_spell_days(db, r):
+    """A spell deleted: its days come off the absence register."""
+    rows = db.query(models.StaffLeave).filter(models.StaffLeave.batch == _lr_batch(r.id)).all()
+    e = db.query(models.Employee).filter(models.Employee.id == r.employee_id).first()
+    done = _approved_months(db, e) if e else set()       # paid months stay as they were paid
+    for l in rows:
+        if _month_name(l.on_date) not in done:
+            db.delete(l)
+    for it in db.query(models.PayItem).filter(models.PayItem.source == f"leave:{_lr_batch(r.id)}").all():
+        if it.month_year not in done:
+            db.delete(it)
+
+
+def _mirror_spell(db, e, rec_id, kind, start, end, user):
+    """The leave register's line for a run of days entered on the absence
+    register. Returns the spell's id."""
+    r = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == rec_id).first() if rec_id else None
+    if not r:
+        r = models.LeaveRecord(employee_id=e.id, created_by=user.id, approved_by=user.full_name or user.username,
+                               remark="Entered on the absence register")
+        db.add(r)
+    r.employee_id = e.id
+    if kind == "vacation":
+        r.leave_type = "annual"
+    elif kind == "sick":
+        r.leave_type = "sick"
+    elif r.leave_type not in ("unpaid", "emergency", "other"):
+        r.leave_type = "unpaid"
+    r.leave_on, r.return_on = start, end + timedelta(days=1)
+    r.approved_days = (end - start).days + 1
+    r.status = "returned" if end < _dubai_today() else "approved"
+    db.flush()
+    return r.id
+
+
 def _write_entry(db, e, payload, user, batch=None, replacing=()):
     kind, rule, start, end, portion, reason = _leave_from_payload(payload)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
@@ -9804,7 +9941,19 @@ def _write_entry(db, e, payload, user, batch=None, replacing=()):
                    "Change that entry instead.")
     for r in replacing:
         db.delete(r)
+    # Vacation, sick and unpaid runs are spells of leave: keep the leave
+    # register's line for them, under the same batch.
+    old_batch, link = batch, _lr_id(batch)
+    if e.staff and kind in MIRRORED_KINDS and portion == 1.0:
+        batch = _lr_batch(_mirror_spell(db, e, link, kind, start, end, user))
+    elif link:
+        gone = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == link).first()
+        if gone:
+            db.delete(gone)
+        batch = None
     batch = batch or uuid.uuid4().hex[:12]
+    if old_batch and old_batch != batch:
+        db.query(models.PayItem).filter(models.PayItem.source == f"leave:{old_batch}").delete()
     for d in days:
         db.add(models.StaffLeave(
             employee_id=e.id, on_date=d, portion=portion, kind=kind, pay_rule=rule,
@@ -9820,6 +9969,11 @@ def _write_entry(db, e, payload, user, batch=None, replacing=()):
             amt = float(payload.get(key) or 0)
             if amt > 0:
                 _guard_months(db, e, [datetime.strptime(f"1 {pay_month}", "%d %B %Y").date()])
+                if cat == "air_ticket":
+                    # His file's "last ticket" is this one.
+                    prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == e.id).first()
+                    if prof and (not prof.last_ticket_on or prof.last_ticket_on < start):
+                        prof.last_ticket_on = start
                 db.add(models.PayItem(
                     employee_id=e.id, month_year=pay_month, direction="add", category=cat,
                     amount=amt, on_date=start, source=f"leave:{batch}",
@@ -9871,6 +10025,8 @@ def delete_leave_entry(batch: str, db: Session = Depends(get_db), user: models.U
     for r in rows:
         db.delete(r)
     db.query(models.PayItem).filter(models.PayItem.source == f"leave:{batch}").delete()
+    if _lr_id(batch):
+        db.query(models.LeaveRecord).filter(models.LeaveRecord.id == _lr_id(batch)).delete()
     db.commit()
     log_action(db, user.id, "leave_removed", f"{e.emp_no} entry {batch}")
     return {"ok": True}
@@ -9883,7 +10039,16 @@ def delete_leave(leave_id: int, db: Session = Depends(get_db), user: models.User
         raise HTTPException(status_code=404, detail="That leave entry is not on file.")
     e = db.query(models.Employee).filter(models.Employee.id == l.employee_id).first()
     _guard_months(db, e, [l.on_date])
-    db.delete(l); db.commit()
+    batch = l.batch
+    db.delete(l); db.flush()
+    if _lr_id(batch):
+        r = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == _lr_id(batch)).first()
+        left = sorted(x.on_date for x in db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all())
+        if r and left:
+            r.leave_on, r.return_on, r.approved_days = left[0], left[-1] + timedelta(days=1), len(left)
+        elif r:
+            db.delete(r)
+    db.commit()
     return {"ok": True}
 
 
@@ -11953,6 +12118,7 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
 import people  # noqa: E402
 app.include_router(people.router)
 people.seed_leave_records(SessionLocal)
+people.link_existing_leave(SessionLocal)
 people.seed_birthdays(SessionLocal)
 import settlement  # noqa: E402
 app.include_router(settlement.router)
