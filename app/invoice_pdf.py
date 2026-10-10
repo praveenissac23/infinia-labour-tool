@@ -159,7 +159,8 @@ def build(inv, company=None, bank=None, signature=None):
             bill.append((f"TRN {inv['client_trn']}", False))
         if inv.get("client_address"):
             bill.append((inv["client_address"], False))
-        proj_head = "  -  ".join(x for x in (inv.get("project", ""), (f"Plot No. {inv['plot']}" if inv.get("plot") else "")) if x)
+        proj_head = "  -  ".join(x for x in ((inv.get("project", "") or "").strip().rstrip("-").strip(),
+                                             (f"Plot No. {inv['plot']}" if inv.get("plot") else "")) if x)
         proj = [(proj_head, True), (inv.get("location", ""), False), (inv.get("work", ""), False)]
         for i, (head, rows) in enumerate((("Bill To", bill), ("Project", proj))):
             x = M + i * (bw + 8 * mm)
@@ -183,6 +184,12 @@ def build(inv, company=None, bank=None, signature=None):
     for _, w, _ in cols:
         xs.append(xs[-1] + w)
 
+    def col_rules(top, bot):
+        """Light column lines and side edges, header to the bottom of the table."""
+        c.setStrokeColor(RULE); c.setLineWidth(0.6)
+        for x0 in xs:
+            c.line(x0, top, x0, bot)
+
     def head_row(ty):
         hh = 9 * mm
         c.setFillColor(TINT); c.rect(M, ty - hh, tw, hh, stroke=0, fill=1)
@@ -193,16 +200,40 @@ def build(inv, company=None, bank=None, signature=None):
         return ty - hh
 
     FOOT_ROOM = 22 * mm           # above the footer band
-    END_ROOM = 92 * mm            # totals + payment + signature on the last page
+    # The closing block - totals, amount in words, payment details and the
+    # signature - measured before anything is drawn, so the line table can
+    # run down to meet it: one line or twenty, every invoice fills its A4
+    # page the same way an LPO does.
+    tx0 = W - M - 78 * mm
+    lwid = tx0 - M - 10 * mm
+    pw = Paragraph(amount_in_words(total), ParagraphStyle("w", fontName="Helvetica-BoldOblique", fontSize=9.2,
+                                                          leading=12.5, textColor=INK))
+    _, ph = pw.wrap(lwid, 40 * mm)
+    sig_wh = None
+    if signature and os.path.exists(signature):
+        try:
+            from PIL import Image
+            iw, ih = Image.open(signature).size
+            sh_ = min(54 * mm * ih / iw, 34 * mm)
+            sig_wh = (sh_ * iw / ih, sh_)
+        except Exception:
+            sig_wh = None
+    sh = sig_wh[1] if sig_wh else 30 * mm
+    bhgt = 9 * mm + 13 + len(bank) * 11 + 3
+    totals_drop = 8 * mm + 26 + 2 + 13 * mm - 5
+    head_drop = max(totals_drop, 11 * mm + ph) + 9 * mm
+    END_ROOM = head_drop + max(bhgt, 11.5 * mm + sh + 4) + 6 * mm
     ry = head_row(chrome(True))
+    table_top = ry
     for i, l in enumerate(lines, 1):
         d = str(l.get("description") or "")
         wrapped = simpleSplit(d, "Helvetica", 8.8, cols[1][1] - 6 * mm) or [""]
         rh = max(7.8 * mm, (len(wrapped) * 11) + 4.6 * mm)
         need_after = END_ROOM if i == len(lines) else 0
         if ry - rh < FOOT_ROOM + need_after:
+            col_rules(table_top, ry)
             c.showPage(); pages[0] += 1
-            ry = head_row(chrome(False))
+            ry = head_row(chrome(False)); table_top = ry
         a = round(float(l.get("amount") or 0), 2)
         pc = float(l.get("vat") or 0)
         v = round(a * pc / 100, 2)
@@ -223,12 +254,18 @@ def build(inv, company=None, bank=None, signature=None):
     if not lines:
         text(M + 4 * mm, ry - 6 * mm, "No lines.", 9, col=MUTED); ry -= 9 * mm
     if ry < FOOT_ROOM + END_ROOM:
+        col_rules(table_top, ry)
         c.showPage(); pages[0] += 1
-        ry = chrome(False)
+        ry = chrome(False); table_top = None
+    # The table runs on, its columns ruled, down to the closing block.
+    bottom = FOOT_ROOM + END_ROOM
+    if table_top is not None and ry > bottom:
+        ry = bottom
+    if table_top is not None:
+        col_rules(table_top, ry)
     c.setStrokeColor(CHAR); c.setLineWidth(1.2); c.line(M, ry, M + tw, ry)
 
     # ---- totals ----------------------------------------------------------------
-    tx0 = W - M - 78 * mm
     yy = ry - 8 * mm
     for k, v in (("Subtotal (excl. VAT)", money(sub)), ("VAT", money(vat))):
         text(tx0 + 4 * mm, yy, k, 8.8, col=MUTED)
@@ -244,11 +281,7 @@ def build(inv, company=None, bank=None, signature=None):
     totals_bottom = yy - bh + 5
 
     # ---- amount in words -------------------------------------------------------
-    lwid = tx0 - M - 10 * mm
     label(M, ry - 8 * mm, "Amount in words")
-    pw = Paragraph(amount_in_words(total), ParagraphStyle("w", fontName="Helvetica-BoldOblique", fontSize=9.2,
-                                                          leading=12.5, textColor=INK))
-    _, ph = pw.wrap(lwid, 40 * mm)
     text(M, ry - 11 * mm, "", 9, spacing=0)      # letter spacing back to normal for the paragraph
     c._charSpace = 0
     pw.drawOn(c, M, ry - 11 * mm - ph)
@@ -256,7 +289,6 @@ def build(inv, company=None, bank=None, signature=None):
     # ---- payment details + signature ---------------------------------------------
     by = min(totals_bottom, ry - 11 * mm - ph) - 9 * mm
     bwid = 96 * mm
-    bhgt = 9 * mm + 13 + len(bank) * 11 + 3
     c.setFillColor(TINT); c.roundRect(M, by - bhgt, bwid, bhgt, 2 * mm, stroke=0, fill=1)
     c.setFillColor(RED); c.rect(M, by - bhgt, 1.2 * mm, bhgt, stroke=0, fill=1)
     text(M + 5 * mm, by - 6 * mm, "PAYMENT DETAILS", 7.5, "Helvetica-Bold", RED, spacing=0.8)
@@ -267,15 +299,9 @@ def build(inv, company=None, bank=None, signature=None):
         yb -= 11
     sx = W - M - 70 * mm
     label(sx, by - 2 * mm, f"For {company['name']}")
-    sh = 30 * mm
-    if signature and os.path.exists(signature):
+    if sig_wh:
         try:
-            from PIL import Image
-            iw, ih = Image.open(signature).size
-            sw = 54 * mm
-            sh = min(sw * ih / iw, 34 * mm)
-            sw = sh * iw / ih
-            c.drawImage(ImageReader(signature), sx, by - 5 * mm - sh, width=sw, height=sh, mask="auto")
+            c.drawImage(ImageReader(signature), sx, by - 5 * mm - sh, width=sig_wh[0], height=sh, mask="auto")
         except Exception:
             pass
     c.setStrokeColor(CHAR); c.setLineWidth(0.6); c.line(sx, by - 7 * mm - sh, W - M, by - 7 * mm - sh)
