@@ -147,8 +147,12 @@ def build(inv, company=None, bank=None, signature=None):
         meta = [("Proforma No." if proforma else "Invoice No.", inv.get("number", "")),
                 ("Date" if proforma else "Invoice Date", inv.get("date_text", ""))]
         my = top - 20 * mm
+        # Labels sit just left of the longest value, not out at a fixed
+        # point - so number and date read as one tight block.
+        vw = max(stringWidth(str(v), "Helvetica-Bold", 9) for _, v in meta)
+        lx = W - M - vw - 6 * mm - max(stringWidth(k, "Helvetica", 8.5) for k, _ in meta)
         for k, v in meta:
-            text(W - M - 62 * mm, my, k, 8.5, col=MUTED)
+            text(lx, my, k, 8.5, col=MUTED)
             text(W - M, my, v, 9, "Helvetica-Bold", INK, "right")
             my -= 12
         # Bill To and Project panels
