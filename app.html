@@ -275,7 +275,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
   .inv-list tr.edit td { background: #FFF6DA; }
   .inv-list tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
-  .inv-list .acts { white-space: nowrap; text-align: right; } .inv-list .acts .btn { margin-left: 3px; }
+  .inv-list .acts { white-space: nowrap; text-align: right; } .inv-list .acts .btn { margin-left: 3px; padding: 5px 9px; font-size: 12px; }
   .inv-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; }
   .inv-tag.cx { background: #EEE; color: #888; } .inv-tag.conv { background: #E3F4E5; color: #2E7D32; }
   a.inv-tag { text-decoration: none; cursor: pointer; } a.inv-tag:hover { filter: brightness(.94); } .inv-tag.from { background: #EEF2F6; color: #44546A; }
@@ -1321,7 +1321,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="a9bcd19087af";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="33f0ae084a65";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2678,9 +2678,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </div>
             </details>
             <div class="grid-wrap" style="max-height:62vh; margin-top:10px;"><table class="hr-grid inv-list">
-              <thead><tr><th style="width:15%;" class="txt">Number</th><th style="width:9%;">Date</th><th class="txt" style="width:20%;">Client</th>
-                <th class="txt" style="width:17%;">Project</th><th style="width:10%; text-align:right;">Net</th><th style="width:8%; text-align:right;">VAT</th>
-                <th style="width:10%; text-align:right;">Total</th><th style="width:11%;"></th></tr></thead>
+              <thead><tr><th style="width:13%;" class="txt">Number</th><th style="width:8%;">Date</th><th class="txt" style="width:20%;">Client</th>
+                <th class="txt" style="width:21%;">Project</th><th style="width:9%; text-align:right;">Net</th><th style="width:7%; text-align:right;">VAT</th>
+                <th style="width:9%; text-align:right;">Total</th><th style="width:13%;"></th></tr></thead>
               <tbody id="inv-body"></tbody><tfoot id="inv-foot"></tfoot></table></div>
           </div>
         </div>
@@ -15247,8 +15247,18 @@ function hrMenu(btn, ev) {
   if (ev) ev.stopPropagation();
   const m = btn.closest(".hr-menu"), was = m.classList.contains("open");
   hrMenuClose();
-  if (!was) m.classList.add("open");
+  if (!was) {
+    m.classList.add("open");
+    const list = m.querySelector(".hr-menu-list"), r = btn.getBoundingClientRect();
+    if (list) {
+      list.style.position = "fixed"; list.style.right = "auto";
+      const w = list.offsetWidth, h = list.offsetHeight;
+      list.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px";
+      list.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - 4 - h) : r.bottom + 4) + "px";
+    }
+  }
 }
+window.addEventListener("scroll", () => hrMenuClose(), true);
 document.addEventListener("click", ev => { if (!ev.target.closest || !ev.target.closest(".hr-menu")) hrMenuClose(); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") hrMenuClose(); });
 
@@ -15718,9 +15728,9 @@ function invDrawList() {
                  : (!pro && r.from_proforma_id ? `<a href="#" class="inv-tag from" title="Open the proforma it was made from" onclick="event.preventDefault(); openInvoice(${r.from_proforma_id}, 'proforma')">from proforma &rsaquo;</a>` : ""));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
       <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag}</td><td>${accDmy(r.date)}</td>
-      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml([r.project_no, r.project].filter(Boolean).join(" - "))}</td>
+      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no && !(r.project || "").startsWith(r.project_no) ? [r.project_no, r.project].filter(Boolean).join(" - ") : (r.project || r.project_no || ""))}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
-      <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})">PDF</button>${cx ? "" :
+      <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})" title="Opens it with PDF, Excel, Print and Share">Preview</button>${cx ? "" :
         `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
           <button type="button" onclick="hrMenuClose(); invEdit(${r.id})">Edit</button>
           ${pro && !r.converted_to_id ? `<button type="button" onclick="hrMenuClose(); invConvert(${r.id})">Make tax invoice from this</button>` : ""}

@@ -303,14 +303,30 @@ def _pdf_response(db, x):
                              headers={"Content-Disposition": f'inline; filename="{name}.pdf"'})
 
 
+def _invoice_excel(db, x):
+    d = _dict(x)
+    rows = []
+    for i, l in enumerate(d["lines"], 1):
+        a = round(float(l.get("amount") or 0), 2); pc = float(l.get("vat") or 0); v = round(a * pc / 100, 2)
+        rows.append({"#": i, "Description": l.get("description") or "", "Net amount": a, "VAT %": f"{pc:g}%",
+                     "VAT": v, "Total (AED)": round(a + v, 2)})
+    title = ("Tax Invoice " if x.kind == "tax" else "Proforma Invoice ") + x.number
+    sub = "   |   ".join(v for v in (f"{x.inv_date:%d %b %Y}", d["client"], (f"TRN {d['client_trn']}" if d["client_trn"] else ""),
+                                       " - ".join(v for v in (d["project"], d["location"]) if v)) if v)
+    return M._hr_file(title, rows, sub, "excel", ["Net amount", "VAT", "Total (AED)"],
+                      ("Tax_Invoice_" if x.kind == "tax" else "Proforma_") + x.number.replace("/", "-"))
+
+
 @router.get("/export/accounts/invoice/{iid}")
-def export_invoice(iid: int, token: str, db: Session = Depends(get_db)):
+def export_invoice(iid: int, token: str, format: str = "pdf", db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
     if INV_RIGHT not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Invoices are for accounts only.")
     x = db.get(Invoice, iid)
     if not x:
         raise HTTPException(status_code=404, detail="That invoice is not on file.")
+    if format == "excel":
+        return _invoice_excel(db, x)
     return _pdf_response(db, x)
 
 
@@ -344,6 +360,7 @@ def view_invoice(iid: int, token: str, db: Session = Depends(get_db)):
 </style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{escape(sub)}</span><span class="sp"></span>
   <a class="btn dark" href="{escape(pdf)}" target="_blank">Download PDF</a>
+  <a class="btn" href="{escape(pdf)}&amp;format=excel">Download Excel</a>
   <a class="btn" href="{escape(pdf)}" target="_blank">Print</a>
   {export_web.share_button(pdf, title)}</div>
 {export_web.SHARE_JS}
