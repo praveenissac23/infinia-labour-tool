@@ -58,7 +58,9 @@ for f in ("pdf", "excel"):
     x = c.get(f"/export/accounts/credentials?format={f}&token={t}")
     ck(f"{f} export works", x.status_code == 200 and len(x.content) > 500, x.status_code)
 x = c.get(f"/export/accounts/credentials/view?token={t}")
-ck("preview lists the logins, never a password", x.status_code == 200 and "DEWA Business" in x.text and "S3cret" not in x.text and "4821" not in x.text, x.status_code)
+ck("preview lists the logins with their passwords and PINs", x.status_code == 200 and "DEWA Business" in x.text and "S3cret!x" in x.text and "4821" in x.text, x.status_code)
+s = SessionLocal(); ex = [a.detail for a in s.query(watch.WatchAlert).all() if a.action == "credentials_exported"]; s.close()
+ck("each export by the PRO alerts the admin", len(ex) == 3, ex)
 ts = c.post("/auth/download-token", headers=S).json()["token"]
 ck("export refused without the tab", c.get(f"/export/accounts/credentials/view?token={ts}").status_code == 403)
 g = c.get("/employees/accounts/credentials/generate", headers=P).json()["password"]

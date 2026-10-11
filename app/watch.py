@@ -46,6 +46,7 @@ FROM_LOG = {
     "invoice_edit": "Invoice edited",
     "invoice_cancel": "Invoice cancelled",
     "credential_shown": "Password shown / copied (Credentials)",
+    "credentials_exported": "Credentials list with passwords opened / downloaded",
     "credential_changed": "Saved login changed (Credentials)",
     "credential_deleted": "Saved login deleted (Credentials)",
     "pdc_edit": "PDC changed",

@@ -2727,7 +2727,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div id="cr-list"><div class="cr-empty">Loading...</div></div>
             </div>
             <div class="cr-card cr-add" id="cr-form">
-              <h2 id="cr-form-title">Add a login</h2><p>Paste the website - the name and logo fill in by themselves.</p>
+              <div style="display:flex; align-items:center; gap:8px;"><h2 id="cr-form-title" style="flex:1; margin:0 0 4px;">Add a login</h2><button class="btn btn-dark" id="cr-new" style="display:none; padding:5px 12px;" onclick="crReset(); document.getElementById('cr-url').focus();">+ New</button></div><p>Paste the website - the name and logo fill in by themselves.</p>
               <label class="cr-f"><span>Website or app</span><input type="text" id="cr-url" placeholder="e.g. dewa.gov.ae" oninput="crUrlTyped()"></label>
               <div class="cr-preview" id="cr-prev" style="display:none;"><div class="cr-logo" id="cr-prev-logo"></div><div style="min-width:0;"><div class="cr-name" id="cr-prev-name" style="font-size:13.5px"></div><div class="cr-url" id="cr-prev-dom"></div></div></div>
               <label class="cr-f"><span>Name</span><input type="text" id="cr-name" oninput="this.dataset.auto=''"></label>
@@ -2739,7 +2739,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="cr-f"><span>Notes</span><textarea id="cr-notes" placeholder="Security question, who holds the token, renewal..."></textarea></label>
               <div class="cr-actions"><button class="btn btn-primary" onclick="crSave()">Save</button><button class="btn btn-gray" id="cr-cancel" style="display:none;" onclick="crReset()">Cancel</button><button class="btn btn-gray" id="cr-del" style="display:none; color:#C0392B;" onclick="crDelete()">Delete</button></div>
               <div class="status-msg" id="cr-status" style="margin-top:8px;"></div>
-              <div class="cr-note">&#128274; Stored encrypted. Only admin, the PRO and the chief accountant can open this tab; every password shown or copied is recorded and the admin is alerted.</div>
+              <div class="cr-note">&#128274; Stored encrypted. Only admin, the PRO and the chief accountant can open this tab; every password shown, copied or exported is recorded and the admin is alerted. Preview, PDF and Excel include the passwords - keep them safe.</div>
             </div>
           </div>
         </div>
@@ -13633,7 +13633,7 @@ function crReset() {
   document.getElementById("cr-name").dataset.auto = "";
   document.getElementById("cr-prev").style.display = "none";
   document.getElementById("cr-form-title").textContent = "Add a login";
-  document.getElementById("cr-cancel").style.display = document.getElementById("cr-del").style.display = "none";
+  document.getElementById("cr-cancel").style.display = document.getElementById("cr-del").style.display = document.getElementById("cr-new").style.display = "none";
   document.getElementById("cr-secret-hint").textContent = "";
   document.getElementById("cr-cat").value = CR_CAT || "Other";
   crKind("login");
@@ -13652,7 +13652,7 @@ function crEdit(id) {
     document.getElementById("cr-prev-logo").outerHTML = crTile(r).replace('class="cr-logo', 'id="cr-prev-logo" class="cr-logo');
     document.getElementById("cr-prev-name").textContent = r.name; document.getElementById("cr-prev-dom").textContent = r.domain; }
   document.getElementById("cr-form-title").textContent = "Edit " + r.name;
-  document.getElementById("cr-cancel").style.display = document.getElementById("cr-del").style.display = "";
+  document.getElementById("cr-cancel").style.display = document.getElementById("cr-del").style.display = document.getElementById("cr-new").style.display = "";
   document.getElementById("cr-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 async function crSave() {

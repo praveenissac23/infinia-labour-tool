@@ -297,10 +297,12 @@ def _parts(db, cat=""):
     rows = db.query(Credential).order_by(Credential.category, Credential.name).all()
     if cat:
         rows = [c for c in rows if c.category == cat]
-    out = [{"Sr.": i, "Name": c.name, "Category": c.category, "Website": c.domain or "-",
+    out = [{"Sr.": i, "Name": c.name, "Category": c.category, "Website": c.url or c.domain or "-",
             "Type": {"login": "Login", "pin": "PIN", "note": "Note"}.get(c.kind, c.kind),
-            "Username": c.username or "-"} for i, c in enumerate(rows, 1)]
-    sub = f"{len(out)} logins{(' - ' + cat) if cat else ''}   |   passwords are not printed   |   As at {M._dubai_today():%d %b %Y}"
+            "Username": c.username or "-", "Password / PIN": unlock(c.secret) or "-",
+            "Notes": unlock(c.notes) or ""} for i, c in enumerate(rows, 1)]
+    sub = (f"{len(out)} logins{(' - ' + cat) if cat else ''}   |   CONFIDENTIAL - contains passwords   |   "
+           f"As at {M._dubai_today():%d %b %Y}")
     return out, "Credentials", sub
 
 
@@ -313,8 +315,9 @@ def _reader(token, db):
 
 @router.get("/export/accounts/credentials")
 def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Session = Depends(get_db)):
-    _reader(token, db)
+    u = _reader(token, db)
     rows, title, sub = _parts(db, cat)
+    M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - {'Excel' if format == 'excel' else 'PDF'}{(' - ' + cat) if cat else ''}")
     return M._hr_file(title, rows, sub, format, [], "Credentials", totals=[])
 
 
@@ -323,6 +326,7 @@ def view_credentials(token: str, cat: str = "", db: Session = Depends(get_db)):
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
     rows, title, sub = _parts(db, cat)
+    M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - preview{(' - ' + cat) if cat else ''}")
     url = f"/export/accounts/credentials?token={t}&cat={quote(cat)}"
     return M._preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
