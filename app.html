@@ -1326,7 +1326,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="ad1045e0081c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="54a62f5b89cb";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -14238,7 +14238,7 @@ function hrSearchSelect(sel) {
   input.placeholder = all ? `${all} - type to find` : "Type a name or code";
   const label = () => { const o = sel.selectedOptions[0]; return o && o.value ? o.textContent : ""; };
   // the x shows whenever someone is chosen, so the choice clears in one tap
-  const xShow = () => { xbtn.style.display = sel.value && !sel.disabled && document.activeElement !== input ? "flex" : "none"; };
+  const xShow = () => { xbtn.style.display = sel.value && !sel.disabled && list.style.display !== "block" && input.value ? "flex" : "none"; };
   const render = () => { if (document.activeElement !== input) input.value = label(); input.disabled = sel.disabled; xShow(); };
   let hit = 0;
   const show = () => {
@@ -14253,7 +14253,7 @@ function hrSearchSelect(sel) {
   let picking = false;
   const pick = v => {
     picking = true;
-    sel.value = v; input.value = label(); list.style.display = "none";
+    sel.value = v; input.value = label(); list.style.display = "none"; xShow();
     sel.dispatchEvent(new Event("change", { bubbles: true }));
     setTimeout(() => { picking = false; xShow(); }, 200);
   };
@@ -14261,14 +14261,14 @@ function hrSearchSelect(sel) {
   // Focus clears the box so the whole list shows and typing starts
   // fresh; leaving without choosing puts the current name back.
   input.addEventListener("focus", () => { input.value = ""; hit = 0; show(); xShow(); });
-  input.addEventListener("input", () => { hit = 0; show(); });
+  input.addEventListener("input", () => { hit = 0; show(); xShow(); });
   input.addEventListener("keydown", ev => {
     const rows = [...list.querySelectorAll("div[data-v]")];
     const base = all ? 1 : 0;
     if (ev.key === "ArrowDown") { hit = Math.min(hit + 1, rows.length - 1 - base); show(); ev.preventDefault(); }
     else if (ev.key === "ArrowUp") { hit = Math.max(hit - 1, all ? -1 : 0); show(); ev.preventDefault(); }
     else if (ev.key === "Enter") { const r = rows[hit + base]; if (r) pick(r.dataset.v); ev.preventDefault(); }
-    else if (ev.key === "Escape") { input.value = label(); list.style.display = "none"; }
+    else if (ev.key === "Escape") { input.value = label(); list.style.display = "none"; xShow(); }
   });
   list.addEventListener("mousedown", ev => { const r = ev.target.closest("div[data-v]"); if (r) { ev.preventDefault(); pick(r.dataset.v); } });
   list.addEventListener("touchend", ev => { const r = ev.target.closest("div[data-v]"); if (r) { ev.preventDefault(); pick(r.dataset.v); } });
