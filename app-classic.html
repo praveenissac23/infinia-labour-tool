@@ -524,6 +524,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   box-shadow: 0 10px 28px rgba(0,0,0,.12); min-width: 240px; }
   .hr-find-list > div { padding: 7px 11px; font-size: 13px; cursor: pointer; }
   .hr-find-list > div.on, .hr-find-list > div:hover { background: #F7F1EA; }
+  .hr-find-x { position: absolute; right: 8px; top: 50%; margin-top: -9px; width: 18px; height: 18px; display: none;
+    align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: #E4E0DA;
+    color: #5B6167; font: bold 13px/1 Arial, sans-serif; cursor: pointer; }
+  .hr-find-x:hover { background: #C0392B; color: #fff; }
+  .hr-find input { padding-right: 30px; }
   .hr-find-none { color: #999; cursor: default !important; }
   .hr-progress { border: 1px solid #EADFD2; background: #FCF9F4; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
   .hr-progress-top { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; color: #555; }
@@ -1928,6 +1933,36 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                     <th style="width:7%;"></th>
                   </tr></thead>
                   <tbody id="labinc-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Labour payroll > Gratuity: end-of-service gratuity to date for every labourer -->
+          <div id="pg-labgrat-card" style="display:none;">
+            <div class="card">
+              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <h2 style="margin:0 12px 0 0;">Labour gratuity to date</h2>
+                <label class="hr-field" style="flex-direction:row; align-items:center; gap:6px;"><input type="checkbox" id="labgrat-left" onchange="labGratLoad()"><span>Include those who left</span></label>
+                <button class="btn btn-dark" onclick="labGratOut('view')">Preview</button>
+                <button class="btn btn-dark" onclick="labGratOut('pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="labGratOut('excel')">Export Excel</button>
+                <span id="labgrat-total" style="margin-left:auto; font-weight:600;"></span>
+              </div>
+              <p style="font-size:12px; color:#888; margin:6px 0 0;">21 days' basic a year for the first 5 years, 30 after; from one year's service.
+                Absent and Leave days on the attendance are not service. Capped at 24 months' basic.</p>
+              <div class="auto-hint" id="labgrat-missing" style="display:none; margin-top:6px;"></div>
+              <div class="grid-wrap" style="max-height:62vh; margin-top:10px;">
+                <table class="hr-grid">
+                  <thead><tr>
+                    <th style="width:7%;">Code</th><th class="txt" style="width:17%;">Name</th><th class="txt" style="width:10%;">Trade</th>
+                    <th style="width:9%;">Joined</th><th class="num" style="width:7%;">Service days</th>
+                    <th class="num" style="width:7%;">Absent</th><th class="num" style="width:7%;">Leave</th>
+                    <th class="num" style="width:7%;">Years</th><th class="num" style="width:8%;">Basic</th>
+                    <th class="num" style="width:7%;">Day's basic</th><th class="num" style="width:9%;">Gratuity</th>
+                    <th class="txt" style="width:10%;">Note</th>
+                  </tr></thead>
+                  <tbody id="labgrat-body"></tbody>
                 </table>
               </div>
             </div>
@@ -13531,6 +13566,31 @@ async function labIncSaveEdit() {
     labIncCancelEdit(); document.getElementById("labinc-emp").innerHTML = ""; labIncLoad();
   } catch (e) { showStatus("labinc-status", "err", errText(e)); }
 }
+// ---- Labour payroll > Gratuity ----------
+async function labGratLoad() {
+  document.getElementById("pg-labgrat-card").style.display = "";
+  const body = document.getElementById("labgrat-body"), left = document.getElementById("labgrat-left").checked;
+  body.innerHTML = `<tr><td colspan="12" class="hr-nil" style="padding:14px;">Loading...</td></tr>`;
+  let d;
+  try { d = await apiCall("/employees/labour-gratuity?include_left=" + left); }
+  catch (e) { body.innerHTML = `<tr><td colspan="12" class="hr-nil" style="padding:14px;">${escapeHtml(errText(e))}</td></tr>`; return; }
+  document.getElementById("labgrat-total").textContent = "Total " + hrMoney(d.total);
+  const miss = (d.rows || []).filter(r => r.Joined === "-").length, mb = document.getElementById("labgrat-missing");
+  mb.style.display = miss ? "" : "none";
+  mb.innerHTML = miss ? `${miss} labourer${miss > 1 ? "s have" : " has"} no joining date, so no gratuity is worked out yet.
+    <a href="#" onclick="pgGo('attendance'); pgTab('masterdata'); return false;">Add it on Labour master data</a>.` : "";
+  body.innerHTML = (d.rows || []).map(r => `<tr><td>${escapeHtml(r.Code)}</td><td class="txt">${escapeHtml(r.Name)}</td><td class="txt">${escapeHtml(r.Trade)}</td>
+    <td>${escapeHtml(r.Joined)}</td><td class="num">${r["Service days"]}</td><td class="num">${r["Absent (not service)"] || ""}</td>
+    <td class="num">${r["Leave (not service)"] || ""}</td><td class="num">${r["Years counted"]}</td><td class="num">${hrMoney(r.Basic)}</td>
+    <td class="num">${hrMoney(r["Day's basic"])}</td><td class="num" style="font-weight:600;">${r["Gratuity to date"] ? hrMoney(r["Gratuity to date"]) : "-"}</td>
+    <td class="txt" style="color:#888;">${escapeHtml(r.Note)}</td></tr>`).join("")
+    || `<tr><td colspan="12" class="hr-nil" style="padding:14px;">No labourers.</td></tr>`;
+}
+async function labGratOut(fmt) {
+  const left = document.getElementById("labgrat-left").checked;
+  const base = fmt === "view" ? "/export/labour-gratuity/view" : "/export/labour-gratuity";
+  window.open(`${API}${base}?include_left=${left}&token=${await hrToken()}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+}
 async function labIncOut(fmt) {
   const who = document.getElementById("labinc-filter").value;
   const base = fmt === "view" ? "/export/labour-increments/view" : "/export/labour-increments";
@@ -13931,14 +13991,16 @@ function hrSearchSelect(sel) {
   const wrap = document.createElement("div");
   wrap.className = "hr-find";
   wrap.style.width = sel.style.width || "230px";
-  wrap.innerHTML = `<input type="text" autocomplete="off" spellcheck="false"><div class="hr-find-list"></div>`;
+  wrap.innerHTML = `<input type="text" autocomplete="off" spellcheck="false" data-noclear><button type="button" class="hr-find-x" tabindex="-1" title="Clear">\u00d7</button><div class="hr-find-list"></div>`;
   sel.after(wrap);
   sel.hidden = true;
-  const input = wrap.querySelector("input"), list = wrap.querySelector(".hr-find-list");
+  const input = wrap.querySelector("input"), list = wrap.querySelector(".hr-find-list"), xbtn = wrap.querySelector(".hr-find-x");
   const all = sel.dataset.all;
   input.placeholder = all ? `${all} - type to find` : "Type a name or code";
   const label = () => { const o = sel.selectedOptions[0]; return o && o.value ? o.textContent : ""; };
-  const render = () => { if (document.activeElement !== input) input.value = label(); input.disabled = sel.disabled; };
+  // the x shows whenever someone is chosen, so the choice clears in one tap
+  const xShow = () => { xbtn.style.display = sel.value && !sel.disabled && document.activeElement !== input ? "flex" : "none"; };
+  const render = () => { if (document.activeElement !== input) input.value = label(); input.disabled = sel.disabled; xShow(); };
   let hit = 0;
   const show = () => {
     const q = input.value.toLowerCase().trim();
@@ -13954,11 +14016,12 @@ function hrSearchSelect(sel) {
     picking = true;
     sel.value = v; input.value = label(); list.style.display = "none";
     sel.dispatchEvent(new Event("change", { bubbles: true }));
-    setTimeout(() => { picking = false; }, 200);
+    setTimeout(() => { picking = false; xShow(); }, 200);
   };
+  xbtn.addEventListener("mousedown", ev => { ev.preventDefault(); ev.stopPropagation(); input.blur(); pick(""); });
   // Focus clears the box so the whole list shows and typing starts
   // fresh; leaving without choosing puts the current name back.
-  input.addEventListener("focus", () => { input.value = ""; hit = 0; show(); });
+  input.addEventListener("focus", () => { input.value = ""; hit = 0; show(); xShow(); });
   input.addEventListener("input", () => { hit = 0; show(); });
   input.addEventListener("keydown", ev => {
     const rows = [...list.querySelectorAll("div[data-v]")];
@@ -13973,7 +14036,7 @@ function hrSearchSelect(sel) {
   input.addEventListener("blur", () => setTimeout(() => {
     if (picking) return;
     list.style.display = "none";
-    input.value = label();
+    input.value = label(); xShow();
   }, 150));
   hrBindSelect(sel, render);
   render();

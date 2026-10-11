@@ -220,6 +220,16 @@
       "grant": [
        "combine"
       ]
+     },
+     {
+      "id": "payroll.labourpay.gratuity",
+      "label": "Gratuity",
+      "right": [
+       "combine"
+      ],
+      "grant": [
+       "combine"
+      ]
      }
     ]
    },

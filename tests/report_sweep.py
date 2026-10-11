@@ -184,6 +184,10 @@ REPORTS["labour salary history"] = (
     f"/export/labour-increments/view?token={T}",
     f"/export/labour-increments?token={T}&format=pdf",
     f"/export/labour-increments?token={T}&format=excel")
+REPORTS["labour gratuity"] = (
+    f"/export/labour-gratuity/view?token={T}",
+    f"/export/labour-gratuity?token={T}&format=pdf",
+    f"/export/labour-gratuity?token={T}&format=excel")
 REPORTS["daily attendance report"] = (
     f"/export/attendance/daily/view?token={T}&day=2026-09-03",
     f"/export/attendance/daily?token={T}&day=2026-09-03&format=pdf",
@@ -308,7 +312,7 @@ checked_paths = {
     "/export/payroll/items/view", "/export/payroll/increments/view",
     "/export/payroll/gratuity/view",
     # Company & vehicle expiries: checked page by page by export_audit.js.
-    "/export/payroll/expiries/view", "/export/attendance/daily/view", "/export/labour-increments/view",
+    "/export/payroll/expiries/view", "/export/attendance/daily/view", "/export/labour-increments/view", "/export/labour-gratuity/view",
 }
 missed = sorted(set(views) - checked_paths)
 ck("every preview endpoint is covered by this sweep", not missed, missed)

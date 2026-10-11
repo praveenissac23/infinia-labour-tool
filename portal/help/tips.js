@@ -93,10 +93,12 @@
   }
   document.addEventListener("focusin", e => { if (CLEARABLE(e.target)) showX(e.target); else if (xb && e.target !== xb) { xfor = null; xb.style.display = "none"; } });
   document.addEventListener("input", e => { if (e.target === xfor) placeX(); });
+  document.addEventListener("change", e => { if (e.target === xfor) placeX(); });
+  setInterval(() => { if (xfor && document.activeElement === xfor) placeX(); }, 400);
   // Also when the pointer is over a filled box, not only when it has the cursor.
   document.addEventListener("mouseover", e => {
     const el = e.target;
-    if (CLEARABLE(el) && el.value && el !== xfor) showX(el);
+    if (CLEARABLE(el) && el.value && (el !== xfor || !xb || xb.style.display === "none")) showX(el);
   });
   document.addEventListener("mouseout", e => {
     if (e.target === xfor && document.activeElement !== xfor && e.relatedTarget !== xb && xb) setTimeout(() => {
