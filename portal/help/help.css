@@ -86,3 +86,11 @@
 .help-tipbox { position: fixed; z-index: 3000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif;
   padding: 8px 10px; border-radius: 7px; box-shadow: 0 6px 18px rgba(0,0,0,.2); pointer-events: none; display: none; }
 .help-tipbox.on { display: block; }
+
+/* Spelling hint: one quiet line under the box; never takes the cursor */
+.spell-hint { position: fixed; z-index: 2900; background: #FFFDF6; border: 1px solid #EADBB4; color: #5A4A20; border-radius: 8px;
+  padding: 5px 6px 5px 10px; font: 12.5px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  box-shadow: 0 4px 14px rgba(0,0,0,.10); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.spell-hint b { color: #1F5E3B; }
+.spell-hint button { border: 1px solid #E2D6B8; background: #fff; border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; color: #5A4A20; }
+.spell-hint button[data-use] { background: #EAF5EE; border-color: #CBE3D3; color: #1F5E3B; font-weight: 600; }

@@ -962,6 +962,8 @@ def build():
                  f'<script src="/portal/help/auto_guides.js?v={_v("portal/help/auto_guides.js")}"></script>\n'
                  f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}"></script>\n'
                  f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>\n'
+                 f'<script src="/portal/help/words.js?v={_v("portal/help/words.js")}" defer></script>\n'
+                 f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}"></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)
     # A browser can keep an old app.html for a while after a deploy (no
@@ -1028,6 +1030,8 @@ def brand_hand_written(menu_rights=None):
                  f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">'
                  f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>'
                  f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>'
+                 f'<script src="/portal/help/words.js?v={_v("portal/help/words.js")}" defer></script>'
+                 f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:
             new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)

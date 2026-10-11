@@ -9298,6 +9298,36 @@ def _loan_dict(l, emp=None):
                             for r in sorted(l.repayments, key=lambda r: r.paid_on)]}
 
 
+@app.get("/employees/vocab")
+def app_vocabulary(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """The words this company actually uses - people, suppliers, sites,
+    materials, and anything typed often in petty cash - so the spelling
+    hint never questions a name or a trade word it has seen before."""
+    import collections
+    count = collections.Counter()
+    names = set()
+    def take(text, always=False):
+        for w in re.findall(r"[A-Za-z]{3,}", str(text or "")):
+            w = w.lower()
+            count[w] += 1
+            if always:
+                names.add(w)
+    for e in db.query(models.Employee.name).all():
+        take(e[0], True)
+    for e in db.query(models.Engineer.name).all():
+        take(e[0], True)
+    for x in db.query(models.Supplier.name).all():
+        take(x[0], True)
+    for x in db.query(models.StoreItem.name).all():
+        take(x[0], True)
+    for x in db.query(models.Site.project_name, models.Site.address).all():
+        take(x[0], True); take(x[1], True)
+    for x in db.query(models.PettyCash.description, models.PettyCash.supplier).order_by(models.PettyCash.id.desc()).limit(6000).all():
+        take(x[0]); take(x[1])
+    words = names | {w for w, n in count.items() if n >= 3}
+    return {"words": sorted(words)[:12000]}
+
+
 def tidy_text(v):
     """Typed in capitals (or all small letters), shown as a sentence:
     "SAME MONTH DEDUCTION" -> "Same month deduction". Text already mixed
