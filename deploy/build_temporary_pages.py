@@ -76,13 +76,15 @@ PAGES = {
     # permits, licences, vehicles) - on a page of their own, with a
     # right of their own that shows no pay.
     "expiry": ("Expiry Reminder", [
-        tab("expiry", "expiry", "Expiry reminder", ["expiry", "pdc"], subs=[
+        tab("expiry", "expiry", "Expiry reminder", ["expiry", "pdc", "security_cheques"], subs=[
             # Everything that expires in one list, first - so nothing is missed.
             sub("all", "All together", screen="expiry", right="expiry", go="hrDocMode('all')"),
             sub("people", "People", screen="expiry", right="expiry", go="hrDocMode('people')"),
             sub("company", "Company & other documents", screen="expiry", right="expiry", go="hrDocMode('company')"),
             # Post-dated cheques: a screen of its own and a right of its own.
-            sub("pdc", "PDCs", screen="pdc", right="pdc")])]),
+            sub("pdc", "PDCs", screen="pdc", right="pdc"),
+            # Guarantee cheques left with others, usually undated: when to collect them back.
+            sub("security", "Security cheques", screen="seccheque", right="security_cheques")])]),
     # Accounts: invoices, and the cash register behind its own password.
     "accounts": ("Accounts", [
         tab("taxinv", "invoices", "Tax Invoice", "accounts_invoices", go="invOpen('tax')"),

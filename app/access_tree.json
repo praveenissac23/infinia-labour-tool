@@ -520,6 +520,16 @@
       "grant": [
        "pdc"
       ]
+     },
+     {
+      "id": "expiry.expiry.security",
+      "label": "Security cheques",
+      "right": [
+       "security_cheques"
+      ],
+      "grant": [
+       "security_cheques"
+      ]
      }
     ]
    }

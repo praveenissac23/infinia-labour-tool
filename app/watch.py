@@ -49,6 +49,8 @@ FROM_LOG = {
     "credentials_exported": "Credentials list with passwords opened / downloaded",
     "credential_changed": "Saved login changed (Credentials)",
     "credential_deleted": "Saved login deleted (Credentials)",
+    "seccheque_changed": "Security cheque changed",
+    "seccheque_deleted": "Security cheque deleted",
     "pdc_edit": "PDC changed",
     "pdc_delete": "PDC deleted",
     "petty_cash_edit": "Petty cash line changed",

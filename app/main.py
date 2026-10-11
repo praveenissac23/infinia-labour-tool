@@ -217,6 +217,11 @@ def seed_on_startup():
             _cr.grant_once(db)
         except Exception as e:
             print("credentials start-up:", e)
+        try:
+            import seccheque as _sc
+            _sc.grant_once(db)
+        except Exception as e:
+            print("security cheques start-up:", e)
         _jomon_not_admin(db)
         _drop_market_estimates(db)
         _materials_from_old_lpos(db)
@@ -327,6 +332,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # PDC tracker: post-dated cheques - admin and the chief
                # accountant only; no role has it by default.
                "pdc",
+               # Security cheques left with others as a guarantee -
+               # admin, the PRO and the chief accountant.
+               "security_cheques",
                # Accounts: invoices, and the cash register behind its own
                # password. No role has them by default.
                "accounts_invoices", "accounts_register",
@@ -12119,6 +12127,7 @@ NOTIF_GROUPS = [
     ("attendance", "Attendance - missing or incomplete days", ("attendance",), ("attendance",)),
     ("expiry", "Expiry reminder - documents, licences, NOCs", ("expiry",), ("expiry",)),
     ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
+    ("seccheque", "Security cheques to collect back", ("seccheque",), ("security_cheques",)),
     ("watch", "Watch - risky changes by staff (admin only)", ("watch",), ("__admin__",)),
 ]
 NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
@@ -12312,6 +12321,15 @@ def get_notifications(db: Session = Depends(get_db),
             pass
 
     # ---- PDCs: admin and the pdc right only - nobody else sees a word -----
+    if "security_cheques" in allowed:
+        try:
+            import seccheque as _sc
+            n = _sc.notification(db, today)
+            if n:
+                out.append(n)
+        except Exception:
+            pass
+
     if "pdc" in allowed:
         try:
             import pdc as _pdc
@@ -12473,6 +12491,9 @@ import pettycash  # noqa: E402
 app.include_router(pettycash.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
+import seccheque  # noqa: E402  - Expiry Reminder > Security cheques
+app.include_router(seccheque.router)
+seccheque.SecurityCheque.__table__.create(bind=engine, checkfirst=True)
 import expiry  # noqa: E402
 app.include_router(expiry.router)
 import accounts  # noqa: E402
