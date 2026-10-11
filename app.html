@@ -1321,7 +1321,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="c9726bf0d657";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="be881011a30d";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -4197,10 +4197,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="hr-field"><span>Staff</span><select id="hr-inc-emp" class="hr-staff-pick" style="width:230px;" onchange="hrIncDefaults()"></select></label>
                 <label class="hr-field"><span>Effective from</span><input type="date" id="hr-inc-date" style="width:150px;"></label>
                 <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;" oninput="hrIncDefaults()"></label>
-                <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;">
+                <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;" disabled>
                   <option value="allowance">Allowance (house rule)</option>
-                  <option value="basic">The basic</option>
-                  <option value="split">Split 40 / 60</option>
                 </select></label>
                 <label class="hr-field"><span>Reason</span><input type="text" id="hr-inc-reason" style="width:200px;"></label>
                 <button class="btn btn-primary" onclick="addIncrement()">Record increment</button>
@@ -17435,7 +17433,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=8eb4e278b9">
-<script src="/portal/help/guides.js?v=e86dc6455d"></script>
+<script src="/portal/help/guides.js?v=f076b0d854"></script>
 <script src="/portal/help/auto_guides.js?v=bc4c982cb2"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=9de38a962d"></script>

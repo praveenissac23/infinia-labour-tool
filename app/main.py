@@ -9189,6 +9189,11 @@ def add_increment(payload: dict = Body(...), db: Session = Depends(get_db),
     if amount == 0:
         raise HTTPException(status_code=400, detail="How much is the increment?")
     to_basic = float(payload.get("to_basic") or 0)
+    if e.staff:
+        # House rule (from 11 Oct 2026): an office employee joins on basic
+        # 40% of the salary, and every increment after that goes onto the
+        # allowance - never the basic. Increments recorded before stay as they were.
+        to_basic = 0.0
     if to_basic > amount + 1e-9:
         raise HTTPException(status_code=400,
             detail=f"Only {amount:,.2f} is being given - {to_basic:,.2f} cannot go to basic.")

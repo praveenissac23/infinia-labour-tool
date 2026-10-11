@@ -488,7 +488,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
     <div class="row">
       <label class="fld"><span>Rise per month *</span><input type="number" id="i-amount" style="width:130px;" step="0.01" placeholder="e.g. 500"></label>
       <label class="fld"><span>From *</span><input type="date" id="i-effective_on"></label>
-      <label class="fld"><span>Of which to basic</span><input type="number" id="i-to_basic" style="width:130px;" step="0.01" placeholder="0"></label>
+      <label class="fld" id="i-to_basic-f"><span>Of which to basic</span><input type="number" id="i-to_basic" style="width:130px;" step="0.01" placeholder="0"></label>
       <label class="fld"><span>Reason</span><input type="text" id="i-reason" style="width:240px;" placeholder="e.g. Annual review 2026"></label>
     </div>
     <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveInc()">Record increment</button><button class="btn btn-gray" onclick="closeDlg('dlg-inc')">Cancel</button><span class="muted" id="inc-msg" style="color:#B03A2E;"></span></div>
@@ -988,6 +988,8 @@ async function saveLoan() {
 }
 function openInc() {
   ["i-amount", "i-to_basic", "i-reason"].forEach(id => setVal(id, "")); setVal("i-effective_on", new Date().toISOString().slice(0, 10));
+  // Office staff: every increment goes onto the allowance (house rule), so there is no basic share to ask for.
+  document.getElementById("i-to_basic-f").style.display = P.file.person.group === "labour" ? "" : "none";
   document.getElementById("inc-title").textContent = "Increment · " + P.file.person.name; document.getElementById("inc-msg").textContent = ""; openDlg("dlg-inc");
 }
 async function saveInc() {
@@ -1444,6 +1446,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 window.pgRefresh = async () => { if (!ME) return start(); try { await loadPeople(); } catch (e) {} };
 if (TOKEN) start(); else signInBox();
 </script>
-<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=8eb4e278b9"><script src="/portal/help/guides.js?v=e86dc6455d"></script><script src="/portal/help/tips.js?v=9de38a962d"></script><!--/help-tips-->
+<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=8eb4e278b9"><script src="/portal/help/guides.js?v=f076b0d854"></script><script src="/portal/help/tips.js?v=9de38a962d"></script><!--/help-tips-->
 </body>
 </html>

@@ -3991,10 +3991,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="hr-field"><span>Staff</span><select id="hr-inc-emp" class="hr-staff-pick" style="width:230px;" onchange="hrIncDefaults()"></select></label>
                 <label class="hr-field"><span>Effective from</span><input type="date" id="hr-inc-date" style="width:150px;"></label>
                 <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;" oninput="hrIncDefaults()"></label>
-                <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;">
+                <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;" disabled>
                   <option value="allowance">Allowance (house rule)</option>
-                  <option value="basic">The basic</option>
-                  <option value="split">Split 40 / 60</option>
                 </select></label>
                 <label class="hr-field"><span>Reason</span><input type="text" id="hr-inc-reason" style="width:200px;"></label>
                 <button class="btn btn-primary" onclick="addIncrement()">Record increment</button>
