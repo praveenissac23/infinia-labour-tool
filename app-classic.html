@@ -13552,7 +13552,7 @@ function crDraw() {
   const q = (document.getElementById("cr-q").value || "").toLowerCase().trim();
   const count = c => CR_ROWS.filter(r => !c || r.category === c).length;
   document.getElementById("cr-chips").innerHTML = [["", "All"], ...CR_CATS.filter(c => count(c)).map(c => [c, c])]
-    .map(([c, l]) => `<span class="cr-chip${CR_CAT === c ? " on" : ""}" onclick="CR_CAT=${jsq(c)}; crDraw()">${escapeHtml(l)} <b>${count(c)}</b></span>`).join("");
+    .map(([c, l]) => `<span class="cr-chip${CR_CAT === c ? " on" : ""}" onclick="CR_CAT=${escapeAttr(jsq(c))}; crDraw()">${escapeHtml(l)} <b>${count(c)}</b></span>`).join("");
   const rows = CR_ROWS.filter(r => (!CR_CAT || r.category === CR_CAT) &&
     (!q || [r.name, r.domain, r.url, r.username, r.category].join(" ").toLowerCase().includes(q)));
   const lab = r => r.kind === "pin" ? "PIN" : r.kind === "note" ? "Note" : "Pass";
@@ -13560,7 +13560,7 @@ function crDraw() {
     const shown = CR_SHOWN[r.id];
     const link = r.url ? `<a href="${escapeAttr(/^https?:/i.test(r.url) ? r.url : "https://" + r.url)}" target="_blank" rel="noopener">${escapeHtml(r.domain || r.url)} &#8599;</a>` : (r.kind === "pin" ? "PIN only" : r.kind === "note" ? "Note" : "");
     const user = r.kind === "login" && r.username
-      ? `<div class="cr-field"><span class="lab">User</span><span class="val">${escapeHtml(r.username)}</span><button class="cr-ic" title="Copy username" onclick="crCopyText(${jsq(r.username)}, this)">&#10697;</button></div>` : "<div></div>";
+      ? `<div class="cr-field"><span class="lab">User</span><span class="val">${escapeHtml(r.username)}</span><button class="cr-ic" title="Copy username" onclick="crCopyText(${escapeAttr(jsq(r.username))}, this)">&#10697;</button></div>` : "<div></div>";
     const sec = (r.has_secret || (r.kind === "note" && r.has_notes))
       ? `<div class="cr-field"><span class="lab">${lab(r)}</span><span class="val ${shown ? "" : "cr-dots"}">${shown ? escapeHtml(r.kind === "note" ? "see below" : shown.secret) : (r.kind === "pin" ? "&bull;&bull;&bull;&bull;" : "&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;")}</span>
          <button class="cr-ic" title="${shown ? "Hide" : "Show"}" onclick="crShow(${r.id})">${shown ? "&#128584;" : "&#128065;"}</button>
@@ -16429,7 +16429,7 @@ function bdayShow() {
   const names = ppl.length === 1 ? bdayTitle(ppl[0].name) : ppl.length === 2 ? `${bdayFirst(ppl[0].name)} & ${bdayFirst(ppl[1].name)}` : `${ppl.length} of our team`;
   const row = p => {
     const init = bdayTitle(p.name).split(/\s+/).slice(0, 2).map(w => w[0]).join("");
-    const nm = !p.contact && staffCan(!p.staff) ? `<a href="#" onclick="bdayClose(); openStaffFile(${jsq(p.emp_no)}, ''); return false;">${escapeHtml(bdayTitle(p.name))}</a>` : escapeHtml(bdayTitle(p.name));
+    const nm = !p.contact && staffCan(!p.staff) ? `<a href="#" onclick="bdayClose(); openStaffFile(${escapeAttr(jsq(p.emp_no))}, ''); return false;">${escapeHtml(bdayTitle(p.name))}</a>` : escapeHtml(bdayTitle(p.name));
     return `<div class="bday-person"><div class="bday-av">${escapeHtml(init)}</div><div><div class="bday-name">${nm}</div>
       <div class="bday-sub">${escapeHtml([p.role, p.group_label, p.emp_no].filter(Boolean).join(" \u00b7 "))}${p.age > 0 && p.age < 100 ? ` \u00b7 turns ${p.age}` : ""}</div></div></div>`;
   };
