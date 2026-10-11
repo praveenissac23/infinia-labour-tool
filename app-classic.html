@@ -6960,12 +6960,31 @@ async function fillNotificationLines(id) {
 const NOTIF_ICON = { request: "\u{1F4E5}", late: "\u23F0", status: "\u{1F4E6}", low: "\u{1F4C9}",
                      rental: "\u{1F501}", attendance: "\u{1F4CB}", purchase: "\u{1F9FE}", expiry: "\u{1F4C4}", pdc: "\u{1F4B3}" };
 
+// The number on the home-screen icon follows the bell: unread items only,
+// gone when everything is read. Opening the app also clears the
+// notifications left on the lock screen - they have been seen.
+function appBadgeSync(n) {
+  try {
+    if (!("setAppBadge" in navigator)) return;
+    (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+  } catch (e) {}
+}
+function appClearShown() {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.getRegistration().then(r => r && r.getNotifications ? r.getNotifications() : [])
+      .then(list => (list || []).forEach(x => x.close())).catch(() => {});
+  } catch (e) {}
+}
+appClearShown();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { appClearShown(); if (typeof renderBell === "function" && typeof notifications !== "undefined") renderBell(); } });
 function renderBell() {
   const wrap = document.getElementById("bell-wrap");
   if (!wrap) return;
   wrap.style.display = "inline-block"; wrap.style.visibility = "visible";
   const read = readIds();
   const unread = notifications.filter(n => !read.has(n.id));
+  appBadgeSync(unread.length);
   const badge = document.getElementById("bell-count");
   if (unread.length) {
     badge.textContent = unread.length > 99 ? "99+" : unread.length;
