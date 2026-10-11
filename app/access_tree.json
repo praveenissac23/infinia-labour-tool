@@ -626,6 +626,16 @@
     ]
    },
    {
+    "id": "accounts.credentials",
+    "label": "Credentials",
+    "right": [
+     "accounts_credentials"
+    ],
+    "grant": [
+     "accounts_credentials"
+    ]
+   },
+   {
     "id": "accounts.register",
     "label": "Register (cash register, own password)",
     "right": [

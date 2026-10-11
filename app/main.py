@@ -212,6 +212,11 @@ def seed_on_startup():
         _grant_petty_site_to_existing(db)
         _grant_director_petty_to_chief_accountant(db)
         _grant_projects_to_chief_accountant(db)
+        try:
+            import credentials as _cr
+            _cr.grant_once(db)
+        except Exception as e:
+            print("credentials start-up:", e)
         _jomon_not_admin(db)
         _drop_market_estimates(db)
         _materials_from_old_lpos(db)
@@ -331,6 +336,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Project expense: cost per project from labour, LPOs, store
                # issues and petty cash - admin and the chief accountant.
                "accounts_expense",
+               # Credentials: the company's website and app logins -
+               # admin, the PRO and the chief accountant.
+               "accounts_credentials",
                # Settings, tab by tab. "settings" itself (own password,
                # take a backup) is on every login. These were admin only;
                # now each can be given to whoever should have it. Nobody
@@ -12478,6 +12486,9 @@ import agent  # noqa: E402  - Claude connector: ask the app anything, read-only
 app.include_router(agent.router)
 import projexpense  # noqa: E402  - Accounts > Project expense: cost per project
 app.include_router(projexpense.router)
+import credentials  # noqa: E402  - Accounts > Credentials: the company's logins
+app.include_router(credentials.router)
+credentials.Credential.__table__.create(bind=engine, checkfirst=True)
 
 
 @app.on_event("startup")

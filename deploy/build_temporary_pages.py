@@ -98,6 +98,8 @@ PAGES = {
         tab("projects", "projpay", "Project payments", "accounts_projects"),
         # What each project has cost: labour by site, LPOs, store issues, petty cash.
         tab("projexp", "projexp", "Project expense", "accounts_expense"),
+        # Website and app logins: admin, the PRO and the chief accountant.
+        tab("credentials", "credentials", "Credentials", "accounts_credentials"),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     "store": ("Store & Purchasing", [

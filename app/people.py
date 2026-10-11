@@ -1604,6 +1604,7 @@ SCREEN_LABELS = {
     "accounts_register": "Cash register (opens with its own password)",
     "accounts_projects": "Project payment tracker (admin and chief accountant)",
     "accounts_expense": "Project expense - cost per project incl. labour by site (admin and chief accountant)",
+    "accounts_credentials": "Credentials - website and app logins, passwords, PINs (admin, PRO, chief accountant)",
     "settings_company": "General - store in-charge, LPO and invoice signatures",
     "settings_data": "General - restore or delete backups (replaces live data)",
     "settings_companies": "Companies & sites",
@@ -1619,7 +1620,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Expiry Reminder", ["expiry", "pdc"]),
-    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_expense", "accounts_register"]),
+    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_expense", "accounts_credentials", "accounts_register"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings_company", "settings_data", "settings_companies", "settings_logins", "settings_access", "activity"]),
 ]
