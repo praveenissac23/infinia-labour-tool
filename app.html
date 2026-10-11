@@ -322,7 +322,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .sc-und { display: flex; gap: 8px; align-items: center; height: 36px; }
   .sc-und label { display: flex; gap: 5px; align-items: center; font-size: 13px; white-space: nowrap; }
   .sc-und input[type=checkbox] { width: auto !important; accent-color: #C0392B; }
-  .sc-quick { display: flex; gap: 10px; margin-top: 3px; font-size: 11.5px; }
+  .sc-remind-f > span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .sc-quick { display: inline-flex; gap: 7px; white-space: nowrap; margin-left: auto; font-style: normal; font-size: 11px; text-transform: none; letter-spacing: 0; order: 9; }
   .sc-quick a { color: #C0392B; text-decoration: none; font-weight: 600; }
   .sc-due { color: #B7322A; font-weight: 700; } .sc-soon { color: #9A6700; font-weight: 600; }
   .sc-pill { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; background: #EEF5EE; color: #2E7D32; }
@@ -1391,7 +1392,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="10a0eaa8596e";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="95883c2df853";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2645,7 +2646,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="hr-field"><span>Cheque no</span><input type="text" id="sc-no" placeholder="e.g. 000451"></label>
               <label class="hr-field"><span>Cheque date</span><span class="sc-und"><label><input type="checkbox" id="sc-undated" checked onchange="scUndated()"> Undated</label><input type="date" id="sc-date" style="display:none;"></span></label>
               <label class="hr-field"><span>Given on</span><input type="date" id="sc-given"></label>
-              <label class="hr-field"><span>Collect back after</span><input type="date" id="sc-remind"><span class="sc-quick"><a href="#" onclick="scQuick(3);return false;">+3 m</a><a href="#" onclick="scQuick(6);return false;">+6 m</a><a href="#" onclick="scQuick(12);return false;">+1 yr</a></span></label>
+              <label class="hr-field sc-remind-f"><span>Collect back after<em class="sc-quick"><a href="#" onclick="scQuick(3);return false;">+3m</a><a href="#" onclick="scQuick(6);return false;">+6m</a><a href="#" onclick="scQuick(12);return false;">+1y</a></em></span><input type="date" id="sc-remind"></label>
               <label class="hr-field" id="sc-st-f" style="display:none;"><span>Status</span><select id="sc-st" class="hr-dd"><option value="held">With them</option><option value="returned">Collected back</option><option value="encashed">Encashed</option><option value="cancelled">Cancelled</option></select></label>
               <label class="hr-field sc-wide"><span>Notes</span><input type="text" id="sc-notes" placeholder="Who holds it there, contact, condition to release..."></label>
               <div class="pdc-btns"><button class="btn btn-primary" id="sc-save" onclick="scSave()">Add</button><button class="btn btn-gray" id="sc-del" style="display:none; color:#B7322A;" onclick="scDelete()">Remove</button></div>
