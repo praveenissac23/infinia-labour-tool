@@ -11,8 +11,8 @@ The logo is fetched from the net once, when a login is saved, and kept
 with it - nobody's browser goes out to look for it each time the page
 opens.
 
-Who: the accounts_credentials right - admin, the PRO and the chief
-accountant. Every password shown or copied is in the activity log, and
+Who: the accounts_credentials right, ticked on Settings > Access; a
+login marked Admin only is seen by admins alone. Every password shown or copied is in the activity log, and
 when it is not the admin, the admin is told (watch.py).
 """
 import base64
@@ -323,7 +323,7 @@ def _parts(db, cat="", user=None):
 def _reader(token, db):
     u = auth.get_download_user_from_token(token, db)
     if RIGHT not in M.effective_permissions(u):
-        raise HTTPException(status_code=403, detail="Credentials are for admin, the PRO and the chief accountant.")
+        raise HTTPException(status_code=403, detail="Not available to this login: Credentials.")
     return u
 
 

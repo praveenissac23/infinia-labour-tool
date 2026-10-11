@@ -518,7 +518,7 @@ window.HELP_TIPS = {
   "#cr-user": "The login name or email used on that website.",
   "#cr-secret": "The password or PIN. Stored encrypted; 'Make one' creates a strong password.",
   "#cr-cat": "Groups the list - Bank, Government, Utilities and so on.",
-  "#cr-admin": "Tick to keep this login to admins only: the PRO and the chief accountant will not see it at all - not in the list, the search or the exports.",
+  "#cr-admin": "Tick to keep this login to admins only - nobody else sees it, not in the list, the search or the exports.",
   "#cr-notes": "Anything else needed to get in: security question, who holds the token, when it renews. Stored encrypted.",
   "#labgrat-emp": "Pick a labourer to see his gratuity working. Leave it empty and Preview / Export give every labourer on one sheet.",
   "#labinc-from": "The new rate starts in the cycle containing this date. Earlier cycles keep the old rate.",

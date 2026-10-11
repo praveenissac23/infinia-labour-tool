@@ -1604,7 +1604,7 @@ SCREEN_LABELS = {
     "accounts_register": "Cash register (opens with its own password)",
     "accounts_projects": "Project payment tracker (admin and chief accountant)",
     "accounts_expense": "Project expense - cost per project incl. labour by site (admin and chief accountant)",
-    "accounts_credentials": "Credentials - website and app logins, passwords, PINs (admin, PRO, chief accountant)",
+    "accounts_credentials": "Credentials - website and app logins, passwords, PINs",
     "settings_company": "General - store in-charge, LPO and invoice signatures",
     "settings_data": "General - restore or delete backups (replaces live data)",
     "settings_companies": "Companies & sites",
