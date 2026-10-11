@@ -140,7 +140,7 @@ def _invoice_by_id(params, body, db):
     return ["accounts.proforma"] if x.kind == "proforma" else ["accounts.taxinv"]
 
 
-CARDS = ["payroll.labourpay.combine", "reports.labour.cards"]
+CARDS = ["payroll.labourpay.combine"]
 HR = lambda s: [f"payroll.hrpayroll.{s}"]   # noqa: E731
 
 GATES = {

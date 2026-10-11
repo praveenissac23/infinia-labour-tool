@@ -121,13 +121,11 @@ PAGES = {
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
             sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
     "reports": ("Reports", [
-        tab("labour", "pgreports", "Labour", ["reports", "combine"], subs=[
+        tab("labour", "pgreports", "Labour", "reports", subs=[
             sub("builder", "Cycle report builder", screen="reports"),
-            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
-            # Reports shows the card downloads only; the additions and
-            # deductions editor lives under Payroll.
+            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()")]),
+            # Salary cards are on Payroll > Labour payroll, not repeated here.
             # Leave is reported on Staff > Leave, not repeated here.
-            sub("cards", "Salary cards", screen="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"])]),
         # Office payroll and Staff are not repeated here: they are pages of
         # their own (Payroll > Office payroll, Staff).
         tab("storerep", "store", "Store & purchasing", STORE_RIGHTS, subs=[

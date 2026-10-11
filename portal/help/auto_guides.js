@@ -1541,55 +1541,6 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-reports-labour-cards",
-  "area": "Every screen",
-  "title": "Reports > Labour > Salary cards",
-  "auto": true,
-  "words": "reports   labour   salary cards pay full salary now preview combine to excel combine to pdf separate excel files separate pdf files export pdf export excel screen buttons what is",
-  "go": {
-   "page": "reports",
-   "tab": "labour",
-   "sub": "cards"
-  },
-  "steps": [
-   {
-    "say": "This is Reports > Labour > Salary cards. The numbers on the picture match the list below."
-   },
-   {
-    "say": "1. Pay full salary now.",
-    "el": "#lab-full-btn"
-   },
-   {
-    "say": "2. Preview: opens it on screen to read or print.",
-    "el": "button[onclick=\"exportCombineCards('view')\"]"
-   },
-   {
-    "say": "3. Combine to Excel.",
-    "el": "button[onclick=\"exportCombineCards('excel')\"]"
-   },
-   {
-    "say": "4. Combine to PDF.",
-    "el": "button[onclick=\"exportCombineCards('pdf')\"]"
-   },
-   {
-    "say": "5. Separate Excel Files.",
-    "el": "button[onclick=\"exportCombineCards('excel-separate')\"]"
-   },
-   {
-    "say": "6. Separate PDF Files.",
-    "el": "button[onclick=\"exportCombineCards('pdf-separate')\"]"
-   },
-   {
-    "say": "7. Export PDF: downloads it as a PDF.",
-    "el": "button[onclick=\"exportOneWorker('pdf')\"]"
-   },
-   {
-    "say": "8. Export Excel: downloads it as an Excel sheet.",
-    "el": "button[onclick=\"exportOneWorker('excel')\"]"
-   }
-  ]
- },
- {
   "id": "scr-reports-storerep-stock",
   "area": "Every screen",
   "title": "Reports > Store & purchasing > Current stock",

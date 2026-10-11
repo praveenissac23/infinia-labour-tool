@@ -674,16 +674,6 @@
       "grant": [
        "reports"
       ]
-     },
-     {
-      "id": "reports.labour.cards",
-      "label": "Salary cards",
-      "right": [
-       "combine"
-      ],
-      "grant": [
-       "combine"
-      ]
      }
     ]
    },
