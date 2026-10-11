@@ -310,14 +310,17 @@ def _parts(db, cat="", user=None):
     rows = _visible(db, user).order_by(Credential.category, Credential.name).all()
     if cat:
         rows = [c for c in rows if c.category == cat]
-    out = [{"Sr.": i, "Name": c.name, "Category": c.category, "Website": c.url or c.domain or "-",
-            "Type": {"login": "Login", "pin": "PIN", "note": "Note"}.get(c.kind, c.kind),
-            "Username": c.username or "-", "Password / PIN": unlock(c.secret) or "-",
-            "Notes": unlock(c.notes) or "", **({"Admin only": "Yes" if c.admin_only else ""} if _is_admin(user) else {})}
-           for i, c in enumerate(rows, 1)]
-    sub = (f"{len(out)} logins{(' - ' + cat) if cat else ''}   |   CONFIDENTIAL - contains passwords   |   "
-           f"As at {M._dubai_today():%d %b %Y}")
+    order = {c: i for i, c in enumerate(CATEGORIES)}
+    rows.sort(key=lambda c: (order.get(c.category, 99), (c.name or "").lower()))
+    out = [{"name": c.name, "category": c.category, "url": c.url or "", "domain": c.domain or "", "kind": c.kind,
+            "username": c.username or "", "secret": unlock(c.secret), "notes": unlock(c.notes),
+            "logo": c.logo or "", "admin_only": bool(c.admin_only) and _is_admin(user)} for c in rows]
+    sub = f"{len(out)} login{'s' if len(out) != 1 else ''}{(' - ' + cat) if cat else ''}   |   As at {M._dubai_today():%d %b %Y}"
     return out, "Credentials", sub
+
+
+def _who(u):
+    return f"Printed by {u.full_name or u.username}, {M._dubai_today():%d %b %Y}"
 
 
 def _reader(token, db):
@@ -329,20 +332,30 @@ def _reader(token, db):
 
 @router.get("/export/accounts/credentials")
 def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    import credentials_paper as CP
     u = _reader(token, db)
     rows, title, sub = _parts(db, cat, u)
-    M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - {'Excel' if format == 'excel' else 'PDF'}{(' - ' + cat) if cat else ''}")
-    return M._hr_file(title, rows, sub, format, [], "Credentials", totals=[])
+    xl = format == "excel"
+    M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - {'Excel' if xl else 'PDF'}{(' - ' + cat) if cat else ''}")
+    stamp = f"{M._dubai_today():%Y%m%d}"
+    if xl:
+        return Response(CP.excel(rows, title, sub), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="Credentials_{stamp}.xlsx"'})
+    return Response(CP.pdf(rows, title, sub, _who(u)), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="Credentials_{stamp}.pdf"'})
 
 
 @router.get("/export/accounts/credentials/view")
 def view_credentials(token: str, cat: str = "", db: Session = Depends(get_db)):
+    from fastapi.responses import HTMLResponse
+    import credentials_paper as CP
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
     rows, title, sub = _parts(db, cat, u)
     M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - preview{(' - ' + cat) if cat else ''}")
     url = f"/export/accounts/credentials?token={t}&cat={quote(cat)}"
-    return M._preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
+    return HTMLResponse(CP.html(rows, title, sub, url + "&format=pdf", url + "&format=excel", _who(u)))
 
 
 def grant_once(db):
