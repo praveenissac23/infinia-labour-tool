@@ -1938,33 +1938,16 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
           </div>
 
-          <!-- Labour payroll > Gratuity: end-of-service gratuity to date for every labourer -->
+          <!-- Labour payroll > Gratuity: one labourer at a time, laid out like the office one -->
           <div id="pg-labgrat-card" style="display:none;">
             <div class="card">
-              <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
-                <h2 style="margin:0 12px 0 0;">Labour gratuity to date</h2>
-                <label class="hr-field" style="flex-direction:row; align-items:center; gap:6px;"><input type="checkbox" id="labgrat-left" onchange="labGratLoad()"><span>Include those who left</span></label>
-                <button class="btn btn-dark" onclick="labGratOut('view')">Preview</button>
-                <button class="btn btn-dark" onclick="labGratOut('pdf')">Export PDF</button>
-                <button class="btn btn-dark" onclick="labGratOut('excel')">Export Excel</button>
-                <span id="labgrat-total" style="margin-left:auto; font-weight:600;"></span>
+              <div class="form-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <label class="hr-field"><span>Labourer</span><select id="labgrat-emp" class="hr-staff-pick" style="width:300px;" onchange="labGratShow()"></select></label>
+                <div class="hr-cb-spacer"></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="labGratOut('view')">Preview</button><button type="button" class="btn btn-dark" onclick="labGratOut('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="labGratOut('excel')">Export Excel</button></div>
               </div>
-              <p style="font-size:12px; color:#888; margin:6px 0 0;">21 days' basic a year for the first 5 years, 30 after; from one year's service.
-                Absent and Leave days on the attendance are not service. Capped at 24 months' basic.</p>
-              <div class="auto-hint" id="labgrat-missing" style="display:none; margin-top:6px;"></div>
-              <div class="grid-wrap" style="max-height:62vh; margin-top:10px;">
-                <table class="hr-grid">
-                  <thead><tr>
-                    <th style="width:7%;">Code</th><th class="txt" style="width:17%;">Name</th><th class="txt" style="width:10%;">Trade</th>
-                    <th style="width:9%;">Joined</th><th class="num" style="width:7%;">Service days</th>
-                    <th class="num" style="width:7%;">Absent</th><th class="num" style="width:7%;">Leave</th>
-                    <th class="num" style="width:7%;">Years</th><th class="num" style="width:8%;">Basic</th>
-                    <th class="num" style="width:7%;">Day's basic</th><th class="num" style="width:9%;">Gratuity</th>
-                    <th class="txt" style="width:10%;">Note</th>
-                  </tr></thead>
-                  <tbody id="labgrat-body"></tbody>
-                </table>
-              </div>
+              <div class="auto-hint" id="labgrat-missing" style="display:none; margin-top:8px;"></div>
+              <div id="labgrat-view" style="margin-top:14px;"></div>
             </div>
           </div>
 
@@ -13566,30 +13549,80 @@ async function labIncSaveEdit() {
     labIncCancelEdit(); document.getElementById("labinc-emp").innerHTML = ""; labIncLoad();
   } catch (e) { showStatus("labinc-status", "err", errText(e)); }
 }
-// ---- Labour payroll > Gratuity ----------
+// ---- Labour payroll > Gratuity: one labourer at a time, like the office page ----------
 async function labGratLoad() {
   document.getElementById("pg-labgrat-card").style.display = "";
-  const body = document.getElementById("labgrat-body"), left = document.getElementById("labgrat-left").checked;
-  body.innerHTML = `<tr><td colspan="12" class="hr-nil" style="padding:14px;">Loading...</td></tr>`;
-  let d;
-  try { d = await apiCall("/employees/labour-gratuity?include_left=" + left); }
-  catch (e) { body.innerHTML = `<tr><td colspan="12" class="hr-nil" style="padding:14px;">${escapeHtml(errText(e))}</td></tr>`; return; }
-  document.getElementById("labgrat-total").textContent = "Total " + hrMoney(d.total);
-  const miss = (d.rows || []).filter(r => r.Joined === "-").length, mb = document.getElementById("labgrat-missing");
+  const sel = document.getElementById("labgrat-emp"), keep = sel.value;
+  let emps = []; try { emps = await apiCall("/employees"); } catch (e) {}
+  emps = (emps || []).filter(e => !e.staff)
+    .sort((a, b) => (a.active === false) - (b.active === false) || String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
+  sel.innerHTML = `<option value=""></option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)}${e.active === false ? " (left)" : ""}</option>`).join("");
+  sel.value = keep;
+  if (!sel.dataset.done) { sel.dataset.done = "1"; hrSearchSelect(sel); }
+  const miss = emps.filter(e => e.active !== false && !e.joined_on).length, mb = document.getElementById("labgrat-missing");
   mb.style.display = miss ? "" : "none";
-  mb.innerHTML = miss ? `${miss} labourer${miss > 1 ? "s have" : " has"} no joining date, so no gratuity is worked out yet.
+  mb.innerHTML = miss ? `${miss} labourer${miss > 1 ? "s have" : " has"} no joining date, so no gratuity is worked out for them yet.
     <a href="#" onclick="pgGo('attendance'); pgTab('masterdata'); return false;">Add it on Labour master data</a>.` : "";
-  body.innerHTML = (d.rows || []).map(r => `<tr><td>${escapeHtml(r.Code)}</td><td class="txt">${escapeHtml(r.Name)}</td><td class="txt">${escapeHtml(r.Trade)}</td>
-    <td>${escapeHtml(r.Joined)}</td><td class="num">${r["Service days"]}</td><td class="num">${r["Absent (not service)"] || ""}</td>
-    <td class="num">${r["Leave (not service)"] || ""}</td><td class="num">${r["Years counted"]}</td><td class="num">${hrMoney(r.Basic)}</td>
-    <td class="num">${hrMoney(r["Day's basic"])}</td><td class="num" style="font-weight:600;">${r["Gratuity to date"] ? hrMoney(r["Gratuity to date"]) : "-"}</td>
-    <td class="txt" style="color:#888;">${escapeHtml(r.Note)}</td></tr>`).join("")
-    || `<tr><td colspan="12" class="hr-nil" style="padding:14px;">No labourers.</td></tr>`;
+  labGratShow();
+}
+async function labGratShow() {
+  const code = document.getElementById("labgrat-emp").value;
+  const box = document.getElementById("labgrat-view");
+  if (!code) { box.innerHTML = '<div class="hr-nil">Choose a labourer. With nobody chosen, Preview and Export give every labourer on one sheet.</div>'; return; }
+  let d;
+  try { d = await apiCall(`/employees/labour-gratuity/${encodeURIComponent(code)}`); }
+  catch (e) { box.innerHTML = `<div class="hr-nil">${escapeHtml(errText(e))}</div>`; return; }
+  const w = d.worker, g = d.gratuity;
+  const kv = (k, v) => `<div class="hr-kv"><span>${k}</span><b>${v}</b></div>`;
+  const kind = { joining: "Joined", increment: "Increment", correction: "Correction" };
+  const step = `<div class="hr-steps">
+      ${kv("Joined", w.joined_on ? hrDate(w.joined_on) : "not on file")}
+      ${w.terminated_on ? kv("Left", hrDate(w.terminated_on)) : ""}
+      ${kv("Service", w.joined_on ? hrService(w.years) : "-")}
+      ${kv("Absent days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
+      ${kv("Leave days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
+      ${kv("Service counted", w.joined_on ? `${g.years.toFixed(2)} years` : "-")}
+      ${kv("Basic wage", hrMoney(w.basic))}
+      ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}
+      ${kv("Days accrued (21 a year, 30 after 5)", g.days ? g.days.toFixed(1) : "-")}
+      ${kv("Gratuity to date", `<span class="net">${hrMoney(g.amount)}</span>`)}
+    </div>
+    <div class="hr-nil" style="margin-top:6px;">${escapeHtml(g.why || "")}${g.capped ? " (capped at two years' basic)" : ""}</div>`;
+  const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const absence = d.absence.length ? `<table class="hr-grid hr-sub"><thead><tr>
+      <th style="width:26%;">Cycle</th><th style="width:34%;">Date(s)</th><th class="num" style="width:20%;">Absent</th><th class="num" style="width:20%;">Leave</th></tr></thead><tbody>
+      ${d.absence.map(r => `<tr${r.absent ? ' class="hr-bad"' : ""}><td>${escapeHtml(r.month_year)}</td>
+        <td>${r.first === r.last ? hrDate(r.first) : hrDate(r.first) + " - " + hrDate(r.last)}</td>
+        <td class="num">${r.absent || "-"}</td><td class="num">${r.leave || "-"}</td></tr>`).join("")}
+      <tr class="hr-foot"><td class="txt">TOTAL</td><td></td><td class="num">${d.absent_days}</td><td class="num">${d.leave_days}</td></tr></tbody></table>`
+    : '<div class="hr-nil">No absence or leave on the attendance.</div>';
+  const hist = `<table class="hr-grid hr-sub"><thead><tr>
+      <th style="width:18%;">From</th><th style="width:16%;">Change</th><th class="num" style="width:14%;">Increase</th>
+      <th class="num" style="width:14%;">Basic</th><th class="num" style="width:14%;">Allowance</th><th class="num" style="width:14%;">Salary</th></tr></thead><tbody>
+      ${d.history.map(r => `<tr><td>${r.effective_on === "2000-01-01" ? "-" : hrDate(r.effective_on)}${r.future ? " (due)" : ""}</td><td>${kind[r.kind] || hrCap(r.kind)}</td>
+        <td class="num">${r.amount ? "+" + hrMoney(r.amount) : "-"}</td><td class="num">${hrMoney(r.basic)}</td>
+        <td class="num">${hrMoney(r.allowance)}</td><td class="num strong">${hrMoney(r.gross)}</td></tr>`).join("") ||
+        '<tr><td colspan="6" class="hr-nil">No history.</td></tr>'}</tbody></table>`;
+  box.innerHTML = `
+    <div class="hr-file-head">
+      <div><div class="hr-file-name">${escapeHtml(w.name)}</div>
+        <div class="hr-nil">${escapeHtml(w.emp_no)} &middot; ${escapeHtml(w.trade || "")}${w.site ? " &middot; " + escapeHtml(w.site) : ""} &middot; labour payroll${w.active ? "" : " &middot; left"}</div></div>
+      <div class="hr-file-net"><span>Gratuity to date</span><b>${w.joined_on ? hrMoney(g.amount) : "-"}</b>
+        <span>${w.joined_on ? (g.amount ? "" : "under one year's service") : "no joining date"}</span></div>
+    </div>
+    <div class="hr-file-grid">
+      <section><h3>Salary</h3>
+        <div class="hr-steps">${kv("Basic", hrMoney(w.basic))}${kv("Allowance", hrMoney(w.allowance))}${kv("Gross", hrMoney(w.gross))}
+        ${kv("Trade", escapeHtml(w.trade || "-"))}${kv("Statement", "Labour payroll")}${kv("End of service", "Gratuity")}</div></section>
+      <section><h3>Gratuity working (UAE labour law, art. 51)</h3>${step}</section>
+      <section style="grid-column:1 / -1;"><h3>Absence and leave on the attendance (${d.absent_days} absent, ${d.leave_days} leave - not service)</h3>${absence}</section>
+      <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
+    </div>`;
 }
 async function labGratOut(fmt) {
-  const left = document.getElementById("labgrat-left").checked;
+  const who = document.getElementById("labgrat-emp").value;
   const base = fmt === "view" ? "/export/labour-gratuity/view" : "/export/labour-gratuity";
-  window.open(`${API}${base}?include_left=${left}&token=${await hrToken()}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+  window.open(`${API}${base}?emp_no=${encodeURIComponent(who)}&token=${await hrToken()}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
 }
 async function labIncOut(fmt) {
   const who = document.getElementById("labinc-filter").value;

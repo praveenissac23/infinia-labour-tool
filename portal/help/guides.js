@@ -512,7 +512,7 @@ window.HELP_TIPS = {
   "#md-site-address": "Printed on purchase orders as the delivery address for this site.",
   "#md-site-map": "Paste the Google Maps link; it is printed on orders so drivers find the site.",
   "#md-eng-mobile": "Filled in automatically wherever this engineer is picked - LPOs, requests, store issues.",
-  "#labgrat-left": "Tick to also list labourers who have left - their gratuity is worked to their last day.",
+  "#labgrat-emp": "Pick a labourer to see his gratuity working. Leave it empty and Preview / Export give every labourer on one sheet.",
   "#labinc-from": "The new rate starts in the cycle containing this date. Earlier cycles keep the old rate.",
   "#labinc-amount": "The rise per month in AED - added to his total salary.",
   "#labinc-onto": "Which part of the salary the rise goes to. Basic counts towards gratuity and leave pay; allowance does not.",

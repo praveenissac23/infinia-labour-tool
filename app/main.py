@@ -11367,6 +11367,25 @@ def _labour_history_parts(db, emp_no=""):
 LAB_GRAT_MONEY = ["Basic", "Day's basic", "Gratuity to date"]
 
 
+def _labour_gratuity_one(db, emp_no):
+    e = _labour_by_code(db, emp_no)
+    g = gratuity_detail(e, db)
+    basis = ("No joining date" if not e.joined_on else "Accruing" if g["amount"] else "Under 1 year")
+    rows = [{"Item": "Labourer", "Detail": f"{e.emp_no} {e.name} - {e.trade or ''}".rstrip(" -")},
+            {"Item": "Joining date", "Detail": _dmy(e.joined_on) if e.joined_on else "-"},
+            {"Item": "Service days", "Detail": f"{g['service_days']}"},
+            {"Item": "Absent days (not service)", "Detail": f"{g.get('unpaid_only_days', 0):g}"},
+            {"Item": "Leave days (not service - company rule)", "Detail": f"{g.get('vacation_days', 0):g}"},
+            {"Item": "Service counted", "Detail": f"{g['years']:.2f} years"},
+            {"Item": "Basic wage", "Detail": f"{(e.basic_salary or 0):,.2f}"},
+            {"Item": "A day's basic (basic x 12 / 365)", "Detail": f"{g['daily']:,.2f}"},
+            {"Item": "Days accrued (21 a year first 5 years, 30 after)", "Detail": f"{g['days']:.1f}"},
+            {"Item": "Basis", "Detail": basis + (" (capped at two years' basic)" if g["capped"] else "")},
+            {"Item": "Gratuity to date", "Detail": f"{g['amount']:,.2f}"},
+            {"Item": "Working", "Detail": g.get("why") or "-"}]
+    return rows, f"End of Service Gratuity - {e.name}", f"As at {_dubai_today():%d %b %Y}   |   UAE labour law, article 51"
+
+
 def _labour_gratuity_parts(db, include_left=False):
     q = db.query(models.Employee).filter(models.Employee.staff != True)  # noqa: E712
     if not include_left:
@@ -11386,6 +11405,67 @@ def _labour_gratuity_parts(db, include_left=False):
     return rows, "Labour Gratuity", sub
 
 
+def _labour_by_code(db, emp_no):
+    e = db.query(models.Employee).filter(models.Employee.emp_no == (emp_no or "").strip(),
+                                         models.Employee.staff != True).first()  # noqa: E712
+    if not e:
+        raise HTTPException(status_code=404, detail=f"No labourer with number {emp_no}.")
+    return e
+
+
+def _labour_absence(db, e, upto):
+    """His Absent and Leave halves on the attendance, cycle by cycle."""
+    by = {}
+    if not e.joined_on:
+        return []
+    for my, d, am, pm in (db.query(models.DailyRow.month_year, models.DailyRow.full_date, models.DailyRow.am, models.DailyRow.pm)
+                            .filter(models.DailyRow.emp_no == e.emp_no, models.DailyRow.full_date >= e.joined_on,
+                                    models.DailyRow.full_date <= upto,
+                                    or_(func.lower(models.DailyRow.am).in_(("absent", "leave")),
+                                        func.lower(models.DailyRow.pm).in_(("absent", "leave")))).all()):
+        r = by.setdefault(my, {"month_year": my, "first": d, "last": d, "absent": 0.0, "leave": 0.0})
+        r["first"], r["last"] = min(r["first"], d), max(r["last"], d)
+        for h in (am, pm):
+            h = (h or "").strip().lower()
+            if h == "absent":
+                r["absent"] += 0.5
+            elif h == "leave":
+                r["leave"] += 0.5
+    out = sorted(by.values(), key=lambda r: r["first"])
+    for r in out:
+        r["first"], r["last"] = r["first"].isoformat(), r["last"].isoformat()
+    return out
+
+
+def _labour_file(db, e, user=None):
+    end = _dubai_today()
+    if e.terminated_on and e.terminated_on < end:
+        end = e.terminated_on
+    g = gratuity_detail(e, db)
+    gross = round(e.total_salary or ((e.basic_salary or 0) + (e.allowance or 0)), 2)
+    absence = _labour_absence(db, e, end)
+    hist = sorted(_tidy_rate_history(list_increments(emp_no=e.emp_no, db=db, user=user, labour=True)["rows"]),
+                  key=lambda r: r["effective_on"])
+    return {"worker": {"emp_no": e.emp_no, "name": e.name, "trade": e.trade or "", "site": getattr(e, "site", "") or "",
+                       "joined_on": e.joined_on.isoformat() if e.joined_on else "",
+                       "terminated_on": e.terminated_on.isoformat() if e.terminated_on else "",
+                       "active": bool(e.active), "years": _service_years(e) if e.joined_on else 0,
+                       "basic": round(e.basic_salary or 0, 2), "allowance": round(gross - (e.basic_salary or 0), 2),
+                       "gross": gross},
+            "gratuity": g, "absence": absence,
+            "absent_days": round(sum(r["absent"] for r in absence), 2),
+            "leave_days": round(sum(r["leave"] for r in absence), 2),
+            "history": hist}
+
+
+@app.get("/employees/labour-gratuity/{emp_no}")
+def labour_gratuity_file(emp_no: str, db: Session = Depends(get_db),
+                         user: models.User = Depends(require_screen("combine"))):
+    """One labourer's gratuity page: salary, the working, his absence and
+    leave, and his rate history - laid out like the office one."""
+    return _labour_file(db, _labour_by_code(db, emp_no), user)
+
+
 @app.get("/employees/labour-gratuity")
 def list_labour_gratuity(include_left: bool = False, db: Session = Depends(get_db),
                          user: models.User = Depends(require_screen("combine"))):
@@ -11394,17 +11474,25 @@ def list_labour_gratuity(include_left: bool = False, db: Session = Depends(get_d
 
 
 @app.get("/export/labour-gratuity")
-def export_labour_gratuity(token: str, format: str = "pdf", include_left: bool = False, db: Session = Depends(get_db)):
+def export_labour_gratuity(token: str, format: str = "pdf", include_left: bool = False, emp_no: str = "",
+                          db: Session = Depends(get_db)):
     _require_labour_pay(auth.get_download_user_from_token(token, db))
+    if emp_no.strip():
+        rows, title, sub = _labour_gratuity_one(db, emp_no)
+        return _hr_file(title, rows, sub, format, [], "Gratuity", totals=[])
     rows, title, sub = _labour_gratuity_parts(db, include_left)
     return _hr_file(title, rows, sub, format, LAB_GRAT_MONEY, "Labour_Gratuity", totals=["Gratuity to date"])
 
 
 @app.get("/export/labour-gratuity/view")
-def view_labour_gratuity(token: str, include_left: bool = False, db: Session = Depends(get_db)):
+def view_labour_gratuity(token: str, include_left: bool = False, emp_no: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_labour_pay(user)
     t = quote(auth.create_view_token(user.username), safe="")
+    if emp_no.strip():
+        rows, title, sub = _labour_gratuity_one(db, emp_no)
+        url = f"/export/labour-gratuity?emp_no={quote(emp_no.strip())}&token={t}"
+        return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[], orientation="portrait")
     rows, title, sub = _labour_gratuity_parts(db, include_left)
     url = f"/export/labour-gratuity?include_left={'true' if include_left else 'false'}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=LAB_GRAT_MONEY, total_cols=["Gratuity to date"])

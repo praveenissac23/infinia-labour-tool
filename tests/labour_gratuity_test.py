@@ -49,5 +49,14 @@ if tok:
     for f in ("pdf", "excel"):
         x = c.get(f"/export/labour-gratuity?format={f}&token={tok}"); ck(f"{f} export", x.status_code == 200 and len(x.content) > 500, x.status_code)
     x = c.get(f"/export/labour-gratuity/view?token={tok}"); ck("preview", x.status_code == 200 and "Labour Gratuity" in x.text, x.status_code)
-# office staff unchanged: same function, staff path
+r = c.get("/employees/labour-gratuity/L-900", headers=H); ck("one labourer's page", r.status_code == 200, r.text[:200])
+f = r.json()
+ck("page gratuity matches the list", abs(f["gratuity"]["amount"] - a["Gratuity to date"]) < 0.01, f["gratuity"])
+ck("absence by cycle: 1.5 absent, 10 leave", f["absent_days"] == 1.5 and f["leave_days"] == 10, (f["absent_days"], f["leave_days"]))
+ck("salary block", f["worker"]["basic"] == 1095 and f["worker"]["gross"] == 1500, f["worker"])
+ck("an office code is not a labourer", c.get("/employees/labour-gratuity/NOPE", headers=H).status_code == 404)
+if tok:
+    for fm in ("pdf", "excel"):
+        x = c.get(f"/export/labour-gratuity?emp_no=L-900&format={fm}&token={tok}"); ck(f"one-labourer {fm}", x.status_code == 200 and len(x.content) > 500, x.status_code)
+    x = c.get(f"/export/labour-gratuity/view?emp_no=L-900&token={tok}"); ck("one-labourer preview", x.status_code == 200 and "MASON NINE" in x.text, x.status_code)
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
