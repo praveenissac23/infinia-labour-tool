@@ -30,6 +30,30 @@
       put(el, text);
     });
   }
+  // One shared note box, placed under (or above) the (i) and kept inside
+  // the window on every side.
+  let box = null, shownAt = 0;
+  const touch = matchMedia("(hover: none)").matches;
+  function show(i) {
+    if (!box) { box = document.createElement("div"); box.className = "help-tipbox"; document.body.appendChild(box); }
+    box.textContent = i.dataset.tip || ""; box.classList.add("on"); shownAt = Date.now();
+    const r = i.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, pad = 8;
+    let left = r.left - 14;                      // starts at the (i), reads to the right
+    left = Math.max(pad, Math.min(left, innerWidth - w - pad));
+    let top = r.bottom + 6;
+    if (top + h > innerHeight - pad) top = Math.max(pad, r.top - 6 - h);
+    box.style.left = left + "px"; box.style.top = top + "px";
+  }
+  function hide() { if (box) box.classList.remove("on"); }
+  // A tap scrolls or moves focus a little as it lands; that must not close
+  // the note it just opened.
+  const softHide = () => { if (Date.now() - shownAt > 500) hide(); };
+  document.addEventListener("mouseover", e => { const i = e.target.closest && e.target.closest(".help-i"); if (i) show(i); });
+  document.addEventListener("mouseout", e => { if (!touch && e.target.closest && e.target.closest(".help-i")) hide(); });
+  document.addEventListener("focusin", e => { if (e.target.classList && e.target.classList.contains("help-i")) show(e.target); });
+  document.addEventListener("focusout", e => { if (e.target.classList && e.target.classList.contains("help-i")) softHide(); });
+  document.addEventListener("click", e => { const i = e.target.closest && e.target.closest(".help-i"); if (i) { e.preventDefault(); e.stopPropagation(); show(i); } else hide(); }, true);
+  window.addEventListener("scroll", softHide, true);
   window.HELP_TIPS_RUN = run;
   if (!window.__helpTipsTimer) window.__helpTipsTimer = setInterval(() => run(document), 1500);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => run(document)); else run(document);

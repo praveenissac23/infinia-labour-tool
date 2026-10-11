@@ -61,7 +61,7 @@
 .help-dots i.on { background: #C0392B; }
 
 .help-i { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; min-width: 16px; border-radius: 50%; background: #E8EEF6; color: #2F5D9A; font: bold 11px Georgia, serif; font-style: italic; cursor: help; margin: 0 4px; vertical-align: middle; }
-.help-i:hover::after, .help-i:focus::after { content: attr(data-tip); position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 240px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif; padding: 8px 10px; border-radius: 7px; z-index: 600; white-space: normal; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+.help-i.css-tip:hover::after, .help-i.css-tip:focus::after { content: attr(data-tip); position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 240px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif; padding: 8px 10px; border-radius: 7px; z-index: 600; white-space: normal; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
 
 @media (max-width: 760px) {
   .topbar > div:last-child { flex-wrap: wrap; width: 100%; row-gap: 8px; }
@@ -80,3 +80,9 @@
 .help-flash { animation: helpFlash 2s ease; border-radius: 6px; }
 
 .help-i.in-label { width: 14px; height: 14px; min-width: 14px; font-size: 10px; margin: 0 0 0 5px; vertical-align: 1px; }
+
+/* The (i) note: one floating box placed by tips.js, always inside the
+   window - never cut off at an edge or behind the menu. */
+.help-tipbox { position: fixed; z-index: 3000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif;
+  padding: 8px 10px; border-radius: 7px; box-shadow: 0 6px 18px rgba(0,0,0,.2); pointer-events: none; display: none; }
+.help-tipbox.on { display: block; }
