@@ -95,11 +95,11 @@ vac = r.json()['batch']
 run, L = cycle()
 ck('the ten days are deducted: 2,000.00 more, 2,300.00 in all',
    money(L['T01']['deduction'], 2300), L['T01']['deduction'])
-ck('and leave salary and the ticket are on the same cycle',
-   money(L['T01']['leave_salary'], 6000) and money(L['T01']['air_ticket'], 1200),
+ck('leave salary on the same cycle; no air ticket for office staff (labour only)',
+   money(L['T01']['leave_salary'], 6000) and money(L['T01']['air_ticket'], 0),
    (L['T01']['leave_salary'], L['T01']['air_ticket']))
-ck('net pay is salary less the days away, plus leave salary and ticket: 10,900.00',
-   money(L['T01']['net_pay'], 6000 - 2300 + 6000 + 1200), L['T01']['net_pay'])
+ck('net pay is salary less the days away, plus leave salary: 9,700.00',
+   money(L['T01']['net_pay'], 6000 - 2300 + 6000), L['T01']['net_pay'])
 lst = c.get(f'/employees/leave?month_year={SEP}', headers=H).json()
 v = [x for x in lst['rows'] if x['batch'] == vac][0]
 ck('the register shows the vacation as one line, 20 to 29 September',

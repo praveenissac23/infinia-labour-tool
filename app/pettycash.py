@@ -162,6 +162,15 @@ def add_petty_cash(payload: dict = Body(...), db: Session = Depends(get_db), use
     db.add(x); db.commit()
     M.log_action(db, user.id, "petty_cash_add",
                  f"{BOOKS[book][0]}: {x.on_date} {x.description} {'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
+    # A line dated more than a week back is told to the admin.
+    try:
+        if x.on_date and (M._dubai_today() - x.on_date).days > 7:
+            import watch
+            watch.alert(db, models, user, "petty_backdated", "Back-dated petty cash line added",
+                        f"{BOOKS[book][0]}: dated {x.on_date:%d %b %Y}, {x.description} "
+                        f"{'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
+    except Exception:
+        db.rollback()
     return {"ok": True, "id": x.id}
 
 
@@ -171,11 +180,13 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
+    was = (x.on_date, round(x.received or 0, 2), round(x.paid or 0, 2))
     for k, v in _clean(payload).items():
         setattr(x, k, v)
     x.updated_by = user.id
     db.commit()
-    M.log_action(db, user.id, "petty_cash_edit", f"#{pid} {x.on_date} {x.description}")
+    M.log_action(db, user.id, "petty_cash_edit", f"#{pid} {x.book or 'site'} book, {x.description}: "
+                 f"date {was[0]} -> {x.on_date}, in {was[1]:,.2f} -> {x.received or 0:,.2f}, out {was[2]:,.2f} -> {x.paid or 0:,.2f}")
     return {"ok": True}
 
 

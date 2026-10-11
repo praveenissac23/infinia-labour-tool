@@ -224,11 +224,12 @@ def edit_invoice(iid: int, payload: dict = Body(...), db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="That invoice is not on file.")
     if x.status == "cancelled":
         raise HTTPException(status_code=400, detail="A cancelled invoice cannot be changed.")
+    total_was = round(x.total or 0, 2)
     for k, v in _clean(db, payload, x.kind, keep_id=x.id).items():
         setattr(x, k, v)
     x.updated_by = user.id
     db.commit()
-    M.log_action(db, user.id, "invoice_edit", f"{x.kind} {x.number} AED {x.total:,.2f}")
+    M.log_action(db, user.id, "invoice_edit", f"{x.kind} {x.number} {x.client}: AED {total_was:,.2f} -> {x.total or 0:,.2f}")
     return {"ok": True}
 
 

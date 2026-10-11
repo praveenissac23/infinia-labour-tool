@@ -1585,7 +1585,7 @@ def list_roles(db: Session = Depends(get_db), user: models.User = ROLES_READ):
     return {"rows": [_role_dict(r, db) for r in db.query(models.AccessRole).order_by(models.AccessRole.name).all()],
             "screens": M.ALL_SCREENS, "role_defaults": M.ROLE_DEFAULTS,
             "labels": SCREEN_LABELS, "pages": RIGHT_PAGES, "tree": tabrights.TREE,
-            "notif_groups": [{"id": g, "label": l} for g, l, _, _ in M.NOTIF_GROUPS]}
+            "notif_groups": [{"id": g, "label": l} for g, l, _, _ in M.NOTIF_GROUPS if g != "watch"]}
 
 
 SCREEN_LABELS = {

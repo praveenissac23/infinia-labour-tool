@@ -38,6 +38,7 @@ import reports as rp
 import export_web
 
 import push  # noqa: E402  (its tables are made with the rest)
+import watch  # noqa: E402  (its table too)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Infinia Labour Tool API")
@@ -771,6 +772,11 @@ def guard_target(actor: models.User, target: models.User, what: str):
 def log_action(db: Session, user_id, action: str, details: str = ""):
     db.add(models.AuditLog(user_id=user_id, action=action, details=details))
     db.commit()
+    # Changes that could hide a loss are told to the admin (watch.py).
+    try:
+        watch.from_log(db, models, user_id, action, details)
+    except Exception:
+        db.rollback()
 
 
 def _where_from(request):
@@ -796,6 +802,10 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         # exists), so "I cannot log in" can be read off the monitor.
         if user:
             log_action(db, user.id, "login_failed", f"wrong password {_where_from(request)}")
+            try:
+                watch.login_failed(db, models, user, _where_from(request))
+            except Exception:
+                db.rollback()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     # "Keep me signed in on this phone": a month-long sign-in, kept by the
     # phone and guarded by its own lock.
@@ -805,6 +815,10 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         remember = False
     token = auth.create_access_token({"sub": user.username}, remember=remember)
     log_action(db, user.id, "login", _where_from(request) + (" - kept signed in" if remember else ""))
+    try:
+        watch.login_new_device(db, models, user, _where_from(request))
+    except Exception:
+        db.rollback()
     maybe_create_auto_backup(db)
     return schemas.TokenResponse(access_token=token, username=user.username,
                                   role=user.role, full_name=user.full_name)
@@ -1165,6 +1179,8 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
     if not emp.emp_no:
         raise HTTPException(status_code=400, detail="A worker number is needed.")
     _refuse_if_staff(existing)
+    was = ((existing.terminated_on, round(existing.basic_salary or 0, 2), round(existing.total_salary or 0, 2))
+           if existing else None)
     if existing:
         # A rate change is kept as history, so it shows on his staff file
         # and cycles before it keep the rate they were paid at.
@@ -1243,6 +1259,18 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
                        f"{existing.emp_no}: empty card removed for {', '.join(dropped)} (after his leaving date)")
 
     log_action(db, user.id, "save_employee", f"{emp.emp_no} - {emp.name}")
+    if was:
+        try:
+            if was[0] and not existing.terminated_on:
+                watch.alert(db, models, user, "rejoined", "Leaver brought back (leaving date removed)",
+                            f"{existing.emp_no} {existing.name}, had left {was[0]:%d %b %Y}")
+            now = (round(existing.basic_salary or 0, 2), round(existing.total_salary or 0, 2))
+            if now != was[1:]:
+                watch.alert(db, models, user, "rate_changed", "Labour rate changed on Master Data",
+                            f"{existing.emp_no} {existing.name}: basic {was[1]:,.2f} -> {now[0]:,.2f}, "
+                            f"salary {was[2]:,.2f} -> {now[1]:,.2f}")
+        except Exception:
+            db.rollback()
     return existing
 
 
@@ -1899,6 +1927,15 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     if saved_count or blocked:
         the_date = payload.rows[0].full_date if payload.rows else ""
         log_action(db, user.id, "save_attendance", f"{the_date}: {saved_count} worker(s)")
+        try:
+            d = the_date if isinstance(the_date, date) else _as_date(the_date)
+            if d and saved_count:
+                _, c_end, label = pcyc.cycle_bounds_for(d)
+                if (_dubai_today() - c_end).days > 5:
+                    watch.alert(db, models, user, "attendance_past", f"Attendance changed in a past cycle ({label})",
+                                f"{d:%d %b %Y}: {saved_count} worker(s) saved, cycle ended {c_end:%d %b}")
+        except Exception:
+            db.rollback()
 
     return {"saved": saved_count, "blocked": blocked}
 
@@ -5240,9 +5277,12 @@ def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
     m = db.query(models.StoreMovement).filter(models.StoreMovement.id == movement_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Movement not found")
+    _it = db.query(models.StoreItem).filter(models.StoreItem.id == m.item_id).first()
+    _what = (f"#{movement_id} {m.kind} {m.qty:g} {(_it.unit if _it else '')} {(_it.name if _it else '')}"
+             f"{(' - ' + m.location) if m.location else ' - central store'} on {m.moved_on}")
     db.delete(m)
     db.commit()
-    log_action(db, user.id, "store_delete_movement", f"#{movement_id}")
+    log_action(db, user.id, "store_delete_movement", _what)
     return {"ok": True}
 
 
@@ -7339,6 +7379,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         raise HTTPException(status_code=400, detail="Enter the supplier.")
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
+    _lpo_amt = lambda lines: round(sum((l.qty or 0) * (l.rate or 0) for l in lines), 2)
+    amount_was = _lpo_amt(o.lines)
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     sup_changed = _supplier_from_lpo(db, supplier, payload)
@@ -7384,7 +7426,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     _lpo_lines_to_materials(db, o, new_items)
     db.commit()
     db.refresh(o)
-    log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
+    log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s)), "
+               f"amount before tax {amount_was:,.2f} -> {_lpo_amt(o.lines):,.2f}"
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
@@ -8880,6 +8923,7 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
             raise HTTPException(status_code=400, detail="That company is not on file.")
         e.company_id = c.id
         e.company = c.short_name or c.name
+    e._iban_before = (e.iban or "").strip()
     for f in ("designation", "pay_route", "iban", "scheme", "pay_group"):
         if f in payload:
             setattr(e, f, (payload.get(f) or "").strip())
@@ -8895,6 +8939,7 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
     if prof and prof.group in ("office", "local"):
         prof.group = "local" if e.pay_group == "local" else "office"
     was = (round(e.basic_salary or 0, 2), round(e.allowance or 0, 2))
+    iban_was = (getattr(e, "_iban_before", None))
     for f, col in (("joined_on", "joined_on"), ("probation_end", "probation_end")):
         if f in payload:
             setattr(e, col, _as_date(payload.get(f)))
@@ -8934,6 +8979,15 @@ def save_staff(emp_no: str, payload: dict = Body(...), db: Session = Depends(get
             reason="On joining", created_by=user.id))
     db.commit(); db.refresh(e)
     log_action(db, user.id, "staff_saved", f"{e.emp_no} {e.name}")
+    try:
+        if iban_was is not None and iban_was != (e.iban or "").strip():
+            watch.alert(db, models, user, "iban_changed", "Bank account (IBAN) changed",
+                        f"{e.emp_no} {e.name}: {iban_was or '(none)'} -> {e.iban or '(none)'}")
+        if history and now != was:
+            watch.alert(db, models, user, "staff_pay_changed", "Office salary corrected on the staff record",
+                        f"{e.emp_no} {e.name}: basic {was[0]:,.2f} -> {now[0]:,.2f}, allowance {was[1]:,.2f} -> {now[1]:,.2f}")
+    except Exception:
+        db.rollback()
     return _staff_dict(e, db)
 
 
@@ -9489,6 +9543,7 @@ def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get
         models.StaffLoan.id == loan_id).first()
     if not l:
         raise HTTPException(status_code=404, detail="That loan is not on file.")
+    before = (round(l.amount or 0, 2), round(l.instalment or 0, 2))
     if "amount" in payload:
         amt = _num(payload["amount"])
         got = round(sum(r.amount or 0 for r in l.repayments), 2)
@@ -9508,7 +9563,9 @@ def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get
     left = (l.amount or 0) - sum(r.amount or 0 for r in l.repayments)
     l.closed = left <= 0.005
     db.commit(); db.refresh(l)
-    log_action(db, user.id, "loan_changed", f"loan #{l.id}")
+    _who = db.query(models.Employee).filter(models.Employee.id == l.employee_id).first()
+    log_action(db, user.id, "loan_changed", f"loan #{l.id} {(_who.emp_no + ' ' + _who.name) if _who else ''}: "
+               f"amount {before[0]:,.2f} -> {l.amount or 0:,.2f}, instalment {before[1]:,.2f} -> {l.instalment or 0:,.2f}")
     return _loan_dict(l, db.query(models.Employee).filter(models.Employee.id == l.employee_id).first())
 
 
@@ -9522,10 +9579,12 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db), user: models.User =
         raise HTTPException(status_code=400,
             detail="Instalments from approved salary cycles have been taken against this loan, "
                    "so it cannot be removed. Correct it instead.")
+    _who = db.query(models.Employee).filter(models.Employee.id == l.employee_id).first()
+    _what = f"loan #{loan_id} {(_who.emp_no + ' ' + _who.name) if _who else ''}: {l.amount or 0:,.2f} lent"
     for r in list(l.repayments):
         db.delete(r)
     db.delete(l); db.commit()
-    log_action(db, user.id, "loan_removed", f"loan #{loan_id}")
+    log_action(db, user.id, "loan_removed", _what)
     return {"ok": True}
 
 
@@ -9546,6 +9605,7 @@ def edit_repayment(rep_id: int, payload: dict = Body(...), db: Session = Depends
     r = _repayment_or_404(db, rep_id)
     l = db.query(models.StaffLoan).options(joinedload(models.StaffLoan.repayments)).filter(
         models.StaffLoan.id == r.loan_id).first()
+    amt_was = round(r.amount or 0, 2)
     if "amount" in payload:
         amt = _num(payload["amount"])
         others = sum(x.amount or 0 for x in l.repayments if x.id != r.id)
@@ -9563,7 +9623,7 @@ def edit_repayment(rep_id: int, payload: dict = Body(...), db: Session = Depends
     db.flush(); db.refresh(l)
     l.closed = (l.amount or 0) - sum(x.amount or 0 for x in l.repayments) <= 0.005
     db.commit()
-    log_action(db, user.id, "repayment_changed", f"loan #{l.id} repayment #{r.id}")
+    log_action(db, user.id, "repayment_changed", f"loan #{l.id} repayment #{r.id}: {amt_was:,.2f} -> {r.amount or 0:,.2f}")
     return {"ok": True}
 
 
@@ -9571,10 +9631,11 @@ def edit_repayment(rep_id: int, payload: dict = Body(...), db: Session = Depends
 def delete_repayment(rep_id: int, db: Session = Depends(get_db), user: models.User = HR):
     r = _repayment_or_404(db, rep_id)
     l = db.query(models.StaffLoan).filter(models.StaffLoan.id == r.loan_id).first()
+    _amt = r.amount or 0
     db.delete(r); db.flush()
     l.closed = False
     db.commit()
-    log_action(db, user.id, "repayment_removed", f"loan #{l.id}")
+    log_action(db, user.id, "repayment_removed", f"loan #{l.id}: {_amt:,.2f} repayment removed")
     return {"ok": True}
 
 
@@ -12050,6 +12111,7 @@ NOTIF_GROUPS = [
     ("attendance", "Attendance - missing or incomplete days", ("attendance",), ("attendance",)),
     ("expiry", "Expiry reminder - documents, licences, NOCs", ("expiry",), ("expiry",)),
     ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
+    ("watch", "Watch - risky changes by staff (admin only)", ("watch",), ("__admin__",)),
 ]
 NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
 
@@ -12074,7 +12136,7 @@ def notif_filter(db, user, items):
 @app.get("/notifications/settings")
 def notif_settings(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     allowed, off = notif_groups_for(db, user)
-    rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS)
+    rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS) | {"__admin__"}
     return {"groups": [{"id": g, "label": l, "allowed": g in allowed and any(r in rights for r in needs),
                         "on": g in allowed and g not in off} for g, l, _, needs in NOTIF_GROUPS]}
 
@@ -12248,6 +12310,13 @@ def get_notifications(db: Session = Depends(get_db),
             n = _pdc.notification(db, today)
             if n:
                 out.append(n)
+        except Exception:
+            pass
+
+    # ---- Watch: risky changes by staff - the admin only ------------------
+    if user.role == "admin":
+        try:
+            out.extend(watch.notifications(db, models))
         except Exception:
             pass
 
