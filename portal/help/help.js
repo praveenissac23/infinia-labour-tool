@@ -395,7 +395,11 @@
         el.dataset.helpI = "1";
         const i = document.createElement("span");
         i.className = "help-i"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t[sel];
-        el.insertAdjacentElement("afterend", i);
+        // Beside the box's own label where it has one, so the box keeps its
+        // line with the others; otherwise just after the box.
+        const lab = el.closest("label"), cap = lab && lab.querySelector(":scope > span");
+        if (cap && !cap.contains(el)) { i.classList.add("in-label"); cap.appendChild(i); }
+        else el.insertAdjacentElement("afterend", i);
       });
     }
   }

@@ -9282,7 +9282,7 @@ def _loan_dict(l, emp=None):
     return {"id": l.id, "employee_id": l.employee_id,
             "emp_no": emp.emp_no if emp else "", "name": emp.name if emp else "",
             "amount": round(l.amount or 0, 2), "taken_on": l.taken_on.isoformat(),
-            "terms": l.terms or "", "instalment": round(l.instalment or 0, 2),
+            "terms": tidy_text(l.terms), "instalment": round(l.instalment or 0, 2),
             "repaid": paid, "balance": round((l.amount or 0) - paid, 2),
             "closed": bool(l.closed) or (l.amount or 0) - paid <= 0.005,
             "notes": l.notes or "",
@@ -9291,6 +9291,18 @@ def _loan_dict(l, emp=None):
                              "month_year": r.month_year or "", "source": r.source or "",
                              "notes": r.notes or ""}
                             for r in sorted(l.repayments, key=lambda r: r.paid_on)]}
+
+
+def tidy_text(v):
+    """Typed in capitals (or all small letters), shown as a sentence:
+    "SAME MONTH DEDUCTION" -> "Same month deduction". Text already mixed
+    is the person's own and is left as it is."""
+    v = " ".join(str(v or "").split())
+    letters = [ch for ch in v if ch.isalpha()]
+    if len(letters) >= 4 and (all(ch.isupper() for ch in letters) or all(ch.islower() for ch in letters)):
+        v = v.lower()
+        v = v[:1].upper() + v[1:]
+    return v
 
 
 @app.get("/employees/loans")
@@ -9327,7 +9339,7 @@ def add_loan(payload: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="How much was lent?")
     when = _as_date(payload.get("taken_on")) or _dubai_today()
     l = models.StaffLoan(employee_id=e.id, amount=amount, taken_on=when,
-                          terms=(payload.get("terms") or "").strip(),
+                          terms=tidy_text(payload.get("terms")),
                           instalment=float(payload.get("instalment") or 0),
                           notes=(payload.get("notes") or "").strip(),
                           created_by=user.id)
@@ -9420,7 +9432,7 @@ def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get
         l.taken_on = _as_date(payload["taken_on"]) or l.taken_on
     for f in ("terms", "notes"):
         if f in payload:
-            setattr(l, f, (payload.get(f) or "").strip())
+            setattr(l, f, tidy_text(payload.get(f)))
     if "instalment" in payload:
         l.instalment = _num(payload["instalment"])
     left = (l.amount or 0) - sum(r.amount or 0 for r in l.repayments)
