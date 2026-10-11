@@ -29,7 +29,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Attendance > Daily attendance",
   "auto": true,
-  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  71  daily report clear day     screen buttons what is",
+  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp daily report clear day     screen buttons what is",
   "go": {
    "page": "attendance",
    "tab": "attendance"
@@ -51,7 +51,7 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"selectNone()\"]"
    },
    {
-    "say": "4. Unfilled Emp (71).",
+    "say": "4. Unfilled Emp.",
     "el": "#unfilled-btn"
    },
    {
@@ -201,7 +201,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Labour payroll > Additions & deductions",
   "auto": true,
-  "words": "payroll   labour payroll   additions   deductions load screen buttons what is",
+  "words": "payroll   labour payroll   additions   deductions load add screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "labourpay",
@@ -214,6 +214,10 @@ window.HELP_AUTO = [
    {
     "say": "1. Load.",
     "el": "button[onclick=\"loadAdjustmentsList()\"]"
+   },
+   {
+    "say": "2. Add.",
+    "el": "button[onclick=\"addAdjustmentRow()\"]"
    }
   ]
  },
@@ -259,11 +263,48 @@ window.HELP_AUTO = [
   ]
  },
  {
+  "id": "scr-payroll-labourpay-increments",
+  "area": "Every screen",
+  "title": "Payroll > Labour payroll > Increments",
+  "auto": true,
+  "words": "payroll   labour payroll   increments record increment preview export pdf export excel edit screen buttons what is",
+  "go": {
+   "page": "payroll",
+   "tab": "labourpay",
+   "sub": "increments"
+  },
+  "steps": [
+   {
+    "say": "This is Payroll > Labour payroll > Increments. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Record increment.",
+    "el": "button[onclick=\"labIncAdd()\"]"
+   },
+   {
+    "say": "2. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"labIncOut('view')\"]"
+   },
+   {
+    "say": "3. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"labIncOut('pdf')\"]"
+   },
+   {
+    "say": "4. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"labIncOut('excel')\"]"
+   },
+   {
+    "say": "5. Edit: change what is there.",
+    "el": "button[onclick=\"labIncEdit(35)\"]"
+   }
+  ]
+ },
+ {
   "id": "scr-payroll-hrpayroll-cycle",
   "area": "Every screen",
   "title": "Payroll > Office payroll > Salary cycle & statements",
   "auto": true,
-  "words": "payroll   office payroll   salary cycle   statements office staff local staff pay full month now preview export pdf export excel consolidated statement  office   local  screen buttons what is",
+  "words": "payroll   office payroll   salary cycle   statements office staff local staff pay full month now preview export pdf export excel consolidated statement  office   local  approve   lock screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -300,6 +341,10 @@ window.HELP_AUTO = [
    {
     "say": "7. Consolidated statement (office + local).",
     "el": "button[onclick=\"previewConsolidated(true)\"]"
+   },
+   {
+    "say": "8. Approve & lock: approves it.",
+    "el": "button[onclick=\"hrAllUse(5); approvePayrollRun()\"]"
    }
   ]
  },
@@ -408,11 +453,11 @@ window.HELP_AUTO = [
    },
    {
     "say": "5. History.",
-    "el": "button[onclick=\"hrLoanToggle(1)\"]"
+    "el": "button[onclick=\"hrLoanToggle(6)\"]"
    },
    {
     "say": "6. Edit: change what is there.",
-    "el": "button[onclick=\"hrLoanEdit(1)\"]"
+    "el": "button[onclick=\"hrLoanEdit(6)\"]"
    }
   ]
  },
@@ -421,7 +466,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Staff register",
   "auto": true,
-  "words": "payroll   office payroll   staff register all companies infinia prime infinia preview export pdf export excel   new staff screen buttons what is",
+  "words": "payroll   office payroll   staff register preview export pdf export excel   new staff screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -432,28 +477,19 @@ window.HELP_AUTO = [
     "say": "This is Payroll > Office payroll > Staff register. The numbers on the picture match the list below."
    },
    {
-    "say": "1. All companies."
-   },
-   {
-    "say": "2. Infinia."
-   },
-   {
-    "say": "3. Prime Infinia."
-   },
-   {
-    "say": "4. Preview: opens it on screen to read or print.",
+    "say": "1. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"previewHr('staff')\"]"
    },
    {
-    "say": "5. Export PDF: downloads it as a PDF.",
+    "say": "2. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"downloadHr('staff','pdf')\"]"
    },
    {
-    "say": "6. Export Excel: downloads it as an Excel sheet.",
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('staff','excel')\"]"
    },
    {
-    "say": "7. + New staff: adds a new staff.",
+    "say": "4. + New staff: adds a new staff.",
     "el": "button[onclick=\"hrNewStaff()\"]"
    }
   ]
@@ -491,7 +527,7 @@ window.HELP_AUTO = [
    },
    {
     "say": "5. Edit: change what is there.",
-    "el": "button[onclick=\"hrIncEdit(1)\"]"
+    "el": "button[onclick=\"hrIncEdit(39)\"]"
    }
   ]
  },
@@ -529,7 +565,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > All together",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   all together 5expireddocuments   renew now 8due in 7 daysdocuments   start renewal screen buttons what is",
+  "words": "expiry reminder   expiry reminder   all together 7expireddocuments   renew now 8due in 7 daysdocuments   start renewal   started mark started screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -540,12 +576,20 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > All together. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 5Expireddocuments - renew now.",
+    "say": "1. 7Expireddocuments - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
     "say": "2. 8Due in 7 daysdocuments - start renewal.",
     "el": "button[onclick=\"expCard('week')\"]"
+   },
+   {
+    "say": "3. ✓ Started: Started by Administrator - click to undo.",
+    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 276, false)\"]"
+   },
+   {
+    "say": "4. Mark started: Renewal is in hand - stop the reminders for this document.",
+    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('company', 5, true)\"]"
    }
   ]
  },
@@ -554,7 +598,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > People",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   people 1expiredpeople   renew now 4due in 7 dayspeople   start renewal 1due in 8 to 30 dayspeople   plan ahead save document preview export pdf export excel screen buttons what is",
+  "words": "expiry reminder   expiry reminder   people 3expiredpeople   renew now 3due in 7 dayspeople   start renewal 0due in 8 to 30 dayspeople   plan ahead save document preview export pdf export excel   started mark started screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -565,15 +609,15 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > People. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 1Expiredpeople - renew now.",
+    "say": "1. 3Expiredpeople - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
-    "say": "2. 4Due in 7 dayspeople - start renewal.",
+    "say": "2. 3Due in 7 dayspeople - start renewal.",
     "el": "button[onclick=\"expCard('week')\"]"
    },
    {
-    "say": "3. 1Due in 8 to 30 dayspeople - plan ahead.",
+    "say": "3. 0Due in 8 to 30 dayspeople - plan ahead.",
     "el": "button[onclick=\"expCard('month')\"]"
    },
    {
@@ -591,6 +635,14 @@ window.HELP_AUTO = [
    {
     "say": "7. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('documents','excel')\"]"
+   },
+   {
+    "say": "8. ✓ Started: Started by Administrator - click to undo.",
+    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 276, false)\"]"
+   },
+   {
+    "say": "9. Mark started: Renewal is in hand - stop the reminders for this document.",
+    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 46, true)\"]"
    }
   ]
  },
@@ -599,7 +651,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > Company & other documents",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   company   other documents 4expireddocuments   renew now 0due in 7 daysdocuments   start renewal save preview export pdf export excel screen buttons what is",
+  "words": "expiry reminder   expiry reminder   company   other documents 4expireddocuments   renew now 0due in 7 daysdocuments   start renewal save preview export pdf export excel mark started screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -632,6 +684,10 @@ window.HELP_AUTO = [
    {
     "say": "6. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"hrExpExport('excel')\"]"
+   },
+   {
+    "say": "7. Mark started: Renewal is in hand - stop the reminders for this document.",
+    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('company', 5, true)\"]"
    }
   ]
  },
@@ -1018,6 +1074,34 @@ window.HELP_AUTO = [
    {
     "say": "4. + Add scope: adds a new add scope.",
     "el": "button[onclick=\"ppNew()\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-projexp",
+  "area": "Every screen",
+  "title": "Accounts > Project expense",
+  "auto": true,
+  "words": "accounts   project expense preview export pdf export excel screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "projexp"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Project expense. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"pxExport('view')\"]"
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"pxExport('pdf')\"]"
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"pxExport('excel')\"]"
    }
   ]
  },
@@ -1771,7 +1855,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Settings > General",
   "auto": true,
-  "words": "settings   general change password save upload screen buttons what is",
+  "words": "settings   general save turn on for this device copy link screen buttons what is",
   "go": {
    "page": "settings",
    "tab": "general"
@@ -1781,16 +1865,16 @@ window.HELP_AUTO = [
     "say": "This is Settings > General. The numbers on the picture match the list below."
    },
    {
-    "say": "1. Change Password.",
-    "el": "button[onclick=\"changePassword()\"]"
+    "say": "1. Save: keeps what you entered - nothing is kept until you press it.",
+    "el": "button[onclick=\"notifSave()\"]"
    },
    {
-    "say": "2. Save: keeps what you entered - nothing is kept until you press it.",
-    "el": "button[onclick=\"saveCompanySettings()\"]"
+    "say": "2. Turn on for this device.",
+    "el": "#push-on-btn"
    },
    {
-    "say": "3. Upload.",
-    "el": "button[onclick=\"uploadSignature('lpo')\"]"
+    "say": "3. Copy link.",
+    "el": "button[onclick=\"agentCopy()\"]"
    }
   ]
  },
@@ -1814,7 +1898,7 @@ window.HELP_AUTO = [
    },
    {
     "say": "2. Edit: change what is there.",
-    "el": "button[onclick=\"coEdit(1)\"]"
+    "el": "button[onclick=\"coEdit(4)\"]"
    },
    {
     "say": "3. + Add site: adds a new add site.",
@@ -1996,7 +2080,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Staff > Leave",
   "auto": true,
-  "words": "staff   leave labour office local all on leave pending approved returned   add leave preview export pdf export excel screen buttons what is",
+  "words": "staff   leave labour office list calendar all on leave pending approved returned   add leave preview export pdf screen buttons what is",
   "go": {
    "page": "people",
    "tab": "people"
@@ -2013,34 +2097,34 @@ window.HELP_AUTO = [
     "say": "2. Office."
    },
    {
-    "say": "3. Local."
+    "say": "3. List."
    },
    {
-    "say": "4. All."
+    "say": "4. Calendar."
    },
    {
-    "say": "5. On leave."
+    "say": "5. All."
    },
    {
-    "say": "6. Pending."
+    "say": "6. On leave."
    },
    {
-    "say": "7. Approved: approves it."
+    "say": "7. Pending."
    },
    {
-    "say": "8. Returned."
+    "say": "8. Approved: approves it."
    },
    {
-    "say": "9. + Add leave: adds a new add leave."
+    "say": "9. Returned."
    },
    {
-    "say": "10. Preview: opens it on screen to read or print."
+    "say": "10. + Add leave: adds a new add leave."
    },
    {
-    "say": "11. Export PDF: downloads it as a PDF."
+    "say": "11. Preview: opens it on screen to read or print."
    },
    {
-    "say": "12. Export Excel: downloads it as an Excel sheet."
+    "say": "12. Export PDF: downloads it as a PDF."
    }
   ]
  },

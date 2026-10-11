@@ -961,6 +961,7 @@ def build():
                  f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>\n'
                  f'<script src="/portal/help/auto_guides.js?v={_v("portal/help/auto_guides.js")}"></script>\n'
                  f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}"></script>\n'
+                 f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}"></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)
     # A browser can keep an old app.html for a while after a deploy (no
@@ -1015,6 +1016,24 @@ def brand_hand_written(menu_rights=None):
                 new = re.sub(r'<script id="pg-menu-rights">.*?</script>', lambda _: tag, new, count=1, flags=re.S)
             else:
                 new = new.replace("</head>", tag + "\n</head>", 1)
+        # The (i) beside each box works on these pages too: the same tips,
+        # the same look. Refreshed on every build so the versions follow.
+        def _v(rel):
+            import hashlib as _h
+            try:
+                return _h.sha1(open(os.path.join(ROOT, rel), "rb").read()).hexdigest()[:10]
+            except OSError:
+                return "0"
+        block = ('<!--help-tips-->'
+                 f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">'
+                 f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>'
+                 f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>'
+                 '<!--/help-tips-->')
+        if "<!--help-tips-->" in new:
+            new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)
+        else:
+            head, sep, tail = new.rpartition("</body>")
+            new = head + block + "\n" + sep + tail
         if new != page:
             open(path, "w", encoding="utf-8").write(new)
 

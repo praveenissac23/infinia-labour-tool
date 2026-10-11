@@ -169,13 +169,13 @@
   // type in - even when that page was already open.
   async function arrive(x) {
     await goTo({ go: x.go });
-    await wait(350);
-    const first = x.guide && x.guide.steps && x.guide.steps.find(st => st.el && find(st.el));
-    const el = first ? find(first.el) : null;
-    if (!el) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.add("help-flash"); setTimeout(() => el.classList.remove("help-flash"), 2200);
-    if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !el.disabled) setTimeout(() => { try { el.focus({ preventScroll: true }); } catch (e) {} }, 400);
+    const steps = (x.guide && x.guide.steps || []).filter(st => st.el);
+    let el = null;
+    if (steps.length) el = find(steps[0].el) || await waitFor(steps[0].el, 2500);
+    if (!el) { window.scrollTo({ top: 0 }); return; }
+    el.scrollIntoView({ block: "center" });          // straight there - no slow glide
+    el.classList.add("help-flash"); setTimeout(() => el.classList.remove("help-flash"), 1800);
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !el.disabled) { try { el.focus({ preventScroll: true }); } catch (e) {} }
   }
   function renderResults() {
     const q = box.value.trim();
@@ -248,9 +248,12 @@
   async function goTo(g) {
     const go = g.go;
     if (typeof pgGo !== "function") return;
-    if (!PAGE || PAGE.key !== go.page) { pgGo(go.page); await wait(900); }
-    if (go.tab) { pgTab(go.tab); await wait(500); }
-    if (go.sub) { pgSub(go.sub); await wait(800); }
+    // Page, tab and sub-tab switch at once - each is a plain screen change;
+    // a frame between them lets the tab bar draw. No fixed waits.
+    const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+    if (!PAGE || PAGE.key !== go.page) { pgGo(go.page); await frame(); }
+    if (go.tab && !(PG_TAB && PG_TAB.id === go.tab && !go.sub)) { pgTab(go.tab); await frame(); }
+    if (go.sub && !(PG_SUB && PG_SUB.id === go.sub)) { pgSub(go.sub); await frame(); }
     if (go.view) {                         // a view inside the Staff page
       for (let i = 0; i < 30; i++) {
         const f = document.getElementById("pg-staff-frame"), w = f && f.contentWindow;
@@ -259,9 +262,15 @@
           try { w.showView(go.view); if (go.group && typeof w.setGroup === "function") w.setGroup(go.group); } catch (e) {}
           break;
         }
-        await wait(200);
+        await wait(80);
       }
     }
+  }
+  // The box a task starts at, as soon as its screen has drawn it.
+  async function waitFor(sel, ms) {
+    const end = Date.now() + (ms || 2500);
+    while (Date.now() < end) { const el = find(sel); if (el) return el; await wait(40); }
+    return null;
   }
   const visible = el => !!(el && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
   function find(sel) {
@@ -297,7 +306,7 @@
     const s = g.steps[i];
     if (s.run && !T["ran" + i]) { T["ran" + i] = 1; try { new Function(s.run)(); } catch (e) { console.error(e); } await wait(600); }
     let el = find(s.el);
-    if (s.el && !el) { await wait(700); el = find(s.el); }
+    if (s.el && !el) el = await waitFor(s.el, 2500);
     T.el = el;
     T.missing = !!(s.el && !el);
     if (el) { el.scrollIntoView({ block: "center", inline: "nearest" }); await wait(250); }
@@ -386,23 +395,9 @@
     w.document.close();
   }
 
-  // ---- The small (i) beside a confusing box ---------------------------------
-  function tips() {
-    const t = window.HELP_TIPS || {};
-    for (const sel in t) {
-      document.querySelectorAll(sel).forEach(el => {
-        if (el.dataset.helpI) return;
-        el.dataset.helpI = "1";
-        const i = document.createElement("span");
-        i.className = "help-i"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t[sel];
-        // Beside the box's own label where it has one, so the box keeps its
-        // line with the others; otherwise just after the box.
-        const lab = el.closest("label"), cap = lab && lab.querySelector(":scope > span");
-        if (cap && !cap.contains(el)) { i.classList.add("in-label"); cap.appendChild(i); }
-        else el.insertAdjacentElement("afterend", i);
-      });
-    }
-  }
+  // ---- The small (i) beside a box: portal/help/tips.js (shared with the
+  // Staff and Access pages). Kept here only as the call site.
+  function tips() { if (window.HELP_TIPS_RUN) window.HELP_TIPS_RUN(document); }
 
   // ---- First sign-in: one short hello pointing at the search box --------------
   function welcome() {
