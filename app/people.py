@@ -438,6 +438,8 @@ def leave_state(db, e, p, group, today=None):
             last = end                   # gone, no return date yet: up to today
         d0 = max(r.leave_on, start)
         while d0 <= min(last, end):
+            if e.staff and M._first_year_unpaid(e, d0):
+                d0 += timedelta(days=1); continue     # first-year vacation is unpaid leave, not annual leave
             if d0 not in have:
                 vac.append((d0, 1.0)); have.add(d0); from_register += 1
             d0 += timedelta(days=1)

@@ -578,7 +578,7 @@ window.HELP_TIPS = {
   "#hr-leave-from": "Starts as today. Vacation, sick and unpaid leave also appear on the Staff > Leave register.",
   "#hr-leave-to": "Leave empty for one day. A range is entered once and shown as one line.",
   "#hr-leave-rule": "Auto follows the rule: absent, unpaid and vacation days are deducted; the month's first sick day is paid. Choose Paid or Deducted to override.",
-  "#hr-vac-salary": "Leave salary paid with this vacation. Filled from his salary when he has a year's service.",
+  "#hr-vac-salary": "Paid only after one full year of service - a full month. A vacation before the first year is recorded as unpaid leave (house rule).",
   "#hr-vac-ticket": "Air ticket paid with this vacation. Also updates 'Last ticket' on his staff file.",
   "#hr-vac-month": "The salary month the leave salary and ticket are paid with - follows the first day of leave until changed.",
   "#hr-item-month": "Starts as the current salary month. The amount goes on that month's statement automatically.",

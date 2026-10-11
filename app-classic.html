@@ -14295,7 +14295,7 @@ function hrLeaveRangeChanged() {
   const kind = document.getElementById("hr-leave-kind").value;
   const p = hrPerson(document.getElementById("hr-leave-emp").value);
   if (kind === "vacation" && p && p.years < 1)
-    hint += " Under a year's service - no leave salary by the rule; enter one only if agreed.";
+    hint += " Under a year's service: this is recorded as UNPAID leave - the days are deducted, no leave salary, and it does not use his annual leave. After one full year it is annual vacation with a full month's leave salary.";
   if (kind === "sick") hint += " The month's first sick day is paid; any more are deducted.";
   document.getElementById("hr-leave-hint").textContent = hint.trim();
 }

@@ -127,3 +127,21 @@ ck("old double entry linked, still 4 days", days(f"lr{rid}") == [(d3 + timedelta
 c.delete(f"/employees/people/leave-register/{rid}", headers=H)
 ck("and now deleting the spell clears its days", days(f"lr{rid}") == [], days(f"lr{rid}"))
 print("\nALL PASS (with start-up link)" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
+
+# 8. House rule: a vacation before one full year of service is unpaid leave
+s = SessionLocal()
+s.add(models.Employee(emp_no="S-102", name="NEW JOINER", staff=True, pay_group="staff", basic_salary=2000, allowance=3000,
+                      total_salary=5000, active=True, joined_on=T - timedelta(days=200)))
+s.commit(); NEWID = s.query(models.Employee).filter_by(emp_no="S-102").first().id; s.close()
+dv = T + timedelta(days=20)
+r = c.post("/employees/leave", headers=H, json={"emp_no": "S-102", "kind": "vacation", "from": dv.isoformat(), "to": (dv + timedelta(days=4)).isoformat(), "leave_salary": 5000})
+s = SessionLocal(); kinds = {l.kind for l in s.query(models.StaffLeave).filter_by(employee_id=NEWID).all()}
+ls = s.query(models.PayItem).filter(models.PayItem.employee_id == NEWID).count(); s.close()
+ck("first-year vacation is recorded as unpaid leave", r.status_code == 200 and kinds == {"unpaid"}, (r.text, kinds))
+ck("and no leave salary is added", ls == 0, ls)
+dv2 = T + timedelta(days=200)
+r = c.post("/employees/leave", headers=H, json={"emp_no": "S-102", "kind": "vacation", "from": dv2.isoformat(), "to": (dv2 + timedelta(days=4)).isoformat(), "leave_salary": 5000})
+s = SessionLocal(); k2 = {l.kind for l in s.query(models.StaffLeave).filter(models.StaffLeave.employee_id == NEWID, models.StaffLeave.on_date >= dv2).all()}
+ls = s.query(models.PayItem).filter(models.PayItem.employee_id == NEWID).count(); s.close()
+ck("after one full year it is annual vacation with leave salary", k2 == {"vacation"} and ls == 1, (k2, ls))
+print("\nALL PASS (house rule)" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")

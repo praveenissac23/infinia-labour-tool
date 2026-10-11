@@ -9930,6 +9930,8 @@ def sync_spell_days(db, r, user):
     if days is None:                       # no end yet: leave what is there alone
         days = sorted(have) if r.status in ("approved", "returned") else []
     kind = LEAVE_TYPE_KIND.get(r.leave_type or "annual", "unpaid")
+    if kind == "vacation" and e and _first_year_unpaid(e, r.leave_on):
+        kind = "unpaid"
     want = {d: kind for d in days}
     drop = [l for d, l in have.items() if d not in want or _leave_kind(l) != kind or l.employee_id != r.employee_id]
     add = [d for d in want if d not in have or have[d] in drop]
@@ -10003,8 +10005,26 @@ def _mirror_spell(db, e, rec_id, kind, start, end, user):
     return r.id
 
 
+def _first_year_unpaid(e, start):
+    """House rule: a vacation taken before the first full year of service is
+    unpaid leave - the days are deducted, no leave salary, and they do not
+    come off the annual leave balance. From one year on it is annual
+    vacation with a full month's leave salary."""
+    j = getattr(e, "joined_on", None)
+    if not (e.staff and j and start):
+        return False
+    try:
+        anniversary = j.replace(year=j.year + 1)
+    except ValueError:                       # 29 February
+        anniversary = j.replace(year=j.year + 1, day=28)
+    return start < anniversary
+
+
 def _write_entry(db, e, payload, user, batch=None, replacing=()):
     kind, rule, start, end, portion, reason = _leave_from_payload(payload)
+    if kind == "vacation" and _first_year_unpaid(e, start):
+        kind, reason = "unpaid", "Unpaid leave - vacation before one year of service"
+        payload = {**payload, "leave_salary": 0, "air_ticket": 0}
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     _guard_months(db, e, days + [r.on_date for r in replacing])
     taken = {l.on_date for l in db.query(models.StaffLeave).filter(
