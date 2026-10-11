@@ -8655,10 +8655,12 @@ def _service_years(e, upto=None):
     return max((end - e.joined_on).days / 365.25, 0.0)
 
 
-def _unpaid_days(db, e, upto):
-    """Days of unpaid absence up to a date - which do not count as service."""
+def _unpaid_days(db, e, upto, split=False):
+    """Days that do not count as service, up to a date: unpaid absence and
+    unpaid leave, and - company rule (11 Oct 2026) - annual vacation days
+    too. split=True gives (unpaid, vacation) separately for display."""
     if db is None or not e.joined_on:
-        return 0.0
+        return (0.0, 0.0) if split else 0.0
     rows = (db.query(models.StaffLeave)
               .filter(models.StaffLeave.employee_id == e.id,
                       models.StaffLeave.on_date >= e.joined_on,
@@ -8666,18 +8668,22 @@ def _unpaid_days(db, e, upto):
     by_month = {}
     for l in rows:
         by_month.setdefault((l.on_date.year, l.on_date.month), []).append(l)
-    total = 0.0
+    total = vac = 0.0
     for (y, m), ls in by_month.items():
         # The whole month is judged, so the paid sick day is counted the
         # way the salary counted it.
         a = date(y, m, 1)
         b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
         for l, _, unpaid, _ in _judge_days(_month_rows(db, e.id, a, b)):
-            # Annual vacation is service - it is paid as leave salary, only
-            # docked from the month's salary - so it is never taken out.
-            if l.on_date <= upto and _leave_kind(l) != "vacation":
+            if l.on_date > upto:
+                continue
+            if _leave_kind(l) == "vacation":
+                vac += l.portion or 1.0          # company rule: vacation is not service
+            else:
                 total += unpaid
-    return round(total, 2)
+    if split:
+        return round(total, 2), round(vac, 2)
+    return round(total + vac, 2)
 
 
 def gratuity_detail(e, db=None, upto=None):
@@ -8711,7 +8717,10 @@ def gratuity_detail(e, db=None, upto=None):
     if e.terminated_on and e.terminated_on < end:
         end = e.terminated_on
     service = max((end - e.joined_on).days + 1, 0)
-    unpaid = _unpaid_days(db, e, end)
+    unpaid_only, vacation = _unpaid_days(db, e, end, split=True)
+    unpaid = round(unpaid_only + vacation, 2)
+    out["vacation_days"] = vacation
+    out["unpaid_only_days"] = unpaid_only
     years = max(service - unpaid, 0) / 365.0
     basic = e.basic_salary or 0
     daily = basic * 12 / 365.0
@@ -8729,7 +8738,8 @@ def gratuity_detail(e, db=None, upto=None):
     out["amount"] = round(amount, 2)
     out["why"] = (f"{years:.2f} yrs x {'21' if years <= 5 else '21/30'} days = {days:.1f} days"
                   f" x {daily:,.2f} a day (basic {basic:,.0f} x 12 / 365)"
-                  + (f", {unpaid:g} unpaid day(s) not counted" if unpaid else "")
+                  + (f", {unpaid_only:g} unpaid day(s) not counted" if unpaid_only else "")
+                  + (f", {vacation:g} vacation day(s) not counted (company rule)" if vacation else "")
                   + (", capped at two years' basic" if out["capped"] else ""))
     return out
 

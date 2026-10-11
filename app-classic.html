@@ -14986,7 +14986,8 @@ async function renderGratuity() {
   const step = `<div class="hr-steps">
       ${kv("Joined", s.joined_on ? hrDate(s.joined_on) : "not on file")}
       ${kv("Service", s.joined_on ? hrService(s.years) : "-")}
-      ${kv("Unpaid days (not service)", g.unpaid_days ? g.unpaid_days : "none")}
+      ${kv("Unpaid days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
+      ${kv("Vacation days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
       ${kv("Service counted", s.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(s.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}

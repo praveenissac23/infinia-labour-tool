@@ -193,7 +193,7 @@ def settlement(db, emp_no, q):
                      "only notice not served is deducted (art. 43).")
     if reason == "art44":
         notes.append("Dismissal under article 44: no notice either way; gratuity is still due.")
-    notes.append("Gratuity and leave are paid on the basic wage only; unpaid absence is not service.")
+    notes.append("Gratuity and leave are paid on the basic wage only; unpaid absence and, by company rule, vacation days are not service.")
 
     return {
         "emp": {"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
@@ -213,6 +213,7 @@ def settlement(db, emp_no, q):
                   "settled_on": (M._as_date(q.get("settled_on")) or today).isoformat()},
         "salary": {"basic": basic, "gross": gross, "day_basic": day_basic, "day_gross": day_gross},
         "service": {"days": g["service_days"], "unpaid": g["unpaid_days"],
+                    "unpaid_only": g.get("unpaid_only_days", g["unpaid_days"]), "vacation": g.get("vacation_days", 0.0),
                     "counted": max(g["service_days"] - g["unpaid_days"], 0),
                     "years": g["years"], "text": _ymd_text(e.joined_on, last)},
         "gratuity": {"amount": grat, "entitled": g["entitled"], "capped": g.get("capped", False),
@@ -263,7 +264,8 @@ def _basis(s):
     return [("Basic salary", _money(sal["basic"])), ("Gross salary", _money(sal["gross"])),
             ("Daily basic (basic x 12 / 365)", _money(sal["day_basic"])),
             ("Service days", f"{sv['days']:,}"),
-            ("Unpaid days (not service)", f"{sv['unpaid']:g}"),
+            ("Unpaid days (not service)", f"{sv.get('unpaid_only', sv['unpaid']):g}"),
+            ("Vacation days (not service - company rule)", f"{sv.get('vacation', 0):g}"),
             ("Unused leave days", f"{i['leave_days']:g}"),
             ("Notice required / served", f"{i['notice_required']} / {i['notice_served']:g} days")]
 
