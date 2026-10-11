@@ -150,7 +150,7 @@ def settlement(db, emp_no, q):
     if reason == "termination" and short > 0:
         notice_add = round(short * day_gross, 2)
 
-    ticket = max(_f(q.get("ticket")), 0.0)
+    ticket = 0.0 if e.staff else max(_f(q.get("ticket")), 0.0)   # air ticket: labour only
     other_add = max(_f(q.get("other_add")), 0.0)
     loans = [l for l in M.list_loans(open_only=False, db=db, user=None)["rows"] if l["emp_no"] == e.emp_no and not l["closed"]]
     auto_loan = round(sum(l["balance"] for l in loans), 2)

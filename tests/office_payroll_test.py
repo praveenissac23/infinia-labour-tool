@@ -262,7 +262,6 @@ ck('the deduction says which days it is for',
 # accountant will enter them, and the open cycle picks them up.
 ITEMS = [
     ('IC001', 'add', 'leave_salary', 7000, ''),
-    ('IC001', 'add', 'air_ticket', 500, ''),
     ('IC010', 'add', 'taxi', 1228.00, 'Taxi Bills'),
     ('IC017', 'add', 'taxi', 328.00, 'Taxi Bills'),
     ('IC019', 'add', 'taxi', 315.50, 'Taxi Bills'),
@@ -274,6 +273,16 @@ for emp, d, cat, amt, note in ITEMS:
     r = c.post('/employees/pay-items', json={'emp_no': emp, 'month_year': CYCLE,
                'direction': d, 'category': cat, 'amount': amt, 'notes': note}, headers=H)
     assert r.status_code == 200, r.text[:200]
+# Jomon's August air ticket was paid before the rule that office staff get
+# none (11 Oct 2026). It stands in the signed month as it was, so it is
+# put on file directly - the screens no longer take one for office staff.
+_s = database.SessionLocal()
+_e = _s.query(models.Employee).filter(models.Employee.emp_no == 'IC001').first()
+_s.add(models.PayItem(employee_id=_e.id, month_year=CYCLE, direction='add', category='air_ticket', amount=500, notes=''))
+_s.commit(); _s.close()
+r = c.post('/employees/pay-items', json={'emp_no': 'IC001', 'month_year': CYCLE, 'direction': 'add',
+           'category': 'air_ticket', 'amount': 500}, headers=H)
+ck('a new air ticket for office staff is refused (labour only)', r.status_code == 400, r.text[:120])
 REMARKS = {'IC101': 'BY CASH', 'IC102': 'BY CASH',
            'IC201': "Project Director's remuneration",
            'IC202': "Manager's remuneration", 'IC203': "Manager's remuneration"}

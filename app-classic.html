@@ -3818,7 +3818,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <input type="checkbox" id="hr-leave-cert"> Medical certificate given</label>
                 <span id="hr-vac-fields" style="display:none; gap:10px; align-items:flex-end; flex-wrap:wrap;">
                   <label class="hr-field"><span>Leave salary</span><input type="text" inputmode="decimal" id="hr-vac-salary" style="width:120px;"></label>
-                  <label class="hr-field"><span>Air ticket</span><input type="text" inputmode="decimal" id="hr-vac-ticket" style="width:110px;"></label>
+                  <label class="hr-field" style="display:none;"><span>Air ticket</span><input type="text" inputmode="decimal" id="hr-vac-ticket" style="width:110px;"></label>
                   <label class="hr-field"><span>Paid with the salary of</span><input type="month" id="hr-vac-month" style="width:160px;" onchange="this.dataset.touched='1'"></label>
                 </span>
                 <button class="btn btn-primary" id="hr-leave-save" onclick="saveLeave()">Record</button>
@@ -3969,7 +3969,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <label class="hr-field"><span>Unused leave (days)</span><input type="text" inputmode="decimal" id="fs-leave" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Unpaid salary days, last month</span><input type="text" inputmode="decimal" id="fs-sal" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Loan / advance balance</span><input type="text" inputmode="decimal" id="fs-loan" oninput="fsCalc()"></label>
-                  <label class="hr-field"><span>Air ticket</span><input type="text" inputmode="decimal" id="fs-ticket" placeholder="0" oninput="fsCalc()"></label>
+                  <label class="hr-field" style="display:none;"><span>Air ticket</span><input type="text" inputmode="decimal" id="fs-ticket" placeholder="0" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Other additions</span><input type="text" inputmode="decimal" id="fs-add" placeholder="0" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>For</span><input type="text" id="fs-add-note" placeholder="e.g. bonus" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Other deductions</span><input type="text" inputmode="decimal" id="fs-ded" placeholder="0" oninput="fsCalc()"></label>
@@ -14391,7 +14391,10 @@ const HR_CATS = {
 function hrItemDirChanged(keep) {
   const dir = document.getElementById("hr-item-dir").value;
   const sel = document.getElementById("hr-item-cat");
-  sel.innerHTML = Object.entries(HR_CATS[dir]).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  // Air ticket allowance is for labour only - not offered for office staff
+  // (an old entry being edited still shows its own kind).
+  sel.innerHTML = Object.entries(HR_CATS[dir]).filter(([k]) => k !== "air_ticket" || keep === "air_ticket")
+    .map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
   if (keep) sel.value = keep;
 }
 

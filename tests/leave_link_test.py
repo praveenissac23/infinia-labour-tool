@@ -106,11 +106,11 @@ s = SessionLocal(); p = s.query(models.PeopleProfile).filter_by(employee_id=EID)
 ck("the People file shows the same contract", p and p.contract_expiry and p.contract_expiry.isoformat() == exp and p.contract_no == "MOL-77",
    p and (p.contract_expiry, p.contract_no))
 
-# 6. Air ticket with a vacation -> last ticket on the file
+# 6. Office staff get no air ticket allowance (labour only), so no ticket is recorded
 d2 = T + timedelta(days=90)
 c.post("/employees/leave", headers=H, json={"emp_no": "S-101", "kind": "vacation", "from": d2.isoformat(), "to": (d2 + timedelta(days=2)).isoformat(), "air_ticket": 1200})
 s = SessionLocal(); p = s.query(models.PeopleProfile).filter_by(employee_id=EID).first(); s.close()
-ck("air ticket paid: the file's last ticket follows", p.last_ticket_on == d2, p.last_ticket_on)
+ck("office vacation: no air ticket, last ticket untouched", p.last_ticket_on is None, p.last_ticket_on)
 
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
 
@@ -145,3 +145,12 @@ s = SessionLocal(); k2 = {l.kind for l in s.query(models.StaffLeave).filter(mode
 ls = s.query(models.PayItem).filter(models.PayItem.employee_id == NEWID).count(); s.close()
 ck("after one full year it is annual vacation with leave salary", k2 == {"vacation"} and ls == 1, (k2, ls))
 print("\nALL PASS (house rule)" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
+
+# 9. Air ticket allowance: labour only
+r = c.post("/employees/pay-items", headers=H, json={"emp_no": "S-101", "month_year": "October 2026", "direction": "add", "category": "air_ticket", "amount": 1200})
+ck("an office air ticket is refused", r.status_code == 400 and "labour only" in r.text, r.text)
+dv3 = T + timedelta(days=300)
+c.post("/employees/leave", headers=H, json={"emp_no": "S-101", "kind": "vacation", "from": dv3.isoformat(), "to": dv3.isoformat(), "air_ticket": 1500})
+s = SessionLocal(); n = s.query(models.PayItem).filter(models.PayItem.employee_id == EID, models.PayItem.category == "air_ticket", models.PayItem.amount == 1500).count(); s.close()
+ck("a vacation adds no air ticket for office staff", n == 0, n)
+print("\nALL PASS (air ticket)" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")

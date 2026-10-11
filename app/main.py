@@ -10022,6 +10022,8 @@ def _first_year_unpaid(e, start):
 
 def _write_entry(db, e, payload, user, batch=None, replacing=()):
     kind, rule, start, end, portion, reason = _leave_from_payload(payload)
+    if e.staff:
+        payload = {**payload, "air_ticket": 0}   # air ticket allowance is for labour only
     if kind == "vacation" and _first_year_unpaid(e, start):
         kind, reason = "unpaid", "Unpaid leave - vacation before one year of service"
         payload = {**payload, "leave_salary": 0, "air_ticket": 0}
@@ -10204,6 +10206,8 @@ def _item_from_payload(db, payload):
     if cat not in PAY_CATEGORIES[direction]:
         raise HTTPException(status_code=400,
             detail=f"Which kind? One of: {', '.join(PAY_CATEGORIES[direction].values())}.")
+    if cat == "air_ticket" and e.staff:
+        raise HTTPException(status_code=400, detail="Air ticket allowance is for labour only, not office staff.")
     try:
         amount = round(float(str(payload.get("amount") or 0).replace(",", "")), 2)
     except ValueError:

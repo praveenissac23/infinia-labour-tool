@@ -401,8 +401,8 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
       <label class="fld"><span>Period (months)</span><input type="number" id="e-leave_months" style="width:100px;" placeholder="group rule"></label>
       <label class="fld"><span>Opening balance (days)</span><input type="number" id="e-leave_opening" style="width:120px;" step="0.5"></label>
       <label class="fld"><span>Balance as at</span><input type="date" id="e-leave_opening_on"></label>
-      <label class="fld"><span>Ticket every (years)</span><input type="number" id="e-ticket_every_years" style="width:90px;"></label>
-      <label class="fld"><span>Last ticket</span><input type="date" id="e-last_ticket_on"></label>
+      <label class="fld lab-only"><span>Ticket every (years)</span><input type="number" id="e-ticket_every_years" style="width:90px;"></label>
+      <label class="fld lab-only"><span>Last ticket</span><input type="date" id="e-last_ticket_on"></label>
     </div>
     <p class="muted">Leave blank to use the rule for the register: labour 60 days per 24 months, everyone else 30 days a year. An opening balance is what he had on the day given, from before the app.</p>
     <h4>Housing &amp; transport</h4>
@@ -801,7 +801,7 @@ function renderFile() {
   else if (P.section === "leave") body = `<div class="grid">
       ${f("Rule", lv.rule + (pr.leave_days ? " (contract)" : ""))}${f("Counted from", lv.counted_from ? dmy(lv.counted_from) : "")}${f("Accrued to date", `${lv.accrued} days`)}${f("Taken", `${lv.taken} days`)}
       ${f("Balance", `<b>${lv.balance} days</b>`)}${f("Next due", lv.next_due ? `<span>${dmy(lv.next_due)} ${lv.due_state === "due" ? '<span class="pill r">due</span>' : ""}</span>` : "")}${f("Last vacation", lv.last_vacation)}${f("Sick this year", `${lv.sick_this_year} days`)}
-      ${f("Air ticket", pr.ticket_every_years ? `every ${pr.ticket_every_years} yr${pr.last_ticket_on ? " · last " + dmy(pr.last_ticket_on) : ""}` : "")}${lv.opening ? f("Opening balance", `${lv.opening} days as at ${dmy(pr.leave_opening_on)}`) : ""}</div>
+      ${p.group !== "labour" ? "" : f("Air ticket", pr.ticket_every_years ? `every ${pr.ticket_every_years} yr${pr.last_ticket_on ? " · last " + dmy(pr.last_ticket_on) : ""}` : "")}${lv.opening ? f("Opening balance", `${lv.opening} days as at ${dmy(pr.leave_opening_on)}`) : ""}</div>
       ${lv.why ? `<p class="muted">${esc(lv.why)}</p>` : ""}
       <div class="sec-h"><span class="lbl">Vacations taken</span></div>` + table(["From", "To", "Days"], lv.vacations.map(v => [dmy(v.from), dmy(v.to), v.days]), "None recorded.")
       + (p.group !== "labour" ? `<div class="sec-h"><span class="lbl">Absence record (Absence register)</span></div>` + table(["Date(s)", "Type", "Days", "Pay", "Deduction"],
@@ -864,6 +864,8 @@ function openEdit() {
   const g = document.getElementById("e-group");
   g.dataset.opts = p.group === "labour" ? "labour:Labour" : "office:Office staff,local:Local staff";
   segInit(g); segSet(g, p.group);
+  // Air ticket allowance is for labour only.
+  document.querySelectorAll("#dlg-edit .lab-only, .lab-only").forEach(x => x.style.display = p.group === "labour" ? "" : "none");
   document.getElementById("e-group-note").textContent = p.group === "labour" ? "Labour stays on the labour register." : "Office staff (household included) are paid on the office statement; local staff on the local statement.";
   setVal("e-name", p.name);
   PROFILE_FIELDS.forEach(k => setVal("e-" + k, pr[k]));
