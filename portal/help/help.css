@@ -94,3 +94,8 @@
 .spell-hint b { color: #1F5E3B; }
 .spell-hint button { border: 1px solid #E2D6B8; background: #fff; border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; color: #5A4A20; }
 .spell-hint button[data-use] { background: #EAF5EE; border-color: #CBE3D3; color: #1F5E3B; font-weight: 600; }
+
+/* The clear x inside a filled text box */
+.field-x { position: fixed; z-index: 2800; display: none; align-items: center; justify-content: center; width: 18px; height: 18px;
+  padding: 0; border: 0; border-radius: 50%; background: #E4E0DA; color: #5B6167; font: bold 13px/1 Arial, sans-serif; cursor: pointer; }
+.field-x:hover { background: #C0392B; color: #fff; }

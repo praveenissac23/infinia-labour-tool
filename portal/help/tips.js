@@ -54,6 +54,49 @@
   document.addEventListener("focusout", e => { if (e.target.classList && e.target.classList.contains("help-i")) softHide(); });
   document.addEventListener("click", e => { const i = e.target.closest && e.target.closest(".help-i"); if (i) { e.preventDefault(); e.stopPropagation(); show(i); } else hide(); }, true);
   window.addEventListener("scroll", softHide, true);
+  // ---- A small x inside a filled box, to clear it in one tap -------------
+  // One shared button laid over the right end of whichever text box has the
+  // cursor. Nothing on the page is wrapped or moved; clearing tells the page
+  // the box changed, so lists and searches update as if it was typed.
+  const CLEARABLE = el => el && el.tagName === "INPUT" && /^(text|tel|email|url|)$/.test(el.type || "")
+    && !el.readOnly && !el.disabled && el.dataset.noclear === undefined;
+  let xb = null, xfor = null;
+  function placeX() {
+    if (!xb || !xfor) return;
+    if (!xfor.value || !document.contains(xfor) || !xfor.getClientRects().length) { xb.style.display = "none"; return; }
+    const r = xfor.getBoundingClientRect();
+    xb.style.display = "flex";
+    xb.style.left = (r.right - 24) + "px";
+    xb.style.top = (r.top + r.height / 2 - 9) + "px";
+  }
+  function showX(el) {
+    if (!xb) {
+      xb = document.createElement("button");
+      xb.type = "button"; xb.className = "field-x"; xb.tabIndex = -1; xb.title = "Clear"; xb.textContent = "\u00d7";
+      xb.addEventListener("mousedown", e => {
+        e.preventDefault();                       // the cursor stays in the box
+        const el = xfor; if (!el) return;
+        el.value = "";
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.focus(); placeX();
+      });
+      document.body.appendChild(xb);
+    }
+    xfor = el;
+    if (!el.dataset.xpad) {                       // room so typed text never runs under the x
+      el.dataset.xpad = "1";
+      const pr = parseFloat(getComputedStyle(el).paddingRight) || 0;
+      if (pr < 22) el.style.paddingRight = "24px";
+    }
+    placeX();
+  }
+  document.addEventListener("focusin", e => { if (CLEARABLE(e.target)) showX(e.target); else if (xb && e.target !== xb) { xfor = null; xb.style.display = "none"; } });
+  document.addEventListener("input", e => { if (e.target === xfor) placeX(); });
+  document.addEventListener("focusout", e => { if (e.target === xfor) setTimeout(() => { if (document.activeElement !== xfor && xb) xb.style.display = "none"; }, 150); });
+  window.addEventListener("scroll", placeX, true);
+  window.addEventListener("resize", placeX);
+
   window.HELP_TIPS_RUN = run;
   // Only when the page actually changes (a screen opens, a form is drawn),
   // and at most a few times a second - nothing runs while the app sits idle.
