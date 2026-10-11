@@ -8673,7 +8673,9 @@ def _unpaid_days(db, e, upto):
         a = date(y, m, 1)
         b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
         for l, _, unpaid, _ in _judge_days(_month_rows(db, e.id, a, b)):
-            if l.on_date <= upto:
+            # Annual vacation is service - it is paid as leave salary, only
+            # docked from the month's salary - so it is never taken out.
+            if l.on_date <= upto and _leave_kind(l) != "vacation":
                 total += unpaid
     return round(total, 2)
 
