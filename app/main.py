@@ -12489,6 +12489,13 @@ app.include_router(projexpense.router)
 import credentials  # noqa: E402  - Accounts > Credentials: the company's logins
 app.include_router(credentials.router)
 credentials.Credential.__table__.create(bind=engine, checkfirst=True)
+try:   # a column added after the table was first made
+    from sqlalchemy import inspect as _insp, text as _text
+    if "admin_only" not in {c["name"] for c in _insp(engine).get_columns("credentials")}:
+        with engine.begin() as _cx:
+            _cx.execute(_text("ALTER TABLE credentials ADD COLUMN admin_only BOOLEAN DEFAULT FALSE"))
+except Exception as _e:
+    print("credentials column:", _e)
 
 
 @app.on_event("startup")

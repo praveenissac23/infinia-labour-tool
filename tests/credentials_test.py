@@ -65,6 +65,21 @@ ts = c.post("/auth/download-token", headers=S).json()["token"]
 ck("export refused without the tab", c.get(f"/export/accounts/credentials/view?token={ts}").status_code == 403)
 g = c.get("/employees/accounts/credentials/generate", headers=P).json()["password"]
 ck("generated password is strong", len(g) >= 14 and any(ch.isdigit() for ch in g) and any(ch.isupper() for ch in g), g)
+# Admin only: hidden from the PRO everywhere
+r = c.post("/employees/accounts/credentials", headers=B, json={"name": "Bank token", "kind": "pin", "category": "Bank", "secret": "9911", "admin_only": True, "logo": "data:image/png;base64,AAAA"})
+aid = r.json()["id"]
+ck("admin saves an admin-only login", r.status_code == 200 and r.json()["admin_only"] is True, r.text[:150])
+ck("PRO's list does not show it", all(x["id"] != aid for x in c.get("/employees/accounts/credentials", headers=P).json()["rows"]))
+ck("admin's list does", any(x["id"] == aid for x in c.get("/employees/accounts/credentials", headers=B).json()["rows"]))
+ck("PRO cannot reveal it", c.post(f"/employees/accounts/credentials/{aid}/reveal", headers=P, json={}).status_code == 404)
+ck("PRO cannot edit or delete it", c.put(f"/employees/accounts/credentials/{aid}", headers=P, json={"name": "x"}).status_code == 404
+   and c.delete(f"/employees/accounts/credentials/{aid}", headers=P).status_code == 404)
+t2 = c.post("/auth/download-token", headers=P).json()["token"]
+ck("not in the PRO's export", "9911" not in c.get(f"/export/accounts/credentials/view?token={t2}").text)
+tb = c.post("/auth/download-token", headers=B).json()["token"]
+ck("in the admin's export", "9911" in c.get(f"/export/accounts/credentials/view?token={tb}").text)
+r = c.post("/employees/accounts/credentials", headers=P, json={"name": "Sneaky", "kind": "pin", "secret": "1", "admin_only": True, "logo": "data:image/png;base64,AAAA"})
+ck("PRO cannot make one admin-only", r.json()["admin_only"] is False)
 # Delete by PRO: alert
 c.delete(f"/employees/accounts/credentials/{pin}", headers=P)
 s = SessionLocal(); ok = any(a.action == "credential_deleted" for a in s.query(watch.WatchAlert).all()); s.close()

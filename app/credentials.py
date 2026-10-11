@@ -26,7 +26,7 @@ from html import unescape
 from urllib.parse import urlparse, quote
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
 
 import main as M
@@ -52,6 +52,7 @@ class Credential(Base):
     secret = Column(Text, default="")        # encrypted
     notes = Column(Text, default="")         # encrypted
     logo = Column(Text, default="")          # data: URI, fetched once
+    admin_only = Column(Boolean, default=False)   # hidden from everyone but an admin
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -186,17 +187,33 @@ def name_from_domain(domain):
 
 # ---- endpoints -------------------------------------------------------------------
 
+def _is_admin(user):
+    return getattr(user, "role", "") == "admin"
+
+
+def _visible(db, user):
+    q = db.query(Credential)
+    return q if _is_admin(user) else q.filter(Credential.admin_only != True)  # noqa: E712
+
+
+def _get_or_404(db, cid, user):
+    c = db.get(Credential, cid)
+    if not c or (c.admin_only and not _is_admin(user)):
+        raise HTTPException(status_code=404, detail="That login is no longer on file.")
+    return c
+
+
 def _row(c, user):
     return {"id": c.id, "name": c.name, "url": c.url, "domain": c.domain, "kind": c.kind,
             "category": c.category, "username": c.username, "has_secret": bool(c.secret),
-            "has_notes": bool(c.notes), "logo": c.logo or "",
+            "has_notes": bool(c.notes), "logo": c.logo or "", "admin_only": bool(c.admin_only),
             "updated_at": (c.updated_at or c.created_at).isoformat() if (c.updated_at or c.created_at) else ""}
 
 
 @router.get("/employees/accounts/credentials")
 def list_credentials(db: Session = Depends(get_db), user: models.User = CR):
-    rows = db.query(Credential).order_by(Credential.name).all()
-    return {"rows": [_row(c, user) for c in rows], "categories": CATEGORIES}
+    rows = _visible(db, user).order_by(Credential.name).all()
+    return {"rows": [_row(c, user) for c in rows], "categories": CATEGORIES, "admin": _is_admin(user)}
 
 
 @router.get("/employees/accounts/credentials/lookup")
@@ -235,7 +252,7 @@ def _clean(payload, c=None):
 def add_credential(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = CR):
     f = _clean(payload)
     c = Credential(**f, secret=lock(payload.get("secret") or ""), notes=lock((payload.get("notes") or "").strip()),
-                   created_by=user.id, updated_by=user.id)
+                   created_by=user.id, updated_by=user.id, admin_only=bool(payload.get("admin_only")) and _is_admin(user))
     c.logo = payload.get("logo") if str(payload.get("logo") or "").startswith("data:image/") else fetch_logo(c.domain)
     db.add(c); db.commit()
     M.log_action(db, user.id, "credential_added", f"{c.name} ({c.domain or c.kind})")
@@ -244,9 +261,7 @@ def add_credential(payload: dict = Body(...), db: Session = Depends(get_db), use
 
 @router.put("/employees/accounts/credentials/{cid}")
 def edit_credential(cid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = CR):
-    c = db.get(Credential, cid)
-    if not c:
-        raise HTTPException(status_code=404, detail="That login is no longer on file.")
+    c = _get_or_404(db, cid, user)
     old_domain = c.domain
     what = []
     for k, v in _clean(payload, c).items():
@@ -259,6 +274,8 @@ def edit_credential(cid: int, payload: dict = Body(...), db: Session = Depends(g
         c.secret = lock(payload.get("secret") or "")
     if "notes" in payload and payload["notes"] is not None:
         c.notes = lock((payload.get("notes") or "").strip())
+    if _is_admin(user) and "admin_only" in payload:
+        c.admin_only = bool(payload.get("admin_only"))
     if str(payload.get("logo") or "").startswith("data:image/"):
         c.logo = payload["logo"]
     elif c.domain != old_domain or not c.logo:
@@ -271,9 +288,7 @@ def edit_credential(cid: int, payload: dict = Body(...), db: Session = Depends(g
 
 @router.delete("/employees/accounts/credentials/{cid}")
 def delete_credential(cid: int, db: Session = Depends(get_db), user: models.User = CR):
-    c = db.get(Credential, cid)
-    if not c:
-        raise HTTPException(status_code=404, detail="That login is no longer on file.")
+    c = _get_or_404(db, cid, user)
     name = c.name
     db.delete(c); db.commit()
     M.log_action(db, user.id, "credential_deleted", name)
@@ -283,9 +298,7 @@ def delete_credential(cid: int, db: Session = Depends(get_db), user: models.User
 @router.post("/employees/accounts/credentials/{cid}/reveal")
 def reveal(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = CR):
     """The password (and notes) of one login - shown or copied. Logged."""
-    c = db.get(Credential, cid)
-    if not c:
-        raise HTTPException(status_code=404, detail="That login is no longer on file.")
+    c = _get_or_404(db, cid, user)
     how = "copied" if (payload or {}).get("how") == "copy" else "shown"
     M.log_action(db, user.id, "credential_shown", f"{c.name} - {'PIN' if c.kind == 'pin' else 'password'} {how}")
     return {"secret": unlock(c.secret), "notes": unlock(c.notes)}
@@ -293,14 +306,15 @@ def reveal(cid: int, payload: dict = Body(default={}), db: Session = Depends(get
 
 # ---- the list on paper: never the passwords ----------------------------------------
 
-def _parts(db, cat=""):
-    rows = db.query(Credential).order_by(Credential.category, Credential.name).all()
+def _parts(db, cat="", user=None):
+    rows = _visible(db, user).order_by(Credential.category, Credential.name).all()
     if cat:
         rows = [c for c in rows if c.category == cat]
     out = [{"Sr.": i, "Name": c.name, "Category": c.category, "Website": c.url or c.domain or "-",
             "Type": {"login": "Login", "pin": "PIN", "note": "Note"}.get(c.kind, c.kind),
             "Username": c.username or "-", "Password / PIN": unlock(c.secret) or "-",
-            "Notes": unlock(c.notes) or ""} for i, c in enumerate(rows, 1)]
+            "Notes": unlock(c.notes) or "", **({"Admin only": "Yes" if c.admin_only else ""} if _is_admin(user) else {})}
+           for i, c in enumerate(rows, 1)]
     sub = (f"{len(out)} logins{(' - ' + cat) if cat else ''}   |   CONFIDENTIAL - contains passwords   |   "
            f"As at {M._dubai_today():%d %b %Y}")
     return out, "Credentials", sub
@@ -316,7 +330,7 @@ def _reader(token, db):
 @router.get("/export/accounts/credentials")
 def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Session = Depends(get_db)):
     u = _reader(token, db)
-    rows, title, sub = _parts(db, cat)
+    rows, title, sub = _parts(db, cat, u)
     M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - {'Excel' if format == 'excel' else 'PDF'}{(' - ' + cat) if cat else ''}")
     return M._hr_file(title, rows, sub, format, [], "Credentials", totals=[])
 
@@ -325,7 +339,7 @@ def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Sessi
 def view_credentials(token: str, cat: str = "", db: Session = Depends(get_db)):
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
-    rows, title, sub = _parts(db, cat)
+    rows, title, sub = _parts(db, cat, u)
     M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - preview{(' - ' + cat) if cat else ''}")
     url = f"/export/accounts/credentials?token={t}&cat={quote(cat)}"
     return M._preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])

@@ -557,6 +557,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-empty{padding:26px 6px;color:#999;font-size:13px;text-align:center}
 .cr-add .cr-actions{display:flex;gap:8px}
 .cr-add .cr-actions .btn{flex:1}
+.cr-lock{display:flex;gap:10px;align-items:center;background:#FBF3F2;border:1px solid #F1D5D1;border-radius:10px;padding:9px 11px;margin:0 0 11px;cursor:pointer}
+.cr-lock input{width:auto;margin:0;accent-color:#C0392B}
+.cr-lock b{font-size:12.5px;color:#7B241C}
+.cr-lock small{font-size:11.5px;color:#8A8178}
+.cr-tag.lock{background:#FBE9E7;color:#C0392B}
+.cr-row .cr-name{display:flex;align-items:center;min-width:0}
+.cr-row .cr-name .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cr-row .cr-name .cr-tag{flex-shrink:0}
 .cr-hint{font-size:11.5px;color:#8A8178;margin:-6px 0 10px;min-height:14px}
 @media (max-width: 1000px){.cr-wrap{grid-template-columns:1fr}.cr-row{grid-template-columns:40px minmax(0,1fr) 30px}.cr-row .cr-field{grid-column:2 / 3}}
   .hr-find { position: relative; }
@@ -2736,6 +2744,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="cr-f cr-pw" id="cr-secret-f"><span id="cr-secret-lab">Password</span><input type="password" id="cr-secret" autocomplete="new-password" data-spell="off"><a class="gen" href="#" onclick="crGen(); return false;">Make one</a></label>
               <div class="cr-hint" id="cr-secret-hint"></div>
               <label class="cr-f"><span>Category</span><select id="cr-cat"></select></label>
+              <label class="cr-lock" id="cr-admin-f" style="display:none;"><input type="checkbox" id="cr-admin"><span><b>&#128274; Admin only</b></span></label>
               <label class="cr-f"><span>Notes</span><textarea id="cr-notes" placeholder="Security question, who holds the token, renewal..."></textarea></label>
               <div class="cr-actions"><button class="btn btn-primary" onclick="crSave()">Save</button><button class="btn btn-gray" id="cr-cancel" style="display:none;" onclick="crReset()">Cancel</button><button class="btn btn-gray" id="cr-del" style="display:none; color:#C0392B;" onclick="crDelete()">Delete</button></div>
               <div class="status-msg" id="cr-status" style="margin-top:8px;"></div>
@@ -13533,12 +13542,13 @@ function pxTab(k) {
   document.getElementById("px-d-table").innerHTML = `<thead>${head}</thead><tbody>${body || `<tr><td colspan="6" class="hr-nil" style="padding:14px;">Nothing in ${names[k].toLowerCase()} for this project.</td></tr>`}</tbody>${foot}`;
 }
 // ---- Accounts > Credentials: the company's logins --------------------------------
-let CR_ROWS = [], CR_CATS = [], CR_CAT = "", CR_EDIT = null, CR_KIND = "login", CR_SHOWN = {}, CR_LOGO = "";
+let CR_ADMIN = false, CR_ROWS = [], CR_CATS = [], CR_CAT = "", CR_EDIT = null, CR_KIND = "login", CR_SHOWN = {}, CR_LOGO = "";
 async function crLoad() {
-  try { const d = await apiCall("/employees/accounts/credentials"); CR_ROWS = d.rows || []; CR_CATS = d.categories || []; }
+  try { const d = await apiCall("/employees/accounts/credentials"); CR_ROWS = d.rows || []; CR_CATS = d.categories || []; CR_ADMIN = !!d.admin; }
   catch (e) { document.getElementById("cr-list").innerHTML = `<div class="cr-empty">${escapeHtml(errText(e))}</div>`; return; }
   const sel = document.getElementById("cr-cat");
   if (!sel.options.length) sel.innerHTML = CR_CATS.map(c => `<option>${escapeHtml(c)}</option>`).join("");
+  document.getElementById("cr-admin-f").style.display = CR_ADMIN ? "" : "none";
   crDraw();
 }
 function crTile(r, big) {
@@ -13567,7 +13577,7 @@ function crDraw() {
          ${r.kind !== "note" ? `<button class="cr-ic" title="Copy" onclick="crCopy(${r.id}, this)">&#10697;</button>` : ""}</div>` : "<div></div>";
     const notes = shown && shown.notes ? `<div></div><div class="cr-notes">${escapeHtml(shown.notes)}</div>` : "";
     return `<div class="cr-row"${i ? "" : ' style="border-top:0"'}>${crTile(r)}
-      <div style="min-width:0;"><div class="cr-name">${escapeHtml(r.name)}<span class="cr-tag">${escapeHtml(r.category)}</span></div><div class="cr-url">${link}</div></div>
+      <div style="min-width:0;"><div class="cr-name"><span class="nm" title="${escapeAttr(r.name)}">${escapeHtml(r.name)}</span><span class="cr-tag">${escapeHtml(r.category)}</span></div><div class="cr-url">${r.admin_only ? '<span class="cr-tag lock" style="margin:0 6px 0 0" title="Only an admin sees this">&#128274; Admin only</span>' : ""}${link}</div></div>
       ${r.kind === "login" ? user + sec : sec + "<div></div>"}
       <button class="cr-ic" title="Edit" onclick="crEdit(${r.id})">&#9998;</button>${notes}</div>`;
   }).join("") || `<div class="cr-empty">${CR_ROWS.length ? "Nothing matches." : "No logins saved yet - add the first one on the right."}</div>`;
@@ -13630,6 +13640,7 @@ function crReset() {
   CR_EDIT = null; CR_LOGO = ""; CR_LOOK++; clearTimeout(crUrlTyped.t);
   ["cr-url", "cr-name", "cr-user", "cr-secret", "cr-notes"].forEach(id => { const el = document.getElementById(id); el.value = ""; el.placeholder = el.id === "cr-url" ? "e.g. dewa.gov.ae" : el.id === "cr-notes" ? "Security question, who holds the token, renewal..." : ""; });
   document.getElementById("cr-secret").type = "password";
+  document.getElementById("cr-admin").checked = false;
   document.getElementById("cr-name").dataset.auto = "";
   document.getElementById("cr-prev").style.display = "none";
   document.getElementById("cr-form-title").textContent = "Add a login";
@@ -13645,6 +13656,7 @@ function crEdit(id) {
   document.getElementById("cr-name").value = r.name;
   document.getElementById("cr-user").value = r.username || "";
   document.getElementById("cr-cat").value = r.category;
+  document.getElementById("cr-admin").checked = !!r.admin_only;
   crKind(r.kind);
   document.getElementById("cr-secret").placeholder = r.has_secret ? "Unchanged - type to change" : "";
   document.getElementById("cr-notes").placeholder = r.has_notes ? "Unchanged - type to replace" : "Security question, who holds the token, renewal...";
@@ -13660,6 +13672,7 @@ async function crSave() {
   const body = { url: document.getElementById("cr-url").value.trim(), name: document.getElementById("cr-name").value.trim(),
                  kind: CR_KIND, category: document.getElementById("cr-cat").value, username: CR_KIND === "login" ? document.getElementById("cr-user").value.trim() : "",
                  logo: CR_LOGO };
+  if (CR_ADMIN) body.admin_only = document.getElementById("cr-admin").checked;
   if (!CR_EDIT || sec) body.secret = CR_KIND === "note" ? "" : sec;
   if (!CR_EDIT || notes) body.notes = notes;
   if (!body.name && !body.url) { showStatus("cr-status", "warn", "Type the website or a name."); return; }
