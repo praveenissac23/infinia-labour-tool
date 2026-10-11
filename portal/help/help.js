@@ -421,7 +421,7 @@
 
   function boot() {
     mount();
-    setInterval(tips, 1500); tips();
+    tips();                          // tips.js keeps them up to date as screens change
     const t = setInterval(() => { if ($(".help-hello")) { clearInterval(t); return; }
       try { if (!localStorage.getItem("infinia-help-hello") && $("#app-screen") && getComputedStyle($("#app-screen")).display !== "none") { welcome(); if ($(".help-hello")) clearInterval(t); } } catch (e) { clearInterval(t); } }, 1500);
   }

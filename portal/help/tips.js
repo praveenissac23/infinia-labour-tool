@@ -55,6 +55,11 @@
   document.addEventListener("click", e => { const i = e.target.closest && e.target.closest(".help-i"); if (i) { e.preventDefault(); e.stopPropagation(); show(i); } else hide(); }, true);
   window.addEventListener("scroll", softHide, true);
   window.HELP_TIPS_RUN = run;
-  if (!window.__helpTipsTimer) window.__helpTipsTimer = setInterval(() => run(document), 1500);
+  // Only when the page actually changes (a screen opens, a form is drawn),
+  // and at most a few times a second - nothing runs while the app sits idle.
+  let pending = false;
+  const soon = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; if (!document.hidden) run(document); }, 400); };
+  if (!window.__helpTipsObs) { window.__helpTipsObs = new MutationObserver(soon); window.__helpTipsObs.observe(document.documentElement, { childList: true, subtree: true }); }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) soon(); });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => run(document)); else run(document);
 })();
