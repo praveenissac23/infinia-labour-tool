@@ -345,6 +345,56 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Open the Cheque list.", el: "#pdc-view button[data-v='list']", run: "pdcView('grid')" },
       { say: "Press Cleared on the cheque's line. To cancel a cheque, click its line and set Status to Cancelled.", el: "#pdc-lbody", run: "pdcView('list')" }] },
+  // ---------------- Security cheques ----------------
+  { id: "sc-add", area: "Expiry", title: "How to add a security cheque",
+    words: "security cheque guarantee cheque deposit bond tender performance tenancy landlord undated give cheque record",
+    go: { page: "expiry", tab: "expiry", sub: "security" },
+    steps: [
+      { say: "Type who the cheque is with - client, landlord, authority or supplier.", el: "#sc-party" },
+      { say: "Type why it was given and the project.", el: "#sc-purpose" },
+      { say: "Type the amount, bank and cheque number. Undated is ticked - leave it unless a date was written.", el: "#sc-amt" },
+      { say: "Set when to collect it back - +3m, +6m or +1y fill it in one tap.", el: "#sc-remind" },
+      { say: "Press Add. The bell reminds a week before, on the day and every day after.", el: "#sc-save" }],
+    tip: "Only admin, and the logins given Security cheques on Settings > Access, can see this." },
+  { id: "sc-back", area: "Expiry", title: "How to mark a security cheque collected back",
+    words: "security cheque collected back returned received back release guarantee got back cheque back",
+    go: { page: "expiry", tab: "expiry", sub: "security" },
+    steps: [
+      { say: "Find the cheque in the list - search by party, project or cheque number.", el: "#sc-q" },
+      { say: "Press Collected back on its line. The reminders stop.", el: "#sc-body" }] },
+  // ---------------- Credentials ----------------
+  { id: "cr-add", area: "Accounts", title: "How to save a website or app password",
+    words: "credentials password login username save store website app portal pin code account keep",
+    go: { page: "accounts", tab: "credentials" },
+    steps: [
+      { say: "Paste the website. The name and logo fill in by themselves.", el: "#cr-url" },
+      { say: "Choose User + password, PIN only or Note.", el: "#cr-kind" },
+      { say: "Type the username and the password - or press Make one for a strong password.", el: "#cr-user" },
+      { say: "Pick the category. Tick Admin only to hide it from everyone but admins.", el: "#cr-cat" },
+      { say: "Press Save.", el: "#cr-form .btn-primary" }],
+    tip: "Passwords are stored encrypted. Every password shown, copied or exported is recorded." },
+  { id: "cr-copy", area: "Accounts", title: "How to see or copy a saved password",
+    words: "credentials show password copy password reveal see pin login forgot password",
+    go: { page: "accounts", tab: "credentials" },
+    steps: [
+      { say: "Search for the website or name.", el: "#cr-q" },
+      { say: "Press the eye to show it for 20 seconds, or the copy button to copy it.", el: "#cr-list" }] },
+  // ---------------- Labour gratuity ----------------
+  { id: "lab-grat", area: "Workers", title: "How to see a labourer's gratuity",
+    words: "labour gratuity end of service eosb worker labourer service years settlement",
+    go: { page: "payroll", tab: "labourpay", sub: "gratuity" },
+    steps: [
+      { say: "Pick the labourer. His gratuity working shows below.", el: "#labgrat-emp + .hr-find input" },
+      { say: "Preview or export his paper - or leave the box empty for every labourer on one sheet.", el: "button[onclick=\"labGratOut('view')\"]" }],
+    tip: "Absent and Leave days on the attendance are not counted as service. A labourer with no joining date shows no gratuity - add the date on Labour master data." },
+  // ---------------- Watch ----------------
+  { id: "watch", area: "Settings", title: "How to see risky changes made by staff", admin: true,
+    words: "watch alerts suspicious deleted stock loan lowered changed fraud mischief who changed audit staff alerts activity",
+    go: { page: "settings", tab: "activity" },
+    steps: [
+      { say: "Risky changes by staff - stock deleted, a loan lowered, petty cash edited and so on - come to your bell and phone with a shield icon.", el: "#bell-wrap" },
+      { say: "The Activity monitor lists everything everyone did, with the time.", el: "#screen-activity" }],
+    tip: "Only an admin gets these alerts. Switch them on or off on Settings > General > Notifications." },
   // ---------------- Accounts ----------------
   { id: "inv-tax", area: "Accounts", title: "How to make a tax invoice",
     words: "tax invoice bill client vat trn progress payment ipc raise issue print pdf accounts",
@@ -487,6 +537,9 @@ window.HELP_SAME = {
   broken: "damaged", stolen: "lost", missing: "lost",
   inventory: "stock", balance: "stock", qty: "stock",
   new: "add", create: "add", enter: "add", joiner: "add",
+  password: "credentials", passwords: "credentials", pin: "credentials", login: "credentials", logins: "credentials", portal: "credentials",
+  guarantee: "security", deposit: "security", bond: "security", returned: "collected", release: "collected",
+  alerts: "watch", alert: "watch", suspicious: "watch", fraud: "watch",
   bonus: "addition", fine: "deduction", cut: "deduction",
 };
 
