@@ -18,6 +18,9 @@ the exact same formulas as the source card:
         (basic + fixed allowance). Payable Salary is the share of it
         earned this cycle; the two are never called by the same name.
     Deduction                    = (Salary/30) * Absent
+      (fixed monthly pay: Payable = min((paid + absent + leave days) x
+       Salary/30, Salary) and Deduction = (absent + leave) x Salary/30 -
+       one thirtieth a day, once, shown on the card)
     OT Amount                    = (Salary/30/8) * OT hours
     BH Amount                    = (Salary/30/8) * BH hours
     Final Salary = ROUND(TotalSalary + OT Amount + BH Amount + Allowances
@@ -366,8 +369,15 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
         # exactly one thirtieth, once; a day not entered yet earns
         # nothing. Sunday, Holiday, Sick and Medical are paid, as for
         # everyone.
-        total_salary_component = min(paid_days * daily_rate, total_salary)
-        deduction = 0.0
+        #
+        # The absent / leave days are earned first and then taken off as
+        # the "Absence/Leave" line, so the card shows the cut instead of
+        # quietly leaving the day out - and so the cap cannot swallow it:
+        # in a 31-day cycle, 30 paid days and one absence used to reach
+        # the cap and pay the full month, the absence costing nothing.
+        off = status_counts["Absent"] + status_counts["Leave"]
+        total_salary_component = min((paid_days + off) * daily_rate, total_salary)
+        deduction = min(off * daily_rate, total_salary_component)
     else:
         total_salary_component = paid_days * daily_rate
         deduction = daily_rate * status_counts["Absent"]

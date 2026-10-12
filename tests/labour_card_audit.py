@@ -39,7 +39,8 @@ for (sid, no, label, total, pres, absn, sun, hol, term, ot, bh, final, allow, od
     day = rate_total / 30.0 if rate_total else 0
     paid = sum(v for k, v in cnt.items() if k in PAID)
     if emp[no][1] == "fixed":
-        comp = min(paid * day, rate_total); ded = 0
+        off = cnt.get("absent", 0) + cnt.get("leave", 0)      # one thirtieth each, once, shown as the deduction
+        comp = min((paid + off) * day, rate_total); ded = min(off * day, comp)
     else:
         comp = paid * day; ded = day * cnt.get("absent", 0)
     want = rnd(comp + day / 8 * o + day / 8 * b + (allow or 0) - ded - (odd or 0))
