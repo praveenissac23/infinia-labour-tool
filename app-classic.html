@@ -10410,7 +10410,7 @@ function storeFilterQs(view) {
   let qs = "";
   const site = (document.getElementById("store-site-filter") || {}).value || "";
   const move = (document.getElementById("store-move-filter") || {}).value || "";
-  if (site && ["usage", "site_cost", "issues"].includes(view)) qs += `&site=${encodeURIComponent(site)}`;
+  if (site && ["by_site", "usage", "site_cost", "issues"].includes(view)) qs += `&site=${encodeURIComponent(site)}`;
   if (move && ["usage", "issues"].includes(view)) qs += `&move=${encodeURIComponent(move)}`;
   return qs;
 }
@@ -10611,20 +10611,11 @@ async function loadStore() {
     if (to) url += `&date_to=${to}`;
     url += storeFilterQs(view);
     let d;
-    const siteOnly = view === "by_site" ? (document.getElementById("store-site-filter").value || "") : "";
-    if (siteOnly) {
-      // One site's holdings, straight from the stock ledger - the
-      // question a site engineer actually asks.
-      const stk = await apiCall(`/store/stock?location=${encodeURIComponent(siteOnly)}`);
-      if (stale()) return;
-      d = { title: `What site ${siteOnly} is holding`,
-            rows: stk.filter(s => (s.qty || 0) > 0)
-                     .map(s => ({ code: s.code, name: s.name, unit: s.unit,
-                                  item_type: s.item_type, qty: s.qty })) };
-    } else {
-      d = await apiCall(url);
-      if (stale()) return;
-    }
+    // One site picked ("Only site 912") comes from the same report the
+    // preview, PDF and Excel use, so the screen and the paper hold the
+    // same lines.
+    d = await apiCall(url);
+    if (stale()) return;
     if (view === "stock") {
       // The give-out rows read what is on hand from storeStockCache,
       // which loadStoreItems fills from the same endpoint moments

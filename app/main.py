@@ -5473,6 +5473,11 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             if not _held_at_site(i): continue
             rows.append({"site": loc, "code": i.code, "name": i.name,
                           "unit": i.unit, "qty": round(qty, 2), "item_type": i.item_type})
+        # One site picked: only its holdings - on screen, preview, PDF and
+        # Excel alike (the paper used to carry every site).
+        if site:
+            rows = [{k: v for k, v in r.items() if k != "site"} for r in rows if r["site"] == site]
+            return {"title": f"What site {site} is holding", "rows": sorted(rows, key=lambda r: r["code"])}
         return {"title": "Stock held at sites", "rows": sorted(rows, key=lambda r: (r["site"], r["code"]))}
 
     if kind == "purchases":
