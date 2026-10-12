@@ -659,6 +659,7 @@ function pgRenderTabs() {
   sub.innerHTML = subs.map(sb =>
     `<span class="pg-subtab ${PG_SUB && PG_SUB.id === sb.id ? "active" : ""}" data-sub="${sb.id}" onclick="pgSub('${sb.id}')">${sb.label}</span>`).join("");
   sub.classList.toggle("pg-sub-keep", !subs.length && PAGE.tabs.some(t => pgTabOk(t) && t.subs.some(pgSubOk)));
+  if (typeof expSubBadges === "function") expSubBadges();
   const shown = [];
   document.querySelectorAll(".pg-side .pg-item[data-page]").forEach(el => {
     const ok = pgPageOk(el.dataset.page);

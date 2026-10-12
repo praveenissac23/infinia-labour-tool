@@ -332,6 +332,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .exp-mail-row input { flex: 1 1 320px; height: 36px; }
   .pg-side .pg-item .pg-badge { background: #fff !important; color: #C0392B !important; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 1px 7px; margin-left: 8px; display: inline-block; line-height: 16px; }
   .pg-side .pg-item:not(.active) .pg-badge { background: #C0392B !important; color: #fff !important; }
+  .pg-subbadge { background: #C0392B; color: #fff; border-radius: 10px; font-size: 10.5px; font-weight: 800; padding: 0 6px; margin-left: 6px; display: inline-block; line-height: 16px; vertical-align: 1px; }
   @media (max-width: 900px) { .exp-cards { grid-template-columns: 1fr 1fr; } }
   .hr-exp-form { display: grid; grid-template-columns: 1fr 2fr 1.6fr 1fr; gap: 10px 12px; align-items: end; }
   .hr-exp-form .hr-field input { width: 100%; }
@@ -6946,7 +6947,11 @@ async function loadNotifications() {
     notifications = d.notifications || [];
     const ex = notifications.find(n => n.kind === "expiry");
     const pd = notifications.find(n => n.kind === "pdc");
-    if (typeof expBadge === "function") { PDC_N = pd ? pd.count : 0; expBadge(ex ? ex.count : 0); }
+    const sc = notifications.find(n => n.kind === "seccheque");
+    // Each tab inside Expiry Reminder carries its own count.
+    EXP_SUBN = { people: ex ? ex.people || 0 : 0, company: ex ? ex.company || 0 : 0, pdc: pd ? pd.count || 0 : 0, security: sc ? sc.count || 0 : 0 };
+    EXP_SUBN.all = EXP_SUBN.people + EXP_SUBN.company;
+    if (typeof expBadge === "function") { PDC_N = pd ? pd.count : 0; SC_N = sc ? sc.count : 0; expBadge(ex ? ex.count : 0); }
   } catch (e) {
     notifications = [];
   }
@@ -14963,14 +14968,26 @@ function expCardsMark() {
 // chief accountant only (the server sends nothing to anyone else) -
 // cheques overdue or due within 7 days.
 let EXP_N = 0, PDC_N = 0;
+var EXP_SUBN = {}, SC_N = 0;
+function expSubBadges() {
+  // The count on each tab inside Expiry Reminder: People, Company, PDCs,
+  // Security cheques (and All together = people + company).
+  if (typeof PG_TAB === "undefined" || !PG_TAB || PG_TAB.id !== "expiry") return;
+  document.querySelectorAll("#pg-sub .pg-subtab[data-sub]").forEach(el => {
+    const n = EXP_SUBN[el.dataset.sub] || 0;
+    let b = el.querySelector(".pg-subbadge");
+    if (!n) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement("span"); b.className = "pg-subbadge"; el.appendChild(b); }
+    b.textContent = n;
+  });
+}
 function expBadge(n) {
   if (n !== undefined) EXP_N = n || 0;
-  n = EXP_N + PDC_N;
+  expSubBadges();
+  // The counts sit on the tabs inside Expiry Reminder only - none on the
+  // side menu (asked for on 12 Oct 2026).
   const item = document.querySelector('.pg-side .pg-item[data-page="expiry"]'); if (!item) return;
-  let b = item.querySelector(".pg-badge");
-  if (!n) { if (b) b.remove(); return; }
-  if (!b) { b = document.createElement("span"); b.className = "pg-badge"; item.appendChild(b); }
-  b.textContent = n;
+  const b = item.querySelector(".pg-badge"); if (b) b.remove();
 }
 async function expMailLoad() {
   try {
