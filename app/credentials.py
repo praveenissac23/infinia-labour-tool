@@ -36,7 +36,7 @@ from database import Base, get_db
 RIGHT = "accounts_credentials"
 router = APIRouter()
 CR = Depends(M.require_screen(RIGHT))
-CATEGORIES = ["Bank", "Government", "Utilities", "Suppliers", "Email & IT", "Other"]
+CATEGORIES = ["Bank", "Government", "Utilities", "Suppliers", "Email & IT", "Software", "Office", "Other"]
 KINDS = ("login", "pin", "note")
 
 
