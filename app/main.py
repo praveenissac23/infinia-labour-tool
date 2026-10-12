@@ -11589,7 +11589,9 @@ def _labour_gratuity_one(db, emp_no):
 def _labour_gratuity_parts(db, include_left=False):
     q = db.query(models.Employee).filter(models.Employee.staff != True)  # noqa: E712
     if not include_left:
-        q = q.filter(models.Employee.active == True)  # noqa: E712
+        # Current workers only: a leaver stays "active" until his last
+        # cycle is paid, but he has a leaving date and is not listed.
+        q = q.filter(models.Employee.active == True, models.Employee.terminated_on.is_(None))  # noqa: E712
     rows, total = [], 0.0
     for e in sorted(q.all(), key=lambda x: (str(x.emp_no or "")).zfill(12)):
         g = gratuity_detail(e, db)

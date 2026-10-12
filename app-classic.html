@@ -13868,12 +13868,13 @@ async function labGratLoad() {
   document.getElementById("pg-labgrat-card").style.display = "";
   const sel = document.getElementById("labgrat-emp"), keep = sel.value;
   let emps = []; try { emps = await apiCall("/employees"); } catch (e) {}
+  const gone = e => e.active === false || !!e.terminated_on;
   emps = (emps || []).filter(e => !e.staff)
-    .sort((a, b) => (a.active === false) - (b.active === false) || String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
-  sel.innerHTML = `<option value=""></option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)}${e.active === false ? " (left)" : ""}</option>`).join("");
+    .sort((a, b) => gone(a) - gone(b) || String(a.emp_no).localeCompare(String(b.emp_no), undefined, { numeric: true }));
+  sel.innerHTML = `<option value=""></option>` + emps.map(e => `<option value="${escapeAttr(e.emp_no)}">${escapeHtml(e.emp_no)} - ${escapeHtml(e.name)}${gone(e) ? " (left)" : ""}</option>`).join("");
   sel.value = keep;
   if (!sel.dataset.done) { sel.dataset.done = "1"; hrSearchSelect(sel); }
-  const miss = emps.filter(e => e.active !== false && !e.joined_on).length, mb = document.getElementById("labgrat-missing");
+  const miss = emps.filter(e => !gone(e) && !e.joined_on).length, mb = document.getElementById("labgrat-missing");
   mb.style.display = miss ? "" : "none";
   mb.innerHTML = miss ? `${miss} labourer${miss > 1 ? "s have" : " has"} no joining date, so no gratuity is worked out for them yet.
     <a href="#" onclick="pgGo('attendance'); pgTab('masterdata'); return false;">Add it on Labour master data</a>.` : "";
