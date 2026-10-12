@@ -523,7 +523,7 @@
      },
      {
       "id": "expiry.expiry.security",
-      "label": "Security cheques",
+      "label": "Security cheques & deposits",
       "right": [
        "security_cheques"
       ],

@@ -33,6 +33,7 @@ class SecurityCheque(Base):
     __tablename__ = "security_cheques"
     id = Column(Integer, primary_key=True)
     party = Column(String, nullable=False)         # given to
+    kind = Column(String, default="cheque")        # cheque | deposit (paid, refundable)
     purpose = Column(String, default="")
     project = Column(String, default="")
     bank = Column(String, default="")
@@ -52,7 +53,7 @@ class SecurityCheque(Base):
 
 def _row(x, today):
     left = (x.remind_on - today).days if (x.remind_on and x.status == "held") else None
-    return {"id": x.id, "party": x.party, "purpose": x.purpose or "", "project": x.project or "",
+    return {"id": x.id, "kind": x.kind or "cheque", "party": x.party, "purpose": x.purpose or "", "project": x.project or "",
             "bank": x.bank or "", "cheque_no": x.cheque_no or "", "amount": round(x.amount or 0, 2),
             "cheque_date": x.cheque_date.isoformat() if x.cheque_date else "",
             "given_on": x.given_on.isoformat() if x.given_on else "",
@@ -100,9 +101,9 @@ def _clean(p):
     if amt <= 0:
         raise HTTPException(status_code=400, detail="Enter the cheque amount.")
     st = p.get("status") if p.get("status") in STATUSES else "held"
-    out = {"party": party[:120], "purpose": (p.get("purpose") or "").strip()[:80], "project": (p.get("project") or "").strip()[:80],
+    out = {"kind": "deposit" if p.get("kind") == "deposit" else "cheque", "party": party[:120], "purpose": (p.get("purpose") or "").strip()[:80], "project": (p.get("project") or "").strip()[:80],
            "bank": (p.get("bank") or "").strip()[:60], "cheque_no": (p.get("cheque_no") or "").strip()[:30], "amount": amt,
-           "cheque_date": None if p.get("undated") else M._as_date(p.get("cheque_date")),
+           "cheque_date": None if (p.get("undated") or p.get("kind") == "deposit") else M._as_date(p.get("cheque_date")),
            "given_on": M._as_date(p.get("given_on")) or M._dubai_today(),
            "remind_on": M._as_date(p.get("remind_on")), "status": st,
            "notes": (p.get("notes") or "").strip()[:500]}
@@ -179,17 +180,17 @@ def _parts(db, show="held"):
     d = lambda v: f"{v:%d %b %Y}" if v else "-"
     out = []
     for i, x in enumerate(rows, 1):
-        r = {"Sr.": i, "Given to": x.party, "Purpose": x.purpose or "-", "Project": x.project or "-",
+        r = {"Sr.": i, "Type": "Deposit" if x.kind == "deposit" else "Cheque", "Given to": x.party, "Purpose": x.purpose or "-", "Project": x.project or "-",
              "Bank": x.bank or "-", "Cheque no": x.cheque_no or "-", "Amount": round(x.amount or 0, 2),
-             "Cheque date": d(x.cheque_date) if x.cheque_date else "Undated", "Given on": d(x.given_on),
+             "Cheque date": "-" if x.kind == "deposit" else (d(x.cheque_date) if x.cheque_date else "Undated"), "Given on": d(x.given_on),
              "Collect back after": d(x.remind_on), "Status": STATUSES.get(x.status, x.status)}
         if show == "all":
             r["Collected on"] = d(x.returned_on)
         out.append(r)
     total = sum(r["Amount"] for r in out)
-    sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} {'still with others' if show != 'all' else 'in all'}"
+    sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} / deposit{'s' if len(out) != 1 else ''} {'still with others' if show != 'all' else 'in all'}"
            f"   |   AED {total:,.2f}   |   As at {today:%d %b %Y}")
-    return out, "Security Cheques", sub
+    return out, "Security Cheques & Deposits", sub
 
 
 def _reader(token, db):

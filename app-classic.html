@@ -2494,7 +2494,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="status-msg" id="sc-status"></div>
           <div class="exp-cards" id="sc-cards"></div>
           <div class="card">
-            <div style="display:flex; align-items:center; gap:8px;"><h2 id="sc-form-title" style="margin:0 0 4px; flex:1;">Add a security cheque</h2><button class="btn btn-dark" id="sc-new" style="display:none; padding:5px 12px;" onclick="scReset()">+ New</button></div>
+            <div style="display:flex; align-items:center; gap:8px;"><h2 id="sc-form-title" style="margin:0 0 4px; flex:1;">Add a security cheque</h2><div class="pc-kind" id="sc-kind"><button type="button" class="on" data-v="cheque" onclick="scKind('cheque')">Cheque</button><button type="button" data-v="deposit" onclick="scKind('deposit')">Deposit paid</button></div><button class="btn btn-dark" id="sc-new" style="display:none; padding:5px 12px;" onclick="scReset()">+ New</button></div>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">A guarantee cheque left with a client, landlord, authority or supplier - usually undated.
               Set a date to collect it back: the bell reminds a week before, on the day, and every day after until it is marked collected back.</p>
             <div class="sc-form">
@@ -2506,8 +2506,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="sc-amt" placeholder="0.00"></label>
               <label class="hr-field"><span>Bank</span><input type="text" id="sc-bank" list="sc-bank-list" placeholder="e.g. ADCB"></label>
               <datalist id="sc-bank-list"></datalist>
-              <label class="hr-field"><span>Cheque no</span><input type="text" id="sc-no" placeholder="e.g. 000451"></label>
-              <label class="hr-field"><span>Cheque date</span><span class="sc-und"><label><input type="checkbox" id="sc-undated" checked onchange="scUndated()"> Undated</label><input type="date" id="sc-date" style="display:none;"></span></label>
+              <label class="hr-field sc-chq"><span>Cheque no</span><input type="text" id="sc-no" placeholder="e.g. 000451"></label>
+              <label class="hr-field sc-chq"><span>Cheque date</span><span class="sc-und"><label><input type="checkbox" id="sc-undated" checked onchange="scUndated()"> Undated</label><input type="date" id="sc-date" style="display:none;"></span></label>
               <label class="hr-field"><span>Given on</span><input type="date" id="sc-given"></label>
               <label class="hr-field sc-remind-f"><span>Collect back after<em class="sc-quick"><a href="#" onclick="scQuick(3);return false;">+3m</a><a href="#" onclick="scQuick(6);return false;">+6m</a><a href="#" onclick="scQuick(12);return false;">+1y</a></em></span><input type="date" id="sc-remind"></label>
               <label class="hr-field" id="sc-st-f" style="display:none;"><span>Status</span><select id="sc-st" class="hr-dd"><option value="held">With them</option><option value="returned">Collected back</option><option value="encashed">Encashed</option><option value="cancelled">Cancelled</option></select></label>
@@ -15872,7 +15872,13 @@ async function pdcDelete() {
   catch (e) { showStatus("pdc-status", "err", errText(e)); }
 }
 // ---- Expiry Reminder > Security cheques ------------------------------------------
-let SC = null, SC_EDIT = null, SC_SHOW = "held";
+let SC = null, SC_EDIT = null, SC_SHOW = "held", SC_KIND = "cheque";
+function scKind(k) {
+  SC_KIND = k;
+  document.querySelectorAll("#sc-kind button").forEach(b => b.classList.toggle("on", b.dataset.v === k));
+  document.querySelectorAll(".sc-chq").forEach(el => el.style.visibility = k === "deposit" ? "hidden" : "");
+  if (!SC_EDIT) document.getElementById("sc-form-title").textContent = k === "deposit" ? "Add a security deposit" : "Add a security cheque";
+}
 function scToday() { return isoLocal(new Date()); }
 async function scOpen() {
   if (!document.getElementById("sc-given").value) document.getElementById("sc-given").value = scToday();
@@ -15906,10 +15912,10 @@ function scDraw() {
     const act = r.status === "held"
       ? `<button class="btn btn-gray hr-mini" onclick="scReturned(${r.id})">Collected back</button> <button class="btn btn-gray hr-mini" onclick="scEdit(${r.id})">Edit</button>`
       : `<span class="sc-pill ${r.status}">${escapeHtml(r.status_label)}${r.returned_on ? " " + hrDate(r.returned_on) : ""}</span> <button class="btn btn-gray hr-mini" onclick="scEdit(${r.id})">Edit</button>`;
-    return `<tr><td class="txt"><b>${escapeHtml(r.party)}</b>${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}</td>
+    return `<tr><td class="txt"><b>${escapeHtml(r.party)}</b>${r.kind === "deposit" ? ' <span class="sc-pill" style="background:#EEF1F8;color:#33508A;">Deposit</span>' : ""}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}</td>
       <td class="txt">${escapeHtml(r.purpose || "-")}${r.project ? `<span class="sub">${escapeHtml(r.project)}</span>` : ""}</td>
       <td>${escapeHtml(r.bank || "-")}${r.cheque_no ? `<span class="sub">No. ${escapeHtml(r.cheque_no)}</span>` : ""}</td>
-      <td class="num strong">${hrMoney(r.amount)}</td><td>${r.cheque_date ? hrDate(r.cheque_date) : '<span class="hr-nil">Undated</span>'}</td>
+      <td class="num strong">${hrMoney(r.amount)}</td><td>${r.kind === "deposit" ? '<span class="hr-nil">Paid</span>' : r.cheque_date ? hrDate(r.cheque_date) : '<span class="hr-nil">Undated</span>'}</td>
       <td>${r.given_on ? hrDate(r.given_on) : "-"}</td><td>${when}${flag}</td><td>${act}</td></tr>`;
   }).join("") || `<tr><td colspan="8" class="hr-nil" style="padding:14px;">${SC.rows.length ? "Nothing matches." : "No security cheques recorded yet."}</td></tr>`;
 }
@@ -15924,6 +15930,7 @@ function scReset() {
   document.getElementById("sc-undated").checked = true; scUndated();
   document.getElementById("sc-given").value = scToday();
   document.getElementById("sc-st").value = "held";
+  scKind("cheque");
   document.getElementById("sc-form-title").textContent = "Add a security cheque";
   document.getElementById("sc-save").textContent = "Add";
   ["sc-st-f", "sc-del", "sc-new"].forEach(id => document.getElementById(id).style.display = "none");
@@ -15935,6 +15942,7 @@ function scEdit(id) {
   set("sc-party", r.party); set("sc-purpose", r.purpose); set("sc-project", r.project); set("sc-amt", r.amount); set("sc-bank", r.bank);
   set("sc-no", r.cheque_no); set("sc-date", r.cheque_date); set("sc-given", r.given_on); set("sc-remind", r.remind_on); set("sc-notes", r.notes); set("sc-st", r.status);
   document.getElementById("sc-undated").checked = !r.cheque_date; scUndated();
+  scKind(r.kind || "cheque");
   document.getElementById("sc-form-title").textContent = "Edit - " + r.party;
   document.getElementById("sc-save").textContent = "Save";
   ["sc-st-f", "sc-del", "sc-new"].forEach(x => document.getElementById(x).style.display = "");
@@ -15942,7 +15950,7 @@ function scEdit(id) {
 }
 async function scSave() {
   const v = id => document.getElementById(id).value.trim();
-  const body = { party: v("sc-party"), purpose: v("sc-purpose"), project: v("sc-project"), amount: v("sc-amt").replace(/,/g, ""), bank: v("sc-bank"),
+  const body = { kind: SC_KIND, party: v("sc-party"), purpose: v("sc-purpose"), project: v("sc-project"), amount: v("sc-amt").replace(/,/g, ""), bank: v("sc-bank"),
                  cheque_no: v("sc-no"), undated: document.getElementById("sc-undated").checked, cheque_date: v("sc-date"), given_on: v("sc-given"),
                  remind_on: v("sc-remind"), notes: v("sc-notes"), status: SC_EDIT ? v("sc-st") : "held" };
   if (!body.party) { showStatus("sc-status", "warn", "Who is the cheque with?"); return; }

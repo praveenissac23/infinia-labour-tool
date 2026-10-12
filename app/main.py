@@ -12617,6 +12617,13 @@ app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques
 app.include_router(seccheque.router)
 seccheque.SecurityCheque.__table__.create(bind=engine, checkfirst=True)
+try:   # the deposit / cheque column, added after the table was first made
+    from sqlalchemy import inspect as _insp2, text as _text2
+    if "kind" not in {c["name"] for c in _insp2(engine).get_columns("security_cheques")}:
+        with engine.begin() as _cx:
+            _cx.execute(_text2("ALTER TABLE security_cheques ADD COLUMN kind VARCHAR DEFAULT 'cheque'"))
+except Exception as _e:
+    print("security cheques column:", _e)
 import expiry  # noqa: E402
 app.include_router(expiry.router)
 import accounts  # noqa: E402

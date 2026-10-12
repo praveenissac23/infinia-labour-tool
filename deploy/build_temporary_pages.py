@@ -84,7 +84,7 @@ PAGES = {
             # Post-dated cheques: a screen of its own and a right of its own.
             sub("pdc", "PDCs", screen="pdc", right="pdc"),
             # Guarantee cheques left with others, usually undated: when to collect them back.
-            sub("security", "Security cheques", screen="seccheque", right="security_cheques")])]),
+            sub("security", "Security cheques & deposits", screen="seccheque", right="security_cheques")])]),
     # Accounts: invoices, and the cash register behind its own password.
     "accounts": ("Accounts", [
         tab("taxinv", "invoices", "Tax Invoice", "accounts_invoices", go="invOpen('tax')"),
