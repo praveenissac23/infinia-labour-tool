@@ -8,6 +8,7 @@ os.environ.setdefault("INFINIA_NO_PUSH", "1")
 from fastapi.testclient import TestClient
 import main, models, auth, watch, seccheque as SCM
 from database import SessionLocal
+watch.ENABLED = True   # switched off in the app; the tests still check what it would raise
 
 db = SessionLocal()
 db.add(models.User(username="boss", hashed_password=auth.hash_password("p"), full_name="Boss", role="admin"))

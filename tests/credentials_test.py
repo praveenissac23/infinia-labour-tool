@@ -8,6 +8,7 @@ os.environ["INFINIA_CRED_KEY_FILE"] = os.path.join(tempfile.mkdtemp(), "k.key")
 from fastapi.testclient import TestClient
 import main, models, auth, watch, credentials as CRD
 from database import SessionLocal
+watch.ENABLED = True   # switched off in the app; the tests still check what it would raise
 from unittest import mock
 
 db = SessionLocal()

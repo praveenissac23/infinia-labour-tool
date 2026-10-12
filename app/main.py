@@ -12251,7 +12251,6 @@ NOTIF_GROUPS = [
     ("expiry", "Expiry reminder - documents, licences, NOCs", ("expiry",), ("expiry",)),
     ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
     ("seccheque", "Security cheques to collect back", ("seccheque",), ("security_cheques",)),
-    ("watch", "Watch - risky changes by staff (admin only)", ("watch",), ("__admin__",)),
 ]
 NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
 

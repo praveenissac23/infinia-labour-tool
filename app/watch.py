@@ -18,6 +18,12 @@ from sqlalchemy import Column, Integer, String, Text, DateTime
 from database import Base
 
 
+# Switched off on 12 Oct 2026 at the owner's request (too many alerts).
+# Nothing is raised and the bell shows none while this is False; the
+# code stays so it can be turned back on with one change.
+ENABLED = False
+
+
 class WatchAlert(Base):
     __tablename__ = "watch_alerts"
     id = Column(Integer, primary_key=True)
@@ -107,7 +113,7 @@ def _user(db, models, uid):
 def alert(db, models, user, action, title, detail="", admin_too=False):
     """Write one alert. Not for an admin's own work, unless admin_too
     (a sign-in matter, where the admin is the one to be told)."""
-    if user is None or (user.role == "admin" and not admin_too):
+    if not ENABLED or user is None or (user.role == "admin" and not admin_too):
         return None
     a = WatchAlert(user_id=user.id, who=user.full_name or user.username, action=action,
                    title=title, detail=(detail or "")[:500])
@@ -169,6 +175,8 @@ def login_new_device(db, models, user, where):
 
 def notifications(db, models, days=14, limit=40):
     """The bell lines - for the admin only (the caller checks)."""
+    if not ENABLED:
+        return []
     since = datetime.utcnow() - timedelta(days=days)
     rows = (db.query(WatchAlert).filter(WatchAlert.created_at >= since)
               .order_by(WatchAlert.id.desc()).limit(limit).all())

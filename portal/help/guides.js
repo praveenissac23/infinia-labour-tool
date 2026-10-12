@@ -387,14 +387,6 @@ window.HELP_GUIDES = [
       { say: "Pick the labourer. His gratuity working shows below.", el: "#labgrat-emp + .hr-find input" },
       { say: "Preview or export his paper - or leave the box empty for every labourer on one sheet.", el: "button[onclick=\"labGratOut('view')\"]" }],
     tip: "Absent and Leave days on the attendance are not counted as service. A labourer with no joining date shows no gratuity - add the date on Labour master data." },
-  // ---------------- Watch ----------------
-  { id: "watch", area: "Settings", title: "How to see risky changes made by staff", admin: true,
-    words: "watch alerts suspicious deleted stock loan lowered changed fraud mischief who changed audit staff alerts activity",
-    go: { page: "settings", tab: "activity" },
-    steps: [
-      { say: "Risky changes by staff - stock deleted, a loan lowered, petty cash edited and so on - come to your bell and phone with a shield icon.", el: "#bell-wrap" },
-      { say: "The Activity monitor lists everything everyone did, with the time.", el: "#screen-activity" }],
-    tip: "Only an admin gets these alerts. Switch them on or off on Settings > General > Notifications." },
   // ---------------- Accounts ----------------
   { id: "inv-tax", area: "Accounts", title: "How to make a tax invoice",
     words: "tax invoice bill client vat trn progress payment ipc raise issue print pdf accounts",
@@ -539,7 +531,6 @@ window.HELP_SAME = {
   new: "add", create: "add", enter: "add", joiner: "add",
   password: "credentials", passwords: "credentials", pin: "credentials", login: "credentials", logins: "credentials", portal: "credentials",
   guarantee: "security", deposit: "security", bond: "security", returned: "collected", release: "collected",
-  alerts: "watch", alert: "watch", suspicious: "watch", fraud: "watch",
   bonus: "addition", fine: "deduction", cut: "deduction",
 };
 

@@ -1392,7 +1392,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="e88fabc9b300";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="546a4848975f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2940,7 +2940,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="cr-f"><span>Notes</span><textarea id="cr-notes" placeholder="Security question, who holds the token, renewal..."></textarea></label>
               <div class="cr-actions"><button class="btn btn-primary" onclick="crSave()">Save</button><button class="btn btn-gray" id="cr-cancel" style="display:none;" onclick="crReset()">Cancel</button><button class="btn btn-gray" id="cr-del" style="display:none; color:#C0392B;" onclick="crDelete()">Delete</button></div>
               <div class="status-msg" id="cr-status" style="margin-top:8px;"></div>
-              <div class="cr-note">&#128274; Stored encrypted. Only logins given this tab can open it, and a login ticked Admin only is seen by admins alone; every password shown, copied or exported is recorded and the admin is alerted. Preview, PDF and Excel include the passwords - keep them safe.</div>
+              <div class="cr-note">&#128274; Stored encrypted. Only logins given this tab can open it, and a login ticked Admin only is seen by admins alone; every password shown, copied or exported is recorded in the Activity monitor. Preview, PDF and Excel include the passwords - keep them safe.</div>
             </div>
           </div>
         </div>
@@ -17955,7 +17955,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=d3a2e06198"></script>
+<script src="/portal/help/guides.js?v=93dcfb81d9"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

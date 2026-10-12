@@ -7,6 +7,7 @@ os.environ.setdefault("INFINIA_NO_PUSH", "1")
 from fastapi.testclient import TestClient
 import main, models, auth, watch
 from database import SessionLocal
+watch.ENABLED = True   # switched off in the app; the tests still check what it would raise
 
 db = SessionLocal()
 db.add(models.User(username="boss", hashed_password=auth.hash_password("p"), full_name="Boss", role="admin"))
@@ -98,7 +99,13 @@ ck("wrong-password burst -> one alert", sum(1 for x in alerts() if x[0] == "logi
 
 # The settings list shows the group to the admin only
 g = {x["id"]: x for x in c.get("/notifications/settings", headers=B).json()["groups"]}
-ck("admin can switch Watch on/off", g.get("watch", {}).get("allowed") is True, g.get("watch"))
+ck("Watch is not offered while switched off", "watch" not in g, g.get("watch"))
 g = {x["id"]: x for x in c.get("/notifications/settings", headers=A).json()["groups"]}
 ck("staff cannot", not g.get("watch", {}).get("allowed"), g.get("watch"))
+# Switched off (12 Oct 2026): nothing raised, nothing on the bell
+watch.ENABLED = False
+n9 = len(alerts())
+c.put(f"/employees/loans/{lid}", headers=A, json={"amount": 2000})
+ck("switched off: no new alert", len(alerts()) == n9)
+ck("switched off: admin's bell shows none", bell(B) == [])
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
