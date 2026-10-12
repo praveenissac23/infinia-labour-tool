@@ -171,11 +171,16 @@ def delete_cheque(cid: int, db: Session = Depends(get_db), user: models.User = S
 MONEY = ["Amount"]
 
 
-def _parts(db, show="held"):
+def _parts(db, show="held", q=""):
     today = M._dubai_today()
     rows = db.query(SecurityCheque).all()
     if show != "all":
         rows = [x for x in rows if x.status == "held"]
+    # The screen's search box narrows the paper too.
+    q = (q or "").strip()
+    if q:
+        rows = [x for x in rows if q.lower() in " ".join(v or "" for v in (x.party, x.purpose, x.project, x.bank,
+                                                                         x.cheque_no, x.notes)).lower()]
     rows.sort(key=lambda x: (x.status != "held", x.remind_on or date(9999, 1, 1), (x.party or "").lower()))
     d = lambda v: f"{v:%d %b %Y}" if v else "-"
     out = []
@@ -189,7 +194,7 @@ def _parts(db, show="held"):
         out.append(r)
     total = sum(r["Amount"] for r in out)
     sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} / deposit{'s' if len(out) != 1 else ''} {'still with others' if show != 'all' else 'in all'}"
-           f"   |   AED {total:,.2f}   |   As at {today:%d %b %Y}")
+           + (f'   |   matching "{q}"' if q else "") + f"   |   AED {total:,.2f}   |   As at {today:%d %b %Y}")
     return out, "Security Cheques & Deposits", sub
 
 
@@ -201,18 +206,18 @@ def _reader(token, db):
 
 
 @router.get("/export/security-cheques")
-def export_cheques(token: str, format: str = "pdf", show: str = "held", db: Session = Depends(get_db)):
+def export_cheques(token: str, format: str = "pdf", show: str = "held", q: str = "", db: Session = Depends(get_db)):
     _reader(token, db)
-    rows, title, sub = _parts(db, show)
+    rows, title, sub = _parts(db, show, q)
     return M._hr_file(title, rows, sub, format, MONEY, "Security_Cheques", totals=MONEY)
 
 
 @router.get("/export/security-cheques/view")
-def view_cheques(token: str, show: str = "held", db: Session = Depends(get_db)):
+def view_cheques(token: str, show: str = "held", q: str = "", db: Session = Depends(get_db)):
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
-    rows, title, sub = _parts(db, show)
-    url = f"/export/security-cheques?token={t}&show={quote(show)}"
+    rows, title, sub = _parts(db, show, q)
+    url = f"/export/security-cheques?token={t}&show={quote(show)}&q={quote(q)}"
     return M._preview_page(title, sub, rows, url, url, money_cols=MONEY, total_cols=MONEY)
 
 

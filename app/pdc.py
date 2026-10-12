@@ -455,9 +455,42 @@ def _excel(t):
     return buf
 
 
+LIST_SHOW = {"pending": "To be paid", "overdue": "Overdue", "week": "Due in 7 days", "fortnight": "Due in 14 days",
+             "nodate": "Date to fill", "cleared": "Cleared", "cancelled": "Cancelled", "all": "All"}
+
+
+def _list_parts(db, which="pending", q=""):
+    """The cheque list as the List view shows it - the Show box and the
+    search box narrow the paper the same way."""
+    today = M._dubai_today()
+    rows = [_row(x, today, {}) for x in db.query(models.Pdc).order_by(models.Pdc.cheque_date, models.Pdc.id).all()]
+
+    def keep(r):
+        d = r["days_left"]
+        if which == "all":
+            return True
+        if which in ("cleared", "cancelled"):
+            return r["status"] == which
+        return r["status"] == "pending" and (which == "pending" or (which == "nodate" and r["date_tbc"])
+            or (which == "overdue" and d is not None and d < 0) or (which == "week" and d is not None and 0 <= d <= 7)
+            or (which == "fortnight" and d is not None and 8 <= d <= 14))
+    q = (q or "").strip()
+    rows = [r for r in rows if keep(r) and (not q or q.lower() in f"{r['payee']} {r['cheque_no']} {r['notes']} {r['bank']}".lower())]
+    out = [{"Sr.": i, "Cheque date": f"{r['month']}: date to fill" if r["date_tbc"] else M._dmy(M._as_date(r["date"])),
+            "Payee": r["payee"], "Cheque no": r["cheque_no"] or "-", "Bank": r["bank"] or "-", "Amount": r["amount"],
+            "For / notes": r["notes"] or "-", "Status": r["status"].title()} for i, r in enumerate(rows, 1)]
+    sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} - {LIST_SHOW.get(which, which)}" + (f' - matching "{q}"' if q else "")
+           + f"   |   AED {sum(r['Amount'] for r in out):,.2f}   |   As at {today:%d %b %Y}")
+    return out, "PDC Cheque List", sub
+
+
 @router.get("/export/pdc")
-def export_pdc(token: str, start: str = "", months: int = 4, show: str = "due", format: str = "pdf", db: Session = Depends(get_db)):
+def export_pdc(token: str, start: str = "", months: int = 4, show: str = "due", format: str = "pdf",
+               mode: str = "grid", which: str = "pending", q: str = "", db: Session = Depends(get_db)):
     _may(auth.get_download_user_from_token(token, db))
+    if mode == "list":
+        rows, title, sub = _list_parts(db, which, q)
+        return M._hr_file(title, rows, sub, format, ["Amount"], "PDC_Cheques", totals=["Amount"])
     t = tracker(db, start, months, show)
     name = f"PDC_Tracker_{t['from']}"
     if format == "excel":
@@ -467,9 +500,14 @@ def export_pdc(token: str, start: str = "", months: int = 4, show: str = "due", 
 
 
 @router.get("/export/pdc/view", response_class=HTMLResponse)
-def view_pdc(token: str, start: str = "", months: int = 4, show: str = "due", db: Session = Depends(get_db)):
+def view_pdc(token: str, start: str = "", months: int = 4, show: str = "due",
+             mode: str = "grid", which: str = "pending", q: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _may(user)
+    if mode == "list":
+        rows, title, sub = _list_parts(db, which, q)
+        url = "/export/pdc?" + urlencode({"mode": "list", "which": which, "q": q, "token": auth.create_view_token(user.username)})
+        return M._preview_page(title, sub, rows, url, url, money_cols=["Amount"], total_cols=["Amount"])
     t = tracker(db, start, months, show)
     v = auth.create_view_token(user.username)
     base = "/export/pdc?" + urlencode({"start": t["from"], "months": t["months"], "show": show, "token": v})

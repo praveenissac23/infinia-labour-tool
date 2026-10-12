@@ -371,7 +371,7 @@ def view_invoice(iid: int, token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/export/accounts/invoices")
-def export_invoice_register(token: str, kind: str = "tax", format: str = "excel", db: Session = Depends(get_db)):
+def export_invoice_register(token: str, kind: str = "tax", format: str = "excel", q: str = "", db: Session = Depends(get_db)):
     """The list of invoices in the app's standard report: Preview (on
     screen, with Download PDF / Download Excel / Print), PDF or Excel."""
     u = auth.get_download_user_from_token(token, db)
@@ -379,6 +379,11 @@ def export_invoice_register(token: str, kind: str = "tax", format: str = "excel"
         raise HTTPException(status_code=403, detail="Invoices are for accounts only.")
     title = "Tax invoices" if kind == "tax" else "Proforma invoices"
     found = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date, Invoice.id).all()
+    # The screen's search box narrows the paper too.
+    q = (q or "").strip()
+    if q:
+        found = [x for x in found if q.lower() in " ".join(v or "" for v in (x.number, x.client, x.project, x.project_no,
+                                                                            getattr(x, "plot", "") or "")).lower()]
     live = [x for x in found if x.status != "cancelled"]
     # A cancelled invoice stays on the list, its figures shown as text so
     # the totals line (which adds numbers only) leaves it out.
@@ -390,12 +395,13 @@ def export_invoice_register(token: str, kind: str = "tax", format: str = "excel"
             for x in found]
     cx = len(found) - len(live)
     sub = (f"{len(live)} {'invoice' if kind == 'tax' else 'proforma'}{'' if len(live) == 1 else 's'}"
-           + (f" (+{cx} cancelled, not in the totals)" if cx else "") + f" | As at {M._dubai_today():%d %b %Y}")
+           + (f" (+{cx} cancelled, not in the totals)" if cx else "") + (f' | matching "{q}"' if q else "")
+           + f" | As at {M._dubai_today():%d %b %Y}")
     money = ["Net (AED)", "VAT (AED)", "Total (AED)"]
     name = title.replace(" ", "_")
     if format == "view":
         from urllib.parse import quote
-        url = f"/export/accounts/invoices?kind={kind}&token={quote(auth.create_view_token(u.username), safe='')}"
+        url = f"/export/accounts/invoices?kind={kind}&q={quote(q)}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, rows, url, url, money_cols=money)
     if format == "pdf":
         return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=money),

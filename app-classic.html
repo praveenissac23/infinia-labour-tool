@@ -7399,7 +7399,8 @@ function rentWhere() {
   // an empty string IS the central store to the server, so the first
   // look at the panel quietly hid everything standing on a site.
   const sel = document.getElementById("rent-where");
-  return (sel && sel.value) ? sel.value : "__all__";
+  if (!sel || !sel.value) return "__all__";
+  return sel.value === "__central__" ? "" : sel.value;    // "" is the central store to the server
 }
 
 async function refreshOnHire() {
@@ -7418,8 +7419,8 @@ async function refreshOnHire() {
   if (sel) {
     const places = hireOnHire.places || [];
     sel.innerHTML = `<option value="__all__">Everywhere</option>`
-      + places.map(pl => `<option value="${pl.code}">${pl.label}</option>`).join("");
-    sel.value = places.some(pl => pl.code === picked) ? picked : "__all__";
+      + places.map(pl => `<option value="${pl.code === "" ? "__central__" : pl.code}">${pl.label}</option>`).join("");
+    sel.value = places.some(pl => pl.code === picked) ? (picked === "" ? "__central__" : picked) : "__all__";
   }
   const sum = document.getElementById("rent-summary");
   if (sum) {
@@ -9951,9 +9952,14 @@ async function saveReceive() {
 async function exportRequests(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
   const t = encodeURIComponent(cachedDownloadToken);
+  // The paper is the list on screen: the Show box (or the count tapped
+  // above it) and the search box narrow it the same way.
+  const show = MR_ONLY || (document.getElementById("mreq-filter") || {}).value || "open";
+  const q = ((document.getElementById("mreq-search") || {}).value || "").trim();
+  const narrow = `&status=${encodeURIComponent(show)}` + (q ? `&q=${encodeURIComponent(q)}` : "");
   window.open(fmt === "view"
-    ? `${API}/export/store/report/view?kind=mr_history&token=${t}`
-    : `${API}/export/store/report?kind=mr_history&format=${fmt}&token=${t}`, "_blank");
+    ? `${API}/export/store/report/view?kind=mr_history&token=${t}${narrow}`
+    : `${API}/export/store/report?kind=mr_history&format=${fmt}&token=${t}${narrow}`, "_blank");
 }
 
 // Serial numbers down the left of each entry table so rows can be
@@ -13433,16 +13439,19 @@ async function hrToken() {
 }
 
 function hrReportUrl(which) {
+  // The paper is the screen: every filter and search on it goes along.
+  const v = id => encodeURIComponent(((document.getElementById(id) || {}).value || "").trim());
   const month = hrCycleName(document.getElementById("hr-leave-month").value);
-  if (which === "leave") return `/export/payroll/leave?month_year=${encodeURIComponent(month)}`;
+  if (which === "leave") return `/export/payroll/leave?month_year=${encodeURIComponent(month)}&emp_no=${v("hr-leave-filter")}`;
   if (which === "items") return `/export/payroll/items?month_year=${encodeURIComponent(
-    hrCycleName(document.getElementById("hr-items-month").value))}`;
+    hrCycleName(document.getElementById("hr-items-month").value))}&emp_no=${v("hr-items-filter")}`;
   if (which === "increments") return `/export/payroll/increments?emp_no=${encodeURIComponent(
     document.getElementById("hr-inc-filter").value)}`;
   if (which === "gratuity") return `/export/payroll/gratuity?emp_no=${encodeURIComponent(
     document.getElementById("hr-grat-emp").value)}`;
   if (which === "documents")
-    return `/export/payroll/documents?within=${document.getElementById("hr-doc-within").value}`;
+    return `/export/payroll/documents?within=${v("hr-doc-within")}&who=${v("hr-doc-who")}&q=${v("hr-doc-search")}`;
+  if (which === "staff") return `/export/payroll/staff?company_id=${v("hr-staff-company")}&q=${v("hr-staff-search")}`;
   return `/export/payroll/${which}?`;
 }
 
@@ -13743,13 +13752,13 @@ async function crDelete() {
 async function crExport(fmt) {
   await refreshDownloadToken();
   const base = fmt === "view" ? "/export/accounts/credentials/view" : "/export/accounts/credentials";
-  window.open(`${API}${base}?token=${encodeURIComponent(cachedDownloadToken || "")}&cat=${encodeURIComponent(CR_CAT)}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+  window.open(`${API}${base}?token=${encodeURIComponent(cachedDownloadToken || "")}&cat=${encodeURIComponent(CR_CAT)}&q=${encodeURIComponent((document.getElementById("cr-q").value || "").trim())}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
 }
 async function pxExport(fmt, code) {
   const r = pxRange();
   await refreshDownloadToken();
   const base = fmt === "view" ? "/export/accounts/project-expense/view" : "/export/accounts/project-expense";
-  window.open(`${API}${base}?token=${encodeURIComponent(cachedDownloadToken || "")}&code=${encodeURIComponent(code || "")}&date_from=${r.from}&date_to=${r.to}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
+  window.open(`${API}${base}?token=${encodeURIComponent(cachedDownloadToken || "")}&code=${encodeURIComponent(code || "")}&date_from=${r.from}&date_to=${r.to}${code ? "" : "&q=" + encodeURIComponent((document.getElementById("px-q").value || "").trim())}${fmt === "view" ? "" : "&format=" + fmt}`, "_blank");
 }
 // ---- Labour payroll > Increments - laid out exactly like the office's ----------
 let LAB_INCS = [];
@@ -15341,7 +15350,8 @@ async function deleteExpiry(id) {
   catch (e) { expMsg("err", errText(e)); }
 }
 async function hrExpExport(kind) {
-  const w = document.getElementById("hr-exp-within").value, t = await hrToken();
+  const v = id => encodeURIComponent(((document.getElementById(id) || {}).value || "").trim());
+  const w = `${v("hr-exp-within")}&cat=${v("hr-exp-catf")}&q=${v("hr-exp-search")}`, t = await hrToken();
   window.open(kind === "view" ? `${API}/export/payroll/expiries/view?within=${w}&token=${t}`
                               : `${API}/export/payroll/expiries?within=${w}&format=${kind}&token=${t}`, "_blank");
 }
@@ -15970,13 +15980,15 @@ async function scDelete() {
 }
 async function scExport(kind) {
   await refreshDownloadToken();
-  const q = `show=${SC_SHOW}&token=${encodeURIComponent(cachedDownloadToken || "")}`;
+  const q = `show=${SC_SHOW}&q=${encodeURIComponent((document.getElementById("sc-q").value || "").trim())}&token=${encodeURIComponent(cachedDownloadToken || "")}`;
   window.open(kind === "view" ? `${API}/export/security-cheques/view?${q}` : `${API}/export/security-cheques?${q}&format=${kind}`, "_blank");
 }
 async function pdcExport(kind) {
   if (!cachedDownloadToken) await refreshDownloadToken();
   const q = `start=${document.getElementById("pdc-from").value}&months=${document.getElementById("pdc-months").value}&show=${document.getElementById("pdc-show").value}&token=${encodeURIComponent(cachedDownloadToken || "")}`;
-  window.open(kind === "view" ? `${API}/export/pdc/view?${q}` : `${API}/export/pdc?${q}&format=${kind}`, "_blank");
+  // On the List view the paper is the list on screen: its Show box and search.
+  const ql = PDC_VIEW === "list" ? `&mode=list&which=${document.getElementById("pdc-filter").value}&q=${encodeURIComponent(document.getElementById("pdc-search").value.trim())}` : "";
+  window.open(kind === "view" ? `${API}/export/pdc/view?${q}${ql}` : `${API}/export/pdc?${q}${ql}&format=${kind}`, "_blank");
 }
 
 // ---- Accounts: tax invoices and proforma invoices ---------------------
@@ -16182,7 +16194,8 @@ async function invViewUrl(id) {
 async function invPdf(id) { const w = window.open("", "_blank"); const u = await invViewUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
 async function invList(kind) {
   await refreshDownloadToken();
-  window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+  const q = encodeURIComponent((document.getElementById("inv-search").value || "").trim());
+  window.open(`${API}/export/accounts/invoices?kind=${INV_KIND}&format=${kind}&q=${q}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function invCancel(id) {
   const r = INV.rows.find(x => x.id === id); if (!r) return;

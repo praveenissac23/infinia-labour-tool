@@ -378,17 +378,22 @@ def project_expense_detail(code: str, date_from: str = "", date_to: str = "", db
 MONEY = ["Contract", "Received", "Labour", "Materials - LPO", "Materials - store", "Petty cash", "Total cost"]
 
 
-def _summary_parts(db, date_from, date_to):
+def _summary_parts(db, date_from, date_to, q=""):
     g = gather(db, date_from, date_to)
+    q = (q or "").strip()
     rows = []
     for r in g["rows"]:
+        # The screen's search (project code, name, plot) narrows the paper too.
+        if q and q.lower() not in f"{r['code']} {r['name'] or ''} {r['plot'] or ''}".lower():
+            continue
         rows.append({"Project": r["code"] + (f" - {r['name']}" if r["name"] else "") + (f" (Plot {r['plot']})" if r["plot"] else ""),
                      "Contract": r["contract"], "Received": r["received"], "Labour": r["labour"],
                      "Materials - LPO": r["lpo"], "Materials - store": r["store"], "Petty cash": r["petty"],
                      "Total cost": r["total"],
                      "Cost % of contract": f"{r['total'] / r['contract'] * 100:.1f}%" if r["contract"] else "-"})
     u = g["unlinked"]
-    sub = (f"{len(rows)} projects   |   {_period(g)}   |   LPO cost net of VAT   |   Not linked to a project: "
+    sub = (f"{len(rows)} projects   |   {_period(g)}" + (f'   |   matching "{q}"' if q else "")
+           + "   |   LPO cost net of VAT   |   Not linked to a project: "
            f"petty cash {u['petty']:,.2f}, LPOs {u['lpo']:,.2f}, labour {u['labour']:,.2f}")
     return rows, "Project Expense", sub
 
@@ -429,25 +434,27 @@ def _detail_parts(db, code, date_from, date_to):
 
 
 @router.get("/export/accounts/project-expense")
-def export_project_expense(token: str, format: str = "pdf", code: str = "", date_from: str = "", date_to: str = "",
+def export_project_expense(token: str, format: str = "pdf", code: str = "", date_from: str = "", date_to: str = "", q: str = "",
                            db: Session = Depends(get_db)):
     _reader(token, db)
     if code:
         rows, title, sub = _detail_parts(db, code, date_from, date_to)
         return M._hr_file(title, rows, sub, format, ["Amount", "Category total"], f"Project_Expense_{code}", totals=["Amount"])
-    rows, title, sub = _summary_parts(db, date_from, date_to)
+    rows, title, sub = _summary_parts(db, date_from, date_to, q)
     return M._hr_file(title, rows, sub, format, MONEY, "Project_Expense")
 
 
 @router.get("/export/accounts/project-expense/view")
-def view_project_expense(token: str, code: str = "", date_from: str = "", date_to: str = "", db: Session = Depends(get_db)):
+def view_project_expense(token: str, code: str = "", date_from: str = "", date_to: str = "", q: str = "",
+                         db: Session = Depends(get_db)):
     from urllib.parse import quote
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
-    q = f"code={quote(code)}&date_from={quote(date_from)}&date_to={quote(date_to)}"
+    search = q
+    q = f"code={quote(code)}&date_from={quote(date_from)}&date_to={quote(date_to)}&q={quote(search)}"
     url = f"/export/accounts/project-expense?token={t}&{q}"
     if code:
         rows, title, sub = _detail_parts(db, code, date_from, date_to)
         return M._preview_page(title, sub, rows, url, url, money_cols=["Amount", "Category total"], total_cols=["Amount"])
-    rows, title, sub = _summary_parts(db, date_from, date_to)
+    rows, title, sub = _summary_parts(db, date_from, date_to, search)
     return M._preview_page(title, sub, rows, url, url, money_cols=MONEY, total_cols=MONEY)

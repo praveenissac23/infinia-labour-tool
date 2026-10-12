@@ -2413,7 +2413,8 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
     # picked.
     rows, money, totals = export_web.generic_result_rows(result_dict)
     title = "Monthly Payroll Report" if monthly else "Salary Report"
-    sub = ((company or "Infinia and Prime Infinia") + "  |  " if monthly else "") + \
+    sub = (((company or "Infinia and Prime Infinia") + "  |  ") if monthly
+           else (company + "  |  " if company else "")) + \
           (f"{export_web._day(date_from)} to {export_web._day(date_to)}"
            if (date_from and date_to) else f"Wage cycle {month_year}")
     if format == "rows":
@@ -6201,7 +6202,8 @@ MR_WORDS = {"pending": "Waiting on office", "approved": "Office approved", "orde
 
 
 @app.get("/store/requests/report")
-def material_request_report(kind: str = "open", db: Session = Depends(get_db),
+def material_request_report(kind: str = "open", status: str = "", q: str = "",
+                            db: Session = Depends(get_db),
                             user: models.User = Depends(auth.get_current_user)):
     # Also called directly by the export endpoint with user=None.
     """kind='open' | 'overdue' | 'outstanding' | 'history'"""
@@ -6238,9 +6240,24 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
         # reads it. Open: still moving; done: delivered, closed or rejected.
         DONE = ("delivered", "received", "closed", "rejected")
         rows = []
+        needle = (q or "").strip().lower()
+        live = lambda m: m.status not in ("delivered", "closed", "rejected")
+        is_late = lambda m: bool(m.needed_by and m.needed_by < today and live(m))
+        if status:
+            # The Approvals screen's Show box (or the count tapped above
+            # it) and its order: late, then urgent, then newest.
+            reqs = sorted(reqs, key=lambda m: (not is_late(m), not (m.urgency == "urgent" and live(m)), -m.id))
         for m in reqs:
             done = m.status in DONE
             if kind == "history_open" and done or kind == "history_done" and not done:
+                continue
+            if status == "open" and not live(m): continue
+            if status == "late" and not is_late(m): continue
+            if status not in ("", "all", "open", "late") and m.status != status: continue
+            if needle and needle not in " ".join(
+                    [m.ref or "", m.site or "", m.requested_by or "", MR_WORDS.get(m.status, m.status or ""),
+                     m.requested_on.isoformat() if m.requested_on else "", m.needed_by.isoformat() if m.needed_by else ""]
+                    + [f"{l.item.code if l.item else ''} {l.item.name if l.item else ''} {l.description or ''}" for l in m.lines]).lower():
                 continue
             late = m.needed_by and m.needed_by < today and not done
             mats = []
@@ -6255,7 +6272,11 @@ def material_request_report(kind: str = "open", db: Session = Depends(get_db),
                                     + (" - urgent" if m.urgency == "urgent" and not done else "") + (" - LATE" if late else ""),
                           "materials": "\n".join(mats) or "-"})
         title = {"history_open": "Material requests - open", "history_done": "Material requests - done"}.get(kind, "Material requests")
-        return {"title": title, "rows": rows}
+        word = {"open": "still open", "pending": "waiting on office", "approved": "approved", "ordered": "ordered",
+                "partial": "part delivered", "late": "late", "delivered": "delivered", "rejected": "rejected"}.get(status)
+        if word:
+            title = f"Material requests - {word}"
+        return {"title": title, "rows": rows, "searched": bool(needle)}
 
     rows = [{"ref": m.ref, "site": m.site, "requested_on": m.requested_on.isoformat(),
               "needed_by": m.needed_by.isoformat() if m.needed_by else "",
@@ -7347,6 +7368,8 @@ def export_lpo_report(token: str, format: str = "excel", group_by: str = "order"
     if supplier: bits.append(f"supplier: {supplier}")
     if site: bits.append(f"site: {site}")
     if material: bits.append(f"material: {material}")
+    if status in ("all", "cancelled"):
+        bits.append({"all": "including cancelled", "cancelled": "cancelled only"}[status])
     subtitle = " · ".join(bits)
     title = f"Purchase orders by {data['group_label'].lower()}"
     if format == "pdf":
@@ -8348,15 +8371,15 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
 @app.get("/export/store/report/view")
 def view_store_report(kind: str = "stock", date_from: str = None, date_to: str = None,
                        q: str = "", token: str = None, site: str = None, move: str = None,
-                       db: Session = Depends(get_db)):
+                       status: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     t = quote(auth.create_view_token(user.username), safe="")
     extra = f"&kind={quote(kind, safe='')}"
-    for k, v in (("date_from", date_from), ("date_to", date_to), ("q", q), ("site", site), ("move", move)):
+    for k, v in (("date_from", date_from), ("date_to", date_to), ("q", q), ("site", site), ("move", move), ("status", status)):
         if v:
             extra += f"&{k}={quote(str(v), safe='')}"
     if kind.startswith("mr_"):
-        data = material_request_report(kind=kind[3:], db=db, user=None)
+        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=None)
     else:
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, site=site, move=move, db=db, user=None)
     rows = []
@@ -8367,7 +8390,7 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
             r["at_which_sites"] = "\n".join(f"{loc}: {_clean_export_qty(q)}"
                                              for loc, q in sorted(per.items())) or "-"
         rows.append(r)
-    if q.strip():
+    if q.strip() and not data.get("searched"):
         needle = q.strip().lower()
         rows = [r for r in rows if needle in " ".join(str(v) for v in r.values()).lower()]
     url = f"/export/store/report?token={t}{extra}"
@@ -8386,6 +8409,8 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         sub = f"{sub} · nothing priced yet at {', '.join(u['site'] for u in data['unpriced_sites'])}"
     if kind == "issues":
         sub = f"{sub} · " + {"returned": "what came back", "all": "issued and returned"}.get(move or "out", "still at the sites")
+    if q.strip():
+        sub = f'{sub} · matching "{q.strip()}"'
     return _preview_page(title, sub, rows, url, url, money_cols=data.get("money_cols"), total_cols=data.get("total_cols"))
 
 
@@ -8409,6 +8434,8 @@ def view_lpo_report(token: str, group_by: str = "order",
     for label, v in (("supplier", supplier), ("site", site), ("material", material)):
         if v:
             bits.append(f"{label}: {v}")
+    if status in ("all", "cancelled"):
+        bits.append({"all": "including cancelled", "cancelled": "cancelled only"}[status])
     data = lpo_report(group_by=group_by, measures=measures, date_from=date_from,
                       date_to=date_to, supplier=supplier, site=site, material=material,
                       status=status, db=db, user=_SystemUser())
@@ -8637,13 +8664,13 @@ def signature_status(kind: str = "lpo", user: models.User = Depends(require_any_
 def export_store_report(kind: str = "stock", format: str = "excel",
                          date_from: str = None, date_to: str = None,
                          q: str = "", token: str = None, inline: bool = False,
-                         site: str = None, move: str = None,
+                         site: str = None, move: str = None, status: str = "",
                          db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     # Material-request reports live under a different builder to the
     # stock ones, but both export through the same formatter.
     if kind.startswith("mr_"):
-        data = material_request_report(kind=kind[3:], db=db, user=None)
+        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=None)
     else:
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, site=site, move=move, db=db, user=None)
     # Dates read the way they are said, here as on the rows themselves.
@@ -8671,7 +8698,8 @@ def export_store_report(kind: str = "stock", format: str = "excel",
     # complaint; the file now holds what the screen showed.
     q = (q or "").strip().lower()
     if q:
-        rows = [r for r in rows if q in " ".join(str(v) for v in r.values()).lower()]
+        if not data.get("searched"):      # the request builder has already searched its own way
+            rows = [r for r in rows if q in " ".join(str(v) for v in r.values()).lower()]
         sub = f'{sub} · matching "{q}"'
     if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
@@ -11349,8 +11377,8 @@ def view_loans(token: str, db: Session = Depends(get_db)):
 
 # ---- Leave -------------------------------------------------------------
 
-def _leave_parts(db, month_year):
-    d = list_leave(month_year=month_year, emp_no="", db=db, user=None)
+def _leave_parts(db, month_year, emp_no=""):
+    d = list_leave(month_year=month_year, emp_no=emp_no, db=db, user=None)
 
     def when(r):
         a_, b_ = _as_date(r["from"]), _as_date(r["to"])
@@ -11362,7 +11390,9 @@ def _leave_parts(db, month_year):
              "Certificate": "Yes" if r["certificate"] else "-",
              "Remark": r["notes"] or "-"}
             for i, r in enumerate(d["rows"], 1)]
-    sub = (f"{month_year or 'All'}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}, "
+    who = (f"   |   {d['rows'][0]['emp_no']} {d['rows'][0]['name']}" if d["rows"] else f"   |   {emp_no.strip()}") \
+        if emp_no.strip() else ""
+    sub = (f"{month_year or 'All'}{who}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}, "
            f"{d['days']:g} day(s), {d['unpaid_days']:g} deducted   |   "
            f"Deductions {d['cost']:,.2f}")
     return rows, "Staff Absence & Leave", sub
@@ -11373,34 +11403,36 @@ def _leave_parts(db, month_year):
 ITEM_MONEY = ["Addition", "Deduction"]
 
 
-def _items_parts(db, month_year):
-    d = list_pay_items(month_year=month_year, emp_no="", db=db, user=None)
+def _items_parts(db, month_year, emp_no=""):
+    d = list_pay_items(month_year=month_year, emp_no=emp_no, db=db, user=None)
     rows = [{"Sr.": i, "Emp. Code": r["emp_no"], "Staff": r["name"],
              "Month": r["month_year"], "Item": r["category_label"],
              "Addition": r["amount"] if r["direction"] == "add" else 0.0,
              "Deduction": r["amount"] if r["direction"] == "deduct" else 0.0,
              "Remark": r["notes"] or "-"}
             for i, r in enumerate(d["rows"], 1)]
-    sub = (f"{month_year or 'All months'}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}   |   "
+    who = (f"   |   {d['rows'][0]['emp_no']} {d['rows'][0]['name']}" if d["rows"] else f"   |   {emp_no.strip()}") \
+        if emp_no.strip() else ""
+    sub = (f"{month_year or 'All months'}{who}   |   {len(rows)} entr{'y' if len(rows) == 1 else 'ies'}   |   "
            f"Additions {d['additions']:,.2f}   |   Deductions {d['deductions']:,.2f}")
     return rows, "Salary Additions & Deductions", sub
 
 
 @app.get("/export/payroll/items")
-def export_items(token: str, month_year: str = "", format: str = "pdf",
+def export_items(token: str, month_year: str = "", format: str = "pdf", emp_no: str = "",
                   db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _items_parts(db, month_year)
+    rows, title, sub = _items_parts(db, month_year, emp_no)
     return _hr_file(title, rows, sub, format, ITEM_MONEY, "Additions_Deductions")
 
 
 @app.get("/export/payroll/items/view")
-def view_items(token: str, month_year: str = "", db: Session = Depends(get_db)):
+def view_items(token: str, month_year: str = "", emp_no: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _items_parts(db, month_year)
-    url = f"/export/payroll/items?month_year={quote(month_year)}&token={t}"
+    rows, title, sub = _items_parts(db, month_year, emp_no)
+    url = f"/export/payroll/items?month_year={quote(month_year)}&emp_no={quote(emp_no)}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=ITEM_MONEY, total_cols=ITEM_MONEY)
 
 
@@ -11568,7 +11600,9 @@ def _history_rows(rows, labour):
 def _labour_history_parts(db, emp_no=""):
     d = list_increments(emp_no=emp_no, db=db, user=None, labour=True)
     out, people = _history_rows(_tidy_rate_history(d["rows"]), False)
-    sub = f"{people} workers   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
+    who = (f"{d['rows'][0]['emp_no']} {d['rows'][0]['name']}" if emp_no.strip() and d["rows"]
+           else f"{people} workers")
+    sub = f"{who}   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
     return out, "Labour Salary History", sub
 
 
@@ -11747,33 +11781,66 @@ def view_history(token: str, emp_no: str = "", db: Session = Depends(get_db)):
 
 
 @app.get("/export/payroll/leave")
-def export_leave(token: str, month_year: str = "", format: str = "pdf",
+def export_leave(token: str, month_year: str = "", format: str = "pdf", emp_no: str = "",
                   db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _leave_parts(db, month_year)
+    rows, title, sub = _leave_parts(db, month_year, emp_no)
     return _hr_file(title, rows, sub, format, ["Deduction"], "Absence_Leave")
 
 
 @app.get("/export/payroll/leave/view")
-def view_leave(token: str, month_year: str = "", db: Session = Depends(get_db)):
+def view_leave(token: str, month_year: str = "", emp_no: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _leave_parts(db, month_year)
-    url = f"/export/payroll/leave?month_year={quote(month_year)}&token={t}"
+    rows, title, sub = _leave_parts(db, month_year, emp_no)
+    url = f"/export/payroll/leave?month_year={quote(month_year)}&emp_no={quote(emp_no)}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=["Deduction"],
                          total_cols=["Deduction"])
 
 
 # ---- Documents ---------------------------------------------------------
 
-def _document_parts(db, days):
-    """One line a person, one column a document - the tracker's layout.
+WITHIN_WORD = {"30": "Expired or due in 30 days", "7": "Expired or due in 7 days", "0": "Expired only",
+               "w": "Due in 7 days", "m": "Due in 8 to 30 days", "90": "Expired or due in 90 days"}
 
-    `days` narrows to people with something expiring within that many
-    days (0: something already expired); negative or None is everyone.
-    """
-    days = None if days is None or days < 0 else days
+
+def _within_ok(wv, soonest, expired):
+    """The expiry screens' "Show" bands, the same rule as on screen."""
+    if wv == "w":
+        return soonest is not None and 0 <= soonest <= 7
+    if wv == "m":
+        return soonest is not None and 8 <= soonest <= 30
+    days = int(wv) if wv.lstrip("-").isdigit() else -1
+    if days < 0:
+        return True
+    return expired if days == 0 else (soonest if soonest is not None else 10**6) <= days
+
+
+def _narrowed(*bits):
+    t = "   |   ".join(b for b in bits if b)
+    return (t + "   |   ") if t else ""
+
+
+def _missing_doc_parts(db, who="all", q=""):
+    q = (q or "").strip().lower()
+    ps = [p for p in expiry.missing_people(db) if (who in ("", "all") or (who == "staff") == bool(p["staff"]))
+          and (not q or q in f"{p['emp_no']} {p['name']}".lower())]
+    out = [{"Sr.": i, "Emp. Code": p["emp_no"], "Employee Name": p["name"], "Staff": "Office" if p["staff"] else "Labour",
+            "Company": p["company"] or "-", "Missing": ", ".join(p["missing"])} for i, p in enumerate(ps, 1)]
+    sub = _narrowed({"staff": "Office staff", "labour": "Labour"}.get(who, ""), f'matching "{q}"' if q else "") + \
+        f"{len(out)} people with a document missing   |   As at {_dubai_today():%d %b %Y}"
+    return out, "Missing Documents", sub
+
+
+def _document_parts(db, within="-1", who="all", q=""):
+    """One line a person, one column a document - the tracker's layout,
+    narrowed the way the screen is: the Show band, office / labour, and
+    the search box ("missing" is its own list of who lacks what)."""
+    wv = str(within if within is not None else "-1").strip()
+    if wv == "missing":
+        return _missing_doc_parts(db, who, q)
+    q = (q or "").strip().lower()
     d = list_documents(db=db, user=None)
     people = {}
     for x in d["rows"]:
@@ -11802,9 +11869,13 @@ def _document_parts(db, days):
         soonest = min((x["days_left"] for x in docs if x["days_left"] is not None),
                       default=10**6)
         worst = min((x["status"] for x in docs), key=lambda k: rank[k], default="valid")
-        if days is not None and (worst != "expired" if days == 0 else soonest > days):
-            continue
         x = p["x"]
+        if not _within_ok(wv, None if soonest == 10**6 else soonest, worst == "expired"):
+            continue
+        if who in ("staff", "labour") and (who == "staff") != bool(x["staff"]):
+            continue
+        if q and q not in f"{x['emp_no']} {x['name']}".lower():
+            continue
         rows.append((soonest, x["emp_no"], {
             "Emp. Code": x["emp_no"], "Employee Name": x["name"],
             "Staff": "Office" if x["staff"] else "Labour",
@@ -11818,18 +11889,21 @@ def _document_parts(db, days):
     for i, (_, _, r) in enumerate(rows, 1):
         out.append({"Sr.": i, **r})
     counts = {k: sum(1 for r in out if r["Standing"] == DOC_STANDING[k]) for k in rank}
-    sub = (f"{len(out)} people   |   {counts['expired']} with something expired, "
+    sub = _narrowed(WITHIN_WORD.get(wv, ""), {"staff": "Office staff", "labour": "Labour"}.get(who, ""),
+                    f'matching "{q}"' if q else "") + \
+        (f"{len(out)} people   |   {counts['expired']} with something expired, "
            f"{counts['urgent']} due within 30 days, {counts['soon']} within 90   |   "
            f"As at {_dubai_today():%d %b %Y}")
     return out, "Document Expiry Tracker", sub
 
 
-def _expiry_parts(db, days):
-    days = None if days is None or days < 0 else days
-    rows = list_expiries(db=db, user=None)["rows"]
-    if days is not None:
-        rows = [r for r in rows if r["status"] == "expired"] if days == 0 else \
-               [r for r in rows if r["days_left"] is not None and r["days_left"] <= days]
+def _expiry_parts(db, within="-1", cat="", q=""):
+    wv = str(within if within is not None else "-1").strip()
+    q = (q or "").strip().lower()
+    rows = [r for r in list_expiries(db=db, user=None)["rows"]
+            if (not cat or r["category"] == cat)
+            and (not q or q in f"{r['item']} {r['number']} {r['kind']} {r['category']}".lower())
+            and _within_ok(wv, r["days_left"], r["status"] == "expired")]
     out = []
     for i, r in enumerate(rows, 1):
         n = r["days_left"]
@@ -11838,43 +11912,45 @@ def _expiry_parts(db, days):
                     "Days Left": ("expired %dd" % -n) if n is not None and n < 0 else (n if n is not None else "-"),
                     "Standing": "Expires today" if n == 0 else DOC_STANDING[r["status"]], "Notes": r["notes"] or "-"})
     c = lambda k: sum(1 for r in rows if r["status"] == k)
-    sub = (f"{len(out)} items   |   {c('expired')} expired, {c('urgent')} due within 30 days, {c('soon')} within 90"
+    sub = _narrowed(WITHIN_WORD.get(wv, ""), cat, f'matching "{q}"' if q else "") + \
+        (f"{len(out)} items   |   {c('expired')} expired, {c('urgent')} due within 30 days, {c('soon')} within 90"
            f"   |   As at {_dubai_today():%d %b %Y}")
     return out, "Company & Vehicle Expiry Tracker", sub
 
 
 @app.get("/export/payroll/expiries")
-def export_expiries(token: str, within: int = -1, format: str = "pdf", db: Session = Depends(get_db)):
+def export_expiries(token: str, within: str = "-1", format: str = "pdf", cat: str = "", q: str = "",
+                    db: Session = Depends(get_db)):
     _require_docs_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _expiry_parts(db, within)
+    rows, title, sub = _expiry_parts(db, within, cat, q)
     return _hr_file(title, rows, sub, format, [], "Expiry_Tracker")
 
 
 @app.get("/export/payroll/expiries/view")
-def view_expiries(token: str, within: int = -1, db: Session = Depends(get_db)):
+def view_expiries(token: str, within: str = "-1", cat: str = "", q: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_docs_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _expiry_parts(db, within)
-    url = f"/export/payroll/expiries?within={within}&token={t}"
+    rows, title, sub = _expiry_parts(db, within, cat, q)
+    url = f"/export/payroll/expiries?within={quote(within)}&cat={quote(cat)}&q={quote(q)}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
 
 @app.get("/export/payroll/documents")
-def export_documents(token: str, within: int = -1, format: str = "pdf",
+def export_documents(token: str, within: str = "-1", format: str = "pdf", who: str = "all", q: str = "",
                       db: Session = Depends(get_db)):
     _require_docs_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _document_parts(db, within)
+    rows, title, sub = _document_parts(db, within, who, q)
     return _hr_file(title, rows, sub, format, [], "Document_Tracker")
 
 
 @app.get("/export/payroll/documents/view")
-def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
+def view_documents(token: str, within: str = "-1", who: str = "all", q: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_docs_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _document_parts(db, within)
-    url = f"/export/payroll/documents?within={within}&token={t}"
+    rows, title, sub = _document_parts(db, within, who, q)
+    url = f"/export/payroll/documents?within={quote(within)}&who={quote(who)}&q={quote(q)}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=[], total_cols=[])
 
 
@@ -11883,15 +11959,23 @@ def view_documents(token: str, within: int = -1, db: Session = Depends(get_db)):
 STAFF_MONEY = ["Basic", "Fix Allown.", "Gross"]
 
 
-def _staff_parts(db):
-    d = list_staff(db=db, user=None)
+def _staff_parts(db, company_id="", q=""):
+    """The register as the screen shows it: one company and / or a
+    search narrow the paper the same way."""
+    cid = int(company_id) if str(company_id or "").strip().isdigit() else None
+    d = list_staff(company_id=cid, db=db, user=None)
+    q = (q or "").strip()
+    if q:
+        d["rows"] = [s for s in d["rows"] if q.lower() in f"{s['emp_no']} {s['name']}".lower()]
     rows = [{"Sr.": i, "Emp. Code": s["emp_no"], "Employee Name": s["name"],
              "Company": s["company"], "Designation": s["designation"] or "-",
              "Joining Date": _dmy(_as_date(s["joined_on"])) if s["joined_on"] else "-",
              "Years": s["years"], "Basic": s["basic"], "Fix Allown.": s["allowance"],
              "Gross": s["gross"], "Paid By": (s["pay_route"] or "wps").upper()}
             for i, s in enumerate(d["rows"], 1)]
-    sub = (f"{len(rows)} staff   |   Monthly payroll "
+    narrowed = "   |   ".join(x for x in ((d["rows"][0]["company"] if cid and d["rows"] else ""),
+                                          (f'matching "{q}"' if q else "")) if x)
+    sub = ((narrowed + "   |   ") if narrowed else "") + (f"{len(rows)} staff   |   Monthly payroll "
            f"{sum(r['Gross'] for r in rows):,.2f}   |   As at {_dubai_today():%d %b %Y}")
     return rows, "Office Staff Register", sub
 
@@ -11949,19 +12033,20 @@ def view_gratuity(token: str, emp_no: str = "", db: Session = Depends(get_db)):
 
 
 @app.get("/export/payroll/staff")
-def export_staff_register(token: str, format: str = "pdf", db: Session = Depends(get_db)):
+def export_staff_register(token: str, format: str = "pdf", company_id: str = "", q: str = "",
+                          db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _staff_parts(db)
+    rows, title, sub = _staff_parts(db, company_id, q)
     return _hr_file(title, rows, sub, format, STAFF_MONEY, "Staff_Register")
 
 
 @app.get("/export/payroll/staff/view")
-def view_staff_register(token: str, db: Session = Depends(get_db)):
+def view_staff_register(token: str, company_id: str = "", q: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _staff_parts(db)
-    url = f"/export/payroll/staff?token={t}"
+    rows, title, sub = _staff_parts(db, company_id, q)
+    url = f"/export/payroll/staff?company_id={quote(company_id)}&q={quote(q)}&token={t}"
     return _preview_page(title, sub, rows, url, url, money_cols=STAFF_MONEY,
                          total_cols=["Gross"])
 

@@ -306,16 +306,21 @@ def reveal(cid: int, payload: dict = Body(default={}), db: Session = Depends(get
 
 # ---- the list on paper: never the passwords ----------------------------------------
 
-def _parts(db, cat="", user=None):
+def _parts(db, cat="", user=None, q=""):
     rows = _visible(db, user).order_by(Credential.category, Credential.name).all()
     if cat:
         rows = [c for c in rows if c.category == cat]
+    # The screen's search box narrows the paper too.
+    q = (q or "").strip()
+    if q:
+        rows = [c for c in rows if q.lower() in " ".join(v or "" for v in (c.name, c.domain, c.url, c.username, c.category)).lower()]
     order = {c: i for i, c in enumerate(CATEGORIES)}
     rows.sort(key=lambda c: (order.get(c.category, 99), (c.name or "").lower()))
     out = [{"name": c.name, "category": c.category, "url": c.url or "", "domain": c.domain or "", "kind": c.kind,
             "username": c.username or "", "secret": unlock(c.secret), "notes": unlock(c.notes),
             "logo": c.logo or "", "admin_only": bool(c.admin_only) and _is_admin(user)} for c in rows]
-    sub = f"{len(out)} login{'s' if len(out) != 1 else ''}{(' - ' + cat) if cat else ''}   |   As at {M._dubai_today():%d %b %Y}"
+    sub = (f"{len(out)} login{'s' if len(out) != 1 else ''}{(' - ' + cat) if cat else ''}"
+           + (f' - matching "{q}"' if q else "") + f"   |   As at {M._dubai_today():%d %b %Y}")
     return out, "Credentials", sub
 
 
@@ -331,11 +336,11 @@ def _reader(token, db):
 
 
 @router.get("/export/accounts/credentials")
-def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Session = Depends(get_db)):
+def export_credentials(token: str, format: str = "pdf", cat: str = "", q: str = "", db: Session = Depends(get_db)):
     from fastapi.responses import Response
     import credentials_paper as CP
     u = _reader(token, db)
-    rows, title, sub = _parts(db, cat, u)
+    rows, title, sub = _parts(db, cat, u, q)
     xl = format == "excel"
     M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - {'Excel' if xl else 'PDF'}{(' - ' + cat) if cat else ''}")
     stamp = f"{M._dubai_today():%Y%m%d}"
@@ -347,14 +352,14 @@ def export_credentials(token: str, format: str = "pdf", cat: str = "", db: Sessi
 
 
 @router.get("/export/accounts/credentials/view")
-def view_credentials(token: str, cat: str = "", db: Session = Depends(get_db)):
+def view_credentials(token: str, cat: str = "", q: str = "", db: Session = Depends(get_db)):
     from fastapi.responses import HTMLResponse
     import credentials_paper as CP
     u = _reader(token, db)
     t = quote(auth.create_view_token(u.username), safe="")
-    rows, title, sub = _parts(db, cat, u)
+    rows, title, sub = _parts(db, cat, u, q)
     M.log_action(db, u.id, "credentials_exported", f"{len(rows)} logins with passwords - preview{(' - ' + cat) if cat else ''}")
-    url = f"/export/accounts/credentials?token={t}&cat={quote(cat)}"
+    url = f"/export/accounts/credentials?token={t}&cat={quote(cat)}&q={quote(q)}"
     return HTMLResponse(CP.html(rows, title, sub, url + "&format=pdf", url + "&format=excel", _who(u)))
 
 
