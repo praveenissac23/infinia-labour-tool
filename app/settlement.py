@@ -213,7 +213,7 @@ def settlement(db, emp_no, q):
                   "settled_on": (M._as_date(q.get("settled_on")) or today).isoformat()},
         "salary": {"basic": basic, "gross": gross, "day_basic": day_basic, "day_gross": day_gross},
         "service": {"days": g["service_days"], "unpaid": g["unpaid_days"],
-                    "unpaid_only": g.get("unpaid_only_days", g["unpaid_days"]), "vacation": g.get("vacation_days", 0.0),
+                    "unpaid_only": g.get("unpaid_only_days", g["unpaid_days"]), "vacation": g.get("vacation_days", 0.0), "past": g.get("past_days", 0.0),
                     "counted": max(g["service_days"] - g["unpaid_days"], 0),
                     "years": g["years"], "text": _ymd_text(e.joined_on, last)},
         "gratuity": {"amount": grat, "entitled": g["entitled"], "capped": g.get("capped", False),
@@ -266,6 +266,7 @@ def _basis(s):
             ("Service days", f"{sv['days']:,}"),
             ("Unpaid days (not service)", f"{sv.get('unpaid_only', sv['unpaid']):g}"),
             ("Vacation days (not service - company rule)", f"{sv.get('vacation', 0):g}"),
+            ("Before the app - absent / leave from old statements", f"{sv.get('past', 0):g}"),
             ("Unused leave days", f"{i['leave_days']:g}"),
             ("Notice required / served", f"{i['notice_required']} / {i['notice_served']:g} days")]
 

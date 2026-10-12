@@ -60,3 +60,11 @@ if tok:
         x = c.get(f"/export/labour-gratuity?emp_no=L-900&format={fm}&token={tok}"); ck(f"one-labourer {fm}", x.status_code == 200 and len(x.content) > 500, x.status_code)
     x = c.get(f"/export/labour-gratuity/view?emp_no=L-900&token={tok}"); ck("one-labourer preview", x.status_code == 200 and "MASON NINE" in x.text, x.status_code)
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")
+
+# Days from before the app (old statements) are taken out of service too
+FAIL2 = []
+s = SessionLocal(); e = s.query(models.Employee).filter_by(emp_no="L-900").first(); e.past_not_service = 30; e.past_not_service_note = "old statements"; s.commit(); s.close()
+f2 = c.get("/employees/labour-gratuity/L-900", headers=H).json()["gratuity"]
+yrs2 = (3 * 365 - 11.5 - 30) / 365
+ck("past days lower the service", f2["past_days"] == 30 and abs(f2["amount"] - round(yrs2 * 21 * 1095 * 12 / 365, 2)) < 0.02, f2)
+print("\nALL PASS (past days)" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}")

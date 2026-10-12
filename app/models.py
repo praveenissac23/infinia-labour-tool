@@ -98,6 +98,10 @@ class Employee(Base):
     pay_group = Column(String, default="staff")    # staff | local
     probation_end = Column(Date, nullable=True)
     notice_days = Column(Integer, default=30)
+    # Days before the app's own records that do not count as service
+    # (absent / on leave), read once from the old salary statements.
+    past_not_service = Column(Float, default=0.0)
+    past_not_service_note = Column(Text, default="")
 
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

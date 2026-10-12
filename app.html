@@ -1392,7 +1392,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="834de03a5776";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="587071ec0bfc";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -14102,6 +14102,7 @@ async function labGratShow() {
       ${kv("Service", w.joined_on ? hrService(w.years) : "-")}
       ${kv("Absent days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
       ${kv("Leave days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
+      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
       ${kv("Service counted", w.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(w.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}
@@ -15605,6 +15606,7 @@ async function renderGratuity() {
       ${kv("Service", s.joined_on ? hrService(s.years) : "-")}
       ${kv("Unpaid days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
       ${kv("Vacation days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
+      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
       ${kv("Service counted", s.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(s.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}

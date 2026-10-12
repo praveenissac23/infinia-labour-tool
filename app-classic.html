@@ -13896,6 +13896,7 @@ async function labGratShow() {
       ${kv("Service", w.joined_on ? hrService(w.years) : "-")}
       ${kv("Absent days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
       ${kv("Leave days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
+      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
       ${kv("Service counted", w.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(w.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}
@@ -15399,6 +15400,7 @@ async function renderGratuity() {
       ${kv("Service", s.joined_on ? hrService(s.years) : "-")}
       ${kv("Unpaid days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
       ${kv("Vacation days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
+      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
       ${kv("Service counted", s.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(s.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}

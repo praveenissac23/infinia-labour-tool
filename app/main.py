@@ -8923,9 +8923,12 @@ def gratuity_detail(e, db=None, upto=None):
     service = max((end - e.joined_on).days + 1, 0)
     unpaid_only, vacation = (_unpaid_days(db, e, end, split=True) if e.staff
                              else _labour_not_service(db, e, end))
-    unpaid = round(unpaid_only + vacation, 2)
+    past = round(float(getattr(e, "past_not_service", 0) or 0), 2)
+    unpaid = round(unpaid_only + vacation + past, 2)
     out["vacation_days"] = vacation
     out["unpaid_only_days"] = unpaid_only
+    out["past_days"] = past
+    out["past_note"] = getattr(e, "past_not_service_note", "") or ""
     years = max(service - unpaid, 0) / 365.0
     basic = e.basic_salary or 0
     daily = basic * 12 / 365.0
@@ -11576,6 +11579,7 @@ def _labour_gratuity_one(db, emp_no):
             {"Item": "Service days", "Detail": f"{g['service_days']}"},
             {"Item": "Absent days (not service)", "Detail": f"{g.get('unpaid_only_days', 0):g}"},
             {"Item": "Leave days (not service - company rule)", "Detail": f"{g.get('vacation_days', 0):g}"},
+            {"Item": "Before the app - absent / leave from old statements", "Detail": f"{g.get('past_days', 0):g}"},
             {"Item": "Service counted", "Detail": f"{g['years']:.2f} years"},
             {"Item": "Basic wage", "Detail": f"{(e.basic_salary or 0):,.2f}"},
             {"Item": "A day's basic (basic x 12 / 365)", "Detail": f"{g['daily']:,.2f}"},
@@ -11599,7 +11603,8 @@ def _labour_gratuity_parts(db, include_left=False):
         rows.append({"Code": e.emp_no, "Name": e.name, "Trade": e.trade or "",
                      "Joined": _dmy(e.joined_on) if e.joined_on else "-",
                      "Service days": g["service_days"], "Absent (not service)": g.get("unpaid_only_days", 0),
-                     "Leave (not service)": g.get("vacation_days", 0), "Years counted": round(g["years"], 2),
+                     "Leave (not service)": g.get("vacation_days", 0), "Before the app (not service)": g.get("past_days", 0),
+                     "Years counted": round(g["years"], 2),
                      "Basic": round(e.basic_salary or 0, 2), "Day's basic": g["daily"],
                      "Gratuity to date": g["amount"], "Note": g["why"] if not g["amount"] else ("capped" if g["capped"] else "")})
     sub = (f"{len(rows)} labourers   |   as at {_dmy(_dubai_today())}   |   21 days' basic a year for the first 5 years, 30 after; "
