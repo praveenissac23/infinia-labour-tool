@@ -87,9 +87,11 @@ def _ymd_text(a, b):
 
 
 def _leave_owed(db, e, last):
-    """Unused leave on the last day, at the legal minimum."""
+    """Unused leave on the last day, at the legal minimum. Labour by its
+    own rule (60 days in 24 months), taken from the days marked Leave."""
     p = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == e.id).first()
-    lv = people.leave_state(db, e, p, "office", today=last)
+    group = "labour" if not e.staff else ("local" if (e.pay_group or "") == "local" else "office")
+    lv = people.leave_state(db, e, p, group, today=last)
     bal = lv.get("balance") or 0.0
     note = f"{lv.get('accrued', 0):g} earned - {lv.get('taken', 0):g} taken"
     if e.joined_on:
@@ -112,7 +114,9 @@ def settlement(db, emp_no, q):
         raise HTTPException(status_code=400, detail="The last working day is before he joined.")
     reason = q.get("reason") if q.get("reason") in REASONS else "resignation"
     basic = round(e.basic_salary or 0, 2)
-    gross = M._gross(e)
+    # A labourer's monthly figure is his total salary (basic + fixed
+    # allowance on the labour master), not basic + an office allowance.
+    gross = round(e.total_salary or 0, 2) if not e.staff else M._gross(e)
     day_basic = round(basic * 12 / 365.0, 2)       # gratuity and leave
     day_gross = round(gross / 30.0, 2)             # notice: a month's wage for 30 days
 
@@ -139,6 +143,20 @@ def settlement(db, emp_no, q):
     sal_days = auto_sal if q.get("salary_days") in (None, "") else max(_f(q.get("salary_days")), 0.0)
     sal_days = min(sal_days, mdays)
     salary = round(gross / mdays * sal_days, 2)
+    sal_label = f"Salary for {sal_days:g} day(s) of {last:%b %Y}"
+    wage_auto = 0.0
+    cycle_label = ""
+    if not e.staff:
+        # A labourer's last wage is his labour card for the cycle he left
+        # in - attendance, OT, absence and its additions / deductions -
+        # not a share of the month.
+        import services
+        _cs, _ce, cycle_label = M.pcyc.cycle_bounds_for(last)
+        card = (db.query(models.EmployeeSummary)
+                  .filter(models.EmployeeSummary.emp_no == e.emp_no, models.EmployeeSummary.month_year == cycle_label).first())
+        wage_auto = round(float(services.adjusted_final_salary(card)), 2) if card else 0.0
+        salary = wage_auto if q.get("salary_amount") in (None, "") else max(_f(q.get("salary_amount")), 0.0)
+        sal_label = f"Wages for the {cycle_label} cycle (labour card)"
 
     # Notice.
     notice_req = int(_f(q.get("notice_required"), e.notice_days or 30))
@@ -159,7 +177,7 @@ def settlement(db, emp_no, q):
 
     payables = [("End of service gratuity", grat),
                 ("Leave encashment", leave_pay),
-                (f"Salary for {sal_days:g} day(s) of {last:%b %Y}", salary)]
+                (sal_label, salary)]
     if notice_add:
         payables.append((f"Notice pay ({short:g} day(s) not given)", notice_add))
     payables += [("Air ticket", ticket),
@@ -194,6 +212,9 @@ def settlement(db, emp_no, q):
     if reason == "art44":
         notes.append("Dismissal under article 44: no notice either way; gratuity is still due.")
     notes.append("Gratuity and leave are paid on the basic wage only; unpaid absence and, by company rule, vacation days are not service.")
+    if not e.staff:
+        notes.append("Leave owed follows the labour rule (60 days in 24 months), less the days marked Leave in the app. "
+                     "Leave taken before the app is not on record - check the unused leave days before paying.")
 
     return {
         "emp": {"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
@@ -206,6 +227,7 @@ def settlement(db, emp_no, q):
         "input": {"last_day": last.isoformat(), "reason": reason, "reason_label": REASONS[reason],
                   "leave_days": leave_days, "leave_days_auto": auto_leave, "leave_note": leave_note,
                   "salary_days": sal_days, "salary_days_auto": auto_sal, "month_days": mdays,
+                  "labour": not e.staff, "salary_amount": salary, "salary_amount_auto": wage_auto, "cycle": cycle_label,
                   "notice_required": notice_req, "notice_served": notice_srv,
                   "loan": loan, "loan_auto": auto_loan, "ticket": ticket, "other_add": other_add,
                   "other_ded": other_ded, "other_add_note": q.get("other_add_note") or "",
@@ -228,7 +250,7 @@ def settlement(db, emp_no, q):
 
 
 HR = Depends(M.require_screen("hrpayroll"))
-FIELDS = ("last_day", "reason", "leave_days", "salary_days", "notice_required", "notice_served",
+FIELDS = ("last_day", "reason", "leave_days", "salary_days", "salary_amount", "notice_required", "notice_served",
           "loan", "ticket", "other_add", "other_ded", "other_add_note", "other_ded_note",
           "contract", "settled_on")
 
@@ -244,6 +266,27 @@ def get_settlement(emp_no: str, last_day: str = "", reason: str = "", leave_days
                    other_add_note: str = "", other_ded_note: str = "", contract: str = "",
                    settled_on: str = "", db: Session = Depends(get_db), user: models.User = HR):
     return settlement(db, emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+
+
+@router.get("/employees/labour/{emp_no}/settlement")
+def get_labour_settlement(emp_no: str, last_day: str = "", reason: str = "", leave_days: str = "",
+                          salary_amount: str = "", notice_required: str = "", notice_served: str = "",
+                          loan: str = "", ticket: str = "", other_add: str = "", other_ded: str = "",
+                          other_add_note: str = "", other_ded_note: str = "", contract: str = "",
+                          settled_on: str = "", db: Session = Depends(get_db),
+                          user: models.User = Depends(M.require_screen("combine"))):
+    """A labourer's final settlement - Labour payroll > Gratuity."""
+    e = M._labour_by_code(db, emp_no)
+    return settlement(db, e.emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+
+
+def _reader(user, emp_no, db):
+    """Office pay for office staff; Labour payroll for a labourer."""
+    e = db.query(models.Employee).filter(models.Employee.emp_no == str(emp_no or "").strip()).first()
+    if e is not None and not e.staff:
+        M._require_labour_pay(user)
+    else:
+        M._require_hr_reader(user)
 
 
 # ---- The paper ---------------------------------------------------------
@@ -536,11 +579,11 @@ def _stem(s):
 
 @router.get("/export/payroll/settlement")
 def export_settlement(token: str, emp_no: str, format: str = "pdf", last_day: str = "", reason: str = "",
-                      leave_days: str = "", salary_days: str = "", notice_required: str = "", notice_served: str = "",
+                      leave_days: str = "", salary_days: str = "", salary_amount: str = "", notice_required: str = "", notice_served: str = "",
                       loan: str = "", ticket: str = "", other_add: str = "", other_ded: str = "",
                       other_add_note: str = "", other_ded_note: str = "", contract: str = "", settled_on: str = "",
                       db: Session = Depends(get_db)):
-    M._require_hr_reader(auth.get_download_user_from_token(token, db))
+    _reader(auth.get_download_user_from_token(token, db), emp_no, db)
     s = settlement(db, emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
     if format == "excel":
         return StreamingResponse(_excel(s), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -551,12 +594,12 @@ def export_settlement(token: str, emp_no: str, format: str = "pdf", last_day: st
 
 @router.get("/export/payroll/settlement/view", response_class=HTMLResponse)
 def view_settlement(token: str, emp_no: str, last_day: str = "", reason: str = "",
-                    leave_days: str = "", salary_days: str = "", notice_required: str = "", notice_served: str = "",
+                    leave_days: str = "", salary_days: str = "", salary_amount: str = "", notice_required: str = "", notice_served: str = "",
                     loan: str = "", ticket: str = "", other_add: str = "", other_ded: str = "",
                     other_add_note: str = "", other_ded_note: str = "", contract: str = "", settled_on: str = "",
                     db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
-    M._require_hr_reader(user)
+    _reader(user, emp_no, db)
     q = _q(**{k: v for k, v in locals().items() if k in FIELDS})
     s = settlement(db, emp_no, q)
     t = auth.create_view_token(user.username)

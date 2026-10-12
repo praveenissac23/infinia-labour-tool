@@ -1393,7 +1393,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="e91f79f4cc74";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="02beb8c22f10";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -4314,7 +4314,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="fsOpen('view')">Preview</button><button type="button" class="btn btn-dark" onclick="fsOpen('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="fsOpen('excel')">Export Excel</button></div>
                 </div>
               </div>
-              <p class="hr-nil" style="margin:6px 0 12px;">For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.</p>
+              <p class="hr-nil" id="fs-intro" style="margin:6px 0 12px;">For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.</p>
               <div class="fs-grid">
                 <div class="fs-inputs">
                   <label class="hr-field"><span>Last working day</span><input type="date" id="fs-last" oninput="fsCalc()"></label>
@@ -4328,9 +4328,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <label class="hr-field"><span>Notice required (days)</span><input type="text" inputmode="decimal" id="fs-nreq" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Notice served (days)</span><input type="text" inputmode="decimal" id="fs-nsrv" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Unused leave (days)</span><input type="text" inputmode="decimal" id="fs-leave" oninput="fsCalc()"></label>
-                  <label class="hr-field"><span>Unpaid salary days, last month</span><input type="text" inputmode="decimal" id="fs-sal" oninput="fsCalc()"></label>
+                  <label class="hr-field"><span id="fs-sal-lab">Unpaid salary days, last month</span><input type="text" inputmode="decimal" id="fs-sal" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Loan / advance balance</span><input type="text" inputmode="decimal" id="fs-loan" oninput="fsCalc()"></label>
-                  <label class="hr-field" style="display:none;"><span>Air ticket</span><input type="text" inputmode="decimal" id="fs-ticket" placeholder="0" oninput="fsCalc()"></label>
+                  <label class="hr-field" id="fs-ticket-f" style="display:none;"><span>Air ticket</span><input type="text" inputmode="decimal" id="fs-ticket" placeholder="0" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Other additions</span><input type="text" inputmode="decimal" id="fs-add" placeholder="0" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>For</span><input type="text" id="fs-add-note" placeholder="e.g. bonus" oninput="fsCalc()"></label>
                   <label class="hr-field"><span>Other deductions</span><input type="text" inputmode="decimal" id="fs-ded" placeholder="0" oninput="fsCalc()"></label>
@@ -7022,15 +7022,22 @@ function preloadLiveCardDefault() {
   if (onBooks.length) selectLiveCardWorker(onBooks[0].emp_no);
 }
 
+let LC_SEQ = 0;
 async function selectLiveCardWorker(empNo) {
   selectedLiveCardEmpNo = empNo;
   renderLiveCardWorkerList();
   const cycle = document.getElementById("livecard-cycle").value || monthYearFor(new Date());
   document.getElementById("livecard-cycle").value = cycle;
   const detail = document.getElementById("livecard-detail");
-  detail.innerHTML = `<p class="empty-note">Loading...</p>`;
-
-  const data = await apiCall(`/live-card/${encodeURIComponent(empNo)}/${encodeURIComponent(cycle)}`);
+  // The card on screen stays (faded) until the next one is ready - a
+  // blank "Loading..." in between made the whole panel jump.
+  if (detail.querySelector("table")) detail.style.opacity = ".55";
+  else detail.innerHTML = `<p class="empty-note">Loading...</p>`;
+  const seq = ++LC_SEQ;
+  let data;
+  try { data = await apiCall(`/live-card/${encodeURIComponent(empNo)}/${encodeURIComponent(cycle)}`); }
+  finally { if (seq === LC_SEQ) detail.style.opacity = ""; }
+  if (seq !== LC_SEQ) return;             // a later click has taken over
   const s = data.summary;
   const days = data.days;
 
@@ -7055,8 +7062,8 @@ async function selectLiveCardWorker(empNo) {
       const label = cur.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
       gridRows += `<tr>
         <td>${label}</td><td${statusCell(r && r.am)}>${r ? r.am || "" : ""}</td><td${statusCell(r && r.pm)}>${r ? r.pm || "" : ""}</td>
-        <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
-        <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
+        <td class="code">${r ? r.site || "" : ""}</td><td class="txt">${r ? r.engineer || "" : ""}</td>
+        <td class="num">${r && r.ot ? r.ot : ""}</td><td class="num">${r && r.bh ? r.bh : ""}</td><td class="txt">${r ? r.comments || "" : ""}</td>
       </tr>`;
       cur.setDate(cur.getDate() + 1);
     }
@@ -7065,8 +7072,8 @@ async function selectLiveCardWorker(empNo) {
       const r = days[String(day)];
       gridRows += `<tr>
         <td>${day}</td><td${statusCell(r && r.am)}>${r ? r.am || "" : ""}</td><td${statusCell(r && r.pm)}>${r ? r.pm || "" : ""}</td>
-        <td>${r ? r.site || "" : ""}</td><td>${r ? r.engineer || "" : ""}</td>
-        <td>${r && r.ot ? r.ot : ""}</td><td>${r && r.bh ? r.bh : ""}</td><td>${r ? r.comments || "" : ""}</td>
+        <td class="code">${r ? r.site || "" : ""}</td><td class="txt">${r ? r.engineer || "" : ""}</td>
+        <td class="num">${r && r.ot ? r.ot : ""}</td><td class="num">${r && r.bh ? r.bh : ""}</td><td class="txt">${r ? r.comments || "" : ""}</td>
       </tr>`;
     }
   }
@@ -7103,7 +7110,7 @@ async function selectLiveCardWorker(empNo) {
     <p style="font-size:11px; color:#888; margin:0 0 8px;">${s.trade} &nbsp;|&nbsp; ${cycleLabel(s.month_year)} &nbsp;|&nbsp; Total Salary: AED ${money(s.total_salary)}</p>
     <div class="grid-wrap lc-compact" style="margin-bottom:6px; max-height:none;">
       <table>
-        <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th>Site</th><th>Engineer</th><th>OT</th><th>BH</th><th>Comments</th></tr></thead>
+        <thead><tr><th>Date</th><th>A.M</th><th>P.M</th><th class="code">Site</th><th class="txt">Engineer</th><th class="num">OT</th><th class="num">BH</th><th class="txt">Comments</th></tr></thead>
         <tbody>${gridRows}</tbody>
       </table>
     </div>
@@ -13189,7 +13196,7 @@ function hrTab(which) {
   if (which === "loans") { loadLoans(); hrFillEmpty("hr-loan-date", todayIso()); }
   if (which === "leave") { loadLeave(); hrFillEmpty("hr-leave-from", todayIso()); }
   if (which === "items") loadItems();
-  if (which === "gratuity") loadGratuity();
+  if (which === "gratuity") { fsUse("office"); loadGratuity(); }
   if (which === "increments") { loadIncrements(); hrIncDefaults(); }
 }
 
@@ -14077,6 +14084,7 @@ async function labIncSaveEdit() {
 // ---- Labour payroll > Gratuity: one labourer at a time, like the office page ----------
 async function labGratLoad() {
   document.getElementById("pg-labgrat-card").style.display = "";
+  fsUse("labour");
   const sel = document.getElementById("labgrat-emp"), keep = sel.value;
   let emps = []; try { emps = await apiCall("/employees"); } catch (e) {}
   const gone = e => e.active === false || !!e.terminated_on;
@@ -14094,6 +14102,7 @@ async function labGratLoad() {
 async function labGratShow() {
   const code = document.getElementById("labgrat-emp").value;
   const box = document.getElementById("labgrat-view");
+  fsUse("labour"); fsDraw();
   if (!code) { box.innerHTML = '<div class="hr-nil">Choose a labourer. With nobody chosen, Preview and Export give every labourer on one sheet.</div>'; return; }
   let d;
   try { d = await apiCall(`/employees/labour-gratuity/${encodeURIComponent(code)}`); }
@@ -15615,7 +15624,7 @@ async function renderGratuity() {
   try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
   catch (e) { expMsg("err", errText(e)); return; }
   HR_GRAT = d;
-  fsDraw();
+  fsUse("office"); fsDraw();
   const s = d.staff, g = d.gratuity;
   const kv = (k, v) => `<div class="hr-kv"><span>${k}</span><b>${v}</b></div>`;
   const route = { wps: "WPS", bank: "Bank transfer", cash: "Cash" };
@@ -16958,7 +16967,25 @@ function openInvoice(id, kind) {
 // figures are typed, and as the paper (preview, PDF, Excel) from the
 // same query, so the two can never disagree.
 
-let FS_EMP = null, FS_TIMER = null, FS_SEQ = 0;
+let FS_EMP = null, FS_TIMER = null, FS_SEQ = 0, FS_WHO = "office", FS_HOME = null;
+// One Final settlement card serves both payrolls: it sits under Office
+// payroll > Gratuity, and moves under Labour payroll > Gratuity when that
+// is open - a labourer's last wage comes from his labour card, his leave
+// by the labour rule, and the air ticket is his.
+function fsUse(who) {
+  const card = document.getElementById("hr-fs-card"); if (!card) return;
+  if (!FS_HOME) FS_HOME = { parent: card.parentNode, next: card.nextSibling };
+  if (who === "labour") document.getElementById("pg-labgrat-card").appendChild(card);
+  else if (card.parentNode !== FS_HOME.parent) FS_HOME.parent.insertBefore(card, FS_HOME.next);
+  if (FS_WHO !== who) { FS_WHO = who; FS_EMP = null; }
+  const lab = who === "labour";
+  document.getElementById("fs-sal-lab").textContent = lab ? "Last cycle wage (AED)" : "Unpaid salary days, last month";
+  document.getElementById("fs-ticket-f").style.display = lab ? "" : "none";
+  document.getElementById("fs-intro").textContent = lab
+    ? "For the labourer chosen above. Gratuity, leave, the last cycle's wage (his labour card), loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures."
+    : "For the staff member chosen above. Gratuity, leave, loans and service come from the record; type only what the record cannot know. Nothing is saved - the paper is drawn from these figures.";
+}
+function fsCode() { return document.getElementById(FS_WHO === "labour" ? "labgrat-emp" : "hr-grat-emp").value; }
 const FS_FIELDS = { last_day: "fs-last", reason: "fs-reason", contract: "fs-contract", settled_on: "fs-settled",
   notice_required: "fs-nreq", notice_served: "fs-nsrv", leave_days: "fs-leave", salary_days: "fs-sal",
   loan: "fs-loan", ticket: "fs-ticket", other_add: "fs-add", other_add_note: "fs-add-note",
@@ -16966,7 +16993,8 @@ const FS_FIELDS = { last_day: "fs-last", reason: "fs-reason", contract: "fs-cont
 
 function fsQuery() {
   const q = new URLSearchParams();
-  for (const [k, id] of Object.entries(FS_FIELDS)) {
+  for (let [k, id] of Object.entries(FS_FIELDS)) {
+    if (k === "salary_days" && FS_WHO === "labour") k = "salary_amount";   // a labourer's last wage is an amount
     const v = String(document.getElementById(id).value || "").replace(/,/g, "").trim();
     if (v !== "") q.set(k, v);
   }
@@ -16985,20 +17013,21 @@ function fsReset(code) {
 function fsCalc() { clearTimeout(FS_TIMER); FS_TIMER = setTimeout(fsDraw, 250); }
 
 async function fsDraw() {
-  const code = document.getElementById("hr-grat-emp").value;
+  const code = fsCode();
   const box = document.getElementById("fs-result");
-  if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
+  if (!code) { box.innerHTML = `<div class="hr-nil">Choose a ${FS_WHO === "labour" ? "labourer" : "staff member"}.</div>`; return; }
   if (code !== FS_EMP) fsReset(code);
   const seq = ++FS_SEQ;
   let d;
-  try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/settlement?${fsQuery()}`); }
+  const base = FS_WHO === "labour" ? "/employees/labour/" : "/employees/staff/";
+  try { d = await apiCall(`${base}${encodeURIComponent(code)}/settlement?${fsQuery()}`); }
   catch (e) { if (seq === FS_SEQ) box.innerHTML = `<div class="hr-nil">${escapeHtml(errText(e))}</div>`; return; }
   if (seq !== FS_SEQ) return;
   const i = d.input, ph = (id, v) => { document.getElementById(id).placeholder = v; };
   // What the record says, shown as the default until something is typed.
   ph("fs-last", ""); if (!document.getElementById("fs-last").value) document.getElementById("fs-last").value = i.last_day;
   ph("fs-nreq", i.notice_required); ph("fs-nsrv", i.notice_served);
-  ph("fs-leave", i.leave_days_auto); ph("fs-sal", i.salary_days_auto); ph("fs-loan", hrMoney(i.loan_auto));
+  ph("fs-leave", i.leave_days_auto); ph("fs-sal", i.labour ? hrMoney(i.salary_amount_auto) : i.salary_days_auto); ph("fs-loan", hrMoney(i.loan_auto));
   const rows = (list, tot, label) => list.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="n">${hrMoney(r.amount)}</td></tr>`).join("")
     + `<tr class="t"><td>${label}</td><td class="n">${hrMoney(tot)}</td></tr>`;
   const g = d.gratuity, sv = d.service, sal = d.salary;
@@ -17017,8 +17046,12 @@ async function fsDraw() {
 }
 
 async function fsOpen(kind) {
-  const code = document.getElementById("hr-grat-emp").value;
-  if (!code) { expMsg("warn", "Choose a staff member first."); return; }
+  const code = fsCode();
+  if (!code) {
+    if (FS_WHO === "labour") document.getElementById("fs-result").innerHTML = '<div class="hr-nil">Choose a labourer first.</div>';
+    else expMsg("warn", "Choose a staff member first.");
+    return;
+  }
   const q = fsQuery(), t = await hrToken(), e = encodeURIComponent(code);
   const u = kind === "view" ? `/export/payroll/settlement/view?emp_no=${e}&${q}&token=${t}`
                             : `/export/payroll/settlement?emp_no=${e}&${q}&format=${kind}&token=${t}`;
@@ -17266,7 +17299,19 @@ async function addIncrement() {
   }
   let t = null;
   const run = () => { t = null; document.querySelectorAll("table").forEach(tb => { try { fix(tb); } catch (e) {} }); };
-  new MutationObserver(() => { if (!t) t = setTimeout(run, 120); }).observe(document.documentElement, { childList: true, subtree: true });
+  // The tables a change touched are lined up straight away, before the
+  // browser paints - done a moment later, the columns visibly jumped
+  // (the Live card on opening). A full sweep still follows as a backstop.
+  new MutationObserver(recs => {
+    const touched = new Set();
+    for (const r of recs) {
+      const tb = r.target.closest ? r.target.closest("table") : null;
+      if (tb) touched.add(tb);
+      else for (const n of r.addedNodes) if (n.querySelectorAll) n.querySelectorAll("table").forEach(x => touched.add(x));
+    }
+    touched.forEach(tb => { try { fix(tb); } catch (e) {} });
+    if (!t) t = setTimeout(run, 400);
+  }).observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(run, 500);
 })();
 </script>
@@ -17980,7 +18025,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=93dcfb81d9"></script>
+<script src="/portal/help/guides.js?v=ff23330cd7"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>
