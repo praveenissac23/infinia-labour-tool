@@ -1025,6 +1025,12 @@ ACTION_GROUPS = {
     "purchasing": ("Purchasing", ["material_request", "material_request_status", "material_request_receive",
                                   "material_request_delete", "request_line_decision", "create_lpo", "edit_lpo",
                                   "cancel_lpo", "import_suppliers"]),
+    "accounts": ("Accounts & cheques", ["petty_cash_add", "petty_cash_edit", "petty_cash_delete", "pdc_add", "pdc_edit",
+                                        "pdc_delete", "pdc_clear", "invoice_add", "invoice_edit", "invoice_cancel", "invoice_convert",
+                                        "invoice_terms", "project_payment", "register_entry", "register_wrong_password",
+                                        "register_open", "register_password", "credential_added", "credential_changed",
+                                        "credential_deleted", "credential_shown", "credentials_exported", "seccheque_added",
+                                        "seccheque_changed", "seccheque_returned", "seccheque_deleted"]),
     "admin": ("Settings & access", ["create_user", "user_created", "delete_user", "set_permissions", "role_saved",
                                     "role_deleted", "role_assigned", "save_company_settings", "upload_signature",
                                     "create_backup", "download_backup", "restore_backup", "delete_backup",
@@ -1060,8 +1066,115 @@ ACTION_LABELS = {
     "save_company_settings": "Purchase settings saved", "upload_signature": "Signature uploaded",
     "create_backup": "Backup taken", "download_backup": "Backup downloaded", "restore_backup": "Backup restored",
     "delete_backup": "Backup deleted", "fresh_start": "Start fresh",
+    "credential_added": "Saved login added", "credential_changed": "Saved login changed", "credential_deleted": "Saved login deleted",
+    "credential_shown": "Password shown / copied", "credentials_exported": "Credentials list opened / downloaded",
+    "seccheque_added": "Security cheque added", "seccheque_changed": "Security cheque changed",
+    "seccheque_returned": "Security cheque collected back", "seccheque_deleted": "Security cheque removed",
+    "petty_cash_add": "Petty cash line added", "petty_cash_edit": "Petty cash line changed", "petty_cash_delete": "Petty cash line deleted",
+    "pdc_add": "PDC added", "pdc_edit": "PDC changed", "pdc_delete": "PDC deleted", "pdc_clear": "PDC cleared",
+    "invoice_add": "Invoice raised", "invoice_edit": "Invoice changed", "invoice_cancel": "Invoice cancelled",
+    "project_payment": "Project payment", "register_entry": "Cash register entry", "register_wrong_password": "Cash register - wrong password",
+    "labour_increment": "Labour increment", "labour_rate": "Labour rate changed", "labour_rate_corrected": "Labour rate corrected",
+    "push_on": "Phone notifications turned on", "made_admin": "Made admin", "expiry_saved": "Expiry saved", "expiry_deleted": "Expiry removed",
 }
 _ACTION_GROUP = {a: g for g, (_, acts) in ACTION_GROUPS.items() for a in acts}
+
+# What the activity log shows: the same entries, said the way a person
+# asks about them - "Issued 5 pcs Hand Saw (ITM2287) to 912", not
+# "out 5 pcs ITM2287". Item codes get their material, worker codes their
+# name, a loan its person. Old entries benefit as much as new ones.
+MOVE_WORDS = {"in": "Received", "out": "Issued", "return": "Returned", "transfer": "Moved",
+              "adjust": "Count corrected:", "lost": "Written off (lost / damaged):", "opening": "Opening stock:",
+              "hire_return": "Sent back to the hire company:", "hire_in": "Hired in:"}
+_CODE_RX = re.compile(r"\b[A-Za-z]{1,5}[-/]?\d{2,6}\b")
+
+
+MOVE_LABELS = {"in": "Stock received", "out": "Stock issued to site", "return": "Stock returned", "transfer": "Stock moved site to site",
+               "adjust": "Stock count corrected", "lost": "Stock written off", "opening": "Opening stock", "hire_return": "Hired stock sent back"}
+
+
+def _label(action, details):
+    if action == "store_movement":
+        k = (details or "").split(" ", 1)[0]
+        if k in MOVE_LABELS:
+            return MOVE_LABELS[k]
+    return ACTION_LABELS.get(action, action.replace("_", " ").capitalize())
+
+
+def _activity_context(db):
+    items = {i.code.upper(): i for i in db.query(models.StoreItem).all() if i.code}
+    emps = {(e.emp_no or "").upper(): e.name for e in db.query(models.Employee).all() if e.emp_no}
+    loans = {}
+    try:
+        for l in db.query(models.StaffLoan).all():
+            loans[l.id] = l.employee_id
+    except Exception:
+        pass
+    by_id = {e.id: (e.emp_no, e.name) for e in db.query(models.Employee).all()}
+    return {"items": items, "emps": emps, "loans": loans, "emp_by_id": by_id}
+
+
+def _readable(action, details, ctx):
+    d = details or ""
+    if not d:
+        return d
+    if action == "store_movement":
+        m = re.match(r"^(\w+)\s+([\d.]+)\s+(\S+)\s+(\S+)(.*)$", d)
+        if m:
+            kind, qty, unit, code, rest = m.groups()
+            it = ctx["items"].get(code.upper())
+            name = it.name if it else ""
+            rest = rest.strip()
+            if rest.startswith("- ") and name and rest[2:].startswith(name):
+                rest = rest[2 + len(name):].strip()
+            try:
+                qty = f"{float(qty):g}"
+            except ValueError:
+                pass
+            what = f"{qty} {unit} {name} ({code})" if name else f"{qty} {unit} {code}"
+            rest = rest.lstrip("|").strip().replace(" | ", ", ").strip(", ")
+            # the "what" column already says received / issued / written off
+            return what + (f", {rest}" if rest else "")
+    if action == "store_remove_item":
+        m = re.match(r"^(\S+) - (.+)$", d.strip())
+        if m:
+            return f"{m.group(2)} ({m.group(1)})"
+    if action == "store_delete_movement":
+        m = re.match(r"^#(\d+) (\w+) ([\d.]+) (\S*) (.+?) - (.+?) on (\d{4}-\d{2}-\d{2})$", d.strip())
+        if m:
+            _id, kind, qty, unit, name, where, on = m.groups()
+            try:
+                on = f"{datetime.strptime(on, '%Y-%m-%d'):%d %b %Y}"
+            except ValueError:
+                pass
+            return f"{MOVE_WORDS.get(kind, kind.capitalize())} {qty} {unit} {name} - {where}, dated {on} (entry #{_id})"
+    if action == "store_delete_movement" and re.fullmatch(r"#\d+", d.strip()):
+        return f"Movement {d.strip()} - its details were not recorded at the time"
+    # loan #12 -> loan #12 (S-101 NAME)
+    def loan_sub(m):
+        eid = ctx["loans"].get(int(m.group(1)))
+        who = ctx["emp_by_id"].get(eid) if eid else None
+        if who and who[1] and who[1] not in d:
+            return f"{m.group(0)} ({who[0]} {who[1]})"
+        return m.group(0)
+    d = re.sub(r"loan #(\d+)", loan_sub, d)
+    seen = set()
+
+    def code_sub(m):
+        c = m.group(0)
+        k = c.upper()
+        if k in seen:
+            return c
+        it = ctx["items"].get(k)
+        if it and it.name and it.name not in d:
+            seen.add(k)
+            return f"{it.name} ({c})"
+        nm = ctx["emps"].get(k)
+        if nm and nm not in d:
+            seen.add(k)
+            return f"{c} {nm}"
+        return c
+    return _CODE_RX.sub(code_sub, d)
 
 
 @app.get("/users/audit-log")
@@ -1085,13 +1198,18 @@ def list_audit_log(limit: int = 500, group: str = "", username: str = "", days: 
                                  models.User.username.ilike(like), models.User.full_name.ilike(like)))
     rows = query.order_by(models.AuditLog.created_at.desc()).limit(min(limit, 2000)).all()
     logins = db.query(models.User).order_by(models.User.username).all()
+    try:
+        ctx = _activity_context(db)
+        read = lambda a, d: _readable(a, d, ctx)
+    except Exception:
+        read = lambda a, d: d
     return {
         "rows": [{
             "id": log.id, "action": log.action,
-            "label": ACTION_LABELS.get(log.action, log.action.replace("_", " ").capitalize()),
+            "label": _label(log.action, log.details or ""),
             "group": _ACTION_GROUP.get(log.action, "other"),
             "group_label": ACTION_GROUPS.get(_ACTION_GROUP.get(log.action, ""), ("Other",))[0],
-            "details": log.details or "",
+            "details": read(log.action, log.details or ""),
             "created_at": log.created_at.isoformat() if log.created_at else None,
             "username": uname or "unknown", "full_name": full_name or "Unknown",
         } for log, uname, full_name in rows],
@@ -4545,7 +4663,7 @@ def deactivate_store_item(item_id: int, db: Session = Depends(get_db),
     # Deactivate rather than delete - its movement history must survive.
     it.active = False
     db.commit()
-    log_action(db, user.id, "store_remove_item", it.code)
+    log_action(db, user.id, "store_remove_item", f"{it.code} - {it.name}")
     return {"ok": True}
 
 
@@ -5233,8 +5351,13 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
     db.add(m)
     db.commit()
     db.refresh(m)
+    _frm = payload.from_location or CENTRAL_LABEL
+    _to = payload.location or CENTRAL_LABEL
     log_action(db, user.id, "store_movement",
-               f"{payload.kind} {payload.qty} {item.unit} {item.code}")
+               f"{payload.kind} {payload.qty:g} {item.unit} {item.code} - {item.name}"
+               + (f" | from {_frm}" if payload.kind in ("out", "return", "transfer", "lost", "hire_return") else "")
+               + (f" | to {_to}" if payload.kind in ("in", "out", "return", "transfer") else "")
+               + (f" | reason: {m.notes.strip()}" if (getattr(m, "notes", "") or "").strip() else ""))
 
     # Writing stock off and correcting a count are the two movements
     # that change the books without anything arriving or leaving, so
