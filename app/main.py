@@ -11473,7 +11473,38 @@ def _require_labour_pay(user):
 @app.get("/employees/labour-increments")
 def list_labour_increments(emp_no: str = "", db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("combine"))):
-    return {"rows": _tidy_rate_history(list_increments(emp_no=emp_no, db=db, user=user, labour=True)["rows"])}
+    return {"rows": _labour_rate_rows(db, emp_no)}
+
+
+def _labour_rate_rows(db, emp_no=""):
+    """Every current labourer's rate history, each starting at his joining
+    date. A rate on file from before any change was recorded (stored
+    dated 1 Jan 2000) is shown from his joining date; a labourer with no
+    change on file yet gets one line - joined, at his rate on file - so
+    nobody is missing from the list. Display only: what is stored, and
+    what is paid, is untouched."""
+    rows = _tidy_rate_history(list_increments(emp_no=emp_no, db=db, user=None, labour=True)["rows"])
+    q = db.query(models.Employee).filter(models.Employee.staff != True)  # noqa: E712
+    if emp_no.strip():
+        q = q.filter(models.Employee.emp_no == emp_no.strip())
+    emps = {e.emp_no: e for e in q.all()}
+    for r in rows:
+        e = emps.get(r["emp_no"])
+        r["joined_on"] = e.joined_on.isoformat() if e and e.joined_on else ""
+        if r["effective_on"] == "2000-01-01" and r["joined_on"]:
+            r["effective_on"] = r["joined_on"]
+            r["date_fixed"] = True          # the stored date is not his to edit
+    have = {r["emp_no"] for r in rows}
+    for e in emps.values():
+        if e.emp_no in have or e.active is False or e.terminated_on:
+            continue
+        b, t = round(e.basic_salary or 0, 2), round(e.total_salary or 0, 2)
+        rows.append({"id": None, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or e.designation or "",
+                     "effective_on": e.joined_on.isoformat() if e.joined_on else "2000-01-01",
+                     "joined_on": e.joined_on.isoformat() if e.joined_on else "",
+                     "kind": "joining", "amount": 0, "basic": b, "allowance": round(t - b, 2), "gross": t,
+                     "reason": "No change recorded since joining", "future": False})
+    return rows
 
 
 @app.post("/employees/labour-increments")
@@ -11583,7 +11614,7 @@ def _tidy_rate_history(rows):
 def _history_rows(rows, labour):
     """One block per person: code and name on his first line only, as on
     the screen - not repeated down every line of his history."""
-    rows = sorted(rows, key=lambda r: (r["emp_no"], r["effective_on"], r.get("id", 0)))
+    rows = sorted(rows, key=lambda r: (r["emp_no"], r["effective_on"], r.get("id") or 0))
     kind = {"joining": "Joined", "increment": "Increment", "correction": "Correction",
             "opening": "Starting rate", "rate": "Rate change"}
     out, last, n = [], None, 0
@@ -11610,9 +11641,9 @@ def _history_rows(rows, labour):
 
 
 def _labour_history_parts(db, emp_no=""):
-    d = list_increments(emp_no=emp_no, db=db, user=None, labour=True)
-    out, people = _history_rows(_tidy_rate_history(d["rows"]), False)
-    who = (f"{d['rows'][0]['emp_no']} {d['rows'][0]['name']}" if emp_no.strip() and d["rows"]
+    rows = _labour_rate_rows(db, emp_no)
+    out, people = _history_rows(rows, False)
+    who = (f"{rows[0]['emp_no']} {rows[0]['name']}" if emp_no.strip() and rows
            else f"{people} workers")
     sub = f"{who}   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
     return out, "Labour Salary History", sub

@@ -13849,7 +13849,7 @@ function labIncPaint() {
       <td class="num">${hrMoney(r.allowance)}</td>
       <td class="num strong">${hrMoney(r.gross)}</td>
       <td class="txt">${escapeHtml(r.reason)}</td>
-      <td><button class="btn btn-gray hr-mini" onclick="labIncEdit(${r.id})">Edit</button></td>
+      <td>${r.id ? `<button class="btn btn-gray hr-mini" onclick="labIncEdit(${r.id})">Edit</button>` : `<button class="btn btn-gray hr-mini" title="No change on file yet - his rate is edited on Master Data" onclick='xlGo("attendance", "masterdata", null, () => xlOn("masterdata"), () => editEmployee(${jsq(r.emp_no)}))'>Edit</button>`}</td>
     </tr>`; }).join("") ||
     `<tr><td colspan="10" class="hr-nil" style="padding:14px;">Nothing recorded yet.</td></tr>`;
 }
@@ -13862,7 +13862,7 @@ function labIncEdit(id) {
   document.getElementById("labinc-new").style.display = "none";
   document.getElementById("labinc-edit").style.display = "";
   document.getElementById("labinc-edit-who").textContent = `${r.emp_no} - ${r.name}`;
-  const d = document.getElementById("labinc-e-date"); d.value = r.effective_on === "2000-01-01" ? "" : r.effective_on; d.disabled = r.effective_on === "2000-01-01";
+  const d = document.getElementById("labinc-e-date"); d.value = r.effective_on === "2000-01-01" ? "" : r.effective_on; d.disabled = r.effective_on === "2000-01-01" || !!r.date_fixed;
   document.getElementById("labinc-e-basic").value = r.basic;
   document.getElementById("labinc-e-allow").value = r.allowance;
   document.getElementById("labinc-e-reason").value = r.reason || "";
