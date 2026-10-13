@@ -154,7 +154,12 @@ def send(key, pub_b64, sub, message: dict, ttl=86400):
 
 def message_for(n: dict) -> dict:
     """A bell notification as a phone notification, with where tapping goes."""
-    q = f"/?n_screen={n.get('screen') or ''}&n_target={n.get('target') or ''}&n_id={n.get('id') or ''}"
+    from urllib.parse import urlencode
+    # Everything the app needs to land on the exact item, even when the
+    # bell has not loaded yet (kind, status, the day it is about).
+    q = "/?" + urlencode({"n_screen": n.get("screen") or "", "n_target": n.get("target") or "", "n_id": n.get("id") or "",
+                          "n_kind": n.get("kind") or "", "n_status": n.get("status") or "", "n_when": n.get("when") or "",
+                          "n_people": n.get("people") or 0, "n_company": n.get("company") or 0})
     return {"title": n.get("title") or "Infinia", "body": n.get("detail") or "", "tag": n.get("id") or "",
             "url": q}
 

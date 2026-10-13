@@ -37,7 +37,8 @@
     ],
     "grant": [
      "livecard"
-    ]
+    ],
+    "pay": "each worker's wages for the month"
    },
    {
     "id": "attendance.masterdata",
@@ -47,7 +48,8 @@
     ],
     "grant": [
      "masterdata"
-    ]
+    ],
+    "pay": "each worker's salary and rate"
    }
   ]
  },
@@ -67,17 +69,19 @@
       ],
       "grant": [
        "people_labour"
-      ]
+      ],
+      "pay": "Pay & Money in each person's file"
      },
      {
       "id": "people.register.office",
-      "label": "Office staff (with salaries)",
+      "label": "Office staff",
       "right": [
        "people_office"
       ],
       "grant": [
        "people_office"
-      ]
+      ],
+      "pay": "Pay & Money in each person's file"
      },
      {
       "id": "people.register.local",
@@ -87,7 +91,8 @@
       ],
       "grant": [
        "people_local"
-      ]
+      ],
+      "pay": "Pay & Money in each person's file"
      }
     ]
    },
@@ -107,7 +112,7 @@
      },
      {
       "id": "people.leave.office",
-      "label": "Office staff (with salaries)",
+      "label": "Office staff",
       "right": [
        "people_office"
       ],
@@ -143,7 +148,7 @@
      },
      {
       "id": "people.bday.office",
-      "label": "Office staff (with salaries)",
+      "label": "Office staff",
       "right": [
        "people_office"
       ],
@@ -189,7 +194,8 @@
       ],
       "grant": [
        "combine"
-      ]
+      ],
+      "pay": "salary cards"
      },
      {
       "id": "payroll.labourpay.adjust",
@@ -199,7 +205,8 @@
       ],
       "grant": [
        "adjustments"
-      ]
+      ],
+      "pay": "bonus and deduction amounts"
      },
      {
       "id": "payroll.labourpay.errorcheck",
@@ -219,7 +226,8 @@
       ],
       "grant": [
        "combine"
-      ]
+      ],
+      "pay": "salary history"
      },
      {
       "id": "payroll.labourpay.gratuity",
@@ -229,7 +237,8 @@
       ],
       "grant": [
        "combine"
-      ]
+      ],
+      "pay": "basic, gratuity and final settlement"
      }
     ]
    },
@@ -245,7 +254,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "salaries and salary statements"
      },
      {
       "id": "payroll.hrpayroll.leave",
@@ -255,7 +265,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "the pay cut for each absence"
      },
      {
       "id": "payroll.hrpayroll.items",
@@ -265,7 +276,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "addition and deduction amounts"
      },
      {
       "id": "payroll.hrpayroll.loans",
@@ -275,7 +287,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "loans taken off salary"
      },
      {
       "id": "payroll.hrpayroll.staff",
@@ -285,7 +298,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "every person's salary"
      },
      {
       "id": "payroll.hrpayroll.increments",
@@ -295,7 +309,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "salary history"
      },
      {
       "id": "payroll.hrpayroll.gratuity",
@@ -305,7 +320,8 @@
       ],
       "grant": [
        "hrpayroll"
-      ]
+      ],
+      "pay": "basic, gratuity and final settlement"
      }
     ]
    }
@@ -633,7 +649,8 @@
     ],
     "grant": [
      "accounts_expense"
-    ]
+    ],
+    "pay": "labour cost per project (totals only)"
    },
    {
     "id": "accounts.credentials",
@@ -673,7 +690,8 @@
       ],
       "grant": [
        "reports"
-      ]
+      ],
+      "pay": "wages in the cycle report"
      },
      {
       "id": "reports.labour.monthly",
@@ -683,7 +701,8 @@
       ],
       "grant": [
        "reports"
-      ]
+      ],
+      "pay": "wages in the monthly report"
      }
     ]
    },

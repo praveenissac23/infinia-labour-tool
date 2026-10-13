@@ -558,6 +558,9 @@ class StoreMovement(Base):
     # On a return: the state it came back in - good, damaged, incomplete.
     condition = Column(String, default="")
     moved_on = Column(Date, nullable=False, index=True)
+    # A delivery recorded against a material request - so the request can
+    # show what arrived, when, on which DO, and who took it in.
+    request_id = Column(Integer, nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -104,6 +104,10 @@
   .tr { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid #F5F2EE; font-size: 13px; }
   .tr:last-child { border-bottom: 0; } .tr label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; }
   .tr.l1 { font-weight: 600; } .tr.l2 { padding-left: 32px; color: #444; }
+  .paytag { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 9px; background: #FCE8E6; color: #B03A2E; border: 1px solid #F1C6C0; font-size: 11px; font-weight: 700; line-height: 17px; vertical-align: 1px; }
+  .paywhy { color: #B03A2E; font-size: 11.5px; font-weight: 500; margin-left: 4px; min-width: 0; }
+  .paytag { flex: 0 0 auto; }
+  .paykey { font-size: 12.5px; color: #6B5E57; margin: 0 0 10px; }
   .tr.fixed { color: #888; font-weight: 600; } .tr .why { color: #A0928A; font-size: 11.5px; font-weight: 500; }
   .tree input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); margin: 0; flex: none; cursor: pointer; }
   .tree input[type=checkbox]:disabled { cursor: not-allowed; }
@@ -364,6 +368,7 @@ function renderRoles() {
     <div class="pgb open" style="margin-bottom:12px;"><div class="pgh" style="cursor:default;"><span class="car"></span>&#128276; Notifications this role may receive<span class="cnt">${DRAFT.notif.size} of ${NOTIF.length}</span></div>
       ${NOTIF.map(g => `<div class="tr l1"><label><input type="checkbox" ${DRAFT.notif.has(g.id) ? "checked" : ""} onchange="DRAFT.notif[this.checked ? 'add' : 'delete']('${g.id}'); dirty(); renderRoles()"> ${esc(g.label)}</label></div>`).join("")}
       <div class="tr" style="color:#888; font-size:12px;">Each person can switch any of these off for themselves under Settings. A group only shows when the role also has the matching tab.</div></div>
+    <p class="paykey"><span class="paytag" style="margin-left:0;">Salaries</span> marks the tabs where salary figures can be seen, with what is shown. A tab without it shows no pay.</p>
     <div class="tree" id="tree"></div>`;
   drawTree();
 }
@@ -382,6 +387,8 @@ function cb(key, leaves, label, cls) {
   const st = boxState(leaves), can = leaves.some(l => CAN_GIVE(l.id));
   return `<input type="checkbox" data-k="${esc(key)}" ${st === "all" ? "checked" : ""} ${st === "some" ? 'data-some="1"' : ""} ${can ? "" : "disabled"} onclick="event.stopPropagation(); tick('${esc(key)}', this.checked)">`;
 }
+// Where salary figures can be seen: a red "Salaries" tag and what it shows.
+function payTag(l) { return l && l.pay ? `<span class="paytag" title="This tab shows salary figures">Salaries</span><span class="paywhy">${esc(l.pay)}</span>` : ""; }
 function drawTree() {
   const html = TREE.map(p => {
     const leaves = LEAVES_OF(p), st = boxState(leaves), on = leaves.filter(l => DRAFT.tabs.has(l.id)).length;
@@ -390,14 +397,14 @@ function drawTree() {
     const rows = open ? (p.children || []).map(c => {
       if (c.always) return `<div class="tr l1 fixed"><label><input type="checkbox" checked disabled> ${esc(c.label)} <span class="why">own password, take a backup - every login</span></label></div>`
         + c.children.map(l => `<div class="tr l2"><label>${cb(l.id, [l])} ${esc(l.label)}</label></div>`).join("");
-      if (c.right) return `<div class="tr l1"><label>${cb(c.id, [c])} ${esc(c.label)}</label></div>`;
+      if (c.right) return `<div class="tr l1"><label>${cb(c.id, [c])} <span style="white-space:nowrap;">${esc(c.label)}</span>${payTag(c)}</label></div>`;
       const kids = LEAVES_OF(c);
       return `<div class="tr l1"><label>${cb(c.id, kids)} ${esc(c.label)}</label></div>`
-        + kids.map(l => `<div class="tr l2"><label>${cb(l.id, [l])} ${esc(l.label)}${l.id === "reports.labour.leavereport" ? ' <span class="why">shows the registers ticked under Staff &gt; Leave</span>' : ""}</label></div>`).join("");
+        + kids.map(l => `<div class="tr l2"><label>${cb(l.id, [l])} <span style="white-space:nowrap;">${esc(l.label)}</span>${payTag(l)}${l.id === "reports.labour.leavereport" ? ' <span class="why">shows the registers ticked under Staff &gt; Leave</span>' : ""}</label></div>`).join("");
     }).join("") : "";
     const cnt = single ? (st === "all" ? "given" : "") : `${on ? `${on} of ${leaves.length}` : "none"}${leaves.some(l => CAN_GIVE(l.id)) ? ` <a href="#" onclick="event.stopPropagation(); tick('${p.id}', true); return false;">all</a> <a href="#" onclick="event.stopPropagation(); tick('${p.id}', false); return false;">none</a>` : ""}`;
     return `<div class="pgb ${open ? "open" : ""} ${on ? "" : "none"}"><div class="pgh" onclick="${single ? "" : `OPEN['${p.id}']=!OPEN['${p.id}']; drawTree();`}">
-        <span class="car">${single ? "" : open ? "&#9660;" : "&#9654;"}</span>${cb(p.id, leaves)} ${esc(p.label)}<span class="cnt">${cnt}</span></div>${rows}</div>`;
+        <span class="car">${single ? "" : open ? "&#9660;" : "&#9654;"}</span>${cb(p.id, leaves)} ${esc(p.label)}${single ? payTag(leaves[0]) : (n => n ? `<span class="paytag" title="Tabs here that show salary figures">Salaries in ${n} tab${n > 1 ? "s" : ""}</span>` : "")(leaves.filter(l => l.pay).length)}<span class="cnt">${cnt}</span></div>${rows}</div>`;
   }).join("");
   document.getElementById("tree").innerHTML = html;
   document.querySelectorAll('#tree input[data-some]').forEach(i => i.indeterminate = true);

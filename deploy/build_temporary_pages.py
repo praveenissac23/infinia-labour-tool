@@ -185,8 +185,31 @@ ACCESS_GRANTS = {
 }
 # Documents due are kept on Expiry Reminder; leave on Staff > Leave.
 STAFF_TREE = [("register", "Register"), ("leave", "Leave"), ("bday", "Birthdays")]
-STAFF_GROUPS = [("labour", "Labour", "people_labour"), ("office", "Office staff (with salaries)", "people_office"),
+STAFF_GROUPS = [("labour", "Labour", "people_labour"), ("office", "Office staff", "people_office"),
                 ("local", "Local staff", "people_local")]
+
+
+# The tabs where salary figures can be seen - marked on Settings > Access,
+# with what is shown, so giving a tab never gives pay by surprise.
+PAY_SEEN = {
+    "attendance.livecard": "each worker's wages for the month",
+    "attendance.masterdata": "each worker's salary and rate",
+    **{f"people.register.{g}": "Pay & Money in each person's file" for g in ("labour", "office", "local")},
+    "payroll.labourpay.combine": "salary cards",
+    "payroll.labourpay.adjust": "bonus and deduction amounts",
+    "payroll.labourpay.increments": "salary history",
+    "payroll.labourpay.gratuity": "basic, gratuity and final settlement",
+    "payroll.hrpayroll.cycle": "salaries and salary statements",
+    "payroll.hrpayroll.leave": "the pay cut for each absence",
+    "payroll.hrpayroll.items": "addition and deduction amounts",
+    "payroll.hrpayroll.loans": "loans taken off salary",
+    "payroll.hrpayroll.staff": "every person's salary",
+    "payroll.hrpayroll.increments": "salary history",
+    "payroll.hrpayroll.gratuity": "basic, gratuity and final settlement",
+    "reports.labour.builder": "wages in the cycle report",
+    "reports.labour.monthly": "wages in the monthly report",
+    "accounts.projexp": "labour cost per project (totals only)",
+}
 
 
 def _as_list(r):
@@ -197,7 +220,10 @@ def _leaf(id, label, right, grant=None):
     right = _as_list(right)
     if grant is None:
         grant = ACCESS_GRANTS.get(id, right if len(right) == 1 else [])
-    return {"id": id, "label": label, "right": right, "grant": list(grant)}
+    d = {"id": id, "label": label, "right": right, "grant": list(grant)}
+    if id in PAY_SEEN:
+        d["pay"] = PAY_SEEN[id]
+    return d
 
 
 def access_tree():

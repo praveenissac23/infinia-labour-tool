@@ -2,6 +2,7 @@
 <!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->
 <html>
 <head>
+<script>/* a phone notification's address, kept before the page tidies it away */ window.__ARRIVAL = /[?&]n_screen=/.test(location.search) ? location.href : "";</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Infinia App</title>
@@ -1413,7 +1414,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="ff774e77f428";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="4d53a7073733";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -7367,23 +7368,41 @@ function mrFollow(status) {
 }
 function mrClearSearch() { MR_ONLY = null; const s = document.getElementById("mreq-search"); if (s) s.value = ""; const f = document.getElementById("mreq-filter"); if (f) f.value = "open"; loadRequests(); }
 
-function openNotification(id, screen, target) {
+function openNotification(id, screen, target, extra) {
   const read = readIds(); read.add(id); saveReadIds(read);
   document.getElementById("bell-panel").style.display = "none";
   renderBell();
   if (!screen) return;
-  switchScreen(screen);
-  if (!target) return;
-  setTimeout(() => {
-    if (screen === "approvals") {
-      mrOpenInList(target);
-    } else if (screen === "followup") {
-      const s = document.getElementById("fu-search"); if (s) { s.value = target; renderFollowUp(); }
-    } else if (screen === "store") {
-      const s = document.getElementById("home-stock-search");
-      if (s) { storeGo("home"); s.value = target; filterHomeStock(); setTimeout(() => { try { toggleStockDetail(target); } catch (e) {} }, 400); }
+  // From the bell the notification is in the list; from a phone popup
+  // the address carries the same facts.
+  const n = Object.assign({}, extra || {}, (notifications || []).find(x => x.id === id) || {});
+  // A material request, whatever happened to it: the request itself,
+  // opened, with what has arrived against it.
+  if (target && ["approvals", "followup", "requests"].includes(screen)) { openRequestRef(target, n.status); return; }
+  if (screen === "store" && target) {
+    if (n.kind === "rental" && typeof xlGo === "function") {
+      xlGo("store", "rentals", "hire", () => { const l = document.getElementById("hire-list"); return xlOn("store") && l && l.offsetParent && l.querySelector("tr"); }, () => {
+        const row = [...document.querySelectorAll("#hire-list tr")].find(tr => tr.textContent.includes(target)) || document.getElementById("hire-list");
+        row.scrollIntoView({ block: "center" }); xlFlash(row);
+      });
+      return;
     }
-  }, 250);
+    openMaterial(target);
+    return;
+  }
+  if (screen === "attendance" && n.when) {
+    xlGo("attendance", "attendance", null, () => xlOn("attendance") && document.getElementById("date-picker"), () => {
+      const d = document.getElementById("date-picker");
+      if (d && d.value !== n.when) { d.value = n.when; onDateChange(); }
+    });
+    return;
+  }
+  if (screen === "expiry" && typeof xlGo === "function") {
+    const sub = n.people && !n.company ? "people" : n.company && !n.people ? "company" : "all";
+    xlGo("expiry", "expiry", sub, () => xlOn("expiry"), () => {});
+    return;
+  }
+  switchScreen(screen);
 }
 
 document.addEventListener("click", e => {
@@ -9510,6 +9529,31 @@ function toggleDirectPurchase() {
 function toggleRequest(id) {
   const row = document.getElementById("mr-detail-" + id);
   if (row) row.style.display = row.style.display === "none" ? "" : "none";
+  if (row && row.style.display !== "none") mrDeliveries(id);
+}
+// What has arrived against a request: day, material, quantity, supplier,
+// DO and who took it in - drawn under its materials when it is opened.
+async function mrDeliveries(id) {
+  const box = document.getElementById("mr-dlv-" + id); if (!box) return;
+  const r = (mrCache || []).find(x => x.id === id);
+  if (r && !(r.lines || []).some(l => (l.qty_received || 0) > 0)) { box.innerHTML = ""; return; }
+  if (!box.innerHTML) box.innerHTML = '<p style="font-size:12px; color:#999; margin:12px 0 0;">Loading what has arrived...</p>';
+  try {
+    const d = await apiCall(`/store/requests/${id}/deliveries`);
+    const rows = d.rows || [];
+    box.innerHTML = `<div style="margin-top:14px; font-weight:700; font-size:13px; color:#2E7D32;">What has arrived (${rows.length} deliver${rows.length === 1 ? "y" : "ies"})</div>` +
+      (rows.length ? `<table style="font-size:12.5px; background:white; margin-top:6px;">
+        <thead><tr><th>Date</th><th>Material</th><th>Qty</th><th>Unit</th><th>Supplier</th><th>DO / invoice</th><th>Taken in to</th><th>Recorded by</th></tr></thead>
+        <tbody>${rows.map(x => `<tr>
+          <td>${pcDate(x.date)}</td>
+          <td>${x.code ? `<strong>${materialLink(x.code)}</strong> ` : ""}${escapeHtml(x.name)}</td>
+          <td class="num">${num(x.qty)}</td><td>${escapeHtml(x.unit || "")}</td>
+          <td>${x.supplier ? supplierLink(x.supplier) : "-"}</td>
+          <td>${escapeHtml(x.reference || "-")}</td>
+          <td>${x.to ? "Site " + escapeHtml(x.to) : "Central store"}</td>
+          <td>${escapeHtml(x.by || "-")}</td></tr>`).join("")}</tbody></table>`
+        : '<p style="font-size:12px; color:#999; margin:4px 0 0;">The deliveries were recorded before the app kept this link.</p>');
+  } catch (e) { box.innerHTML = ""; }
 }
 
 // Open requests cached here so the entry form can warn about materials
@@ -9588,12 +9632,20 @@ function renderFollowUp() {
     .filter(x => !q || `${x.name} ${x.code} ${x.ref} ${x.sup ? x.sup.name + " " + (x.sup.contact_person || "") : ""}`.toLowerCase().includes(q))
     .sort((a, b) => (b.late - a.late) || (a.needed || "9").localeCompare(b.needed || "9") || a.ref.localeCompare(b.ref));
 
+  // A finished request looked up by its number (from a notification or a
+  // link): nothing is still to come, so show what arrived against it.
+  const doneReq = q && (mrCache || []).find(r => (!open(r) || (r.lines || []).some(l => (l.qty_received || 0) > 0)) && String(r.ref || "").toLowerCase() === q);
+  const doneBox = doneReq ? `<div class="fu-done" style="border:1px solid #CFE3D0; background:#F6FBF6; border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+      <div style="font-weight:700; font-size:14px;">${escapeHtml(doneReq.ref)} &middot; <span style="color:${MR_COLOUR[doneReq.status] || "#2E7D32"};">${MR_LABEL[doneReq.status] || doneReq.status}</span>
+        <span style="font-weight:400; color:#777; font-size:12px;">&middot; ${doneReq.site ? "Site " + escapeHtml(doneReq.site) : "Central store"}${doneReq.requested_by ? " &middot; asked by " + escapeHtml(doneReq.requested_by) : ""}</span></div>
+      <div id="mr-dlv-${doneReq.id}"></div></div>` : "";
+  if (doneReq) setTimeout(() => mrDeliveries(doneReq.id), 0);
   if (!list.length) {
-    box.innerHTML = `<div class="empty-note">${rows.length ? "Nothing matches that filter." : "Nothing is waiting to arrive. Every open request has been delivered."}</div>`;
+    box.innerHTML = doneBox || `<div class="empty-note">${rows.length ? "Nothing matches that filter." : "Nothing is waiting to arrive. Every open request has been delivered."}</div>`;
     return;
   }
 
-  box.innerHTML = `<div class="grid-wrap" style="max-height:70vh;">
+  box.innerHTML = doneBox + `<div class="grid-wrap" style="max-height:70vh;">
     <table>
       <thead><tr>
         <th style="width:22%;">Material</th><th style="width:8%;">Still due</th><th style="width:7%;">For site</th>
@@ -9860,6 +9912,7 @@ async function loadRequests() {
                       </tr>`;
                     }).join("")}</tbody>
                   </table>
+                  <div id="mr-dlv-${r.id}" class="mr-dlv"></div>
                   ${r.notes ? `<p style="font-size:12px; color:#666; margin:10px 0 0;"><strong>Note:</strong> ${r.notes}</p>` : ""}
                   ${r.office_remark ? `<p style="font-size:12px; color:#666; margin:4px 0 0;"><strong>Office:</strong> ${r.office_remark}</p>` : ""}
                   <div style="margin-top:12px; display:flex; gap:8px;">
@@ -17022,7 +17075,7 @@ function workerLink(empNo, text) {
 
 // A material request: Approvals with that request open (or Order
 // follow-up for someone who raises but does not approve).
-function openRequestRef(ref) {
+function openRequestRef(ref, status) {
   if (xlCan("approvals")) {
     // Wait for the screen's own load to finish first, or it redraws the
     // list closed again after the request has been opened.
@@ -17596,14 +17649,24 @@ function pushOpenUrl(url) {
   try {
     const q = new URL(url, location.origin).searchParams;
     const screen = q.get("n_screen"), target = q.get("n_target"), id = q.get("n_id");
-    if (screen && typeof openNotification === "function") openNotification(id || "", screen, target || "");
+    const extra = { kind: q.get("n_kind") || "", status: q.get("n_status") || "", when: q.get("n_when") || "",
+                    people: +(q.get("n_people") || 0), company: +(q.get("n_company") || 0) };
+    if (!screen || typeof openNotification !== "function") return;
+    // Wait until the login and its rights are in, or the page it opens is refused.
+    const t0 = Date.now();
+    (function go() {
+      const ready = document.getElementById("app-screen") && document.getElementById("app-screen").offsetParent !== null && (MY_SCREENS || []).length;
+      if (!ready && Date.now() - t0 < 20000) { setTimeout(go, 300); return; }
+      openNotification(id || "", screen, target || "", extra);
+    })();
   } catch (e) {}
 }
 // Opened from a notification: the address says where to go.
 function pushArrival() {
-  if (!/[?&]n_screen=/.test(location.search)) return;
-  const url = location.href;
-  history.replaceState(null, "", location.pathname + location.hash);
+  const url = /[?&]n_screen=/.test(location.search) ? location.href : (window.__ARRIVAL || "");
+  window.__ARRIVAL = "";
+  if (!url) return;
+  if (/[?&]n_screen=/.test(location.search)) history.replaceState(null, "", location.pathname + location.hash);
   setTimeout(() => pushOpenUrl(url), 600);
 }
 function pushDevice() {

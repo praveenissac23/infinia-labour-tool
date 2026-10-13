@@ -5985,6 +5985,33 @@ def list_material_requests(status: str = None, site: str = None,
     return [_mr_out(m) for m in q.order_by(models.MaterialRequest.id.desc()).all()]
 
 
+@app.get("/store/requests/{req_id}/deliveries")
+def request_deliveries(req_id: int, db: Session = Depends(get_db),
+                       user: models.User = Depends(require_any_screen("requests", "approvals", "store"))):
+    """What has arrived against one request: day, material, quantity,
+    supplier, DO number and who took it in. Deliveries recorded before the
+    link was kept are found by the request number written on them."""
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="That request is not on file.")
+    items = {l.item_id for l in mr.lines if l.item_id}
+    q = db.query(models.StoreMovement).filter(models.StoreMovement.kind == "in")
+    linked = q.filter(models.StoreMovement.request_id == mr.id).all()
+    old = [] if not items else [m for m in q.filter(models.StoreMovement.request_id.is_(None),
+                                                    models.StoreMovement.item_id.in_(items)).all()
+                                if (m.reference or "") == mr.ref or mr.ref in (m.notes or "")]
+    names = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    unit = {l.item_id: l.unit for l in mr.lines if l.item_id}
+    rows = []
+    for m in sorted(linked + old, key=lambda m: (m.moved_on, m.id)):
+        it = m.item
+        rows.append({"date": m.moved_on.isoformat(), "code": it.code if it else "", "name": it.name if it else "",
+                     "qty": round(m.qty or 0, 3), "unit": unit.get(m.item_id) or (it.unit if it else ""),
+                     "supplier": m.supplier or "", "reference": m.reference if (m.reference or "") != mr.ref else "",
+                     "to": m.location or "", "by": names.get(m.created_by, "")})
+    return {"ref": mr.ref, "rows": rows}
+
+
 @app.post("/store/requests")
 def create_material_request(payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
                              user: models.User = Depends(require_any_screen("requests", "approvals"))):
@@ -6183,7 +6210,7 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
     db.add(models.StoreMovement(item_id=line.item_id, kind="in", qty=qty, location="",
                                  supplier=supplier, unit_cost=unit_cost,
                                  reference=reference or mr.ref, moved_on=date.today(),
-                                 notes=f"Against {mr.ref}", created_by=user.id))
+                                 notes=f"Against {mr.ref}", created_by=user.id, request_id=mr.id))
     line.qty_received = (line.qty_received or 0) + qty
     all_done = all((l.qty_received or 0) >= l.qty_requested - 1e-9 for l in mr.lines)
     any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
@@ -12519,7 +12546,7 @@ def get_notifications(db: Session = Depends(get_db),
                 title, detail, lvl = f"{m.ref} rejected", (m.office_remark or "The office turned it down"), "warn"
             else:
                 continue
-            out.append({"id": f"status-{m.id}-{m.status}-{upd}", "kind": "status", "request_id": m.id,
+            out.append({"id": f"status-{m.id}-{m.status}-{upd}", "kind": "status", "request_id": m.id, "status": m.status,
                          "title": title, "detail": detail,
                          "screen": "followup" if m.status not in ("delivered", "received", "rejected") else "requests",
                          "target": m.ref, "when": upd.isoformat(), "level": lvl})
@@ -12718,7 +12745,7 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
         db.add(models.StoreMovement(
             item_id=line.item_id, kind="in", qty=w.qty, location=where,
             supplier=line_sup, reference=payload.reference or mr.ref,
-            notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id))
+            notes=(payload.notes or f"Against {mr.ref}"), moved_on=when, created_by=user.id, request_id=mr.id))
         line.qty_received = (line.qty_received or 0) + w.qty
         # The trader on the delivery note is who this line was bought
         # from - learn it on lines that never got a supplier at ordering.
