@@ -984,38 +984,38 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
      (never narrower than a readable tile) and equal heights, so resizing
      the window reflows whole tiles instead of stretching some and
      squeezing others. */
-  /* Dashboard skyline: Dubai, our own tower going up - one 24 s loop that never jumps */
+  /* Dashboard skyline: Dubai, our own tower going up - one 48 s loop that never jumps */
   
   #dash-sky svg{position:absolute;inset:0;width:100%;height:100%}
   #dash-sky .txt{position:absolute;left:30px;top:24px;z-index:2}
   #dash-sky .txt b{display:block;font-size:21px;color:#7A3B33}
   #dash-sky .txt span{font-size:13px;color:#927068}
   #dash-sky .txt em{font-style:normal;color:#C0392B;font-weight:700}
-  /* every movement repeats on 24 s (or a part of it), and anything that
+  /* every movement repeats on 48 s (or a part of it), and anything that
      travels leaves and re-enters off the picture - so it never jumps */
   .dsk-L{fill:#fff;stroke:#C9A49D;stroke-width:1.4}
   .dsk-R{fill:#FBE9E6;stroke:#C0392B;stroke-width:1.5}
   .dsk-far{fill:#EFE0DB}
-  .dsk-cloudA{animation:dskk-cloudA 24s linear infinite}@keyframes dskk-cloudA{from{transform:translateX(-660px)}to{transform:translateX(1740px)}}
-  .dsk-cloudB{animation:dskk-cloudA 24s linear infinite;animation-delay:-13s}
-  .dsk-sun{animation:dskk-glow 6s ease-in-out infinite alternate}@keyframes dskk-glow{from{opacity:.5}to{opacity:.8}}
-  .dsk-wheel{transform-box:fill-box;transform-origin:center;animation:dskk-wheel 24s linear infinite}@keyframes dskk-wheel{to{transform:rotate(360deg)}}
-  .dsk-jib{transform-origin:640px 46px;animation:dskk-jib 12s ease-in-out infinite}@keyframes dskk-jib{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
-  .dsk-trolley{animation:dskk-trolley 12s ease-in-out infinite}@keyframes dskk-trolley{0%,100%{transform:translateX(150px)}50%{transform:translateX(10px)}}
-  .dsk-load{animation:dskk-load 12s ease-in-out infinite}@keyframes dskk-load{0%,100%{transform:translateY(80px)}50%{transform:translateY(0)}}
-  .dsk-cable{animation:dskk-cable 12s ease-in-out infinite}@keyframes dskk-cable{0%,100%{height:110px}50%{height:30px}}
-  .dsk-top{animation:dskk-top 12s ease-in-out infinite}@keyframes dskk-top{0%,40%,100%{opacity:.35}60%,90%{opacity:1}}
-  .dsk-spark{animation:dskk-spark 1.2s ease-in-out infinite}@keyframes dskk-spark{0%,100%{opacity:0}50%{opacity:1}}
-  .dsk-metro{animation:dskk-metro 12s linear infinite}@keyframes dskk-metro{from{transform:translateX(1700px)}to{transform:translateX(-700px)}}
-  .dsk-lane{stroke-dasharray:22 18;animation:dskk-lane 1.2s linear infinite}@keyframes dskk-lane{to{stroke-dashoffset:-40}}
-  .dsk-truck{animation:dskk-truck 12s linear infinite}@keyframes dskk-truck{from{transform:translateX(-570px)}to{transform:translateX(1770px)}}
-  .dsk-car1{animation:dskk-car 8s linear infinite}@keyframes dskk-car{from{transform:translateX(1700px)}to{transform:translateX(-520px)}}
-  .dsk-car2{animation:dskk-truck 6s linear infinite;animation-delay:-2s}
-  .dsk-boat{animation:dskk-boat 24s linear infinite}@keyframes dskk-boat{from{transform:translateX(-60px)}to{transform:translateX(330px)}}
-  .dsk-wave{stroke-dasharray:10 14;animation:dskk-wave 2.4s linear infinite}@keyframes dskk-wave{to{stroke-dashoffset:-24}}
-  .dsk-win{fill:#F3E3E0;animation:dskk-win 6s ease-in-out infinite}@keyframes dskk-win{0%,100%{fill:#F3E3E0}50%{fill:#FFE0A0}}
-  .dsk-bird{animation:dskk-bird 24s linear infinite}@keyframes dskk-bird{from{transform:translate(1660px,52px)}to{transform:translate(-490px,26px)}}
-  .dsk-blink{animation:dskk-blink 2.4s steps(1) infinite}@keyframes dskk-blink{50%{opacity:.15}}
+  .dsk-cloudA{animation:dskk-cloudA 48s linear infinite}@keyframes dskk-cloudA{from{transform:translateX(-660px)}to{transform:translateX(1740px)}}
+  .dsk-cloudB{animation:dskk-cloudA 48s linear infinite;animation-delay:-26s}
+  .dsk-sun{animation:dskk-glow 12s ease-in-out infinite alternate}@keyframes dskk-glow{from{opacity:.5}to{opacity:.8}}
+  .dsk-wheel{transform-box:fill-box;transform-origin:center;animation:dskk-wheel 48s linear infinite}@keyframes dskk-wheel{to{transform:rotate(360deg)}}
+  .dsk-jib{transform-origin:640px 46px;animation:dskk-jib 24s ease-in-out infinite}@keyframes dskk-jib{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
+  .dsk-trolley{animation:dskk-trolley 24s ease-in-out infinite}@keyframes dskk-trolley{0%,100%{transform:translateX(150px)}50%{transform:translateX(10px)}}
+  .dsk-load{animation:dskk-load 24s ease-in-out infinite}@keyframes dskk-load{0%,100%{transform:translateY(80px)}50%{transform:translateY(0)}}
+  .dsk-cable{animation:dskk-cable 24s ease-in-out infinite}@keyframes dskk-cable{0%,100%{height:110px}50%{height:30px}}
+  .dsk-top{animation:dskk-top 24s ease-in-out infinite}@keyframes dskk-top{0%,40%,100%{opacity:.35}60%,90%{opacity:1}}
+  .dsk-spark{animation:dskk-spark 2.4s ease-in-out infinite}@keyframes dskk-spark{0%,100%{opacity:0}50%{opacity:1}}
+  .dsk-metro{animation:dskk-metro 24s linear infinite}@keyframes dskk-metro{from{transform:translateX(1700px)}to{transform:translateX(-700px)}}
+  .dsk-lane{stroke-dasharray:22 18;animation:dskk-lane 2.4s linear infinite}@keyframes dskk-lane{to{stroke-dashoffset:-40}}
+  .dsk-truck{animation:dskk-truck 24s linear infinite}@keyframes dskk-truck{from{transform:translateX(-570px)}to{transform:translateX(1770px)}}
+  .dsk-car1{animation:dskk-car 16s linear infinite}@keyframes dskk-car{from{transform:translateX(1700px)}to{transform:translateX(-520px)}}
+  .dsk-car2{animation:dskk-truck 12s linear infinite;animation-delay:-4s}
+  .dsk-boat{animation:dskk-boat 48s linear infinite}@keyframes dskk-boat{from{transform:translateX(-60px)}to{transform:translateX(330px)}}
+  .dsk-wave{stroke-dasharray:10 14;animation:dskk-wave 4.8s linear infinite}@keyframes dskk-wave{to{stroke-dashoffset:-24}}
+  .dsk-win{fill:#F3E3E0;animation:dskk-win 12s ease-in-out infinite}@keyframes dskk-win{0%,100%{fill:#F3E3E0}50%{fill:#FFE0A0}}
+  .dsk-bird{animation:dskk-bird 48s linear infinite}@keyframes dskk-bird{from{transform:translate(1660px,52px)}to{transform:translate(-490px,26px)}}
+  .dsk-blink{animation:dskk-blink 4.8s steps(1) infinite}@keyframes dskk-blink{50%{opacity:.15}}
   @media (prefers-reduced-motion:reduce){#dash-sky *{animation:none!important}}
   
   #dash-sky .txt b,#dash-sky .txt span{text-shadow:0 0 6px #fff,0 0 10px #fff}
@@ -1454,7 +1454,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="2f544e80b347";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="24d243931327";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1591,7 +1591,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
 
           <!-- The Dubai skyline: a greeting with today's figures, and the city
-               going about its day - one loop of 24 seconds, nothing jumps. -->
+               going about its day - one loop of 48 seconds, nothing jumps. -->
           <div class="card" id="dash-sky" style="padding:0; overflow:hidden; position:relative; height:250px; border:0; background:linear-gradient(180deg,#FFF3EC 0%,#FDF6F5 62%,#F7ECE8 100%);">
             <div class="txt"><b id="dsk-hello">Welcome</b><span id="dsk-line"></span></div>
             <svg aria-hidden="true" viewBox="-400 -24 2000 274" preserveAspectRatio="xMidYMax slice">
@@ -1629,7 +1629,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
  <!-- Burj Khalifa -->
  <path class="dsk-L" d="M900 205 V150 H906 V112 H912 V80 H916 V50 H919 V24 L921 6 L923 24 V50 H926 V80 H930 V112 H936 V150 H942 V205z"/>
  <circle class="dsk-blink" cx="921" cy="6" r="2.2" fill="#C0392B"/>
- <g><rect class="dsk-win" x="913" y="90" width="4" height="6"/><rect class="dsk-win" x="925" y="120" width="4" height="6" style="animation-delay:-2s"/><rect class="dsk-win" x="907" y="160" width="5" height="7" style="animation-delay:-4s"/><rect class="dsk-win" x="930" y="175" width="5" height="7" style="animation-delay:-1s"/></g>
+ <g><rect class="dsk-win" x="913" y="90" width="4" height="6"/><rect class="dsk-win" x="925" y="120" width="4" height="6" style="animation-delay:-4s"/><rect class="dsk-win" x="907" y="160" width="5" height="7" style="animation-delay:-8s"/><rect class="dsk-win" x="930" y="175" width="5" height="7" style="animation-delay:-2s"/></g>
  <!-- Museum of the Future -->
  <path class="dsk-L" d="M1050 205 C1030 150 1050 110 1095 112 C1140 114 1150 160 1130 205z M1076 205 C1072 170 1084 146 1098 150 C1112 154 1112 180 1104 205z"/>
  <!-- metro on its viaduct -->
