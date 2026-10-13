@@ -15942,7 +15942,8 @@ function zhConnDraw() {
     <li>Client Name <code>Infinia Portal</code> · Homepage URL <code>${escapeHtml(c.home || "")}</code> · Authorized Redirect URI <code>${escapeHtml(c.redirect || "")}</code> → <b>Create</b>.</li>
     <li>Paste the Client ID and Client Secret it shows, then press <b>Connect Zoho</b> and allow.</li></ol>
     <div class="zh-row"><input type="text" id="zh-cid" placeholder="Client ID (1000....)" autocomplete="off"><input type="password" id="zh-sec" placeholder="${c.has_keys ? "Client Secret (saved)" : "Client Secret"}" autocomplete="new-password">
-    <button class="btn btn-gray" onclick="zhKeys()">Save</button><button class="btn btn-primary" onclick="zhConnect()" ${c.has_keys ? "" : "disabled"}>Connect Zoho</button></div>`;
+    <button class="btn btn-primary" onclick="zhConnect()">Connect Zoho</button></div>
+    <div class="sub" style="margin-top:4px;">${c.has_keys ? "Client ID and Secret are saved - press Connect Zoho (paste new ones only to change them)." : "Paste both, then press Connect Zoho."}</div>`;
 }
 async function zhKeys() {
   try { await apiCall("/store/zoho/link/keys", { method: "POST", body: JSON.stringify({ client_id: document.getElementById("zh-cid").value, client_secret: document.getElementById("zh-sec").value }) });
@@ -15950,7 +15951,15 @@ async function zhKeys() {
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 async function zhConnect() {
-  try { const d = await apiCall("/store/zoho/link/start", { method: "POST" }); location.href = d.url; }
+  const cid = (document.getElementById("zh-cid") || {}).value || "", sec = (document.getElementById("zh-sec") || {}).value || "";
+  try {
+    if (cid.trim() || sec.trim()) {
+      await apiCall("/store/zoho/link/keys", { method: "POST", body: JSON.stringify({ client_id: cid, client_secret: sec }) });
+    } else if (!(ZH.conn || {}).has_keys) {
+      showStatus("zh-status", "err", "Paste the Client ID and Client Secret from Zoho's API console first."); return;
+    }
+    showStatus("zh-status", "ok", "Opening Zoho - sign in if asked and press Accept.");
+    const d = await apiCall("/store/zoho/link/start", { method: "POST" }); location.href = d.url; }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 async function zhDisconnect() {
