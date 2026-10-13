@@ -420,14 +420,15 @@ def leave_state(db, e, p, group, today=None):
             if r.full_date.year == today.year:
                 out["sick_this_year"] += (0.5 if r.am in ("Sick", "Medical") else 0) + \
                                          (0.5 if r.pm in ("Sick", "Medical") else 0)
-    # Annual leave entered on Staff > Leave (approved or returned) counts
+    # Annual (and emergency) leave entered on Staff > Leave (approved or returned) counts
     # too: from the date of leave to the day before the date of return
     # (or for the days approved), up to today. A day already marked on
     # the attendance grid or the absence register is not counted twice.
     have = {d0 for d0, _ in vac}
     from_register = 0
     for r in (db.query(models.LeaveRecord)
-                .filter(models.LeaveRecord.employee_id == e.id, models.LeaveRecord.leave_type == "annual",
+                # Emergency leave comes off the annual leave too (company rule, 13 Oct 2026).
+                .filter(models.LeaveRecord.employee_id == e.id, models.LeaveRecord.leave_type.in_(("annual", "emergency")),
                         models.LeaveRecord.status.in_(("approved", "returned")),
                         models.LeaveRecord.leave_on.isnot(None)).all()):
         if r.return_on:
