@@ -64,6 +64,9 @@ class ProjectPayment(Base):
     on_date = Column(Date, nullable=False)
     amount = Column(Float, default=0.0)
     note = Column(String, default="")
+    # "bank:<id>" when the payment was entered on Accounts > Bank - it is
+    # changed or removed there, never here, so the two cannot part ways.
+    source = Column(String, default="")
 
 
 def create_tables(engine):
@@ -229,7 +232,18 @@ def _save(db, s, payload, user):
     fields, pays = _clean(payload)
     for k, v in fields.items():
         setattr(s, k, v)
-    s.payments = [ProjectPayment(on_date=d, amount=a, note=n) for d, a, n in pays]
+    # Keep each payment that is unchanged (and with it where it came
+    # from); a payment entered on the Bank tab may not be changed here.
+    old = list(s.payments or [])
+    keep, left = [], list(pays)
+    for o in old:
+        t = (o.on_date, round(o.amount or 0, 2), o.note or "")
+        hit = next((x for x in left if x[0] == t[0] and abs(x[1] - t[1]) < 0.005 and x[2] == t[2]), None)
+        if hit:
+            left.remove(hit); keep.append(o)
+        elif (o.source or "").startswith("bank:"):
+            raise HTTPException(status_code=400, detail=f"The payment of {o.on_date:%d-%b-%Y}, AED {o.amount:,.2f} came from Accounts > Bank - change or remove it there.")
+    s.payments = keep + [ProjectPayment(on_date=d, amount=a, note=n) for d, a, n in left]
     s.updated_by = user.id
 
 

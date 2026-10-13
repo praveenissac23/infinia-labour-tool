@@ -169,6 +169,10 @@ GONE = ("approved", "sent", "inzoho", "changed")
 def _zoho_guard(user, x, action):
     """A line approved for Zoho (or already in it) is the chief
     accountant's to change - otherwise the two books part ways."""
+    import zohoapi
+    if zohoapi.in_doubt(x):
+        raise HTTPException(status_code=400, detail="Zoho did not answer when this line was sent. Press Send again on Send to Zoho first "
+                                                    f"(Zoho is checked, nothing is sent twice) - then {action} it.")
     if (x.zoho_status or "") in GONE and ZOHO_RIGHT not in M.effective_permissions(user):
         raise HTTPException(status_code=403, detail=f"This line has been approved for Zoho - ask the chief accountant to {action} it.")
 

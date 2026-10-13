@@ -4334,6 +4334,7 @@ def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
         if v:
             setattr(sup, field, v)
     db.commit()
+    _copy_supplier_to_zoho(db, sup)
     return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person or "",
             "phone": sup.phone or ""}
 
@@ -4372,8 +4373,19 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
     if payload.notes is not None:
         sup.notes = payload.notes
     db.commit()
+    _copy_supplier_to_zoho(db, sup)
     return {"id": sup.id, "name": sup.name, "contact_person": sup.contact_person,
             "phone": sup.phone}
+
+
+def _copy_supplier_to_zoho(db, sup):
+    """The portal is the master supplier list: a linked supplier's change
+    is copied to its Zoho vendor. Never stops the save itself."""
+    try:
+        import supzoho
+        supzoho.copy_to_zoho(db, sup)
+    except Exception:
+        db.rollback()
 
 
 @app.post("/store/request-lines/{line_id}/decision")
@@ -9693,7 +9705,7 @@ def _loan_dict(l, emp=None):
             "terms": tidy_text(l.terms), "instalment": round(l.instalment or 0, 2),
             "repaid": paid, "balance": round((l.amount or 0) - paid, 2),
             "closed": bool(l.closed) or (l.amount or 0) - paid <= 0.005,
-            "notes": l.notes or "",
+            "notes": l.notes or "", "paid_from": l.paid_from or "", "zoho": l.zoho_status or "", "zoho_err": l.zoho_err or "",
             "repayments": [{"id": r.id, "amount": round(r.amount or 0, 2),
                              "paid_on": r.paid_on.isoformat(),
                              "month_year": r.month_year or "", "source": r.source or "",
@@ -9776,7 +9788,7 @@ def add_loan(payload: dict = Body(...), db: Session = Depends(get_db),
     if amount <= 0:
         raise HTTPException(status_code=400, detail="How much was lent?")
     when = _as_date(payload.get("taken_on")) or _dubai_today()
-    l = models.StaffLoan(employee_id=e.id, amount=amount, taken_on=when,
+    l = models.StaffLoan(employee_id=e.id, amount=amount, taken_on=when, paid_from=_loan_paid_from(payload.get("paid_from")),
                           terms=tidy_text(payload.get("terms")),
                           instalment=float(payload.get("instalment") or 0),
                           notes=(payload.get("notes") or "").strip(),
@@ -9850,6 +9862,16 @@ def _num(v):
         return 0.0
 
 
+LOAN_PAID_FROM = ("ADCB", "Cash", "petty")
+
+
+def _loan_paid_from(v):
+    v = str(v or "").strip()
+    if v and v not in LOAN_PAID_FROM:
+        raise HTTPException(status_code=400, detail="Paid from ADCB, Cash, or a petty cash book.")
+    return v
+
+
 @app.put("/employees/loans/{loan_id}")
 def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
                user: models.User = HR):
@@ -9858,6 +9880,16 @@ def edit_loan(loan_id: int, payload: dict = Body(...), db: Session = Depends(get
     if not l:
         raise HTTPException(status_code=404, detail="That loan is not on file.")
     before = (round(l.amount or 0, 2), round(l.instalment or 0, 2))
+    moved = ("amount" in payload and abs(_num(payload["amount"]) - (l.amount or 0)) > 0.005) or \
+            (payload.get("taken_on") and _as_date(payload["taken_on"]) != l.taken_on) or \
+            ("paid_from" in payload and _loan_paid_from(payload.get("paid_from")) != (l.paid_from or ""))
+    if moved and (l.zoho_err or "").startswith(("No answer", "Could not check")):
+        raise HTTPException(status_code=400, detail="Zoho did not answer when this loan was sent - press Send on Send to Zoho first (Zoho is checked), then change it.")
+    if (l.zoho_status or "") in ("sent", "sending"):
+        if moved:
+            raise HTTPException(status_code=400, detail="This loan is in Zoho - its amount, date and where it was paid from are changed in Zoho.")
+    if "paid_from" in payload:
+        l.paid_from = _loan_paid_from(payload.get("paid_from"))
     if "amount" in payload:
         amt = _num(payload["amount"])
         got = round(sum(r.amount or 0 for r in l.repayments), 2)
@@ -9893,6 +9925,8 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db), user: models.User =
         raise HTTPException(status_code=400,
             detail="Instalments from approved salary cycles have been taken against this loan, "
                    "so it cannot be removed. Correct it instead.")
+    if (l.zoho_status or "") in ("sent", "sending") or (l.zoho_err or "").startswith(("No answer", "Could not check")):
+        raise HTTPException(status_code=400, detail="This loan is in Zoho (or Zoho did not answer when it was sent) - check Zoho first.")
     _who = db.query(models.Employee).filter(models.Employee.id == l.employee_id).first()
     _what = f"loan #{loan_id} {(_who.emp_no + ' ' + _who.name) if _who else ''}: {l.amount or 0:,.2f} lent"
     for r in list(l.repayments):
@@ -12915,6 +12949,10 @@ import zohoapi  # noqa: E402
 app.include_router(zohoapi.router)
 import bank  # noqa: E402
 app.include_router(bank.router)
+import invzoho  # noqa: E402
+app.include_router(invzoho.router)
+import supzoho  # noqa: E402
+app.include_router(supzoho.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

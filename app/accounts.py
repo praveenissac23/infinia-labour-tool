@@ -65,6 +65,13 @@ class Invoice(Base):
     cancel_reason = Column(String, default="")
     from_proforma_id = Column(Integer, nullable=True)
     converted_to_id = Column(Integer, nullable=True)
+    # Zoho: a tax invoice goes to Zoho only when released (by admin or the
+    # chief accountant) - so the VAT quarter it lands in is decided here.
+    zoho_status = Column(String, default="")     # "" held | sending | sent
+    zoho_id = Column(String, default="")
+    zoho_err = Column(String, default="")
+    released_by = Column(Integer, nullable=True)
+    released_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -145,6 +152,7 @@ def _dict(x, users=None):
             "lines": json.loads(x.lines or "[]"), "subtotal": x.subtotal, "vat": x.vat, "total": x.total,
             "status": x.status, "cancel_reason": x.cancel_reason or "",
             "from_proforma_id": x.from_proforma_id, "converted_to_id": x.converted_to_id,
+            "zoho": x.zoho_status or "", "zoho_err": x.zoho_err or "",
             "by": (users or {}).get(x.updated_by or x.created_by, "")}
 
 
@@ -224,6 +232,10 @@ def edit_invoice(iid: int, payload: dict = Body(...), db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="That invoice is not on file.")
     if x.status == "cancelled":
         raise HTTPException(status_code=400, detail="A cancelled invoice cannot be changed.")
+    if (x.zoho_status or "") in ("sent", "sending"):
+        raise HTTPException(status_code=400, detail="This invoice has been released to Zoho - change it in Zoho, or cancel it here and void it in Zoho.")
+    if (x.zoho_err or "").startswith(("No answer", "Could not check")):
+        raise HTTPException(status_code=400, detail="Zoho did not answer when this invoice was released - press Release to Zoho again first (Zoho is checked), then change it.")
     total_was = round(x.total or 0, 2)
     for k, v in _clean(db, payload, x.kind, keep_id=x.id).items():
         setattr(x, k, v)
@@ -242,6 +254,8 @@ def cancel_invoice(iid: int, payload: dict = Body(default={}), db: Session = Dep
         raise HTTPException(status_code=404, detail="That invoice is not on file.")
     x.status = "cancelled"
     x.cancel_reason = str((payload or {}).get("reason") or "").strip()[:200]
+    if (x.zoho_status or "") in ("sent", "sending") or (x.zoho_err or "").startswith(("No answer", "Could not check")):
+        x.zoho_err = "Cancelled here - void it in Zoho too (check Zoho for this number)"
     x.updated_by = user.id
     db.commit()
     M.log_action(db, user.id, "invoice_cancel", f"{x.kind} {x.number} - {x.cancel_reason}")

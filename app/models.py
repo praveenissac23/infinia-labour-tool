@@ -323,6 +323,10 @@ class Supplier(Base):
     payment_terms = Column(String, default="")
     notes = Column(Text, default="")
     active = Column(Boolean, default=True)
+    # The portal is the master list; Zoho gets a copy. zoho_id is the Zoho
+    # vendor it is linked to - changes here are copied there.
+    zoho_id = Column(String, default="")
+    zoho_err = Column(String, default="")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -741,6 +745,13 @@ class StaffLoan(Base):
     instalment = Column(Float, default=0.0)        # what the run proposes each cycle
     closed = Column(Boolean, default=False)
     notes = Column(Text, default="")
+    # Where the money came from, so it goes to Zoho's Employee Advance once:
+    # ADCB, Cash, or "petty" (paid out of a petty cash book - it goes to
+    # Zoho with that book's line, not again from here).
+    paid_from = Column(String, default="")
+    zoho_status = Column(String, default="")
+    zoho_id = Column(String, default="")
+    zoho_err = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -1091,6 +1102,12 @@ class BankEntry(Base):
     vat = Column(Boolean, default=False)
     trn = Column(String, default="")
     notes = Column(String, default="")
+    # A client's payment also goes on Accounts > Project payments, net of
+    # VAT as that tracker is kept: the scope, the net figure and the
+    # tracker line it made (kept in step when this line changes).
+    scope_id = Column(Integer, nullable=True)
+    net_amount = Column(Float, default=0.0)
+    pp_id = Column(Integer, nullable=True)
     zoho_status = Column(String, default="")     # "" waiting | sent | cancelled
     zoho_id = Column(String, default="")
     zoho_ref = Column(String, default="")

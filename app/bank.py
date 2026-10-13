@@ -56,6 +56,7 @@ def _row(x, users):
             "docs": _docs(x), "account": x.account or "", "site": x.site or "", "amount": round(x.amount or 0, 2),
             "out": x.kind != "customer", "vat": bool(x.vat), "trn": x.trn or "", "notes": x.notes or "",
             "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "", "zoho_err": x.zoho_err or "",
+            "scope_id": x.scope_id, "net_amount": round(x.net_amount or 0, 2), "pp_id": x.pp_id,
             "by": users.get(x.updated_by or x.created_by, "")}
 
 
@@ -78,13 +79,20 @@ def listing(db, month):
     return {"month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "rows": out,
             "paid": round(sum(r["amount"] for r in out if r["out"]), 2),
             "received": round(sum(r["amount"] for r in out if not r["out"]), 2),
-            "waiting": sum(1 for r in out if r["zoho"] in ("",)),
+            "waiting": sum(1 for r in out if r["zoho"] in ("", "sending")),
             "refused": sum(1 for r in out if r["zoho"] == "" and r["zoho_err"])}
 
 
 @router.get("/store/bank")
 def list_bank(month: str = "", db: Session = Depends(get_db), user: models.User = BK):
     import zohoapi, zohosync
+    # Post-dated client cheques whose date has come go on Project payments now.
+    for x in db.query(models.BankEntry).filter(models.BankEntry.kind == "customer", models.BankEntry.scope_id.isnot(None),
+                                               models.BankEntry.pp_id.is_(None), models.BankEntry.on_date <= M._dubai_today()).all():
+        try:
+            link_receipt(db, x); db.commit()
+        except HTTPException:
+            db.rollback()
     d = listing(db, month)
     d.update(kinds=KINDS, modes=MODES, transfer_to=TRANSFER_TO, groups=zohosync.GROUPS[:2],
              may_send=_may_send(user), connected=zohoapi.connected(db))
@@ -113,6 +121,8 @@ def _clean(p):
     ref = str(p.get("reference") or "").strip()[:80]
     if mode == "Cheque" and not ref:
         raise HTTPException(status_code=400, detail="Type the cheque number.")
+    if mode != "Cheque" and d > M._dubai_today():
+        raise HTTPException(status_code=400, detail="That date is in the future - only a cheque can carry a later date.")
     acc = str(p.get("account") or "").strip()[:200]
     if kind == "transfer" and acc not in TRANSFER_TO:
         raise HTTPException(status_code=400, detail="Transfer to which box?")
@@ -125,34 +135,108 @@ def _clean(p):
     trn = "".join(ch for ch in str(p.get("trn") or "") if ch.isdigit())[:15] if vat else ""
     if trn and len(trn) != 15:
         raise HTTPException(status_code=400, detail="A TRN has 15 digits.")
-    return {"kind": kind, "on_date": d, "party": party, "party_id": str(p.get("party_id") or "")[:40], "mode": mode,
+    scope_id, net = None, 0.0
+    if kind == "customer" and p.get("scope_id"):
+        import projectpay as pp
+        scope_id = int(p.get("scope_id"))
+        try:
+            net = round(float(str(p.get("net_amount") or 0).replace(",", "")), 2)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="The amount for Project payments must be a number.")
+        if net <= 0 or net > amt + 0.005:
+            raise HTTPException(status_code=400, detail="The amount for Project payments (excl. VAT) must be more than 0 and not more than the amount received.")
+    return {"scope_id": scope_id, "net_amount": net, "kind": kind, "on_date": d, "party": party, "party_id": str(p.get("party_id") or "")[:40], "mode": mode,
             "reference": ref, "docs": json.dumps(docs), "account": acc, "site": str(p.get("site") or "").strip()[:40],
             "amount": amt, "vat": vat, "trn": trn, "notes": str(p.get("notes") or "").strip()[:300]}
 
 
+BANK_PLACES = [("vendorpayments", "vendorpayments", "payment_id", "description_contains"),
+               ("customerpayments", "customerpayments", "payment_id", "search_text"),
+               ("expenses", "expenses", "expense_id", "description_contains"),
+               ("banktransactions", "banktransactions", "transaction_id", "search_text")]
+
+
 def _send(db, rows, user):
+    """Send each line once (see zohoapi.claim); refusals wait with Zoho's reason."""
     import zohoapi
     if not zohoapi.connected(db):
         return 0, []
     now = datetime.now(timezone.utc)
     sent, failed = 0, []
+    import zohosync
+    start = zohosync._start(db)
     for x in rows:
+        if x.on_date and x.on_date < start:
+            failed.append({"id": x.id, "why": f"Dated before {start:%d %b %Y}, when the portal starts sending to Zoho - enter it in Zoho by hand"})
+            continue
+        unsure = (x.zoho_status == "sending") or bool(x.zoho_err)
+        was = ""
+        if not zohoapi.claim(db, models.BankEntry, x, ("",)):
+            continue
         try:
-            zid, label = push(db, x)
+            zid = zohoapi.find_existing(db, f"[BK-{x.id}]", BANK_PLACES) if unsure else ""
+            label = "Found in Zoho"
+            if not zid:
+                zid, label = push(db, x)
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, label, ""
             x.approved_by, x.approved_at = user.id, now
             sent += 1
-        except (zohoapi.ZohoError, HTTPException) as e:
-            x.zoho_err = (getattr(e, "msg", None) or getattr(e, "detail", None) or str(e))[:300]
+        except Exception as e:
+            x.zoho_status = was
+            x.zoho_err = zohoapi.fail_text(e)
             failed.append({"id": x.id, "why": x.zoho_err})
         db.commit()
     return sent, failed
 
 
+def link_receipt(db, x):
+    """Keep the Project payments line in step with a client's payment:
+    made when a scope is picked, changed with it, removed with it."""
+    import projectpay as pp
+    line = db.get(pp.ProjectPayment, x.pp_id) if x.pp_id else None
+    if not line:
+        line = db.query(pp.ProjectPayment).filter(pp.ProjectPayment.source == f"bank:{x.id}").first()
+    # A post-dated cheque goes on the tracker once its date comes.
+    if x.kind != "customer" or not x.scope_id or x.on_date > M._dubai_today():
+        if line:
+            db.delete(line)
+        x.pp_id = None
+        db.flush()
+        return
+    sc = db.get(pp.ProjectScope, x.scope_id)
+    if not sc:
+        raise HTTPException(status_code=400, detail="That project scope is no longer on Project payments.")
+    others = sum((p.amount or 0) for p in sc.payments if not line or p.id != line.id)
+    if round(others + (x.net_amount or 0), 2) > round(sc.contract or 0, 2) + 0.005:
+        raise HTTPException(status_code=400, detail=f"This takes {sc.project} - {sc.scope} past its contract value ({sc.contract:,.2f}). "
+                                                    "Update the contract on Project payments first, or pick another scope.")
+    note = " ".join(v for v in (", ".join(d["number"] for d in _docs(x) if d.get("number")), x.reference) if v)[:120]
+    if not line:
+        line = pp.ProjectPayment(scope_id=x.scope_id, on_date=x.on_date, amount=x.net_amount, note=note, source=f"bank:{x.id}")
+        db.add(line); db.flush()
+    else:
+        line.scope_id, line.on_date, line.amount, line.note, line.source = x.scope_id, x.on_date, x.net_amount, note, f"bank:{x.id}"
+    x.pp_id = line.id
+    db.flush()
+
+
+@router.get("/store/bank/scopes")
+def scopes(db: Session = Depends(get_db), user: models.User = BK):
+    """The project scopes on Project payments, for a client's payment."""
+    import projectpay as pp
+    rows = db.query(pp.ProjectScope).order_by(pp.ProjectScope.project, pp.ProjectScope.sort, pp.ProjectScope.id).all()
+    return {"scopes": [{"id": r.id, "project": r.project, "scope": r.scope} for r in rows]}
+
+
 @router.post("/store/bank")
 def add(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = BK):
     x = models.BankEntry(**_clean(payload), bank="ADCB", created_by=user.id, updated_by=user.id)
-    db.add(x); db.commit()
+    db.add(x); db.flush()
+    try:
+        link_receipt(db, x)
+    except HTTPException:
+        db.rollback(); raise
+    db.commit()
     M.log_action(db, user.id, "bank_add", f"{KINDS[x.kind]} {x.party} {x.amount:,.2f} {x.reference}")
     sent, failed = _send(db, [x], user) if _may_send(user) else (0, [])
     return {"ok": True, "id": x.id, "sent": sent, "failed": failed}
@@ -163,13 +247,26 @@ def edit(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
     x = db.get(models.BankEntry, bid)
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
-    if x.zoho_status == "sent":
-        raise HTTPException(status_code=400, detail="It is in Zoho already - change it in Zoho, or delete it there and enter it again.")
-    for k, v in _clean(payload).items():
+    new = _clean(payload)
+    import zohoapi
+    if zohoapi.in_doubt(x):
+        raise HTTPException(status_code=400, detail="Zoho did not answer when this line was sent. Press Send first "
+                                                    "(Zoho is checked, nothing is sent twice) - then change it.")
+    if x.zoho_status in ("sent", "sending"):
+        # In Zoho: only where it sits on Project payments may change here.
+        free = {"scope_id", "net_amount"}
+        moved = [k for k, v in new.items() if k not in free and getattr(x, k) != v]
+        if moved:
+            raise HTTPException(status_code=400, detail="It is in Zoho already - change it in Zoho, or delete it there (it then shows cancelled here) and enter it again.")
+    for k, v in new.items():
         setattr(x, k, v)
     x.updated_by, x.zoho_err = user.id, ""
     if x.zoho_status == "cancelled":
         x.zoho_status = ""
+    try:
+        link_receipt(db, x)
+    except HTTPException:
+        db.rollback(); raise
     db.commit()
     M.log_action(db, user.id, "bank_edit", f"#{bid} {KINDS[x.kind]} {x.party} {x.amount:,.2f}")
     sent, failed = _send(db, [x], user) if _may_send(user) else (0, [])
@@ -181,9 +278,15 @@ def delete(bid: int, db: Session = Depends(get_db), user: models.User = BK):
     x = db.get(models.BankEntry, bid)
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
+    import zohoapi
     if x.zoho_status == "sent":
         raise HTTPException(status_code=400, detail="It is in Zoho - delete it in Zoho; it is then cancelled here.")
+    if zohoapi.in_doubt(x):
+        raise HTTPException(status_code=400, detail="Zoho did not answer when this line was sent - press Send first (Zoho is checked), then remove it if it is not there.")
     M.log_action(db, user.id, "bank_delete", f"#{bid} {KINDS[x.kind]} {x.party} {x.amount:,.2f}")
+    import projectpay as pp
+    for line in db.query(pp.ProjectPayment).filter(pp.ProjectPayment.source == f"bank:{x.id}").all():
+        db.delete(line)
     db.delete(x); db.commit()
     return {"ok": True}
 
@@ -197,7 +300,9 @@ def send(payload: dict = Body(default={}), db: Session = Depends(get_db), user: 
     if not zohoapi.connected(db):
         raise HTTPException(status_code=400, detail="Zoho is not connected yet - Accounts > Send to Zoho > Connect Zoho.")
     ids = {int(i) for i in (payload.get("ids") or [])}
-    rows = [x for x in db.query(models.BankEntry).filter(models.BankEntry.zoho_status.in_(["", "cancelled"])).all()
+    # Waiting lines, and any left 'sending' by a request that died. A line
+    # deleted in Zoho (cancelled) is not sent again unless it is edited.
+    rows = [x for x in db.query(models.BankEntry).filter(models.BankEntry.zoho_status.in_(["", "sending"])).all()
             if not ids or x.id in ids]
     sent, failed = _send(db, rows, user)
     return {"ok": True, "sent": sent, "failed": failed}
@@ -248,7 +353,7 @@ def push(db, x):
     if not bank:
         raise Z.ZohoError(400, "Zoho has no account named ADCB")
     ref = x.reference or f"BK-{x.id}"
-    desc = ((x.notes or x.party or KINDS.get(x.kind, "")) + f" · BK-{x.id}")[:100]
+    desc = (f"[BK-{x.id}] " + (x.notes or x.party or KINDS.get(x.kind, "")))[:100]   # tag first, bracketed: never cut off, BK-1 never matches BK-10
     dt = x.on_date.isoformat()
     amt = round(x.amount or 0, 2)
     docs = _docs(x)
@@ -327,7 +432,7 @@ def export_bank(token: str, month: str = "", format: str = "excel", db: Session 
     if RIGHT not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Bank is for accounts only.")
     d = listing(db, month)
-    st = {"sent": "In Zoho", "cancelled": "Deleted in Zoho", "": "Waiting"}
+    st = {"sent": "In Zoho", "sending": "Sending", "cancelled": "Deleted in Zoho", "": "Waiting"}
     rows = [{"Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Type": r["kind_label"], "Party": r["party"] or "-",
              "Mode": r["mode"], "Reference": r["reference"] or "-",
              "Bills / invoices": ", ".join(x["number"] for x in r["docs"]) or "-", "Project": r["site"] or "-",

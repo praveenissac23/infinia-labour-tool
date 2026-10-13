@@ -268,19 +268,108 @@ def push(db, x):
     return f"expense:{d['expense']['expense_id']}", "Expense"
 
 
+def claim(db, model, x, states):
+    """Take a line for sending, so two presses (or two people) can never
+    send it twice: only one request changes its status to 'sending'. A
+    line left 'sending' by a request that died is taken again after five
+    minutes - and Zoho is asked first whether it already has it."""
+    now = time.time()
+    q = db.query(model).filter(model.id == x.id)
+    n = q.filter(model.zoho_status.in_(list(states))).update(
+        {"zoho_status": "sending", "zoho_err": f"sending@{int(now)}"}, synchronize_session=False)
+    if not n:
+        cur = q.first()
+        stamp = (cur.zoho_err or "") if cur else ""
+        if cur and cur.zoho_status == "sending" and stamp.startswith("sending@") and now - float(stamp[8:] or 0) > 300:
+            n = q.filter(model.zoho_err == stamp).update({"zoho_err": f"sending@{int(now)}!"}, synchronize_session=False)
+    db.commit()
+    db.refresh(x)
+    return bool(n)
+
+
+DOUBT = ("No answer", "Could not check")
+
+
+def in_doubt(x):
+    """The last send had no clear answer - Zoho may hold it. Nothing on
+    the line may change until Send is pressed again and Zoho is asked."""
+    return (x.zoho_status or "") == "sending" or (x.zoho_err or "").startswith(DOUBT)
+
+
+def fail_text(e, again="press Send again"):
+    """What to keep on a line after a failed send. Only a clear refusal
+    (Zoho said no, 4xx) is plain; a server error, rate limit, timeout or
+    garbled answer means Zoho may have saved it - kept in doubt."""
+    if isinstance(e, ZohoError) and e.msg.startswith(DOUBT):
+        return e.msg[:300]
+    if isinstance(e, ZohoError) and (e.code >= 500 or e.code == 429):
+        return f"No answer from Zoho ({e.code}) - {again}; Zoho is checked first. {e.msg}"[:300]
+    if isinstance(e, ZohoError):
+        return e.msg[:300]
+    if isinstance(e, HTTPException):
+        return str(e.detail)[:300]
+    return f"No answer from Zoho ({type(e).__name__}) - {again}; Zoho is checked first"
+
+
+def find_existing(db, token, places):
+    """Does Zoho already hold an entry carrying this reference (PC-12 /
+    BK-7)? Used before sending again a line whose last try had no clear
+    answer - a timeout can come after Zoho has saved it."""
+    for path, key, idk, field in places:
+        try:
+            d = call(db, "GET", path, {field: token, "per_page": 200})
+        except ZohoError as e:
+            # Not knowing is not "not there" - never send again blind.
+            raise ZohoError(503, f"Could not check Zoho for {token} before sending again ({e.msg[:80]}) - press Send again later")
+        for e in d.get(key, []):
+            hay = " ".join(str(e.get(k) or "") for k in ("reference_number", "description", "notes"))
+            if token in hay.split() or token in hay.replace("·", " ").split() or hay.strip().endswith(token):
+                return f"{key[:-1] if key.endswith('s') else key}:{e.get(idk)}"
+    return ""
+
+
+PETTY_PLACES = [("expenses", "expenses", "expense_id", "reference_number"),
+                ("journals", "journals", "journal_id", "reference_number"),
+                ("banktransactions", "banktransactions", "transaction_id", "reference_number")]
+
+
 def push_many(db, rows, user=None):
-    """Send each approved line; a refusal is kept on the line to retry."""
+    """Send each approved line once; a refusal is kept on the line to retry."""
     sent, failed = 0, []
     for x in rows:
+        unsure = (x.zoho_status == "sending") or bool(x.zoho_err)
+        if not claim(db, models.PettyCash, x, ("approved",)):
+            continue
         try:
-            zid, label = push(db, x)
+            zid = find_existing(db, f"PC-{x.id}", PETTY_PLACES) if unsure else ""
+            label = "Found in Zoho"
+            if not zid:
+                zid, label = push(db, x)
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, f"{label} · PC-{x.id}", ""
             sent += 1
-        except (ZohoError, HTTPException) as e:
-            x.zoho_err = (getattr(e, "msg", None) or getattr(e, "detail", None) or str(e))[:300]
+        except Exception as e:
+            # A plain refusal after Zoho was checked is clear; anything unclear stays in doubt.
+            x.zoho_status = "approved"
+            x.zoho_err = fail_text(e)
             failed.append({"id": x.id, "why": x.zoho_err})
         db.commit()
     return sent, failed
+
+
+def push_loan(db, l, emp):
+    """A loan paid out of the bank or cash: Employee Advance up, the bank or cash down."""
+    src = "ADCB" if l.paid_from == "ADCB" else "Cash"
+    ea, frm = account_id(db, "Employee Advance"), account_id(db, src)
+    if not ea or not frm:
+        raise ZohoError(400, f"Zoho has no account named {'Employee Advance' if not ea else src}")
+    ref = f"LN-{l.id}"
+    who = f"{emp.emp_no} {emp.name}" if emp else ""
+    amt = round(l.amount or 0, 2)
+    desc = f"Staff loan / advance - {who}"[:100]
+    d = call(db, "POST", "journals", body={"journal_date": l.taken_on.isoformat(), "reference_number": ref, "notes": desc,
+                                            "line_items": [{"account_id": ea, "debit_or_credit": "debit", "amount": amt, "description": desc},
+                                                           {"account_id": frm, "debit_or_credit": "credit", "amount": amt, "description": desc}]})
+    return f"journal:{d['journal']['journal_id']}"
 
 
 def check_deleted(db, force=False):
@@ -371,8 +460,7 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "",
     _CACHE.clear()
     try:
         orgs = call(db, "GET", "organizations", {"organization_id": ""}).get("organizations", [])
-        mine = next((o for o in orgs if str(o.get("organization_id")) == ORG_DEFAULT), None) \
-            or next((o for o in orgs if "infinia contracting" in (o.get("name") or "").lower()), None)
+        mine = next((o for o in orgs if str(o.get("organization_id")) == ORG_DEFAULT), None)   # never another org
         if mine:
             _put(db, "org", str(mine["organization_id"]))
             _put(db, "org_name", mine.get("name") or "")

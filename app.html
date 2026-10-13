@@ -473,16 +473,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-table td .sub { display: block; font-size: 11px; color: #9a918a; }
   .pc-table tfoot td { font-weight: 700; background: #F5F2EE; border-top: 1.5px solid #333; }
   .pc-table .pc-act { white-space: nowrap; } .pc-table .pc-act button { margin-left: 4px; }
-  .pc-form.vat { grid-template-columns: auto 132px minmax(160px, 2fr) minmax(130px, 1.2fr) 104px 100px auto auto; }
-  .pc-form.vat .pc-kind { min-width: 200px; }
+  /* Company books: two rows - what & when, then where, how much, VAT. */
+  .pc-form.vat { grid-template-columns: 210px 150px minmax(260px, 2fr) minmax(220px, 1.4fr); }
+  .pc-form.vat .pc-kind { min-width: 0; }
+  .pc-form.vat .pc-go { justify-self: start; }
   .pc-vat .pc-vatbox { display: flex; align-items: center; gap: 6px; height: 36px; font: 600 13px inherit; color: #333; white-space: nowrap; }
   .pc-vat input[type=checkbox] { width: 18px; height: 18px; margin: 0; }
-  .pc-vat #pc-trn { width: 136px; height: 32px; font-size: 12.5px; }
+  .pc-vat #pc-trn { width: 190px; height: 36px; font-size: 13px; letter-spacing: .02em; }
   .zx-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .zx-wait { background: #FFF4D6; color: #8A6200; } .zx-ok { background: #E7F4EA; color: #2E7D32; } .zx-app { background: #E8F0FB; color: #2456A6; }
   .zx-bad { background: #FDECEA; color: #B7322A; } .zx-skip { background: #EEE; color: #666; }
   .zh-table td { vertical-align: middle; } .zh-table td:nth-child(3) { white-space: nowrap; } .zh-table td:nth-child(4) { min-width: 200px; } .zh-table input.zh-trn { width: 112px; } .zh-table select { height: 32px; width: 100%; min-width: 190px; max-width: 230px; font-size: 12.5px; }
-  .zh-table td:nth-child(6) select { min-width: 84px; width: 84px; }
+  .zh-table td:nth-child(6) select { min-width: 84px; width: 84px; } .zh-table select.zh-acc { min-width: 290px; max-width: 320px; }
   .zh-table input.zh-trn { height: 30px; font-size: 12px; }
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
@@ -493,14 +495,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bk-grid input, .bk-grid select { width: 100%; height: 36px; }
   .bk-more { grid-template-columns: minmax(260px, 2fr) 120px 110px 180px 1fr; } .bk-more:empty { display: none; }
   .bk-grid .bk-wide { grid-column: span 4; }
+  .bk-table td:first-child { white-space: nowrap; } .bk-table td { vertical-align: middle; }
   .bk-docs:empty { display: none; } .bk-docs { border: 1px solid #ECE6DF; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; background: #FCFAF7; font-size: 13px; }
   .bk-docs table { width: 100%; border-collapse: collapse; } .bk-docs td { padding: 4px 6px; border-top: 1px solid #EFEBE6; } .bk-docs input[type=text] { width: 110px; height: 30px; text-align: right; }
   .bk-stmt { border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: 13px; }
   .bk-stmt table { width: 100%; border-collapse: collapse; margin-top: 6px; } .bk-stmt td { padding: 5px 6px; border-top: 1px solid #F3DCD8; }
   @media (max-width: 1100px) { .bk-grid, .bk-more { grid-template-columns: 1fr 1fr; } .bk-grid .bk-wide { grid-column: 1 / -1; } }
+  @media (max-width: 560px) { .bk-grid, .bk-more { grid-template-columns: 1fr; } .bk-grid > * { grid-column: auto !important; } .zh-conn input { width: 100%; } }
+  .zh-sup { border: 1px solid #ECE6DF; border-radius: 10px; padding: 10px 14px; margin: 14px 0 4px; font-size: 13px; }
+  .zh-sup summary { cursor: pointer; } .zh-sup select { height: 32px; max-width: 280px; }
+  .zx-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .zx-box { background: #fff; border-radius: 12px; width: 520px; max-width: 100%; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .zx-box select { width: 100%; height: 38px; }
   .zh-conn { border: 1px solid #ECE6DF; border-radius: 10px; padding: 12px 14px; margin: 12px 0 2px; background: #FCFAF7; font-size: 13px; }
   .zh-conn.ok { border-color: #CDE8D3; background: #F3FAF4; } .zh-conn b.ok { color: #2E7D32; }
-  .zh-conn ol { margin: 6px 0 8px 18px; padding: 0; line-height: 1.7; } .zh-conn code { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: 1px 5px; }
+  .zh-conn ol { margin: 6px 0 8px 18px; padding: 0; line-height: 1.7; } .zh-conn code { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: 1px 5px;  overflow-wrap: anywhere; word-break: break-all; }
   .zh-conn .zh-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
   .zh-conn input { height: 34px; width: 260px; }
   .zh-pend { border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: 13px; }
@@ -1487,7 +1496,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="9efc95682cc3";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="9cf23cb7e3c8";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1512,7 +1521,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   </svg>
   <div id="login-box">
     <img class="logo" src="/portal/logo-bb952b26.png" alt="Infinia Contracting">
-    <input type="text" id="login-username" placeholder="Username" value="admin">
+    <input type="text" id="login-username" placeholder="Username" value="admin" data-spell="off">
     <input type="password" id="login-password" placeholder="Password">
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
       <input type="checkbox" onchange="togglePassword('login-password', this)" style="width:auto; margin-right:5px;"> Show password</label>
@@ -3106,7 +3115,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pc-title">
                 <h2 style="margin:0;">Bank - ADCB</h2>
                 <label class="pc-f"><span>Month</span><input type="month" id="bk-month" onchange="bkLoad()"></label>
-                <label class="pc-f"><span>Search</span><input type="text" id="bk-q" placeholder="Party, reference, bill" style="width:170px;" oninput="bkDraw()"></label>
+                <label class="pc-f"><span>Search</span><input type="text" id="bk-q" placeholder="Find a line" style="width:170px;" data-spell="off" oninput="bkDraw()"></label>
               </div>
               <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="bkExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="bkExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="bkExport('excel')">Export Excel</button></div></div>
             </div>
@@ -3120,12 +3129,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="pc-f bk-party-f"><span id="bk-party-l">Paid to (supplier / subcontractor)</span><input type="text" id="bk-party" list="bk-party-list" autocomplete="off" data-spell="off" oninput="bkParty()" onchange="bkPartyPicked()"><datalist id="bk-party-list"></datalist></label>
                 <label class="pc-f"><span>Payment mode</span><select id="bk-mode" onchange="bkMode()"></select></label>
                 <label class="pc-f"><span id="bk-ref-l">Reference # (ADCB)</span><input type="text" id="bk-ref" maxlength="80" data-spell="off" placeholder="e.g. PHUB726068648"></label>
-                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="bk-amt" placeholder="0.00" oninput="bkSpread()"></label>
+                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="bk-amt" placeholder="0.00" oninput="bkSpread(); bkNet()"></label>
               </div>
               <div class="bk-grid bk-more" id="bk-more"></div>
               <div class="bk-docs" id="bk-docs"></div>
               <div class="bk-grid">
-                <label class="pc-f bk-wide"><span>Notes / project (as you write them in Zoho)</span><input type="text" id="bk-notes" maxlength="300" placeholder="e.g. 913 PC05"></label>
+                <label class="pc-f bk-wide"><span>Notes / project (as you write them in Zoho)</span><input type="text" id="bk-notes" maxlength="300" placeholder="e.g. 913 PC05" data-spell="off"></label>
                 <div class="pc-f pc-go" style="align-self:end;"><button class="btn btn-primary" id="bk-save" onclick="bkSave()">Save</button><button class="btn btn-gray" id="bk-cancel" onclick="bkReset()" style="display:none;">Cancel</button></div>
               </div>
             </div>
@@ -3149,7 +3158,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pc-title">
                 <h2 style="margin:0;">Send to Zoho</h2>
                 <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option><option value="naveen">Naveen</option><option value="praveen">Praveen</option></select></label>
-                <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Description, supplier, project" style="width:190px;" oninput="zhDraw()"></label>
+                <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Find a line" style="width:170px;" data-spell="off" oninput="zhDraw()"></label>
               </div>
               <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="zhExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zhExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zhExport('excel')">Export Excel</button></div></div>
             </div>
@@ -3160,11 +3169,16 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;">
               <table class="pc-table zh-table">
                 <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th style="width:60px;">Book</th><th style="width:78px;">Date</th>
-                  <th class="l">Description</th><th class="l" style="width:120px;">Supplier</th><th style="width:92px;">Project</th><th class="l" style="width:236px;">Zoho account</th>
+                  <th class="l">Description</th><th class="l" style="width:120px;">Supplier</th><th style="width:92px;">Project</th><th class="l" style="width:300px;">Zoho account</th>
                   <th style="width:120px;">VAT</th><th class="n" style="width:92px;">Amount</th><th style="width:122px;"></th></tr></thead>
                 <tbody id="zh-body"><tr><td colspan="10" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
               </table>
             </div>
+            <div id="zh-loans"></div>
+            <details class="zh-sup" id="zh-sup" ontoggle="if (this.open) zhSupLoad(0)"><summary><b>Suppliers in Zoho</b> <span class="sub" style="display:inline;">- the portal's supplier list is the master; each supplier is linked to its Zoho vendor and changes are copied there</span></summary>
+              <div class="zh-row" style="margin:8px 0;"><button class="btn btn-gray btn-sm" onclick="zhSupLoad(1)">Match with Zoho</button><span class="sub" id="zh-sup-n" style="display:inline;"></span></div>
+              <div class="grid-wrap" style="max-height:420px;"><table class="pc-table"><thead><tr><th class="l">Supplier (portal)</th><th style="width:150px;">TRN</th><th class="l" style="width:46%;">Zoho vendor</th></tr></thead><tbody id="zh-sup-body"></tbody></table></div>
+            </details>
             <div class="zh-foot"><span id="zh-note">Untick a line to keep it for later. Red lines wait until they are put right. The account is suggested from how the same bill went before - change it if needed.</span>
               <button class="btn btn-primary" id="zh-go" onclick="zhApprove()" style="padding:9px 22px;">Approve for Zoho</button></div>
           </div>
@@ -3192,11 +3206,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </div>
               <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
               <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400" list="pc-desc-list" autocomplete="off" oninput="pcDescAuto()"><datalist id="pc-desc-list"></datalist></label>
-              <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off" oninput="this.dataset.auto = ''" onchange="pcTrnLookup()"></label>
+              <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off" data-spell="off" oninput="this.dataset.auto = ''" onchange="pcTrnLookup()"></label>
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site" onchange="this.dataset.auto = ''"></select></label>
               <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
-              <div class="pc-f pc-vat" id="pc-vat-f"><span>VAT?</span><span class="pc-vatbox"><input type="checkbox" id="pc-vat" onchange="pcVat()"><label for="pc-vat" id="pc-vat-l">Yes</label><input type="text" id="pc-trn" inputmode="numeric" maxlength="15" placeholder="Supplier TRN" style="display:none;"></span></div>
+              <div class="pc-f pc-vat" id="pc-vat-f"><span>VAT on the receipt?<span class="help-i in-label" tabindex="0" data-tip="Tick when the receipt shows VAT, and type the supplier's TRN. The chief accountant needs it to claim the VAT.">i</span></span><span class="pc-vatbox"><input type="checkbox" id="pc-vat" onchange="pcVat()"><label for="pc-vat" id="pc-vat-l">Yes</label><input type="text" id="pc-trn" inputmode="numeric" maxlength="15" placeholder="Supplier TRN - 15 digits" style="display:none;"></span></div>
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
                 <button class="btn btn-gray" id="pc-cancel" onclick="pcReset()" style="display:none;">Cancel</button>
@@ -4429,6 +4443,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="hr-field"><span>Taken on</span><input type="date" id="hr-loan-date" style="width:150px;"></label>
                 <label class="hr-field"><span>Monthly from salary</span><input type="text" inputmode="decimal" id="hr-loan-instalment" style="width:130px;" placeholder="0 = not from salary"></label>
                 <label class="hr-field"><span>Agreed terms</span><input type="text" id="hr-loan-terms" style="width:240px;"></label>
+                <label class="hr-field"><span>Paid from</span><select id="hr-loan-from" style="width:200px;"><option value="">- not said -</option><option value="ADCB">ADCB (bank)</option><option value="Cash">Cash</option><option value="petty">A petty cash book</option></select></label>
                 <button class="btn btn-primary" id="hr-loan-save" onclick="saveLoan()">Record loan</button>
                 <button class="btn btn-gray" id="hr-loan-cancel" onclick="hrLoanReset()" style="display:none;">Cancel</button>
               </div>
@@ -15195,6 +15210,7 @@ function hrLoanEdit(id) {
   document.getElementById("hr-loan-date").value = l.taken_on;
   document.getElementById("hr-loan-instalment").value = hrBox(l.instalment);
   document.getElementById("hr-loan-terms").value = l.terms || "";
+  document.getElementById("hr-loan-from").value = l.paid_from || "";
   document.getElementById("hr-loan-save").textContent = "Save changes";
   const c = document.getElementById("hr-loan-cancel");
   c.style.display = "";
@@ -15206,7 +15222,7 @@ function hrLoanReset() {
   HR_LOAN_EDIT = null;
   document.getElementById("hr-loan-form-title").textContent = "Record a loan";
   document.getElementById("hr-loan-emp").disabled = false;
-  ["hr-loan-amount", "hr-loan-instalment", "hr-loan-terms", "hr-loan-date"]
+  ["hr-loan-amount", "hr-loan-instalment", "hr-loan-terms", "hr-loan-date", "hr-loan-from"]
     .forEach(id => document.getElementById(id).value = "");
   document.getElementById("hr-loan-date").value = todayIso();
   document.getElementById("hr-loan-save").textContent = "Record loan";
@@ -15218,7 +15234,7 @@ async function saveLoan() {
   const v = id => document.getElementById(id).value;
   const body = { emp_no: v("hr-loan-emp"), amount: hrNum(v("hr-loan-amount")),
                  taken_on: v("hr-loan-date"), instalment: hrNum(v("hr-loan-instalment")),
-                 terms: v("hr-loan-terms").trim() };
+                 terms: v("hr-loan-terms").trim(), paid_from: v("hr-loan-from") };
   try {
     if (HR_LOAN_EDIT) await apiCall(`/employees/loans/${HR_LOAN_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
     else await apiCall("/employees/loans", { method: "POST", body: JSON.stringify(body) });
@@ -16178,6 +16194,7 @@ function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes
 // Every payment out of the bank and every receipt into it, entered once here
 // and sent to Zoho - a payment to a supplier against his bills, a client's
 // payment against invoices, an expense, a bank charge or a transfer.
+let BK_SCOPES = null, BK_NET_AUTO = true;
 let BK = null, BK_KIND = "vendor", BK_EDIT = null, BK_SITES = null, BK_PARTY_ID = "", BK_DOCS = [], BK_PICK = {}, BK_T = null;
 const BK_LABEL = { vendor: "Paid to (supplier / subcontractor)", customer: "Received from (client)", expense: "Paid to (shop / supplier - optional)", charge: "Bank", transfer: "Transfer" };
 async function bkLoad() {
@@ -16185,6 +16202,7 @@ async function bkLoad() {
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("bk-date").value) document.getElementById("bk-date").value = pcToday();
   if (!BK_SITES) { try { BK_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { BK_SITES = []; } }
+  if (!BK_SCOPES) { try { BK_SCOPES = (await apiCall("/store/bank/scopes")).scopes; } catch (e) { BK_SCOPES = []; } }
   try { BK = await apiCall(`/store/bank?month=${encodeURIComponent(m.value)}`); }
   catch (e) { showStatus("bk-status", "err", errText(e)); return; }
   document.getElementById("bk-mode").innerHTML = BK.modes.map(x => `<option>${escapeHtml(x)}</option>`).join("");
@@ -16198,15 +16216,20 @@ function bkKindDraw() {
   if (BK_KIND === "expense") {
     more.innerHTML = `<label class="pc-f"><span>Zoho account</span><select id="bk-acc">${`<option value="">- pick -</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
       <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">-</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
-      <label class="pc-f"><span>VAT?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="document.getElementById('bk-trn').style.visibility=this.checked?'':'hidden'"> Yes</span></label>
-      <label class="pc-f"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" style="visibility:hidden;"></label><div></div>`;
+      <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="document.getElementById('bk-trn-f').style.visibility=this.checked?'':'hidden'"> Yes</span></label>
+      <label class="pc-f" id="bk-trn-f" style="visibility:hidden;"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" placeholder="15 digits" data-spell="off"></label><div></div>`;
+  } else if (BK_KIND === "customer") {
+    const byP = {}; (BK_SCOPES || []).forEach(x => (byP[x.project] = byP[x.project] || []).push(x));
+    more.innerHTML = `<label class="pc-f"><span>Project payments - project and scope</span><select id="bk-scope" onchange="bkNet()"><option value="">- not on Project payments -</option>${Object.keys(byP).sort().map(pj => `<optgroup label="${escapeAttr(pj)}">${byP[pj].map(x => `<option value="${x.id}">${escapeHtml(x.project + " - " + x.scope)}</option>`).join("")}</optgroup>`).join("")}</select></label>
+      <label class="pc-f"><span>Includes 5% VAT?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-cvat" checked style="width:18px;height:18px;" onchange="BK_NET_AUTO = true; bkNet()"> Yes</span></label>
+      <label class="pc-f" id="bk-net-f"><span>For Project payments (excl. VAT)</span><input type="text" id="bk-net" inputmode="decimal" placeholder="0.00" oninput="BK_NET_AUTO = false"></label><div></div><div></div>`;
   } else if (BK_KIND === "transfer") {
     more.innerHTML = `<label class="pc-f"><span>Transfer to</span><select id="bk-to">${BK.transfer_to.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></label>`;
   } else more.innerHTML = "";
   if (!["vendor", "customer"].includes(BK_KIND)) { BK_DOCS = []; BK_PICK = {}; }
   bkDocsDraw(); bkMode();
 }
-function bkKind(k) { BK_KIND = k; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; bkKindDraw(); }
+function bkKind(k) { BK_KIND = k; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; BK_NET_AUTO = true; bkKindDraw(); bkNet(); }
 function bkMode() {
   const chq = document.getElementById("bk-mode").value === "Cheque";
   document.getElementById("bk-ref-l").textContent = chq ? "Cheque number" : "Reference # (ADCB)";
@@ -16262,6 +16285,14 @@ function bkDocsDraw() {
   el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- against this payment: ${pcMoney(tot)}</span><table>${BK_DOCS.map(d => `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
     <td class="n">Balance ${pcMoney(d.balance)}</td><td style="width:130px;text-align:right;"><input type="text" value="${BK_PICK[d.id] ? BK_PICK[d.id].toFixed(2) : ""}" placeholder="0.00" onchange="bkPick('${d.id}', this.value)"></td></tr>`).join("")}</table>`;
 }
+// What goes on Project payments: the receipt net of VAT, as that tracker is kept.
+function bkNet() {
+  const sc = document.getElementById("bk-scope"), net = document.getElementById("bk-net"); if (!sc || !net) return;
+  document.getElementById("bk-net-f").style.visibility = sc.value ? "" : "hidden";
+  if (!BK_NET_AUTO) return;
+  const amt = parseFloat((document.getElementById("bk-amt").value || "0").replace(/,/g, "")) || 0;
+  net.value = amt ? (document.getElementById("bk-cvat").checked ? amt / 1.05 : amt).toFixed(2) : "";
+}
 function bkPick(id, v) { const n = parseFloat(String(v).replace(/,/g, "")) || 0; if (n > 0) BK_PICK[id] = n; else delete BK_PICK[id]; bkDocsDraw(); }
 function bkShown() {
   const q = document.getElementById("bk-q").value.trim().toLowerCase();
@@ -16269,7 +16300,7 @@ function bkShown() {
 }
 function bkTag(r) {
   if (r.zoho === "sent") return `<span class="zx-tag zx-ok">In Zoho ✓</span><span class="sub">${escapeHtml(r.zoho_ref)}</span>`;
-  if (r.zoho === "cancelled") return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Deleted in Zoho</span>`;
+  if (r.zoho === "cancelled") return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)} - to send it again, press Edit and Save">Deleted in Zoho · Edit to resend</span>`;
   if (r.zoho_err) return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Zoho refused</span><span class="sub">${escapeHtml(r.zoho_err.slice(0, 60))}</span>`;
   return `<span class="zx-tag zx-wait">Waiting</span>`;
 }
@@ -16283,15 +16314,15 @@ function bkDraw() {
     <div class="pc-stat${BK.connected ? " hand" : ""}"><span>Zoho</span><b>${BK.connected ? "Connected ✓" : "Not connected"}</b></div>`;
   document.getElementById("bk-body").innerHTML = rows.map(r => `<tr${BK_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td><td>${escapeHtml(r.kind_label)}</td>
     <td class="l">${escapeHtml(r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "ADCB" : "-"))}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
-    <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || (r.kind === "expense" ? r.account.split(" › ").pop().replace(/^Office › /, "") : "-"))}</td>
-    <td>${escapeHtml(r.site || "-")}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${bkTag(r)}</td>
-    <td class="pc-act">${r.zoho === "sent" ? `<span class="sub">In Zoho</span>` : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+    <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || "-")}${r.kind === "expense" && r.account ? `<span class="sub">${escapeHtml(r.account.replace(/^Office › /, "").split(" › ").pop())}</span>` : ""}${""}</td>
+    <td>${escapeHtml(r.site || ((BK_SCOPES || []).find(x => x.id === r.scope_id) || {}).project || "-")}${r.pp_id ? `<span class="sub" title="On Project payments, excl. VAT">PP ${pcMoney(r.net_amount)}</span>` : ""}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${bkTag(r)}</td>
+    <td class="pc-act">${r.zoho === "sent" ? (r.kind === "customer" ? `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})" title="In Zoho - only the Project payments scope can change">Project</button>` : `<span class="sub">In Zoho</span>`) : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
     || `<tr><td colspan="11" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
   const po = rows.filter(r => r.out).reduce((a, r) => a + r.amount, 0), rc = rows.filter(r => !r.out).reduce((a, r) => a + r.amount, 0);
   document.getElementById("bk-foot").innerHTML = rows.length ? `<tr><td colspan="7" class="l">TOTAL</td><td class="n">${pcMoney(po)}</td><td class="n">${pcMoney(rc)}</td><td colspan="2"></td></tr>` : "";
-  const wait = (BK.rows || []).filter(r => r.zoho === "" || r.zoho === "cancelled").length;
+  const wait = (BK.rows || []).filter(r => r.zoho === "" || r.zoho === "sending").length;
   document.getElementById("bk-sendbar").innerHTML = BK.may_send && wait
-    ? `<span>${wait} line${wait === 1 ? "" : "s"} not in Zoho yet${BK.connected ? "" : " - connect Zoho first (Send to Zoho tab)"}.</span><button class="btn btn-primary" onclick="bkSend()" ${BK.connected ? "" : "disabled"}>Send ${wait} to Zoho</button>`
+    ? `<span>${wait} line${wait === 1 ? "" : "s"} not in Zoho yet${BK.connected ? "" : " - connect Zoho first (Send to Zoho tab)"}.</span><button class="btn btn-primary" onclick="bkSend(this)" ${BK.connected ? "" : "disabled"}>Send ${wait} to Zoho</button>`
     : (wait ? `<span>${wait} line${wait === 1 ? "" : "s"} waiting for the chief accountant to send to Zoho.</span>` : "");
 }
 function bkBody() {
@@ -16300,6 +16331,7 @@ function bkBody() {
     mode: v("bk-mode"), reference: v("bk-ref").trim(), amount: v("bk-amt").replace(/,/g, ""), notes: v("bk-notes").trim(),
     account: BK_KIND === "expense" ? v("bk-acc") : (BK_KIND === "transfer" ? v("bk-to") : ""), site: BK_KIND === "expense" ? v("bk-site") : "",
     vat: BK_KIND === "expense" && (document.getElementById("bk-vat") || {}).checked, trn: v("bk-trn"),
+    scope_id: BK_KIND === "customer" ? v("bk-scope") : "", net_amount: BK_KIND === "customer" ? v("bk-net").replace(/,/g, "") : "",
     docs: Object.entries(BK_PICK).map(([id, amount]) => ({ id, amount, number: (BK_DOCS.find(d => d.id === id) || {}).number || "" })) };
 }
 async function bkSave() {
@@ -16313,7 +16345,7 @@ async function bkSave() {
   finally { btn.disabled = false; }
 }
 function bkReset() {
-  BK_EDIT = null; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {};
+  BK_EDIT = null; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; BK_NET_AUTO = true;
   ["bk-party", "bk-ref", "bk-amt", "bk-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("bk-date").value = pcToday();
   document.getElementById("bk-cancel").style.display = "none";
@@ -16326,8 +16358,10 @@ async function bkEdit(id) {
   document.getElementById("bk-mode").value = r.mode; document.getElementById("bk-ref").value = r.reference;
   document.getElementById("bk-amt").value = r.amount; document.getElementById("bk-notes").value = r.notes;
   if (r.kind === "expense") { document.getElementById("bk-acc").value = r.account; document.getElementById("bk-site").value = r.site;
-    document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-trn").style.visibility = r.vat ? "" : "hidden"; }
+    document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-trn-f").style.visibility = r.vat ? "" : "hidden"; }
   if (r.kind === "transfer") document.getElementById("bk-to").value = r.account;
+  if (r.kind === "customer") { BK_NET_AUTO = false; document.getElementById("bk-scope").value = r.scope_id || ""; document.getElementById("bk-net").value = r.net_amount ? r.net_amount.toFixed(2) : "";
+    document.getElementById("bk-cvat").checked = !r.net_amount || Math.abs(r.net_amount * 1.05 - r.amount) < 0.02; bkNet(); }
   BK_PARTY_ID = r.party_id; BK_PICK = Object.fromEntries(r.docs.map(d => [d.id, d.amount]));
   if (BK_PARTY_ID && BK.connected && ["vendor", "customer"].includes(r.kind)) {
     try { BK_DOCS = (await apiCall(`/store/bank/open?kind=${r.kind}&contact_id=${encodeURIComponent(BK_PARTY_ID)}`)).docs; } catch (e) { BK_DOCS = []; }
@@ -16342,7 +16376,8 @@ async function bkDelete(id) {
   try { await apiCall(`/store/bank/${id}`, { method: "DELETE" }); await bkLoad(); showStatus("bk-status", "ok", "Removed."); }
   catch (e) { showStatus("bk-status", "err", errText(e)); }
 }
-async function bkSend() {
+async function bkSend(btn) {
+  if (btn) btn.disabled = true;
   try { const d = await apiCall("/store/bank/send", { method: "POST", body: "{}" }); await bkLoad();
         showStatus("bk-status", d.failed.length ? "err" : "ok", `${d.sent} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the Zoho column.` : "")); }
   catch (e) { showStatus("bk-status", "err", errText(e)); }
@@ -16378,6 +16413,7 @@ async function zhLoad() {
     if (!ZH_SITES) { try { ZH_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { ZH_SITES = []; } }
     ZH = await apiCall("/store/zoho/queue");
     ZH.conn = await apiCall("/store/zoho/link/status");
+    try { ZH.loans = (await apiCall("/store/zoho/loans")).rows; } catch (e) { ZH.loans = []; }
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
@@ -16438,6 +16474,38 @@ function zhPendDraw() {
       <td style="width:38%;">${x.status === "cancelled" ? `<span class="zx-tag zx-bad">${escapeHtml(x.err || "Deleted in Zoho")}</span> <button class="btn btn-gray btn-sm" onclick="zhBack(${x.id})">Back to waiting</button>`
         : (x.err ? `<span class="zx-tag zx-bad">Zoho: ${escapeHtml(x.err)}</span> <button class="btn btn-gray btn-sm" onclick="zhBack(${x.id})">Change</button>` : `<span class="zx-tag zx-app">Waiting for Zoho link</span>`)}</td></tr>`).join("")}</table></div>`;
 }
+// Staff loans and advances paid from the bank or cash: one journal each.
+function zhLoansDraw() {
+  const el = document.getElementById("zh-loans"), L = ZH.loans || [];
+  if (!L.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="zh-sup" style="margin-top:14px;"><b>${L.length} staff loan${L.length === 1 ? "" : "s"} / advance${L.length === 1 ? "" : "s"} not in Zoho</b> <span class="sub" style="display:inline;">- from Payroll > Loans, paid from ADCB or Cash; each goes as Employee Advance</span>
+    <table class="pc-table" style="margin-top:6px;"><tbody>${L.map(x => `<tr><td style="width:90px;">${pcDate(x.date)}</td><td class="l">${escapeHtml(x.who)}${x.err ? `<span class="sub" style="color:#B7322A;">Zoho: ${escapeHtml(x.err)}</span>` : ""}</td><td style="width:90px;">${escapeHtml(x.paid_from)}</td><td class="n" style="width:110px;">${pcMoney(x.amount)}</td></tr>`).join("")}</tbody></table>
+    <div style="text-align:right;margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="zhLoansSend(this)" ${ZH.connected ? "" : "disabled"}>Send ${L.length} to Zoho</button></div></div>`;
+}
+async function zhLoansSend(btn) {
+  btn.disabled = true;
+  try { const d = await apiCall("/store/zoho/loans/send", { method: "POST", body: "{}" }); await zhLoad();
+        showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} loan${d.sent === 1 ? "" : "s"} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; }
+}
+// Suppliers: portal master, linked one by one to Zoho vendors - never guessed.
+async function zhSupLoad(match) {
+  const body = document.getElementById("zh-sup-body");
+  if (match) body.innerHTML = `<tr><td colspan="3" class="sub" style="padding:12px;">Reading Zoho's vendors...</td></tr>`;
+  let d; try { d = await apiCall(`/store/zoho/suppliers?match=${match ? 1 : 0}`); } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
+  document.getElementById("zh-sup-n").textContent = `${d.linked} of ${d.rows.length} linked${d.connected ? "" : " - connect Zoho to match"}`;
+  body.innerHTML = d.rows.map(r => `<tr><td class="l">${escapeHtml(r.name)}${r.err ? `<span class="sub" style="color:#B7322A;">Zoho: ${escapeHtml(r.err)}</span>` : ""}</td><td>${escapeHtml(r.trn || "-")}</td>
+    <td class="l">${r.zoho_id ? `<span class="zx-tag zx-ok">Linked ✓</span> <button class="btn btn-gray btn-sm" onclick="zhSupDo(${r.id},'unlink')">Unlink</button>`
+      : (r.candidates.length ? `<select id="zh-sc-${r.id}">${r.candidates.map(c => `<option value="${escapeAttr(c.id)}">${escapeHtml(c.name)}</option>`).join("")}</select> <button class="btn btn-gray btn-sm" onclick="zhSupDo(${r.id},'link')">Link</button> ` : "")
+        + (d.connected ? `<button class="btn btn-gray btn-sm" onclick="zhSupDo(${r.id},'create')">Create in Zoho</button>` : `<span class="sub" style="display:inline;">Not linked</span>`)}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="sub" style="padding:12px;">No suppliers yet.</td></tr>`;
+}
+async function zhSupDo(id, what) {
+  if (what === "create" && !confirm("Create this supplier as a new vendor in Zoho? Only if it is not in Zoho under another name.")) return;
+  const body = what === "link" ? JSON.stringify({ zoho_id: document.getElementById(`zh-sc-${id}`).value }) : "{}";
+  try { await apiCall(`/store/zoho/suppliers/${id}/${what}`, { method: "POST", body }); await zhSupLoad(0); showStatus("zh-status", "ok", what === "create" ? "Created in Zoho and linked." : (what === "link" ? "Linked - its details were copied to Zoho." : "Unlinked.")); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
 async function zhRetry() {
   try { const d = await apiCall("/store/zoho/retry", { method: "POST", body: "{}" }); await zhLoad();
         showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} sent to Zoho.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
@@ -16454,12 +16522,19 @@ function zhFlags(r) {
   if (!p.account || !okList.includes(p.account)) out.push(r.kind === "received" ? "Pick where it came from" : "Pick account");
   if (zhProjectAcc(p.account) && !(p.site || "").trim()) out.push("Pick project");
   if (r.vat && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT without TRN");
+  if (r.changed) out.push("Correct it in Zoho first");
   return out;
+}
+function zhShort(a) {
+  // "01. Preliminaries Including Mobilization › Authority Payments" -> "01 › Authority Payments"
+  a = a.replace(/^Office › /, "");
+  const m = a.match(/^(\d{2})\.[^›]*› (.+)$/);
+  return m ? `${m[1]} › ${m[2]}` : a;
 }
 function zhOptions(r, cur) {
   const groups = ZH.groups.filter(g => r.kind === "received" ? g.received : !g.received);
   return `<option value="">- pick -</option>` + groups.map(g => `<optgroup label="${escapeAttr(g.group)}">` +
-    g.accounts.map(a => `<option value="${escapeAttr(a)}"${a === cur ? " selected" : ""}>${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("") + `</optgroup>`).join("");
+    g.accounts.map(a => `<option value="${escapeAttr(a)}"${a === cur ? " selected" : ""} title="${escapeAttr(a)}">${escapeHtml(zhShort(a))}</option>`).join("") + `</optgroup>`).join("");
 }
 function zhShown() {
   const b = document.getElementById("zh-book").value, q = document.getElementById("zh-q").value.trim().toLowerCase();
@@ -16467,11 +16542,11 @@ function zhShown() {
 }
 function zhDraw() {
   if (!ZH) return;
-  zhConnDraw(); zhPendDraw();
+  zhConnDraw(); zhPendDraw(); zhLoansDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
   document.getElementById("zh-stats").innerHTML =
-    `<div class="pc-stat"><span>Waiting</span><b>${rows.length} line${rows.length === 1 ? "" : "s"} · AED ${pcMoney(rows.reduce((a, r) => a + r.amount, 0))}</b></div>
+    `<div class="pc-stat"><span>Waiting - ${rows.length} line${rows.length === 1 ? "" : "s"}</span><b>Paid ${pcMoney(rows.filter(r => r.kind !== "received").reduce((a, r) => a + r.amount, 0))}${rows.some(r => r.kind === "received") ? ` · In ${pcMoney(rows.filter(r => r.kind === "received").reduce((a, r) => a + r.amount, 0))}` : ""}</b></div>
      <div class="pc-stat${fix ? " hand neg" : ""}"><span>Fix first (red)</span><b>${fix} line${fix === 1 ? "" : "s"}</b></div>
      <div class="pc-stat hand"><span>Approved this month</span><b>${ZH.sent_month} line${ZH.sent_month === 1 ? "" : "s"}</b></div>`;
   document.getElementById("zh-body").innerHTML = rows.map(r => {
@@ -16483,11 +16558,11 @@ function zhDraw() {
       : `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">`);
     return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
       <td>${escapeHtml(r.book_label)}</td><td>${pcDate(r.date)}</td>
-      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
+      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
       <td class="l">${escapeHtml(r.supplier || "-")}</td><td>${site}</td>
-      <td class="l"><select onchange="zhSet(${r.id},'account',this.value)">${zhOptions(r, p.account)}</select></td>
+      <td class="l"><select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select></td>
       <td>${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
-      <td><div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button></div></td></tr>`;
+      <td><div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
   }).join("") || `<tr><td colspan="10" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
   const n = rows.filter(r => ZH_PICK[r.id].on).length;
   document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhFlags(r).length).length;
@@ -16518,6 +16593,25 @@ async function zhSkip(id) {
   if (!why || !why.trim()) return;
   try { await apiCall("/store/zoho/skip", { method: "POST", body: JSON.stringify({ ids: [id], reason: why.trim() }) }); await zhLoad(); showStatus("zh-status", "ok", "Marked not for Zoho."); }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+// A line changed after it went to Zoho: the chief accountant makes the same
+// change in Zoho, then confirms here. Nothing is posted again.
+function zhCorrected(id) {
+  const r = ZH.rows.find(x => x.id === id); if (!r) return;
+  const ov = document.createElement("div"); ov.className = "zx-modal";
+  ov.innerHTML = `<div class="zx-box"><h3 style="margin:0 0 6px;">Corrected in Zoho?</h3>
+    <div style="margin-bottom:12px;">${escapeHtml(r.description)} - now <b>AED ${pcMoney(r.amount)}</b>, dated ${pcDate(r.date)}${r.zoho_ref ? ` (${escapeHtml(r.zoho_ref)})` : ""}.</div>
+    <div class="sub" style="display:block;">Press Yes only after the entry in Zoho shows this amount and date. Nothing is sent again.</div>
+    <div class="status-msg" id="zx-msg" style="margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;"><button class="btn btn-gray" id="zx-no">Not yet</button><button class="btn btn-primary" id="zx-yes">Yes, Zoho matches</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#zx-no").onclick = () => ov.remove();
+  ov.querySelector("#zx-yes").onclick = async (e) => {
+    e.target.disabled = true;
+    try { await apiCall("/store/zoho/approve", { method: "POST", body: JSON.stringify({ lines: [{ id, corrected: true }] }) });
+          ov.remove(); await zhLoad(); showStatus("zh-status", "ok", "Recorded as corrected in Zoho."); }
+    catch (err) { showStatus("zx-msg", "err", errText(err)); e.target.disabled = false; }
+  };
 }
 async function zhExport(kind) {
   await refreshDownloadToken();
@@ -17065,19 +17159,43 @@ function invDrawList() {
     const tag = cx ? `<span class="inv-tag cx" title="${escapeAttr(r.cancel_reason)}">Cancelled</span>`
               : (pro && r.converted_to_id ? `<a href="#" class="inv-tag conv" title="Open the tax invoice made from it" onclick="event.preventDefault(); openInvoice(${r.converted_to_id}, 'tax')">Invoiced &rsaquo;</a>`
                  : (!pro && r.from_proforma_id ? `<a href="#" class="inv-tag from" title="Open the proforma it was made from" onclick="event.preventDefault(); openInvoice(${r.from_proforma_id}, 'proforma')">from proforma &rsaquo;</a>` : ""));
+    const zmay = !pro && (CURRENT_ROLE === "admin" || (MY_SCREENS || []).includes("accounts_zoho"));
+    const ztag = !zmay ? "" : (r.zoho === "sent" ? (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Void in Zoho</span>` : `<span class="zx-tag zx-ok" title="Released to Zoho">In Zoho ✓</span>`)
+      : (cx ? "" : (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Not released</span>` : `<span class="zx-tag zx-skip" title="Held - goes to Zoho when released">Held</span>`)));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
-      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag}</td><td>${accDmy(r.date)}</td>
+      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}</td><td>${accDmy(r.date)}</td>
       <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no && !(r.project || "").startsWith(r.project_no) ? [r.project_no, r.project].filter(Boolean).join(" - ") : (r.project || r.project_no || ""))}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})" title="Opens it with PDF, Excel, Print and Share">Preview</button>${cx ? "" :
         `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
-          <button type="button" onclick="hrMenuClose(); invEdit(${r.id})">Edit</button>
+          ${zmay && r.zoho !== "sent" ? `<button type="button" onclick="hrMenuClose(); invRelease(${r.id})">Release to Zoho…</button>` : ""}
+          ${r.zoho === "sent" ? "" : `<button type="button" onclick="hrMenuClose(); invEdit(${r.id})">Edit</button>`}
           ${pro && !r.converted_to_id ? `<button type="button" onclick="hrMenuClose(); invConvert(${r.id})">Make tax invoice from this</button>` : ""}
           <button type="button" onclick="hrMenuClose(); invCopy(${r.id})">New one like this</button>
           <hr><button type="button" class="danger" onclick="hrMenuClose(); invCancel(${r.id})">Cancel ${pro ? "proforma" : "invoice"}</button></div></span>`}</td></tr>`;
   }).join("") || `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">No ${pro ? "proforma invoices" : "tax invoices"} yet.</td></tr>`;
   document.getElementById("inv-foot").innerHTML = live.length ? `<tr><td class="txt" colspan="4">TOTAL (not counting cancelled)</td>
     <td class="n">${accMoney(sum("subtotal"))}</td><td class="n">${accMoney(sum("vat"))}</td><td class="n">${accMoney(sum("total"))}</td><td></td></tr>` : "";
+}
+// Release a held tax invoice to Zoho: admin or the chief accountant, with the
+// income account it belongs to. It lands in the VAT quarter of its own date.
+async function invRelease(id) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  let acc; try { acc = await apiCall("/store/zoho/invoice/accounts"); } catch (e) { showStatus("inv-status", "err", errText(e)); return; }
+  const ov = document.createElement("div"); ov.className = "zx-modal";
+  ov.innerHTML = `<div class="zx-box"><h3 style="margin:0 0 6px;">Release ${escapeHtml(r.number)} to Zoho</h3>
+    <div class="sub" style="display:block;margin-bottom:12px;">${escapeHtml(r.client)} · AED ${accMoney(r.total)} incl. VAT · dated ${accDmy(r.date)} - it falls in the VAT quarter of that date.</div>
+    <label class="pc-f" style="display:flex;"><span>Income account in Zoho</span><select id="zx-inc">${acc.accounts.map(a => `<option${a === acc.default ? " selected" : ""}>${escapeHtml(a)}</option>`).join("")}</select></label>
+    <div class="status-msg" id="zx-msg" style="margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;"><button class="btn btn-gray" id="zx-no">Cancel</button><button class="btn btn-primary" id="zx-yes">Release to Zoho</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#zx-no").onclick = () => ov.remove();
+  ov.querySelector("#zx-yes").onclick = async (e) => {
+    e.target.disabled = true;
+    try { const d = await apiCall(`/store/zoho/invoice/${id}/release`, { method: "POST", body: JSON.stringify({ account: ov.querySelector("#zx-inc").value }) });
+          ov.remove(); await invLoad(); showStatus("inv-status", "ok", `${r.number} is in Zoho now${d.label === "Found in Zoho" ? " (it was already there - linked)" : ""}.`); }
+    catch (err) { showStatus("zx-msg", "err", errText(err)); e.target.disabled = false; }
+  };
 }
 function invDrawLines() {
   document.getElementById("inv-lines").innerHTML = INV_LINES.map((l, i) => `<tr>
@@ -18820,7 +18938,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=d23e2bb526"></script>
+<script src="/portal/help/guides.js?v=15983bc318"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

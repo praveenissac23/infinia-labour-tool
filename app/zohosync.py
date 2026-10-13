@@ -253,7 +253,7 @@ def queue(db: Session = Depends(get_db), user: models.User = ZG):
     sent = (db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "sent"]),
                                               models.PettyCash.approved_at.isnot(None)).all())
     sent_month = [x for x in sent if x.approved_at and x.approved_at.date() >= month_start]
-    pend = (db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "cancelled"]))
+    pend = (db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "sending", "cancelled"]))
               .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
     pending = [{"id": x.id, "book_label": BOOKS.get(x.book or "site", x.book), "date": x.on_date.isoformat(),
                 "description": x.description or "", "amount": round((x.paid or 0) or (x.received or 0), 2),
@@ -278,6 +278,17 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
     for ln in lines:
         x = db.get(models.PettyCash, int(ln.get("id") or 0))
         if not x or (x.zoho_status or "") not in ("", "changed"):
+            continue
+        if x.zoho_status == "changed":
+            # Already in Zoho once: never posted a second time. Only the
+            # Corrected in Zoho button (corrected=true) clears it.
+            if not ln.get("corrected"):
+                refused.append({"id": x.id, "why": "Changed after Zoho - correct it in Zoho, then press Corrected in Zoho"})
+                continue
+            x.zoho_status = "sent" if (x.zoho_id or "") else "inzoho"
+            x.zoho_ref = ((x.zoho_ref or "").split(" · corrected")[0] + f" · corrected in Zoho {now:%d %b}")[:200]
+            x.approved_by, x.approved_at = user.id, now
+            M.log_action(db, user.id, "zoho_corrected", f"petty cash #{x.id} {x.description} confirmed corrected in Zoho")
             continue
         if "site" in ln and str(ln.get("site") or "").strip() and not (x.site or "").strip():
             x.site = str(ln["site"]).strip()[:40]
@@ -312,7 +323,7 @@ def retry(payload: dict = Body(default={}), db: Session = Depends(get_db), user:
     if not zohoapi.connected(db):
         raise HTTPException(status_code=400, detail="Zoho is not connected yet - press Connect Zoho.")
     ids = [int(i) for i in (payload.get("ids") or [])]
-    q = db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "approved")
+    q = db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "sending"]))
     rows = [x for x in q.all() if not ids or x.id in ids]
     sent, failed = zohoapi.push_many(db, rows, user)
     return {"ok": True, "sent": sent, "failed": failed}
@@ -349,7 +360,11 @@ def mark(payload: dict = Body(...), db: Session = Depends(get_db), user: models.
         x = db.get(models.PettyCash, int(i))
         if not x:
             continue
+        if st == "" and ((x.zoho_id or "") and x.zoho_status in ("sent", "changed", "sending")):
+            raise HTTPException(status_code=400, detail=f"PC-{x.id} is in Zoho - putting it back to waiting would send it twice.")
         x.zoho_status = st
+        if st:
+            x.zoho_err = ""
         if "ref" in payload:
             x.zoho_ref = str(payload.get("ref") or "")[:200]
         n += 1
@@ -372,11 +387,13 @@ def export_queue(token: str, format: str = "excel", book: str = "", db: Session 
     out = [{"Book": r["book_label"], "Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Description": r["description"],
             "Supplier": r["supplier"] or "-", "Project": r["site"] or "-", "Zoho account": r["account"] or "-",
             "VAT": ("Yes" + (f" ({r['trn']})" if r["trn"] else "")) if r["vat"] else "No",
-            "Amount (AED)": r["amount"], "To fix": ", ".join(r["flags"]) or "-"} for r in rows]
+            "Paid (AED)": "" if r["kind"] == "received" else r["amount"],
+            "Received (AED)": r["amount"] if r["kind"] == "received" else "",
+            "To fix": ", ".join(r["flags"]) or "-"} for r in rows]
     title = "Petty cash - waiting for Zoho"
     sub = (f"{len(rows)} line{'' if len(rows) == 1 else 's'}" + (f" | {BOOKS[book]} book" if book in BOOKS else " | all books")
            + f" | from {_start(db):%d %b %Y} | As at {M._dubai_today():%d %b %Y}")
-    money = ["Amount (AED)"]
+    money = ["Paid (AED)", "Received (AED)"]
     if format == "view":
         url = f"/export/accounts/zoho?book={quote(book)}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, out, url, url, money_cols=money)
@@ -387,3 +404,56 @@ def export_queue(token: str, format: str = "excel", book: str = "", db: Session 
     return StreamingResponse(export_web.build_store_report_excel(title, out, sub, money_cols=money),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+
+
+# ---- staff loans and advances ---------------------------------------------------
+
+def _loans_waiting(db):
+    start = _start(db)
+    return (db.query(models.StaffLoan).filter(models.StaffLoan.paid_from.in_(["ADCB", "Cash"]),
+                                              models.StaffLoan.taken_on >= start)
+              .filter((models.StaffLoan.zoho_status == "") | (models.StaffLoan.zoho_status.is_(None)) | (models.StaffLoan.zoho_status == "sending"))
+              .order_by(models.StaffLoan.taken_on, models.StaffLoan.id).all())
+
+
+@router.get("/store/zoho/loans")
+def loans(db: Session = Depends(get_db), user: models.User = ZG):
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    rows = []
+    for l in _loans_waiting(db):
+        e = emps.get(l.employee_id)
+        rows.append({"id": l.id, "date": l.taken_on.isoformat(), "who": f"{e.emp_no} {e.name}" if e else "", "amount": round(l.amount or 0, 2),
+                     "paid_from": l.paid_from, "err": "" if (l.zoho_err or "").startswith("sending@") else (l.zoho_err or "")})
+    return {"rows": rows}
+
+
+@router.post("/store/zoho/loans/send")
+def send_loans(payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = ZG):
+    import zohoapi
+    if not zohoapi.connected(db):
+        raise HTTPException(status_code=400, detail="Zoho is not connected yet - press Connect Zoho.")
+    ids = {int(i) for i in (payload.get("ids") or [])}
+    emps = {e.id: e for e in db.query(models.Employee).all()}
+    sent, failed = 0, []
+    for l in _loans_waiting(db):
+        if ids and l.id not in ids:
+            continue
+        unsure = bool(l.zoho_err)
+        if l.zoho_status is None:
+            l.zoho_status = ""
+            db.commit()
+        if not zohoapi.claim(db, models.StaffLoan, l, ("",)):
+            continue
+        try:
+            zid = zohoapi.find_existing(db, f"LN-{l.id}", [("journals", "journals", "journal_id", "reference_number")]) if unsure else ""
+            l.zoho_id = zid or zohoapi.push_loan(db, l, emps.get(l.employee_id))
+            l.zoho_status, l.zoho_err = "sent", ""
+            sent += 1
+        except Exception as e:
+            l.zoho_status = ""
+            l.zoho_err = zohoapi.fail_text(e)
+            failed.append({"id": l.id, "why": l.zoho_err})
+        db.commit()
+    if sent:
+        M.log_action(db, user.id, "zoho_loans", f"{sent} staff loan(s) sent to Zoho")
+    return {"ok": True, "sent": sent, "failed": failed}
