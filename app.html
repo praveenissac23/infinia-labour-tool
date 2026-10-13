@@ -1476,7 +1476,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="6eb6ae1e008f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="e23e6e9f1747";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -16127,7 +16127,7 @@ async function zhLoad() {
   try {
     if (!ZH_SITES) { try { ZH_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { ZH_SITES = []; } }
     ZH = await apiCall("/store/zoho/queue");
-    ZH.conn = await apiCall("/settings/zoho/status");
+    ZH.conn = await apiCall("/store/zoho/link/status");
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
@@ -16151,22 +16151,22 @@ function zhConnDraw() {
     <button class="btn btn-gray" onclick="zhKeys()">Save</button><button class="btn btn-primary" onclick="zhConnect()" ${c.has_keys ? "" : "disabled"}>Connect Zoho</button></div>`;
 }
 async function zhKeys() {
-  try { await apiCall("/settings/zoho/keys", { method: "POST", body: JSON.stringify({ client_id: document.getElementById("zh-cid").value, client_secret: document.getElementById("zh-sec").value }) });
-        ZH.conn = await apiCall("/settings/zoho/status"); zhConnDraw(); showStatus("zh-status", "ok", "Saved - now press Connect Zoho."); }
+  try { await apiCall("/store/zoho/link/keys", { method: "POST", body: JSON.stringify({ client_id: document.getElementById("zh-cid").value, client_secret: document.getElementById("zh-sec").value }) });
+        ZH.conn = await apiCall("/store/zoho/link/status"); zhConnDraw(); showStatus("zh-status", "ok", "Saved - now press Connect Zoho."); }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 async function zhConnect() {
-  try { const d = await apiCall("/settings/zoho/start", { method: "POST" }); location.href = d.url; }
+  try { const d = await apiCall("/store/zoho/link/start", { method: "POST" }); location.href = d.url; }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 async function zhDisconnect() {
   if (!confirm("Disconnect Zoho? Approved lines will wait here until it is connected again.")) return;
-  try { await apiCall("/settings/zoho/disconnect", { method: "POST" }); zhLoad(); } catch (e) { showStatus("zh-status", "err", errText(e)); }
+  try { await apiCall("/store/zoho/link/disconnect", { method: "POST" }); zhLoad(); } catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 async function zhTest() {
   const el = document.getElementById("zh-test"); el.innerHTML = `<div class="sub" style="margin-top:6px;">Checking...</div>`;
   try {
-    const d = await apiCall("/settings/zoho/test");
+    const d = await apiCall("/store/zoho/link/test");
     const bad = [...d.missing_boxes, ...d.accounts_not_in_zoho];
     el.innerHTML = `<div style="margin-top:6px;">Link works - ${d.projects} projects read.${bad.length ? ` <span class="zx-tag zx-bad">Not found in Zoho</span> ${bad.map(escapeHtml).join(", ")} - lines with these will be refused until the name matches.` : " Every account on the list was found in Zoho."}</div>`;
   } catch (e) { el.innerHTML = `<div class="zx-tag zx-bad" style="margin-top:6px;">${escapeHtml(errText(e))}</div>`; }

@@ -38,7 +38,7 @@ ZG = Depends(M.require_any_screen(RIGHT))
 SCOPE = "ZohoBooks.fullaccess.all"
 ORG_DEFAULT = "904498653"           # INFINIA CONTRACTING LLC
 PUBLIC = "https://app.infinia.ae"
-REDIRECT = PUBLIC + "/settings/zoho/callback"
+REDIRECT = PUBLIC + "/store/zoho/link/callback"
 
 # The Zoho account each book pays through.
 BOOK_ACCOUNT = {"site": "Site Petty Cash", "pro": "Jomon Petty Cash", "office": "Company Petty Cash",
@@ -313,7 +313,7 @@ def check_deleted(db, force=False):
 
 # ---- connect -------------------------------------------------------------
 
-@router.get("/settings/zoho/status")
+@router.get("/store/zoho/link/status")
 def status(db: Session = Depends(get_db), user: models.User = ZG):
     out = {"connected": connected(db), "has_keys": bool(_get(db, "client_id") and _get(db, "client_secret")),
            "org": org(db), "org_name": _get(db, "org_name"), "by": _get(db, "connected_by"), "at": _get(db, "connected_at"),
@@ -321,7 +321,7 @@ def status(db: Session = Depends(get_db), user: models.User = ZG):
     return out
 
 
-@router.post("/settings/zoho/keys")
+@router.post("/store/zoho/link/keys")
 def keys(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
     """The Client ID and Secret from Zoho's API console (a Server-based
     Application with the portal's address as its redirect)."""
@@ -334,7 +334,7 @@ def keys(payload: dict = Body(...), db: Session = Depends(get_db), user: models.
     return {"ok": True}
 
 
-@router.post("/settings/zoho/start")
+@router.post("/store/zoho/link/start")
 def start(db: Session = Depends(get_db), user: models.User = ZG):
     """The address of Zoho's 'allow the portal' page."""
     if not (_get(db, "client_id") and _get(db, "client_secret")):
@@ -346,7 +346,7 @@ def start(db: Session = Depends(get_db), user: models.User = ZG):
     return {"url": _accounts_host(db) + "/oauth/v2/auth?" + urllib.parse.urlencode(q)}
 
 
-@router.get("/settings/zoho/callback")
+@router.get("/store/zoho/link/callback")
 def callback(request: Request, code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
     back = PUBLIC + "/?p=accounts#zoho"
     saved = (_get(db, "oauth_state") or "||0").split("|")
@@ -384,7 +384,7 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "",
     return RedirectResponse(back + "&zoho=connected")
 
 
-@router.post("/settings/zoho/disconnect")
+@router.post("/store/zoho/link/disconnect")
 def disconnect(db: Session = Depends(get_db), user: models.User = ZG):
     _put(db, "refresh", "")
     _TOKEN.update(value="", until=0)
@@ -393,7 +393,7 @@ def disconnect(db: Session = Depends(get_db), user: models.User = ZG):
     return {"ok": True}
 
 
-@router.get("/settings/zoho/test")
+@router.get("/store/zoho/link/test")
 def test(db: Session = Depends(get_db), user: models.User = ZG):
     """Reads the accounts the portal will post to - proves the link and
     shows any name Zoho does not have."""
