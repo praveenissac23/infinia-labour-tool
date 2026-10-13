@@ -486,6 +486,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .zh-foot span { color: #6b625a; font-size: 12.5px; }
+  .zh-conn { border: 1px solid #ECE6DF; border-radius: 10px; padding: 12px 14px; margin: 12px 0 2px; background: #FCFAF7; font-size: 13px; }
+  .zh-conn.ok { border-color: #CDE8D3; background: #F3FAF4; } .zh-conn b.ok { color: #2E7D32; }
+  .zh-conn ol { margin: 6px 0 8px 18px; padding: 0; line-height: 1.7; } .zh-conn code { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: 1px 5px; }
+  .zh-conn .zh-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .zh-conn input { height: 34px; width: 260px; }
+  .zh-pend { border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: 13px; }
+  .zh-pend table { width: 100%; border-collapse: collapse; margin-top: 6px; } .zh-pend td { padding: 5px 6px; border-top: 1px solid #F3DCD8; }
   @media (max-width: 1100px) { .pc-form.vat { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 1100px) { .pc-form { grid-template-columns: 1fr 1fr; } .pc-kind, .pc-wide, .pc-go { grid-column: 1 / -1; } .pc-stats { grid-template-columns: 1fr 1fr; } }
   .fs-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; align-items: start; }
@@ -2950,12 +2957,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pc-head">
               <div class="pc-title">
                 <h2 style="margin:0;">Send to Zoho</h2>
-                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option></select></label>
+                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option><option value="naveen">Naveen</option><option value="praveen">Praveen</option></select></label>
                 <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Description, supplier, project" style="width:190px;" oninput="zhDraw()"></label>
               </div>
               <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="zhExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zhExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zhExport('excel')">Export Excel</button></div></div>
             </div>
+            <div class="zh-conn" id="zh-conn"></div>
             <div class="pc-stats" id="zh-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
+            <div id="zh-pending"></div>
             <div class="status-msg" id="zh-status"></div>
             <div class="grid-wrap" style="max-height:none;">
               <table class="pc-table zh-table">
@@ -15894,11 +15903,15 @@ function pcZohoTag(r) {
   if (z === "sent" || z === "inzoho") return `<span class="zx-tag zx-ok" title="${escapeAttr(r.zoho_account || "")}">In Zoho ✓</span>${r.zoho_ref ? `<span class="sub">${escapeHtml(r.zoho_ref)}</span>` : ""}`;
   if (z === "approved") return `<span class="zx-tag zx-app" title="${escapeAttr(r.zoho_account || "")}">Approved ✓</span>`;
   if (z === "changed") return `<span class="zx-tag zx-bad">Changed - update Zoho</span>`;
+  if (z === "cancelled") return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err || "")}">Deleted in Zoho</span>`;
+  if (z === "approved" && r.zoho_err) return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Approved - not sent</span>`;
   if (z === "skip") return `<span class="zx-tag zx-skip" title="${escapeAttr(r.zoho_ref || "")}">Not for Zoho</span>`;
   return PC && PC.zoho_start && r.date >= PC.zoho_start ? `<span class="zx-tag zx-wait">Waiting approval</span>` : "";
 }
-function pcZohoCol() { return PC && PC.zoho_start && !pcTerms(PC.book).director; }
-function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes(r.zoho || "") && !(MY_SCREENS || []).includes("accounts_zoho"); }
+// Zoho is the chief accountant's work: the column shows only to a login with Send to Zoho.
+function pcZohoMay() { return (MY_SCREENS || []).includes("accounts_zoho"); }
+function pcZohoCol() { return !!(PC && PC.zoho_start && pcZohoMay()); }
+function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes(r.zoho || "") && !pcZohoMay(); }
 
 // ---- Send to Zoho ----------------------------------------------------------
 // Petty cash typed once in the portal; the chief accountant checks the Zoho
@@ -15908,10 +15921,66 @@ async function zhLoad() {
   try {
     if (!ZH_SITES) { try { ZH_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { ZH_SITES = []; } }
     ZH = await apiCall("/store/zoho/queue");
+    ZH.conn = await apiCall("/settings/zoho/status");
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
+  const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
+  if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
   ZH_PICK = {};
   ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, on: !r.flags.length }; });
   zhDraw();
+}
+function zhConnDraw() {
+  const c = ZH.conn || {}, el = document.getElementById("zh-conn");
+  el.classList.toggle("ok", !!c.connected);
+  if (c.connected) {
+    el.innerHTML = `<div class="zh-row" style="margin:0;justify-content:space-between;"><span><b class="ok">✓ Connected to Zoho Books</b> - ${escapeHtml(c.org_name || "Infinia Contracting LLC")}${c.by ? ` · by ${escapeHtml(c.by)}` : ""}${c.at ? `, ${pcDate(c.at.slice(0, 10))}` : ""}. Approved lines go straight to Zoho.</span>
+      <span><button class="btn btn-gray btn-sm" onclick="zhTest()">Check the link</button> <button class="btn btn-gray btn-sm" onclick="zhDisconnect()">Disconnect</button></span></div><div id="zh-test"></div>`;
+    return;
+  }
+  el.innerHTML = `<b>Connect Zoho Books</b> - once, by the Zoho admin. Until then, approved lines wait here.
+    <ol><li>Open <a href="https://api-console.zoho.com" target="_blank" rel="noopener">api-console.zoho.com</a> → <b>Add Client</b> → <b>Server-based Applications</b>.</li>
+    <li>Client Name <code>Infinia Portal</code> · Homepage URL <code>${escapeHtml(c.home || "")}</code> · Authorized Redirect URI <code>${escapeHtml(c.redirect || "")}</code> → <b>Create</b>.</li>
+    <li>Paste the Client ID and Client Secret it shows, then press <b>Connect Zoho</b> and allow.</li></ol>
+    <div class="zh-row"><input type="text" id="zh-cid" placeholder="Client ID (1000....)" autocomplete="off"><input type="password" id="zh-sec" placeholder="${c.has_keys ? "Client Secret (saved)" : "Client Secret"}" autocomplete="new-password">
+    <button class="btn btn-gray" onclick="zhKeys()">Save</button><button class="btn btn-primary" onclick="zhConnect()" ${c.has_keys ? "" : "disabled"}>Connect Zoho</button></div>`;
+}
+async function zhKeys() {
+  try { await apiCall("/settings/zoho/keys", { method: "POST", body: JSON.stringify({ client_id: document.getElementById("zh-cid").value, client_secret: document.getElementById("zh-sec").value }) });
+        ZH.conn = await apiCall("/settings/zoho/status"); zhConnDraw(); showStatus("zh-status", "ok", "Saved - now press Connect Zoho."); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+async function zhConnect() {
+  try { const d = await apiCall("/settings/zoho/start", { method: "POST" }); location.href = d.url; }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+async function zhDisconnect() {
+  if (!confirm("Disconnect Zoho? Approved lines will wait here until it is connected again.")) return;
+  try { await apiCall("/settings/zoho/disconnect", { method: "POST" }); zhLoad(); } catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+async function zhTest() {
+  const el = document.getElementById("zh-test"); el.innerHTML = `<div class="sub" style="margin-top:6px;">Checking...</div>`;
+  try {
+    const d = await apiCall("/settings/zoho/test");
+    const bad = [...d.missing_boxes, ...d.accounts_not_in_zoho];
+    el.innerHTML = `<div style="margin-top:6px;">Link works - ${d.projects} projects read.${bad.length ? ` <span class="zx-tag zx-bad">Not found in Zoho</span> ${bad.map(escapeHtml).join(", ")} - lines with these will be refused until the name matches.` : " Every account on the list was found in Zoho."}</div>`;
+  } catch (e) { el.innerHTML = `<div class="zx-tag zx-bad" style="margin-top:6px;">${escapeHtml(errText(e))}</div>`; }
+}
+function zhPendDraw() {
+  const p = ZH.pending || [], el = document.getElementById("zh-pending");
+  if (!p.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="zh-pend"><b>${p.length} line${p.length === 1 ? "" : "s"} approved but not in Zoho</b>${ZH.connected ? ` <button class="btn btn-gray btn-sm" onclick="zhRetry()">Send again</button>` : " - connect Zoho to send them."}
+    <table>${p.map(x => `<tr><td style="width:62px;">${escapeHtml(x.book_label)}</td><td style="width:80px;">${pcDate(x.date)}</td><td>${escapeHtml(x.description)}</td><td class="n" style="width:90px;">${pcMoney(x.amount)}</td>
+      <td style="width:38%;">${x.status === "cancelled" ? `<span class="zx-tag zx-bad">${escapeHtml(x.err || "Deleted in Zoho")}</span> <button class="btn btn-gray btn-sm" onclick="zhBack(${x.id})">Back to waiting</button>`
+        : (x.err ? `<span class="zx-tag zx-bad">Zoho: ${escapeHtml(x.err)}</span> <button class="btn btn-gray btn-sm" onclick="zhBack(${x.id})">Change</button>` : `<span class="zx-tag zx-app">Waiting for Zoho link</span>`)}</td></tr>`).join("")}</table></div>`;
+}
+async function zhRetry() {
+  try { const d = await apiCall("/store/zoho/retry", { method: "POST", body: "{}" }); await zhLoad();
+        showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} sent to Zoho.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+async function zhBack(id) {
+  try { await apiCall("/store/zoho/mark", { method: "POST", body: JSON.stringify({ ids: [id], status: "", ref: "" }) }); await zhLoad(); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 function zhProjectAcc(a) { return !!ZH && ZH.groups[0].accounts.includes(a); }
 function zhFlags(r) {
@@ -15933,6 +16002,7 @@ function zhShown() {
 }
 function zhDraw() {
   if (!ZH) return;
+  zhConnDraw(); zhPendDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
   document.getElementById("zh-stats").innerHTML =
@@ -15973,7 +16043,8 @@ async function zhApprove() {
   try {
     const d = await apiCall("/store/zoho/approve", { method: "POST", body: JSON.stringify({ lines }) });
     await zhLoad();
-    showStatus("zh-status", d.refused.length ? "err" : "ok", `${d.approved} line${d.approved === 1 ? "" : "s"} approved for Zoho.` + (d.refused.length ? ` ${d.refused.length} not sent: ${d.refused.map(x => x.why).join("; ")}` : ""));
+    const sentTxt = d.connected ? ` ${d.sent} in Zoho now${d.failed.length ? `, ${d.failed.length} refused by Zoho (see the list)` : ""}.` : " They go to Zoho once it is connected.";
+    showStatus("zh-status", d.refused.length || d.failed.length ? "err" : "ok", `${d.approved} line${d.approved === 1 ? "" : "s"} approved.` + sentTxt + (d.refused.length ? ` ${d.refused.length} not approved: ${d.refused.map(x => x.why).join("; ")}` : ""));
   } catch (e) { showStatus("zh-status", "err", errText(e)); go.disabled = false; }
 }
 async function zhSkip(id) {
@@ -16063,7 +16134,7 @@ function pcDraw() {
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>${zc ? `<td>${pcZohoTag(r)}${r.vat ? `<span class="sub">VAT${r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN"}</span>` : ""}</td>` : ""}
-       <td class="pc-act">${pcLocked(r) ? `<span class="sub" title="Approved for Zoho - the chief accountant can change it">Locked - ${r.zoho === "approved" ? "approved" : "in Zoho"}</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+       <td class="pc-act">${pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
      || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
     <td class="n">${pcMoney(d.closing)}</td>${zc ? "<td></td>" : ""}<td></td></tr>`;

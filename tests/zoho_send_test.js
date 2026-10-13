@@ -44,6 +44,7 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  // Send to Zoho
  await a.evaluate(()=>pgTab('zoho')); await a.waitForTimeout(1800);
  ck('Send to Zoho opens', await a.locator('#screen-zoho').isVisible());
+ ck('connect card shown while not connected', (await a.locator('#zh-conn').textContent()).includes('Connect Zoho Books'));
  const q=await a.evaluate(()=>ZH);
  const N0=q.rows.length; ck('seeded lines waiting', N0>=14, N0);
  const sug=Object.fromEntries(q.rows.map(r=>[r.description,r.account]));
@@ -69,7 +70,8 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  const k=await login(b,'amal','pass12345');
  await k.evaluate(()=>pgTab('petty')); await k.waitForTimeout(1200); await k.evaluate(()=>{document.getElementById('pc-month').value='2026-10'; loadPettyCash();}); await k.waitForTimeout(1500);
  const body=await k.locator('#pc-body').textContent();
- ck('store keeper sees Approved and Locked', body.includes('Approved') && body.includes('Locked'), body.slice(0,200));
+ ck('store keeper does not see the Zoho column', !(await k.locator('#pc-head-row').textContent()).includes('Zoho') && !body.includes('Approved'), body.slice(0,200));
+ ck('store keeper sees approved lines locked', body.includes('Locked - checked by accounts'));
  const lockedId=await k.evaluate(()=>PC.rows.find(r=>r.zoho==='approved').id);
  const e403=await k.evaluate(async id=>{ try{ await apiCall('/store/petty-cash/'+id,{method:'DELETE'}); return 'deleted'; }catch(e){return errText(e)} },lockedId);
  ck('store keeper cannot remove an approved line', /chief accountant/.test(e403), e403);
@@ -81,6 +83,9 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  const cq=await c.evaluate(async()=>{ try{ return (await apiCall('/store/zoho/queue')).rows.length; }catch(e){return 'refused '+e.message} });
  ck('chief accountant opens Send to Zoho', typeof cq==='number', cq);
  ck('Send to Zoho tab in his Accounts', await c.evaluate(()=>pgHas('accounts_zoho')));
+ // Naveen's book shows the Zoho column to the admin
+ await a.evaluate(()=>pgTab('petty')); await a.waitForTimeout(800); await a.evaluate(()=>pcBook('naveen')); await a.waitForTimeout(1200);
+ ck('Zoho column on Naveen book for the chief accountant / admin', (await a.locator('#pc-head-row').textContent()).includes('Zoho'));
  // export
  const ex=await a.evaluate(async()=>{ await refreshDownloadToken(); const out={}; for(const f of ['view','pdf','excel']){ const r=await fetch(`${API}/export/accounts/zoho?format=${f}&token=${encodeURIComponent(cachedDownloadToken)}`); out[f]=[r.status,(await r.arrayBuffer()).byteLength]; } return out; });
  ck('preview / PDF / Excel download', Object.values(ex).every(v=>v[0]===200&&v[1]>1500), ex);

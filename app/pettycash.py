@@ -109,7 +109,7 @@ def register(db, month, book="site"):
                     "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "balance": bal,
                     "by": users.get(x.updated_by or x.created_by, ""),
                     "vat": bool(x.vat), "trn": x.trn or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
-                    "zoho_account": x.zoho_account or ""})
+                    "zoho_account": x.zoho_account or "", "zoho_err": x.zoho_err or ""})
     rec = round(sum(r["received"] for r in out), 2)
     paid = round(sum(r["paid"] for r in out), 2)
     by_site = {}
@@ -122,7 +122,7 @@ def register(db, month, book="site"):
     return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
             "opening": opening, "rows": out, "received": rec, "paid": paid,
-            "zoho_start": (M.get_setting(db, "zoho_start") or "2026-10-01") if book in ("site", "pro", "office") else "",
+            "zoho_start": M.get_setting(db, "zoho_start") or "2026-10-01",
             "closing": round(opening + sg * (rec - paid), 2),
             "by_site": [{"site": k, "paid": v} for k, v in sorted(by_site.items(), key=lambda kv: -kv[1])]}
 

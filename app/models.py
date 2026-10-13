@@ -1059,6 +1059,8 @@ class PettyCash(Base):
     zoho_account = Column(String, default="")
     zoho_status = Column(String, default="")
     zoho_ref = Column(String, default="")
+    zoho_id = Column(String, default="")      # "expense:<id>", "journal:<id>", "banktransaction:<id>"
+    zoho_err = Column(String, default="")     # Zoho's refusal, kept to retry; or why it was cancelled
     approved_by = Column(Integer, nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

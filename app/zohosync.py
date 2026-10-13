@@ -34,7 +34,7 @@ from database import get_db
 router = APIRouter()
 RIGHT = "accounts_zoho"
 ZG = Depends(M.require_any_screen(RIGHT))
-BOOKS = {"site": "Site", "pro": "PRO", "office": "Office"}
+BOOKS = {"site": "Site", "pro": "PRO", "office": "Office", "naveen": "Naveen", "praveen": "Praveen"}
 START_DEFAULT = "2026-10-01"
 
 # ---- The accounts on offer ------------------------------------------------
@@ -241,6 +241,11 @@ def heads(user: models.User = ZG):
 
 @router.get("/store/zoho/queue")
 def queue(db: Session = Depends(get_db), user: models.User = ZG):
+    import zohoapi
+    try:
+        zohoapi.check_deleted(db)
+    except Exception:
+        db.rollback()
     learned = _learned(db)
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     rows = [_row(x, learned, users) for x in _waiting(db)]
@@ -248,7 +253,13 @@ def queue(db: Session = Depends(get_db), user: models.User = ZG):
     sent = (db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "sent"]),
                                               models.PettyCash.approved_at.isnot(None)).all())
     sent_month = [x for x in sent if x.approved_at and x.approved_at.date() >= month_start]
-    return {"rows": rows, "groups": GROUPS, "start": _start(db).isoformat(),
+    pend = (db.query(models.PettyCash).filter(models.PettyCash.zoho_status.in_(["approved", "cancelled"]))
+              .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
+    pending = [{"id": x.id, "book_label": BOOKS.get(x.book or "site", x.book), "date": x.on_date.isoformat(),
+                "description": x.description or "", "amount": round((x.paid or 0) or (x.received or 0), 2),
+                "account": x.zoho_account or "", "status": x.zoho_status, "err": x.zoho_err or ""} for x in pend]
+    return {"rows": rows, "groups": GROUPS, "start": _start(db).isoformat(), "pending": pending,
+            "connected": zohoapi.connected(db),
             "waiting": len(rows), "waiting_total": round(sum(r["amount"] for r in rows), 2),
             "to_fix": sum(1 for r in rows if r["flags"]),
             "sent_month": len(sent_month)}
@@ -286,7 +297,25 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
     if done:
         M.log_action(db, user.id, "zoho_approve",
                      f"{len(done)} petty cash line(s) approved for Zoho, AED {sum((x.paid or 0) + (x.received or 0) for x in done):,.2f}")
-    return {"ok": True, "approved": len(done), "refused": refused}
+    sent, failed = 0, []
+    import zohoapi
+    if done and zohoapi.connected(db):
+        sent, failed = zohoapi.push_many(db, done, user)
+    return {"ok": True, "approved": len(done), "refused": refused, "sent": sent, "failed": failed,
+            "connected": zohoapi.connected(db)}
+
+
+@router.post("/store/zoho/retry")
+def retry(payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = ZG):
+    """Send again the approved lines Zoho has not taken yet."""
+    import zohoapi
+    if not zohoapi.connected(db):
+        raise HTTPException(status_code=400, detail="Zoho is not connected yet - press Connect Zoho.")
+    ids = [int(i) for i in (payload.get("ids") or [])]
+    q = db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "approved")
+    rows = [x for x in q.all() if not ids or x.id in ids]
+    sent, failed = zohoapi.push_many(db, rows, user)
+    return {"ok": True, "sent": sent, "failed": failed}
 
 
 @router.post("/store/zoho/skip")
