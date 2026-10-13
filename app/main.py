@@ -12310,6 +12310,26 @@ def list_screens(user: models.User = Depends(auth.get_current_user)):
     return {"screens": ALL_SCREENS, "role_defaults": ROLE_DEFAULTS}
 
 
+@app.get("/permissions/glance")
+def dashboard_glance(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """The dashboard greeting's figures, each only for a login that may see
+    it: workers at work today and on how many sites (attendance), and
+    deliveries on the way (requests)."""
+    perms = effective_permissions(user)
+    out = {"name": ((user.full_name or user.username or "").strip().split() or [""])[0].title()}
+    today = _dubai_today()
+    if "attendance" in perms:
+        rows = db.query(models.DailyRow.am, models.DailyRow.pm, models.DailyRow.site).filter(models.DailyRow.full_date == today).all()
+        at_work = [r for r in rows if "present" in ((r.am or "") + (r.pm or "")).lower()]
+        out["workers"] = len(at_work)
+        out["sites"] = len({(r.site or "").strip() for r in at_work if (r.site or "").strip()})
+        out["day_off"] = bool(rows) and not at_work
+    if "requests" in perms or "approvals" in perms:
+        out["deliveries"] = db.query(models.MaterialRequest).filter(
+            models.MaterialRequest.status.in_(("ordered", "arranging", "lpo_sent", "partial"))).count()
+    return out
+
+
 @app.get("/permissions/me")
 def my_permissions(user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     # job = the Access role the login was given (Store Keeper, PRO...):
