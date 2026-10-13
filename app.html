@@ -979,6 +979,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
      (never narrower than a readable tile) and equal heights, so resizing
      the window reflows whole tiles instead of stretching some and
      squeezing others. */
+  /* Dashboard quick actions: one even grid, four across, the job's own buttons */
+  .dq-card { padding: 18px 20px 20px; }
+  .dq-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .dq-head h2 { margin: 0; font-size: 15px; }
+  .dq-job { font-size: 12px; color: #927068; }
+  .dq-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; }
+  @media (max-width: 1100px) { .dq-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .dq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 420px) { .dq-grid { grid-template-columns: 1fr; } }
+  .dq-tile { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 72px; box-sizing: border-box; padding: 14px;
+             background: #FDF6F5; border: 1px solid #E7CEC9; border-radius: 10px; cursor: pointer; text-align: left; font: inherit;
+             transition: border-color .15s, background .15s, box-shadow .15s; }
+  .dq-tile:hover, .dq-tile:focus-visible { border-color: var(--red); background: #FAEBE8; box-shadow: 0 2px 8px rgba(160, 50, 40, .10); outline: none; }
+  .dq-ico { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
+            background: #fff; border: 1px solid #EBD5D0; color: var(--red); }
+  .dq-ico svg { width: 20px; height: 20px; }
+  .dq-txt { min-width: 0; }
+  .dq-t { font-weight: 700; font-size: 14px; color: #7A3B33; line-height: 1.25; }
+  .dq-s { font-size: 12px; color: #927068; margin-top: 3px; line-height: 1.3; }
+  .dq-empty { grid-column: 1 / -1; color: #927068; font-size: 13px; padding: 6px 2px; }
   .dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-bottom: 16px; }
   @media (max-width: 760px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 520px) { .dash-tiles { grid-template-columns: 1fr; } }
@@ -1393,7 +1413,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="8b470e35a00c";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="ff774e77f428";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -1510,31 +1530,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div id="dash-clock-ampm" class="dash-clock-ampm"></div>
           </div>
 
-          <div class="dash-tiles">
-            <div class="dash-tile" data-screen="attendance" onclick="switchScreen('attendance')">
-              <div class="dash-tile-title">Daily Attendance</div>
-              <div class="dash-tile-sub">Enter today's attendance</div>
-            </div>
-            <div class="dash-tile" data-screen="masterdata" onclick="switchScreen('masterdata')">
-              <div class="dash-tile-title">Master Data</div>
-              <div class="dash-tile-sub">Employees, sites, engineers</div>
-            </div>
-            <div class="dash-tile" data-screen="reports" onclick="switchScreen('reports')">
-              <div class="dash-tile-title">Reports</div>
-              <div class="dash-tile-sub">Summaries &amp; exports</div>
-            </div>
-            <div class="dash-tile" data-screen="adjustments" onclick="switchScreen('combine')">
-              <div class="dash-tile-title">Salary Adjustments</div>
-              <div class="dash-tile-sub">Bonuses &amp; deductions</div>
-            </div>
-            <div class="dash-tile" data-screen="errorcheck" onclick="switchScreen('errorcheck')">
-              <div class="dash-tile-title">Check Before You Pay</div>
-              <div class="dash-tile-sub">Missing days, pay rule, odd hours</div>
-            </div>
-            <div class="dash-tile" data-screen="settings" onclick="switchScreen('settings')">
-              <div class="dash-tile-title">Settings</div>
-              <div class="dash-tile-sub">Password &amp; staff logins</div>
-            </div>
+          <!-- Quick actions: the buttons this login's job uses most, drawn by
+               dashQuick() from DASH_ACTIONS - only what the login may open. -->
+          <div class="card dq-card" id="dash-quick-card">
+            <div class="dq-head"><h2>Quick actions</h2><span class="dq-job" id="dash-quick-job"></span></div>
+            <div class="dq-grid" id="dash-quick"></div>
           </div>
 
           <div class="card">
@@ -1544,52 +1544,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <button class="btn btn-dark" style="padding:2px 10px;" onclick="shiftCalendarCycle('dash', 1)">&#9654;</button>
             </div>
             <div id="dash-calendar" class="dash-calendar"></div>
-          </div>
-
-          <!-- The store's own doors, the same ones the Store screen
-               offers, grouped the same way. Each hides itself if the
-               person cannot open it. -->
-          <div class="card" id="dash-store-card">
-            <h2 style="margin-bottom:4px;">Store &amp; Materials</h2>
-            <div class="dash-store-grid">
-              <div class="store-tile keeper-only" data-screen="store" onclick="dashStoreGo('give')">
-                <div class="store-tile-t">Move Material</div>
-                <div class="store-tile-s">Store to a site, back again, or site to site</div>
-              </div>
-              <div class="store-tile keeper-only" data-screen="store" onclick="dashStoreGo('arrive')">
-                <div class="store-tile-t">Material Arrived</div>
-                <div class="store-tile-s">A delivery has come to the store</div>
-              </div>
-              <div class="store-tile" data-screen="requests" onclick="switchScreen('requests')">
-                <div class="store-tile-t">Material Requests</div>
-                <div class="store-tile-s">Ask the office for material</div>
-              </div>
-              <div class="store-tile" data-screen="approvals" onclick="switchScreen('approvals')">
-                <div class="store-tile-t">Material Approvals</div>
-                <div class="store-tile-s">Approve, order and record deliveries</div>
-              </div>
-              <div class="store-tile" data-screen="requests" data-target="followup" onclick="switchScreen('followup')">
-                <div class="store-tile-t">Order Follow-up</div>
-                <div class="store-tile-s">What is coming, from whom, and who to call</div>
-              </div>
-              <div class="store-tile" data-screen="store" onclick="dashStoreGo('other')">
-                <div class="store-tile-t">Returns &amp; Corrections</div>
-                <div class="store-tile-s">Came back, moved, or wrong number</div>
-              </div>
-            
-              <div class="store-tile" data-screen="store" onclick="dashStoreGo('items')">
-                <div class="store-tile-t">Material List</div>
-                <div class="store-tile-s">Add or change materials and tools</div>
-              </div>
-              <div class="store-tile" data-screen="approvals" onclick="switchScreen('suppliers')">
-                <div class="store-tile-t">Suppliers</div>
-                <div class="store-tile-s">Who we buy from, their TRN and terms</div>
-              </div>
-              <div class="store-tile" data-screen="store" onclick="dashStoreGo('reports')">
-                <div class="store-tile-t">Reports</div>
-                <div class="store-tile-s">Stock, purchases, usage, requests</div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -12662,11 +12616,135 @@ function applySettingsCards() {
   show("signature-card", co); show("company-card", co);
   if (co) { loadCompanySettings(); refreshSignatureState(); }
 }
+// ---- Dashboard: quick actions, by job -------------------------------------
+// Each button opens a page and tab (page, "tab:sub"). A login sees only
+// the ones it may open; its job (the Access role it was given) decides
+// which come first. A job not listed here gets the general order.
+const DQ_ICON = {
+  cal: '<path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+  card: '<path d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM3 10h18M7 15h4"/>',
+  check: '<path d="M9 12l2 2 4-4M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
+  plusminus: '<path d="M5 8h6M8 5v6M13 16h6M5 19L19 5"/>',
+  up: '<path d="M4 17l5-5 4 4 7-7M15 9h5v5"/>',
+  gift: '<path d="M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7c-2-4-6-3-6 0M12 7c2-4 6-3 6 0"/>',
+  people: '<path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.8c2 .7 3.2 2.5 3.5 5.2"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/>',
+  cheque: '<path d="M3 7h18v10H3zM6 11h7M6 14h4M16 13l1.5 1.5L20 12"/>',
+  doc: '<path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9 13h6M9 17h6"/>',
+  cash: '<path d="M3 7h18v10H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 10v4M18 10v4"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  key: '<path d="M14 10a4 4 0 1 0-3.5 4L9 15.5V18H6.5v2.5H4V18l6.4-6.4M17 7.5h.01"/>',
+  box: '<path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/>',
+  truck: '<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
+  inbox: '<path d="M4 4h16v16H4zM4 14h4l1.5 2.5h5L16 14h4M12 6v6M9.5 9.5L12 12l2.5-2.5"/>',
+  undo: '<path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  ok: '<path d="M20 6L9 17l-5-5"/>',
+  cart: '<path d="M3 4h2.5l2.2 11h10.8l2-8H6.5M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/>',
+  shop: '<path d="M4 9l1-5h14l1 5M4 9h16v11H4zM4 9c0 2 3.5 2 4 0 .5 2 3.5 2 4 0 .5 2 3.5 2 4 0 .5 2 4 2 4 0M10 20v-5h4v5"/>',
+  rent: '<path d="M12 8v4l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/>',
+  lock: '<path d="M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>',
+  clip: '<path d="M9 4h6v3H9zM9 5.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-3M9 12h6M9 16h4"/>',
+  site: '<path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6"/>'
+};
+const DASH_ACTIONS = {
+  att:      ["Daily attendance", "Mark today's attendance", "attendance", "attendance", "cal", "attendance"],
+  live:     ["Live card", "Each worker's month so far", "attendance", "livecard", "eye", "livecard"],
+  master:   ["Labour master data", "Workers, sites and rates", "attendance", "masterdata", "site", "masterdata"],
+  cards:    ["Salary cards", "Labour pay for the cycle", "payroll", "labourpay:combine", "card", "combine"],
+  ladj:     ["Labour additions", "Bonuses and deductions", "payroll", "labourpay:adjust", "plusminus", "adjustments"],
+  check:    ["Check before you pay", "Missing days, odd hours", "payroll", "labourpay:errorcheck", "check", "errorcheck"],
+  linc:     ["Labour increments", "Rises and salary history", "payroll", "labourpay:increments", "up", "combine"],
+  lgrat:    ["Labour gratuity", "Gratuity and final settlement", "payroll", "labourpay:gratuity", "gift", "combine"],
+  ocycle:   ["Office salary", "Cycle and salary statements", "payroll", "hrpayroll:cycle", "card", "hrpayroll"],
+  oleave:   ["Office absence", "Leave and absent days", "payroll", "hrpayroll:leave", "cal", "hrpayroll"],
+  oitems:   ["Office additions", "Additions and deductions", "payroll", "hrpayroll:items", "plusminus", "hrpayroll"],
+  oloans:   ["Loans", "Advances and repayments", "payroll", "hrpayroll:loans", "cash", "hrpayroll"],
+  oinc:     ["Office increments", "Rises and salary history", "payroll", "hrpayroll:increments", "up", "hrpayroll"],
+  ograt:    ["Office gratuity", "Gratuity and final settlement", "payroll", "hrpayroll:gratuity", "gift", "hrpayroll"],
+  staff:    ["Staff", "Register, leave and birthdays", "people", "", "people", "people_labour"],
+  expiry:   ["Expiry reminder", "Visas, IDs, permits due", "expiry", "expiry:all", "bell", "expiry"],
+  pdc:      ["PDCs", "Post-dated cheques due", "expiry", "expiry:pdc", "cheque", "pdc"],
+  secq:     ["Security cheques", "Guarantees to collect back", "expiry", "expiry:security", "lock", "security_cheques"],
+  taxinv:   ["Tax invoice", "Raise and list tax invoices", "accounts", "taxinv", "doc", "accounts_invoices"],
+  proforma: ["Proforma invoice", "Quotes before the invoice", "accounts", "proforma", "doc", "accounts_invoices"],
+  petty:    ["Petty cash", "Cash spent and topped up", "accounts", "petty", "cash", "petty_site"],
+  pettypro: ["PRO petty cash", "Cash spent and topped up", "accounts", "petty:pro", "cash", "petty_pro"],
+  projpay:  ["Project payments", "Contract, paid and balance", "accounts", "projects", "chart", "accounts_projects"],
+  projexp:  ["Project expense", "What each project cost", "accounts", "projexp", "chart", "accounts_expense"],
+  creds:    ["Credentials", "Website and portal logins", "accounts", "credentials", "key", "accounts_credentials"],
+  stock:    ["Stock on hand", "What the store holds", "store", "store:home", "box", "store"],
+  give:     ["Move material", "Store to site, or back", "store", "store:give", "truck", "storekeeper"],
+  arrive:   ["Material arrived", "A delivery has come in", "store", "store:arrive", "inbox", "storekeeper"],
+  returns:  ["Returns & corrections", "Came back, lost or wrong", "store", "store:other", "undo", "store"],
+  items:    ["Material list", "Add or change materials", "store", "store:items", "list", "store"],
+  rent:     ["On rent", "Hired equipment and returns", "store", "rentals:hire", "rent", "store"],
+  mreq:     ["Material requests", "Ask the office for material", "store", "requests:requests", "clip", "requests"],
+  appr:     ["Approvals", "Approve and order requests", "store", "requests:approvals", "ok", "approvals"],
+  follow:   ["Order follow-up", "What is coming, who to call", "store", "requests:followup", "phone", "requests"],
+  lpo:      ["Purchase orders", "Raise an LPO", "store", "purchasing:purchase", "cart", "approvals"],
+  lporeg:   ["LPO register", "Every LPO and its status", "store", "purchasing:lporegister", "list", "approvals"],
+  supp:     ["Suppliers", "Who we buy from, TRN, terms", "store", "purchasing:suppliers", "shop", "approvals"],
+  monthly:  ["Monthly report", "Labour month-end report", "reports", "labour:monthly", "chart", "reports"],
+  builder:  ["Report builder", "Cycle reports and exports", "reports", "labour:builder", "list", "reports"],
+  sitecost: ["Site costs", "Material used, per site", "reports", "storerep:site_cost", "chart", "store"],
+  logins:   ["Logins", "Staff logins and passwords", "settings", "logins", "key", "settings_logins"],
+  activity: ["Activity monitor", "Who did what, and when", "settings", "activity", "eye", "activity"]
+};
+// The buttons each job reaches for first - a full row of four per line.
+const DASH_JOBS = {
+  "admin":                ["att", "cards", "check", "ocycle", "appr", "lpo", "expiry", "pdc", "taxinv", "projpay", "projexp", "activity"],
+  "chief accountant":     ["cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "appr", "lporeg", "expiry"],
+  "assistant accountant": ["att", "live", "cards", "ladj", "check", "master", "petty", "staff", "stock", "mreq", "appr", "expiry"],
+  "pro":                  ["expiry", "staff", "oleave", "pettypro", "secq", "pdc", "creds", "att"],
+  "purchase manager":     ["appr", "lpo", "follow", "lporeg", "mreq", "supp", "stock", "sitecost"],
+  "store keeper":         ["give", "arrive", "mreq", "follow", "stock", "returns", "rent", "items"]
+};
+const DASH_ANY = ["att", "live", "cards", "check", "ocycle", "staff", "expiry", "mreq", "appr", "follow", "stock", "give",
+                  "arrive", "lpo", "petty", "taxinv", "projpay", "projexp", "pdc", "monthly", "master", "ladj", "returns", "supp"];
+let MY_JOB = "";
+function dqCan(id) {
+  const a = DASH_ACTIONS[id]; if (!a) return false;
+  const [, , page, hash, , right] = a;
+  if (typeof CURRENT_ROLE !== "undefined" && CURRENT_ROLE === "admin") return true;
+  if (typeof ALL_PAGES === "undefined" || typeof pgSubOk !== "function") return MY_SCREENS.includes(right);
+  if (page === "people") return pgPageOk("people");
+  const cfg = ALL_PAGES[page]; if (!cfg) return false;
+  const [tid, sid] = hash.split(":");
+  const t = cfg.tabs.find(x => x.id === tid); if (!t || t.hidden || !pgTabRightOk(t)) return false;
+  if (!sid) return true;
+  const sb = (t.subs || []).find(x => x.id === sid);
+  return !!sb && pgSubOk(sb);
+}
+function dqGo(id) {
+  const a = DASH_ACTIONS[id]; if (!a) return;
+  if (typeof pgGo === "function") pgGo(a[2], a[3]); else switchScreen(a[5]);
+}
+function dashQuick() {
+  const box = document.getElementById("dash-quick"); if (!box) return;
+  const job = String(MY_JOB || "").trim().toLowerCase();
+  const want = (DASH_JOBS[job] || []).filter(dqCan);
+  const per = DASH_JOBS[job] ? DASH_JOBS[job].length : 8;
+  // Topped up from the general order, so every row is full.
+  for (const id of DASH_ANY) { if (want.length >= per) break; if (!want.includes(id) && dqCan(id)) want.push(id); }
+  const ids = want.length > 4 ? want.slice(0, Math.max(4, want.length - want.length % 4)) : want;
+  box.innerHTML = ids.map(id => { const [t, sub, , , ic] = DASH_ACTIONS[id];
+    return `<button type="button" class="dq-tile" data-dq="${id}" onclick="dqGo('${id}')">
+      <span class="dq-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${DQ_ICON[ic] || ""}</svg></span>
+      <span class="dq-txt"><span class="dq-t">${escapeHtml(t)}</span><span class="dq-s" style="display:block">${escapeHtml(sub)}</span></span>
+    </button>`; }).join("") || `<div class="dq-empty">Nothing to open yet - ask an admin to give this login its rights.</div>`;
+  const j = document.getElementById("dash-quick-job");
+  if (j) j.textContent = job === "admin" ? "For the administrator" : MY_JOB ? "For the " + MY_JOB : "";
+}
 async function applyScreenPermissions(prefetched) {
   try {
     const me = (prefetched && await prefetched) || await apiCall("/permissions/me");
     MY_SCREENS = me.screens || [];
     MY_TABS = Array.isArray(me.tabs) ? me.tabs : null;
+    MY_JOB = me.job || (me.role === "admin" ? "admin" : "");
+    try { dashQuick(); } catch (e) { console.error(e); }
     setTimeout(() => { try { pushAfterLogin(); } catch (e) {} }, 1200);
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
@@ -18051,7 +18129,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=ff23330cd7"></script>
+<script src="/portal/help/guides.js?v=ee0576351c"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

@@ -12253,8 +12253,16 @@ def list_screens(user: models.User = Depends(auth.get_current_user)):
 
 
 @app.get("/permissions/me")
-def my_permissions(user: models.User = Depends(auth.get_current_user)):
-    return {"role": user.role, "screens": effective_permissions(user), "tabs": effective_tabs(user)}
+def my_permissions(user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    # job = the Access role the login was given (Store Keeper, PRO...):
+    # the dashboard puts that job's own buttons first.
+    job = ""
+    if user.role == "admin":
+        job = "admin"
+    elif getattr(user, "access_role_id", None):
+        r = db.query(models.AccessRole).filter(models.AccessRole.id == user.access_role_id).first()
+        job = r.name if r else ""
+    return {"role": user.role, "job": job, "screens": effective_permissions(user), "tabs": effective_tabs(user)}
 
 
 # ---------------------------------------------------------------------

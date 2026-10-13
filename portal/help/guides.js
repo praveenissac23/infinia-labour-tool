@@ -100,6 +100,13 @@ window.HELP_GUIDES = [
       { say: "Choose the reason (resignation, termination...).", el: "#fs-reason" },
       { say: "Check leave days, loan and anything to add or take off. The total updates as you type.", el: "#fs-leave" },
       { say: "Print it with Preview or Export PDF.", el: "#hr-fs-card button[onclick=\"fsOpen('pdf')\"]" }] },
+  { id: "dash-quick", area: "Getting around", title: "The dashboard buttons (Quick actions)",
+    words: "dashboard home quick actions buttons shortcuts tiles start main page my buttons",
+    go: { page: "dashboard", tab: "dashboard" },
+    steps: [
+      { say: "Quick actions are the buttons your job uses most - a store keeper sees store buttons, an accountant sees payroll and accounts.", el: "#dash-quick-card" },
+      { say: "Click a button to go straight to that page and tab.", el: "#dash-quick .dq-tile" }],
+    tip: "Only what your login may open is shown. To change what a login can open, an admin uses Settings > Access." },
   { id: "lab-fs", area: "Workers", title: "How to do a final settlement for a labourer",
     words: "labour labourer worker final settlement gratuity end of service eosb resign leaving cancel visa dues air ticket last wage",
     go: { page: "payroll", tab: "labourpay", sub: "gratuity" },

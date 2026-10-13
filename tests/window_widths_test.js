@@ -22,7 +22,7 @@ const S = require('os').tmpdir() + '/';
           const ws = [...card.querySelectorAll('.store-tile')].filter(t => t.offsetParent !== null && getComputedStyle(t).display !== 'none').map(t => Math.round(t.getBoundingClientRect().width));
           if (ws.length && Math.max(...ws) - Math.min(...ws) > 2) out.push('store section: tiles of different widths ' + [...new Set(ws)].join('/'));
         }
-        for (const g of document.querySelectorAll('.dash-tiles, .dash-store-grid, .store-tiles')) {
+        for (const g of document.querySelectorAll('.dq-grid, .dash-tiles, .dash-store-grid, .store-tiles')) {
           if (g.offsetParent === null) continue;
           const tiles = [...g.children].filter(c => c.offsetParent !== null && getComputedStyle(c).display !== 'none');
           const rows = {};
