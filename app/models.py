@@ -1069,6 +1069,40 @@ class PettyCash(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class BankEntry(Base):
+    """One bank line, entered once in the portal and sent to Zoho:
+    a payment to a supplier / subcontractor (against his bills), a
+    direct expense, money received from a client (against invoices), a
+    bank charge, or a transfer to a petty cash box. Cheques carry the
+    cheque date as their date, as Zoho is kept."""
+    __tablename__ = "bank_entries"
+    id = Column(Integer, primary_key=True)
+    bank = Column(String, default="ADCB")
+    kind = Column(String, default="vendor")      # vendor | expense | customer | charge | transfer
+    on_date = Column(Date, nullable=False, index=True)
+    party = Column(String, default="")           # supplier / client name as in Zoho
+    party_id = Column(String, default="")        # Zoho contact id
+    mode = Column(String, default="Bank Transfer")   # Bank Transfer | Cheque | Credit Card | Cash
+    reference = Column(String, default="")       # ADCB PHUB... or the cheque number
+    docs = Column(Text, default="")              # JSON: bills / invoices paid [{id, number, amount}]
+    account = Column(String, default="")         # expense: the cost head / office account; transfer: where to
+    site = Column(String, default="")
+    amount = Column(Float, default=0.0)
+    vat = Column(Boolean, default=False)
+    trn = Column(String, default="")
+    notes = Column(String, default="")
+    zoho_status = Column(String, default="")     # "" waiting | sent | cancelled
+    zoho_id = Column(String, default="")
+    zoho_ref = Column(String, default="")
+    zoho_err = Column(String, default="")
+    approved_by = Column(Integer, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class CompanyExpiry(Base):
     """Anything else that expires - a vehicle's registration or
     insurance, the trade licence, a tenancy, an equipment certificate.

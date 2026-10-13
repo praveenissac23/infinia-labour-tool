@@ -486,6 +486,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .zh-foot span { color: #6b625a; font-size: 12.5px; }
+  .bk-form { margin-top: 12px; border-top: 1px solid #EFEBE6; padding-top: 12px; }
+  .bk-kinds { margin-bottom: 10px; height: auto; flex-wrap: wrap; } .bk-kinds button { height: 34px; }
+  .bk-grid { display: grid; grid-template-columns: 140px minmax(220px, 2fr) 150px minmax(170px, 1.2fr) 140px; gap: 10px; align-items: end; margin-bottom: 10px; }
+  .bk-grid input, .bk-grid select { width: 100%; height: 36px; }
+  .bk-more { grid-template-columns: minmax(260px, 2fr) 120px 110px 180px 1fr; } .bk-more:empty { display: none; }
+  .bk-grid .bk-wide { grid-column: span 4; }
+  .bk-docs:empty { display: none; } .bk-docs { border: 1px solid #ECE6DF; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; background: #FCFAF7; font-size: 13px; }
+  .bk-docs table { width: 100%; border-collapse: collapse; } .bk-docs td { padding: 4px 6px; border-top: 1px solid #EFEBE6; } .bk-docs input[type=text] { width: 110px; height: 30px; text-align: right; }
+  .bk-stmt { border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: 13px; }
+  .bk-stmt table { width: 100%; border-collapse: collapse; margin-top: 6px; } .bk-stmt td { padding: 5px 6px; border-top: 1px solid #F3DCD8; }
+  @media (max-width: 1100px) { .bk-grid, .bk-more { grid-template-columns: 1fr 1fr; } .bk-grid .bk-wide { grid-column: 1 / -1; } }
   .zh-conn { border: 1px solid #ECE6DF; border-radius: 10px; padding: 12px 14px; margin: 12px 0 2px; background: #FCFAF7; font-size: 13px; }
   .zh-conn.ok { border-color: #CDE8D3; background: #F3FAF4; } .zh-conn b.ok { color: #2E7D32; }
   .zh-conn ol { margin: 6px 0 8px 18px; padding: 0; line-height: 1.7; } .zh-conn code { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: 1px 5px; }
@@ -2951,6 +2962,49 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
+        <!-- ============ BANK (Accounts) ============ -->
+        <div class="screen" id="screen-bank">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title">
+                <h2 style="margin:0;">Bank - ADCB</h2>
+                <label class="pc-f"><span>Month</span><input type="month" id="bk-month" onchange="bkLoad()"></label>
+                <label class="pc-f"><span>Search</span><input type="text" id="bk-q" placeholder="Party, reference, bill" style="width:170px;" oninput="bkDraw()"></label>
+              </div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="bkExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="bkExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="bkExport('excel')">Export Excel</button></div></div>
+            </div>
+            <div class="pc-stats" id="bk-stats"></div>
+            <div id="bk-stmt"></div>
+            <div class="status-msg" id="bk-status"></div>
+            <div class="bk-form" id="bk-form">
+              <div class="pc-kind bk-kinds" id="bk-kind"></div>
+              <div class="bk-grid">
+                <label class="pc-f"><span id="bk-date-l">Date</span><input type="date" id="bk-date"></label>
+                <label class="pc-f bk-party-f"><span id="bk-party-l">Paid to (supplier / subcontractor)</span><input type="text" id="bk-party" list="bk-party-list" autocomplete="off" data-spell="off" oninput="bkParty()" onchange="bkPartyPicked()"><datalist id="bk-party-list"></datalist></label>
+                <label class="pc-f"><span>Payment mode</span><select id="bk-mode" onchange="bkMode()"></select></label>
+                <label class="pc-f"><span id="bk-ref-l">Reference # (ADCB)</span><input type="text" id="bk-ref" maxlength="80" data-spell="off" placeholder="e.g. PHUB726068648"></label>
+                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="bk-amt" placeholder="0.00" oninput="bkSpread()"></label>
+              </div>
+              <div class="bk-grid bk-more" id="bk-more"></div>
+              <div class="bk-docs" id="bk-docs"></div>
+              <div class="bk-grid">
+                <label class="pc-f bk-wide"><span>Notes / project (as you write them in Zoho)</span><input type="text" id="bk-notes" maxlength="300" placeholder="e.g. 913 PC05"></label>
+                <div class="pc-f pc-go" style="align-self:end;"><button class="btn btn-primary" id="bk-save" onclick="bkSave()">Save</button><button class="btn btn-gray" id="bk-cancel" onclick="bkReset()" style="display:none;">Cancel</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="card pc-card">
+            <div class="grid-wrap" style="max-height:none;">
+              <table class="pc-table bk-table">
+                <thead><tr><th style="width:78px;">Date</th><th style="width:118px;">Type</th><th class="l">Paid to / received from</th><th style="width:96px;">Mode</th><th class="l" style="width:150px;">Reference #</th>
+                  <th class="l" style="width:150px;">Bills / invoices</th><th style="width:70px;">Project</th><th class="n" style="width:110px;">Paid out</th><th class="n" style="width:110px;">Received</th><th style="width:120px;">Zoho</th><th style="width:118px;"></th></tr></thead>
+                <tbody id="bk-body"></tbody><tfoot id="bk-foot"></tfoot>
+              </table>
+            </div>
+            <div class="zh-foot" id="bk-sendbar"></div>
+          </div>
+        </div>
+
         <!-- ============ SEND TO ZOHO (Accounts) ============ -->
         <div class="screen" id="screen-zoho">
           <div class="card">
@@ -4559,6 +4613,7 @@ function switchScreen(name) {
   if (name === "projpay") ppLoad();
   if (name === "projexp") pxLoad();
   if (name === "zoho") zhLoad();
+  if (name === "bank") bkLoad();
   if (name === "credentials") crLoad();
   if (name === "expiry") expOpen();
   if (name === "pdc") pdcOpen();
@@ -12549,7 +12604,7 @@ const SCREEN_LABELS = {
   settings: "Settings", activity: "Activity Monitor",
   hrpayroll: "Office HR & Payroll", expiry: "Expiry Reminder", pdc: "PDC Tracker", pettycash: "Petty Cash",
   // A right rather than a screen: who may record stock moving.
-  accounts_invoices: "Tax & proforma invoices", accounts_register: "Cash register", accounts_projects: "Project payment tracker", accounts_expense: "Project expense", accounts_zoho: "Send to Zoho", accounts_credentials: "Credentials",
+  accounts_invoices: "Tax & proforma invoices", accounts_register: "Cash register", accounts_projects: "Project payment tracker", accounts_expense: "Project expense", accounts_zoho: "Send to Zoho", accounts_bank: "Bank", accounts_credentials: "Credentials",
   storekeeper: "Records stock in and out",
 };
 let permsUserId = null;
@@ -15912,6 +15967,201 @@ function pcZohoTag(r) {
 function pcZohoMay() { return (MY_SCREENS || []).includes("accounts_zoho"); }
 function pcZohoCol() { return !!(PC && PC.zoho_start && pcZohoMay()); }
 function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes(r.zoho || "") && !pcZohoMay(); }
+
+// ---- Bank (ADCB) -------------------------------------------------------------
+// Every payment out of the bank and every receipt into it, entered once here
+// and sent to Zoho - a payment to a supplier against his bills, a client's
+// payment against invoices, an expense, a bank charge or a transfer.
+let BK = null, BK_KIND = "vendor", BK_EDIT = null, BK_SITES = null, BK_PARTY_ID = "", BK_DOCS = [], BK_PICK = {}, BK_T = null;
+const BK_LABEL = { vendor: "Paid to (supplier / subcontractor)", customer: "Received from (client)", expense: "Paid to (shop / supplier - optional)", charge: "Bank", transfer: "Transfer" };
+async function bkLoad() {
+  const m = document.getElementById("bk-month");
+  if (!m.value) m.value = pcToday().slice(0, 7);
+  if (!document.getElementById("bk-date").value) document.getElementById("bk-date").value = pcToday();
+  if (!BK_SITES) { try { BK_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { BK_SITES = []; } }
+  try { BK = await apiCall(`/store/bank?month=${encodeURIComponent(m.value)}`); }
+  catch (e) { showStatus("bk-status", "err", errText(e)); return; }
+  document.getElementById("bk-mode").innerHTML = BK.modes.map(x => `<option>${escapeHtml(x)}</option>`).join("");
+  bkKindDraw(); bkDraw(); bkStatement();
+}
+function bkKindDraw() {
+  document.getElementById("bk-kind").innerHTML = Object.entries(BK.kinds).map(([k, l]) => `<button type="button" class="${k === BK_KIND ? "on" : ""}" onclick="bkKind('${k}')">${escapeHtml(l)}</button>`).join("");
+  document.getElementById("bk-party-l").textContent = BK_LABEL[BK_KIND];
+  const pf = document.querySelector(".bk-party-f"); pf.style.visibility = ["charge", "transfer"].includes(BK_KIND) ? "hidden" : "";
+  const more = document.getElementById("bk-more");
+  if (BK_KIND === "expense") {
+    more.innerHTML = `<label class="pc-f"><span>Zoho account</span><select id="bk-acc">${`<option value="">- pick -</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
+      <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">-</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
+      <label class="pc-f"><span>VAT?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="document.getElementById('bk-trn').style.visibility=this.checked?'':'hidden'"> Yes</span></label>
+      <label class="pc-f"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" style="visibility:hidden;"></label><div></div>`;
+  } else if (BK_KIND === "transfer") {
+    more.innerHTML = `<label class="pc-f"><span>Transfer to</span><select id="bk-to">${BK.transfer_to.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></label>`;
+  } else more.innerHTML = "";
+  if (!["vendor", "customer"].includes(BK_KIND)) { BK_DOCS = []; BK_PICK = {}; }
+  bkDocsDraw(); bkMode();
+}
+function bkKind(k) { BK_KIND = k; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; bkKindDraw(); }
+function bkMode() {
+  const chq = document.getElementById("bk-mode").value === "Cheque";
+  document.getElementById("bk-ref-l").textContent = chq ? "Cheque number" : "Reference # (ADCB)";
+  document.getElementById("bk-ref").placeholder = chq ? "e.g. 000318" : "e.g. PHUB726068648";
+  document.getElementById("bk-date-l").textContent = chq ? "Cheque date" : "Date";
+  const btn = document.getElementById("bk-save");
+  btn.textContent = BK_EDIT ? "Save changes" : (BK && BK.may_send && BK.connected ? "Save & send to Zoho" : "Save");
+}
+// Supplier / client from Zoho, as typed.
+function bkParty() {
+  BK_PARTY_ID = "";
+  clearTimeout(BK_T);
+  const q = document.getElementById("bk-party").value.trim();
+  if (!BK.connected || q.length < 2 || !["vendor", "customer", "expense"].includes(BK_KIND)) return;
+  BK_T = setTimeout(async () => {
+    try {
+      const d = await apiCall(`/store/bank/contacts?kind=${BK_KIND === "customer" ? "customer" : "vendor"}&q=${encodeURIComponent(q)}`);
+      BK._contacts = d.contacts;
+      document.getElementById("bk-party-list").innerHTML = d.contacts.map(c => `<option value="${escapeAttr(c.name)}">`).join("");
+    } catch (e) {}
+  }, 300);
+}
+async function bkPartyPicked() {
+  const name = document.getElementById("bk-party").value.trim();
+  const c = (BK._contacts || []).find(x => x.name.toLowerCase() === name.toLowerCase());
+  BK_PARTY_ID = c ? c.id : "";
+  BK_DOCS = []; BK_PICK = {};
+  if (BK_PARTY_ID && ["vendor", "customer"].includes(BK_KIND)) {
+    try { BK_DOCS = (await apiCall(`/store/bank/open?kind=${BK_KIND}&contact_id=${encodeURIComponent(BK_PARTY_ID)}`)).docs; } catch (e) {}
+  }
+  bkSpread();
+}
+// The amount goes against the oldest open bills / invoices first; change any figure.
+function bkSpread() {
+  if (!["vendor", "customer"].includes(BK_KIND) || !BK_DOCS.length) { bkDocsDraw(); return; }
+  if (!BK_EDIT || !Object.keys(BK_PICK).length) {
+    let left = parseFloat((document.getElementById("bk-amt").value || "0").replace(/,/g, "")) || 0;
+    BK_PICK = {};
+    BK_DOCS.slice().sort((a, b) => (a.date || "").localeCompare(b.date || "")).forEach(d => {
+      const v = Math.min(left, d.balance); if (v > 0) { BK_PICK[d.id] = Math.round(v * 100) / 100; left -= v; }
+    });
+  }
+  bkDocsDraw();
+}
+function bkDocsDraw() {
+  const el = document.getElementById("bk-docs");
+  if (!["vendor", "customer"].includes(BK_KIND)) { el.innerHTML = ""; return; }
+  const word = BK_KIND === "vendor" ? "bills" : "invoices";
+  if (!BK.connected) { el.innerHTML = `<span class="sub">Connect Zoho (Send to Zoho tab) to pick the ${word} this pays. Until then it goes as a payment on account.</span>`; return; }
+  if (!BK_PARTY_ID) { el.innerHTML = `<span class="sub">Pick the ${BK_KIND === "vendor" ? "supplier" : "client"} from the list to see the open ${word}.</span>`; return; }
+  if (!BK_DOCS.length) { el.innerHTML = `<span class="sub">No open ${word} in Zoho - it goes as a payment on account.</span>`; return; }
+  const tot = Object.values(BK_PICK).reduce((a, b) => a + b, 0);
+  el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- against this payment: ${pcMoney(tot)}</span><table>${BK_DOCS.map(d => `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
+    <td class="n">Balance ${pcMoney(d.balance)}</td><td style="width:130px;text-align:right;"><input type="text" value="${BK_PICK[d.id] ? BK_PICK[d.id].toFixed(2) : ""}" placeholder="0.00" onchange="bkPick('${d.id}', this.value)"></td></tr>`).join("")}</table>`;
+}
+function bkPick(id, v) { const n = parseFloat(String(v).replace(/,/g, "")) || 0; if (n > 0) BK_PICK[id] = n; else delete BK_PICK[id]; bkDocsDraw(); }
+function bkShown() {
+  const q = document.getElementById("bk-q").value.trim().toLowerCase();
+  return (BK ? BK.rows : []).filter(r => !q || `${r.party} ${r.reference} ${r.notes} ${r.docs.map(d => d.number).join(" ")} ${r.site}`.toLowerCase().includes(q));
+}
+function bkTag(r) {
+  if (r.zoho === "sent") return `<span class="zx-tag zx-ok">In Zoho ✓</span><span class="sub">${escapeHtml(r.zoho_ref)}</span>`;
+  if (r.zoho === "cancelled") return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Deleted in Zoho</span>`;
+  if (r.zoho_err) return `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Zoho refused</span><span class="sub">${escapeHtml(r.zoho_err.slice(0, 60))}</span>`;
+  return `<span class="zx-tag zx-wait">Waiting</span>`;
+}
+function bkDraw() {
+  if (!BK) return;
+  const rows = bkShown();
+  document.getElementById("bk-stats").innerHTML = `
+    <div class="pc-stat"><span>Paid out - ${escapeHtml(BK.label)}</span><b>${pcMoney(BK.paid)}</b></div>
+    <div class="pc-stat"><span>Received - ${escapeHtml(BK.label)}</span><b>${pcMoney(BK.received)}</b></div>
+    <div class="pc-stat${BK.waiting ? " hand neg" : ""}"><span>Not yet in Zoho</span><b>${BK.waiting} line${BK.waiting === 1 ? "" : "s"}</b></div>
+    <div class="pc-stat${BK.connected ? " hand" : ""}"><span>Zoho</span><b>${BK.connected ? "Connected ✓" : "Not connected"}</b></div>`;
+  document.getElementById("bk-body").innerHTML = rows.map(r => `<tr${BK_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td><td>${escapeHtml(r.kind_label)}</td>
+    <td class="l">${escapeHtml(r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "ADCB" : "-"))}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
+    <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || (r.kind === "expense" ? r.account.split(" › ").pop().replace(/^Office › /, "") : "-"))}</td>
+    <td>${escapeHtml(r.site || "-")}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${bkTag(r)}</td>
+    <td class="pc-act">${r.zoho === "sent" ? `<span class="sub">In Zoho</span>` : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+    || `<tr><td colspan="11" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
+  const po = rows.filter(r => r.out).reduce((a, r) => a + r.amount, 0), rc = rows.filter(r => !r.out).reduce((a, r) => a + r.amount, 0);
+  document.getElementById("bk-foot").innerHTML = rows.length ? `<tr><td colspan="7" class="l">TOTAL</td><td class="n">${pcMoney(po)}</td><td class="n">${pcMoney(rc)}</td><td colspan="2"></td></tr>` : "";
+  const wait = (BK.rows || []).filter(r => r.zoho === "" || r.zoho === "cancelled").length;
+  document.getElementById("bk-sendbar").innerHTML = BK.may_send && wait
+    ? `<span>${wait} line${wait === 1 ? "" : "s"} not in Zoho yet${BK.connected ? "" : " - connect Zoho first (Send to Zoho tab)"}.</span><button class="btn btn-primary" onclick="bkSend()" ${BK.connected ? "" : "disabled"}>Send ${wait} to Zoho</button>`
+    : (wait ? `<span>${wait} line${wait === 1 ? "" : "s"} waiting for the chief accountant to send to Zoho.</span>` : "");
+}
+function bkBody() {
+  const v = id => (document.getElementById(id) || {}).value || "";
+  return { kind: BK_KIND, date: v("bk-date"), party: ["charge", "transfer"].includes(BK_KIND) ? "" : v("bk-party").trim(), party_id: BK_PARTY_ID,
+    mode: v("bk-mode"), reference: v("bk-ref").trim(), amount: v("bk-amt").replace(/,/g, ""), notes: v("bk-notes").trim(),
+    account: BK_KIND === "expense" ? v("bk-acc") : (BK_KIND === "transfer" ? v("bk-to") : ""), site: BK_KIND === "expense" ? v("bk-site") : "",
+    vat: BK_KIND === "expense" && (document.getElementById("bk-vat") || {}).checked, trn: v("bk-trn"),
+    docs: Object.entries(BK_PICK).map(([id, amount]) => ({ id, amount, number: (BK_DOCS.find(d => d.id === id) || {}).number || "" })) };
+}
+async function bkSave() {
+  const btn = document.getElementById("bk-save"); btn.disabled = true;
+  try {
+    const d = BK_EDIT ? await apiCall(`/store/bank/${BK_EDIT}`, { method: "PUT", body: JSON.stringify(bkBody()) })
+                      : await apiCall("/store/bank", { method: "POST", body: JSON.stringify(bkBody()) });
+    bkReset(); await bkLoad();
+    showStatus("bk-status", d.failed && d.failed.length ? "err" : "ok", d.sent ? "Saved and in Zoho." : (d.failed && d.failed.length ? `Saved, but Zoho refused it: ${d.failed[0].why}` : "Saved."));
+  } catch (e) { showStatus("bk-status", "err", errText(e)); }
+  finally { btn.disabled = false; }
+}
+function bkReset() {
+  BK_EDIT = null; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {};
+  ["bk-party", "bk-ref", "bk-amt", "bk-notes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("bk-date").value = pcToday();
+  document.getElementById("bk-cancel").style.display = "none";
+  if (BK) { bkKindDraw(); bkDraw(); }
+}
+async function bkEdit(id) {
+  const r = BK.rows.find(x => x.id === id); if (!r) return;
+  BK_EDIT = id; BK_KIND = r.kind; bkKindDraw();
+  document.getElementById("bk-date").value = r.date; document.getElementById("bk-party").value = r.party;
+  document.getElementById("bk-mode").value = r.mode; document.getElementById("bk-ref").value = r.reference;
+  document.getElementById("bk-amt").value = r.amount; document.getElementById("bk-notes").value = r.notes;
+  if (r.kind === "expense") { document.getElementById("bk-acc").value = r.account; document.getElementById("bk-site").value = r.site;
+    document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-trn").style.visibility = r.vat ? "" : "hidden"; }
+  if (r.kind === "transfer") document.getElementById("bk-to").value = r.account;
+  BK_PARTY_ID = r.party_id; BK_PICK = Object.fromEntries(r.docs.map(d => [d.id, d.amount]));
+  if (BK_PARTY_ID && BK.connected && ["vendor", "customer"].includes(r.kind)) {
+    try { BK_DOCS = (await apiCall(`/store/bank/open?kind=${r.kind}&contact_id=${encodeURIComponent(BK_PARTY_ID)}`)).docs; } catch (e) { BK_DOCS = []; }
+  }
+  bkDocsDraw(); bkMode();
+  document.getElementById("bk-cancel").style.display = ""; bkDraw();
+  document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function bkDelete(id) {
+  const r = BK.rows.find(x => x.id === id);
+  if (!confirm(`Remove ${r.kind_label.toLowerCase()} ${r.party || ""} ${pcMoney(r.amount)}?`)) return;
+  try { await apiCall(`/store/bank/${id}`, { method: "DELETE" }); await bkLoad(); showStatus("bk-status", "ok", "Removed."); }
+  catch (e) { showStatus("bk-status", "err", errText(e)); }
+}
+async function bkSend() {
+  try { const d = await apiCall("/store/bank/send", { method: "POST", body: "{}" }); await bkLoad();
+        showStatus("bk-status", d.failed.length ? "err" : "ok", `${d.sent} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the Zoho column.` : "")); }
+  catch (e) { showStatus("bk-status", "err", errText(e)); }
+}
+// The ADCB statement lines Zoho has that nobody has entered here yet.
+async function bkStatement() {
+  const el = document.getElementById("bk-stmt");
+  if (!BK || !BK.connected) { el.innerHTML = ""; return; }
+  let d; try { d = await apiCall(`/store/bank/statement?month=${encodeURIComponent(BK.month)}`); } catch (e) { el.innerHTML = ""; return; }
+  BK._stmt = d.lines || [];
+  el.innerHTML = BK._stmt.length ? `<div class="bk-stmt"><b>${BK._stmt.length} ADCB statement line${BK._stmt.length === 1 ? "" : "s"} not entered yet</b> <span class="sub" style="display:inline;">- from the bank statement in Zoho</span>
+    <table>${BK._stmt.map((t, i) => `<tr><td style="width:84px;">${pcDate(t.date)}</td><td>${escapeHtml(t.description)}</td><td style="width:170px;">${escapeHtml(t.reference)}</td>
+      <td class="n" style="width:110px;">${t.in ? "+" : "-"}${pcMoney(t.amount)}</td><td style="width:90px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="bkFromStmt(${i})">Enter</button></td></tr>`).join("")}</table></div>` : "";
+}
+function bkFromStmt(i) {
+  const t = BK._stmt[i]; bkReset();
+  BK_KIND = t.in ? "customer" : (/charge|fee|commission/i.test(t.description) ? "charge" : "vendor"); bkKindDraw();
+  document.getElementById("bk-date").value = t.date; document.getElementById("bk-amt").value = t.amount;
+  document.getElementById("bk-ref").value = t.reference; document.getElementById("bk-notes").value = t.description.slice(0, 120);
+  document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function bkExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/accounts/bank?format=${kind}&month=${encodeURIComponent(document.getElementById("bk-month").value)}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
 
 // ---- Send to Zoho ----------------------------------------------------------
 // Petty cash typed once in the portal; the chief accountant checks the Zoho

@@ -293,9 +293,12 @@ def check_deleted(db, force=False):
         return 0
     _put(db, "last_check", str(time.time()))
     n = 0
-    for x in db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "").limit(400):
+    lines = (list(db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "").limit(400))
+             + list(db.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent", models.BankEntry.zoho_id != "").limit(400)))
+    for x in lines:
         kind, _, zid = (x.zoho_id or "").partition(":")
-        path = {"expense": "expenses", "journal": "journals", "banktransaction": "banktransactions"}.get(kind)
+        path = {"expense": "expenses", "journal": "journals", "banktransaction": "banktransactions",
+                "vendorpayment": "vendorpayments", "customerpayment": "customerpayments"}.get(kind)
         if not path:
             continue
         try:

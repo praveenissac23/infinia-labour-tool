@@ -213,6 +213,8 @@ def seed_on_startup():
         _grant_petty_site_to_existing(db)
         _grant_director_petty_to_chief_accountant(db)
         _grant_zoho_to_chief_accountant(db)
+        _grant_bank_to_chief_accountant(db)
+        _tick_new_accounts_tabs(db)
         _grant_projects_to_chief_accountant(db)
         try:
             import credentials as _cr
@@ -349,6 +351,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Send to Zoho: approve petty cash (and later bank payments)
                # into Zoho Books - the chief accountant; admin.
                "accounts_zoho",
+               # Bank: every ADCB payment and receipt, entered once and sent
+               # to Zoho - the chief accountant; admin.
+               "accounts_bank",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -585,6 +590,43 @@ def _grant_zoho_to_chief_accountant(db):
     db.commit()
     if n:
         print("Send to Zoho given to: " + ", ".join(n))
+
+
+def _tick_new_accounts_tabs(db):
+    """A login ticked tab by tab sees only ticked tabs: the Bank and Send
+    to Zoho tabs are ticked for whoever holds their right. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "zoho_bank_tabs_ticked").first():
+        return
+    pairs = (("accounts_zoho", "accounts.zoho"), ("accounts_bank", "accounts.bank"))
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if not any("." in k for k in keys):
+            continue
+        add = [leaf for right, leaf in pairs if right in keys and leaf not in keys]
+        if add:
+            setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="zoho_bank_tabs_ticked", value="1"))
+    db.commit()
+
+
+def _grant_bank_to_chief_accountant(db):
+    """Bank goes to the Chief Accountant role and its logins. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "bank_right_granted").first():
+        return
+    n = []
+    roles = [r for r in db.query(models.AccessRole).all() if (r.name or "").strip().lower() == "chief accountant"]
+    ids = {r.id for r in roles}
+    for obj, field in [(r, "screens") for r in roles] + [(u, "permissions") for u in db.query(models.User).all()
+                                                          if getattr(u, "access_role_id", None) in ids]:
+        perms = [p for p in (getattr(obj, field) or "").split(",") if p]
+        if perms and "accounts_bank" not in perms:
+            setattr(obj, field, ",".join(perms + ["accounts_bank"]))
+            n.append(getattr(obj, "username", None) or getattr(obj, "name", "role"))
+    db.add(models.Setting(key="bank_right_granted", value="1"))
+    db.commit()
+    if n:
+        print("Bank given to: " + ", ".join(n))
 
 
 def _grant_director_petty_to_chief_accountant(db):
@@ -12871,6 +12913,8 @@ import zohosync  # noqa: E402
 app.include_router(zohosync.router)
 import zohoapi  # noqa: E402
 app.include_router(zohoapi.router)
+import bank  # noqa: E402
+app.include_router(bank.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

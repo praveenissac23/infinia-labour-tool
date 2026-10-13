@@ -653,6 +653,16 @@
     "pay": "labour cost per project (totals only)"
    },
    {
+    "id": "accounts.bank",
+    "label": "Bank",
+    "right": [
+     "accounts_bank"
+    ],
+    "grant": [
+     "accounts_bank"
+    ]
+   },
+   {
     "id": "accounts.zoho",
     "label": "Send to Zoho",
     "right": [

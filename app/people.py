@@ -1608,6 +1608,7 @@ SCREEN_LABELS = {
     "accounts_expense": "Project expense - cost per project incl. labour by site (admin and chief accountant)",
     "accounts_credentials": "Credentials - website and app logins, passwords, PINs",
     "accounts_zoho": "Send to Zoho - approve petty cash into Zoho Books (chief accountant)",
+    "accounts_bank": "Bank - ADCB payments and receipts, entered once and sent to Zoho",
     "settings_company": "General - store in-charge, LPO and invoice signatures",
     "settings_data": "General - restore or delete backups (replaces live data)",
     "settings_companies": "Companies & sites",
@@ -1623,7 +1624,7 @@ RIGHT_PAGES = [
     ("Payroll", ["combine", "adjustments", "errorcheck", "hrpayroll"]),
     ("Store & Purchasing", ["store", "storekeeper", "requests", "approvals"]),
     ("Expiry Reminder", ["expiry", "pdc", "security_cheques"]),
-    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_expense", "accounts_zoho", "accounts_credentials", "accounts_register"]),
+    ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_expense", "accounts_bank", "accounts_zoho", "accounts_credentials", "accounts_register"]),
     ("Reports", ["reports"]),
     ("Settings", ["settings_company", "settings_data", "settings_companies", "settings_logins", "settings_access", "activity"]),
 ]

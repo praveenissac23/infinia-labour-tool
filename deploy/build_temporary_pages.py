@@ -101,6 +101,8 @@ PAGES = {
         # What each project has cost: labour by site, LPOs, store issues, petty cash.
         tab("projexp", "projexp", "Project expense", "accounts_expense"),
         # Petty cash typed once here, approved by the chief accountant into Zoho Books.
+        # Every ADCB payment and receipt, entered once and sent to Zoho.
+        tab("bank", "bank", "Bank", "accounts_bank"),
         tab("zoho", "zoho", "Send to Zoho", "accounts_zoho"),
         # Website and app logins: admin, the PRO and the chief accountant.
         tab("credentials", "credentials", "Credentials", "accounts_credentials"),
