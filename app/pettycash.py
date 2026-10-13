@@ -107,7 +107,9 @@ def register(db, month, book="site"):
         out.append({"id": x.id, "date": x.on_date.isoformat(), "description": x.description or "",
                     "supplier": x.supplier or "", "site": x.site or "",
                     "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "balance": bal,
-                    "by": users.get(x.updated_by or x.created_by, "")})
+                    "by": users.get(x.updated_by or x.created_by, ""),
+                    "vat": bool(x.vat), "trn": x.trn or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
+                    "zoho_account": x.zoho_account or ""})
     rec = round(sum(r["received"] for r in out), 2)
     paid = round(sum(r["paid"] for r in out), 2)
     by_site = {}
@@ -120,6 +122,7 @@ def register(db, month, book="site"):
     return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
             "opening": opening, "rows": out, "received": rec, "paid": paid,
+            "zoho_start": (M.get_setting(db, "zoho_start") or "2026-10-01") if book in ("site", "pro", "office") else "",
             "closing": round(opening + sg * (rec - paid), 2),
             "by_site": [{"site": k, "paid": v} for k, v in sorted(by_site.items(), key=lambda kv: -kv[1])]}
 
@@ -151,8 +154,40 @@ def _clean(payload):
         raise HTTPException(status_code=400, detail="Enter the amount paid (or the cash received).")
     if rec and paid:
         raise HTTPException(status_code=400, detail="One line is either cash received or a bill paid - not both.")
+    vat = bool(payload.get("vat")) and bool(paid)
+    trn = "".join(ch for ch in str(payload.get("trn") or "") if ch.isdigit())[:15] if vat else ""
+    if vat and trn and len(trn) != 15:
+        raise HTTPException(status_code=400, detail="A TRN has 15 digits - check the number on the receipt.")
     return {"on_date": d, "description": desc[:400], "supplier": str(payload.get("supplier") or "").strip()[:120],
-            "site": str(payload.get("site") or "").strip()[:40], "received": rec, "paid": paid}
+            "site": str(payload.get("site") or "").strip()[:40], "received": rec, "paid": paid, "vat": vat, "trn": trn}
+
+
+ZOHO_RIGHT = "accounts_zoho"
+GONE = ("approved", "sent", "inzoho", "changed")
+
+
+def _zoho_guard(user, x, action):
+    """A line approved for Zoho (or already in it) is the chief
+    accountant's to change - otherwise the two books part ways."""
+    if (x.zoho_status or "") in GONE and ZOHO_RIGHT not in M.effective_permissions(user):
+        raise HTTPException(status_code=403, detail=f"This line has been approved for Zoho - ask the chief accountant to {action} it.")
+
+
+@router.get("/store/petty-cash/trn")
+def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models.User = PC):
+    """The TRN this supplier was entered with before, so it is typed once."""
+    name = (supplier or "").strip()
+    if not name:
+        return {"trn": ""}
+    key = M._supplier_key(name)
+    sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first() if key else None
+    if sup and (sup.trn or "").strip():
+        return {"trn": "".join(ch for ch in sup.trn if ch.isdigit())[:15]}
+    for x in (db.query(models.PettyCash).filter(models.PettyCash.trn != "", models.PettyCash.trn.isnot(None))
+                .order_by(models.PettyCash.id.desc()).limit(3000)):
+        if M._supplier_key(x.supplier or "") == key:
+            return {"trn": x.trn}
+    return {"trn": ""}
 
 
 @router.post("/store/petty-cash")
@@ -180,9 +215,19 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
+    _zoho_guard(user, x, "change")
     was = (x.on_date, round(x.received or 0, 2), round(x.paid or 0, 2))
-    for k, v in _clean(payload).items():
+    new = _clean(payload)
+    moved = any(getattr(x, k) != v for k, v in new.items())
+    for k, v in new.items():
         setattr(x, k, v)
+    if moved:
+        # Approved but not yet in Zoho: back to waiting. Already in Zoho:
+        # flagged so the change is made there too.
+        if x.zoho_status == "approved":
+            x.zoho_status = ""
+        elif x.zoho_status in ("sent", "inzoho"):
+            x.zoho_status = "changed"
     x.updated_by = user.id
     db.commit()
     M.log_action(db, user.id, "petty_cash_edit", f"#{pid} {x.book or 'site'} book, {x.description}: "
@@ -196,6 +241,15 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
     if not x:
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
+    _zoho_guard(user, x, "remove")
+    if (x.zoho_status or "") in ("sent", "inzoho", "changed"):
+        try:
+            import watch
+            watch.alert(db, models, user, "petty_zoho_removed", "Petty cash line removed that is in Zoho",
+                        f"{BOOKS.get(x.book or 'site', ('',))[0]}: {x.on_date:%d %b %Y} {x.description} {_money(x.paid or x.received or 0)}"
+                        f" - remove it in Zoho too{(' (' + x.zoho_ref + ')') if x.zoho_ref else ''}.")
+        except Exception:
+            db.rollback()
     M.log_action(db, user.id, "petty_cash_delete", f"#{pid} {x.on_date} {x.description} {x.received or -x.paid}")
     db.delete(x); db.commit()
     return {"ok": True}

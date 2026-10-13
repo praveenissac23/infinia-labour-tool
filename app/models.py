@@ -1049,6 +1049,18 @@ class PettyCash(Base):
     site = Column(String, default="")
     received = Column(Float, default=0.0)
     paid = Column(Float, default=0.0)
+    # Zoho: a bill with VAT on it carries the supplier's TRN (needed to
+    # claim the VAT). The chief accountant picks the Zoho account and
+    # approves; the line then goes to Zoho once, never typed there again.
+    #   zoho_status: "" waiting | approved | sent | changed (edited after
+    #   it went) | inzoho (was already typed in Zoho before the link)
+    vat = Column(Boolean, default=False)
+    trn = Column(String, default="")
+    zoho_account = Column(String, default="")
+    zoho_status = Column(String, default="")
+    zoho_ref = Column(String, default="")
+    approved_by = Column(Integer, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

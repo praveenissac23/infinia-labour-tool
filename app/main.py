@@ -212,6 +212,7 @@ def seed_on_startup():
         _grant_storekeeper_to_existing(db)
         _grant_petty_site_to_existing(db)
         _grant_director_petty_to_chief_accountant(db)
+        _grant_zoho_to_chief_accountant(db)
         _grant_projects_to_chief_accountant(db)
         try:
             import credentials as _cr
@@ -345,6 +346,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Project expense: cost per project from labour, LPOs, store
                # issues and petty cash - admin and the chief accountant.
                "accounts_expense",
+               # Send to Zoho: approve petty cash (and later bank payments)
+               # into Zoho Books - the chief accountant; admin.
+               "accounts_zoho",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -559,6 +563,28 @@ def _grant_storekeeper_to_existing(db):
     db.commit()
     if granted:
         print(f"Kept stock in/out for {granted} existing login(s)")
+
+
+def _grant_zoho_to_chief_accountant(db):
+    """Send to Zoho is the chief accountant's alone (with admin): the
+    "Chief Accountant" role and the logins that carry it. Once - after
+    that it is ticked on Settings > Access like any other right."""
+    if db.query(models.Setting).filter(models.Setting.key == "zoho_right_granted").first():
+        return
+    n = []
+    roles = [r for r in db.query(models.AccessRole).all() if (r.name or "").strip().lower() == "chief accountant"]
+    ids = {r.id for r in roles}
+    holders = [(r, "screens") for r in roles] + [(u, "permissions") for u in db.query(models.User).all()
+                                                   if getattr(u, "access_role_id", None) in ids]
+    for obj, field in holders:
+        perms = [p for p in (getattr(obj, field) or "").split(",") if p]
+        if perms and "accounts_zoho" not in perms:
+            setattr(obj, field, ",".join(perms + ["accounts_zoho"]))
+            n.append(getattr(obj, "username", None) or getattr(obj, "name", "role"))
+    db.add(models.Setting(key="zoho_right_granted", value="1"))
+    db.commit()
+    if n:
+        print("Send to Zoho given to: " + ", ".join(n))
 
 
 def _grant_director_petty_to_chief_accountant(db):
@@ -3393,7 +3419,8 @@ def _add_missing_columns():
     models declare but the live table doesn't have yet."""
     from sqlalchemy import inspect, text
     type_sql = {"VARCHAR": "VARCHAR", "FLOAT": "DOUBLE PRECISION", "DATE": "DATE",
-                "INTEGER": "INTEGER", "BOOLEAN": "BOOLEAN", "TEXT": "TEXT"}
+                "INTEGER": "INTEGER", "BOOLEAN": "BOOLEAN", "TEXT": "TEXT",
+                "DATETIME": "TIMESTAMP WITH TIME ZONE"}
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
     with engine.begin() as conn:
@@ -12840,6 +12867,8 @@ import settlement  # noqa: E402
 app.include_router(settlement.router)
 import pettycash  # noqa: E402
 app.include_router(pettycash.router)
+import zohosync  # noqa: E402
+app.include_router(zohosync.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques
