@@ -9200,6 +9200,24 @@ async function saveIssue() {
   await loadStore();
 }
 
+// A save that is already running is not started again: a double tap on
+// Save sent the same return twice and drove a site to -1. The button is
+// greyed while it works.
+function oneAtATime(name) {
+  const f = window[name]; if (typeof f !== "function" || f.__once) return;
+  let busy = false;
+  const g = async function (...a) {
+    if (busy) return;
+    busy = true;
+    const b = document.activeElement && document.activeElement.tagName === "BUTTON" ? document.activeElement : null;
+    if (b) { b.disabled = true; b.style.opacity = ".6"; }
+    try { return await f.apply(this, a); }
+    finally { busy = false; if (b) { b.disabled = false; b.style.opacity = ""; } }
+  };
+  g.__once = true; window[name] = g;
+}
+window.addEventListener("load", () => ["saveIssue", "saveMovement", "saveReceipt", "saveReceive", "submitMaterialRequest"].forEach(oneAtATime));
+
 async function saveReceipt() {
   const supplier = properName(document.getElementById("in-supplier").value.trim());
   const ref = document.getElementById("in-ref").value.trim();

@@ -1414,7 +1414,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="4d53a7073733";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="0cce0482e4d1";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -9405,6 +9405,24 @@ async function saveIssue() {
   }
   await loadStore();
 }
+
+// A save that is already running is not started again: a double tap on
+// Save sent the same return twice and drove a site to -1. The button is
+// greyed while it works.
+function oneAtATime(name) {
+  const f = window[name]; if (typeof f !== "function" || f.__once) return;
+  let busy = false;
+  const g = async function (...a) {
+    if (busy) return;
+    busy = true;
+    const b = document.activeElement && document.activeElement.tagName === "BUTTON" ? document.activeElement : null;
+    if (b) { b.disabled = true; b.style.opacity = ".6"; }
+    try { return await f.apply(this, a); }
+    finally { busy = false; if (b) { b.disabled = false; b.style.opacity = ""; } }
+  };
+  g.__once = true; window[name] = g;
+}
+window.addEventListener("load", () => ["saveIssue", "saveMovement", "saveReceipt", "saveReceive", "submitMaterialRequest"].forEach(oneAtATime));
 
 async function saveReceipt() {
   const supplier = properName(document.getElementById("in-supplier").value.trim());

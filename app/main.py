@@ -13,6 +13,7 @@ import re
 import io
 import uuid
 import json
+import threading
 from urllib.parse import quote
 
 import base64, gzip
@@ -22,7 +23,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse, HTMLResponse
 from html import escape
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, text
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -5253,6 +5254,36 @@ def add_store_movement(payload: schemas.StoreMovementIn, db: Session = Depends(g
             detail="Only the store keeper records stock in and out. "
                    "Ask an admin to tick 'Records stock in and out' on your login, "
                    "or raise a material request instead.")
+    # One movement of a material at a time. Two taps on Save sent the same
+    # return twice in the same instant; both read the site's stock before
+    # either was written, both passed, and the site went to -1. Held until
+    # this request commits (Postgres), and a thread lock for SQLite.
+    if engine.dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": 77000000 + int(payload.item_id or 0)})
+    with _MOVE_LOCK:
+        return _add_store_movement(payload, db, user)
+
+
+_MOVE_LOCK = threading.Lock()
+
+
+def _add_store_movement(payload, db, user):
+    # The same movement saved again within seconds by the same login is
+    # the double tap, not a second load: the first one is the answer.
+    since = datetime.now(timezone.utc) - timedelta(seconds=15)
+    twin = (db.query(models.StoreMovement)
+              .filter(models.StoreMovement.created_by == user.id, models.StoreMovement.item_id == payload.item_id,
+                      models.StoreMovement.kind == payload.kind, models.StoreMovement.qty == payload.qty,
+                      models.StoreMovement.from_location == (payload.from_location or ""),
+                      models.StoreMovement.location == (payload.location or ""),
+                      models.StoreMovement.notes == (payload.notes or ""),
+                      models.StoreMovement.moved_on == payload.moved_on)
+              .order_by(models.StoreMovement.id.desc()).first())
+    if twin and twin.created_at and (twin.created_at if twin.created_at.tzinfo else twin.created_at.replace(tzinfo=timezone.utc)) >= since:
+        it = twin.item
+        d = schemas.StoreMovementOut.model_validate(twin).model_dump()
+        d["item_code"], d["item_name"], d["unit"] = (it.code, it.name, it.unit) if it else ("", "", "")
+        return d
     item = db.query(models.StoreItem).filter(models.StoreItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=400, detail="Item not found.")
