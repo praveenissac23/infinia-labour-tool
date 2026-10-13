@@ -80,12 +80,12 @@ def _contracts(db):
     con, rec = defaultdict(float), defaultdict(float)
     try:
         import projectpay as pp
-        for sc in db.query(pp.ProjectScope).all():
-            con[(sc.project or "").strip()] += float(sc.contract or 0)
-        for p in db.query(pp.ProjectPayment).all():
-            sc = db.get(pp.ProjectScope, p.scope_id)
-            if sc:
-                rec[(sc.project or "").strip()] += float(p.amount or 0)
+        scopes = db.query(pp.ProjectScope).all()        # payments come with them, in one query
+        for sc in scopes:
+            code = (sc.project or "").strip()
+            con[code] += float(sc.contract or 0)
+            for p in sc.payments:
+                rec[code] += float(p.amount or 0)
     except Exception:
         pass
     return con, rec

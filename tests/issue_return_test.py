@@ -25,13 +25,13 @@ with c:
     tid = tape.json()['id']
     r = c.post('/store/movements', json={'item_id': tid, 'kind': 'out', 'qty': 1, 'from_location': '', 'location': '901', 'incharge': 'AMAL', 'moved_on': today}, headers=H)
     ck('issued to site 901 to Amal in the morning', r.status_code == 200, r.text[:150])
-    reg = c.get('/store/report?kind=issues', headers=H).json()
+    reg = c.get('/store/report?kind=issues&move=all', headers=H).json()
     row = next((x for x in reg['rows'] if x['code'] == 'TAPE'), None)
     ck('the register shows it out, taken by Amal, one still out', row and row['given_to'].upper() == 'AMAL' and row['still_out'] == 1 and row['site'].endswith('901'), row)
     ck('and the register counts one tool still out', reg['still_out'] == 1, reg.get('still_out'))
     r = c.post('/store/movements', json={'item_id': tid, 'kind': 'return', 'qty': 1, 'from_location': '901', 'location': '', 'incharge': 'RAJESH', 'condition': 'Damaged', 'notes': 'lock broken', 'moved_on': today}, headers=H)
     ck('returned in the evening by Rajesh, damaged', r.status_code == 200, r.text[:150])
-    reg = c.get('/store/report?kind=issues', headers=H).json()
+    reg = c.get('/store/report?kind=issues&move=all', headers=H).json()
     row = next((x for x in reg['rows'] if x['code'] == 'TAPE'), None)
     ck('the same line now closes: returned today, by Rajesh, condition Damaged, nothing still out',
        row and row['returned_on'] == today and row['returned_by'].upper() == 'RAJESH' and row['condition'] == 'Damaged'
@@ -43,7 +43,7 @@ with c:
     for fmt in ('excel', 'pdf'):
         r = c.get(f'/export/store/report?kind=issues&format={fmt}&token={t}')
         ck(f'the register exports as {fmt}', r.status_code == 200 and len(r.content) > 1000, r.status_code)
-    r = c.get(f'/export/store/report/view?kind=issues&token={t}')
+    r = c.get(f'/export/store/report/view?kind=issues&move=all&token={t}')     # issued and returned
     ck('and previews', r.status_code == 200 and 'Returned' in r.text, r.status_code)
 print()
 if FAIL: print(f"{len(FAIL)} FAILED"); sys.exit(1)

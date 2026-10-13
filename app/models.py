@@ -228,7 +228,10 @@ class EmployeeSummary(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     employee = relationship("Employee", back_populates="summaries")
-    adjustments = relationship("SalaryAdjustment", back_populates="summary", cascade="all, delete-orphan")
+    # Loaded with the cards in one query ("selectin"), not one query a card -
+    # a cycle's 80 cards used to cost 80 extra trips to the database.
+    adjustments = relationship("SalaryAdjustment", back_populates="summary", cascade="all, delete-orphan",
+                               lazy="selectin")
 
     def adjusted_final_salary(self):
         """final_salary plus/minus every adjustment on this cycle's

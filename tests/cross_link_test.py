@@ -34,6 +34,16 @@ with TestClient(main.app) as c:
     month = today.strftime("%B %Y")
 
     staff = g("/employees/staff").json()["rows"]
+    if not any(r.get("active", True) and not r.get("terminated_on") for r in staff):
+        # A fresh database has no office staff: put one on, as the office would.
+        from database import SessionLocal as _S
+        import models as _m
+        _d = _S()
+        _co = _d.query(_m.Company).first() or _m.Company(name="INFINIA CONTRACTING L.L.C.", short_name="Infinia")
+        _d.add(_co); _d.commit()
+        _d.add(_m.Employee(emp_no="IC900", name="TEST STAFF", staff=True, pay_group="staff", basic_salary=3000, company_id=_co.id,
+                           company=_co.short_name, allowance=2000, total_salary=5000, active=True, joined_on=date(2024, 1, 1))); _d.commit(); _d.close()
+        staff = g("/employees/staff").json()["rows"]
     s = next(r for r in staff if r.get("active", True) and not r.get("terminated_on"))
     code = s["emp_no"]
     print(f"-- using {code} {s['name']}")
@@ -291,12 +301,10 @@ with TestClient(main.app) as c:
 
     # ---- 21. Ticket allowance -> cycle, file; gratuity stays on basic ------------------
     grat_before = g(f"/employees/people/{code}").json().get("gratuity", {})
+    # The air ticket is a labour allowance only (company rule) - an office
+    # staff member's is refused, and nothing reaches his cycle or file.
     r = post("/employees/pay-items", {"emp_no": code, "month_year": month, "direction": "add", "category": "air_ticket", "amount": 1800, "notes": "XL ticket"})
-    ck("air ticket allowance accepted", r.status_code == 200, r.text[:160])
-    run = post("/employees/payroll/runs", {"month_year": month, "company_id": co, "group": "staff"}).json()
-    line = next((l for l in run.get("lines", []) if l["emp_no"] == code), {})
-    ck("this month's cycle: ticket on the line and in net pay", round(line.get("air_ticket") or 0) == 1800, line.get("air_ticket"))
-    ck("staff file: the cycle shows it", any(round(cy.get("adjust") or 0) >= 1800 - 75 for cy in g(f"/employees/people/{code}").json().get("cycles", []) if cy.get("month_year") == month))
+    ck("air ticket refused for office staff (labour only)", r.status_code == 400, r.text[:160])
     grat_after = g(f"/employees/people/{code}").json().get("gratuity", {})
     ck("gratuity unchanged - UAE gratuity is on basic salary only", grat_before.get("amount") == grat_after.get("amount"), (grat_before.get("amount"), grat_after.get("amount")))
     # labour: an allowance on the salary card shows on the card, the live card and the final figure

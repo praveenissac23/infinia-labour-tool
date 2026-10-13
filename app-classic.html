@@ -2493,7 +2493,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
              Post-dated cheques - admin and the chief accountant only. -->
         <div class="screen" id="screen-seccheque">
           <div class="status-msg" id="sc-status"></div>
-          <div class="exp-cards" id="sc-cards"></div>
+          <div class="exp-cards" id="sc-cards"><button type="button" class="exp-card red zero"><b>-</b><span>Due to collect back</span><small>&nbsp;</small></button><button type="button" class="exp-card amber zero"><b>-</b><span>Collect within 30 days</span><small>&nbsp;</small></button><button type="button" class="exp-card grey zero"><b>-</b><span>With others now</span><small>&nbsp;</small></button></div>
           <div class="card">
             <div style="display:flex; align-items:center; gap:8px;"><h2 id="sc-form-title" style="margin:0 0 4px; flex:1;">Add a security cheque</h2><div class="pc-kind" id="sc-kind"><button type="button" class="on" data-v="cheque" onclick="scKind('cheque')">Cheque</button><button type="button" data-v="deposit" onclick="scKind('deposit')">Deposit paid</button></div><button class="btn btn-dark" id="sc-new" style="display:none; padding:5px 12px;" onclick="scReset()">+ New</button></div>
             <p style="font-size:12px; color:#888; margin:0 0 10px;">A guarantee cheque left with a client, landlord, authority or supplier - usually undated.
@@ -13487,7 +13487,14 @@ function pxPeriod() {
 let PX_SEQ = 0;
 async function pxLoad() {
   const r = pxRange(), seq = ++PX_SEQ, body = document.getElementById("px-body");
-  if (!PX) body.innerHTML = `<tr><td colspan="10" class="hr-nil" style="padding:16px;">Working out every project's cost...</td></tr>`;
+  if (!PX) {
+    body.innerHTML = `<tr><td colspan="10" class="hr-nil" style="padding:16px;">Working out every project's cost...</td></tr>`;
+    // The five figure cards hold their place while the figures come, so
+    // the table below does not drop down when they arrive.
+    const st = document.getElementById("px-stats");
+    if (!st.innerHTML.trim()) st.innerHTML = ["Total cost", "Labour", "Materials", "Petty cash", "Not linked to a project"]
+      .map((l, i) => `<div class="px-stat${i === 4 ? " warn" : ""}"><span>${l}</span><b>AED ...</b><small>&nbsp;</small></div>`).join("");
+  }
   else body.closest("table").classList.add("px-busy");
   let data;
   try { data = await apiCall(`/employees/accounts/project-expense?date_from=${r.from}&date_to=${r.to}`); }
@@ -13611,9 +13618,14 @@ function pxTab(k) {
 }
 // ---- Accounts > Credentials: the company's logins --------------------------------
 let CR_ADMIN = false, CR_ROWS = [], CR_CATS = [], CR_CAT = "", CR_EDIT = null, CR_KIND = "login", CR_SHOWN = {}, CR_LOGO = "";
+let CR_LOADED = false;
 async function crLoad() {
+  const form = document.getElementById("cr-form");
+  if (!CR_LOADED) form.style.visibility = "hidden";      // shown once the list above it is in place
   try { const d = await apiCall("/employees/accounts/credentials"); CR_ROWS = d.rows || []; CR_CATS = d.categories || []; CR_ADMIN = !!d.admin; }
-  catch (e) { document.getElementById("cr-list").innerHTML = `<div class="cr-empty">${escapeHtml(errText(e))}</div>`; return; }
+  catch (e) { form.style.visibility = ""; document.getElementById("cr-list").innerHTML = `<div class="cr-empty">${escapeHtml(errText(e))}</div>`; return; }
+  CR_LOADED = true;
+  requestAnimationFrame(() => { form.style.visibility = ""; });
   const sel = document.getElementById("cr-cat");
   if (!sel.options.length) sel.innerHTML = CR_CATS.map(c => `<option>${escapeHtml(c)}</option>`).join("");
   document.getElementById("cr-admin-f").style.display = CR_ADMIN ? "" : "none";
@@ -13897,10 +13909,20 @@ async function labGratLoad() {
     <a href="#" onclick="pgGo('attendance'); pgTab('masterdata'); return false;">Add it on Labour master data</a>.` : "";
   labGratShow();
 }
-async function labGratShow() {
+// The gratuity working and the settlement under it appear together, in
+// their final places - drawn one after the other, the settlement card
+// showed first and was then pushed down the page (a visible jump).
+async function fsTogether(who, inner) {
+  fsUse(who);
+  const card = document.getElementById("hr-fs-card");
+  card.style.display = "none";
+  const fsP = fsDraw().catch(() => {});
+  try { await inner(); } finally { await fsP; card.style.display = ""; }
+}
+function labGratShow() { return fsTogether("labour", labGratShowInner); }
+async function labGratShowInner() {
   const code = document.getElementById("labgrat-emp").value;
   const box = document.getElementById("labgrat-view");
-  fsUse("labour"); fsDraw();
   if (!code) { box.innerHTML = '<div class="hr-nil">Choose a labourer. With nobody chosen, Preview and Export give every labourer on one sheet.</div>'; return; }
   let d;
   try { d = await apiCall(`/employees/labour-gratuity/${encodeURIComponent(code)}`); }
@@ -15414,7 +15436,8 @@ async function loadGratuity() {
   renderGratuity();
 }
 
-async function renderGratuity() {
+function renderGratuity() { return fsTogether("office", renderGratuityInner); }
+async function renderGratuityInner() {
   const code = document.getElementById("hr-grat-emp").value;
   const box = document.getElementById("hr-grat-view");
   if (!code) { box.innerHTML = '<div class="hr-nil">Choose a staff member.</div>'; return; }
@@ -15422,7 +15445,6 @@ async function renderGratuity() {
   try { d = await apiCall(`/employees/staff/${encodeURIComponent(code)}/file`); }
   catch (e) { expMsg("err", errText(e)); return; }
   HR_GRAT = d;
-  fsUse("office"); fsDraw();
   const s = d.staff, g = d.gratuity;
   const kv = (k, v) => `<div class="hr-kv"><span>${k}</span><b>${v}</b></div>`;
   const route = { wps: "WPS", bank: "Bank transfer", cash: "Cash" };

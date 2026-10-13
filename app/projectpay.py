@@ -52,7 +52,8 @@ class ProjectScope(Base):
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    payments = relationship("ProjectPayment", cascade="all, delete-orphan", order_by="ProjectPayment.on_date, ProjectPayment.id")
+    payments = relationship("ProjectPayment", cascade="all, delete-orphan", order_by="ProjectPayment.on_date, ProjectPayment.id",
+                            lazy="selectin")     # all projects' payments in one query
 
 
 class ProjectPayment(Base):

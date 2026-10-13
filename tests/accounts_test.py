@@ -15,7 +15,7 @@ import main, models, auth, accounts
 from database import SessionLocal
 
 main._add_missing_columns()
-c = TestClient(main.app)
+c = TestClient(main.app); c.__enter__()     # start-up runs (the admin login is made there)
 fails = []
 def ck(name, ok, extra=""):
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  -> {extra}"))

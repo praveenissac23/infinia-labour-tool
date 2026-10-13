@@ -9024,8 +9024,11 @@ def list_staff(company_id: int = None, include_left: bool = False,
     if not include_left:
         q = q.filter(models.Employee.active == True)  # noqa: E712
     rows = q.order_by(models.Employee.emp_no).all()
-    return {"rows": [_staff_dict(e, db) for e in rows],
-            "total_gratuity": round(sum(gratuity_for(e, db=db) for e in rows), 2)}
+    # Each person's gratuity is worked out once and the total added from
+    # those - working it out a second time for the total doubled the
+    # database trips on the busiest office screen.
+    out = [_staff_dict(e, db) for e in rows]
+    return {"rows": out, "total_gratuity": round(sum(r["gratuity"] or 0 for r in out), 2)}
 
 
 @app.post("/employees/staff")
@@ -9464,6 +9467,15 @@ def add_increment(payload: dict = Body(...), db: Session = Depends(get_db),
     to_allow = round(amount - to_basic, 2)
     new_basic = round((e.basic_salary or 0) + to_basic, 2)
     new_allow = round((e.allowance or 0) + to_allow, 2)
+    # Someone with no salary history yet: what he is paid now goes in first
+    # as the starting point, so the rise can be undone back to it (removing
+    # it used to leave the raised figure in place, with nothing to fall
+    # back to).
+    if not db.query(models.SalaryChange).filter(models.SalaryChange.employee_id == e.id).first():
+        db.add(models.SalaryChange(employee_id=e.id, effective_on=min(e.joined_on or when, when) - timedelta(days=0 if e.joined_on and e.joined_on < when else 1),
+                                   kind="opening", basic=round(e.basic_salary or 0, 2), allowance=round(e.allowance or 0, 2),
+                                   amount=0.0, reason="Salary on file before the first recorded change", created_by=user.id))
+        db.flush()
     c = models.SalaryChange(
         employee_id=e.id, effective_on=when, kind="increment",
         basic=new_basic, allowance=new_allow, amount=amount,

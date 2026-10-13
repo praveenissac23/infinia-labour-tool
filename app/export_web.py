@@ -94,6 +94,41 @@ finally{b.textContent=was;}});})();
 </script>"""
 
 
+# Click a heading to sort - on every preview, the ones drawn by hand too
+# (petty cash, project payments, credentials, PDC, cards...). The standard
+# report preview has its own sorter (headings with data-col) and is left
+# to it. Group headings and totals lines stay where they are: rows are
+# sorted within each group, between them.
+SORT_JS = """<style>th.pvs{cursor:pointer;user-select:none}th.pvs .pvs-a{font-size:.8em;margin-left:3px}@media print{th.pvs .pvs-a{display:none}}</style><script>
+(function(){
+function txt(td){if(!td)return"";var s=td.getAttribute("data-s");return s!==null?s:td.textContent.trim();}
+function key(v){var t=String(v).replace(/AED|,/gi,"").trim();var neg=/^\\(.*\\)$/.test(t);t=t.replace(/[()%]/g,"").trim();
+ if(t!==""&&!isNaN(t))return{n:(neg?-1:1)*parseFloat(t)};
+ var d=Date.parse(String(v).replace(/-/g," "));if(!isNaN(d)&&/\\d/.test(v)&&/[A-Za-z]{3}|\\d{4}/.test(v))return{n:d};
+ return{s:String(v).toLowerCase()};}
+function cmp(a,b){if(a.n!==undefined&&b.n!==undefined)return a.n-b.n;if(a.n!==undefined)return -1;if(b.n!==undefined)return 1;return a.s.localeCompare(b.s,undefined,{numeric:true});}
+function fixed(tr){if(/(^|\\s)(tot|total|grp|group|sub|rep-group)/i.test(tr.className))return true;
+ for(var i=0;i<tr.cells.length;i++)if(tr.cells[i].colSpan>1)return true;
+ return /^(total|grand total|sub ?total|net)\\b/i.test((tr.cells[0]||{}).textContent||"");}
+function setup(tbl){if(!tbl.tHead||!tbl.tBodies.length)return;var hr=tbl.tHead.rows[tbl.tHead.rows.length-1];if(!hr)return;
+ var ths=[].slice.call(hr.cells);if(ths.some(function(h){return h.hasAttribute("data-col")}))return;
+ var n=0;[].forEach.call(tbl.tBodies,function(b){n+=b.rows.length});if(n<2)return;
+ ths.forEach(function(th,ci){if(th.colSpan>1)return;th.classList.add("pvs");th.title=th.title||"Click to sort";
+  var a=document.createElement("span");a.className="pvs-a";th.appendChild(a);
+  th.addEventListener("click",function(){var dir=th.getAttribute("data-dir")==="asc"?"desc":"asc";
+   ths.forEach(function(h){h.removeAttribute("data-dir");var x=h.querySelector(".pvs-a");if(x)x.textContent="";});
+   th.setAttribute("data-dir",dir);a.textContent=dir==="asc"?"\\u25B2":"\\u25BC";
+   [].forEach.call(tbl.tBodies,function(b){var rows=[].slice.call(b.rows),seg=[],out=[];
+    function flush(){seg.sort(function(r1,r2){var c=cmp(key(txt(r1.cells[ci])),key(txt(r2.cells[ci])));return dir==="asc"?c:-c;});out=out.concat(seg);seg=[];}
+    rows.forEach(function(r){if(fixed(r)){flush();out.push(r);}else seg.push(r);});flush();
+    out.forEach(function(r){b.appendChild(r);});});});});}
+function run(){[].forEach.call(document.querySelectorAll("table"),setup);}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",run);else run();
+})();
+</script>"""
+SHARE_JS = SHARE_JS + SORT_JS
+
+
 def share_button(pdf_url, title):
     from html import escape as _e
     import re as _re
