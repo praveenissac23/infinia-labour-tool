@@ -47,7 +47,8 @@ def copy_to_zoho(db, sup):
     if not sup.zoho_id or not Z.connected(db):
         return False
     try:
-        Z.call(db, "PUT", f"contacts/{sup.zoho_id}", body=_body(sup))
+        with Z.about("supplier", sup.id, sup.name or ""):
+            Z.call(db, "PUT", f"contacts/{sup.zoho_id}", body=_body(sup))
         sup.zoho_err = ""
     except Exception as e:
         sup.zoho_err = (getattr(e, "msg", None) or str(e))[:300]
@@ -112,7 +113,8 @@ def create(sid: int, db: Session = Depends(get_db), user: models.User = ZG):
         body["contact_persons"] = [{"first_name": (sup.contact_person or sup.name)[:100], "email": sup.email or "",
                                     "phone": sup.phone or "", "is_primary_contact": True}]
     try:
-        d = Z.call(db, "POST", "contacts", body=body)
+        with Z.about("supplier", sup.id, sup.name or "", user.id):
+            d = Z.call(db, "POST", "contacts", body=body)
     except Z.ZohoError as e:
         raise HTTPException(status_code=400, detail=f"Zoho refused: {e.msg}")
     sup.zoho_id, sup.zoho_err = d["contact"]["contact_id"], ""

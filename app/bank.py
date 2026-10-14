@@ -197,7 +197,8 @@ def _send(db, rows, user):
             zid = zohoapi.find_existing(db, f"[BK-{x.id}]", BANK_PLACES) if unsure else ""
             label = "Found in Zoho"
             if not zid:
-                zid, label = push(db, x)
+                with zohoapi.about("bank", x.id, f"BK-{x.id}", user.id):
+                    zid, label = push(db, x)
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, label, ""
             x.approved_by, x.approved_at = user.id, now
             sent += 1

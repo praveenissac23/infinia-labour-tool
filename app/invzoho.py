@@ -143,7 +143,8 @@ def release(iid: int, payload: dict = Body(default={}), db: Session = Depends(ge
     if not Z.claim(db, Invoice, x, ("",)):
         raise HTTPException(status_code=400, detail="It is already released (or being released) to Zoho.")
     try:
-        zid, label = push_invoice(db, x, account)
+        with Z.about("invoice", x.id, x.number or "", user.id):
+            zid, label = push_invoice(db, x, account)
         x.zoho_status, x.zoho_id = "sent", f"invoice:{zid}"
         x.zoho_err = label if label.startswith("Invoice - CHECK") else ""
         x.released_by, x.released_at = user.id, datetime.now(timezone.utc)

@@ -666,7 +666,10 @@ def send_loans(payload: dict = Body(default={}), db: Session = Depends(get_db), 
             continue
         try:
             zid = zohoapi.find_existing(db, f"LN-{l.id}", [("journals", "journals", "journal_id", "reference_number")]) if unsure else ""
-            l.zoho_id = zid or zohoapi.push_loan(db, l, emps.get(l.employee_id))
+            if not zid:
+                with zohoapi.about("loan", l.id, f"LN-{l.id}", user.id):
+                    zid = zohoapi.push_loan(db, l, emps.get(l.employee_id))
+            l.zoho_id = zid
             l.zoho_status, l.zoho_err = "sent", ""
             sent += 1
         except Exception as e:

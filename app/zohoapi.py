@@ -132,9 +132,45 @@ def _access(db):
     return _TOKEN["value"]
 
 
+import contextvars
+from contextlib import contextmanager
+# What the portal is sending right now (set by each Send loop), so every
+# change made in Zoho is logged against its portal line - see zoholog.py.
+ZCTX = contextvars.ContextVar("zoho_ctx", default=None)
+
+
+@contextmanager
+def about(source, item_id=None, ref="", user_id=None):
+    tok = ZCTX.set({"source": source, "item_id": item_id, "ref": ref, "user_id": user_id})
+    try:
+        yield
+    finally:
+        ZCTX.reset(tok)
+
+
 def call(db, method, path, params=None, body=None):
     """One Books API call. Returns Zoho's JSON; raises with Zoho's own
-    message when it refuses."""
+    message when it refuses. Every change (POST/PUT/DELETE) is logged."""
+    if method == "GET":
+        return _call(db, method, path, params, body)
+    try:
+        d = _call(db, method, path, params, body)
+    except ZohoError as e:
+        _record(db, method, path, body, None, e.msg)
+        raise
+    _record(db, method, path, body, d, "")
+    return d
+
+
+def _record(db, method, path, body, resp, err):
+    try:
+        import zoholog
+        zoholog.record(db, method, path, body, resp, err, ZCTX.get() or {})
+    except Exception:
+        pass                                  # the log never stops a send
+
+
+def _call(db, method, path, params=None, body=None):
     q = dict(params or {})
     q.setdefault("organization_id", org(db))
     url = f"{_api_host(db)}/books/v3/{path.lstrip('/')}?{urllib.parse.urlencode(q)}"
@@ -564,7 +600,8 @@ def push_many(db, rows, user=None):
             zid = find_existing(db, f"PC-{x.id}", PETTY_PLACES) if unsure else ""
             label = "Found in Zoho"
             if not zid:
-                zid, label = push(db, x)
+                with about("petty", x.id, f"PC-{x.id}", getattr(user, "id", None)):
+                    zid, label = push(db, x)
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, f"{label} · PC-{x.id}", ""
             sent += 1
         except Exception as e:

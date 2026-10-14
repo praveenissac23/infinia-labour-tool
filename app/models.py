@@ -1316,3 +1316,30 @@ class PpeStock(Base):
     counted = Column(Integer, nullable=True)
     counted_on = Column(Date, nullable=True)
     reorder = Column(Integer, default=5)
+
+
+class ZohoLog(Base):
+    """Every change the portal makes in Zoho Books, one row each: what went
+    where (from -> to), so the chief accountant can see and check it, and
+    reverse it if needed. Written by zohoapi.call for every POST/PUT/DELETE."""
+    __tablename__ = "zoho_log"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    user_id = Column(Integer, nullable=True)
+    source = Column(String, default="", index=True)     # petty | bank | lpo | loan | invoice | supplier | reverse | other
+    item_id = Column(Integer, nullable=True, index=True)
+    ref = Column(String, default="")                    # PC-12, BK-5, IC/LPO/..., LN-3
+    action = Column(String, default="")                 # create | update | delete
+    kind = Column(String, default="")                   # expense | journal | banktransaction | vendorpayment | ...
+    zoho_id = Column(String, default="", index=True)
+    number = Column(String, default="")
+    on_date = Column(String, default="")
+    amount = Column(Float, default=0.0)
+    from_acc = Column(String, default="")
+    to_acc = Column(String, default="")
+    detail = Column(Text, default="")                   # JSON: project, vendor, vat, lines, description
+    ok = Column(Boolean, default=True)
+    error = Column(String, default="")
+    reversed_at = Column(DateTime(timezone=True), nullable=True)
+    reversed_by = Column(Integer, nullable=True)
+    reverse_reason = Column(String, default="")

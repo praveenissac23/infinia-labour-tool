@@ -13071,6 +13071,8 @@ import invzoho  # noqa: E402
 app.include_router(invzoho.router)
 import supzoho  # noqa: E402
 app.include_router(supzoho.router)
+import zoholog  # noqa: E402
+app.include_router(zoholog.router)
 import camp  # noqa: E402
 app.include_router(camp.router)
 import pozoho  # noqa: E402

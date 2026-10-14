@@ -22,7 +22,7 @@ const visible = p => p.evaluate(() => [...document.querySelectorAll('#screen-zoh
     await p.evaluate(async b => { try { await apiCall('/store/bank', { method: 'POST', body: JSON.stringify(b) }); } catch (e) {} }, body);
   await openZoho(p);
   const t = await tabs(p);
-  ck('seven tabs', t.length === 7 && /^Petty cash/.test(t[0]) && /^Bank/.test(t[1]) && /^LPOs/.test(t[2]) && /^Suppliers/.test(t[6]), t);
+  ck('eight tabs', t.length === 8 && /^Petty cash/.test(t[0]) && /^Bank/.test(t[1]) && /^LPOs/.test(t[2]) && /^Sent to Zoho/.test(t[5]) && /^Suppliers/.test(t[7]), t);
   ck('Bank tab counts 2', /^Bank2$/.test(t[1]), t[1]);
   ck('one pane at a time', (await visible(p)).length === 1, await visible(p));
   const ready = await p.evaluate(() => ZH.rows.filter(r => !zhFlags(r).length).length);

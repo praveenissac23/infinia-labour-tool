@@ -118,7 +118,8 @@ def send(payload: dict = Body(default={}), db: Session = Depends(get_db), user: 
         if not Z.claim(db, models.PurchaseOrder, o, ("",)):
             continue
         try:
-            zid, label = push(db, o)
+            with Z.about("lpo", o.id, o.ref, user.id):
+                zid, label = push(db, o)
             o.zoho_status, o.zoho_id, o.zoho_err = "sent", f"purchaseorder:{zid}", ""
             sent += 1
         except Exception as e:

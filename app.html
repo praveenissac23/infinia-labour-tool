@@ -1540,6 +1540,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .za-none { padding:14px 12px; color:#8A7F75; font-size:13px; }
   .za-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid #EFEAE4; font-size:11.5px; color:#8A7F75; }
   .za-ref { border:0; background:none; color:#8B5E34; font:inherit; font-size:11.5px; cursor:pointer; padding:2px 4px; }
+
+  /* Sent to Zoho */
+  .zs-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:10px 0 12px; }
+  .zs-filters .pc-f { min-width:140px; } .zs-filters .pc-f input[type=search] { min-width:220px; }
+  .zs-all { display:flex; align-items:center; gap:6px; font-size:13px; color:#4A433D; height:38px; } .zs-all small { color:#8A7F75; }
+  .zs-exp { margin-left:auto; }
+  .zs-table td { vertical-align:top; }
+  .zs-src { font-weight:600; color:#2B2622; }
+  .zs-ft { display:grid; grid-template-columns:44px 1fr; gap:2px 8px; line-height:1.4; align-items:baseline; }
+  .zs-k { font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#8A7F75; } .zs-kto { color:#B03A2E; }
+  .zs-table .zh-acts { display:flex; flex-direction:row; flex-wrap:nowrap; gap:6px; justify-content:flex-end; }
+  .zs-table .zh-acts .btn { width:auto; text-decoration:none; }
+  .zs-acc { display:inline; } .zs-par { color:#8A7F75; font-size:11.5px; }
+  .zs-arrow { color:#B03A2E; font-weight:700; } .zs-plus { color:#8A7F75; margin:0 4px; }
+  .zs-from { color:#4A433D; } .zs-to { font-weight:600; color:#2B2622; }
+  .zs-chk { margin-top:4px; font-size:12px; } .zs-chk span { display:block; }
+  .zs-good { color:#2E7D32; font-weight:600; } .zs-bad { color:#B03A2E; font-weight:600; font-size:12.5px; }
+  .zs-dim td { opacity:.62; }
+  .zx-tag.zx-rev { background:#F1ECE6; color:#6B5E52; }
+  .zs-revb { color:#B03A2E; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -1719,7 +1739,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="07c0eeba8c44";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="b4780284ebd0";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3466,6 +3486,19 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="zh-intro"><b>October check</b> - lines from 1 to 14 Oct that were typed into Zoho by hand before the portal took over, so they are never sent twice.
                 <button type="button" class="btn btn-primary btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button></div>
               <div id="zh-oct"></div>
+            </div>
+            <div class="zh-pane" data-pane="sent">
+              <div class="zh-intro"><b>Sent to Zoho</b> - every line the portal put into Zoho, and where it went: <b>from</b> which account <b>to</b> which account, with project, supplier and the Zoho number. <b>Check</b> compares with Zoho as it is now. <b>Reverse</b> deletes it in Zoho and puts the line back to waiting, to correct and send again.</div>
+              <div class="zs-filters">
+                <label class="pc-f"><span>From</span><input type="date" id="zs-from" onchange="zsLoad()"></label>
+                <label class="pc-f"><span>To</span><input type="date" id="zs-to" onchange="zsLoad()"></label>
+                <label class="pc-f"><span>What</span><select id="zs-src" onchange="zsLoad()"><option value="">Everything</option><option value="petty">Petty cash</option><option value="bank">Bank</option><option value="lpo">LPOs</option><option value="loan">Staff loans</option><option value="invoice">Tax invoices</option><option value="supplier">Suppliers</option></select></label>
+                <label class="pc-f"><span>Search</span><input type="search" id="zs-q" placeholder="Description, account, number" oninput="zsDraw()"></label>
+                <label class="zs-all"><input type="checkbox" id="zs-allc" onchange="zsLoad()"> All changes <small>(supplier updates, deletes, refusals)</small></label>
+                <div class="exp-btns zs-exp"><button type="button" class="btn btn-dark" onclick="zsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsExport('excel')">Export Excel</button></div>
+              </div>
+              <div class="pc-stats" id="zs-stats"></div>
+              <div class="grid-wrap" style="max-height:640px;"><table class="pc-table zs-table" data-nomove><thead><tr><th class="l" style="width:92px;">Sent</th><th class="l">Portal line</th><th class="l" style="width:130px;">In Zoho</th><th class="l">Where it went in Zoho</th><th class="n" style="width:104px;">Amount</th><th style="width:262px;"></th></tr></thead><tbody id="zs-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
             </div>
             <div class="zh-pane" data-pane="suppliers">
               <div class="zh-intro"><b>Suppliers in Zoho</b> - the portal's supplier list is the master. Each supplier is linked once to its Zoho supplier; a supplier's LPOs and bills need that link. Linking creates or changes nothing in Zoho.</div>
@@ -17093,6 +17126,90 @@ async function zaRefresh() {
 }
 addEventListener("scroll", e => { const p = document.getElementById("za-pop"); if (p && !p.contains(e.target) && Date.now() - (p.__at || 0) > 600) zaClose(); }, true);
 addEventListener("resize", () => zaClose());
+// ---- Sent to Zoho: where each line went, Check, Reverse -------------------
+let ZS = null;
+function zsQS() {
+  const f = document.getElementById("zs-from"), t = document.getElementById("zs-to");
+  if (!f.value) f.value = pcToday().slice(0, 8) + "01";
+  if (!t.value) t.value = pcToday();
+  return `start=${f.value}&end=${t.value}&source=${encodeURIComponent(document.getElementById("zs-src").value)}&all=${document.getElementById("zs-allc").checked ? 1 : 0}`;
+}
+async function zsLoad() {
+  try { ZS = await apiCall(`/store/zoho/sent?${zsQS()}`); } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
+  zsDraw();
+}
+function zsWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso); const p = n => String(n).padStart(2, "0");
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+  return `${p(d.getDate())}-${m}<span class="sub">${p(d.getHours())}:${p(d.getMinutes())}</span>`;
+}
+function zsAcc(a) {
+  if (!a) return `<span class="zh-none">-</span>`;
+  return a.split(" + ").map(x => { const i = x.lastIndexOf(" › ");
+    return i > 0 ? `<span class="zs-acc"><span class="zs-par">${escapeHtml(x.slice(0, i))} ›</span> ${escapeHtml(x.slice(i + 3))}</span>` : `<span class="zs-acc">${escapeHtml(x)}</span>`; }).join(`<span class="zs-plus">+</span>`);
+}
+function zsDraw() {
+  if (!ZS) return;
+  const q = (document.getElementById("zs-q").value || "").trim().toLowerCase();
+  const rows = ZS.rows.filter(r => !q || `${r.item} ${r.ref} ${r.from} ${r.to} ${r.number} ${r.project} ${r.supplier} ${r.description}`.toLowerCase().includes(q));
+  const c = ZS.counts;
+  document.getElementById("zs-stats").innerHTML =
+    `<div class="pc-stat"><span>In Zoho - this period</span><b>${c.sent} line${c.sent === 1 ? "" : "s"}</b></div>
+     <div class="pc-stat"><span>Amount</span><b>AED ${pcMoney(c.amount)}</b></div>
+     <div class="pc-stat${c.reversed ? " hand" : ""}"><span>Reversed</span><b>${c.reversed}</b></div>
+     <div class="pc-stat${c.failed ? " neg" : ""}"><span>Refused by Zoho</span><b>${c.failed}</b></div>`;
+  document.getElementById("zs-body").innerHTML = rows.map(r => {
+    const tag = !r.ok ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.error)}">Refused</span>`
+      : r.reversed ? `<span class="zx-tag zx-rev" title="${escapeAttr(r.reverse_reason)}">Reversed</span>`
+      : r.action === "delete" ? `<span class="zx-tag zx-rev">Deleted</span>` : r.action === "update" ? `<span class="zx-tag zx-app">Updated</span>` : `<span class="zx-tag zx-ok">In Zoho ✓</span>`;
+    const extra = [r.project && `Project ${escapeHtml(r.project)}`, r.supplier && escapeHtml(r.supplier), r.vat && r.vat !== "No VAT" && escapeHtml(r.vat),
+                   r.lines && r.lines.length > 1 && `${r.lines.length} parts: ` + r.lines.map(l => `${escapeHtml(l.account.split(" › ").pop())} ${pcMoney(+l.amount || 0)}`).join(", ")].filter(Boolean).join(" · ");
+    const acts = (r.web && r.ok && r.action !== "delete" && !r.reversed ? `<a class="btn btn-gray btn-sm" href="${escapeAttr(r.web)}" target="_blank" rel="noopener" title="Open it in Zoho Books">Open</a>` : "")
+      + (r.ok && r.action === "create" && !r.reversed && r.zoho_id ? `<button class="btn btn-gray btn-sm" onclick="zsCheck(${r.id}, this)" title="Read it from Zoho now and compare">Check</button>` : "")
+      + (r.can_reverse && ZS.may_reverse ? `<button class="btn btn-gray btn-sm zs-revb" onclick="zsReverse(${r.id})" title="Delete it in Zoho and put the line back to waiting">Reverse</button>` : "");
+    return `<tr class="${r.reversed || !r.ok ? "zs-dim" : ""}"><td class="l">${zsWhen(r.at)}</td>
+      <td class="l"><b class="zs-src">${escapeHtml(r.source_label)}</b> ${escapeHtml(r.item || r.ref)}<span class="sub">${escapeHtml(r.ref)}${r.by ? " · by " + escapeHtml(r.by) : ""}${r.reversed ? ` · reversed by ${escapeHtml(r.reversed_by)}: ${escapeHtml(r.reverse_reason)}` : ""}${!r.ok ? " · " + escapeHtml(r.error) : ""}</span></td>
+      <td class="l">${tag}<span class="sub">${escapeHtml(r.kind_label)}${r.number ? " " + escapeHtml(r.number) : ""}</span></td>
+      <td class="l"><div class="zs-ft"><span class="zs-k">From</span><span class="zs-from">${zsAcc(r.from)}</span><span class="zs-k zs-kto">To →</span><span class="zs-to">${zsAcc(r.to)}</span></div>${extra ? `<span class="sub">${extra}</span>` : ""}<div class="zs-chk" id="zs-chk-${r.id}"></div></td>
+      <td class="n">${r.action === "create" ? pcMoney(r.amount) : ""}</td>
+      <td><div class="zh-acts">${acts}</div></td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">Nothing sent to Zoho in this period.</td></tr>`;
+}
+async function zsCheck(id, btn) {
+  const box = document.getElementById(`zs-chk-${id}`); btn.disabled = true; box.innerHTML = `<span class="sub">Reading Zoho…</span>`;
+  try {
+    const d = await apiCall(`/store/zoho/sent/${id}/check`);
+    box.innerHTML = !d.exists ? `<span class="zs-bad">✕ Not in Zoho any more - deleted there</span>`
+      : d.diffs.length ? d.diffs.map(x => `<span class="zs-bad">≠ ${escapeHtml(x)}</span>`).join("")
+      : `<span class="zs-good">✓ Zoho matches${d.live && d.live.number ? " - " + escapeHtml(d.live.number) : ""}</span>`;
+  } catch (e) { box.innerHTML = `<span class="zs-bad">${escapeHtml(errText(e))}</span>`; }
+  btn.disabled = false;
+}
+function zsReverse(id) {
+  const r = ZS.rows.find(x => x.id === id); if (!r) return;
+  const ov = document.createElement("div"); ov.className = "zx-modal";
+  ov.innerHTML = `<div class="zx-box" style="width:520px;"><h3 style="margin:0 0 6px;">Reverse this?</h3>
+    <div class="sub" style="display:block;margin-bottom:10px;">${escapeHtml(r.source_label)} · ${escapeHtml(r.item || r.ref)}<br>Zoho ${escapeHtml(r.kind_label)} ${escapeHtml(r.number)} · ${escapeHtml(r.from)} → ${escapeHtml(r.to)} · AED ${pcMoney(r.amount)}</div>
+    <div style="font-size:13px;margin-bottom:10px;">It is <b>deleted in Zoho</b> and the line goes <b>back to waiting</b> in the portal, to correct and send again.</div>
+    <label class="pc-f" style="display:block;"><span>Why?</span><input type="text" id="zr-why" style="width:100%;box-sizing:border-box;" maxlength="200" placeholder="e.g. wrong account - should be Machinery Rent"></label>
+    <div id="zr-err" class="zs-bad" style="min-height:18px;margin-top:6px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;"><button type="button" class="btn btn-gray" id="zr-no">Cancel</button><button type="button" class="btn btn-primary" id="zr-yes">Reverse</button></div></div>`;
+  document.body.appendChild(ov);
+  const why = ov.querySelector("#zr-why"); why.focus();
+  ov.querySelector("#zr-no").onclick = () => ov.remove();
+  ov.querySelector("#zr-yes").onclick = async () => {
+    const b = ov.querySelector("#zr-yes"); b.disabled = true; b.textContent = "Reversing…";
+    try { const d = await apiCall(`/store/zoho/sent/${id}/reverse`, { method: "POST", body: JSON.stringify({ reason: why.value }) });
+          ov.remove(); await Promise.all([zsLoad(), zhLoad()]);
+          showStatus("zh-status", "ok", d.gone ? "It was already gone in Zoho - the line is back to waiting." : "Deleted in Zoho - the line is back to waiting.");
+    } catch (e) { ov.querySelector("#zr-err").textContent = errText(e); b.disabled = false; b.textContent = "Reverse"; }
+  };
+}
+async function zsExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/zoho/sent?format=${kind}&${zsQS()}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
 function zhProjectAcc(a) { return !!ZH && ZH.groups[0].accounts.includes(a); }
 function zhFlags(r) {
   const p = ZH_PICK[r.id], out = [];
@@ -17268,9 +17385,9 @@ try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
 // so nothing below it moves.
 function zhTabsSkeleton() {
   const el = document.getElementById("zh-tabs"); if (!el || el.children.length) return;
-  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["october", "October check"], ["suppliers", "Suppliers"]];
+  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["sent", "Sent to Zoho"], ["october", "October check"], ["suppliers", "Suppliers"]];
   const on = ZH_PANE || "petty";
-  el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
+  el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers", "sent"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === on ? "block" : "none");
   // the connection line as it was last time, so it does not drop in late
   try { const c = JSON.parse(localStorage.getItem("infinia_zh_conn") || "null"); if (c) zhConnDraw(c); } catch (e) {}
@@ -17280,8 +17397,9 @@ function zhTabsDraw() {
   const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => o.status === "changed" || (o.cancelled && o.err)).length;
   const attn = (ZH.pending || []).length + (ZH.todo || []).length;
   const T = [["petty", "Petty cash", (ZH.rows || []).length], ["bank", "Bank", (ZH.bank || []).length], ["lpo", "LPOs", lpoWait + lpoFlag],
-             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""]];
+             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["sent", "Sent to Zoho", ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""]];
   if (!ZH_PANE || !T.some(t => t[0] === ZH_PANE)) ZH_PANE = (T.find(t => t[2]) || T[0])[0];
+  if (ZH_PANE === "sent" && !ZS) zsLoad();
   el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === ZH_PANE ? "block" : "none");
   const none = document.getElementById("zh-attn-none"); if (none) none.innerHTML = attn ? "" : `<div class="zh-none">Nothing needs attention - no refused lines and no entries waiting for a supplier.</div>`;
@@ -17290,6 +17408,7 @@ function zhPane(k) {
   ZH_PANE = k; try { localStorage.setItem("infinia_zh_pane", k); } catch (e) {}
   zhTabsDraw();
   if (k === "suppliers") zhSupLoad(0);
+  if (k === "sent") zsLoad();
 }
 async function zhLinkSuppliers(btn) {
   btn.disabled = true; btn.textContent = "Reading Zoho's suppliers...";
@@ -20222,7 +20341,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=fd9a2c9c9b"></script>
+<script src="/portal/help/guides.js?v=54c19000f7"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>
