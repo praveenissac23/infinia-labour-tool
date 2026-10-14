@@ -218,6 +218,7 @@ def seed_on_startup():
         _grant_projects_to_chief_accountant(db)
         _grant_camp(db)
         _grant_ppe(db)
+        _grant_admin_forms(db)
         try:
             import credentials as _cr
             _cr.grant_once(db)
@@ -363,6 +364,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # PPE register: record coveralls, shoes, helmets given to
                # workers - the PRO, the store keeper and accounts.
                "ppe",
+               # Admin > Forms: the blank HR forms (leave, passport, visa
+               # renewal) - admin, the PRO and accounts.
+               "admin_forms",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -663,6 +667,25 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_admin_forms(db):
+    """Admin > Forms goes to the PRO, the chief and the assistant
+    accountant (roles and their logins). Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "admin_forms_granted").first():
+        return
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    want = {"pro", "chief accountant", "assistant accountant"}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        if role is not None and (role.name or "").strip().lower() in want and keys:
+            add = [k for k in ("admin_forms", "admin.forms") if k not in keys]
+            if add:
+                setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="admin_forms_granted", value="1"))
     db.commit()
 
 
@@ -13020,6 +13043,8 @@ import pozoho  # noqa: E402
 app.include_router(pozoho.router)
 import ppe  # noqa: E402
 app.include_router(ppe.router)
+import forms  # noqa: E402  - Admin > Forms
+app.include_router(forms.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

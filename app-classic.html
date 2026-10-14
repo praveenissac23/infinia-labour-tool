@@ -551,6 +551,19 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
 
 
+  /* Admin > Forms */
+  #screen-adminforms .af-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-top:14px}
+  .af-card{display:flex;gap:14px;border:1px solid #ECE6DF;border-radius:12px;padding:12px;background:#fff}
+  .af-thumb{flex:none;width:108px;height:153px;border:1px solid #E6E1DB;border-radius:6px;padding:0;background:#fff;cursor:zoom-in;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+  .af-thumb img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+  .af-thumb:hover{border-color:#C0392B}
+  .af-body{display:flex;flex-direction:column;min-width:0;flex:1}
+  .af-no{font-size:10.5px;letter-spacing:.08em;color:#8A8079;font-weight:700}
+  .af-body h3{margin:2px 0 0;font-size:15px;color:#2B2622} .af-tag{font-size:12.5px;color:#C0392B;font-weight:600;margin-top:1px}
+  .af-body p{font-size:12.5px;color:#5B524B;margin:8px 0 6px;line-height:1.4}
+  .af-sign{font-size:11.5px;color:#6b625a;margin-bottom:10px} .af-sign span{font-weight:700;color:#8A8079;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+  .af-btns{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap} .af-btns .btn{height:32px;padding:0 12px}
+  @media (max-width:560px){ #screen-adminforms .af-grid{grid-template-columns:1fr} .af-thumb{width:96px;height:136px} }
   /* PPE register */
   #screen-ppe .pc-btns{align-items:flex-end} #screen-ppe .pc-btns .btn{height:36px;box-sizing:border-box} #screen-ppe .pc-btns select{height:36px}
   #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
@@ -3160,6 +3173,16 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         </div>
 
         <!-- ============ SEND TO ZOHO (Accounts) ============ -->
+        <!-- ============ ADMIN > FORMS ============ -->
+        <div class="screen" id="screen-adminforms">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">Forms <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Blank company forms - print, fill by hand, sign</span></h2></div>
+            </div>
+            <div class="status-msg" id="af-status"></div>
+            <div class="af-grid" id="af-grid"><div class="sub" style="padding:18px 0;">Loading...</div></div>
+          </div>
+        </div>
         <div class="screen" id="screen-ppe">
           <div class="card">
             <div class="pc-head">
@@ -4823,6 +4846,7 @@ function switchScreen(name) {
   if (name === "bank") bkLoad();
   if (name === "credentials") crLoad();
   if (name === "expiry") expOpen();
+  if (name === "adminforms") formsOpen();
   if (name === "pdc") pdcOpen();
   if (name === "seccheque") scOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -16933,6 +16957,22 @@ async function ppeMoveDel(id, item) {
 async function ppeExport(kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/reports/ppe?format=${kind}&view=${document.getElementById("pe-rep").value}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+// ---- Admin > Forms: blank HR forms, one A4 page each -------------------------
+let AF = null;
+async function formsOpen() {
+  try { AF = (await apiCall("/store/admin/forms")).forms; } catch (e) { return showStatus("af-status", "err", errText(e)); }
+  await refreshDownloadToken();
+  const tk = encodeURIComponent(cachedDownloadToken || "");
+  document.getElementById("af-grid").innerHTML = AF.map(f => `<div class="af-card">
+    <button type="button" class="af-thumb" onclick="formsGo('${f.key}','view')" title="Preview"><img src="${API}/export/admin/forms/${f.key}?format=thumb&token=${tk}" alt="${escapeAttr(f.title)}" loading="lazy"></button>
+    <div class="af-body"><div class="af-no">${escapeHtml(f.no)}</div><h3>${escapeHtml(f.title)}</h3><div class="af-tag">${escapeHtml(f.tag)}</div>
+      <p>${escapeHtml(f.intro)}</p><div class="af-sign"><span>Signed by</span> ${f.sign.map(x => escapeHtml(x.replace(/ \(.*\)/, ""))).join(" · ")}</div>
+      <div class="af-btns"><button type="button" class="btn btn-dark btn-sm" onclick="formsGo('${f.key}','view')">Preview</button><button type="button" class="btn btn-dark btn-sm" onclick="formsGo('${f.key}','pdf')">PDF</button><button type="button" class="btn btn-dark btn-sm" onclick="formsGo('${f.key}','view')">Share</button></div></div></div>`).join("");
+}
+async function formsGo(key, kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/admin/forms/${key}?format=${kind}${kind === "pdf" ? "&dl=1" : ""}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 // ---- Labour accommodation (Reports > Labour > Accommodation) -------------
 // Vacation comes from leave records and leavers free their bed by

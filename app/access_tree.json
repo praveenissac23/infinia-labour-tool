@@ -695,6 +695,22 @@
   ]
  },
  {
+  "id": "admin",
+  "label": "Admin",
+  "children": [
+   {
+    "id": "admin.forms",
+    "label": "Forms",
+    "right": [
+     "admin_forms"
+    ],
+    "grant": [
+     "admin_forms"
+    ]
+   }
+  ]
+ },
+ {
   "id": "reports",
   "label": "Reports",
   "children": [

@@ -148,6 +148,8 @@ PAGES = {
             sub("hired", "On rent", screen="store", right=STORE_RIGHTS, go="pgStoreReport('hired')"),
             # Requests are read by whoever raises or approves them - not by stock alone.
             sub("mr_history", "Requests", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
+    # Admin: the company's blank forms to print - leave, passport, visa renewal.
+    "admin": ("Admin", [tab("forms", "adminforms", "Forms", "admin_forms", go="formsOpen()")]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
@@ -160,17 +162,17 @@ PAGES = {
 EXTRA = {"monthly": "reports"}
 # Pages held in a frame inside the app rather than written from app.html.
 VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
-ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "reports", "settings"]
+ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "admin", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
-FILE = {"reports": "reporting"}
+FILE = {"reports": "reporting", "admin": "forms"}   # no "admin" in an address, to be safe with nginx
 def fname(key): return FILE.get(key, key) + ".html"
 STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_local"]),
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder",
-          "accounts": "Accounts"}
+          "accounts": "Accounts", "admin": "Admin"}
 
 # ---- Settings > Access: every page, tab and tab inside a tab -------------
 # Each tab a login can be given is a "leaf" with its own id

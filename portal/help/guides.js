@@ -203,6 +203,13 @@ window.HELP_GUIDES = [
       { say: "On Send to Zoho, Purchase orders (LPOs) lists the LPOs from 1 Oct not yet in Zoho. Press Send.", el: "#zh-pos" },
       { say: "Each goes with its portal number (IC/LPO/2026xxxx), the supplier's Zoho vendor, lines, VAT and discount.", el: "#zh-pos" }],
     tip: "A supplier marked 'not linked' must be linked on Suppliers in Zoho first. An LPO changed or cancelled after it went is flagged - do it in Zoho, then press Done in Zoho." },
+  { id: "admin-forms", area: "Admin", title: "Where are the leave, passport and visa renewal forms?",
+    words: "form forms leave application annual leave emergency passport release submission visa renewal print blank admin hr",
+    go: { page: "admin", tab: "forms" },
+    steps: [
+      { say: "Admin > Forms has the company's five forms: leave (office staff and site staff), passport release, passport submission and labour visa renewal.", el: "#af-grid" },
+      { say: "Press Preview to see the form, PDF to download it, or Share to send it on WhatsApp or mail. Print it, fill it by hand and get it signed.", el: "#af-grid" }],
+    tip: "Each form fits one A4 page and carries its document number (IC/HR/F01 to F05)." },
   { id: "ppe-give", area: "Reports", title: "How to record PPE given to a worker",
     words: "ppe uniform coverall safety shoes helmet vest jacket give issue register misuse",
     go: { page: "reports", tab: "labour", sub: "ppe" },
