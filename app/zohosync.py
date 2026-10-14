@@ -444,9 +444,8 @@ def accounts_refresh(db: Session = Depends(get_db), user: models.User = ZG):
     import zohoapi
     if not zohoapi.connected(db):
         raise HTTPException(status_code=400, detail="Zoho is not connected - the list from the last read is used.")
-    zohoapi._CACHE.pop("chart", None)
     try:
-        zohoapi.chart(db)
+        zohoapi.chart_fresh(db)
     except zohoapi.ZohoError as e:
         raise HTTPException(status_code=400, detail=f"Zoho did not answer: {e.msg[:150]}")
     return account_lists(db)

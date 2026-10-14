@@ -17172,16 +17172,23 @@ function zhList(kind, rows, elId, title, intro, empty, before, after) {
 function zhSel(kind, id, on) { on ? ZH_SEL[kind].add(id) : ZH_SEL[kind].delete(id); zhRedraw(kind); }
 function zhSelAll(kind, on) { ZH_SEL[kind].clear(); if (on) (ZH[kind + "_rows"] || []).filter(r => !r.block).forEach(r => ZH_SEL[kind].add(r.id)); zhRedraw(kind); }
 function zhRedraw(kind) { ({ bank: zhBankDraw, lpo: zhPosDraw, loans: zhLoansDraw })[kind](); zhTabsDraw(); }
+const ZH_CHUNK = 6;
 async function zhSendIds(kind, ids, btn) {
   ids = (ids || []).filter(Boolean);
   if (!ids.length) return;                       // never an empty list - the server reads that as 'all'
   const rows = (ZH[kind + "_rows"] || []).filter(r => ids.includes(r.id)), w = ZH_WORD[kind];
   if (ids.length > 1 && !confirm(`Send ${ids.length} ${w[1]} (AED ${pcMoney(rows.reduce((a, r) => a + (+r.amount || 0), 0))}) to Zoho now?`)) return;
   btn.disabled = true; const was = btn.textContent; btn.textContent = "Sending...";
-  try { const d = await apiCall(ZH_SEND[kind], { method: "POST", body: JSON.stringify({ ids }) });
-        ids.forEach(i => ZH_SEL[kind].delete(i)); await zhLoad();
-        showStatus("zh-status", d.failed && d.failed.length ? "err" : "ok", `${d.sent} ${d.sent === 1 ? w[0] : w[1]} in Zoho now.` + (d.failed && d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
-  catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; btn.textContent = was; }
+  // A few at a time: each press of Send stays well under the server's 60 s.
+  let sent = 0, failed = 0;
+  try { for (let i = 0; i < ids.length; i += ZH_CHUNK) {
+          const part = ids.slice(i, i + ZH_CHUNK);
+          if (ids.length > ZH_CHUNK) btn.textContent = `Sending ${Math.min(i + ZH_CHUNK, ids.length)} of ${ids.length}...`;
+          const d = await apiCall(ZH_SEND[kind], { method: "POST", body: JSON.stringify({ ids: part }) });
+          sent += d.sent || 0; failed += (d.failed || []).length; part.forEach(x => ZH_SEL[kind].delete(x)); }
+        await zhLoad();
+        showStatus("zh-status", failed ? "err" : "ok", `${sent} ${sent === 1 ? w[0] : w[1]} in Zoho now.` + (failed ? ` ${failed} refused - see the list.` : "")); }
+  catch (e) { await zhLoad(); showStatus("zh-status", "err", (sent ? `${sent} sent, then: ` : "") + errText(e)); btn.disabled = false; btn.textContent = was; }
 }
 function zhBankDraw() {
   const L = ZH.bank || [];
@@ -17281,7 +17288,13 @@ async function zhApprove(only, btn) {
   if (!only && lines.length > 1 && !confirm(`Approve ${lines.length} petty cash lines (AED ${pcMoney(zhShown().filter(r => lines.some(l => l.id === r.id)).reduce((a, r) => a + r.amount, 0))}) for Zoho now?`)) return;
   const go = btn || document.getElementById("zh-go"); go.disabled = true;
   try {
-    const d = await apiCall("/store/zoho/approve", { method: "POST", body: JSON.stringify({ lines }) });
+    // A few lines per request (each one may wait on Zoho); the totals add up.
+    const d = { approved: 0, sent: 0, failed: [], refused: [], connected: true };
+    for (let i = 0; i < lines.length; i += ZH_CHUNK) {
+      if (lines.length > ZH_CHUNK) go.textContent = `Sending ${Math.min(i + ZH_CHUNK, lines.length)} of ${lines.length}...`;
+      const r = await apiCall("/store/zoho/approve", { method: "POST", body: JSON.stringify({ lines: lines.slice(i, i + ZH_CHUNK) }) });
+      d.approved += r.approved || 0; d.sent += r.sent || 0; d.failed.push(...(r.failed || [])); d.refused.push(...(r.refused || [])); d.connected = r.connected;
+    }
     await zhLoad();
     const sentTxt = d.connected ? ` ${d.sent} in Zoho now${d.failed.length ? `, ${d.failed.length} refused by Zoho (see the list)` : ""}.` : " They go to Zoho once it is connected.";
     showStatus("zh-status", d.refused.length || d.failed.length ? "err" : "ok", `${d.approved} line${d.approved === 1 ? "" : "s"} approved.` + sentTxt + (d.refused.length ? ` ${d.refused.length} not approved: ${d.refused.map(x => x.why).join("; ")}` : ""));

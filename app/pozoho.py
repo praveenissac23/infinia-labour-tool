@@ -66,8 +66,8 @@ def push(db, o):
             "reference_number": " · ".join(x for x in (site, (o.supplier_ref or "").strip()) if x)[:100],
             "line_items": items, "is_inclusive_tax": False,
             "notes": " - ".join(x for x in (o.job_scope, o.project_location, o.plot_no and f"Plot {o.plot_no}") if x)[:1000]}
-    if o.delivery_date:
-        body["delivery_date"] = o.delivery_date.isoformat()
+    if o.delivery_date and o.delivery_date >= o.order_date:
+        body["delivery_date"] = o.delivery_date.isoformat()      # Zoho refuses a delivery date before the PO date
     if (o.discount_pct or 0) > 0:
         # Zoho books a PO discount to an account; the chief accountant's own
         # POs use "Administration Fee" (IC/LPO/20260066).

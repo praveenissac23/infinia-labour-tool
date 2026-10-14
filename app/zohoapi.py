@@ -306,13 +306,71 @@ def chart(db):
         except Exception:
             db.rollback()
         return out
+    hit = _CACHE.get("chart")
+    if hit and hit[0] > time.time():
+        return hit[1]
+    # Reading the whole chart is ~40 calls to Zoho - far too slow inside a
+    # press of Send (nginx gives up after 60 s: the 504 of 14 Oct). When a
+    # list read before is kept, use it now and read Zoho again in the
+    # background; only a first-ever read waits.
+    saved = json.loads(_get(db, "accmap") or "{}")
+    if saved.get("map"):
+        _CACHE["chart"] = (time.time() + 600, saved["map"])
+        _refresh_chart_later()
+        return saved["map"]
     try:
         return _cached(db, "chart", fetch)
     except ZohoError:
-        saved = json.loads(_get(db, "accmap") or "{}")
-        if saved.get("map"):
-            return saved["map"]
         raise
+
+
+_CHART_BUSY = {"on": False}
+
+
+def _refresh_chart_later():
+    import threading
+    if _CHART_BUSY["on"]:
+        return
+    _CHART_BUSY["on"] = True
+
+    def run():
+        from database import SessionLocal
+        db2 = SessionLocal()
+        try:
+            _CACHE.pop("chart", None)
+            chart_fresh(db2)
+        except Exception as e:
+            print("zoho chart refresh:", e)
+        finally:
+            db2.close()
+            _CHART_BUSY["on"] = False
+    threading.Thread(target=run, daemon=True).start()
+
+
+def chart_fresh(db):
+    """Read the whole chart from Zoho now (the Read again button, the background refresh)."""
+    def fetch():
+        out, full = {}, {}
+        for kind in ("Asset", "Liability", "Equity", "Expense"):
+            d = call(db, "GET", "chartofaccounts", {"per_page": 200, "filter_by": f"AccountType.{kind}"})
+            _take(out, d.get("chartofaccounts", []), full)
+        for letter in ("a", "e", "i", "o", "u"):
+            page = 1
+            while page <= 15:
+                d = call(db, "GET", "chartofaccounts", {"search_text": letter, "per_page": 200, "page": page, "filter_by": "AccountType.Active"})
+                _take(out, d.get("chartofaccounts", []), full)
+                if not d.get("page_context", {}).get("has_more_page"):
+                    break
+                page += 1
+        _put(db, "accmap", json.dumps({"at": time.time(), "map": out}))
+        if len(full) > 50:
+            rows = sorted(full.values(), key=lambda a: a["name"].lower())
+            _put(db, "accfull", json.dumps({"at": time.time(), "rows": rows}))
+            _CACHE["chart_full"] = rows
+        return out
+    out = fetch()
+    _CACHE["chart"] = (time.time() + 3600, out)
+    return out
 
 
 def _search_account(db, name):

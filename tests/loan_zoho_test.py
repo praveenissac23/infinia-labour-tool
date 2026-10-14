@@ -102,6 +102,7 @@ del ACC["Cash"]
 g = add(amount=80, paid_from="Cash", taken_on="2026-10-12")
 for k in list(getattr(Z, "_CACHE", {}) or {}):
     Z._CACHE.pop(k, None)
+M.put_setting(s, "zoho_accmap", ""); s.commit()          # Zoho's list read again (no kept copy)
 r4 = zohosync.send_loans({"ids": [g["id"]]}, s, u)
 lg = s.query(models.StaffLoan).get(g["id"])
 ok(r4["sent"] == 0 and lg.zoho_status == "" and "Cash" in lg.zoho_err and len(POSTED) == 2,
