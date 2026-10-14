@@ -164,14 +164,34 @@ def next_number(db, kind, project_no=""):
     yy = f"{M._dubai_today():%y}"
     pre = ("PI" if kind == "proforma" else "IC") + f"/{yy}/" + (f"{project_no.strip()}/" if project_no.strip() else "")
     # Without a project number only IC/26/NN counts, not IC/26/906/NN.
-    for last in (db.query(Invoice).filter(Invoice.kind == kind, Invoice.number.like(pre + "%"))
-                   .order_by(Invoice.id.desc()).all()):
-        if not project_no.strip() and "/" in last.number[len(pre):]:
+    nums = [x.number for x in db.query(Invoice).filter(Invoice.kind == kind, Invoice.number.like(pre + "%"))
+                                         .order_by(Invoice.id.desc()).all()]
+    if kind == "tax" and project_no.strip():
+        nums += _zoho_numbers(db, pre)          # Zoho's own series for the project continues
+    best = None
+    for n in nums:
+        if not project_no.strip() and "/" in n[len(pre):]:
             continue
-        m = re.match(r"^(.*?)(\d+)$", last.number)
-        if m:
-            return m.group(1) + str(int(m.group(2)) + 1).zfill(len(m.group(2)))
+        m = re.match(r"^(.*?)(\d+)$", n)
+        if m and (best is None or int(m.group(2)) > best[1] or (int(m.group(2)) == best[1] and len(m.group(1)) > len(best[0]))):
+            best = (m.group(1), int(m.group(2)), len(m.group(2)))
+    if best:
+        return best[0] + str(best[1] + 1).zfill(best[2])
     return pre + "01"
+
+
+def _zoho_numbers(db, pre):
+    """Invoice numbers Zoho already holds under this project prefix - so
+    the portal never offers a number Zoho has used. Quiet if Zoho is not
+    connected or busy."""
+    try:
+        import zohoapi as Z
+        if not Z.connected(db):
+            return []
+        d = Z.call(db, "GET", "invoices", {"invoice_number_startswith": pre, "per_page": 200})
+        return [i.get("invoice_number") or "" for i in d.get("invoices", []) if (i.get("invoice_number") or "").startswith(pre)]
+    except Exception:
+        return []
 
 
 def _clean(db, p, kind, keep_id=None):

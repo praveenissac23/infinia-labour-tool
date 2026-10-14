@@ -76,8 +76,12 @@ def push_invoice(db, x, account):
     for inv in d.get("invoices", []):
         if (inv.get("invoice_number") or "").strip() == x.number.strip():
             got = inv.get("total")
-            if got is not None and abs(float(got) - round(x.total or 0, 2)) > 0.01:
-                return inv["invoice_id"], f"Invoice - CHECK: found in Zoho with total {float(got):,.2f} vs {x.total or 0:,.2f} here"
+            same_total = got is None or abs(float(got) - round(x.total or 0, 2)) <= 0.01
+            same_client = (inv.get("customer_name") or "").strip().lower() in ("", (x.client or "").strip().lower())
+            if not (same_total and same_client):
+                # Never link a different invoice that happens to carry the number.
+                raise Z.ZohoError(400, f"{x.number} is already used in Zoho for {inv.get('customer_name') or 'another invoice'}"
+                                       f" (AED {float(got or 0):,.2f}) - give this invoice the next number and release again")
             return inv["invoice_id"], "Found in Zoho"
     c = Z.call(db, "GET", "contacts", {"contact_name_contains": x.client, "contact_type": "customer", "per_page": 20})
     hits = [k for k in c.get("contacts", []) if (k.get("contact_name") or "").strip().lower() == (x.client or "").strip().lower()]
