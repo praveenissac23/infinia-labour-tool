@@ -1518,6 +1518,27 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .sel-pop .sel-opt.cur { color: var(--red); font-weight: 600; }
   .sel-pop .sel-grp { padding: 6px 12px 2px; font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; color: #8A6560; font-weight: 700; }
   .sel-pop .sel-none { padding: 10px 12px; font-size: 12.5px; color: #888; }
+
+  /* Zoho account picker */
+  .za-btn { display:inline-flex; align-items:center; gap:4px; max-width:100%; min-width:180px; height:32px; padding:0 8px 0 10px; border:1px solid #D6CFC7; border-radius:7px; background:#fff; font:inherit; font-size:13px; color:#2B2622; cursor:pointer; text-align:left; overflow:hidden; }
+  .za-btn:hover { border-color:#B9A99A; } .za-btn:focus-visible { outline:2px solid #C8A27A; outline-offset:1px; }
+  .za-btn.za-empty .za-nm { color:#9A8F85; }
+  .za-par { color:#8A7F75; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%; flex:0 1 auto; }
+  .za-nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; }
+  .za-car { color:#9A8F85; font-size:10px; margin-left:auto; flex:none; }
+  .zs-row .za-btn, .bk-accb { width:100%; }
+  .bk-accb { height:38px; }
+  #za-pop { position:fixed; z-index:9800; background:#fff; border:1px solid #DDD5CC; border-radius:10px; box-shadow:0 12px 32px rgba(40,30,20,.18); display:flex; flex-direction:column; overflow:hidden; }
+  .za-head { padding:8px; border-bottom:1px solid #EFEAE4; } .za-head input { width:100%; height:34px; box-sizing:border-box; padding:0 10px; border:1px solid #D6CFC7; border-radius:7px; }
+  .za-list { overflow-y:auto; overscroll-behavior:contain; flex:1 1 auto; padding:4px 0 6px; }
+  .za-h { position:sticky; top:0; background:#F7F3EE; color:#6B5E52; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:6px 12px; }
+  .za-p { color:#6B5E52; font-size:12px; font-weight:600; padding:6px 12px 2px; }
+  .za-i { padding:6px 12px; font-size:13px; cursor:pointer; line-height:1.35; } .za-i.za-sub { padding-left:26px; }
+  .za-i:hover, .za-i.za-act { background:#F3ECE4; } .za-i.za-cur { font-weight:600; }
+  .za-ip { color:#8A7F75; font-size:11.5px; } .za-tick { color:#2E7D32; }
+  .za-none { padding:14px 12px; color:#8A7F75; font-size:13px; }
+  .za-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid #EFEAE4; font-size:11.5px; color:#8A7F75; }
+  .za-ref { border:0; background:none; color:#8B5E34; font:inherit; font-size:11.5px; cursor:pointer; padding:2px 4px; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -16341,7 +16362,7 @@ async function bkLoad() {
     BK_SITES ? Promise.resolve(null) : apiCall("/sites").catch(() => []),
     BK_SCOPES ? Promise.resolve(null) : apiCall("/store/bank/scopes").catch(() => ({ scopes: [] })),
     apiCall(`/store/bank?${bkQS()}`).catch(e => ({ __err: e })),
-    apiCall(`/store/bank/stmt?${bkQS()}`).catch(() => null)]);
+    apiCall(`/store/bank/stmt?${bkQS()}`).catch(() => null), zaLoad()]);
   if (sites) BK_SITES = sites.map(x => x.code).filter(Boolean);
   if (scopes) BK_SCOPES = scopes.scopes || [];
   try { if (bk.__err) throw bk.__err; BK = bk; }
@@ -16361,7 +16382,7 @@ function bkKindDraw() {
   document.getElementById("bk-step2").textContent = `Fill in the details - ${(BK_KINDS[BK_KIND] || {}).t || ""}`;
   const more = document.getElementById("bk-more");
   if (BK_KIND === "expense") {
-    more.innerHTML = `<label class="pc-f"><span>What was it for? (Zoho account)</span><select id="bk-acc">${`<option value="">Choose account...</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
+    more.innerHTML = `<label class="pc-f"><span>What was it for? (Zoho account)</span><input type="hidden" id="bk-acc"><span id="bk-acc-btn">${zaButton("", "paid-cost", "bkAccSet(V)", "bk-accb")}</span></label>
       <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">Office / none</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
       <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="['bk-trn-f','bk-vatc-f'].forEach(i=>document.getElementById(i).style.display=this.checked?'':'none')"> Yes, the bill shows VAT</span></label>
       <label class="pc-f" id="bk-vatc-f" style="display:none;"><span>Claim the VAT?</span><select id="bk-vatc"><option value="">Choose...</option><option value="claim">Claim 5%</option><option value="zero">Not claimable</option></select></label>
@@ -16512,7 +16533,7 @@ async function bkEdit(id) {
   document.getElementById("bk-date").value = r.date; document.getElementById("bk-party").value = r.party;
   document.getElementById("bk-mode").value = r.mode; document.getElementById("bk-ref").value = r.reference;
   document.getElementById("bk-amt").value = r.amount; document.getElementById("bk-notes").value = r.notes;
-  if (r.kind === "expense") { document.getElementById("bk-acc").value = r.account; document.getElementById("bk-site").value = r.site;
+  if (r.kind === "expense") { bkAccSet(r.account); document.getElementById("bk-site").value = r.site;
     document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-vatc").value = r.vat_claim || "";
     ["bk-trn-f", "bk-vatc-f"].forEach(i => document.getElementById(i).style.display = r.vat ? "" : "none"); }
   if (r.kind === "transfer") document.getElementById("bk-to").value = r.account;
@@ -16662,7 +16683,7 @@ async function zhLoad() {
       ZH_SITES ? Promise.resolve(null) : apiCall("/sites").catch(() => []),
       apiCall("/store/zoho/queue"), apiCall("/store/zoho/link/status"),
       apiCall("/store/zoho/loans").catch(() => ({ rows: [] })), apiCall("/store/zoho/pos").catch(() => ({ rows: [] })),
-      apiCall("/store/bank/waiting").catch(() => ({ rows: [] }))]);
+      apiCall("/store/bank/waiting").catch(() => ({ rows: [] })), zaLoad()]);
     if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
     ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
@@ -16761,10 +16782,114 @@ async function zhBack(id) {
   try { await apiCall("/store/zoho/mark", { method: "POST", body: JSON.stringify({ ids: [id], status: "", ref: "" }) }); await zhLoad(); }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
+// ---- Zoho account picker -------------------------------------------------
+// One searchable list, named and grouped as Zoho shows it (type, then each
+// parent with its sub-accounts), the chief accountant's own accounts only,
+// his most-used on top. Used on Send to Zoho, the split and the Bank tab.
+let ZA = null, ZA_P = null;
+function zaLoad(force) {
+  if (ZA && !force) return Promise.resolve(ZA);
+  if (ZA_P && !force) return ZA_P;
+  ZA_P = apiCall("/store/zoho/accounts").then(d => (ZA = d)).catch(() => (ZA = { paid: [], received: [], used: [] })).finally(() => { ZA_P = null; });
+  return ZA_P;
+}
+function zaGroups(kind) {
+  if (!ZA) return [];
+  if (kind === "received") return ZA.received;
+  return kind === "paid-cost" ? ZA.paid.filter(g => !g.move) : ZA.paid;
+}
+function zaValues(kind) { return zaGroups(kind).flatMap(g => g.accounts.map(a => a.v)); }
+function zaFind(v) { for (const g of (ZA ? ZA.paid.concat(ZA.received) : [])) { const a = g.accounts.find(x => x.v === v); if (a) return a; } return null; }
+function zaLabel(v) {
+  if (!v) return "";
+  const a = zaFind(v);
+  return a ? a.name : String(v).replace(/^Office › /, "").split(" › ").pop();
+}
+function zaButton(v, kind, onpick, cls) {
+  const a = v ? zaFind(v) : null, par = a ? a.parent : (String(v || "").includes(" › ") && !/^Office › /.test(v) ? v.split(" › ")[0] : "");
+  const ph = kind === "received" ? "Where did it come from?" : "Choose account…";
+  return `<button type="button" class="za-btn ${cls || ""}${v ? "" : " za-empty"}" title="${escapeAttr(v || ph)}" data-kind="${kind}" data-v="${escapeAttr(v || "")}" data-pick="${escapeAttr(onpick)}" onclick="zaOpen(this)">`
+    + (v ? `${par ? `<span class="za-par">${escapeHtml(par.replace(/ Including Mobilization/, ""))} ›</span>` : ""}<span class="za-nm">${escapeHtml(zaLabel(v))}</span>` : `<span class="za-nm">${ph}</span>`) + `<span class="za-car">▾</span></button>`;
+}
+function bkAccSet(v) {
+  const h = document.getElementById("bk-acc"); if (!h) return;
+  h.value = v || ""; document.getElementById("bk-acc-btn").innerHTML = zaButton(v || "", "paid-cost", "bkAccSet(V)", "bk-accb");
+  if (typeof bkSum === "function") bkSum();
+}
+function zaClose() { const p = document.getElementById("za-pop"); if (p) p.remove(); document.removeEventListener("mousedown", zaOut, true); }
+function zaOut(e) { const p = document.getElementById("za-pop"); if (p && !p.contains(e.target) && !e.target.closest(".za-btn")) zaClose(); }
+async function zaOpen(btn) {
+  if (document.getElementById("za-pop") && document.getElementById("za-pop").__btn === btn) { zaClose(); return; }
+  zaClose(); await zaLoad();
+  const kind = btn.dataset.kind, cur = btn.dataset.v;
+  const pop = document.createElement("div"); pop.id = "za-pop"; pop.__btn = btn; pop.__at = Date.now();
+  pop.innerHTML = `<div class="za-head"><input type="search" id="za-q" placeholder="Search accounts - e.g. machinery, tip, visa, transfer" autocomplete="off"></div><div class="za-list" id="za-list"></div>
+    <div class="za-foot"><span>Shafeeq's Zoho accounts · names as in Zoho</span>${kind !== "received" ? `<button type="button" class="za-ref" onclick="zaRefresh()">Read again from Zoho</button>` : ""}</div>`;
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect(), w = Math.min(460, innerWidth - 16);
+  pop.style.width = w + "px"; pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+  const below = innerHeight - r.bottom - 12, h = Math.min(440, Math.max(below, r.top - 12));
+  pop.style.maxHeight = h + "px";
+  if (below >= Math.min(320, h) ) pop.style.top = (r.bottom + 4) + "px"; else pop.style.top = Math.max(8, r.top - h - 4) + "px";
+  const q = pop.querySelector("#za-q"); let act = 0;
+  const pick = v => { zaClose(); const V = v; (new Function("V", btn.dataset.pick)).call(btn, V); };
+  const draw = () => {
+    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean), groups = zaGroups(kind), out = [];
+    const hit = a => words.every(w => `${a.name} ${a.parent}`.toLowerCase().includes(w));
+    if (!words.length && kind !== "received" && ZA.used && ZA.used.length) {
+      const vals = new Set(zaValues(kind));
+      const u = ZA.used.filter(v => vals.has(v)).map(zaFind).filter(Boolean);
+      if (u.length) { out.push({ h: "Most used" }); u.forEach(a => out.push({ a, top: 1 })); }
+    }
+    for (const g of groups) {
+      const acc = g.accounts.filter(hit); if (!acc.length) continue;
+      out.push({ h: g.group }); let lastPar = null;
+      for (const a of acc) {
+        if (a.parent && a.parent !== lastPar && !acc.some(x => x.name === a.parent && !x.parent)) out.push({ p: a.parent });
+        lastPar = a.parent || a.name; out.push({ a });
+      }
+    }
+    const items = out.filter(o => o.a);
+    act = Math.min(act, Math.max(0, items.length - 1));
+    let k = -1;
+    pop.querySelector("#za-list").innerHTML = out.map(o => {
+      if (o.h) return `<div class="za-h">${escapeHtml(o.h)}</div>`;
+      if (o.p) return `<div class="za-p">${escapeHtml(o.p)}</div>`;
+      k++; const a = o.a;
+      return `<div class="za-i${a.parent && !o.top ? " za-sub" : ""}${a.v === cur ? " za-cur" : ""}${k === act ? " za-act" : ""}" data-k="${k}" data-v="${escapeAttr(a.v)}">${o.top && a.parent ? `<span class="za-ip">${escapeHtml(a.parent)} ›</span> ` : ""}${escapeHtml(a.name)}${a.v === cur ? ` <span class="za-tick">✓</span>` : ""}</div>`;
+    }).join("") || `<div class="za-none">No account matches "${escapeHtml(q.value)}". It may need adding - ask Praveen.</div>`;
+    pop.__items = items;
+  };
+  pop.querySelector("#za-list").addEventListener("mousedown", e => { const i = e.target.closest(".za-i"); if (i) { e.preventDefault(); pick(i.dataset.v); } });
+  q.addEventListener("input", () => { act = 0; draw(); });
+  q.addEventListener("keydown", e => {
+    const n = (pop.__items || []).length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); act = (act + (e.key === "ArrowDown" ? 1 : -1) + n) % Math.max(n, 1); draw();
+      zaReveal(pop, pop.querySelector(".za-act"), false); }
+    else if (e.key === "Enter") { e.preventDefault(); if (n) pick(pop.__items[act].a.v); }
+    else if (e.key === "Escape") { zaClose(); btn.focus(); }
+  });
+  draw(); q.focus();
+
+  setTimeout(() => document.addEventListener("mousedown", zaOut, true), 0);
+}
+function zaReveal(pop, el, centre) {
+  // Scroll the list only - never the page (a page scroll closes the picker).
+  if (!el) return; const L = pop.querySelector("#za-list"), t = el.offsetTop - L.offsetTop;
+  if (centre) L.scrollTop = t - L.clientHeight / 2;
+  else if (t < L.scrollTop + 30) L.scrollTop = t - 30; else if (t + el.offsetHeight > L.scrollTop + L.clientHeight) L.scrollTop = t + el.offsetHeight - L.clientHeight;
+}
+async function zaRefresh() {
+  const b = document.querySelector("#za-pop .za-ref"); if (b) { b.disabled = true; b.textContent = "Reading Zoho…"; }
+  try { ZA = await apiCall("/store/zoho/accounts/refresh", { method: "POST", body: "{}" }); const btn = document.getElementById("za-pop").__btn; zaClose(); zaOpen(btn); }
+  catch (e) { if (b) { b.disabled = false; b.textContent = errText(e).slice(0, 60); } }
+}
+addEventListener("scroll", e => { const p = document.getElementById("za-pop"); if (p && !p.contains(e.target) && Date.now() - (p.__at || 0) > 600) zaClose(); }, true);
+addEventListener("resize", () => zaClose());
 function zhProjectAcc(a) { return !!ZH && ZH.groups[0].accounts.includes(a); }
 function zhFlags(r) {
   const p = ZH_PICK[r.id], out = [];
-  const okList = r.kind === "received" ? ZH.groups[3].accounts : [].concat(ZH.groups[0].accounts, ZH.groups[1].accounts, ZH.groups[2].accounts);
+  const okList = r.kind === "received" ? ZH.groups[3].accounts.concat(zaValues("received")) : [].concat(ZH.groups[0].accounts, ZH.groups[1].accounts, ZH.groups[2].accounts, zaValues("paid"));
   if (!p.account || !okList.includes(p.account)) out.push(r.kind === "received" ? "Pick where it came from" : "Pick account");
   const sp = (p.splits || []).filter(s => s.account || +s.amount);
   if (sp.length) {
@@ -16812,7 +16937,7 @@ function zhDraw() {
       + (r.trn ? `<span class="sub">TRN ${escapeHtml(r.trn)}</span>` : (p.vat_claim === "claim" ? `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">` : ""));
     const sp = (p.splits || []).filter(s => s.account || +s.amount);
     const acc = `<div class="zh-accrow">` + (sp.length ? `<button type="button" class="zh-splitshow" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split over ${sp.length} cost heads</button>`
-      : `<select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select>`)
+      : zaButton(p.account, r.kind === "received" ? "received" : "paid", `zhSet(${r.id},'account',V)`, "zh-acc"))
       + (r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">${sp.length ? "Edit" : "Split"}</button>` : "") + `</div>`;
     return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
       <td class="l">${escapeHtml(r.book_label)}</td><td class="l">${pcDate(r.date)}</td>
@@ -16838,7 +16963,7 @@ function zhSplit(id) {
   if (!(p.splits || []).length) p.splits = [{ account: p.account || "", amount: r.amount }, { account: "", amount: "" }];
   const draw = () => {
     const tot = Math.round(p.splits.reduce((a, s) => a + (+s.amount || 0), 0) * 100) / 100, left = Math.round((r.amount - tot) * 100) / 100;
-    ov.querySelector("#zs-rows").innerHTML = p.splits.map((s, i) => `<div class="zs-row"><select onchange="ZH_PICK[${id}].splits[${i}].account=this.value">${zhOptions(r, s.account)}</select>
+    ov.querySelector("#zs-rows").innerHTML = p.splits.map((s, i) => `<div class="zs-row">${zaButton(s.account, "paid-cost", `ZH_PICK[${id}].splits[${i}].account=V; this.closest('.zx-box').dispatchEvent(new Event('redraw'))`, "zs-acc")}
       <input type="text" inputmode="decimal" value="${s.amount === "" ? "" : s.amount}" placeholder="0.00" oninput="ZH_PICK[${id}].splits[${i}].amount=this.value.replace(/,/g,''); this.closest('.zx-box').dispatchEvent(new Event('sum'))">
       <button type="button" class="btn btn-gray btn-sm" onclick="ZH_PICK[${id}].splits.splice(${i},1); this.closest('.zx-box').dispatchEvent(new Event('redraw'))" title="Remove this part">×</button></div>`).join("");
     sum();

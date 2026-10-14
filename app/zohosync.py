@@ -19,6 +19,7 @@ Status of a line (petty_cash.zoho_status):
   inzoho    was already typed in Zoho before the portal sent anything
   skip      not for Zoho (reason in zoho_ref)
 """
+import json
 import re
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
@@ -204,16 +205,80 @@ def _start(db):
     return M._as_date(M.get_setting(db, "zoho_start") or START_DEFAULT)
 
 
+def _db():
+    from database import SessionLocal
+    return SessionLocal()
+
+
+def paid_ok(account, db=None):
+    """A cost the money went on: one of the portal's heads, any Zoho account
+    that is not a money box or income, or a transfer to a Zoho box."""
+    import zohoapi
+    if account in PAID_ACCOUNTS:
+        return True
+    own = db is None
+    db = db or _db()
+    try:
+        k = zohoapi.account_kind(db, account)
+        if account.startswith("Transfer to "):
+            return k in zohoapi.MONEY_BOXES
+        if account.startswith("From "):
+            return False
+        return bool(k) and k not in zohoapi.MONEY_BOXES and k not in zohoapi.NOT_OFFERED
+    finally:
+        if own:
+            db.close()
+
+
+def received_ok(account, db=None):
+    import zohoapi
+    if account in RECEIVED_ACCOUNTS:
+        return True
+    if not account.startswith("From "):
+        return False
+    own = db is None
+    db = db or _db()
+    try:
+        k = zohoapi.account_kind(db, account)
+        return bool(k) and k not in zohoapi.NOT_OFFERED
+    finally:
+        if own:
+            db.close()
+
+
+def needs_project(x, account, db=None):
+    """A project cost: one of the portal's cost heads. A Zoho account picked
+    from the list takes a project when one is given, but does not demand one -
+    the chief accountant uses some of them for costs no site carries (14 Oct)."""
+    return account in PROJECT_ACCOUNTS
+
+
+def modern(account):
+    """A suggestion in the old office wording ("Office › Salik Fee") as the
+    account is named in Zoho's list."""
+    import zohoapi
+    if not account.startswith("Office › "):
+        return account
+    leaf = account[len("Office › "):]
+    want = zohoapi.ALIAS.get(zohoapi._norm(leaf), leaf)
+    db = _db()
+    try:
+        a = zohoapi.account_index(db).get(zohoapi._norm(want))
+    finally:
+        db.close()
+    return zoho_value(a) if a else account
+
+
 def _flags(x, account):
     """What must be put right before the line can go."""
     out = []
     if not account:
         out.append("Pick account")
-    elif x.received and account not in RECEIVED_ACCOUNTS:
+    elif x.received and not received_ok(account):
         out.append("Pick where it came from")
-    elif not x.received and account not in PAID_ACCOUNTS:
+    elif not x.received and not paid_ok(account):
         out.append("Pick account")
-    if account in PROJECT_ACCOUNTS and not (x.site or "").strip():
+    if needs_project(x, account) and not (x.site or "").strip():
         out.append("Pick project")
     if x.vat and (x.vat_claim or "") not in ("claim", "zero"):
         out.append("Pick VAT: claim or not")
@@ -222,11 +287,12 @@ def _flags(x, account):
     parts = _parts(x)
     if parts is not None:
         total = round((x.paid or 0), 2)
-        if len(parts) < 2 or any(not p.get("account") or p["account"] not in PAID_ACCOUNTS or float(p.get("amount") or 0) <= 0 for p in parts):
+        if len(parts) < 2 or any(not p.get("account") or not paid_ok(p["account"]) or p["account"].startswith("Transfer to ")
+                                 or float(p.get("amount") or 0) <= 0 for p in parts):
             out.append("Split: each part needs an account and an amount")
         elif abs(round(sum(float(p["amount"]) for p in parts), 2) - total) > 0.005:
             out.append(f"Split parts must add up to {total:,.2f}")
-        elif any(p["account"] in PROJECT_ACCOUNTS for p in parts) and not (x.site or "").strip():
+        elif any(needs_project(x, p["account"]) for p in parts) and not (x.site or "").strip():
             out.append("Pick project")
     return out
 
@@ -250,7 +316,7 @@ def _waiting(db):
 
 
 def _row(x, learned, users):
-    acc = x.zoho_account if x.zoho_status == "changed" and x.zoho_account else suggest(x, learned)
+    acc = x.zoho_account if x.zoho_status == "changed" and x.zoho_account else modern(suggest(x, learned))
     return {"id": x.id, "book": x.book or "site", "book_label": BOOKS.get(x.book or "site", x.book), "date": x.on_date.isoformat(),
             "description": x.description or "", "supplier": x.supplier or "", "site": x.site or "",
             "amount": round((x.paid or 0) or (x.received or 0), 2), "kind": "received" if x.received else "paid",
@@ -263,6 +329,74 @@ def _row(x, learned, users):
 @router.get("/store/zoho/heads")
 def heads(user: models.User = ZG):
     return {"groups": GROUPS}
+
+
+# ---- The account list the chief accountant picks from ----------------------
+# Zoho's own accounts, named and grouped as in Zoho - but only the ones he
+# uses for petty cash (read from Zoho, 30 Mar-14 Oct 2026) plus the ones he
+# asked for. More can be added to "offer" in zoho_accounts_seed.json.
+TYPE_LABEL = [("cost_of_goods_sold", "Project costs"), ("expense", "Expenses"), ("other_expense", "Other expenses"),
+              ("fixed_asset", "Machinery, tools & assets"), ("other_current_asset", "Advances & deposits"),
+              ("other_asset", "Advances & deposits"), ("other_current_liability", "Salaries & payables"),
+              ("non_current_liability", "Salaries & payables"), ("equity", "Partners' capital")]
+BOX_SKIP = {"petty cash", "round off adj", "undeposited funds", "vendor customer adjustment account", "zoho payroll - bank account"}
+
+
+def zoho_value(a):
+    """How a Zoho account is written on a line: "Parent › Name", as Zoho shows it."""
+    return f"{a['parent']} › {a['name']}" if a.get("parent") else a["name"]
+
+
+def account_lists(db):
+    import zohoapi
+    seed = zohoapi._seed()
+    idx = zohoapi.account_index(db)
+    offer = [idx[zohoapi._norm(n)] for n in seed.get("offer", []) if zohoapi._norm(n) in idx]
+    labels = dict(TYPE_LABEL)
+    groups = {}
+    for a in offer:
+        g = labels.get(a["type"], "Other")
+        groups.setdefault(g, []).append({"v": zoho_value(a), "name": a["name"], "parent": a.get("parent") or "", "type": a["type"]})
+    order = [l for _, l in TYPE_LABEL]
+    paid = [{"group": g, "accounts": sorted(groups[g], key=lambda r: ((r["parent"] or r["name"]).lower(), bool(r["parent"]), r["name"].lower()))}
+            for g in sorted(groups, key=lambda g: order.index(g) if g in order else 99)]
+    heads = [{"v": v, "name": v.split(" › ")[-1], "parent": v.split(" › ")[0] if " › " in v else "", "type": "cost_of_goods_sold"}
+             for v in GROUPS[0]["accounts"]]
+    paid.insert(0, {"group": "Project cost heads", "project": True, "accounts": heads})
+    boxes = sorted((a for a in idx.values() if a["type"] in zohoapi.MONEY_BOXES and a["name"].lower() not in BOX_SKIP),
+                   key=lambda a: (a["type"] != "cash", a["name"].lower()))
+    paid.append({"group": "Transfers - money moved to another box", "move": True,
+                 "accounts": [{"v": f"Transfer to {a['name']}", "name": f"Transfer to {a['name']}", "parent": "", "type": a["type"]} for a in boxes]})
+    caps = [a for a in idx.values() if a["type"] == "equity" and a["name"].startswith("Current Capital")]
+    received = [{"group": "Cash received - from", "accounts":
+                 [{"v": f"From {a['name']}", "name": f"From {a['name']}", "parent": "", "type": a["type"]} for a in boxes + caps]
+                 + [{"v": "Staff advance / loan repaid", "name": "Staff advance / loan repaid", "parent": "", "type": "other_current_asset"},
+                    {"v": "Client payment received in cash", "name": "Client payment received in cash", "parent": "", "type": ""}]}]
+    by_name = {r["name"]: r["v"] for g in paid for r in g["accounts"]}
+    used = [by_name[n] for n in seed.get("used", []) if n in by_name]
+    if "Transfer to Cash" in by_name:
+        used.append("Transfer to Cash")
+    return {"paid": paid, "received": received, "used": used,
+            "legacy": GROUPS[0]["accounts"], "read_at": json.loads(zohoapi._get(db, "accfull") or "{}").get("at")}
+
+
+@router.get("/store/zoho/accounts")
+def accounts(db: Session = Depends(get_db), user: models.User = Depends(M.require_any_screen(RIGHT, "accounts_bank"))):
+    return account_lists(db)
+
+
+@router.post("/store/zoho/accounts/refresh")
+def accounts_refresh(db: Session = Depends(get_db), user: models.User = ZG):
+    """Read Zoho's account list again (a new account made in Zoho today)."""
+    import zohoapi
+    if not zohoapi.connected(db):
+        raise HTTPException(status_code=400, detail="Zoho is not connected - the list from the last read is used.")
+    zohoapi._CACHE.pop("chart", None)
+    try:
+        zohoapi.chart(db)
+    except zohoapi.ZohoError as e:
+        raise HTTPException(status_code=400, detail=f"Zoho did not answer: {e.msg[:150]}")
+    return account_lists(db)
 
 
 @router.get("/store/zoho/queue")

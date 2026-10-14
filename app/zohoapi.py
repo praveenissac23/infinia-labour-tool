@@ -173,10 +173,70 @@ def _cached(db, key, fetch, ttl=3600):
     return v
 
 
-def _take(out, rows):
+def _take(out, rows, full=None):
     for a in rows:
         if a.get("is_active", True) and a.get("account_type") != "income":
             out.setdefault(_norm(a["account_name"]), a["account_id"])
+            if full is not None and a.get("account_type") not in ("other_income",):
+                full.setdefault(a["account_id"], {"id": a["account_id"], "name": (a.get("account_name") or "").strip(),
+                                                  "type": a.get("account_type") or "",
+                                                  "parent": (a.get("parent_account_name") or "").strip()})
+
+
+# ---- Zoho's own account list, as the chief accountant sees it in Zoho ------
+# Offered in the portal exactly as Zoho groups it: by type, each parent with
+# its sub-accounts under it. Until Zoho is read the first time, the export of
+# 14 Oct 2026 (app/zoho_accounts_seed.json) stands in.
+NOT_OFFERED = {"income", "other_income", "accounts_receivable", "accounts_payable", "stock", "credit_card"}
+MONEY_BOXES = {"cash", "bank"}
+
+
+def _seed():
+    import os
+    p = os.path.join(os.path.dirname(__file__), "zoho_accounts_seed.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"accounts": [], "used": []}
+
+
+def accounts_full(db):
+    """Every active Zoho account [{id, name, type, parent}] - the last list
+    read from Zoho, else the export."""
+    hit = _CACHE.get("chart_full")
+    if hit:
+        return hit
+    saved = json.loads(_get(db, "accfull") or "{}")
+    rows = saved.get("rows") or _seed().get("accounts") or []
+    _CACHE["chart_full"] = rows
+    return rows
+
+
+def account_index(db):
+    """Folded name -> account, for checking what was picked."""
+    rows = accounts_full(db)
+    hit = _CACHE.get("chart_idx")
+    if hit and hit[0] is rows:
+        return hit[1]
+    idx = {_norm(a["name"]): a for a in rows}
+    _CACHE["chart_idx"] = (rows, idx)
+    return idx
+
+
+def leaf(value):
+    return (value or "").split(" › ")[-1].strip()
+
+
+def account_kind(db, value):
+    """What a picked account is: its Zoho type, or "" if Zoho has no such
+    account. "Transfer to X" / "From X" are read as the box X."""
+    v = (value or "").strip()
+    for pre in ("Transfer to ", "From "):
+        if v.startswith(pre):
+            v = v[len(pre):]
+    a = account_index(db).get(_norm(leaf(v)))
+    return a["type"] if a else ""
 
 
 def chart(db):
@@ -184,20 +244,24 @@ def chart(db):
     leaves out sub-accounts, but its search does not - so a few broad
     searches read them all. Kept in settings too, so a send never waits."""
     def fetch():
-        out = {}
+        out, full = {}, {}
         for kind in ("Asset", "Liability", "Equity", "Expense"):
             d = call(db, "GET", "chartofaccounts", {"per_page": 200, "filter_by": f"AccountType.{kind}"})
-            _take(out, d.get("chartofaccounts", []))
+            _take(out, d.get("chartofaccounts", []), full)
         for letter in ("a", "e", "i", "o", "u"):
             page = 1
             while page <= 15:
                 d = call(db, "GET", "chartofaccounts", {"search_text": letter, "per_page": 200, "page": page, "filter_by": "AccountType.Active"})
-                _take(out, d.get("chartofaccounts", []))
+                _take(out, d.get("chartofaccounts", []), full)
                 if not d.get("page_context", {}).get("has_more_page"):
                     break
                 page += 1
         try:
             _put(db, "accmap", json.dumps({"at": time.time(), "map": out}))
+            if len(full) > 50:                     # a whole read, not a half-answer
+                rows = sorted(full.values(), key=lambda a: a["name"].lower())
+                _put(db, "accfull", json.dumps({"at": time.time(), "rows": rows}))
+                _CACHE["chart_full"] = rows
         except Exception:
             db.rollback()
         return out
@@ -302,6 +366,10 @@ def account_id(db, name):
         hit = c.get(_norm(want)) or _search_account(db, want)
     else:
         hit = c.get(k) or _search_account(db, leaf)
+    if not hit and _get(db, "accfull"):
+        # The full list last read from Zoho itself (never the export alone).
+        known = account_index(db).get(k)
+        hit = known["id"] if known else ""
     if hit:
         c[k] = hit
     return hit or ""
@@ -339,20 +407,28 @@ def push(db, x):
         return f"banktransaction:{d['banktransaction']['transaction_id']}", "Transfer"
     if x.received:
         src = SOURCE_ACC.get(acc)
+        if not src and acc.startswith("From ") and account_kind(db, acc):
+            src = acc[5:]                      # any Zoho box or account, as picked
         if not src:
             raise ZohoError(400, "Client cash is a customer payment - record it in Zoho against the invoice")
         sid = need(src)
         if book in DIRECTOR:
             # Repaid to the director: less owed to him, out of the bank/box.
             return journal(box, sid)
-        if src in CASHLIKE:
+        if src in CASHLIKE or account_kind(db, src) in MONEY_BOXES:
             return transfer(sid, box)
         return journal(box, sid)
-    if acc in TRANSFER_TO:
-        to = need(TRANSFER_TO[acc])
-        return journal(to, box) if book in DIRECTOR else transfer(box, to)
+    if acc in TRANSFER_TO or (acc.startswith("Transfer to ") and account_kind(db, acc)):
+        tname = TRANSFER_TO.get(acc) or acc[len("Transfer to "):]
+        to = need(tname)
+        if book in DIRECTOR or account_kind(db, tname) not in MONEY_BOXES:
+            return journal(to, box)
+        return transfer(box, to)
     if acc.startswith("Employee Advance"):
         return journal(need("Employee Advance"), box)
+    if account_kind(db, acc) == "equity":
+        # Paid out to a partner's capital account: a journal, not an expense.
+        return journal(need(acc), box)
     body = {"account_id": need(acc), "date": date, "amount": amt, "paid_through_account_id": box,
             "reference_number": ref, "description": desc, "is_inclusive_tax": True}
     if x.site:
