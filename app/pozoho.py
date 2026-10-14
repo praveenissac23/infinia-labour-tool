@@ -45,6 +45,9 @@ def push(db, o):
     vendor = _vendor(db, o)
     if not vendor:
         raise Z.ZohoError(400, f"Link {o.supplier_name or 'the supplier'} to its Zoho vendor first (Suppliers in Zoho) - a PO needs one")
+    acc_id = Z.account_id(db, o.zoho_account or "") if (o.zoho_account or "").strip() else ""
+    if not acc_id:
+        raise Z.ZohoError(400, "Pick the Zoho account for this LPO (the bill takes it) - nothing sent")
     v5, v0 = Z.vat_tax(db), Z.zero_tax(db)
     items = []
     for i, l in enumerate(o.lines):
@@ -52,8 +55,10 @@ def push(db, o):
         if not t:
             raise Z.ZohoError(400, f"Zoho has no {'5% Standard Rate' if round(l.tax_pct or 0, 2) == 5 else 'Zero Rate'} tax - nothing sent")
         desc = " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x)[:2000]
+        # No catalogue item: Zoho needs the account on each line (as the
+        # chief accountant enters them), else "non-purchase item".
         items.append({"description": desc or "Item", "quantity": round(l.qty or 0, 3), "rate": round(l.rate or 0, 2),
-                      "unit": (l.unit or "")[:20], "tax_id": t, "item_order": i + 1})
+                      "unit": (l.unit or "")[:20], "tax_id": t, "item_order": i + 1, "account_id": acc_id})
     if not items:
         raise Z.ZohoError(400, "The LPO has no lines")
     site = _site(db, o)
@@ -64,8 +69,15 @@ def push(db, o):
     if o.delivery_date:
         body["delivery_date"] = o.delivery_date.isoformat()
     if (o.discount_pct or 0) > 0:
+        # Zoho books a PO discount to an account; the chief accountant's own
+        # POs use "Administration Fee" (IC/LPO/20260066).
+        dname = M.get_setting(db, "zoho_po_discount_account") or "Administration Fee"
+        dacc = Z.account_id(db, dname)
+        if not dacc:
+            raise Z.ZohoError(400, f"Zoho has no account named {dname} for the LPO discount - nothing sent")
         body["discount"] = f"{round(o.discount_pct, 2)}%"
         body["is_discount_before_tax"] = True
+        body["discount_account_id"] = dacc
     d = Z.call(db, "POST", "purchaseorders", {"ignore_auto_number_generation": "true"}, body=body)
     return d["purchaseorder"]["purchaseorder_id"], "Purchase order"
 
@@ -81,6 +93,34 @@ def _total(o):
     return round(sub + sum((l.qty or 0) * (l.rate or 0) * (1 - (o.discount_pct or 0) / 100) * (l.tax_pct or 0) / 100 for l in o.lines), 2)
 
 
+def _last_account(db, o):
+    """The account this supplier's last LPO went to Zoho with."""
+    if not o.supplier_id and not (o.supplier_name or "").strip():
+        return ""
+    q = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id != o.id, models.PurchaseOrder.zoho_account != "",
+                                              models.PurchaseOrder.zoho_account.isnot(None))
+    q = q.filter(models.PurchaseOrder.supplier_id == o.supplier_id) if o.supplier_id else \
+        q.filter(models.PurchaseOrder.supplier_name == o.supplier_name)
+    p = q.order_by(models.PurchaseOrder.id.desc()).first()
+    return p.zoho_account if p else ""
+
+
+@router.post("/store/zoho/pos/{oid}/account")
+def set_account(oid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
+    import zohosync, zohoapi
+    o = db.get(models.PurchaseOrder, oid)
+    if not o:
+        raise HTTPException(status_code=404, detail="No such LPO.")
+    if (o.zoho_status or "") not in ("",):
+        raise HTTPException(status_code=400, detail="It is already in Zoho - change it there.")
+    acc = str(payload.get("account") or "").strip()[:200]
+    if acc and (not zohosync.paid_ok(acc, db) or acc.startswith(("Transfer to ", "From ")) or acc in zohoapi.VENDOR_PAY):
+        raise HTTPException(status_code=400, detail="Pick a cost account.")
+    o.zoho_account = acc
+    db.commit()
+    return {"ok": True, "account": acc}
+
+
 @router.get("/store/zoho/pos")
 def pos(db: Session = Depends(get_db), user: models.User = ZG):
     q = (db.query(models.PurchaseOrder).filter(models.PurchaseOrder.order_date >= _start(db))
@@ -92,7 +132,13 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
             continue
         if st == "sent" and not (o.zoho_err or ""):
             continue
+        if not (o.zoho_account or "") and not st and o.status != "cancelled":
+            sug = _last_account(db, o)
+            if sug:
+                o.zoho_account = sug
+                db.commit()
         rows.append({"id": o.id, "ref": o.ref, "date": o.order_date.isoformat(), "supplier": o.supplier_name or "",
+                     "account": o.zoho_account or "",
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
                      "cancelled": o.status == "cancelled",
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})

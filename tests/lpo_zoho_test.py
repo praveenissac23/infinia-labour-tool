@@ -14,6 +14,10 @@ def ok(c, m):
     print(("PASS " if c else "FAIL ") + m); fails += 0 if c else 1
 POSTED, EXIST = [], []
 def fake(db_, method, path, params=None, body=None):
+    if method == "GET" and path == "chartofaccounts":
+        return {"chartofaccounts": [{"account_name": "Concrete Materials", "account_id": "ACC-CON", "account_type": "cost_of_goods_sold"},
+                                    {"account_name": "Administration Fee", "account_id": "ACC-ADM", "account_type": "expense"}],
+                "page_context": {"has_more_page": False}}
     if path == "settings/taxes":
         return {"taxes": [{"tax_name": "Standard Rate", "tax_percentage": 5, "tax_id": "V5"}, {"tax_name": "Zero Rate", "tax_percentage": 0, "tax_id": "V0"}]}
     if method == "GET" and path == "purchaseorders":
@@ -37,6 +41,9 @@ def po(no, supplier, d=date(2026, 10, 10), **k):
 a = po(20260120, sup, lines=[("Cement OPC", 50, 16.5, 5), ("Sand", 2, 300, 0)], disc=2)
 b = po(20260121, sup2, lines=[("Paint", 4, 90, 5)])
 old = po(20260099, sup, d=date(2026, 9, 25), lines=[("Old", 1, 10, 5)])
+r0 = pozoho.send({"ids": [a.id]}, s, u)
+ok(r0["sent"] == 0 and "account" in r0["failed"][0]["why"].lower(), "no Zoho account picked: refused before anything is sent")
+pozoho.set_account(a.id, {"account": "Concrete Materials"}, s, u)
 rows = pozoho.pos(s, u)["rows"]
 ok(sorted(r["ref"] for r in rows) == ["IC/LPO/20260120", "IC/LPO/20260121"], "LPOs from 1 Oct waiting; September not offered")
 ok(next(r for r in rows if r["ref"].endswith("121"))["linked"] is False, "supplier not linked shown")
@@ -47,12 +54,15 @@ ok(params.get("ignore_auto_number_generation") == "true" and body["purchaseorder
    "sent with the portal's LPO number and the linked vendor")
 ok([(l["description"], l["quantity"], l["rate"], l["tax_id"]) for l in body["line_items"]] == [("Cement OPC", 50, 16.5, "V5"), ("Sand", 2, 300, "V0")],
    "lines with qty, rate and the right VAT (5% / zero)")
+ok(all(l["account_id"] == "ACC-CON" for l in body["line_items"]), "each line carries the picked account (Zoho refuses 'non-purchase item' without)")
+ok(body.get("discount_account_id") == "ACC-ADM", "discount booked to the account his own POs use")
 ok(body["discount"] == "2.0%" and body["is_discount_before_tax"] and "918" in body["reference_number"], "discount and project 918 carried")
 s.refresh(a)
 ok(a.zoho_status == "sent" and a.zoho_id == "purchaseorder:PO1", "marked sent with the Zoho PO")
 ok(pozoho.send({}, s, u)["sent"] == 0 and len(POSTED) == 1, "pressing Send again sends nothing twice")
 # already in Zoho under the same number (typed by hand): linked, not made again
 sup2.zoho_id = "V-NEW"; s.commit()
+pozoho.set_account(b.id, {"account": "Concrete Materials"}, s, u)
 EXIST.append({"purchaseorder_id": "POX", "purchaseorder_number": "IC/LPO/20260121"})
 pozoho.send({}, s, u); s.refresh(b)
 ok(b.zoho_status == "sent" and b.zoho_id == "purchaseorder:POX" and len(POSTED) == 1, "same number already in Zoho: linked, not created twice")

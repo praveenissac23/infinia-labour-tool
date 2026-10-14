@@ -451,6 +451,7 @@ class PurchaseOrder(Base):
     notes = Column(Text, default="")
     terms_text = Column(Text, default="")
     status = Column(String, default="issued")        # issued | cancelled
+    zoho_account = Column(String, default="")        # the Zoho account its lines are booked to (the bill takes it)
     zoho_status = Column(String, default="")         # "" | sending | sent | changed
     zoho_id = Column(String, default="")
     zoho_err = Column(String, default="")
