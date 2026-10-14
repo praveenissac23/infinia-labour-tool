@@ -27,6 +27,7 @@ const side = p => p.evaluate(() => [...document.querySelectorAll('.pg-side .pg-i
     await p.waitForTimeout(2500);
     if (W === 1440) {
       ck('screen opens', await p.locator('#screen-adminforms').isVisible());
+      ck('Forms tab shown inside Admin', await p.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].map(t => t.textContent.trim()).join('|')) === 'Forms');
       ck('five forms', (await p.locator('#af-grid .af-card').count()) === 5);
       const imgs = await p.evaluate(() => [...document.querySelectorAll('#af-grid img')].map(i => i.complete && i.naturalWidth > 100));
       ck('every card shows the form picture', imgs.length === 5 && imgs.every(Boolean), imgs);

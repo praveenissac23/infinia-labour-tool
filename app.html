@@ -1631,7 +1631,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
       // them calls this), not when the whole page has arrived.
       window.pgEarlyBars = function () {
         var bar = document.getElementById("pg-tabs");
-        if (bar && !bar.children.length && tabs.tabs.length > 1) bar.innerHTML = tabs.tabs.map(function (t) {
+        if (bar && !bar.children.length && (tabs.tabs.length > 1 || window.PG_KEY === "admin")) bar.innerHTML = tabs.tabs.map(function (t) {
           return '<span class="pg-tab ' + (t.id === want ? "active" : "") + '" data-tab="' + t.id + '">' + t.label + "</span>";
         }).join("");
         // The second row too, so the page does not drop by its height a
@@ -1653,7 +1653,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b778a09058e3";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="f6396ade3d3a";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -19472,7 +19472,8 @@ function pgRenderTabs() {
         subs: (t.subs || []).filter(pgSubOk).map(sb => ({ id: sb.id, label: sb.label })) })) }));
     }
   } catch (e) {}
-  bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
+  // Admin keeps its tab bar even with one tab (Forms) - more tabs come later.
+  bar.innerHTML = (tabs.length > 1 || PAGE === ALL_PAGES.admin) ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");
   const subs = PG_TAB ? PG_TAB.subs.filter(pgSubOk) : [];

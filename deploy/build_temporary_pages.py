@@ -434,7 +434,7 @@ EARLY = """
       // them calls this), not when the whole page has arrived.
       window.pgEarlyBars = function () {
         var bar = document.getElementById("pg-tabs");
-        if (bar && !bar.children.length && tabs.tabs.length > 1) bar.innerHTML = tabs.tabs.map(function (t) {
+        if (bar && !bar.children.length && (tabs.tabs.length > 1 || window.PG_KEY === "admin")) bar.innerHTML = tabs.tabs.map(function (t) {
           return '<span class="pg-tab ' + (t.id === want ? "active" : "") + '" data-tab="' + t.id + '">' + t.label + "</span>";
         }).join("");
         // The second row too, so the page does not drop by its height a
@@ -694,7 +694,8 @@ function pgRenderTabs() {
         subs: (t.subs || []).filter(pgSubOk).map(sb => ({ id: sb.id, label: sb.label })) })) }));
     }
   } catch (e) {}
-  bar.innerHTML = tabs.length > 1 ? tabs.map(t =>
+  // Admin keeps its tab bar even with one tab (Forms) - more tabs come later.
+  bar.innerHTML = (tabs.length > 1 || PAGE === ALL_PAGES.admin) ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");
   const subs = PG_TAB ? PG_TAB.subs.filter(pgSubOk) : [];
