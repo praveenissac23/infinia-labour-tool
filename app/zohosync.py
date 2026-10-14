@@ -339,7 +339,9 @@ TYPE_LABEL = [("cost_of_goods_sold", "Project costs"), ("expense", "Expenses"), 
               ("fixed_asset", "Machinery, tools & assets"), ("other_current_asset", "Advances & deposits"),
               ("other_asset", "Advances & deposits"), ("other_current_liability", "Salaries & payables"),
               ("non_current_liability", "Salaries & payables"), ("equity", "Partners' capital")]
-BOX_SKIP = {"petty cash", "round off adj", "undeposited funds", "vendor customer adjustment account", "zoho payroll - bank account"}
+BOX_SKIP = {"petty cash", "round off adj", "undeposited funds", "vendor customer adjustment account", "zoho payroll - bank account",
+            # People no longer with the company (Praveen, 14 Oct 2026)
+            "karthik petty cash", "tony petty cash"}
 
 
 def zoho_value(a):
@@ -367,7 +369,7 @@ def account_lists(db):
                    key=lambda a: (a["type"] != "cash", a["name"].lower()))
     paid.append({"group": "Transfers - money moved to another box", "move": True,
                  "accounts": [{"v": f"Transfer to {a['name']}", "name": f"Transfer to {a['name']}", "parent": "", "type": a["type"]} for a in boxes]})
-    caps = [a for a in idx.values() if a["type"] == "equity" and a["name"].startswith("Current Capital")]
+    caps = [a for a in idx.values() if a["type"] == "equity" and a["name"].startswith("Current Capital - ")]
     received = [{"group": "Cash received - from", "accounts":
                  [{"v": f"From {a['name']}", "name": f"From {a['name']}", "parent": "", "type": a["type"]} for a in boxes + caps]
                  + [{"v": "Staff advance / loan repaid", "name": "Staff advance / loan repaid", "parent": "", "type": "other_current_asset"},
