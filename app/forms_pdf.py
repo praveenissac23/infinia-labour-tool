@@ -113,7 +113,18 @@ FORMS = {
         "sign": ["Employee", "Site Engineer", "Project Manager", "PRO"],
     },
 }
-ORDER = ["leave_office", "leave_site", "passport_release", "passport_submit", "visa_renewal"]
+FORMS["transmittal"] = {
+    "no": "IC/AD/F06", "title": "DOCUMENT TRANSMITTAL", "tag": "Site to office",
+    "intro": "Delivery notes and site documents sent to the office. One line per document.",
+    "sections": [
+        ("Details", False, [[("Transmittal no.", 1), ("Date", 1), ("From site / project", 2.2)]]),
+        ("Documents", False, [[{"table": [("No.", 0.45), ("Description", 3.0), ("Delivery note no.", 1.45),
+                                          ("Site", 0.8), ("Date", 0.95), ("Remarks", 1.55)]}]]),
+        ("Declaration", False, [[{"say": "I confirm the documents listed above are handed over to the office for further action."}]]),
+    ],
+    "sign": ["Site Accountant (sent)", "Office Admin (received)"],
+}
+ORDER = ["leave_office", "leave_site", "passport_release", "passport_submit", "visa_renewal", "transmittal"]
 REV = "Rev. 01"
 
 
@@ -156,13 +167,14 @@ def build(key, company=None):
     text(W - M, 7.2 * mm, f"{f['no']}  {REV}", 7.2, col=MUTED, align="right")
 
     BODY_TOP = top - 25 * mm
+    TABLE = [0]
     FOOT_TOP = 14 * mm
     SIG_H = 34 * mm          # the signature block: heading, room to sign, names
 
     def layout(draw, grow, gap_add):
         """Draw (or just measure) the body. grow = extra height for each
         writing box, gap_add = extra space after each section."""
-        st = {"y": BODY_TOP}
+        st = {"y": BODY_TOP, "rows": TABLE[0]}
         GAP = 3.2 * mm
         BOX = 12.5 * mm + grow
 
@@ -216,6 +228,32 @@ def build(key, company=None):
                         for k, s in enumerate(lines):
                             text(M + 2 * mm, st["y"] - 3.4 * mm - k * 4.6 * mm, s, 9.4, "Helvetica", INK)
                     st["y"] -= 3.4 * mm + len(lines) * 4.6 * mm + 1.5 * mm
+                elif "table" in d:
+                    cols = d["table"]; tot = sum(wt for _, wt in cols)
+                    HH, RH = 7 * mm, 7.4 * mm
+                    n = st.get("rows", 0)
+                    h = HH + n * RH
+                    if draw:
+                        y = st["y"]
+                        c.setFillColor(CHAR); c.roundRect(M, y - HH, tw, HH, 1.4 * mm, stroke=0, fill=1)
+                        c.rect(M, y - HH, tw, HH / 2, stroke=0, fill=1)
+                        xs = [M]
+                        for label, wt in cols:
+                            xs.append(xs[-1] + tw * wt / tot)
+                        for k, (label, wt) in enumerate(cols):
+                            text(xs[k] + 2.2 * mm, y - 4.6 * mm, label.upper(), 6.6, "Helvetica-Bold", colors.white, spacing=0.4)
+                        for i in range(n):
+                            yt = y - HH - i * RH
+                            if i % 2:
+                                c.setFillColor(TINT); c.rect(M, yt - RH, tw, RH, stroke=0, fill=1)
+                            text(xs[0] + 2.2 * mm, yt - 4.9 * mm, str(i + 1), 8, "Helvetica", MUTED)
+                        c.setStrokeColor(RULE); c.setLineWidth(0.5)
+                        for i in range(n + 1):
+                            c.line(M, y - HH - i * RH, M + tw, y - HH - i * RH)
+                        for xx in xs[1:-1]:
+                            c.line(xx, y - HH, xx, y - h)
+                        c.setLineWidth(0.6); c.rect(M, y - h, tw, h - HH, stroke=1, fill=0)
+                    st["y"] -= h + GAP
                 elif "hindi" in d:
                     iw, ih = 1489, 209
                     w = 112 * mm; h = w * ih / iw
@@ -255,6 +293,12 @@ def build(key, company=None):
     # Measure, then let the boxes and the spacing take up the free room, so
     # a short form is not half empty and a long one still fits one page.
     floor = FOOT_TOP + 6 * mm + SIG_H
+    TABLE[0] = 0
+    if any("table" in r[0] for _, _, rows in f["sections"] for r in rows if isinstance(r[0], dict)):
+        # A list form: as many lines as fit; the rest of the page is not stretched.
+        TABLE[0] = max(5, int((layout(False, 0, 0) - floor - 2 * mm) // (7.4 * mm)))
+        end = layout(True, 0, 0)
+        return _sign(c, f, end, buf, text, W, M, FOOT_TOP, SIG_H)
     free = layout(False, 0, 0) - floor
     nbox = sum(1 for _, _, rows in f["sections"] for r in rows if not isinstance(r[0], dict) or "tall" in r[0])
     nsec = len(f["sections"]) + 1
@@ -265,6 +309,10 @@ def build(key, company=None):
         gap_add = min(9 * mm, left * 0.75 / nsec)
     end = layout(True, grow, gap_add)
 
+    return _sign(c, f, end, buf, text, W, M, FOOT_TOP, SIG_H)
+
+
+def _sign(c, f, end, buf, text, W, M, FOOT_TOP, SIG_H):
     # ---- signatures, together at the foot of the page --------------------------
     sig_y = FOOT_TOP + 14 * mm
     n = len(f["sign"])

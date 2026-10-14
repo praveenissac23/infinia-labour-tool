@@ -28,10 +28,10 @@ const side = p => p.evaluate(() => [...document.querySelectorAll('.pg-side .pg-i
     if (W === 1440) {
       ck('screen opens', await p.locator('#screen-adminforms').isVisible());
       ck('Forms tab shown inside Admin', await p.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].map(t => t.textContent.trim()).join('|')) === 'Forms');
-      ck('five forms', (await p.locator('#af-grid .af-card').count()) === 5);
+      ck('six forms', (await p.locator('#af-grid .af-card').count()) === 6);
       const imgs = await p.evaluate(() => [...document.querySelectorAll('#af-grid img')].map(i => i.complete && i.naturalWidth > 100));
-      ck('every card shows the form picture', imgs.length === 5 && imgs.every(Boolean), imgs);
-      ck('Preview / PDF / Share on each card', (await p.locator('#af-grid .af-btns .btn').count()) === 15);
+      ck('every card shows the form picture', imgs.length === 6 && imgs.every(Boolean), imgs);
+      ck('Preview / PDF / Share on each card', (await p.locator('#af-grid .af-btns .btn').count()) === 18);
       const tk = await p.evaluate(async () => { await refreshDownloadToken(); return cachedDownloadToken; });
       for (const k of ['leave_office', 'leave_site', 'passport_release', 'passport_submit', 'visa_renewal']) {
         const res = await p.request.get(`${B}/export/admin/forms/${k}?format=pdf&dl=1&token=${encodeURIComponent(tk)}`);
