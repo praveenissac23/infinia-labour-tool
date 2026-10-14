@@ -248,6 +248,13 @@ def accounts_full(db):
     hit = _CACHE.get("chart_full")
     if hit:
         return hit
+    if db is None:                                # no session to hand: open one just for this read
+        from database import SessionLocal
+        db2 = SessionLocal()
+        try:
+            return accounts_full(db2)
+        finally:
+            db2.close()
     saved = json.loads(_get(db, "accfull") or "{}")
     rows = saved.get("rows") or _seed().get("accounts") or []
     _CACHE["chart_full"] = rows
@@ -689,13 +696,32 @@ def push_loan(db, l, emp):
 
 def check_deleted(db, force=False):
     """A line deleted in Zoho is cancelled in the portal, with the reason
-    shown. Checked at most every 30 minutes."""
+    shown. Checked at most every 30 minutes - in the background (one call to
+    Zoho per line sent: far too slow to make a screen wait for)."""
     if not connected(db):
         return 0
     last = float(_get(db, "last_check", "0") or 0)
     if not force and time.time() - last < 1800:
         return 0
     _put(db, "last_check", str(time.time()))
+    if force:
+        return _check_deleted_now(db)
+    import threading
+
+    def run():
+        from database import SessionLocal
+        db2 = SessionLocal()
+        try:
+            _check_deleted_now(db2)
+        except Exception as e:
+            print("zoho check deleted:", e)
+        finally:
+            db2.close()
+    threading.Thread(target=run, daemon=True).start()
+    return 0
+
+
+def _check_deleted_now(db):
     n = 0
     lines = (list(db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "").limit(400))
              + list(db.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent", models.BankEntry.zoho_id != "").limit(400)))

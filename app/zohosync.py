@@ -216,20 +216,14 @@ def paid_ok(account, db=None):
     import zohoapi
     if account in PAID_ACCOUNTS:
         return True
-    own = db is None
-    db = db or _db()
-    try:
-        if account in zohoapi.VENDOR_PAY:
-            return True
-        k = zohoapi.account_kind(db, account)
-        if account.startswith("Transfer to "):
-            return k in zohoapi.MONEY_BOXES
-        if account.startswith("From "):
-            return False
-        return bool(k) and k not in zohoapi.MONEY_BOXES and k not in zohoapi.NOT_OFFERED
-    finally:
-        if own:
-            db.close()
+    if account in zohoapi.VENDOR_PAY:
+        return True
+    k = zohoapi.account_kind(db, account)
+    if account.startswith("Transfer to "):
+        return k in zohoapi.MONEY_BOXES
+    if account.startswith("From "):
+        return False
+    return bool(k) and k not in zohoapi.MONEY_BOXES and k not in zohoapi.NOT_OFFERED
 
 
 def received_ok(account, db=None):
@@ -238,14 +232,8 @@ def received_ok(account, db=None):
         return True
     if not account.startswith("From "):
         return False
-    own = db is None
-    db = db or _db()
-    try:
-        k = zohoapi.account_kind(db, account)
-        return bool(k) and k not in zohoapi.NOT_OFFERED
-    finally:
-        if own:
-            db.close()
+    k = zohoapi.account_kind(db, account)
+    return bool(k) and k not in zohoapi.NOT_OFFERED
 
 
 def needs_project(x, account, db=None):
@@ -263,11 +251,7 @@ def modern(account):
         return account
     leaf = account[len("Office › "):]
     want = zohoapi.ALIAS.get(zohoapi._norm(leaf), leaf)
-    db = _db()
-    try:
-        a = zohoapi.account_index(db).get(zohoapi._norm(want))
-    finally:
-        db.close()
+    a = zohoapi.account_index(None).get(zohoapi._norm(want))
     return zoho_value(a) if a else account
 
 
