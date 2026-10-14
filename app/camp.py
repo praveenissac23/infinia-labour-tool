@@ -363,26 +363,13 @@ def export(token: str, format: str = "excel", db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Labour reports only.")
     seed(db)
     d = listing(db)
-    status = {"in": "In camp", "vac": "On vacation", "book": "Booked", "free": "FREE", "guest": "In camp - no ID"}
-    rows = []
-    for r in d["rooms"]:
-        for b in r["beds"]:
-            note = (f"back {_fmt(b.get('back'))}" if b["kind"] == "vac" and b.get("back") else
-                    f"arriving {_fmt(b.get('due'))}" if b["kind"] == "book" and b.get("due") else
-                    f"leave {_fmt(b.get('soon'))}" if b.get("soon") else "")
-            rows.append({"Room": r["name"], "Bed": b["bed"], "Name": b.get("name", "") if b["kind"] != "free" else "FREE",
-                         "Employee ID": b.get("no", ""), "Trade": b.get("trade", ""), "Status": status[b["kind"]], "Note": note})
-    t = d["totals"]
-    title = "Labour Accommodation Allocation"
-    sub = (f"{t['beds']} beds | in camp {t['in']} | on vacation {t['vac']} | booked {t['book']} | free {t['free']}"
-           f" | As at {M._dubai_today():%d %b %Y}")
+    import camp_report as CR
     if format == "view":
         url = f"/export/reports/camp?token={quote(auth.create_view_token(u.username), safe='')}"
-        return M._preview_page(title, sub, rows, url, url, money_cols=[])
+        return CR.preview(d, url + "&format=pdf", url + "&format=excel")
     name = f"Labour_Accommodation_{M._dubai_today():%d.%m.%Y}"
     if format == "pdf":
-        return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=[]),
-                                 media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
-    return StreamingResponse(export_web.build_store_report_excel(title, rows, sub, money_cols=[]),
-                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        return StreamingResponse(CR.pdf(d), media_type="application/pdf",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    return StreamingResponse(CR.excel(d), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})

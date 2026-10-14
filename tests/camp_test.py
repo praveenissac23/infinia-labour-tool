@@ -124,11 +124,16 @@ tok = auth.create_download_token("muh")
 x = asyncio.run(body(camp.export(tok, "excel", s)))
 ws = openpyxl.load_workbook(io.BytesIO(x)).active
 rows = [r for r in ws.iter_rows(values_only=True)]
-hdr = next(i for i, r in enumerate(rows) if r and "Room" in r and "Bed" in r)
-data = [r for r in rows[hdr + 1:] if r and r[0] not in (None, "") and str(r[1] or "").isdigit()]
+hdr = next(i for i, r in enumerate(rows) if r and "Room no" in r and "Bed" in r)
+data = [r for r in rows[hdr + 1:] if r and str(r[1] or "").isdigit()]
 d = camp.get_camp(s, viewer)
-ok(len(data) == d["totals"]["beds"], f"Excel has one row per bed ({len(data)} = {d['totals']['beds']})")
-ok(sum(1 for r in data if r[5] == "FREE") == d["totals"]["free"], "free beds in Excel = free beds on screen")
+ok(len(data) == d["totals"]["beds"], f"Excel: room-by-room sheet, one row per bed ({len(data)} = {d['totals']['beds']})")
+ok(sum(1 for r in data if r[2] == "FREE") == d["totals"]["free"], "free beds in Excel = free beds on screen")
+ok(any("Total vacant beds: %d" % d["totals"]["free"] == (r[2] or "") for r in rows), "Excel ends with the vacant-bed total, as Jomon's sheet")
+from pypdf import PdfReader
+pv = camp.export(tok, "view", s).body.decode()
+ok(pv.count('class="room"') == len(d["rooms"]) and "Download PDF" in pv and "pv-share" in pv, "Preview shows room cards with PDF / Excel / Share")
 pdf = asyncio.run(body(camp.export(tok, "pdf", s)))
 ok(pdf[:4] == b"%PDF", "PDF made")
+ok(len(PdfReader(io.BytesIO(pdf)).pages) == 2, "16 rooms: the extra row flows to page 2 (15 rooms fit one page)")
 print("fails=", fails)
