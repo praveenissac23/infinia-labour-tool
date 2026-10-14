@@ -54,4 +54,15 @@ try:
     Z.account_id(s, "Not In The Map"); ok(False, "Zoho busy -> clear try-again")
 except Z.ZohoError as e:
     ok("busy" in e.msg and e.code == 400, "Zoho busy on a look-up -> 'press Send again in a minute', not a doubt")
+# Zoho blocking: the check stops after ONE call, not one per name
+import zohoapi
+Z._CACHE.clear(); CALLS.clear()
+def blocked(db_, method, path, params=None, body=None):
+    CALLS.append(params or {})
+    raise Z.ZohoError(400, "For security reasons you have been blocked for some time as you have exceeded the maximum number of requests per minute.")
+Z.call = blocked
+M.put_setting(s, "zoho_accmap", ""); s.commit()
+u = models.User(username="x", full_name="x", hashed_password="x", role="admin"); s.add(u); s.commit()
+r = Z.test(s, u)
+ok(r.get("busy") and len(CALLS) == 1, f"Zoho blocking -> check stops after one call ({len(CALLS)} calls)")
 print("fails=", fails)

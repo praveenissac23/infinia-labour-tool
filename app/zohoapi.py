@@ -543,6 +543,10 @@ def test(db: Session = Depends(get_db), user: models.User = ZG):
     hit = _CACHE.get("chart")                      # read Zoho fresh - but not twice a minute
     if hit and 3600 - (hit[0] - time.time()) > 120:
         _CACHE.pop("chart", None)
+    try:
+        chart(db)                                  # one read; if Zoho is busy, stop here
+    except ZohoError as e:
+        return {"ok": False, "busy": True, "why": e.msg[:200]}
     t0 = time.time()
     names = sorted(set(BOOK_ACCOUNT.values()) | set(TRANSFER_TO.values()) | {"ADCB", "Cash", "Employee Advance"})
     acc = [a for g in zohosync.GROUPS for a in g["accounts"] if a not in SOURCE_ACC and a not in TRANSFER_TO

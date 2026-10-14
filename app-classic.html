@@ -16256,6 +16256,7 @@ async function zhTest() {
   const el = document.getElementById("zh-test"); el.innerHTML = `<div class="sub" style="margin-top:6px;">Checking...</div>`;
   try {
     const d = await apiCall("/store/zoho/link/test");
+    if (d.busy) { el.innerHTML = `<div class="zx-tag zx-bad" style="margin-top:6px;">Zoho is busy (too many requests) - wait 10 minutes, then press Check the link once.</div>`; return; }
     const bad = [...d.missing_boxes, ...d.accounts_not_in_zoho];
     const later = d.not_checked || [];
     el.innerHTML = `<div style="margin-top:6px;">Link works - ${d.projects} projects, ${d.found || 0} accounts found.${bad.length ? ` <span class="zx-tag zx-bad">Not found in Zoho</span> ${bad.map(escapeHtml).join(", ")} - lines with these will be refused until the name matches.` : (later.length ? "" : " Every account on the list was found in Zoho.")}${later.length ? ` <span class="sub" style="display:inline;">${later.length} not checked yet - press Check the link again.</span>` : ""}</div>`;
