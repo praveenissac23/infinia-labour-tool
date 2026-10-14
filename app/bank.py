@@ -35,7 +35,8 @@ BK = Depends(M.require_any_screen(RIGHT))
 KINDS = {"vendor": "Paid to supplier", "expense": "Paid - expense", "customer": "Received from client",
          "charge": "Bank charge", "transfer": "Transfer"}
 MODES = ["Bank Transfer", "Cheque", "Credit Card", "Cash"]
-TRANSFER_TO = ["Company Petty Cash", "Jomon Petty Cash", "Site Petty Cash", "Cash"]
+TRANSFER_TO = ["Company Petty Cash", "Jomon Petty Cash", "Site Petty Cash", "Cash",
+               "Akhil Petty Cash", "Rajasekar Petty Cash", "Febiyan Petty Cash"]   # his answer G2, 14 Oct
 BANK_ACC = {"ADCB": "ADCB"}
 
 

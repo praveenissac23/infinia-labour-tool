@@ -219,6 +219,8 @@ def paid_ok(account, db=None):
     own = db is None
     db = db or _db()
     try:
+        if account in zohoapi.VENDOR_PAY:
+            return True
         k = zohoapi.account_kind(db, account)
         if account.startswith("Transfer to "):
             return k in zohoapi.MONEY_BOXES
@@ -362,11 +364,33 @@ def account_lists(db):
     order = [l for _, l in TYPE_LABEL]
     paid = [{"group": g, "accounts": sorted(groups[g], key=lambda r: ((r["parent"] or r["name"]).lower(), bool(r["parent"]), r["name"].lower()))}
             for g in sorted(groups, key=lambda g: order.index(g) if g in order else 99)]
-    heads = [{"v": v, "name": v.split(" › ")[-1], "parent": v.split(" › ")[0] if " › " in v else "", "type": "cost_of_goods_sold"}
-             for v in GROUPS[0]["accounts"]]
+    # The cost heads, each followed by the Zoho accounts under it (his answer
+    # A4, 14 Oct: both). A head is "Head"; an account under it "Head › Account".
+    kids = {}
+    for a in idx.values():
+        if a.get("parent") and a["type"] in ("cost_of_goods_sold", "expense", "other_expense"):
+            kids.setdefault(zohoapi._norm(a["parent"]), []).append(a)
+    heads, seen = [], set()
+    # An account the portal already offers under its own wording is not listed twice.
+    same = {zohoapi._norm(zohoapi.ALIAS.get(zohoapi._norm(v.split(" › ")[-1]), v.split(" › ")[-1])) for v in GROUPS[0]["accounts"]}
+    for v in GROUPS[0]["accounts"]:
+        leaf = v.split(" › ")[-1]
+        heads.append({"v": v, "name": leaf, "parent": v.split(" › ")[0] if " › " in v else "", "type": "cost_of_goods_sold"})
+        target = zohoapi.ALIAS.get(zohoapi._norm(leaf), leaf)
+        for a in sorted(kids.get(zohoapi._norm(target), []), key=lambda a: a["name"].lower()):
+            if a["id"] in seen or zohoapi._norm(a["name"]) in same:
+                continue
+            seen.add(a["id"])
+            heads.append({"v": f"{a['parent']} › {a['name']}", "name": a["name"], "parent": a["parent"], "type": a["type"], "sub": 1})
+    under = {h["v"] for h in heads}
+    for g in paid:
+        g["accounts"] = [r for r in g["accounts"] if r["v"] not in under]
+    paid = [g for g in paid if g["accounts"]]
     paid.insert(0, {"group": "Project cost heads", "project": True, "accounts": heads})
     boxes = sorted((a for a in idx.values() if a["type"] in zohoapi.MONEY_BOXES and a["name"].lower() not in BOX_SKIP),
                    key=lambda a: (a["type"] != "cash", a["name"].lower()))
+    paid.append({"group": "Payments to companies (no bill)", "move": True,
+                 "accounts": [{"v": k, "name": k, "parent": "", "type": "vendor"} for k in zohoapi.VENDOR_PAY]})
     paid.append({"group": "Transfers - money moved to another box", "move": True,
                  "accounts": [{"v": f"Transfer to {a['name']}", "name": f"Transfer to {a['name']}", "parent": "", "type": a["type"]} for a in boxes]})
     caps = [a for a in idx.values() if a["type"] == "equity" and a["name"].startswith("Current Capital - ")]

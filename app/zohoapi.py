@@ -187,6 +187,11 @@ def _take(out, rows, full=None):
 # Offered in the portal exactly as Zoho groups it: by type, each parent with
 # its sub-accounts under it. Until Zoho is read the first time, the export of
 # 14 Oct 2026 (app/zoho_accounts_seed.json) stands in.
+# Paid out of a petty cash box to a sister company, with no bill: a
+# vendor payment (it sits as their advance until bills come) - the chief
+# accountant's answers D1-D4, 14 Oct 2026. Portal name -> Zoho vendor name.
+VENDOR_PAY = {"Payment to Prime Infinia Technical Services": "Prime Infinia Technical Services L.LC",
+              "Payment to EngiNova Technical Services": "EngiNova Technical Services L.L.C"}
 NOT_OFFERED = {"income", "other_income", "accounts_receivable", "accounts_payable", "stock", "credit_card"}
 MONEY_BOXES = {"cash", "bank"}
 
@@ -426,6 +431,17 @@ def push(db, x):
         return transfer(box, to)
     if acc.startswith("Employee Advance"):
         return journal(need("Employee Advance"), box)
+    if acc in VENDOR_PAY:
+        vname = VENDOR_PAY[acc]
+        c = call(db, "GET", "contacts", {"contact_name_contains": vname.split()[0], "contact_type": "vendor", "per_page": 50})
+        hit = [k for k in c.get("contacts", []) if _norm(k.get("contact_name")) == _norm(vname)]
+        if len(hit) != 1:
+            raise ZohoError(400, f"Zoho has no single vendor named {vname} - nothing sent")
+        d = call(db, "POST", "vendorpayments", body={"vendor_id": hit[0]["contact_id"], "payment_mode": "Cash", "amount": amt,
+                                                     "date": date, "reference_number": ref, "paid_through_account_id": box,
+                                                     "description": desc})
+        v = d.get("vendorpayment") or d.get("vendor_payment") or {}
+        return f"vendorpayment:{v.get('payment_id')}", f"Payment Made {v.get('payment_number') or ''}".strip()
     if account_kind(db, acc) == "equity":
         # Paid out to a partner's capital account: a journal, not an expense.
         return journal(need(acc), box)
@@ -533,7 +549,8 @@ def find_existing(db, token, places):
 
 PETTY_PLACES = [("expenses", "expenses", "expense_id", "reference_number"),
                 ("journals", "journals", "journal_id", "reference_number"),
-                ("banktransactions", "banktransactions", "transaction_id", "reference_number")]
+                ("banktransactions", "banktransactions", "transaction_id", "reference_number"),
+                ("vendorpayments", "vendorpayments", "payment_id", "reference_number")]
 
 
 def push_many(db, rows, user=None):

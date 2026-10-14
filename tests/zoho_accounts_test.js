@@ -31,7 +31,7 @@ const TAG = String(Date.now()).slice(-6);
   const top = await p.locator('#za-pop .za-i').evaluateAll(e => e.slice(0, 5).map(x => x.textContent.trim()));
   ck('his asked-for accounts top the list', /Machinery Repair/.test(top[0]) && top.some(t => /Tip for security and driver/i.test(t)) && top.some(t => /Labour Camp Expenses/.test(t)), top);
   const all = await p.locator('#za-pop .za-i').count();
-  ck(`about a hundred accounts, not 1,300 (${all})`, all > 90 && all < 200, all);
+  ck(`his accounts plus the cost heads with theirs, not 1,300 (${all})`, all > 300 && all < 800, all);
   await p.screenshot({ path: SH + 'za_open.png' });
   // search: machinery
   await p.fill('#za-q', 'machinery'); await p.waitForTimeout(150);

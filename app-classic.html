@@ -16845,7 +16845,7 @@ async function zaOpen(btn) {
       const acc = g.accounts.filter(hit); if (!acc.length) continue;
       out.push({ h: g.group }); let lastPar = null;
       for (const a of acc) {
-        if (a.parent && a.parent !== lastPar && !acc.some(x => x.name === a.parent && !x.parent)) out.push({ p: a.parent });
+        if (a.parent && a.parent !== lastPar && !acc.some(x => x.name === a.parent)) out.push({ p: a.parent });
         lastPar = a.parent || a.name; out.push({ a });
       }
     }

@@ -26,10 +26,16 @@ def fake_call(db_, method, path, params=None, body=None):
     if method == "GET" and path == "chartofaccounts":
         return {"chartofaccounts": [{"account_name": n, "account_id": i, "account_type": t, "parent_account_name": p, "is_active": True}
                                     for n, i, t, p in ACC], "page_context": {"has_more_page": False}}
+    if method == "GET" and path == "contacts":
+        return {"contacts": [{"contact_id": "VPI", "contact_name": "Prime Infinia Technical Services L.LC"},
+                             {"contact_id": "VPE", "contact_name": "Prime Edge Technical Services LLC"},
+                             {"contact_id": "VEN", "contact_name": "EngiNova Technical Services L.L.C"}]}
     if method == "GET" and path == "projects":
         return {"projects": []}
     if method == "POST":
         POSTED.append((path, body)); n = str(len(POSTED))
+        if path == "vendorpayments":
+            return {"vendorpayment": {"payment_id": "VP" + n, "payment_number": n}}
         key = {"expenses": "expense", "journals": "journal", "banktransactions": "banktransaction"}[path]
         idk = {"expense": "expense_id", "journal": "journal_id", "banktransaction": "transaction_id"}[key]
         return {key: {idk: "Z" + n, "entry_number": n}}
@@ -46,7 +52,15 @@ ok("01. Preliminaries Including Mobilization › Machinery Repair & Miantenance"
 ok(L["used"][:5] == ["01. Preliminaries Including Mobilization › Machinery Repair & Miantenance", "Miscellaneous Expense › Tip for security and driver",
                      "Rent Expense › Labour Camp Expenses", "Machinery Rent", "Job Related › Job Assets"], "Shafeeq's five on top of Most used")
 n = sum(len(g["accounts"]) for g in L["paid"] if not g.get("project") and not g.get("move"))
-ok(90 <= n <= 110, f"about a hundred of his accounts offered, not Zoho's 1,300 ({n})")
+hn = len(L["paid"][0]["accounts"])
+ok(50 <= n <= 110 and hn < 700, f"his own accounts ({n}) plus the cost heads with their accounts ({hn}) - not Zoho's 1,300")
+
+heads = [a["v"] for a in L["paid"][0]["accounts"]]
+ok("05. Blockworks" in heads and "05. Blockworks › Block Purchase" in heads, "cost heads with the Zoho accounts under each (his answer A4: both)")
+ok(heads.index("05. Blockworks › Block Purchase") > heads.index("05. Blockworks"), "an account sits right under its head")
+ok(not any(v.endswith("› Authority Payment") for v in heads), "Authority Payment not listed twice (portal's own wording kept)")
+ok("Payment to Prime Infinia Technical Services" in vals and "Payment to EngiNova Technical Services" in vals, "payments to Prime Infinia / EngiNova offered")
+
 
 # what Zoho gets
 def line(**k):
@@ -59,6 +73,10 @@ cases = [
     (line(book="office", received=200, desc="From Akhil", zoho_account="From Akhil Petty Cash"), "banktransactions", lambda b: b["from_account_id"] == "AK" and b["to_account_id"] == "C"),
     (line(book="site", paid=1200, desc="E-bike", zoho_account="Job Related › Job Assets"), "expenses", lambda b: b["account_id"] == "JA" and b["paid_through_account_id"] == "S" and "project_id" not in b),
     (line(book="site", paid=750, desc="Generator rent", zoho_account="Machinery Rent"), "expenses", lambda b: b["account_id"] == "MR"),
+    (line(book="site", paid=2500, desc="Prime Infinia manpower", zoho_account="Payment to Prime Infinia Technical Services"), "vendorpayments",
+     lambda b: b["vendor_id"] == "VPI" and b["paid_through_account_id"] == "S" and b["amount"] == 2500),
+    (line(book="office", paid=900, desc="EngiNova expenses", zoho_account="Payment to EngiNova Technical Services"), "vendorpayments",
+     lambda b: b["vendor_id"] == "VEN" and b["paid_through_account_id"] == "C"),
     (line(book="office", paid=20, desc="Tip", zoho_account="Miscellaneous Expense › Tip for security and driver"), "expenses", lambda b: b["account_id"] == "TIP" and b["amount"] == 20),
 ]
 for x, path, check in cases:
