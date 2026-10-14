@@ -524,6 +524,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bs-empty ol { margin: 6px 0 0 18px; padding: 0; } .bs-empty li { margin: 3px 0; }
   .bs-c { width: 100%; border-collapse: collapse; font-size: 13px; } .bs-c td { padding: 7px 6px; border-bottom: 1px solid #F1ECE6; } .bs-c .sub { display: block; font-size: 11.5px; color: #8A8079; } .bs-c td.n { text-align: right; font-weight: 600; }
   @media (max-width: 900px) { .bs-tiles { grid-template-columns: 1fr 1fr; } .bs-list td.act { width: auto; white-space: normal; } }
+  .dq-tile { position: relative; } .dq-badge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; box-sizing: border-box; }
+  .pz { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; margin-left: 6px; vertical-align: 1px; cursor: help; }
+  .pz.ok { background: #E3F2E6; color: #2E7D32; } .pz.app { background: #E8EEFB; color: #2F5BB7; } .pz.wait { background: #FFF1D9; color: #A86A00; } .pz.bad { background: #FDECEA; color: #B03A2E; } .pz.skip { background: #EEE; color: #888; }
   .zh-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 10px; border-bottom: 1px solid #EFEBE6; padding-bottom: 10px; }
   .zh-tab { border: 1px solid #E3D7D1; background: #fff; border-radius: 18px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; color: #4A433D; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
   .zh-tab:hover { border-color: #C9B7AE; } .zh-tab.on { background: #2B2622; border-color: #2B2622; color: #fff; }
@@ -1682,7 +1685,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="e3d348e2fbaa";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="f6531f85884b";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -7588,6 +7591,7 @@ async function loadNotifications() {
   try {
     const d = await apiCall("/notifications");
     notifications = d.notifications || [];
+    try { dqBadges(); } catch (e) {}
     const ex = notifications.find(n => n.kind === "expiry");
     const pd = notifications.find(n => n.kind === "pdc");
     const sc = notifications.find(n => n.kind === "seccheque");
@@ -13233,6 +13237,7 @@ const DASH_ACTIONS = {
   pettypro: ["PRO petty cash", "Cash spent and topped up", "accounts", "petty:pro", "cash", "petty_pro"],
   projpay:  ["Project payments", "Contract, paid and balance", "accounts", "projects", "chart", "accounts_projects"],
   projexp:  ["Project expense", "What each project cost", "accounts", "projexp", "chart", "accounts_expense"],
+  zoho:     ["Send to Zoho", "Lines waiting for Zoho", "accounts", "zoho", "inbox", "accounts_zoho"],
   creds:    ["Credentials", "Website and portal logins", "accounts", "credentials", "key", "accounts_credentials"],
   stock:    ["Stock on hand", "What the store holds", "store", "store:home", "box", "store"],
   give:     ["Move material", "Store to site, or back", "store", "store:give", "truck", "storekeeper"],
@@ -13254,8 +13259,8 @@ const DASH_ACTIONS = {
 };
 // The buttons each job reaches for first - a full row of four per line.
 const DASH_JOBS = {
-  "admin":                ["att", "cards", "check", "ocycle", "appr", "lpo", "expiry", "pdc", "taxinv", "projpay", "projexp", "activity"],
-  "chief accountant":     ["cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "appr", "lporeg", "expiry"],
+  "admin":                ["att", "cards", "check", "ocycle", "appr", "lpo", "expiry", "pdc", "taxinv", "projpay", "zoho", "activity"],
+  "chief accountant":     ["zoho", "cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "appr", "expiry"],
   "assistant accountant": ["att", "live", "cards", "ladj", "check", "master", "petty", "staff", "stock", "mreq", "appr", "expiry"],
   "pro":                  ["expiry", "staff", "oleave", "pettypro", "secq", "pdc", "creds", "att"],
   "purchase manager":     ["appr", "lpo", "follow", "lporeg", "mreq", "supp", "stock", "sitecost"],
@@ -13296,6 +13301,16 @@ function dashQuick() {
     </button>`; }).join("") || `<div class="dq-empty">Nothing to open yet - ask an admin to give this login its rights.</div>`;
   const j = document.getElementById("dash-quick-job");
   if (j) j.textContent = job === "admin" ? "For the administrator" : MY_JOB ? "For the " + MY_JOB : "";
+  dqBadges();
+}
+// A red count on Send to Zoho when lines are not in Zoho after 3 days.
+function dqBadges() {
+  const t = document.querySelector('.dq-tile[data-dq="zoho"]'); if (!t) return;
+  const n = (typeof notifications !== "undefined" ? notifications : []).find(x => x.kind === "zoho");
+  let b = t.querySelector(".dq-badge");
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement("span"); b.className = "dq-badge"; t.appendChild(b); }
+  b.textContent = n.count; b.title = n.title;
 }
 async function applyScreenPermissions(prefetched) {
   try {
@@ -16437,7 +16452,19 @@ function pcZohoTag(r) {
   if (z === "skip") return `<span class="zx-tag zx-skip" title="${escapeAttr(r.zoho_ref || "")}">Not for Zoho</span>`;
   return PC && PC.zoho_start && r.date >= PC.zoho_start ? `<span class="zx-tag zx-wait">Waiting approval</span>` : "";
 }
-// Zoho is the chief accountant's work: the column shows only to a login with Send to Zoho.
+// A small mark beside the amount instead of a column: in Zoho, waiting, or a problem.
+function pcZohoMark(r) {
+  const z = r.zoho || "";
+  const m = (cls, ch, tip) => `<span class="pz ${cls}" title="${escapeAttr(tip)}">${ch}</span>`;
+  if (z === "sent" || z === "inzoho") return m("ok", "✓", "In Zoho" + (r.zoho_ref ? " - " + r.zoho_ref : "") + (r.zoho_account ? " · " + r.zoho_account : ""));
+  if (z === "approved" && r.zoho_err) return m("bad", "!", "Approved but Zoho refused it: " + r.zoho_err);
+  if (z === "approved") return m("app", "✓", "Approved - going to Zoho");
+  if (z === "changed") return m("bad", "!", "Changed here after it went to Zoho - update Zoho");
+  if (z === "cancelled") return m("bad", "!", "Deleted in Zoho" + (r.zoho_err ? ": " + r.zoho_err : ""));
+  if (z === "skip") return m("skip", "–", "Not for Zoho" + (r.zoho_ref ? ": " + r.zoho_ref : ""));
+  return PC && PC.zoho_start && r.date >= PC.zoho_start ? m("wait", "◷", "Not in Zoho yet - waiting for approval (Send to Zoho)") : "";
+}
+// Zoho is the chief accountant's work: the marks show only to a login with Send to Zoho.
 function pcZohoMay() { return (MY_SCREENS || []).includes("accounts_zoho"); }
 function pcZohoCol() { return !!(PC && PC.zoho_start && pcZohoMay()); }
 function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes(r.zoho || "") && !pcZohoMay(); }
@@ -17565,7 +17592,7 @@ function pcHead(showSup = !!pcTerms().supplier, showSite = true) {
   const w = t.director ? 112 : 120;
   const html = `<th style="width:92px;">Date</th><th class="l">Description</th>${showSup ? `<th class="l" style="width:210px;">${escapeHtml(t.supplier)}</th>` : ""}
     ${showSite ? `<th style="width:70px;">${escapeHtml(t.site)}</th>` : ""}<th class="n" style="width:${w}px;">${escapeHtml(pair[0])} (AED)</th><th class="n" style="width:${w}px;">${escapeHtml(pair[1])} (AED)</th>
-    <th class="n" style="width:${w}px;">${escapeHtml(t.balanceCol)} (AED)</th>${pcZohoCol() ? `<th style="width:120px;">Zoho</th>` : ""}<th style="width:118px;"></th>`;
+    <th class="n" style="width:${w}px;">${escapeHtml(t.balanceCol)} (AED)</th><th style="width:118px;"></th>`;
   const key = `${PC_BOOK}|${showSup}|${showSite}|${pcZohoCol()}`;
   if (row && row.dataset.key !== key) { row.innerHTML = html; row.dataset.key = key; }
 }
@@ -17585,19 +17612,19 @@ function pcDraw() {
   const sup = !!t.supplier && d.rows.some(r => r.supplier), site = d.rows.some(r => r.site);
   pcHead(sup, site);
   const zc = pcZohoCol();
-  const ncols = 6 + sup + site + zc, ntext = 2 + sup + site;
+  const ncols = 6 + sup + site, ntext = 2 + sup + site;
   document.getElementById("pc-body").innerHTML =
     `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
-       <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td>${zc ? "<td></td>" : ""}<td></td></tr>` +
+       <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
     (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
-       <td class="l">${escapeHtml(r.description)}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
+       <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) ? `<span class="sub">${[r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
-       ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}</td>`).join("")}
-       <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>${zc ? `<td>${pcZohoTag(r)}${r.vat ? `<span class="sub">VAT${r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN"}</span>` : ""}</td>` : ""}
+       ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}${v && zc ? pcZohoMark(r) : ""}</td>`).join("")}
+       <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
        <td class="pc-act">${pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
      || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
-    <td class="n">${pcMoney(d.closing)}</td>${zc ? "<td></td>" : ""}<td></td></tr>`;
+    <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");
   // Descriptions used before, so a regular expense is one pick.

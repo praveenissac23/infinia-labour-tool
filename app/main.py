@@ -219,6 +219,7 @@ def seed_on_startup():
         _grant_camp(db)
         _grant_ppe(db)
         _grant_admin_forms(db)
+        _grant_zoho_notice(db)
         try:
             import credentials as _cr
             _cr.grant_once(db)
@@ -667,6 +668,21 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_zoho_notice(db):
+    """Roles that send to Zoho get the new 'not in Zoho after 3 days'
+    reminder in their bell list (a role's list is fixed when saved). Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "zoho_notice_granted").first():
+        return
+    for r in db.query(models.AccessRole).all():
+        keys = [k for k in (r.screens or "").split(",") if k]
+        if r.notif is not None and "accounts_zoho" in keys:
+            have = [x for x in (r.notif or "").split(",") if x]
+            if "zoho" not in have:
+                r.notif = ",".join(have + ["zoho"])
+    db.add(models.Setting(key="zoho_notice_granted", value="1"))
     db.commit()
 
 
@@ -12664,6 +12680,7 @@ NOTIF_GROUPS = [
     ("expiry", "Expiry reminder - documents, licences, NOCs", ("expiry",), ("expiry",)),
     ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
     ("seccheque", "Security cheques to collect back", ("seccheque",), ("security_cheques",)),
+    ("zoho", "Zoho - lines not in Zoho after 3 days", ("zoho",), ("accounts_zoho",)),
 ]
 NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
 
@@ -12863,6 +12880,16 @@ def get_notifications(db: Session = Depends(get_db),
         try:
             import seccheque as _sc
             n = _sc.notification(db, today)
+            if n:
+                out.append(n)
+        except Exception:
+            pass
+
+    # ---- Zoho: anything not in Zoho 3 days after its date --------------------
+    if "accounts_zoho" in allowed:
+        try:
+            import zohosync as _zs
+            n = _zs.overdue_notice(db, today)
             if n:
                 out.append(n)
         except Exception:

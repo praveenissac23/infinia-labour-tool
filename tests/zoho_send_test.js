@@ -34,8 +34,8 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  // petty screen
  await a.evaluate(()=>pgTab('petty')); await a.waitForTimeout(1200); await a.evaluate(()=>pcBook('site')); await a.waitForTimeout(800);
  await a.evaluate(()=>{document.getElementById('pc-month').value='2026-10'; loadPettyCash();}); await a.waitForTimeout(1200);
- ck('Zoho column on the site book', (await a.locator('#pc-head-row').textContent()).includes('Zoho'));
- ck('lines show Waiting approval', (await a.locator('#pc-body').textContent()).includes('Waiting approval'));
+ ck('no Zoho column on the site book - a small mark beside the amount instead', !(await a.locator('#pc-head-row').textContent()).includes('Zoho') && (await a.locator('#pc-body .pz').count()) > 0);
+ ck('waiting lines carry the waiting mark', (await a.locator('#pc-body .pz.wait').count()) > 0);
  await a.fill('#pc-desc','Tile adhesive & grout'); await a.fill('#pc-sup','Dani Building'); await a.fill('#pc-amt','189');
  await a.check('#pc-vat'); await a.waitForTimeout(800);
  ck('VAT ticked shows the TRN box', await a.locator('#pc-trn').isVisible());
@@ -100,7 +100,8 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  ck('Send to Zoho tab in his Accounts', await c.evaluate(()=>pgHas('accounts_zoho')));
  // Naveen's book shows the Zoho column to the admin
  await a.evaluate(()=>pgTab('petty')); await a.waitForTimeout(800); await a.evaluate(()=>pcBook('naveen')); await a.waitForTimeout(1200);
- ck('Zoho column on Naveen book for the chief accountant / admin', (await a.locator('#pc-head-row').textContent()).includes('Zoho'));
+ const nv=await a.evaluate(()=>({rows:PC.rows.filter(r=>r.date>=PC.zoho_start).length, marks:document.querySelectorAll('#pc-body .pz').length}));
+ ck('Zoho marks on the Naveen book for the chief accountant / admin (one per line from the start date)', nv.marks>=nv.rows, nv);
  // export
  const ex=await a.evaluate(async()=>{ await refreshDownloadToken(); const out={}; for(const f of ['view','pdf','excel']){ const r=await fetch(`${API}/export/accounts/zoho?format=${f}&token=${encodeURIComponent(cachedDownloadToken)}`); out[f]=[r.status,(await r.arrayBuffer()).byteLength]; } return out; });
  ck('preview / PDF / Excel download', Object.values(ex).every(v=>v[0]===200&&v[1]>1500), ex);

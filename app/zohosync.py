@@ -20,7 +20,7 @@ Status of a line (petty_cash.zoho_status):
   skip      not for Zoho (reason in zoho_ref)
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Body
@@ -604,3 +604,37 @@ def october_confirm(payload: dict = Body(...), db: Session = Depends(get_db), us
     if n:
         M.log_action(db, user.id, "zoho_october", f"{n} October petty cash line(s) confirmed already in Zoho")
     return {"ok": True, "marked": n}
+
+
+# ---- Nothing left out of Zoho: the 3-day reminder ------------------------------
+OVERDUE_DAYS = 3
+
+
+def overdue(db, today=None):
+    """What is still not in Zoho OVERDUE_DAYS after its date: petty cash
+    (waiting, approved-not-sent, changed, deleted in Zoho), bank lines,
+    LPOs and staff loans - from the Zoho start date on."""
+    today = today or M._dubai_today()
+    cut, start = today - timedelta(days=OVERDUE_DAYS), _start(db)
+    petty = (db.query(models.PettyCash).filter(models.PettyCash.book.in_(list(BOOKS)), models.PettyCash.on_date >= start, models.PettyCash.on_date <= cut)
+               .filter((models.PettyCash.zoho_status.in_(["", "approved", "sending", "changed", "cancelled"])) | (models.PettyCash.zoho_status.is_(None))).count())
+    bank = (db.query(models.BankEntry).filter(models.BankEntry.on_date <= cut)
+              .filter((models.BankEntry.zoho_status.in_(["", "sending"])) | (models.BankEntry.zoho_status.is_(None))).count())
+    lpo = (db.query(models.PurchaseOrder).filter(models.PurchaseOrder.order_date >= start, models.PurchaseOrder.order_date <= cut,
+                                                 models.PurchaseOrder.status != "cancelled")
+             .filter((models.PurchaseOrder.zoho_status.in_(["", "sending", "changed"])) | (models.PurchaseOrder.zoho_status.is_(None))).count())
+    loans = sum(1 for l in _loans_waiting(db) if l.taken_on <= cut)
+    return {"petty": petty, "bank": bank, "lpo": lpo, "loans": loans, "total": petty + bank + lpo + loans}
+
+
+def overdue_notice(db, today=None):
+    today = today or M._dubai_today()
+    o = overdue(db, today)
+    if not o["total"]:
+        return None
+    parts = [f"{o[k]} {lab}" for k, lab in (("petty", "petty cash"), ("bank", "bank"), ("lpo", "LPO" + ("s" if o["lpo"] != 1 else "")),
+                                              ("loans", "staff loan" + ("s" if o["loans"] != 1 else ""))) if o[k]]
+    return {"id": f"zoho-{today}-{o['total']}", "kind": "zoho",
+            "title": f"{o['total']} line{'s' if o['total'] != 1 else ''} not in Zoho for over {OVERDUE_DAYS} days",
+            "detail": ", ".join(parts) + " - Accounts > Send to Zoho", "screen": "zoho", "when": today.isoformat(),
+            "count": o["total"], "level": "warn"}
