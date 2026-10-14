@@ -386,22 +386,19 @@ def push(db, x):
         raise Z.ZohoError(400, f"Zoho has no account named {('Bank Fees and Charges' if x.kind == 'charge' else x.account).split(' › ')[-1]}")
     body = {"account_id": acc, "date": dt, "amount": amt, "paid_through_account_id": bank, "reference_number": ref,
             "description": desc, "is_inclusive_tax": True}
+    vendor = ""
     if x.party:
         try:
-            body["vendor_id"] = x.party_id or _contact_id(db, x.party, "vendor")
+            vendor = x.party_id or _contact_id(db, x.party, "vendor")
+            body["vendor_id"] = vendor
         except Z.ZohoError:
-            pass
+            if x.vat:
+                raise                                   # a VAT bill never goes without its supplier
     if x.site:
         p = Z.projects(db).get(x.site.strip())
         if p:
             body["project_id"], body["customer_id"] = p
-    if x.vat:
-        t = Z.vat_tax(db)
-        if t:
-            body["tax_id"] = t
-        body["tax_treatment"] = "vat_registered"
-        if x.trn:
-            body["tax_reg_no"] = x.trn
+    body.update(Z.vat_fields(db, x.vat, x.trn, vendor, x.party))
     d = Z.call(db, "POST", "expenses", body=body)
     return f"expense:{d['expense']['expense_id']}", "Expense"
 

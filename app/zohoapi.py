@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 import main as M
 import models
+import auth
 from database import get_db
 
 router = APIRouter()
@@ -241,6 +242,56 @@ def vat_tax(db):
     return _cached(db, "vat", fetch)
 
 
+VAT_MODES = ("hold", "zero", "claim")
+
+
+def vat_mode(db):
+    """How a bill ticked 'VAT on the receipt' goes to Zoho - the chief
+    accountant's decision. Until he answers: held, nothing claimed."""
+    m = _get(db, "vat_mode", "hold")
+    return m if m in VAT_MODES else "hold"
+
+
+def zero_tax(db):
+    def fetch():
+        for t in call(db, "GET", "settings/taxes").get("taxes", []):
+            if float(t.get("tax_percentage") or 0) == 0 and "zero" in (t.get("tax_name") or "").lower():
+                return t["tax_id"]
+        return ""
+    return _cached(db, "vat0", fetch)
+
+
+def vat_fields(db, vat, trn, vendor, who=""):
+    """The tax fields of an expense, as the accountant enters them. Raises
+    rather than guess: a VAT bill never goes without its supplier."""
+    if not vat:
+        return {"tax_treatment": "vat_not_registered"}
+    mode = vat_mode(db)
+    if mode == "hold":
+        raise ZohoError(400, "Bills with VAT wait for the chief accountant's answer on how VAT is booked - nothing sent")
+    if not vendor:
+        raise ZohoError(400, f"VAT bill: link the supplier to its Zoho vendor first (Send to Zoho > Suppliers in Zoho): {who or 'no supplier typed'}")
+    t = vat_tax(db) if mode == "claim" else zero_tax(db)
+    if not t:
+        raise ZohoError(400, f"Zoho has no {'5% Standard Rate' if mode == 'claim' else 'Zero Rate'} tax - nothing sent")
+    out = {"tax_id": t, "tax_treatment": "vat_registered"}
+    if trn:
+        out["tax_reg_no"] = trn
+    return out
+
+
+@router.post("/store/zoho/vatmode")
+def set_vat_mode(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    if (user.role or "") != "admin":
+        raise HTTPException(status_code=403, detail="Only the admin sets how VAT is booked.")
+    m = str(payload.get("mode") or "")
+    if m not in VAT_MODES:
+        raise HTTPException(status_code=400, detail="hold, zero or claim")
+    _put(db, "vat_mode", m)
+    M.log_action(db, user.id, "zoho_vat_mode", f"Bills with VAT: {m}")
+    return {"ok": True, "mode": m}
+
+
 def account_id(db, name):
     """The Zoho account for an account picked in the portal - the last
     part of "Head › Sub-head", or the office account's name."""
@@ -308,13 +359,15 @@ def push(db, x):
         p = projects(db).get(x.site.strip())
         if p:
             body["project_id"], body["customer_id"] = p
-    if x.vat:
-        t = vat_tax(db)
-        if t:
-            body["tax_id"] = t
-        body["tax_treatment"] = "vat_registered"
-        if x.trn:
-            body["tax_reg_no"] = x.trn
+    # Paid To: the supplier's Zoho vendor, as the accountant enters it.
+    vendor = ""
+    if (x.supplier or "").strip():
+        key = M._supplier_key(x.supplier)
+        sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first() if key else None
+        vendor = (sup.zoho_id or "") if sup else ""
+        if vendor:
+            body["vendor_id"] = vendor
+    body.update(vat_fields(db, x.vat, x.trn, vendor, x.supplier))
     d = call(db, "POST", "expenses", body=body)
     return f"expense:{d['expense']['expense_id']}", "Expense"
 

@@ -41,13 +41,16 @@ def fake_call(db_, method, path, params=None, body=None):
     raise AssertionError(path)
 Z.call = fake_call
 M.put_setting(s, "zoho_refresh", credentials.lock("rt")); s.commit()
+ok(Z.vat_mode(s) == "hold", "until the chief accountant answers, bills with VAT are held")
+M.put_setting(s, "zoho_vat_mode", "claim"); s.commit()
 ok(Z.connected(s), "connected once a refresh token is kept")
 
 def line(**k):
     x = models.PettyCash(on_date=date(2026, 10, 9), description=k.pop("desc", "x"), supplier=k.pop("sup", ""),
                          zoho_status="approved", **k)
     s.add(x); s.commit(); return x
-a = line(book="site", site="913", paid=346.5, desc="Tile adhesive", vat=True, trn="100555666700003",
+s.add(models.Supplier(name="Dani Building Materials", name_key=M._supplier_key("Dani Building Materials"), zoho_id="V-DANI")); s.commit()
+a = line(book="site", site="913", paid=346.5, desc="Tile adhesive", sup="DANI BUILDING MATERIALS", vat=True, trn="100555666700003",
          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
 b = line(book="office", paid=260, desc="918 DM fee", zoho_account="01. Preliminaries Including Mobilization › Authority Payments")
 c = line(book="pro", paid=1000, desc="To Shafique for company cash book", zoho_account="Transfer to Company Petty Cash")
@@ -59,6 +62,37 @@ h = line(book="office", paid=999, desc="Water", zoho_account="Office › Office 
 i = line(book="office", received=20000, desc="Cash from Emkaan", zoho_account="Client payment received in cash")
 sent, failed = Z.push_many(s, [a, b, c, d, e, f, g, h, i])
 ok(sent == 7 and len(failed) == 2, f"7 sent, 2 refused ({sent}, {failed})")
+EXP = [b_ for p_, b_ in POSTED if p_ == "expenses"]
+va = next(b_ for b_ in EXP if b_["amount"] == 346.5)
+ok(va.get("vendor_id") == "V-DANI" and va["tax_treatment"] == "vat_registered" and va["tax_reg_no"] == "100555666700003" and va["tax_id"] == "VAT5",
+   "VAT bill: Paid To = linked Zoho vendor, VAT Registered, TRN, 5% tax")
+ok(all(b_["tax_treatment"] == "vat_not_registered" and "tax_id" not in b_ for b_ in EXP if b_["amount"] != 346.5),
+   "bills without VAT: 'Non VAT Registered', no tax claimed (as the accountant enters them)")
+nv = line(book="site", site="913", paid=50, desc="Paint", sup="Unknown Shop", vat=True, trn="100555666700003",
+          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
+n0 = len(POSTED); Z.push_many(s, [nv]); s.refresh(nv)
+ok(len(POSTED) == n0 and "link" in nv.zoho_err, "VAT claimed but supplier not linked in Zoho -> refused, nothing posted")
+# hold: VAT bill refused, nothing posted
+M.put_setting(s, "zoho_vat_mode", "hold"); s.commit()
+hv = line(book="site", site="913", paid=63, desc="Disc", sup="DANI BUILDING MATERIALS", vat=True, trn="100555666700003",
+          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
+n0 = len(POSTED); Z.push_many(s, [hv]); s.refresh(hv)
+ok(len(POSTED) == n0 and hv.zoho_status == "approved" and "chief accountant" in hv.zoho_err, "hold: VAT bill waits, nothing posted")
+# zero: as the accountant does today - supplier and TRN, Zero Rate tax
+TAXES_ZERO = True
+M.put_setting(s, "zoho_vat_mode", "zero"); s.commit(); Z._CACHE.pop("vat0", None)
+orig = Z.call
+def with_zero(db_, method, path, params=None, body=None):
+    if path == "settings/taxes":
+        return {"taxes": [{"tax_name": "Standard Rate", "tax_percentage": 5, "tax_id": "VAT5"}, {"tax_name": "Zero Rate", "tax_percentage": 0, "tax_id": "VAT0"}]}
+    return orig(db_, method, path, params, body)
+Z.call = with_zero
+hv.zoho_err = ""; s.commit()
+Z.push_many(s, [hv]); s.refresh(hv)
+zb = POSTED[-1][1]
+ok(hv.zoho_status == "sent" and zb["tax_id"] == "VAT0" and zb["tax_treatment"] == "vat_registered" and zb["vendor_id"] == "V-DANI" and zb["tax_reg_no"] == "100555666700003",
+   "zero: VAT Registered, TRN, supplier, Zero Rate - exactly as Zoho is entered today")
+Z.call = orig
 P = {p[1].get("reference_number"): p for p in POSTED}
 pa = P[f"PC-{a.id}"]
 ok(pa[0] == "expenses" and pa[1]["account_id"] == "T17A" and pa[1]["paid_through_account_id"] == "S"
