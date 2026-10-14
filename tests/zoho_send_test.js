@@ -70,7 +70,7 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  ck('split not adding up is flagged', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),dr)).some(f=>/add up/.test(f)));
  await a.evaluate(id=>{ const r=ZH.rows.find(x=>x.id===id); ZH_PICK[id].splits[1].amount=5; zhSet(id,'splits',ZH_PICK[id].splits); },dr);
  ck('split adding up is ready', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),dr)).length === 0);
- ck('row shows "Split in 2"', /Split in 2/.test(await a.locator('#zh-body').textContent()));
+ ck("row shows the split", /Split over 2 cost heads/.test(await a.locator("#zh-body").textContent()));
  // crane: pick a project account without project -> flag
  const cr=q.rows.find(r=>r.description.startsWith('Paid to crane')).id;
  await a.evaluate(id=>zhSet(id,'account','01. Preliminaries Including Mobilization'),cr);

@@ -352,6 +352,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .hr-caret { font-size: 10px; margin-left: 2px; }
   .pc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
   .pc-title { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .pc-title > h2 { line-height: 36px; }
   .pc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .pc-f { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 700; color: #555; letter-spacing: .03em; }
   .pc-f input, .pc-f select { height: 36px; }
@@ -484,8 +485,22 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zx-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .zx-wait { background: #FFF4D6; color: #8A6200; } .zx-ok { background: #E7F4EA; color: #2E7D32; } .zx-app { background: #E8F0FB; color: #2456A6; }
   .zx-bad { background: #FDECEA; color: #B7322A; } .zx-skip { background: #EEE; color: #666; }
-  .zh-table td { vertical-align: middle; } .zh-table td:nth-child(3) { white-space: nowrap; } .zh-table td:nth-child(4) { min-width: 200px; } .zh-table input.zh-trn { width: 112px; } .zh-table select { height: 32px; width: 100%; min-width: 190px; max-width: 230px; font-size: 12.5px; }
-  .zh-table td:nth-child(6) select { min-width: 84px; width: 84px; } .zh-table select.zh-acc { min-width: 290px; max-width: 320px; }
+  .zh-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; } .zh-table td:nth-child(3) { white-space: nowrap; } .zh-table td:nth-child(4) { min-width: 210px; }
+  .zh-table th.l, .zh-table td.l { text-align: left; }
+  .zh-table select { height: 34px; font-size: 13px; border-radius: 7px; }
+  .zh-table select.zh-site { width: 88px; } .zh-table select.zh-vat { width: 116px; min-width: 116px; }
+  .zh-table input.zh-trn { width: 128px; height: 32px; font-size: 12.5px; margin-top: 5px; display: block; }
+  .zh-accrow { display: flex; align-items: center; gap: 6px; }
+  .zh-accrow select.zh-acc { flex: 1; min-width: 232px; max-width: 238px; width: auto; padding-left: 8px; font-size: 12.5px; }
+  .zh-splitbtn { height: 34px; padding: 0 10px; border: 1px solid #E3D7D1; background: #fff; color: #8C2F26; border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex: none; }
+  .zh-splitbtn:hover { background: #FDF4F3; }
+  .zh-splitshow { height: 34px; flex: 1; min-width: 236px; max-width: 244px; text-align: left; padding: 0 12px; border: 1px dashed #C9B8B0; background: #FCFAF7; border-radius: 7px; font-size: 13px; color: #2B2622; cursor: pointer; }
+  .zh-none { color: #B5ACA5; }
+  .zh-table .zh-flags { flex-direction: row; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .zh-acts { display: flex; justify-content: flex-end; } .zh-acts .btn { white-space: nowrap; }
+  .zh-table th, .zh-table td { padding-left: 8px; padding-right: 8px; }
+  .zh-table th:first-child, .zh-table td:first-child { padding-left: 14px; }
+  .zh-table th:last-child, .zh-table td:last-child { padding-right: 12px; }
   .zh-table input.zh-trn { height: 30px; font-size: 12px; }
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
@@ -513,7 +528,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zs-row { display: grid; grid-template-columns: 1fr 130px 36px; gap: 8px; margin-bottom: 8px; align-items: center; }
   .zs-row input { height: 38px; text-align: right; width: 100%; box-sizing: border-box; }
   .zh-table select.zh-vat { min-width: 120px; width: 120px; }
-  .zh-splitbtn { border: 0; background: none; color: #B03A2E; font-size: 12px; cursor: pointer; padding: 2px 0 0; display: block; text-decoration: underline; }
+
 
   /* Labour accommodation - camp rooms and beds */
   #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
@@ -1543,7 +1558,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="41ad5e31b783";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="1c01cb8b9b35";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3233,10 +3248,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="status-msg" id="zh-status"></div>
             <div class="grid-wrap" style="max-height:none;">
               <table class="pc-table zh-table">
-                <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th style="width:60px;">Book</th><th style="width:78px;">Date</th>
-                  <th class="l">Description</th><th class="l" style="width:120px;">Supplier</th><th style="width:92px;">Project</th><th class="l" style="width:300px;">Zoho account</th>
-                  <th style="width:120px;">VAT</th><th class="n" style="width:92px;">Amount</th><th style="width:122px;"></th></tr></thead>
-                <tbody id="zh-body"><tr><td colspan="10" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
+                <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th class="l" style="width:58px;">Book</th><th class="l" style="width:78px;">Date</th>
+                  <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:296px;">Zoho account</th>
+                  <th class="l" style="width:128px;">VAT</th><th class="n" style="width:96px;">Amount</th><th style="width:116px;"></th></tr></thead>
+                <tbody id="zh-body"><tr><td colspan="9" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
               </table>
             </div>
             <div id="zh-loans"></div>
@@ -16612,11 +16627,11 @@ function zhShort(a) {
   // "01. Preliminaries Including Mobilization › Authority Payments" -> "01 › Authority Payments"
   a = a.replace(/^Office › /, "");
   const m = a.match(/^(\d{2})\.[^›]*› (.+)$/);
-  return m ? `${m[1]} › ${m[2]}` : a;
+  return (m ? `${m[1]} › ${m[2]}` : a).replace(/ Including /g, " incl. ").replace(/ and Other /g, " & other ");
 }
 function zhOptions(r, cur) {
   const groups = ZH.groups.filter(g => r.kind === "received" ? g.received : !g.received);
-  return `<option value="">- pick -</option>` + groups.map(g => `<optgroup label="${escapeAttr(g.group)}">` +
+  return `<option value="">${r.kind === "received" ? "Where did it come from?" : "Choose account…"}</option>` + groups.map(g => `<optgroup label="${escapeAttr(g.group)}">` +
     g.accounts.map(a => `<option value="${escapeAttr(a)}"${a === cur ? " selected" : ""} title="${escapeAttr(a)}">${escapeHtml(zhShort(a))}</option>`).join("") + `</optgroup>`).join("");
 }
 function zhShown() {
@@ -16636,21 +16651,22 @@ function zhDraw() {
     const p = ZH_PICK[r.id], f = zhFlags(r);
     if (f.length) p.on = false;
     const site = (r.site || "") ? escapeHtml(r.site)
-      : (zhProjectAcc(p.account) ? `<select onchange="zhSet(${r.id},'site',this.value)"><option value="">- pick -</option>${(ZH_SITES || []).map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>` : "-");
-    const vat = !r.vat ? "No" : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value)" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name.">
-        <option value="">- VAT? -</option><option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option></select>`
+      : (zhProjectAcc(p.account) || (p.splits || []).some(s => zhProjectAcc(s.account)) ? `<select class="zh-site" onchange="zhSet(${r.id},'site',this.value)"><option value="">Project…</option>${(ZH_SITES || []).map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>` : `<span class="zh-none">—</span>`);
+    const vat = !r.vat ? `<span class="zh-none">No VAT</span>` : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value)" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name.">
+        <option value="">Claim VAT?</option><option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option></select>`
       + (r.trn ? `<span class="sub">TRN ${escapeHtml(r.trn)}</span>` : (p.vat_claim === "claim" ? `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">` : ""));
     const sp = (p.splits || []).filter(s => s.account || +s.amount);
-    const acc = sp.length ? `<button type="button" class="btn btn-gray btn-sm" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split in ${sp.length} · change</button>`
-      : `<select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select>${r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">Split</button>` : ""}`;
+    const acc = `<div class="zh-accrow">` + (sp.length ? `<button type="button" class="zh-splitshow" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split over ${sp.length} cost heads</button>`
+      : `<select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select>`)
+      + (r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">${sp.length ? "Edit" : "Split"}</button>` : "") + `</div>`;
     return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
-      <td>${escapeHtml(r.book_label)}</td><td>${pcDate(r.date)}</td>
-      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
-      <td class="l">${escapeHtml(r.supplier || "-")}</td><td>${site}</td>
+      <td class="l">${escapeHtml(r.book_label)}</td><td class="l">${pcDate(r.date)}</td>
+      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}<span class="sub">${r.supplier ? `<b style="color:#4A433D;font-weight:600;">${escapeHtml(r.supplier)}</b>` : "No supplier"}${r.receipt_no ? " · rcpt " + escapeHtml(r.receipt_no) : ""}${r.by ? " · by " + escapeHtml(r.by) : ""}</span>${f.length ? `<div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}</div>` : ""}</td>
+      <td class="l">${site}</td>
       <td class="l">${acc}</td>
-      <td>${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
-      <td><div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
-  }).join("") || `<tr><td colspan="10" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
+      <td class="l">${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
+      <td><div class="zh-acts">${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
+  }).join("") || `<tr><td colspan="9" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
   const n = rows.filter(r => ZH_PICK[r.id].on).length;
   document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhFlags(r).length).length;
   const go = document.getElementById("zh-go");
