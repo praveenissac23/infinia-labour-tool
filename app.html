@@ -1542,6 +1542,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .za-ref { border:0; background:none; color:#8B5E34; font:inherit; font-size:11.5px; cursor:pointer; padding:2px 4px; }
 
   /* Sent to Zoho */
+  #zh-tabs .zh-tab-end { margin-left:auto; }
   .zs-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:10px 0 12px; }
   .zs-filters .pc-f { min-width:140px; } .zs-filters .pc-f input[type=search] { min-width:220px; }
   .zs-all { display:flex; align-items:center; gap:6px; font-size:13px; color:#4A433D; height:38px; } .zs-all small { color:#8A7F75; }
@@ -1739,7 +1740,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b4780284ebd0";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="16f926868ff7";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -17385,9 +17386,9 @@ try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
 // so nothing below it moves.
 function zhTabsSkeleton() {
   const el = document.getElementById("zh-tabs"); if (!el || el.children.length) return;
-  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["sent", "Sent to Zoho"], ["october", "October check"], ["suppliers", "Suppliers"]];
+  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["october", "October check"], ["suppliers", "Suppliers"], ["sent", "Sent to Zoho"]];
   const on = ZH_PANE || "petty";
-  el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers", "sent"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
+  el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}${k === "sent" ? " zh-tab-end" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers", "sent"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === on ? "block" : "none");
   // the connection line as it was last time, so it does not drop in late
   try { const c = JSON.parse(localStorage.getItem("infinia_zh_conn") || "null"); if (c) zhConnDraw(c); } catch (e) {}
@@ -17397,10 +17398,10 @@ function zhTabsDraw() {
   const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => o.status === "changed" || (o.cancelled && o.err)).length;
   const attn = (ZH.pending || []).length + (ZH.todo || []).length;
   const T = [["petty", "Petty cash", (ZH.rows || []).length], ["bank", "Bank", (ZH.bank || []).length], ["lpo", "LPOs", lpoWait + lpoFlag],
-             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["sent", "Sent to Zoho", ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""]];
+             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""], ["sent", "Sent to Zoho", ""]];
   if (!ZH_PANE || !T.some(t => t[0] === ZH_PANE)) ZH_PANE = (T.find(t => t[2]) || T[0])[0];
   if (ZH_PANE === "sent" && !ZS) zsLoad();
-  el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
+  el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}${k === "sent" ? " zh-tab-end" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === ZH_PANE ? "block" : "none");
   const none = document.getElementById("zh-attn-none"); if (none) none.innerHTML = attn ? "" : `<div class="zh-none">Nothing needs attention - no refused lines and no entries waiting for a supplier.</div>`;
 }
