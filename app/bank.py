@@ -70,13 +70,27 @@ def _month(month):
     return a, b
 
 
-def listing(db, month):
+def _period(month="", start="", end=""):
+    """A month, one day (start only) or a range (start - end). -> (first, last, label)."""
+    a, b = M._as_date(start), M._as_date(end)
+    if a or b:
+        a, b = a or b, b or a
+        if a > b:
+            a, b = b, a
+        if a == b:
+            return a, b, f"{a:%d %b %Y}"
+        return a, b, (f"{a:%d %b} - {b:%d %b %Y}" if a.year == b.year else f"{a:%d %b %Y} - {b:%d %b %Y}")
     a, b = _month(month)
+    return a, b, f"{a:%B %Y}"
+
+
+def listing(db, month, start="", end=""):
+    a, b, label = _period(month, start, end)
     rows = (db.query(models.BankEntry).filter(models.BankEntry.on_date >= a, models.BankEntry.on_date <= b)
               .order_by(models.BankEntry.on_date, models.BankEntry.id).all())
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     out = [_row(x, users) for x in rows]
-    return {"month": f"{a:%Y-%m}", "label": f"{a:%B %Y}", "rows": out,
+    return {"month": f"{a:%Y-%m}", "label": label, "start": a.isoformat(), "end": b.isoformat(), "rows": out,
             "paid": round(sum(r["amount"] for r in out if r["out"]), 2),
             "received": round(sum(r["amount"] for r in out if not r["out"]), 2),
             "waiting": sum(1 for r in out if r["zoho"] in ("", "sending")),
@@ -84,7 +98,7 @@ def listing(db, month):
 
 
 @router.get("/store/bank")
-def list_bank(month: str = "", db: Session = Depends(get_db), user: models.User = BK):
+def list_bank(month: str = "", start: str = "", end: str = "", db: Session = Depends(get_db), user: models.User = BK):
     import zohoapi, zohosync
     # Post-dated client cheques whose date has come go on Project payments now.
     for x in db.query(models.BankEntry).filter(models.BankEntry.kind == "customer", models.BankEntry.scope_id.isnot(None),
@@ -93,7 +107,7 @@ def list_bank(month: str = "", db: Session = Depends(get_db), user: models.User 
             link_receipt(db, x); db.commit()
         except HTTPException:
             db.rollback()
-    d = listing(db, month)
+    d = listing(db, month, start, end)
     d.update(kinds=KINDS, modes=MODES, transfer_to=TRANSFER_TO, groups=zohosync.GROUPS[:2],
              may_send=_may_send(user), connected=zohoapi.connected(db))
     return d
@@ -439,11 +453,11 @@ def statement(month: str = "", db: Session = Depends(get_db), user: models.User 
 # ---- the paper ---------------------------------------------------------------
 
 @router.get("/export/accounts/bank")
-def export_bank(token: str, month: str = "", format: str = "excel", db: Session = Depends(get_db)):
+def export_bank(token: str, month: str = "", start: str = "", end: str = "", format: str = "excel", db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
     if RIGHT not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Bank is for accounts only.")
-    d = listing(db, month)
+    d = listing(db, month, start, end)
     st = {"sent": "In Zoho", "sending": "Sending", "cancelled": "Deleted in Zoho", "": "Waiting"}
     rows = [{"Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Type": r["kind_label"], "Party": r["party"] or "-",
              "Mode": r["mode"], "Reference": r["reference"] or "-",
@@ -454,9 +468,9 @@ def export_bank(token: str, month: str = "", format: str = "excel", db: Session 
     sub = f"{d['label']} | paid out {d['paid']:,.2f} | received {d['received']:,.2f} | As at {M._dubai_today():%d %b %Y}"
     money = ["Paid out (AED)", "Received (AED)"]
     if format == "view":
-        url = f"/export/accounts/bank?month={quote(d['month'])}&token={quote(auth.create_view_token(u.username), safe='')}"
+        url = f"/export/accounts/bank?month={quote(d['month'])}&start={d['start']}&end={d['end']}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, rows, url, url, money_cols=money)
-    name = f"Bank_ADCB_{d['month']}"
+    name = f"Bank_ADCB_{d['start']}_to_{d['end']}"
     if format == "pdf":
         return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=money, orientation="landscape"),
                                  media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})

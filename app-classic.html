@@ -3166,7 +3166,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pc-head">
               <div class="pc-title">
                 <h2 style="margin:0;">Bank - ADCB</h2>
-                <label class="pc-f"><span>Month</span><input type="month" id="bk-month" onchange="bkLoad()"></label>
+                <label class="pc-f"><span>Show</span><select id="bk-range" onchange="bkRange()"><option value="month">One month</option><option value="day">One day</option><option value="dates">From - to</option></select></label>
+                <label class="pc-f" id="bk-month-f"><span>Month</span><input type="month" id="bk-month" onchange="bkLoad()"></label>
+                <label class="pc-f" id="bk-day-f" style="display:none;"><span>Date</span><input type="date" id="bk-day" onchange="bkLoad()"></label>
+                <label class="pc-f" id="bk-dfrom-f" style="display:none;"><span>From</span><input type="date" id="bk-dfrom" onchange="bkLoad()"></label>
+                <label class="pc-f" id="bk-dto-f" style="display:none;"><span>To</span><input type="date" id="bk-dto" onchange="bkLoad()"></label>
                 <label class="pc-f"><span>Search</span><input type="text" id="bk-q" placeholder="Find a line" style="width:170px;" data-spell="off" oninput="bkDraw()"></label>
               </div>
               <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="bkExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="bkExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="bkExport('excel')">Export Excel</button></div></div>
@@ -16291,13 +16295,27 @@ function bkSum() {
     : BK_KIND === "expense" ? `expense${who ? " paid to <b>" + escapeHtml(who) + "</b>" : ""}` : BK_KIND === "charge" ? "bank charge" : `transferred to <b>${escapeHtml(to || "?")}</b>`;
   el.innerHTML = `<span class="bk-dir ${k.dir}">${dir[0]}</span><span><b>AED ${pcMoney(amt)}</b> ${line}</span>`;
 }
+// Month, one day or a date range - the list, the statement check and the paper all follow it.
+function bkRange() {
+  const r = document.getElementById("bk-range").value, t = pcToday();
+  [["month", "bk-month-f"], ["day", "bk-day-f"], ["dates", "bk-dfrom-f"], ["dates", "bk-dto-f"]].forEach(([k, id]) => document.getElementById(id).style.display = r === k ? "" : "none");
+  if (r === "day" && !document.getElementById("bk-day").value) document.getElementById("bk-day").value = t;
+  if (r === "dates") { if (!document.getElementById("bk-dfrom").value) document.getElementById("bk-dfrom").value = t.slice(0, 8) + "01"; if (!document.getElementById("bk-dto").value) document.getElementById("bk-dto").value = t; }
+  bkLoad();
+}
+function bkQS() {
+  const r = document.getElementById("bk-range").value, v = id => encodeURIComponent(document.getElementById(id).value || "");
+  if (r === "day") return `start=${v("bk-day")}&end=${v("bk-day")}`;
+  if (r === "dates") return `start=${v("bk-dfrom")}&end=${v("bk-dto")}`;
+  return `month=${v("bk-month")}`;
+}
 async function bkLoad() {
   const m = document.getElementById("bk-month");
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("bk-date").value) document.getElementById("bk-date").value = pcToday();
   if (!BK_SITES) { try { BK_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { BK_SITES = []; } }
   if (!BK_SCOPES) { try { BK_SCOPES = (await apiCall("/store/bank/scopes")).scopes; } catch (e) { BK_SCOPES = []; } }
-  try { BK = await apiCall(`/store/bank?month=${encodeURIComponent(m.value)}`); }
+  try { BK = await apiCall(`/store/bank?${bkQS()}`); }
   catch (e) { showStatus("bk-status", "err", errText(e)); return; }
   document.getElementById("bk-mode").innerHTML = BK.modes.map(x => `<option>${escapeHtml(x)}</option>`).join("");
   bkKindDraw(); bkDraw(); bkStatement();
@@ -16489,7 +16507,7 @@ async function bkSend(btn) {
 let BS = null, BS_F = "problems";
 async function bkStatement() {
   const el = document.getElementById("bk-stmt"); if (!BK) return;
-  try { BS = await apiCall(`/store/bank/stmt?month=${encodeURIComponent(BK.month)}`); } catch (e) { el.innerHTML = ""; return; }
+  try { BS = await apiCall(`/store/bank/stmt?${bkQS()}`); } catch (e) { el.innerHTML = ""; return; }
   BK._verified = new Map(BS.lines.filter(l => l.entry_id).map(l => [l.entry_id, l]));
   bsDraw(); bkDraw();
 }
@@ -16593,7 +16611,7 @@ function bkFromStmt(i) {
 }
 async function bkExport(kind) {
   await refreshDownloadToken();
-  window.open(`${API}/export/accounts/bank?format=${kind}&month=${encodeURIComponent(document.getElementById("bk-month").value)}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+  window.open(`${API}/export/accounts/bank?format=${kind}&${bkQS()}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 
 // ---- Send to Zoho ----------------------------------------------------------

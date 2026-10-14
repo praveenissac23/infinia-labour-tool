@@ -80,7 +80,7 @@ ok(L["DEWA BILL PAYMENT"].entry_id is None, "DEWA in the bank, not entered - lis
 r2 = up("ADCB_Statement_Oct.xlsx", XLSX)
 ok(r2["added"] == 0 and r2["duplicates"] == 6, "the same file again: nothing added twice")
 
-c = S.check("2026-10", s, u)
+c = S.check("2026-10", "", "", s, u)
 ok(c["counts"] == {"lines": 6, "matched": 4, "not_entered": 2, "ignored": 0, "not_in_bank": 3},
    f"month view: 6 lines, 4 verified, 2 not entered, 3 entered not in bank ({c['counts']})")
 ok(sorted(m["party"] for m in c["missing"]) == ["Casa Fiora FZE", "Dani Trading", "Seomaa"], "entered but not in the bank: Casa Fiora (never went) and the two unsure ones")
@@ -97,16 +97,16 @@ ok("already matched" in refused(S.match, L["DEWA BILL PAYMENT"].id, {"entry_id":
 # set aside with a reason
 ok("why" in refused(S.ignore, L["DEWA BILL PAYMENT"].id, {"reason": ""}, s, u).lower(), "setting a line aside needs a reason")
 S.ignore(L["DEWA BILL PAYMENT"].id, {"reason": "paid from director card, booked separately"}, s, u)
-c = S.check("2026-10", s, u)
+c = S.check("2026-10", "", "", s, u)
 ok(c["counts"]["not_entered"] == 0 and c["counts"]["ignored"] == 1, "set aside: off the red list, reason kept")
 S.ignore(L["DEWA BILL PAYMENT"].id, {"undo": 1}, s, u)
-ok(S.check("2026-10", s, u)["counts"]["not_entered"] == 1, "undo puts it back")
+ok(S.check("2026-10", "", "", s, u)["counts"]["not_entered"] == 1, "undo puts it back")
 # entering the DEWA line later matches it by itself
 s.add(E(kind="expense", on_date=date(2026, 10, 10), party="DEWA", amount=2310.00)); s.commit()
-ok(S.check("2026-10", s, u)["counts"]["not_entered"] == 0, "once entered, the bank line matches on the next look")
+ok(S.check("2026-10", "", "", s, u)["counts"]["not_entered"] == 0, "once entered, the bank line matches on the next look")
 # an entry removed frees its line
 s.delete(s.get(models.BankEntry, EN["charge"].id)); s.commit()
-c = S.check("2026-10", s, u)
+c = S.check("2026-10", "", "", s, u)
 ok(any(l["description"] == "SERVICE CHARGES" and not l["entry_id"] for l in c["lines"]), "entry removed: its bank line is unmatched again")
 
 # ---- CSV with one Amount column and Dr/Cr, day-first dates, and a missing line ----

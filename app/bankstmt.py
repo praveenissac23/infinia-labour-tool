@@ -360,9 +360,9 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db), us
 
 
 @router.get("/store/bank/stmt")
-def check(month: str = "", db: Session = Depends(get_db), user: models.User = BK):
+def check(month: str = "", start: str = "", end: str = "", db: Session = Depends(get_db), user: models.User = BK):
     import bank
-    a, b = bank._month(month)
+    a, b, _label = bank._period(month, start, end)
     match_all(db)
     q = db.query(models.BankStmtLine).filter(models.BankStmtLine.on_date >= a, models.BankStmtLine.on_date <= b)
     lines = q.order_by(models.BankStmtLine.on_date, models.BankStmtLine.id).all()
