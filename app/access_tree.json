@@ -744,6 +744,27 @@
       "grant": [
        "camp"
       ]
+     },
+     {
+      "id": "reports.labour.ppe",
+      "label": "PPE",
+      "right": [
+       "reports",
+       "ppe"
+      ],
+      "grant": [
+       "reports"
+      ]
+     },
+     {
+      "id": "reports.labour.ppe_edit",
+      "label": "PPE - record what is given",
+      "right": [
+       "ppe"
+      ],
+      "grant": [
+       "ppe"
+      ]
      }
     ]
    },

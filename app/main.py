@@ -217,6 +217,7 @@ def seed_on_startup():
         _tick_new_accounts_tabs(db)
         _grant_projects_to_chief_accountant(db)
         _grant_camp(db)
+        _grant_ppe(db)
         try:
             import credentials as _cr
             _cr.grant_once(db)
@@ -359,6 +360,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Accommodation) - the PRO, the chief accountant and the store
                # keeper; everyone with Labour reports can look.
                "camp",
+               # PPE register: record coveralls, shoes, helmets given to
+               # workers - the PRO, the store keeper and accounts.
+               "ppe",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -636,6 +640,29 @@ def _grant_camp(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="camp_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_ppe(db):
+    """PPE is recorded by the PRO, the store keeper, the chief and the
+    assistant accountant; whoever sees Labour reports tab by tab gets the
+    PPE tab to look at. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "ppe_right_granted").first():
+        return
+    edit_roles = {"pro", "store keeper", "chief accountant", "assistant accountant"}
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        add = []
+        if role is not None and (role.name or "").strip().lower() in edit_roles and keys:
+            add += [k for k in ("ppe", "reports.labour.ppe_edit") if k not in keys]
+        if any(k.startswith("reports.labour") for k in keys) and "reports.labour.ppe" not in keys:
+            add.append("reports.labour.ppe")
+        if add:
+            setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="ppe_right_granted", value="1"))
     db.commit()
 
 
@@ -12991,6 +13018,8 @@ import camp  # noqa: E402
 app.include_router(camp.router)
 import pozoho  # noqa: E402
 app.include_router(pozoho.router)
+import ppe  # noqa: E402
+app.include_router(ppe.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

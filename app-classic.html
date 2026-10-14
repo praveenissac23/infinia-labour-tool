@@ -529,6 +529,51 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table select.zh-vat { min-width: 120px; width: 120px; }
 
 
+
+  /* PPE register */
+  #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
+  #screen-ppe .pe-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;text-align:left;font:inherit;color:inherit}
+  #screen-ppe .pe-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
+  #screen-ppe .pe-tile b{font-size:22px;font-weight:700;color:#2B2622}
+  #screen-ppe .pe-tile.bad b{color:#B03A2E} #screen-ppe .pe-tile.warn b{color:#B26A00} #screen-ppe .pe-tile.click{cursor:pointer} #screen-ppe .pe-tile.on{box-shadow:0 0 0 2px #B03A2E inset}
+  #screen-ppe .pe-tools{display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap}
+  #screen-ppe .pe-tools input{height:36px;width:240px}
+  #screen-ppe .pe-legend{display:flex;gap:14px;color:#6b625a;font-size:12px;margin-left:auto;flex-wrap:wrap;align-self:center}
+  #screen-ppe .pe-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  #screen-ppe .pe-wrap{border:1px solid #ECE6DF;border-radius:12px;overflow:auto;max-height:560px;background:#fff}
+  #screen-ppe table.pe-grid{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  #screen-ppe .pe-grid th{position:sticky;top:0;background:#F7F4F0;color:#6b625a;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:9px 10px;text-align:left;border-bottom:1px solid #ECE6DF;z-index:1;white-space:nowrap}
+  #screen-ppe .pe-grid th small{display:block;text-transform:none;letter-spacing:0;color:#A39A93;font-weight:400}
+  #screen-ppe .pe-grid td{padding:7px 10px;border-bottom:1px solid #F3EEE9;vertical-align:middle}
+  #screen-ppe .pe-grid tr.pe-row{cursor:pointer} #screen-ppe .pe-grid tr.pe-row:hover td{background:#FBF8F5}
+  #screen-ppe .pe-who b{display:block;font-weight:600;white-space:nowrap} #screen-ppe .pe-who small{color:#8A8079}
+  #screen-ppe .pe-cell{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:3px 8px;border-radius:8px;min-width:78px;line-height:1.2}
+  #screen-ppe .pe-cell b{font-size:12.5px;font-weight:600} #screen-ppe .pe-cell small{font-size:11px}
+  .pe-s-none{color:#C2B9B2} .pe-s-ok{background:#EEF7F0;color:#2E7D32} .pe-s-some{background:#FFF4E0;color:#9A5B00} .pe-s-full{background:#FDECEA;color:#B03A2E}
+  #screen-ppe .pe-flag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;background:#FDECEA;color:#B03A2E;margin-left:6px}
+  #screen-ppe .pe-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:14px}
+  #screen-ppe .pe-panel{border:1px solid #ECE6DF;border-radius:12px;background:#fff;overflow:hidden}
+  #screen-ppe .pe-panel h3{margin:0;padding:10px 14px;font-size:13.5px;background:#FCFAF7;border-bottom:1px solid #F1ECE6;display:flex;justify-content:space-between;align-items:center}
+  #screen-ppe .pe-list{max-height:330px;overflow:auto;font-size:12.5px}
+  #screen-ppe .pe-list div.pe-li{display:flex;gap:10px;padding:7px 14px;border-bottom:1px solid #F6F2EE;align-items:center}
+  #screen-ppe .pe-list .d{width:58px;color:#8A8079;flex:none} #screen-ppe .pe-list .w{flex:1;min-width:0}
+  #screen-ppe .pe-stock{width:100%;border-collapse:collapse;font-size:12.5px} #screen-ppe .pe-stock td,#screen-ppe .pe-stock th{padding:7px 12px;border-bottom:1px solid #F6F2EE;text-align:left} #screen-ppe .pe-stock th{font-size:11px;color:#8A8079;text-transform:uppercase}
+  #screen-ppe .pe-stock .n{text-align:right} #screen-ppe .pe-stock td .sub{display:block;font-size:11px;color:#A39A93}
+  #screen-ppe .pe-list .w .sub{display:block;font-size:11.5px;color:#8A8079;margin-top:1px}
+  #screen-ppe .pe-panel.fill{display:flex;flex-direction:column} #screen-ppe .pe-fill{position:relative;flex:1;min-height:300px} #screen-ppe .pe-fill > .pe-list{position:absolute;inset:0;max-height:none}
+  .pe-box h3{margin:0 0 4px} .pe-box .sub2{color:#6b625a;font-size:13px;margin-bottom:12px}
+  .pe-box label.pc-f{display:flex;margin-bottom:10px} .pe-box label.pc-f input,.pe-box label.pc-f select{width:100%;height:38px;box-sizing:border-box}
+  .pe-box .pe-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px} .pe-box .pe-row3{display:grid;grid-template-columns:1.2fr .8fr .6fr;gap:10px}
+  .pe-box .pe-items{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px} .pe-box .pe-items button{height:34px;padding:0 12px;border:1px solid #E3D7D1;background:#fff;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
+  .pe-box .pe-items button.on{background:#B03A2E;border-color:#B03A2E;color:#fff}
+  .pe-box .pe-check{border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px}
+  .pe-box .pe-check.ok{background:#EEF7F0;color:#2E5E33} .pe-box .pe-check.bad{background:#FDECEA;color:#8C2F26;border:1px solid #F3C9C4}
+  .pe-box .pe-hist{max-height:240px;overflow:auto;font-size:12.5px;border-top:1px solid #EFEBE6;margin-top:10px}
+  .pe-box .pe-hist table{width:100%;border-collapse:collapse} .pe-box .pe-hist td{padding:5px 6px;border-bottom:1px solid #F6F2EE;vertical-align:top}
+  .pe-box .pe-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0}
+  .pe-box .pe-sum div{border-radius:10px;padding:8px 10px;font-size:12px} .pe-box .pe-sum b{display:block;font-size:13px}
+  .pe-box .pe-pick div.pe-p{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F6F2EE}
+  @media (max-width:900px){ #screen-ppe .pe-cols{grid-template-columns:1fr} #screen-ppe .pe-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-ppe .pe-legend{margin-left:0} #screen-ppe .pe-tools input{width:100%} }
   /* Labour accommodation - camp rooms and beds */
   #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
   #screen-camp .cp-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
@@ -3077,6 +3122,29 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         </div>
 
         <!-- ============ SEND TO ZOHO (Accounts) ============ -->
+        <div class="screen" id="screen-ppe">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">PPE register <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Coveralls, safety shoes, helmets given to workers</span></h2></div>
+              <div class="pc-btns"><label class="pc-f"><span>Report</span><select id="pe-rep"><option value="grid">By worker</option><option value="log">Issue register</option></select></label><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="ppeExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="ppeExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Share</button></div></div>
+            </div>
+            <div class="pe-tiles" id="pe-tiles"></div>
+            <div class="pe-tools">
+              <label class="pc-f"><span>Find a worker</span><input type="text" id="pe-q" placeholder="Name or ID, e.g. F782" data-spell="off" oninput="ppeDraw()"></label>
+              <button type="button" class="btn btn-primary" id="pe-give" onclick="ppeGive()">+ Give PPE</button>
+              <div class="pe-legend"><span><i style="background:#CDE8D3"></i>Can be given</span><span><i style="background:#F6D9A8"></i>Given - more allowed</span><span><i style="background:#F3C2BC"></i>At the limit - too soon</span></div>
+            </div>
+            <div class="status-msg" id="pe-status"></div>
+            <div class="pe-wrap"><table class="pe-grid"><thead id="pe-head"></thead><tbody id="pe-body"><tr><td style="padding:18px;color:#999;">Loading...</td></tr></tbody></table></div>
+            <div class="pe-cols">
+              <div class="pe-panel fill"><h3><span>Recent issues</span><span class="sub" style="display:inline;font-weight:400;">newest first</span></h3><div class="pe-fill"><div class="pe-list" id="pe-recent"></div></div></div>
+              <div>
+                <div class="pe-panel"><h3><span>Quick repeats - same item within 30 days</span></h3><div class="pe-list" id="pe-quick" style="max-height:170px;"></div></div>
+                <div class="pe-panel" style="margin-top:12px;"><h3><span>Stock in the store</span><button type="button" class="btn btn-gray btn-sm" id="pe-stockbtn" onclick="ppeStock()">Count stock</button></h3><div id="pe-stock"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="screen" id="screen-camp">
           <div class="card">
             <div class="pc-head">
@@ -16599,6 +16667,157 @@ function zhCorrected(id) {
           ov.remove(); await zhLoad(); showStatus("zh-status", "ok", "Recorded as corrected in Zoho."); }
     catch (err) { showStatus("zx-msg", "err", errText(err)); e.target.disabled = false; }
   };
+}
+// ---- PPE register (Reports > Labour > PPE) --------------------------------
+// Each item has a limit (e.g. safety shoes 1 in 6 months). Sooner is allowed
+// only with a reason - and shows red.
+let PE = null, PE_F = "all", PE_PEOPLE = null;
+async function ppeLoad() {
+  try { PE = await apiCall("/store/ppe"); } catch (e) { showStatus("pe-status", "err", errText(e)); return; }
+  ["pe-give", "pe-stockbtn"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = PE.may_edit ? "" : "none"; });
+  ppeDraw();
+}
+function ppeD(iso, y) { if (!iso) return ""; const [Y, m, d] = iso.split("-"); return `${d} ${"Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")[+m - 1]}${y || (PE && Y !== PE.today.slice(0, 4)) ? " " + (y ? Y : "'" + Y.slice(2)) : ""}`; }
+function ppeLim(it) { const l = PE.limits[it]; return `${l[0]} in ${l[1] === 12 ? "a year" : l[1] + " months"}`; }
+function ppeCols() { return PE.items.filter(it => PE.workers.some(w => w.cells[it].last) || ["Coverall", "Safety Shoes", "Helmet", "Safety Vest"].includes(it)); }
+function ppeFilter(f) { PE_F = PE_F === f ? "all" : f; ppeDraw(); }
+function ppeDraw() {
+  if (!PE) return;
+  const t = PE.tiles, q = (document.getElementById("pe-q").value || "").trim().toLowerCase().replace(/-/g, "");
+  const tile = (lab, n, cls, f) => `<div class="pe-tile ${cls || ""}${f ? " click" : ""}${f && PE_F === f ? " on" : ""}" ${f ? `onclick="ppeFilter('${f}')"` : ""}><span>${lab}</span><b>${n}</b></div>`;
+  document.getElementById("pe-tiles").innerHTML = tile("Given this month", t.month) + tile("Last 6 months", t.six)
+    + tile("Quick repeats (30 days)", t.quick, t.quick ? "bad" : "", "quick") + tile("Approved, not given", t.pending, t.pending ? "warn" : "", "pending")
+    + tile("Low stock items", t.low, t.low ? "bad" : "");
+  const cols = ppeCols();
+  document.getElementById("pe-head").innerHTML = `<tr><th style="min-width:190px;">Worker</th>${cols.map(it => `<th>${escapeHtml(it)}<small>limit ${ppeLim(it)}</small></th>`).join("")}<th style="text-align:right;">All time</th></tr>`;
+  const quickKeys = new Set(PE.quick.map(x => x.no.replace(/-/g, "").toUpperCase()));
+  let ws = PE.workers.filter(w => !q || `${w.name} ${w.no}`.toLowerCase().replace(/-/g, "").includes(q));
+  if (PE_F === "quick") ws = ws.filter(w => quickKeys.has(w.no.replace(/-/g, "").toUpperCase()));
+  if (PE_F === "pending") ws = ws.filter(w => w.pending);
+  const lastOf = w => PE.items.reduce((m, it) => (w.cells[it].last || "") > m ? w.cells[it].last : m, "");
+  ws = ws.map(w => [lastOf(w), w]).sort((x, y) => x[0] === y[0] ? 0 : x[0] > y[0] ? -1 : 1).map(x => x[1]);   // latest given on top
+  document.getElementById("pe-body").innerHTML = ws.map(w => `<tr class="pe-row" onclick="ppeCard('${escapeAttr(w.key)}')">
+    <td><span class="pe-who"><b>${escapeHtml(w.name)}${w.early ? `<span class="pe-flag" title="Given early (with a reason) in the last 6 months">${w.early} early</span>` : ""}${w.pending ? `<span class="pe-flag" style="background:#FFF4E0;color:#9A5B00;">${w.pending} to give</span>` : ""}</b><small>${escapeHtml(w.no)}${w.trade ? " · " + escapeHtml(w.trade) : ""}${w.active ? "" : " · left"}</small></span></td>
+    ${cols.map(it => { const c = w.cells[it];
+      if (!c.last) return `<td><span class="pe-cell pe-s-none"><b>—</b><small>never</small></span></td>`;
+      const tip = `Last ${ppeD(c.last, 1)}${c.last_size ? " · size " + c.last_size : ""} · ${c.used} of ${c.limit} in ${c.months} months${c.next_due ? " · next due " + ppeD(c.next_due, 1) : ""}`;
+      return `<td><span class="pe-cell pe-s-${c.state}" title="${escapeAttr(tip)}"><b>${ppeD(c.last)}${c.last_qty > 1 ? " ×" + c.last_qty : ""}</b><small>${c.state === "full" ? "due " + ppeD(c.next_due) : c.state === "ok" ? "can give" : c.used + " of " + c.limit + " used"}</small></span></td>`; }).join("")}
+    <td style="text-align:right;color:#6b625a;">${w.total_all}</td></tr>`).join("") || `<tr><td colspan="${cols.length + 2}" style="padding:18px;color:#999;">Nobody matches.</td></tr>`;
+  document.getElementById("pe-recent").innerHTML = PE.recent.slice(0, 40).map(r => `<div class="pe-li"><span class="d">${ppeD(r.date)}</span><span class="w"><b>${escapeHtml(r.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(r.no)}</span><br>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition === "Eligible" ? ` <span class="zx-tag zx-app">approved, not given</span>` : ""}${r.early ? ` <span class="zx-tag zx-bad" title="${escapeAttr(r.early)}">early</span>` : ""}${r.remarks ? `<span class="sub">${escapeHtml(r.remarks)}</span>` : ""}</span></div>`).join("") || `<div class="pe-li sub">Nothing yet.</div>`;
+  document.getElementById("pe-quick").innerHTML = PE.quick.map(x => `<div class="pe-li"><span class="d" style="color:#B03A2E;font-weight:700;">${x.days} d</span><span class="w"><b>${escapeHtml(x.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(x.no)}</span> · ${escapeHtml(x.item)}<span class="sub">${ppeD(x.first)} then again ${ppeD(x.again)}${x.reason ? " · " + escapeHtml(x.reason) : ""}</span></span></div>`).join("") || `<div class="pe-li sub">None - good.</div>`;
+  document.getElementById("pe-stock").innerHTML = `<table class="pe-stock"><thead><tr><th>Item</th><th class="n">Counted</th><th class="n">Given since</th><th class="n">In store</th><th></th></tr></thead><tbody>${PE.stock.map(s => `<tr><td>${escapeHtml(s.item)}</td>
+    <td class="n">${s.counted === null ? `<span class="sub" style="display:inline;">not counted</span>` : s.counted + `<span class="sub">${ppeD(s.counted_on)}</span>`}</td><td class="n">${s.issued_since}</td>
+    <td class="n"><b>${s.available === null ? "—" : s.available}</b></td><td>${s.low ? `<span class="zx-tag zx-bad">order (at ${s.reorder})</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
+}
+function ppeModal(inner, wide) {
+  document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal pe-m";
+  ov.innerHTML = `<div class="zx-box pe-box" style="width:${wide ? 720 : 560}px;">${inner}<div class="status-msg" id="pe-msg" style="margin-top:8px;"></div></div>`;
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov); return ov;
+}
+async function ppeCard(key) {
+  const w = PE.workers.find(x => x.key === key); if (!w) return;
+  let h = { rows: [] };
+  try { h = await apiCall(`/store/ppe/history?${w.emp_id ? "employee_id=" + w.emp_id : "emp_no=" + encodeURIComponent(w.no)}`); } catch (e) {}
+  const cols = PE.items.filter(it => w.cells[it].last || ["Coverall", "Safety Shoes", "Helmet", "Safety Vest"].includes(it));
+  ppeModal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div><h3>${escapeHtml(w.name)}</h3><div class="sub2">${escapeHtml(w.no)}${w.trade ? " · " + escapeHtml(w.trade) : ""} · ${w.total_all} item${w.total_all === 1 ? "" : "s"} given in all</div></div>
+      ${PE.may_edit && w.emp_id ? `<button type="button" class="btn btn-primary" onclick="ppeGive(${w.emp_id})">+ Give PPE</button>` : ""}</div>
+    <div class="pe-sum">${cols.map(it => { const c = w.cells[it];
+      return `<div class="pe-s-${c.last ? c.state : "none"}" style="border:1px solid #EFE7E1;"><b>${escapeHtml(it)}</b>${c.last ? `last ${ppeD(c.last, 1)}${c.last_size ? " · " + escapeHtml(c.last_size) : ""}<br>${c.used} of ${c.limit} in ${c.months} months${c.next_due ? `<br>${c.state === "full" ? "next due" : "full after this, due"} ${ppeD(c.next_due, 1)}` : ""}` : "never given"}</div>`; }).join("")}</div>
+    <div class="pe-hist"><table>${h.rows.map(r => `<tr><td style="width:84px;">${ppeD(r.date, 1)}</td><td><b>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}</b>${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition !== "Issued" ? ` <span class="zx-tag ${r.condition === "Eligible" ? "zx-app" : "zx-ok"}">${r.condition === "Eligible" ? "approved, not given" : escapeHtml(r.condition)}</span>` : ""}${r.early ? `<span class="sub" style="color:#B03A2E;">Early: ${escapeHtml(r.early)}</span>` : ""}${r.remarks || r.instructed_by ? `<span class="sub">${escapeHtml([r.instructed_by && "by " + r.instructed_by, r.remarks].filter(Boolean).join(" · "))}</span>` : ""}</td>
+      <td style="width:110px;text-align:right;">${PE.may_edit ? `${r.condition === "Eligible" ? `<button type="button" class="btn btn-sm btn-primary" onclick="ppeGiven(${r.id})">Given</button> ` : ""}<button type="button" class="btn btn-sm btn-gray" onclick="ppeDel(${r.id},'${escapeAttr(w.key)}')" title="Remove a wrong entry">×</button>` : ""}</td></tr>`).join("") || `<tr><td class="sub">Nothing given yet.</td></tr>`}</table></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
+}
+async function ppeGive(empId) {
+  if (!PE_PEOPLE) { try { PE_PEOPLE = (await apiCall("/store/ppe/people")).people; } catch (e) { return showStatus("pe-status", "err", errText(e)); } }
+  const today = PE.today, F = { emp: empId || 0, item: "", qty: 1 };
+  window.PE_F2 = F;
+  const ov = ppeModal(`<h3>Give PPE</h3><div class="sub2">The register checks his last issue as you fill this in.</div>
+    <label class="pc-f"><span>Worker</span><input type="text" id="pe-w" placeholder="Type name or ID" data-spell="off" list="pe-wl" oninput="ppeWho(this.value)"><datalist id="pe-wl">${PE_PEOPLE.map(p => `<option value="${escapeAttr(p.no + " " + p.name)}">`).join("")}</datalist></label>
+    <div class="sub" style="margin:-4px 0 8px;" id="pe-wsel"></div>
+    <div class="pe-items" id="pe-its">${PE.items.map(it => `<button type="button" data-it="${escapeAttr(it)}" onclick="ppeItem(this.dataset.it)">${escapeHtml(it)}</button>`).join("")}</div>
+    <div class="pe-row3"><label class="pc-f"><span>Size</span><input type="text" id="pe-sz" maxlength="20" placeholder="e.g. XL or 42" list="pe-szl" data-spell="off"><datalist id="pe-szl"></datalist></label>
+      <label class="pc-f"><span>Date given</span><input type="date" id="pe-dt" value="${today}" max="${today}" onchange="ppeCheck()"></label>
+      <label class="pc-f"><span>Qty</span><input type="number" id="pe-qty" min="1" max="10" value="1" oninput="ppeCheck()"></label></div>
+    <div id="pe-chk"></div>
+    <div class="pe-row2"><label class="pc-f"><span>Status</span><select id="pe-cond" onchange="ppeCheck()"><option value="Issued">Given now</option><option value="Replacement">Replacement (old one returned)</option><option value="Eligible">Approved - give later</option></select></label>
+      <label class="pc-f"><span>Instructed by</span><input type="text" id="pe-ins" maxlength="80" placeholder="e.g. Shaiju" data-spell="off"></label></div>
+    <label class="pc-f"><span>Remarks</span><input type="text" id="pe-rem" maxlength="300" placeholder="e.g. New joiner, damaged shoes" data-spell="off"></label>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" id="pe-save" onclick="ppeSave()">Save</button></div>`);
+  if (empId) { const p = PE_PEOPLE.find(x => x.id === empId); if (p) { document.getElementById("pe-w").value = p.no + " " + p.name; ppeWho(p.no + " " + p.name); } }
+  setTimeout(() => { const i = document.getElementById(empId ? "pe-sz" : "pe-w"); if (i) i.focus(); }, 50);
+}
+function ppeWho(v) {
+  const F = window.PE_F2, s = (v || "").trim().toLowerCase();
+  const p = PE_PEOPLE.find(x => `${x.no} ${x.name}`.toLowerCase() === s) || PE_PEOPLE.find(x => x.no.toLowerCase().replace(/-/g, "") === s.replace(/-/g, ""));
+  F.emp = p ? p.id : 0;
+  document.getElementById("pe-wsel").innerHTML = p ? `${escapeHtml(p.name)} · ${escapeHtml(p.no)}${p.trade ? " · " + escapeHtml(p.trade) : ""}` : (s ? "Pick him from the list" : "");
+  ppeCheck();
+}
+function ppeItem(it) {
+  const F = window.PE_F2; F.item = it;
+  document.querySelectorAll("#pe-its button").forEach(b => b.classList.toggle("on", b.dataset.it === it));
+  document.getElementById("pe-szl").innerHTML = (PE.sizes[it] || []).map(s => `<option value="${escapeAttr(s)}">`).join("");
+  ppeCheck(true);
+}
+let PE_LAST = null;
+async function ppeCheck(fillSize) {
+  const F = window.PE_F2, el = document.getElementById("pe-chk"); if (!el) return;
+  PE_LAST = null;
+  if (!F.emp || !F.item) { el.innerHTML = ""; return; }
+  const qty = +document.getElementById("pe-qty").value || 1, on = document.getElementById("pe-dt").value, cond = document.getElementById("pe-cond").value;
+  let c; try { c = await apiCall(`/store/ppe/check?employee_id=${F.emp}&item=${encodeURIComponent(F.item)}&qty=${qty}&on=${on}`); } catch (e) { return; }
+  PE_LAST = c;
+  if (fillSize && c.last_size && !document.getElementById("pe-sz").value) document.getElementById("pe-sz").value = c.last_size;
+  const last = c.last ? `Last ${F.item.toLowerCase()} on <b>${ppeD(c.last, 1)}</b> (${c.days_since} days ago${c.last_size ? ", size " + escapeHtml(c.last_size) : ""}).` : `Never given ${F.item.toLowerCase()} before.`;
+  if (c.too_soon && cond !== "Eligible") {
+    el.innerHTML = `<div class="pe-check bad"><b>Too soon.</b> ${last} Limit ${c.limit} in ${c.months} months - ${c.used} already given${c.next_due ? `, next due <b>${ppeD(c.next_due, 1)}</b>` : ""}.
+      <label class="pc-f" style="margin:8px 0 0;"><span>Why is it given now? (required)</span><input type="text" id="pe-why" maxlength="200" placeholder="e.g. shoes torn on site - seen by Shaiju" data-spell="off"></label></div>`;
+  } else {
+    el.innerHTML = `<div class="pe-check ok">${last} ${c.used} of ${c.limit} used in ${c.months} months - OK to give.</div>`;
+  }
+}
+async function ppeSave() {
+  const F = window.PE_F2, why = document.getElementById("pe-why");
+  if (!F.emp) return showStatus("pe-msg", "err", "Pick the worker from the list.");
+  if (!F.item) return showStatus("pe-msg", "err", "Pick the item.");
+  if (why && !why.value.trim()) { why.focus(); return showStatus("pe-msg", "err", "It is too soon - write why it is given now."); }
+  const body = { employee_id: F.emp, item: F.item, size: document.getElementById("pe-sz").value, qty: document.getElementById("pe-qty").value,
+    date: document.getElementById("pe-dt").value, condition: document.getElementById("pe-cond").value,
+    instructed_by: document.getElementById("pe-ins").value, remarks: document.getElementById("pe-rem").value, early_reason: why ? why.value : "" };
+  const b = document.getElementById("pe-save"); b.disabled = true;
+  try { const d = await apiCall("/store/ppe", { method: "POST", body: JSON.stringify(body) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad();
+        showStatus("pe-status", d.early ? "err" : "ok", d.early ? "Saved - marked as given early, with the reason." : "Saved."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); b.disabled = false; }
+}
+async function ppeGiven(id) {
+  const r = PE.recent.find(x => x.id === id);
+  let h; try { h = (await apiCall(`/store/ppe/history?employee_id=${r ? r.emp_id : 0}`)).rows.find(x => x.id === id); } catch (e) {}
+  const x = h || r; if (!x) return;
+  try { await apiCall(`/store/ppe/${id}`, { method: "PUT", body: JSON.stringify({ employee_id: x.emp_id, item: x.item, size: x.size, qty: x.qty, date: PE.today, condition: "Issued", instructed_by: x.instructed_by, remarks: x.remarks, early_reason: x.early }) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Marked as given today."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e) + " - use Give PPE to add it with the reason."); }
+}
+async function ppeDel(id, key) {
+  try { await apiCall(`/store/ppe/${id}`, { method: "DELETE" }); await ppeLoad(); ppeCard(key); showStatus("pe-status", "ok", "Entry removed."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); }
+}
+function ppeStock() {
+  ppeModal(`<h3>Count stock</h3><div class="sub2">Type what is in the store today. Items given from now on are taken off it.</div>
+    <label class="pc-f"><span>Item</span><select id="pe-si">${PE.items.map(it => `<option>${escapeHtml(it)}</option>`).join("")}</select></label>
+    <div class="pe-row2"><label class="pc-f"><span>Counted now</span><input type="number" id="pe-sc" min="0" placeholder="0"></label><label class="pc-f"><span>Order when at</span><input type="number" id="pe-sr" min="0" value="5"></label></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeStockSave()">Save</button></div>`);
+}
+async function ppeStockSave() {
+  try { await apiCall("/store/ppe/stock", { method: "POST", body: JSON.stringify({ item: document.getElementById("pe-si").value, counted: document.getElementById("pe-sc").value, reorder: document.getElementById("pe-sr").value }) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Stock saved."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); }
+}
+async function ppeExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/reports/ppe?format=${kind}&view=${document.getElementById("pe-rep").value}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 // ---- Labour accommodation (Reports > Labour > Accommodation) -------------
 // Vacation comes from leave records and leavers free their bed by

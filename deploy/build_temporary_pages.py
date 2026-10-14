@@ -130,7 +130,8 @@ PAGES = {
         tab("labour", "pgreports", "Labour", "reports", subs=[
             sub("builder", "Cycle report builder", screen="reports"),
             sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
-            sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()")]),
+            sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()"),
+            sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()")]),
             # Salary cards are on Payroll > Labour payroll, not repeated here.
             # Leave is reported on Staff > Leave, not repeated here.
         # Office payroll and Staff are not repeated here: they are pages of
@@ -189,6 +190,7 @@ ACCESS_GRANTS = {
     # Accommodation: the tab is looked at with Labour reports; changing who
     # sleeps where is its own tick (below).
     "reports.labour.accom": ["reports"],
+    "reports.labour.ppe": ["reports"],
     # The leave report shows the registers this login has on Staff > Leave.
 }
 # Documents due are kept on Expiry Reminder; leave on Staff > Leave.
@@ -268,6 +270,8 @@ def access_tree():
                     leaves.append(_leaf(sb["leaf"], sb["label"], sb["right"]))
                     if sb["leaf"] == "reports.labour.accom":
                         leaves.append(_leaf("reports.labour.accom_edit", "Accommodation - change who sleeps where", ["camp"], ["camp"]))
+                    if sb["leaf"] == "reports.labour.ppe":
+                        leaves.append(_leaf("reports.labour.ppe_edit", "PPE - record what is given", ["ppe"], ["ppe"]))
                 kids.append({"id": tid, "label": t["label"], "children": leaves})
             else:
                 label = t["label"] + (" (cash register, own password)" if t.get("hidden") else "")

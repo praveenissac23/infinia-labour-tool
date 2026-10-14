@@ -1225,3 +1225,37 @@ class CampMove(Base):
     on_date = Column(Date, nullable=True)
     by = Column(Integer, ForeignKey("users.id"), nullable=True)
     at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PpeIssue(Base):
+    """One handing-over of PPE (coverall, safety shoes, helmet...) to a
+    worker - the register that stops it being asked for again and again.
+    An issue made sooner than the item's limit carries the reason it was
+    still given (damaged, wrong size, approved by...)."""
+    __tablename__ = "ppe_issues"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    emp_no = Column(String, default="", index=True)    # as written, kept even if not on the staff list
+    name = Column(String, default="")
+    issued_on = Column(Date, nullable=False, index=True)
+    item = Column(String, nullable=False, index=True)  # Coverall | Safety Shoes | Helmet | Safety Vest | Jacket ...
+    size = Column(String, default="")
+    qty = Column(Integer, default=1)
+    condition = Column(String, default="Issued")       # Issued | Replacement | Eligible (approved, not given yet)
+    site = Column(String, default="")
+    instructed_by = Column(String, default="")
+    remarks = Column(String, default="")
+    early_reason = Column(String, default="")          # why it was given before the limit allowed
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PpeStock(Base):
+    """Stock of one PPE item: what was counted on a day; issues since then
+    are taken off it."""
+    __tablename__ = "ppe_stock"
+    id = Column(Integer, primary_key=True)
+    item = Column(String, nullable=False, unique=True)
+    counted = Column(Integer, nullable=True)
+    counted_on = Column(Date, nullable=True)
+    reorder = Column(Integer, default=5)
