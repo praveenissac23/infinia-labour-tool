@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const B='http://127.0.0.1:8032', SH='/tmp/claude-0/shots/';
 let bad=0; const ck=(n,ok,i)=>{ if(!ok) bad++; console.log(`${ok?'PASS':'FAIL'} ${n}${ok?'':'  '+JSON.stringify(i)}`); };
-async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440,height:950}}); const p=await ctx.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.errs=errs;
+async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440,height:950}}); const p=await ctx.newPage(); p.on('dialog',d=>d.accept()); const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.errs=errs;
  await p.goto(B+'/?p=accounts'); await p.fill('#login-username',u); await p.fill('#login-password',pw); await p.evaluate('doLogin()'); await p.waitForSelector('#app-screen',{state:'visible'}); await p.waitForTimeout(2500); return p; }
 (async()=>{
  const b=await chromium.launch();

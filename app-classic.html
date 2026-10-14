@@ -496,7 +496,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-splitshow { height: 34px; flex: 1; min-width: 236px; max-width: 244px; text-align: left; padding: 0 12px; border: 1px dashed #C9B8B0; background: #FCFAF7; border-radius: 7px; font-size: 13px; color: #2B2622; cursor: pointer; }
   .zh-none { color: #B5ACA5; }
   .zh-table .zh-flags { flex-direction: row; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-  .zh-acts { display: flex; justify-content: flex-end; } .zh-acts .btn { white-space: nowrap; }
+  .zh-acts { display: flex; flex-direction: column; align-items: stretch; gap: 4px; } .zh-acts .btn { white-space: nowrap; }
   .zh-table th, .zh-table td { padding-left: 8px; padding-right: 8px; }
   .zh-table th:first-child, .zh-table td:first-child { padding-left: 14px; }
   .zh-table th:last-child, .zh-table td:last-child { padding-right: 12px; }
@@ -523,6 +523,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bs-empty ol { margin: 6px 0 0 18px; padding: 0; } .bs-empty li { margin: 3px 0; }
   .bs-c { width: 100%; border-collapse: collapse; font-size: 13px; } .bs-c td { padding: 7px 6px; border-bottom: 1px solid #F1ECE6; } .bs-c .sub { display: block; font-size: 11.5px; color: #8A8079; } .bs-c td.n { text-align: right; font-weight: 600; }
   @media (max-width: 900px) { .bs-tiles { grid-template-columns: 1fr 1fr; } .bs-list td.act { width: auto; white-space: normal; } }
+  .zh-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 10px; border-bottom: 1px solid #EFEBE6; padding-bottom: 10px; }
+  .zh-tab { border: 1px solid #E3D7D1; background: #fff; border-radius: 18px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; color: #4A433D; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .zh-tab:hover { border-color: #C9B7AE; } .zh-tab.on { background: #2B2622; border-color: #2B2622; color: #fff; }
+  .zh-n { min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; box-sizing: border-box; }
+  .zh-n.zero { background: #E9E4DF; color: #8A8079; } .zh-tab.on .zh-n.zero { background: #4A433D; color: #D8D0C9; }
+  .zh-ptools { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; } .zh-ptools input, .zh-ptools select { height: 36px; }
+  .zh-intro { font-size: 13px; color: #5B524B; margin: 2px 0 10px; } .zh-intro b { color: #2B2622; }
+  .zh-none { padding: 22px 6px; color: #6b625a; font-size: 13px; text-align: center; background: #FCFAF7; border-radius: 10px; }
+  .zh-lt td .sub { display: block; font-size: 11.5px; color: #8A8079; }
   .zh-step { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .bk-form { margin-top: 12px; border-top: 1px solid #EFEBE6; padding-top: 12px; }
   .bk-step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #2B2622; margin: 6px 0 8px; }
@@ -3247,37 +3256,43 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         <div class="screen" id="screen-zoho">
           <div class="card">
             <div class="pc-head">
-              <div class="pc-title">
-                <h2 style="margin:0;">Send to Zoho</h2>
-                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option><option value="naveen">Naveen</option><option value="praveen">Praveen</option></select></label>
-                <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Find a line" style="width:170px;" data-spell="off" oninput="zhDraw()"></label>
-              </div>
-              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="zhExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zhExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zhExport('excel')">Export Excel</button></div></div>
+              <div class="pc-title"><h2 style="margin:0;">Send to Zoho <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Everything waiting for Zoho Books, one tab each - send a line, a selection or all</span></h2></div>
             </div>
             <div class="zh-conn" id="zh-conn"></div>
-            <div class="pc-stats" id="zh-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
-            <div id="zh-pending"></div>
+            <div class="zh-tabs" id="zh-tabs"></div>
             <div class="status-msg" id="zh-status"></div>
-            <div class="grid-wrap" style="max-height:none;">
-              <table class="pc-table zh-table">
-                <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th class="l" style="width:58px;">Book</th><th class="l" style="width:78px;">Date</th>
-                  <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:296px;">Zoho account</th>
-                  <th class="l" style="width:128px;">VAT</th><th class="n" style="width:96px;">Amount</th><th style="width:116px;"></th></tr></thead>
-                <tbody id="zh-body"><tr><td colspan="9" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
-              </table>
+            <div class="zh-pane" data-pane="petty">
+              <div class="zh-ptools">
+                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option><option value="naveen">Naveen</option><option value="praveen">Praveen</option></select></label>
+                <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Description or supplier" style="width:200px;" data-spell="off" oninput="zhDraw()"></label>
+                <div class="exp-btns" style="margin-left:auto;"><button type="button" class="btn btn-dark" onclick="zhExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zhExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zhExport('excel')">Export Excel</button></div>
+              </div>
+              <div class="pc-stats" id="zh-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
+              <div class="grid-wrap" style="max-height:none;">
+                <table class="pc-table zh-table">
+                  <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th class="l" style="width:58px;">Book</th><th class="l" style="width:78px;">Date</th>
+                    <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:296px;">Zoho account</th>
+                    <th class="l" style="width:128px;">VAT</th><th class="n" style="width:96px;">Amount</th><th style="width:116px;"></th></tr></thead>
+                  <tbody id="zh-body"><tr><td colspan="9" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
+                </table>
+              </div>
+              <div class="zh-foot"><span id="zh-note">Tick lines and press Approve, or press Send on one line. Red lines wait until they are put right. The account is suggested from how the same bill went before - change it if needed.</span>
+                <button class="btn btn-primary" id="zh-go" onclick="zhApprove()" style="padding:9px 22px;">Approve for Zoho</button></div>
             </div>
-            <div id="zh-loans"></div>
-            <div id="zh-todo"></div>
-            <div id="zh-pos"></div>
-            <div class="zh-sup" id="zh-oct-card" style="margin-top:14px;"><b>October check</b> <span class="sub" style="display:inline;">- lines from 1 to 14 Oct that were typed into Zoho by hand, so they are not sent twice</span>
-              <button type="button" class="btn btn-gray btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button>
-              <div id="zh-oct"></div></div>
-            <details class="zh-sup" id="zh-sup" ontoggle="if (this.open) zhSupLoad(0)"><summary><b>Suppliers in Zoho</b> <span class="sub" style="display:inline;">- the portal's supplier list is the master; each supplier is linked to its Zoho vendor and changes are copied there</span></summary>
-              <div class="zh-row" style="margin:8px 0;"><button class="btn btn-gray btn-sm" onclick="zhSupLoad(1)">Match with Zoho</button><span class="sub" id="zh-sup-n" style="display:inline;"></span></div>
-              <div class="grid-wrap" style="max-height:420px;"><table class="pc-table"><thead><tr><th class="l">Supplier (portal)</th><th style="width:150px;">TRN</th><th class="l" style="width:46%;">Zoho vendor</th></tr></thead><tbody id="zh-sup-body"></tbody></table></div>
-            </details>
-            <div class="zh-foot"><span id="zh-note">Untick a line to keep it for later. Red lines wait until they are put right. The account is suggested from how the same bill went before - change it if needed.</span>
-              <button class="btn btn-primary" id="zh-go" onclick="zhApprove()" style="padding:9px 22px;">Approve for Zoho</button></div>
+            <div class="zh-pane" data-pane="bank"><div id="zh-bank"></div></div>
+            <div class="zh-pane" data-pane="lpo"><div id="zh-pos"></div></div>
+            <div class="zh-pane" data-pane="loans"><div id="zh-loans"></div></div>
+            <div class="zh-pane" data-pane="attention"><div id="zh-pending"></div><div id="zh-todo"></div><div id="zh-attn-none"></div></div>
+            <div class="zh-pane" data-pane="october">
+              <div class="zh-intro"><b>October check</b> - lines from 1 to 14 Oct that were typed into Zoho by hand before the portal took over, so they are never sent twice.
+                <button type="button" class="btn btn-primary btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button></div>
+              <div id="zh-oct"></div>
+            </div>
+            <div class="zh-pane" data-pane="suppliers">
+              <div class="zh-intro"><b>Suppliers in Zoho</b> - the portal's supplier list is the master. Each supplier is linked once to its Zoho supplier; a supplier's LPOs and bills need that link. Linking creates or changes nothing in Zoho.</div>
+              <div class="zh-row" style="margin:8px 0;"><button class="btn btn-primary btn-sm" onclick="zhSupLoad(1)">Match with Zoho</button><span class="sub" id="zh-sup-n" style="display:inline;margin-left:8px;"></span></div>
+              <div class="grid-wrap" style="max-height:520px;"><table class="pc-table"><thead><tr><th class="l">Supplier (portal)</th><th style="width:150px;">TRN</th><th class="l" style="width:46%;">Zoho vendor</th></tr></thead><tbody id="zh-sup-body"></tbody></table></div>
+            </div>
           </div>
         </div>
 
@@ -16565,6 +16580,7 @@ async function zhLoad() {
     ZH.conn = await apiCall("/store/zoho/link/status");
     try { ZH.loans = (await apiCall("/store/zoho/loans")).rows; } catch (e) { ZH.loans = []; }
     try { ZH.pos = (await apiCall("/store/zoho/pos")).rows; } catch (e) { ZH.pos = []; }
+    try { const bw = await apiCall("/store/bank/waiting"); ZH.bank = bw.rows; ZH.may_send_bank = bw.may_send; } catch (e) { ZH.bank = []; }
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
@@ -16629,17 +16645,9 @@ function zhPendDraw() {
 }
 // Staff loans and advances paid from the bank or cash: one journal each.
 function zhLoansDraw() {
-  const el = document.getElementById("zh-loans"), L = ZH.loans || [];
-  if (!L.length) { el.innerHTML = ""; return; }
-  el.innerHTML = `<div class="zh-sup" style="margin-top:14px;"><b>${L.length} staff loan${L.length === 1 ? "" : "s"} / advance${L.length === 1 ? "" : "s"} not in Zoho</b> <span class="sub" style="display:inline;">- from Payroll > Loans, paid from ADCB or Cash; each goes as Employee Advance</span>
-    <table class="pc-table" style="margin-top:6px;"><tbody>${L.map(x => `<tr><td style="width:90px;">${pcDate(x.date)}</td><td class="l">${escapeHtml(x.who)}${x.err ? `<span class="sub" style="color:#B7322A;">Zoho: ${escapeHtml(x.err)}</span>` : ""}</td><td style="width:90px;">${escapeHtml(x.paid_from)}</td><td class="n" style="width:110px;">${pcMoney(x.amount)}</td></tr>`).join("")}</tbody></table>
-    <div style="text-align:right;margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="zhLoansSend(this)" ${ZH.connected ? "" : "disabled"}>Send ${L.length} to Zoho</button></div></div>`;
-}
-async function zhLoansSend(btn) {
-  btn.disabled = true;
-  try { const d = await apiCall("/store/zoho/loans/send", { method: "POST", body: "{}" }); await zhLoad();
-        showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} loan${d.sent === 1 ? "" : "s"} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
-  catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; }
+  const L = ZH.loans || [];
+  zhList("loans", L.map(x => ({ id: x.id, date: x.date, main: x.who, sub: "Paid from " + x.paid_from + " · goes as Employee Advance", amount: x.amount, out: true, err: x.err })),
+    "zh-loans", "Staff loans and advances", "From Payroll > Loans, paid from ADCB or cash.", "No staff loans or advances waiting.");
 }
 // Suppliers: portal master, linked one by one to Zoho vendors - never guessed.
 async function zhSupLoad(match) {
@@ -16702,7 +16710,7 @@ function zhShown() {
 }
 function zhDraw() {
   if (!ZH) return;
-  zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw(); zhPosDraw();
+  zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw(); zhPosDraw(); zhBankDraw(); zhTabsDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
   document.getElementById("zh-stats").innerHTML =
@@ -16727,7 +16735,7 @@ function zhDraw() {
       <td class="l">${site}</td>
       <td class="l">${acc}</td>
       <td class="l">${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
-      <td><div class="zh-acts">${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
+      <td><div class="zh-acts">${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `${f.length ? "" : `<button class="btn btn-primary btn-sm" onclick="zhApprove([${r.id}], this)" title="Approve this line alone for Zoho">Send</button>`}<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
   }).join("") || `<tr><td colspan="9" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
   const n = rows.filter(r => ZH_PICK[r.id].on).length;
   document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhFlags(r).length).length;
@@ -16784,25 +16792,85 @@ function zhPosDraw() {
   if (!el) return;
   const wait = L.filter(o => !o.status && !o.cancelled), flag = L.filter(o => o.status === "changed" || (o.cancelled && o.err));
   const unl = wait.filter(o => !o.linked), sups = [...new Set(unl.map(o => o.supplier))];
-  el.innerHTML = L.length ? `<div class="zh-sup" style="margin-top:14px;"><b>Purchase orders (LPOs)</b> <span class="sub" style="display:inline;">- ${wait.length} not in Zoho yet; they go with the LPO number from the portal</span>
-    ${wait.length ? `<button type="button" class="btn btn-primary btn-sm" style="margin-left:6px;" onclick="zhPosSend(this)" ${ZH.connected ? "" : "disabled"}>Send ${wait.length} to Zoho</button>` : ""}
-    ${unl.length ? `<div class="zh-step"><b>Step 1:</b> ${unl.length} LPO${unl.length === 1 ? "" : "s"} wait because ${sups.length} supplier${sups.length === 1 ? " is" : "s are"} not linked to Zoho yet. Linking only tells the portal which Zoho supplier is which - nothing is created or changed in Zoho.
-      <button type="button" class="btn btn-primary btn-sm" onclick="zhLinkSuppliers(this)" ${ZH.connected ? "" : "disabled"}>Link suppliers now</button></div>` : ""}
-    <table class="zh-oct-t" style="margin-top:6px;"><tbody>${L.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b><span class="sub">${pcDate(o.date)}${o.site ? " · " + escapeHtml(o.site) : ""}</span></td>
-      <td>${escapeHtml(o.supplier)}${o.linked ? "" : ` <span class="zx-tag zx-bad" title="Link it on Suppliers in Zoho below - a PO needs its vendor">Supplier not linked</span>`}</td>
-      <td class="n" style="width:110px;">${pcMoney(o.total)}</td>
-      <td style="width:38%;">${o.status === "changed" || (o.cancelled && o.err) ? `<span class="zx-tag zx-bad">${escapeHtml(o.err)}</span> <button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>`
-        : (o.err ? `<span class="zx-tag zx-bad">Zoho: ${escapeHtml(o.err)}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`)}</td></tr>`).join("")}</tbody></table></div>` : "";
+  const step = unl.length ? `<div class="zh-step"><b>First:</b> ${unl.length} LPO${unl.length === 1 ? "" : "s"} wait because ${sups.length} supplier${sups.length === 1 ? " is" : "s are"} not linked to Zoho yet (${escapeHtml(sups.slice(0, 3).join(", "))}${sups.length > 3 ? "..." : ""}). Linking creates or changes nothing in Zoho.
+      <button type="button" class="btn btn-primary btn-sm" onclick="zhLinkSuppliers(this)" ${ZH.connected ? "" : "disabled"}>Link suppliers now</button></div>` : "";
+  const fl = flag.length ? `<div class="zh-step" style="border-color:#E8C27A;background:#FFF9EE;"><b>${flag.length} LPO${flag.length === 1 ? "" : "s"} changed or cancelled here after going to Zoho</b> - make the same change in Zoho, then press Done.
+      <table class="zh-oct-t" style="margin-top:6px;width:100%;"><tbody>${flag.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b></td><td>${escapeHtml(o.supplier)}</td><td class="n" style="width:110px;">${pcMoney(o.total)}</td><td><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></td><td style="width:110px;text-align:right;"><button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button></td></tr>`).join("")}</tbody></table></div>` : "";
+  zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + (o.site ? " · " + o.site : ""), sub: o.supplier, amount: o.total, out: true,
+      err: o.err, block: o.linked ? "" : "Supplier not linked" })),
+    "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
+}
+// One list for Bank, LPOs and Loans: tick lines, send one, the ticked ones or all.
+const ZH_SEL = { bank: new Set(), lpo: new Set(), loans: new Set() };
+const ZH_SEND = { bank: "/store/bank/send", lpo: "/store/zoho/pos/send", loans: "/store/zoho/loans/send" };
+const ZH_WORD = { bank: ["bank line", "bank lines"], lpo: ["LPO", "LPOs"], loans: ["loan", "loans"] };
+function zhList(kind, rows, elId, title, intro, empty, before, after) {
+  const el = document.getElementById(elId); if (!el) return;
+  ZH[kind + "_rows"] = rows;
+  const ok = rows.filter(r => !r.block), sel = ZH_SEL[kind];
+  [...sel].forEach(id => { if (!ok.some(r => r.id === id)) sel.delete(id); });
+  const n = sel.size, tot = ok.filter(r => sel.has(r.id)).reduce((a, r) => a + (+r.amount || 0), 0);
+  const w = ZH_WORD[kind], can = ZH.connected && (kind !== "bank" || ZH.may_send_bank !== false);
+  el.innerHTML = `<div class="zh-intro"><b>${title}</b> - ${intro}</div>${before || ""}
+    ${rows.length ? `<div class="grid-wrap" style="max-height:none;"><table class="pc-table zh-lt"><thead><tr><th style="width:34px;"><input type="checkbox" ${n && n === ok.length ? "checked" : ""} onchange="zhSelAll('${kind}',this.checked)" title="Tick all"></th>
+      <th class="l" style="width:84px;">Date</th><th class="l">What</th><th class="n" style="width:120px;">Amount</th><th class="l" style="width:30%;">Status</th><th style="width:90px;"></th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.block ? "zh-fix" : ""}"><td><input type="checkbox" ${sel.has(r.id) ? "checked" : ""} ${r.block ? "disabled" : ""} onchange="zhSel('${kind}',${r.id},this.checked)"></td>
+        <td class="l">${pcDate(r.date)}</td><td class="l"><b>${escapeHtml(r.main || "-")}</b>${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}</td>
+        <td class="n">${r.out ? "" : "+"}${pcMoney(r.amount)}</td>
+        <td class="l">${r.block ? `<span class="zx-tag zx-bad">${escapeHtml(r.block)}</span>` : r.err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.err)}">Zoho refused</span><span class="sub">${escapeHtml(r.err.slice(0, 90))}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`}</td>
+        <td style="text-align:right;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>Send</button>`}</td></tr>`).join("")}</tbody></table></div>
+      <div class="zh-foot"><span>${n ? `<b>${n} ${n === 1 ? w[0] : w[1]} ticked</b> · AED ${pcMoney(tot)}` : `Tick lines to send several at once.`}${ZH.connected ? "" : " Connect Zoho first."}</span>
+        <span style="display:flex;gap:8px;"><button type="button" class="btn btn-gray" onclick="zhSelAll('${kind}',${n === ok.length ? "false" : "true"})" ${ok.length ? "" : "disabled"}>${n && n === ok.length ? "Untick all" : `Tick all ${ok.length}`}</button>
+        <button type="button" class="btn btn-primary" onclick="zhSendIds('${kind}',[...ZH_SEL.${kind}],this)" ${n && can ? "" : "disabled"}>Send ${n || ""} ticked to Zoho</button></span></div>`
+      : `<div class="zh-none">${empty}</div>`}${after || ""}`;
+}
+function zhSel(kind, id, on) { on ? ZH_SEL[kind].add(id) : ZH_SEL[kind].delete(id); zhRedraw(kind); }
+function zhSelAll(kind, on) { ZH_SEL[kind].clear(); if (on) (ZH[kind + "_rows"] || []).filter(r => !r.block).forEach(r => ZH_SEL[kind].add(r.id)); zhRedraw(kind); }
+function zhRedraw(kind) { ({ bank: zhBankDraw, lpo: zhPosDraw, loans: zhLoansDraw })[kind](); zhTabsDraw(); }
+async function zhSendIds(kind, ids, btn) {
+  ids = (ids || []).filter(Boolean);
+  if (!ids.length) return;                       // never an empty list - the server reads that as 'all'
+  const rows = (ZH[kind + "_rows"] || []).filter(r => ids.includes(r.id)), w = ZH_WORD[kind];
+  if (ids.length > 1 && !confirm(`Send ${ids.length} ${w[1]} (AED ${pcMoney(rows.reduce((a, r) => a + (+r.amount || 0), 0))}) to Zoho now?`)) return;
+  btn.disabled = true; const was = btn.textContent; btn.textContent = "Sending...";
+  try { const d = await apiCall(ZH_SEND[kind], { method: "POST", body: JSON.stringify({ ids }) });
+        ids.forEach(i => ZH_SEL[kind].delete(i)); await zhLoad();
+        showStatus("zh-status", d.failed && d.failed.length ? "err" : "ok", `${d.sent} ${d.sent === 1 ? w[0] : w[1]} in Zoho now.` + (d.failed && d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; btn.textContent = was; }
+}
+function zhBankDraw() {
+  const L = ZH.bank || [];
+  zhList("bank", L.map(r => ({ id: r.id, date: r.date, main: r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "Bank charge" : r.kind_label),
+      sub: [r.kind_label, r.mode, r.reference].filter(Boolean).join(" · ") + (r.by ? " · by " + r.by : ""), amount: r.amount, out: r.out, err: r.zoho_err })),
+    "zh-bank", "Bank (ADCB)", "Lines entered on Accounts > Bank that are not in Zoho yet, from every month.", "No bank lines waiting - every bank line is in Zoho.");
+}
+// The tabs: what is waiting where, with counts.
+let ZH_PANE = null;
+try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
+function zhTabsDraw() {
+  const el = document.getElementById("zh-tabs"); if (!el || !ZH) return;
+  const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => o.status === "changed" || (o.cancelled && o.err)).length;
+  const attn = (ZH.pending || []).length + (ZH.todo || []).length;
+  const T = [["petty", "Petty cash", (ZH.rows || []).length], ["bank", "Bank", (ZH.bank || []).length], ["lpo", "LPOs", lpoWait + lpoFlag],
+             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""]];
+  if (!ZH_PANE || !T.some(t => t[0] === ZH_PANE)) ZH_PANE = (T.find(t => t[2]) || T[0])[0];
+  el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
+  document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === ZH_PANE ? "" : "none");
+  const none = document.getElementById("zh-attn-none"); if (none) none.innerHTML = attn ? "" : `<div class="zh-none">Nothing needs attention - no refused lines and no entries waiting for a supplier.</div>`;
+}
+function zhPane(k) {
+  ZH_PANE = k; try { localStorage.setItem("infinia_zh_pane", k); } catch (e) {}
+  zhTabsDraw();
+  if (k === "suppliers") zhSupLoad(0);
 }
 async function zhLinkSuppliers(btn) {
   btn.disabled = true; btn.textContent = "Reading Zoho's suppliers...";
-  const det = document.getElementById("zh-sup"); if (det) det.open = true;
   await zhSupLoad(1); await zhLoad();
   const left = ((ZH && ZH.pos) || []).filter(o => !o.status && !o.cancelled && !o.linked);
   showStatus("zh-status", left.length ? "err" : "ok", left.length
     ? `Linked what matched by name. ${[...new Set(left.map(o => o.supplier))].join(", ")} still need${left.length === 1 ? "s" : ""} a pick - see Suppliers in Zoho below (Link or Create in Zoho).`
     : "All suppliers linked - the LPOs can be sent now.");
-  if (left.length && det) det.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (left.length) zhPane("suppliers");
 }
 async function zhPosSend(btn) {
   btn.disabled = true;
@@ -16842,12 +16910,13 @@ async function zhOctConfirm() {
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 function zhAll(on) { zhShown().forEach(r => { ZH_PICK[r.id].on = on && !zhFlags(r).length; }); zhDraw(); }
-async function zhApprove() {
-  const lines = zhShown().filter(r => ZH_PICK[r.id].on && !zhFlags(r).length)
+async function zhApprove(only, btn) {
+  const lines = zhShown().filter(r => (only ? only.includes(r.id) : ZH_PICK[r.id].on) && !zhFlags(r).length)
     .map(r => { const p = ZH_PICK[r.id], sp = (p.splits || []).filter(s => s.account || +s.amount);
       return { id: r.id, account: sp.length ? sp[0].account : p.account, site: p.site || "", trn: p.trn || "", vat_claim: p.vat_claim || "", splits: sp }; });
   if (!lines.length) return;
-  const go = document.getElementById("zh-go"); go.disabled = true;
+  if (!only && lines.length > 1 && !confirm(`Approve ${lines.length} petty cash lines (AED ${pcMoney(zhShown().filter(r => lines.some(l => l.id === r.id)).reduce((a, r) => a + r.amount, 0))}) for Zoho now?`)) return;
+  const go = btn || document.getElementById("zh-go"); go.disabled = true;
   try {
     const d = await apiCall("/store/zoho/approve", { method: "POST", body: JSON.stringify({ lines }) });
     await zhLoad();

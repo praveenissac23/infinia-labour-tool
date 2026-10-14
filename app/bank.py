@@ -296,6 +296,16 @@ def delete(bid: int, db: Session = Depends(get_db), user: models.User = BK):
     return {"ok": True}
 
 
+@router.get("/store/bank/waiting")
+def waiting(db: Session = Depends(get_db), user: models.User = Depends(M.require_any_screen("accounts_zoho", RIGHT))):
+    """Every bank line not in Zoho yet, whatever its month - for Send to Zoho > Bank."""
+    import zohoapi
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    rows = (db.query(models.BankEntry).filter(models.BankEntry.zoho_status.in_(["", "sending"]))
+              .order_by(models.BankEntry.on_date, models.BankEntry.id).all())
+    return {"rows": [_row(x, users) for x in rows], "may_send": _may_send(user), "connected": zohoapi.connected(db)}
+
+
 @router.post("/store/bank/send")
 def send(payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = BK):
     """Approve and send the waiting lines (all, or the ones ticked)."""
