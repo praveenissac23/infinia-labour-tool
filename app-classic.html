@@ -534,10 +534,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pz.ok { background: #E3F2E6; color: #2E7D32; } .pz.app { background: #E8EEFB; color: #2F5BB7; } .pz.wait { background: #FFF1D9; color: #A86A00; } .pz.bad { background: #FDECEA; color: #B03A2E; } .pz.skip { background: #EEE; color: #888; }
   #screen-zoho .zh-pane { display: none; } #screen-zoho .zh-tabs { min-height: 35px; }
   .zh-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 10px; border-bottom: 1px solid #EFEBE6; padding-bottom: 10px; }
-  .zh-tab { border: 1px solid #E3D7D1; background: #fff; border-radius: 18px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; color: #4A433D; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
-  .zh-tab:hover { border-color: #C9B7AE; } .zh-tab.on { background: #2B2622; border-color: #2B2622; color: #fff; }
+  /* Same look as the page's sub-tabs: white pill, the chosen one pale red with a red edge. */
+  .zh-tab { border: 1px solid #E4DCD2; background: #fff; border-radius: 999px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; color: #5B6167; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: border-color .12s, color .12s, background .12s; }
+  .zh-tab:hover { border-color: #D9B8B3; color: #C0392B; } .zh-tab.on { background: #FDF4F3; border-color: #C0392B; color: #C0392B; font-weight: 700; }
   .zh-n { min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; box-sizing: border-box; }
-  .zh-n.zero { background: #E9E4DF; color: #8A8079; } .zh-tab.on .zh-n.zero { background: #4A433D; color: #D8D0C9; }
+  .zh-n.zero { background: #E9E4DF; color: #8A8079; } .zh-tab.on .zh-n.zero { background: #F3DCD8; color: #A0473C; }
   .zh-ptools { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; } .zh-ptools input, .zh-ptools select { height: 36px; }
   .zh-intro { font-size: 13px; color: #5B524B; margin: 2px 0 10px; } .zh-intro b { color: #2B2622; }
   .zh-none { padding: 22px 6px; color: #6b625a; font-size: 13px; text-align: center; background: #FCFAF7; border-radius: 10px; }
@@ -545,7 +546,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-step { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .bk-form { margin-top: 12px; border-top: 1px solid #EFEBE6; padding-top: 12px; }
   .bk-step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #2B2622; margin: 6px 0 8px; }
-  .bk-step b { width: 22px; height: 22px; border-radius: 50%; background: #2B2622; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+  .bk-step b { width: 22px; height: 22px; border-radius: 50%; background: #C0392B; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
   .bk-kinds2 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
   .bk-k { position: relative; text-align: left; border: 1px solid #E3D7D1; background: #fff; border-radius: 10px; padding: 10px 12px 10px; cursor: pointer; font: inherit; color: #2B2622; display: flex; flex-direction: column; gap: 3px; min-height: 74px; }
   .bk-k b { font-size: 13.5px; } .bk-k small { font-size: 11.5px; color: #8A8079; line-height: 1.3; }
@@ -801,7 +802,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-preview{display:flex;gap:10px;align-items:center;background:#FCF9F4;border:1px dashed #E4DED6;border-radius:10px;padding:10px;margin:-2px 0 12px}
 .cr-seg{display:flex;border:1px solid #D5D9DE;border-radius:8px;overflow:hidden;margin-bottom:11px}
 .cr-seg div{flex:1;text-align:center;font-size:12.5px;padding:7px 0;color:#5B6167;cursor:pointer}
-.cr-seg div.on{background:#1F2429;color:#fff}
+.cr-seg div.on{background:#FDF4F3;color:#C0392B;box-shadow:inset 0 0 0 1px #C0392B}
 .cr-pw{position:relative}
 .cr-pw .gen{position:absolute;right:6px;top:22px;font-size:11.5px;color:#C0392B;font-weight:600}
 .cr-note{font-size:11.5px;color:#8A8178;display:flex;gap:6px;align-items:center;margin-top:10px}
