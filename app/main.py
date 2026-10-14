@@ -4132,12 +4132,16 @@ def _rental_supplier_map(db: Session):
     because it describes a particular quantity rather than a material.
     """
     out = {}
+    by_key = None                                  # every supplier read once, not once per material
     for it in db.query(models.StoreItem).filter(models.StoreItem.item_type == "rental").all():
-        sup = None
+        sid = None
         if (it.rental_supplier or "").strip():
-            sup = db.query(models.Supplier).filter(
-                models.Supplier.name_key == _supplier_key(it.rental_supplier)).first()
-        out[it.id] = sup.id if sup else None
+            if by_key is None:
+                by_key = {}
+                for sp in db.query(models.Supplier.id, models.Supplier.name_key).order_by(models.Supplier.id).all():
+                    by_key.setdefault(sp[1], sp[0])
+            sid = by_key.get(_supplier_key(it.rental_supplier))
+        out[it.id] = sid
     return out
 
 
@@ -4872,6 +4876,15 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
         (o is not None or i in rentals) and abs(q) > 1e-9
         for (i, _l, o), q in owned_map.items())
     sup_names = ({s.id: s.name for s in db.query(models.Supplier).all()} if rented_any else {})
+    # Each item's places and owners, gathered once - looping over every
+    # stock entry for every item was 3,600 x 3,600 (the 14-second Stock
+    # screen of 14 Oct).
+    by_item = {}
+    for (iid, loc), v in stock.items():
+        by_item.setdefault(iid, []).append((loc, v))
+    own_by_item = {}
+    for (iid, loc, owner), qty in owned_map.items():
+        own_by_item.setdefault(iid, []).append((loc, owner, qty))
     rows = []
     for it in items:
         at_central = stock.get((it.id, CENTRAL), 0)
@@ -4879,8 +4892,9 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
         # HELD_AT_SITE. Its total is what is in the store, because what
         # went out to a site has been used.
         if _held_at_site(it):
-            out_total = sum(v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL)
-            by_site = {loc: v for (iid, loc), v in stock.items() if iid == it.id and loc != CENTRAL and v}
+            places = by_item.get(it.id, [])
+            out_total = sum(v for loc, v in places if loc != CENTRAL)
+            by_site = {loc: v for loc, v in places if loc != CENTRAL and v}
         else:
             out_total, by_site = 0, {}
         if location is not None:
@@ -4904,8 +4918,8 @@ def store_stock(location: str = None, db: Session = Depends(get_db),
                 # the movement said so - the type is the answer.
                 ours = rented = 0.0
                 by_owner = {}
-                for (iid, loc, owner), qty in owned_map.items():
-                    if iid != it.id or abs(qty) < 1e-9:
+                for loc, owner, qty in own_by_item.get(it.id, []):
+                    if abs(qty) < 1e-9:
                         continue
                     if not _held_at_site(it) and loc != CENTRAL:
                         continue
@@ -5660,6 +5674,28 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     items = {i.id: i for i in db.query(models.StoreItem).all()}
     stock = _stock_map(db)
 
+    _lost_cache = {}
+
+    def _lost_by_item(iid):
+        # Every write-off summed once by the database, not one query per material.
+        if not _lost_cache:
+            _lost_cache[None] = 0
+            for item_id, q in (db.query(models.StoreMovement.item_id, func.sum(models.StoreMovement.qty))
+                               .filter(models.StoreMovement.kind == "lost").group_by(models.StoreMovement.item_id).all()):
+                _lost_cache[item_id] = float(q or 0)
+        return _lost_cache.get(iid, 0)
+
+    _at_idx = {}
+
+    def _at(iid):
+        """Where one material stands {place: qty}, from an index built once."""
+        if not _at_idx:
+            _at_idx[None] = {}
+            for (i2, loc), q in stock.items():
+                if q:
+                    _at_idx.setdefault(i2, {})[loc] = q
+        return dict(_at_idx.get(iid, {}))
+
     def moves(kinds):
         q = db.query(models.StoreMovement).filter(models.StoreMovement.kind.in_(kinds))
         if d1: q = q.filter(models.StoreMovement.moved_on >= d1)
@@ -6001,7 +6037,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows = []
         for i in items.values():
             if not i.active or i.item_type != "rental": continue
-            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            at = _at(i.id)
             where = ", ".join(f"{loc or 'store'}: {q:g}" for loc, q in sorted(at.items())) or "-"
             days = (today - i.rental_start).days if i.rental_start else None
             est = round(days * (i.rental_rate or 0), 2) if (days is not None and i.rental_period == "day") else None
@@ -6013,10 +6049,6 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "overdue": bool(i.rental_due and i.rental_due < today)})
         return {"title": "Rented equipment", "rows": sorted(rows, key=lambda r: (not r["overdue"], r["due"] or ""))}
 
-    def _lost_by_item(iid):
-        return sum(m.qty for m in db.query(models.StoreMovement)
-                    .filter(models.StoreMovement.item_id == iid,
-                             models.StoreMovement.kind == "lost").all())
 
     if kind == "assets":
         # Owned only - hired equipment has its own register, so the two
@@ -6024,7 +6056,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows = []
         for i in items.values():
             if not i.active or i.item_type not in ("asset", "returnable"): continue
-            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            at = _at(i.id)
             lost = _lost_by_item(i.id)
             # A machine the company owns but has none of - never bought,
             # or all written off - is not a line on an asset register.
@@ -6061,7 +6093,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows = []
         for i in items.values():
             if not i.active or i.item_type != "rental": continue
-            at = {loc: q for (iid, loc), q in stock.items() if iid == i.id and q}
+            at = _at(i.id)
             lost = _lost_by_item(i.id)
             on_hire = round(sum(at.values()), 2)
             if on_hire <= 0 and not lost: continue
@@ -6116,12 +6148,14 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     # at zero makes the few real ones impossible to find.
     rows = []
     stocked = _ever_stocked(db)
+    places = {}                                     # item -> its places, gathered once
+    for (iid, loc), v in stock.items():
+        if loc != CENTRAL and v:
+            places.setdefault(iid, {})[loc] = round(v, 2)
     for i in items.values():
         if not i.active: continue
         c = stock.get((i.id, CENTRAL), 0)
-        per_site = ({loc: round(v, 2) for (iid, loc), v in stock.items()
-                     if iid == i.id and loc != CENTRAL and v}
-                    if _held_at_site(i) else {})
+        per_site = dict(places.get(i.id, {})) if _held_at_site(i) else {}
         o = sum(per_site.values())
         if c == 0 and o == 0 and not i.reorder_level:
             continue

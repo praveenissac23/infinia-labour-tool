@@ -1743,7 +1743,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="6179176726a4";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="5056aa8d2bb6";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -4987,7 +4987,25 @@ function natCompare(a, b) {
   return naturalCollator.compare(String(a ?? ""), String(b ?? ""));
 }
 
+// Reads that several parts of one screen ask for at the same moment (the
+// whole stock list is ~3,600 materials) are asked for once and shared, and
+// kept a few seconds; any change saved to the store or petty cash clears them.
+const API_SHARE = { "/store/stock": 15000 }, API_SHARED = {};
 async function apiCall(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  if (method !== "GET") { if (/^\/store\//.test(path)) for (const k in API_SHARED) delete API_SHARED[k]; }
+  else if (API_SHARE[path] !== undefined) {
+    const hit = API_SHARED[path];
+    const copy = d => (typeof structuredClone === "function" ? structuredClone(d) : JSON.parse(JSON.stringify(d)));
+    if (hit && Date.now() - hit.at < API_SHARE[path]) return hit.p.then(copy);   // each caller its own copy
+    const p = apiFetch(path, options);
+    API_SHARED[path] = { at: Date.now(), p };
+    p.catch(() => { delete API_SHARED[path]; });
+    return p.then(copy);
+  }
+  return apiFetch(path, options);
+}
+async function apiFetch(path, options = {}) {
   const headers = options.headers || {};
   if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
   // A JSON body needs to say so, or the server sees a string where it
