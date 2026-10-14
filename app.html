@@ -1356,7 +1356,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .report-col-picker label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
   .hr-all-co { margin-bottom: 18px; } .hr-all-co h3 { font-size: 14px; margin: 0 0 6px; }
   /* Searchable dropdowns: a select with many choices opens as a list with a search box. */
-  .sel-pop { position: fixed; z-index: 5000; background: white; border: 1px solid #D5D9DE; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); min-width: 240px; max-width: 420px; overflow: hidden; font-family: inherit; }
+  .sel-pop { position: fixed; z-index: 10050; background: white; border: 1px solid #D5D9DE; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); min-width: 240px; max-width: 420px; overflow: hidden; font-family: inherit; }
   .sel-pop .sel-search { display: block; width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid #EEE9E3; padding: 9px 12px; font-size: 13px; outline: none; margin: 0; border-radius: 0; }
   .sel-pop .sel-list { max-height: 300px; overflow-y: auto; padding: 4px 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .sel-pop .sel-opt { padding: 7px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1543,7 +1543,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="48a3208b3881";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="41ad5e31b783";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3241,6 +3241,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
             <div id="zh-loans"></div>
             <div id="zh-todo"></div>
+            <div id="zh-pos"></div>
             <div class="zh-sup" id="zh-oct-card" style="margin-top:14px;"><b>October check</b> <span class="sub" style="display:inline;">- lines from 1 to 14 Oct that were typed into Zoho by hand, so they are not sent twice</span>
               <button type="button" class="btn btn-gray btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button>
               <div id="zh-oct"></div></div>
@@ -16486,6 +16487,7 @@ async function zhLoad() {
     ZH = await apiCall("/store/zoho/queue");
     ZH.conn = await apiCall("/store/zoho/link/status");
     try { ZH.loans = (await apiCall("/store/zoho/loans")).rows; } catch (e) { ZH.loans = []; }
+    try { ZH.pos = (await apiCall("/store/zoho/pos")).rows; } catch (e) { ZH.pos = []; }
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
@@ -16623,7 +16625,7 @@ function zhShown() {
 }
 function zhDraw() {
   if (!ZH) return;
-  zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw();
+  zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw(); zhPosDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
   document.getElementById("zh-stats").innerHTML =
@@ -16696,6 +16698,29 @@ function zhTodoDraw() {
 }
 async function zhTodoDone(src, id) {
   try { await apiCall("/store/zoho/todo/done", { method: "POST", body: JSON.stringify({ src, id }) }); ZH.todo = ZH.todo.filter(x => !(x.src === src && x.id === id)); zhTodoDraw(); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+// LPOs as Zoho purchase orders, with the portal's own numbers.
+function zhPosDraw() {
+  const el = document.getElementById("zh-pos"), L = (ZH && ZH.pos) || [];
+  if (!el) return;
+  const wait = L.filter(o => !o.status && !o.cancelled), flag = L.filter(o => o.status === "changed" || (o.cancelled && o.err));
+  el.innerHTML = L.length ? `<div class="zh-sup" style="margin-top:14px;"><b>Purchase orders (LPOs)</b> <span class="sub" style="display:inline;">- ${wait.length} not in Zoho yet; they go with the LPO number from the portal</span>
+    ${wait.length ? `<button type="button" class="btn btn-primary btn-sm" style="margin-left:6px;" onclick="zhPosSend(this)" ${ZH.connected ? "" : "disabled"}>Send ${wait.length} to Zoho</button>` : ""}
+    <table class="zh-oct-t" style="margin-top:6px;"><tbody>${L.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b><span class="sub">${pcDate(o.date)}${o.site ? " · " + escapeHtml(o.site) : ""}</span></td>
+      <td>${escapeHtml(o.supplier)}${o.linked ? "" : ` <span class="zx-tag zx-bad" title="Link it on Suppliers in Zoho below - a PO needs its vendor">Supplier not linked</span>`}</td>
+      <td class="n" style="width:110px;">${pcMoney(o.total)}</td>
+      <td style="width:38%;">${o.status === "changed" || (o.cancelled && o.err) ? `<span class="zx-tag zx-bad">${escapeHtml(o.err)}</span> <button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>`
+        : (o.err ? `<span class="zx-tag zx-bad">Zoho: ${escapeHtml(o.err)}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`)}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+async function zhPosSend(btn) {
+  btn.disabled = true;
+  try { const d = await apiCall("/store/zoho/pos/send", { method: "POST", body: "{}" }); await zhLoad();
+        showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} purchase order${d.sent === 1 ? "" : "s"} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; }
+}
+async function zhPoDone(id) {
+  try { await apiCall("/store/zoho/pos/corrected", { method: "POST", body: JSON.stringify({ id }) }); await zhLoad(); }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 let ZH_OCT = null;
@@ -19233,7 +19258,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=e8e3865083"></script>
+<script src="/portal/help/guides.js?v=ae19d44ccc"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

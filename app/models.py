@@ -451,6 +451,9 @@ class PurchaseOrder(Base):
     notes = Column(Text, default="")
     terms_text = Column(Text, default="")
     status = Column(String, default="issued")        # issued | cancelled
+    zoho_status = Column(String, default="")         # "" | sending | sent | changed
+    zoho_id = Column(String, default="")
+    zoho_err = Column(String, default="")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -7759,6 +7759,9 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
+    if (o.zoho_status or "") == "sent":
+        # Already a purchase order in Zoho: flagged so it is changed there too.
+        o.zoho_status, o.zoho_err = "changed", "Changed here after it went to Zoho - change the PO in Zoho"
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s)), "
@@ -7777,6 +7780,8 @@ def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
     if not o:
         raise HTTPException(status_code=404, detail="Purchase order not found.")
     o.status = "cancelled"
+    if (o.zoho_status or "") in ("sent", "changed"):
+        o.zoho_err = "Cancelled here - cancel the PO in Zoho too"
     db.commit()
     log_action(db, user.id, "cancel_lpo", o.ref)
     return {"ok": True, "detail": f"{o.ref} cancelled."}
@@ -12984,6 +12989,8 @@ import supzoho  # noqa: E402
 app.include_router(supzoho.router)
 import camp  # noqa: E402
 app.include_router(camp.router)
+import pozoho  # noqa: E402
+app.include_router(pozoho.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

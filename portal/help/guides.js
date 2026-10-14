@@ -196,6 +196,13 @@ window.HELP_GUIDES = [
       { say: "On Send to Zoho press Check against Zoho. It reads Zoho for 1-14 Oct and lists portal lines that look already there (same date and amount).", el: "#zh-oct-card" },
       { say: "Untick any that are not the same, then press the button - the ticked lines are marked in Zoho and never sent.", el: "#zh-oct-card" }],
     tip: "Lines not found stay on the list to be approved and sent. From 15 Oct nothing is typed into Zoho by hand." },
+  { id: "zoho-lpo", area: "Accounts", title: "How to send LPOs to Zoho as purchase orders",
+    words: "lpo purchase order po zoho send vendor supplier number",
+    go: { page: "accounts", tab: "zoho" },
+    steps: [
+      { say: "On Send to Zoho, Purchase orders (LPOs) lists the LPOs from 1 Oct not yet in Zoho. Press Send.", el: "#zh-pos" },
+      { say: "Each goes with its portal number (IC/LPO/2026xxxx), the supplier's Zoho vendor, lines, VAT and discount.", el: "#zh-pos" }],
+    tip: "A supplier marked 'not linked' must be linked on Suppliers in Zoho first. An LPO changed or cancelled after it went is flagged - do it in Zoho, then press Done in Zoho." },
   { id: "zoho-loans", area: "Accounts", title: "How to send a staff loan or advance to Zoho",
     words: "staff loan advance employee advance zoho journal adcb cash paid from salary advance",
     go: { page: "accounts", tab: "zoho" },
