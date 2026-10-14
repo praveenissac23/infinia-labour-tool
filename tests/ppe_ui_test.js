@@ -56,7 +56,28 @@ const tiles = p => p.evaluate(() => [...document.querySelectorAll('#pe-tiles .pe
   // stock dialog
   await a.click('#pe-stockbtn'); await a.waitForTimeout(300);
   await a.selectOption('#pe-si', 'Helmet'); await a.fill('#pe-sc', '20'); await a.click('.pe-m .btn-primary'); await a.waitForTimeout(1500);
-  ck('stock counted', /Helmet\s*20/.test(await a.locator('#pe-stock').textContent()), await a.locator('#pe-stock').textContent());
+  const hs = () => a.evaluate(() => { const x = PE.stock.find(z => z.item === 'Helmet'); return [x.Store.in_hand, x.Office.in_hand, x.total]; });
+  ck('store keeper counts at the Store: Helmet Store 20', (await hs())[0] === 20, await hs());
+  await a.screenshot({ path: SH + 'ppe_stock_panel.png', clip: await a.locator('#pe-stock').evaluate(e => { e.scrollIntoView({ block: 'center' }); const r = e.closest('.pe-panel').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) });
+  await a.click('#pe-recvbtn'); await a.waitForTimeout(300);
+  await a.selectOption('#pe-ri', 'Helmet'); await a.click('#pe-rl button[data-pl="Office"]'); await a.fill('#pe-rq', '10'); await a.fill('#pe-rn', 'LPO 1042');
+  await a.screenshot({ path: SH + 'ppe_received.png' });
+  await a.click('.pe-m .btn-primary'); await a.waitForTimeout(1500);
+  ck('delivery of 10 to the Office: Office 10, total 30', JSON.stringify(await hs()) === '[20,10,30]', await hs());
+  // give a helmet from the office: office stock goes down
+  const hid = await a.evaluate(() => PE.workers.find(w => w.emp_id && !w.cells['Helmet'].last).emp_id);
+  await a.evaluate(id => ppeGive(id), hid); await a.waitForTimeout(800);
+  await a.click('#pe-its button[data-it="Helmet"]'); await a.waitForTimeout(800);
+  ck('Given from shows the in-hand numbers', /Store\s*20 in hand/.test(await a.locator('#pe-from').textContent()) && /Office\s*10 in hand/.test(await a.locator('#pe-from').textContent()), await a.locator('#pe-from').textContent());
+  await a.click('#pe-from button[data-pl="Office"]');
+  await a.screenshot({ path: SH + 'ppe_give_from.png' });
+  await a.click('#pe-save'); await a.waitForTimeout(1500);
+  ck('given from the Office: Office 9, Store still 20', JSON.stringify(await hs()) === '[20,9,29]', await hs());
+  ck('recent issues tag it "from office"', /from office/.test(await a.locator('#pe-recent').textContent()));
+  await a.click('#pe-stock tr.pe-srow >> text=Helmet'); await a.waitForTimeout(900);
+  ck('item history: count and delivery listed', (await a.locator('.pe-m .pe-hist tr').count()) >= 2 && /Counted 20/.test(await a.locator('.pe-m').textContent()));
+  await a.screenshot({ path: SH + 'ppe_stock_hist.png' });
+  await a.click('.pe-m .btn-gray >> text=Close');
   // layout at three widths
   for (const W of [1440, 1024, 390]) {
     const p = W === 1440 ? a : await login(b, 'jomon', 'pass12345', W);
@@ -77,7 +98,7 @@ const tiles = p => p.evaluate(() => [...document.querySelectorAll('#pe-tiles .pe
   const v = await login(b, 'assistant', 'pass12345');
   await open(v);
   ck('viewer sees the register', (await v.locator('#pe-body tr.pe-row').count()) > 50);
-  ck('viewer has no Give / Count buttons', !(await v.locator('#pe-give').isVisible()) && !(await v.locator('#pe-stockbtn').isVisible()));
+  ck('viewer has no Give / Received / Count buttons', !(await v.locator('#pe-give').isVisible()) && !(await v.locator('#pe-stockbtn').isVisible()) && !(await v.locator('#pe-recvbtn').isVisible()));
   const r = await v.evaluate(async () => { try { await apiCall('/store/ppe', { method: 'POST', body: JSON.stringify({ employee_id: 1, item: 'Helmet' }) }); return 'done'; } catch (e) { return errText(e); } });
   ck('viewer cannot add even directly', r !== 'done', r);
   // help search

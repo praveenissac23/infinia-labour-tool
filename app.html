@@ -532,6 +532,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
 
   /* PPE register */
+  #screen-ppe .pc-btns{align-items:flex-end} #screen-ppe .pc-btns .btn{height:36px;box-sizing:border-box} #screen-ppe .pc-btns select{height:36px}
   #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
   #screen-ppe .pe-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;text-align:left;font:inherit;color:inherit}
   #screen-ppe .pe-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
@@ -549,7 +550,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-ppe .pe-grid tr.pe-row{cursor:pointer} #screen-ppe .pe-grid tr.pe-row:hover td{background:#FBF8F5}
   #screen-ppe .pe-who b{display:block;font-weight:600;white-space:nowrap} #screen-ppe .pe-who small{color:#8A8079}
   #screen-ppe .pe-cell{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:3px 8px;border-radius:8px;min-width:78px;line-height:1.2}
-  #screen-ppe .pe-cell b{font-size:12.5px;font-weight:600} #screen-ppe .pe-cell small{font-size:11px}
+  #screen-ppe .pe-cell b{font-size:12.5px;font-weight:600;white-space:nowrap} #screen-ppe .pe-cell small{font-size:11px;white-space:nowrap}
   .pe-s-none{color:#C2B9B2} .pe-s-old{background:#EEF7F0;color:#2E7D32} .pe-s-mid{background:#FFF4E0;color:#9A5B00} .pe-s-recent{background:#FDECEA;color:#B03A2E}
   #screen-ppe .pe-flag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;background:#FDECEA;color:#B03A2E;margin-left:6px}
   #screen-ppe .pe-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:14px}
@@ -559,7 +560,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-ppe .pe-list div.pe-li{display:flex;gap:10px;padding:7px 14px;border-bottom:1px solid #F6F2EE;align-items:center}
   #screen-ppe .pe-list .d{width:58px;color:#8A8079;flex:none} #screen-ppe .pe-list .w{flex:1;min-width:0}
   #screen-ppe .pe-stock{width:100%;border-collapse:collapse;font-size:12.5px} #screen-ppe .pe-stock td,#screen-ppe .pe-stock th{padding:7px 12px;border-bottom:1px solid #F6F2EE;text-align:left} #screen-ppe .pe-stock th{font-size:11px;color:#8A8079;text-transform:uppercase}
-  #screen-ppe .pe-stock .n{text-align:right} #screen-ppe .pe-stock td .sub{display:block;font-size:11px;color:#A39A93}
+  #screen-ppe .pe-stock .n{text-align:right;width:70px} #screen-ppe .pe-stock .pe-tot{background:#FBF8F5}
+  #screen-ppe .pe-stock tr.pe-srow{cursor:pointer} #screen-ppe .pe-stock tr.pe-srow:hover td{background:#FBF8F5}
+  .pe-nc{color:#B5ACA5;font-size:11px;white-space:nowrap} .pe-m b.neg,#screen-ppe b.neg,.pe-seg small.neg{color:#B03A2E}
+  #screen-ppe .pe-snote{padding:8px 12px;font-size:11.5px;color:#8A8079}
+  #screen-ppe .pe-hbtns{display:flex;gap:6px}
+  .pe-src{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;background:#EEF0F7;color:#3B4A7A;margin-left:4px}
+  .pe-box .pe-seg{display:flex;border:1px solid #E3D7D1;border-radius:8px;overflow:hidden;height:38px;box-sizing:border-box}
+  .pe-box .pe-seg button{flex:1;border:0;background:#fff;font:inherit;font-size:13px;font-weight:500;letter-spacing:0;color:#2B2622;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+  .pe-box .pe-seg button+button{border-left:1px solid #E3D7D1} .pe-box .pe-seg button.on{background:#B03A2E;color:#fff}
+  .pe-box .pe-seg small{font-size:11px;opacity:.8} .pe-box .pe-seg button.on small.neg{color:#fff}
+  .pe-box div.pc-f{display:flex;margin-bottom:10px}
+  .pe-box .pe-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  .pe-box .pe-sbox{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 4px} .pe-box .pe-sbox > div{border:1px solid #EFE7E1;border-radius:10px;padding:10px 12px}
+  .pe-box .pe-sbox b{display:block;font-size:12px;color:#6b625a;text-transform:uppercase;letter-spacing:.05em} .pe-box .pe-sbox .big{font-size:22px;font-weight:700;display:block}
+  .pe-box .sub{display:block;font-size:11.5px;color:#8A8079}
   #screen-ppe .pe-list .w .sub{display:block;font-size:11.5px;color:#8A8079;margin-top:1px}
   #screen-ppe .pe-panel.fill{display:flex;flex-direction:column} #screen-ppe .pe-fill{position:relative;flex:1;min-height:300px} #screen-ppe .pe-fill > .pe-list{position:absolute;inset:0;max-height:none}
   .pe-box h3{margin:0 0 4px} .pe-box .sub2{color:#6b625a;font-size:13px;margin-bottom:12px}
@@ -575,6 +590,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pe-box .pe-sum div{border-radius:10px;padding:8px 10px;font-size:12px} .pe-box .pe-sum b{display:block;font-size:13px}
   .pe-box .pe-pick div.pe-p{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F6F2EE}
   @media (max-width:900px){ #screen-ppe .pe-cols{grid-template-columns:1fr} #screen-ppe .pe-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-ppe .pe-legend{margin-left:0} #screen-ppe .pe-tools input{width:100%} }
+  @media (max-width:1200px){ #screen-ppe .pe-grid th:first-child{min-width:140px!important} #screen-ppe .pe-grid th{white-space:normal} #screen-ppe .pe-who b{white-space:normal} #screen-ppe .pe-who small{display:block;line-height:1.25} #screen-ppe .pe-cell{min-width:64px;padding:3px 6px} #screen-ppe .pe-grid td,#screen-ppe .pe-grid th{padding-left:7px;padding-right:7px} }
   /* Labour accommodation - camp rooms and beds */
   #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
   #screen-camp .cp-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
@@ -1603,7 +1619,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="33a03565ec2f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="81fde2401c05";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3277,7 +3293,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pe-panel fill"><h3><span>Recent issues</span><span class="sub" style="display:inline;font-weight:400;">newest first</span></h3><div class="pe-fill"><div class="pe-list" id="pe-recent"></div></div></div>
               <div>
                 <div class="pe-panel"><h3><span>Quick repeats - same item within 30 days</span></h3><div class="pe-list" id="pe-quick" style="max-height:170px;"></div></div>
-                <div class="pe-panel" style="margin-top:12px;"><h3><span>Stock in the store</span><button type="button" class="btn btn-gray btn-sm" id="pe-stockbtn" onclick="ppeStock()">Count stock</button></h3><div id="pe-stock"></div></div>
+                <div class="pe-panel" style="margin-top:12px;"><h3><span>Stock in hand</span><span class="pe-hbtns" id="pe-stockbtns"><button type="button" class="btn btn-gray btn-sm" id="pe-recvbtn" onclick="ppeRecv()">+ Received</button><button type="button" class="btn btn-gray btn-sm" id="pe-stockbtn" onclick="ppeStock()">Count</button></span></h3><div id="pe-stock"></div></div>
               </div>
             </div>
           </div>
@@ -16880,7 +16896,7 @@ function zhCorrected(id) {
 let PE = null, PE_F = "all", PE_PEOPLE = null;
 async function ppeLoad() {
   try { PE = await apiCall("/store/ppe"); } catch (e) { showStatus("pe-status", "err", errText(e)); return; }
-  ["pe-give", "pe-stockbtn"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = PE.may_edit ? "" : "none"; });
+  ["pe-give", "pe-stockbtns"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = PE.may_edit ? "" : "none"; });
   ppeDraw();
 }
 function ppeD(iso, y) { if (!iso) return ""; const [Y, m, d] = iso.split("-"); return `${d} ${"Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")[+m - 1]}${y || (PE && Y !== PE.today.slice(0, 4)) ? " " + (y ? Y : "'" + Y.slice(2)) : ""}`; }
@@ -16916,11 +16932,13 @@ function ppeDraw() {
       const tip = `Last given ${ppeD(c.last, 1)}${c.last_size ? " · size " + c.last_size : ""} · ${c.count_all} given in all`;
       return `<td><span class="pe-cell pe-s-${c.state}" title="${escapeAttr(tip)}"><b>${ppeD(c.last)}${c.last_qty > 1 ? " ×" + c.last_qty : ""}</b><small>${ppeAgo(c.days_since)}</small></span></td>`; }).join("")}
     <td style="text-align:right;color:#6b625a;">${w.total_all}</td></tr>`).join("") || `<tr><td colspan="${cols.length + 2}" style="padding:18px;color:#999;">Nobody matches.</td></tr>`;
-  document.getElementById("pe-recent").innerHTML = PE.recent.slice(0, 40).map(r => `<div class="pe-li"><span class="d">${ppeD(r.date)}</span><span class="w"><b>${escapeHtml(r.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(r.no)}</span><br>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition === "Eligible" ? ` <span class="zx-tag zx-app">approved, not given</span>` : ""}${r.remarks ? `<span class="sub">${escapeHtml(r.remarks)}</span>` : ""}</span></div>`).join("") || `<div class="pe-li sub">Nothing yet.</div>`;
+  document.getElementById("pe-recent").innerHTML = PE.recent.slice(0, 40).map(r => `<div class="pe-li"><span class="d">${ppeD(r.date)}</span><span class="w"><b>${escapeHtml(r.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(r.no)}</span><br>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition === "Eligible" ? ` <span class="zx-tag zx-app">approved, not given</span>` : (r.source === "Office" ? ` <span class="pe-src">from office</span>` : "")}${r.remarks ? `<span class="sub">${escapeHtml(r.remarks)}</span>` : ""}</span></div>`).join("") || `<div class="pe-li sub">Nothing yet.</div>`;
   document.getElementById("pe-quick").innerHTML = PE.quick.map(x => `<div class="pe-li"><span class="d" style="color:#B03A2E;font-weight:700;">${x.days} d</span><span class="w"><b>${escapeHtml(x.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(x.no)}</span> · ${escapeHtml(x.item)}<span class="sub">${ppeD(x.first)} then again ${ppeD(x.again)}${x.reason ? " · " + escapeHtml(x.reason) : ""}</span></span></div>`).join("") || `<div class="pe-li sub">None - good.</div>`;
-  document.getElementById("pe-stock").innerHTML = `<table class="pe-stock"><thead><tr><th>Item</th><th class="n">Counted</th><th class="n">Given since</th><th class="n">In store</th><th></th></tr></thead><tbody>${PE.stock.map(s => `<tr><td>${escapeHtml(s.item)}</td>
-    <td class="n">${s.counted === null ? `<span class="sub" style="display:inline;">not counted</span>` : s.counted + `<span class="sub">${ppeD(s.counted_on)}</span>`}</td><td class="n">${s.issued_since}</td>
-    <td class="n"><b>${s.available === null ? "—" : s.available}</b></td><td>${s.low ? `<span class="zx-tag zx-bad">order (at ${s.reorder})</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
+  const cell = (x, it, pl) => x.in_hand === null || x.in_hand === undefined ? `<td class="n" title="Not counted yet"><span class="pe-nc">—</span></td>`
+    : `<td class="n" title="${escapeAttr(`${x.counted !== null ? "Counted " + x.counted + " on " + ppeD(x.counted_on, 1) : "From the first delivery, " + ppeD(x.since, 1)} + received ${x.received} - given ${x.given}`)}"><b class="${x.in_hand < 0 ? "neg" : ""}">${x.in_hand}</b></td>`;
+  document.getElementById("pe-stock").innerHTML = `<table class="pe-stock"><thead><tr><th>Item</th><th class="n">Store</th><th class="n">Office</th><th class="n">Total</th></tr></thead><tbody>${PE.stock.map(x => `<tr class="pe-srow" onclick="ppeStockHist('${escapeAttr(x.item)}')"><td>${escapeHtml(x.item)}${x.low ? ` <span class="zx-tag zx-bad" title="At or below ${x.reorder} - order more">order</span>` : ""}</td>
+    ${cell(x.Store)}${cell(x.Office)}<td class="n pe-tot">${x.total === null ? "—" : `<b>${x.total}</b>`}</td></tr>`).join("")}</tbody></table>
+    <div class="pe-snote">In hand = last count + received - given from there. — = not counted yet. Click an item for its history.</div>`;
 }
 function ppeModal(inner, wide) {
   document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove());
@@ -16938,13 +16956,13 @@ async function ppeCard(key) {
       ${PE.may_edit && w.emp_id ? `<button type="button" class="btn btn-primary" onclick="ppeGive(${w.emp_id})">+ Give PPE</button>` : ""}</div>
     <div class="pe-sum">${cols.map(it => { const c = w.cells[it];
       return `<div class="pe-s-${c.last ? c.state : "none"}" style="border:1px solid #EFE7E1;"><b>${escapeHtml(it)}</b>${c.last ? `last ${ppeD(c.last, 1)}${c.last_size ? " · " + escapeHtml(c.last_size) : ""}<br>${ppeAgo(c.days_since, 1)} · ${c.count_all} in all` : "never given"}</div>`; }).join("")}</div>
-    <div class="pe-hist"><table>${h.rows.map(r => `<tr><td style="width:84px;">${ppeD(r.date, 1)}</td><td><b>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}</b>${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition !== "Issued" ? ` <span class="zx-tag ${r.condition === "Eligible" ? "zx-app" : "zx-ok"}">${r.condition === "Eligible" ? "approved, not given" : escapeHtml(r.condition)}</span>` : ""}${r.remarks || r.instructed_by ? `<span class="sub">${escapeHtml([r.instructed_by && "by " + r.instructed_by, r.remarks].filter(Boolean).join(" · "))}</span>` : ""}</td>
+    <div class="pe-hist"><table>${h.rows.map(r => `<tr><td style="width:84px;">${ppeD(r.date, 1)}</td><td><b>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}</b>${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition !== "Issued" ? ` <span class="zx-tag ${r.condition === "Eligible" ? "zx-app" : "zx-ok"}">${r.condition === "Eligible" ? "approved, not given" : escapeHtml(r.condition)}</span>` : ""}${r.condition !== "Eligible" && r.source === "Office" ? ` <span class="pe-src">from office</span>` : ""}${r.remarks || r.instructed_by ? `<span class="sub">${escapeHtml([r.instructed_by && "by " + r.instructed_by, r.remarks].filter(Boolean).join(" · "))}</span>` : ""}</td>
       <td style="width:110px;text-align:right;">${PE.may_edit ? `${r.condition === "Eligible" ? `<button type="button" class="btn btn-sm btn-primary" onclick="ppeGiven(${r.id})">Given</button> ` : ""}<button type="button" class="btn btn-sm btn-gray" onclick="ppeDel(${r.id},'${escapeAttr(w.key)}')" title="Remove a wrong entry">×</button>` : ""}</td></tr>`).join("") || `<tr><td class="sub">Nothing given yet.</td></tr>`}</table></div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
 }
 async function ppeGive(empId) {
   if (!PE_PEOPLE) { try { PE_PEOPLE = (await apiCall("/store/ppe/people")).people; } catch (e) { return showStatus("pe-status", "err", errText(e)); } }
-  const today = PE.today, F = { emp: empId || 0, item: "", qty: 1 };
+  const today = PE.today, F = { emp: empId || 0, item: "", qty: 1, src: CURRENT_ROLE === "site" ? "Store" : "Office" };
   window.PE_F2 = F;
   const ov = ppeModal(`<h3>Give PPE</h3><div class="sub2">Shows when he was last given the item as you fill this in.</div>
     <label class="pc-f"><span>Worker</span><input type="text" id="pe-w" placeholder="Type name or ID" data-spell="off" list="pe-wl" oninput="ppeWho(this.value)"><datalist id="pe-wl">${PE_PEOPLE.map(p => `<option value="${escapeAttr(p.no + " " + p.name)}">`).join("")}</datalist></label>
@@ -16954,9 +16972,10 @@ async function ppeGive(empId) {
       <label class="pc-f"><span>Date given</span><input type="date" id="pe-dt" value="${today}" max="${today}" onchange="ppeCheck()"></label>
       <label class="pc-f"><span>Qty</span><input type="number" id="pe-qty" min="1" max="10" value="1"></label></div>
     <div id="pe-chk"></div>
-    <div class="pe-row2"><label class="pc-f"><span>Status</span><select id="pe-cond"><option value="Issued">Given now</option><option value="Replacement">Replacement (old one returned)</option><option value="Eligible">Approved - give later</option></select></label>
-      <label class="pc-f"><span>Instructed by</span><input type="text" id="pe-ins" maxlength="80" placeholder="e.g. Shaiju" data-spell="off"></label></div>
-    <label class="pc-f"><span>Remarks</span><input type="text" id="pe-rem" maxlength="300" placeholder="e.g. New joiner, damaged shoes" data-spell="off"></label>
+    <div class="pe-row2"><div class="pc-f"><span>Given from</span><div class="pe-seg" id="pe-from">${PE.places.map(pl => { const x = PE.stock.find(z => z.item === F.item); return `<button type="button" data-pl="${pl}" class="${pl === F.src ? "on" : ""}" onclick="ppeFrom('${pl}')">${pl}<small id="pe-from-${pl}"></small></button>`; }).join("")}</div></div>
+      <label class="pc-f"><span>Status</span><select id="pe-cond"><option value="Issued">Given now</option><option value="Replacement">Replacement (old one returned)</option><option value="Eligible">Approved - give later</option></select></label></div>
+    <div class="pe-row2"><label class="pc-f"><span>Instructed by</span><input type="text" id="pe-ins" maxlength="80" placeholder="e.g. Shaiju" data-spell="off"></label>
+      <label class="pc-f"><span>Remarks</span><input type="text" id="pe-rem" maxlength="300" placeholder="e.g. New joiner, damaged shoes" data-spell="off"></label></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" id="pe-save" onclick="ppeSave()">Save</button></div>`);
   if (empId) { const p = PE_PEOPLE.find(x => x.id === empId); if (p) { document.getElementById("pe-w").value = p.no + " " + p.name; ppeWho(p.no + " " + p.name); } }
   setTimeout(() => { const i = document.getElementById(empId ? "pe-sz" : "pe-w"); if (i) i.focus(); }, 50);
@@ -16968,8 +16987,16 @@ function ppeWho(v) {
   document.getElementById("pe-wsel").innerHTML = p ? `${escapeHtml(p.name)} · ${escapeHtml(p.no)}${p.trade ? " · " + escapeHtml(p.trade) : ""}` : (s ? "Pick him from the list" : "");
   ppeCheck();
 }
+function ppeFrom(pl) {
+  window.PE_F2.src = pl;
+  document.querySelectorAll("#pe-from button").forEach(b => b.classList.toggle("on", b.dataset.pl === pl));
+}
+function ppeFromCounts() {
+  const F = window.PE_F2, x = PE.stock.find(z => z.item === F.item);
+  PE.places.forEach(pl => { const el = document.getElementById("pe-from-" + pl); if (el) { const n = x && x[pl] ? x[pl].in_hand : null; el.textContent = n === null || n === undefined ? "" : `${n} in hand`; el.className = n !== null && n !== undefined && n <= 0 ? "neg" : ""; } });
+}
 function ppeItem(it) {
-  const F = window.PE_F2; F.item = it;
+  const F = window.PE_F2; F.item = it; ppeFromCounts();
   document.querySelectorAll("#pe-its button").forEach(b => b.classList.toggle("on", b.dataset.it === it));
   document.getElementById("pe-szl").innerHTML = (PE.sizes[it] || []).map(s => `<option value="${escapeAttr(s)}">`).join("");
   ppeCheck(true);
@@ -16991,7 +17018,7 @@ async function ppeSave() {
   if (!F.item) return showStatus("pe-msg", "err", "Pick the item.");
   const body = { employee_id: F.emp, item: F.item, size: document.getElementById("pe-sz").value, qty: document.getElementById("pe-qty").value,
     date: document.getElementById("pe-dt").value, condition: document.getElementById("pe-cond").value,
-    instructed_by: document.getElementById("pe-ins").value, remarks: document.getElementById("pe-rem").value };
+    instructed_by: document.getElementById("pe-ins").value, remarks: document.getElementById("pe-rem").value, source: F.src };
   const b = document.getElementById("pe-save"); b.disabled = true;
   try { await apiCall("/store/ppe", { method: "POST", body: JSON.stringify(body) });
         document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Saved."); }
@@ -17001,7 +17028,7 @@ async function ppeGiven(id) {
   const r = PE.recent.find(x => x.id === id);
   let h; try { h = (await apiCall(`/store/ppe/history?employee_id=${r ? r.emp_id : 0}`)).rows.find(x => x.id === id); } catch (e) {}
   const x = h || r; if (!x) return;
-  try { await apiCall(`/store/ppe/${id}`, { method: "PUT", body: JSON.stringify({ employee_id: x.emp_id, item: x.item, size: x.size, qty: x.qty, date: PE.today, condition: "Issued", instructed_by: x.instructed_by, remarks: x.remarks }) });
+  try { await apiCall(`/store/ppe/${id}`, { method: "PUT", body: JSON.stringify({ employee_id: x.emp_id, item: x.item, size: x.size, qty: x.qty, date: PE.today, condition: "Issued", instructed_by: x.instructed_by, remarks: x.remarks, source: x.source }) });
         document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Marked as given today."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
@@ -17009,15 +17036,54 @@ async function ppeDel(id, key) {
   try { await apiCall(`/store/ppe/${id}`, { method: "DELETE" }); await ppeLoad(); ppeCard(key); showStatus("pe-status", "ok", "Entry removed."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
+function ppePlaceSeg(id) {
+  return `<div class="pc-f"><span>Where</span><div class="pe-seg" id="${id}">${PE.places.map((pl, k) => `<button type="button" data-pl="${pl}" class="${(CURRENT_ROLE === "site" ? pl === "Store" : pl === "Office") ? "on" : ""}" onclick="this.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === this))">${pl}</button>`).join("")}</div></div>`;
+}
+const ppeSegVal = id => { const b = document.querySelector(`#${id} button.on`); return b ? b.dataset.pl : ""; };
+const ppeItemOpts = () => `<option value="">Choose item...</option>` + PE.items.map(it => `<option>${escapeHtml(it)}</option>`).join("");
 function ppeStock() {
-  ppeModal(`<h3>Count stock</h3><div class="sub2">Type what is in the store today. Items given from now on are taken off it.</div>
-    <label class="pc-f"><span>Item</span><select id="pe-si">${PE.items.map(it => `<option>${escapeHtml(it)}</option>`).join("")}</select></label>
-    <div class="pe-row2"><label class="pc-f"><span>Counted now</span><input type="number" id="pe-sc" min="0" placeholder="0"></label><label class="pc-f"><span>Order when at</span><input type="number" id="pe-sr" min="0" value="5"></label></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeStockSave()">Save</button></div>`);
+  ppeModal(`<h3>Count stock</h3><div class="sub2">Type what is there now. Items given from there after this are taken off it.</div>
+    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-si">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-sl")}</div>
+    <div class="pe-row2"><label class="pc-f"><span>Counted now</span><input type="number" id="pe-sc" min="0" placeholder="e.g. 25"></label><label class="pc-f"><span>Order more when total is at</span><input type="number" id="pe-sr" min="0" placeholder="e.g. 5"></label></div>
+    <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeStockSave()">Save count</button></div>`);
 }
 async function ppeStockSave() {
-  try { await apiCall("/store/ppe/stock", { method: "POST", body: JSON.stringify({ item: document.getElementById("pe-si").value, counted: document.getElementById("pe-sc").value, reorder: document.getElementById("pe-sr").value }) });
-        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Stock saved."); }
+  const item = document.getElementById("pe-si").value, c = document.getElementById("pe-sc").value;
+  if (!item) return showStatus("pe-msg", "err", "Choose the item.");
+  if (c === "") return showStatus("pe-msg", "err", "Type the number counted.");
+  try { await apiCall("/store/ppe/stock", { method: "POST", body: JSON.stringify({ item, location: ppeSegVal("pe-sl"), counted: c, reorder: document.getElementById("pe-sr").value }) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Count saved."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); }
+}
+function ppeRecv() {
+  ppeModal(`<h3>Stock received</h3><div class="sub2">A delivery of new PPE - it is added to the place it went to.</div>
+    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-ri">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-rl")}</div>
+    <div class="pe-row3"><label class="pc-f"><span>Supplier / LPO</span><input type="text" id="pe-rn" maxlength="120" placeholder="e.g. LPO 1042 - Al Safa Safety" data-spell="off"></label>
+      <label class="pc-f"><span>Date received</span><input type="date" id="pe-rd" value="${PE.today}" max="${PE.today}"></label>
+      <label class="pc-f"><span>Qty</span><input type="number" id="pe-rq" min="1" placeholder="e.g. 50"></label></div>
+    <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeRecvSave()">Save</button></div>`);
+}
+async function ppeRecvSave() {
+  const item = document.getElementById("pe-ri").value, q = document.getElementById("pe-rq").value;
+  if (!item) return showStatus("pe-msg", "err", "Choose the item.");
+  if (!(+q > 0)) return showStatus("pe-msg", "err", "How many were received?");
+  try { await apiCall("/store/ppe/received", { method: "POST", body: JSON.stringify({ item, location: ppeSegVal("pe-rl"), qty: q, date: document.getElementById("pe-rd").value, note: document.getElementById("pe-rn").value }) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", `${q} x ${item} added to the ${ppeSegVal("pe-rl") || "stock"}.`); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); }
+}
+async function ppeStockHist(item) {
+  let h; try { h = await apiCall(`/store/ppe/stock/history?item=${encodeURIComponent(item)}`); } catch (e) { return showStatus("pe-status", "err", errText(e)); }
+  const x = PE.stock.find(z => z.item === item) || {};
+  const box = pl => { const c = x[pl] || {}; return `<div><b>${pl}</b>${c.in_hand === null || c.in_hand === undefined ? `<span class="big" style="color:#C2B9B2;">—</span><span class="sub">not counted yet</span>` : `<span class="big">${c.in_hand}</span><span class="sub">${[c.counted !== null ? `counted ${c.counted} on ${ppeD(c.counted_on, 1)}` : `from the first delivery, ${ppeD(c.since, 1)}`, c.received ? `+${c.received} received` : "", c.given ? `−${c.given} given` : ""].filter(Boolean).join(" · ")}</span>`}</div>`; };
+  ppeModal(`<h3>${escapeHtml(item)} - stock</h3><div class="sub2">Counts and deliveries, newest first.</div>
+    <div class="pe-sbox">${box("Store")}${box("Office")}</div>
+    <div class="pe-hist"><table>${h.moves.map(m => `<tr><td style="width:96px;">${ppeD(m.date, 1)}</td><td style="width:64px;">${m.place}</td>
+      <td><b>${m.kind === "count" ? "Counted " + m.qty : "+" + m.qty + " received"}</b>${m.note ? `<span class="sub">${escapeHtml(m.note)}</span>` : ""}${m.by ? `<span class="sub">by ${escapeHtml(m.by)}</span>` : ""}</td>
+      <td style="width:40px;text-align:right;">${PE.may_edit ? `<button type="button" class="btn btn-sm btn-gray" title="Remove a wrong entry" onclick="ppeMoveDel(${m.id},'${escapeAttr(item)}')">×</button>` : ""}</td></tr>`).join("") || `<tr><td class="sub">No counts or deliveries yet.</td></tr>`}</table></div>
+    <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
+}
+async function ppeMoveDel(id, item) {
+  try { await apiCall(`/store/ppe/stock/${id}`, { method: "DELETE" }); await ppeLoad(); ppeStockHist(item); showStatus("pe-status", "ok", "Stock entry removed."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
 async function ppeExport(kind) {
@@ -19492,7 +19558,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=d71b29cf0c"></script>
+<script src="/portal/help/guides.js?v=bb93838f8e"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

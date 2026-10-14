@@ -6,6 +6,9 @@ No limits and no due dates - it is a tracker: when was each item last
 given to this man, and how long ago. Things given again within 30 days
 stand out so a repeat request is seen at once.
 "Eligible" lines (approved, not handed over yet) do not count until given.
+
+Stock is kept at two places, the Store and the Office. Each place: last
+count + deliveries received since - given from there since.
 """
 import json
 from datetime import date, timedelta
@@ -27,6 +30,7 @@ VIEW = Depends(M.require_any_screen("reports", RIGHT))
 
 ITEMS = ["Coverall", "Safety Shoes", "Safety Vest", "Helmet", "Jacket", "Driver T-Shirt", "Engineer Vest"]
 RECENT_DAYS = 30
+PLACES = ("Store", "Office")       # two stocks: the site store and the office
 SIZES = {"Coverall": ["S", "M", "L", "XL", "XXL", "XXXL"], "Safety Shoes": [str(n) for n in range(38, 47)],
          "Helmet": ["Blue", "White", "Yellow", "Red", "Green"], "Safety Vest": ["M", "L", "XL", "XXL"],
          "Jacket": ["M", "L", "XL", "XXL"], "Driver T-Shirt": ["S", "M", "L", "XL", "XXL"], "Engineer Vest": ["M", "L", "XL", "XXL"]}
@@ -85,9 +89,63 @@ def seed(db):
     for item, s in (data.get("stock") or {}).items():
         db.add(models.PpeStock(item=item, counted=s.get("start"), counted_on=since if s.get("start") is not None else None,
                                reorder=int(s.get("reorder") or 5)))
+        if s.get("start") is not None and since:
+            db.add(models.PpeStockMove(item=item, location="Store", kind="count", qty=int(s["start"]), moved_on=since, after_issue=0,
+                                       note="from the Excel register"))
+    M.put_setting(db, "ppe_moves_migrated", "1")
     M.put_setting(db, "ppe_seeded", "1")
     db.commit()
     return n
+
+
+def _src(r):
+    return r.source if r.source in PLACES else "Store"
+
+
+def migrate_stock(db):
+    """Counts saved before there were two places become Store counts - once."""
+    if M.get_setting(db, "ppe_moves_migrated"):
+        return
+    for st in db.query(models.PpeStock).all():
+        if st.counted is not None and st.counted_on:
+            db.add(models.PpeStockMove(item=st.item, location="Store", kind="count", qty=st.counted, moved_on=st.counted_on, after_issue=0))
+    M.put_setting(db, "ppe_moves_migrated", "1")
+    db.commit()
+
+
+def stock(db, issues=None):
+    """In hand at each place, per item."""
+    issues = issues if issues is not None else db.query(models.PpeIssue).all()
+    given = _given(issues)
+    moves = db.query(models.PpeStockMove).all()
+    reorder = {x.item: (x.reorder if x.reorder is not None else 5) for x in db.query(models.PpeStock).all()}
+    out = []
+    for it in ITEMS:
+        row = {"item": it, "reorder": reorder.get(it, 5)}
+        total, known = 0, False
+        for pl in PLACES:
+            mv = [m for m in moves if m.item == it and m.location == pl]
+            counts = [m for m in mv if m.kind == "count"]
+            last = max(counts, key=lambda m: (m.moved_on, m.id), default=None)
+            if last:
+                base, d0, mid, after = last.qty, last.moved_on, last.id, last.after_issue or 0
+            else:
+                rec = [m for m in mv if m.kind == "received"]
+                if not rec:
+                    row[pl] = {"in_hand": None, "counted": None, "counted_on": "", "received": 0, "given": 0}
+                    continue
+                first = min(rec, key=lambda m: (m.moved_on, m.id))      # none in hand before the first delivery recorded
+                base, d0, mid, after = 0, first.moved_on, first.id - 1, 0
+            rec = sum(m.qty for m in mv if m.kind == "received" and m.moved_on >= d0 and m.id > mid)
+            out_ = sum(r.qty or 1 for r in given if r.item == it and _src(r) == pl and r.issued_on >= d0 and r.id > after)
+            n = base + rec - out_
+            row[pl] = {"in_hand": n, "counted": last.qty if last else None, "counted_on": last.moved_on.isoformat() if last else "",
+                       "received": rec, "given": out_, "since": d0.isoformat()}
+            total += n; known = True
+        row["total"] = total if known else None
+        row["low"] = known and total <= row["reorder"]
+        out.append(row)
+    return out
 
 
 def _given(rows):
@@ -130,12 +188,13 @@ def _people(db):
 def _issue_dict(r, users):
     return {"id": r.id, "emp_id": r.employee_id, "no": r.emp_no, "name": r.name, "date": r.issued_on.isoformat(),
             "item": r.item, "size": r.size or "", "qty": r.qty or 1, "condition": r.condition or "Issued", "site": r.site or "",
-            "instructed_by": r.instructed_by or "", "remarks": r.remarks or "", "early": r.early_reason or "",
+            "instructed_by": r.instructed_by or "", "remarks": r.remarks or "", "source": _src(r),
             "by": users.get(r.created_by, "")}
 
 
 def dashboard(db):
     seed(db)
+    migrate_stock(db)
     today = M._dubai_today()
     people, issues = _people(db)
     items = ITEMS
@@ -164,25 +223,15 @@ def dashboard(db):
                 quick.append({"no": p["no"], "name": p["name"], "item": b.item, "first": a.issued_on.isoformat(),
                               "again": b.issued_on.isoformat(), "days": (b.issued_on - a.issued_on).days, "reason": b.remarks or ""})
     quick.sort(key=lambda q: q["again"], reverse=True)
-    stock = []
-    for s in db.query(models.PpeStock).all():
-        since = sum(r.qty or 1 for r in given_all if r.item == s.item and s.counted_on and r.issued_on >= s.counted_on)
-        avail = (s.counted - since) if s.counted is not None else None
-        stock.append({"item": s.item, "counted": s.counted, "counted_on": s.counted_on.isoformat() if s.counted_on else "",
-                      "issued_since": since, "available": avail, "reorder": s.reorder or 0,
-                      "low": avail is not None and avail <= (s.reorder or 0)})
-    for it in items:
-        if not any(x["item"] == it for x in stock):
-            stock.append({"item": it, "counted": None, "counted_on": "", "issued_since": 0, "available": None, "reorder": 5, "low": False})
-    stock.sort(key=lambda x: items.index(x["item"]) if x["item"] in items else 99)
-    return {"today": today.isoformat(), "items": items, "sizes": SIZES, "recent_days": RECENT_DAYS,
+    stk = stock(db, issues)
+    return {"today": today.isoformat(), "items": items, "sizes": SIZES, "recent_days": RECENT_DAYS, "places": list(PLACES),
             "workers": workers,
             "recent": [_issue_dict(r, users) for r in sorted(issues, key=lambda r: (r.issued_on, r.id), reverse=True)[:80]],
             "tiles": {"month": sum(r.qty or 1 for r in given_all if r.issued_on >= month0),
                       "six": sum(by_item_6m.values()), "quick": len(quick),
                       "pending": sum(1 for r in issues if (r.condition or "") in NOT_GIVEN),
-                      "low": sum(1 for s in stock if s["low"])},
-            "by_item_6m": by_item_6m, "quick": quick[:60], "stock": stock}
+                      "low": sum(1 for x in stk if x["low"])},
+            "by_item_6m": by_item_6m, "quick": quick[:60], "stock": stk}
 
 
 @router.get("/store/ppe")
@@ -239,13 +288,16 @@ def _clean(db, p):
         qty = 0
     if not 1 <= qty <= 10:
         raise HTTPException(status_code=400, detail="How many? 1 to 10.")
+    src = str(p.get("source") or "Store")
+    if src not in PLACES:
+        raise HTTPException(status_code=400, detail="Given from the Store or the Office?")
     cond = str(p.get("condition") or "Issued")
     if cond not in ("Issued", "Replacement", "Eligible"):
         cond = "Issued"
     return e, {"employee_id": e.id, "emp_no": e.emp_no, "name": e.name, "issued_on": d, "item": item,
                "size": M.tidy_text(p.get("size"))[:20], "qty": qty, "condition": cond,
                "site": M.tidy_text(p.get("site"))[:40], "instructed_by": M.tidy_text(p.get("instructed_by"))[:80],
-               "remarks": M.tidy_text(p.get("remarks"))[:300]}
+               "remarks": M.tidy_text(p.get("remarks"))[:300], "source": src}
 
 
 @router.post("/store/ppe")
@@ -253,7 +305,7 @@ def add(payload: dict = Body(...), db: Session = Depends(get_db), user: models.U
     e, f = _clean(db, payload)
     r = models.PpeIssue(**f, created_by=user.id)
     db.add(r); db.commit()
-    M.log_action(db, user.id, "ppe", f"{e.emp_no} {e.name}: {f['qty']} x {f['item']} {f['size']} on {f['issued_on']}")
+    M.log_action(db, user.id, "ppe", f"{e.emp_no} {e.name}: {f['qty']} x {f['item']} {f['size']} on {f['issued_on']} from the {f['source']}")
     return {"ok": True, "id": r.id}
 
 
@@ -281,22 +333,82 @@ def delete(iid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     return {"ok": True}
 
 
+def _place(p):
+    pl = str(p.get("location") or "")
+    if pl not in PLACES:
+        raise HTTPException(status_code=400, detail="Store or Office?")
+    return pl
+
+
 @router.post("/store/ppe/stock")
 def set_stock(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    """A count at one place: what is there now. Items given after this come off it."""
     item = str(payload.get("item") or "").strip()
     if item not in ITEMS:
         raise HTTPException(status_code=400, detail="Pick the item.")
+    pl = _place(payload)
     try:
         counted = int(payload.get("counted"))
-        reorder = int(payload.get("reorder") if payload.get("reorder") not in (None, "") else 5)
+        reorder = int(payload.get("reorder")) if payload.get("reorder") not in (None, "") else None
     except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Type the number counted in the store.")
-    if counted < 0 or reorder < 0:
+        raise HTTPException(status_code=400, detail="Type the number counted.")
+    if counted < 0 or (reorder is not None and reorder < 0):
         raise HTTPException(status_code=400, detail="Numbers cannot be below zero.")
-    s = db.query(models.PpeStock).filter(models.PpeStock.item == item).first() or models.PpeStock(item=item)
-    s.counted, s.counted_on, s.reorder = counted, M._dubai_today(), reorder
-    db.add(s); db.commit()
-    M.log_action(db, user.id, "ppe", f"stock counted: {item} {counted} (reorder at {reorder})")
+    from sqlalchemy import func as F
+    last_issue = db.query(F.max(models.PpeIssue.id)).scalar() or 0
+    db.add(models.PpeStockMove(item=item, location=pl, kind="count", qty=counted, moved_on=M._dubai_today(), after_issue=last_issue,
+                               created_by=user.id))
+    if reorder is not None:
+        st = db.query(models.PpeStock).filter(models.PpeStock.item == item).first() or models.PpeStock(item=item)
+        st.reorder = reorder
+        db.add(st)
+    db.commit()
+    M.log_action(db, user.id, "ppe", f"stock counted: {item} at the {pl}: {counted}")
+    return {"ok": True}
+
+
+@router.post("/store/ppe/received")
+def received(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    """New stock delivered to the Store or the Office."""
+    item = str(payload.get("item") or "").strip()
+    if item not in ITEMS:
+        raise HTTPException(status_code=400, detail="Pick the item.")
+    pl = _place(payload)
+    try:
+        qty = int(payload.get("qty"))
+    except (TypeError, ValueError):
+        qty = 0
+    if not 1 <= qty <= 2000:
+        raise HTTPException(status_code=400, detail="How many were received?")
+    d = M._as_date(payload.get("date")) or M._dubai_today()
+    if d > M._dubai_today():
+        raise HTTPException(status_code=400, detail="The date is in the future.")
+    m = models.PpeStockMove(item=item, location=pl, kind="received", qty=qty, moved_on=d, note=M.tidy_text(payload.get("note"))[:120],
+                            created_by=user.id)
+    db.add(m); db.commit()
+    M.log_action(db, user.id, "ppe", f"stock received: {qty} x {item} at the {pl} on {d}")
+    return {"ok": True, "id": m.id}
+
+
+@router.get("/store/ppe/stock/history")
+def stock_history(item: str = "", db: Session = Depends(get_db), user: models.User = VIEW):
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    mv = db.query(models.PpeStockMove).filter(models.PpeStockMove.item == item).all()
+    gv = [r for r in _given(db.query(models.PpeIssue).filter(models.PpeIssue.item == item).all())]
+    rows = [{"id": m.id, "date": m.moved_on.isoformat(), "place": m.location, "kind": m.kind, "qty": m.qty, "note": m.note or "",
+             "by": users.get(m.created_by, "")} for m in mv]
+    rows.sort(key=lambda r: (r["date"], r["id"]), reverse=True)
+    by_place = {pl: sum(r.qty or 1 for r in gv if _src(r) == pl) for pl in PLACES}
+    return {"item": item, "moves": rows[:100], "given_all": by_place}
+
+
+@router.delete("/store/ppe/stock/{mid}")
+def delete_move(mid: int, db: Session = Depends(get_db), user: models.User = EDIT):
+    m = db.get(models.PpeStockMove, mid)
+    if not m:
+        raise HTTPException(status_code=404, detail="That stock entry is not there.")
+    M.log_action(db, user.id, "ppe_removed", f"stock {m.kind} removed: {m.qty} x {m.item} at the {m.location} on {m.moved_on}")
+    db.delete(m); db.commit()
     return {"ok": True}
 
 
@@ -337,7 +449,7 @@ def export(token: str, format: str = "excel", view: str = "grid", db: Session = 
     if view == "log":
         title = "PPE Issue Register"
         rows = [{"Date": _fmt(r["date"]), "Employee ID": r["no"], "Name": r["name"], "Item": r["item"], "Size": r["size"],
-                 "Qty": r["qty"], "Status": r["condition"], "Instructed by": r["instructed_by"],
+                 "Qty": r["qty"], "From": r["source"], "Status": r["condition"], "Instructed by": r["instructed_by"],
                  "Remarks": r["remarks"]}
                 for r in sorted([*dashboard_all(db)], key=lambda r: (r["date"], r["no"]), reverse=True)]
     else:

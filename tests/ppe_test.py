@@ -68,13 +68,38 @@ ppe.add({"employee_id": t2.id, "item": "Jacket", "qty": 1, "date": (today - time
 c = {w["no"]: w for w in ppe.get_ppe(s, jomon)["workers"]}["F-902"]["cells"]
 ok(c["Helmet"]["state"] == "old" and c["Jacket"]["state"] == "mid" and c["Safety Vest"]["state"] == "none", "helmet 200 days: green; jacket 60 days: amber; vest never")
 ok(ppe._ago(200) == "7 months ago" and ppe._ago(7) == "7 days ago" and ppe._ago(400) == "1 yr 1 mo ago", "how long ago, in words")
-# stock
-ppe.set_stock({"item": "Safety Shoes", "counted": 20, "reorder": 5}, s, jomon)
+# stock at two places: Store and Office
 st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}
-ok(st["Safety Shoes"]["counted"] == 20 and st["Safety Shoes"]["available"] == 20 - st["Safety Shoes"]["issued_since"], "stock: counted today, given since taken off")
-ppe.add({"employee_id": t1.id, "item": "Safety Shoes", "qty": 1}, s, jomon)
-st2 = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}
-ok(st2["Safety Shoes"]["available"] == st["Safety Shoes"]["available"] - 1, "giving a pair takes one off the store")
+ok(st["Coverall"]["Store"]["counted"] == 16 and st["Coverall"]["Office"]["in_hand"] is None, "Excel stock became the Store count; Office not counted yet")
+cov0 = st["Coverall"]["Store"]["in_hand"]
+ok(cov0 == 16 - st["Coverall"]["Store"]["given"], f"Store coverall in hand = 16 counted - given since ({cov0})")
+ppe.set_stock({"item": "Safety Shoes", "location": "Store", "counted": 20, "reorder": 5}, s, jomon)
+ppe.set_stock({"item": "Safety Shoes", "location": "Office", "counted": 4}, s, jomon)
+st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Safety Shoes"]
+ok(st["Store"]["in_hand"] == 20 and st["Office"]["in_hand"] == 4 and st["total"] == 24, "counted today: Store 20, Office 4, total 24 (earlier issues today not taken off again)")
+ppe.add({"employee_id": t1.id, "item": "Safety Shoes", "qty": 1, "source": "Store"}, s, jomon)
+ppe.add({"employee_id": t2.id, "item": "Safety Shoes", "qty": 2, "source": "Office"}, s, jomon)
+ppe.add({"employee_id": t2.id, "item": "Safety Shoes", "qty": 1, "source": "Office", "condition": "Eligible"}, s, jomon)
+st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Safety Shoes"]
+ok(st["Store"]["in_hand"] == 19 and st["Office"]["in_hand"] == 2, "given from Store takes off the Store; from Office off the Office; 'approved' not taken")
+ppe.add({"employee_id": t2.id, "item": "Safety Shoes", "qty": 1, "source": "Office", "date": (today - timedelta(days=3)).isoformat()}, s, jomon)
+st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Safety Shoes"]
+ok(st["Office"]["in_hand"] == 2, "an entry dated before the count is not taken off it (it was gone before the count)")
+r1 = ppe.received({"item": "Safety Shoes", "location": "Office", "qty": 30, "note": "LPO 1042"}, s, jomon)
+st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Safety Shoes"]
+ok(st["Office"]["in_hand"] == 32 and st["total"] == 51 and not st["low"], "delivery of 30 to the Office: Office 32, total 51")
+ppe.received({"item": "Jacket", "location": "Store", "qty": 6}, s, jomon)
+ppe.add({"employee_id": t1.id, "item": "Jacket", "qty": 2, "source": "Store"}, s, jomon)
+st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Jacket"]
+ok(st["Store"]["in_hand"] == 4 and st["Store"]["counted"] is None and st["low"], "never counted: from the first delivery 6 - 2 given = 4; at reorder level 5 -> 'order'")
+ok("Store or Office" in refused(ppe.received, {"item": "Jacket", "location": "Site", "qty": 1}, s, jomon), "place must be Store or Office")
+ok("Store or the Office" in refused(ppe.add, {"employee_id": t1.id, "item": "Jacket", "source": "Camp"}, s, jomon), "given from must be Store or Office")
+ok("future" in refused(ppe.received, {"item": "Jacket", "location": "Store", "qty": 1, "date": (today + timedelta(days=2)).isoformat()}, s, jomon), "delivery date in the future refused")
+ppe.delete_move(r1["id"], s, jomon)
+ok({x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}["Safety Shoes"]["Office"]["in_hand"] == 2, "wrong delivery removed - stock back")
+h = ppe.stock_history("Safety Shoes", s, viewer)
+ok(len(h["moves"]) == 2 and h["moves"][0]["kind"] == "count", "stock history lists the counts and deliveries")
+ok(refused(ppe._editor, viewer), "viewer cannot count or receive stock")
 # delete a wrong entry
 ppe.delete(e2.id, s, jomon)
 ok(s.query(models.PpeIssue).filter_by(employee_id=t9.id, item="Safety Shoes").count() == 1, "wrong entry removed")

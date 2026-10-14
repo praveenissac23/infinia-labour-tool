@@ -1245,7 +1245,24 @@ class PpeIssue(Base):
     site = Column(String, default="")
     instructed_by = Column(String, default="")
     remarks = Column(String, default="")
-    early_reason = Column(String, default="")          # why it was given before the limit allowed
+    early_reason = Column(String, default="")          # old, unused (there are no limits)
+    source = Column(String, default="Store")           # Store | Office - whose stock it came out of (empty = Store)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PpeStockMove(Base):
+    """PPE stock at one place (Store or Office): a count, or a delivery
+    received. In hand = last count + received since - given since."""
+    __tablename__ = "ppe_stock_moves"
+    id = Column(Integer, primary_key=True)
+    item = Column(String, nullable=False, index=True)
+    location = Column(String, nullable=False, default="Store")   # Store | Office
+    kind = Column(String, nullable=False)                        # count | received
+    qty = Column(Integer, nullable=False, default=0)
+    moved_on = Column(Date, nullable=False)
+    after_issue = Column(Integer, default=0)                     # count: last issue id entered before it
+    note = Column(String, default="")                            # supplier / LPO for a delivery
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
