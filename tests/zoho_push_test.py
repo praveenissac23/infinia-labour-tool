@@ -41,8 +41,6 @@ def fake_call(db_, method, path, params=None, body=None):
     raise AssertionError(path)
 Z.call = fake_call
 M.put_setting(s, "zoho_refresh", credentials.lock("rt")); s.commit()
-ok(Z.vat_mode(s) == "hold", "until the chief accountant answers, bills with VAT are held")
-M.put_setting(s, "zoho_vat_mode", "claim"); s.commit()
 ok(Z.connected(s), "connected once a refresh token is kept")
 
 def line(**k):
@@ -50,7 +48,7 @@ def line(**k):
                          zoho_status="approved", **k)
     s.add(x); s.commit(); return x
 s.add(models.Supplier(name="Dani Building Materials", name_key=M._supplier_key("Dani Building Materials"), zoho_id="V-DANI")); s.commit()
-a = line(book="site", site="913", paid=346.5, desc="Tile adhesive", sup="DANI BUILDING MATERIALS", vat=True, trn="100555666700003",
+a = line(book="site", site="913", paid=346.5, desc="Tile adhesive", sup="DANI BUILDING MATERIALS", vat=True, vat_claim="claim", receipt_no="R-5521", trn="100555666700003",
          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
 b = line(book="office", paid=260, desc="918 DM fee", zoho_account="01. Preliminaries Including Mobilization › Authority Payments")
 c = line(book="pro", paid=1000, desc="To Shafique for company cash book", zoho_account="Transfer to Company Petty Cash")
@@ -68,30 +66,43 @@ ok(va.get("vendor_id") == "V-DANI" and va["tax_treatment"] == "vat_registered" a
    "VAT bill: Paid To = linked Zoho vendor, VAT Registered, TRN, 5% tax")
 ok(all(b_["tax_treatment"] == "vat_not_registered" and "tax_id" not in b_ for b_ in EXP if b_["amount"] != 346.5),
    "bills without VAT: 'Non VAT Registered', no tax claimed (as the accountant enters them)")
-nv = line(book="site", site="913", paid=50, desc="Paint", sup="Unknown Shop", vat=True, trn="100555666700003",
+ok(va["description"].startswith("Rcpt R-5521 · "), "receipt number in the Zoho description")
+# VAT ticked but no choice: refused, nothing posted
+nc = line(book="site", site="913", paid=63, desc="Disc", sup="DANI BUILDING MATERIALS", vat=True, trn="100555666700003",
           zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
-n0 = len(POSTED); Z.push_many(s, [nv]); s.refresh(nv)
-ok(len(POSTED) == n0 and "link" in nv.zoho_err, "VAT claimed but supplier not linked in Zoho -> refused, nothing posted")
-# hold: VAT bill refused, nothing posted
-M.put_setting(s, "zoho_vat_mode", "hold"); s.commit()
-hv = line(book="site", site="913", paid=63, desc="Disc", sup="DANI BUILDING MATERIALS", vat=True, trn="100555666700003",
-          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
-n0 = len(POSTED); Z.push_many(s, [hv]); s.refresh(hv)
-ok(len(POSTED) == n0 and hv.zoho_status == "approved" and "chief accountant" in hv.zoho_err, "hold: VAT bill waits, nothing posted")
-# zero: as the accountant does today - supplier and TRN, Zero Rate tax
-TAXES_ZERO = True
-M.put_setting(s, "zoho_vat_mode", "zero"); s.commit(); Z._CACHE.pop("vat0", None)
+n0 = len(POSTED); Z.push_many(s, [nc]); s.refresh(nc)
+ok(len(POSTED) == n0 and "Claim 5% or Not claimable" in nc.zoho_err, "VAT bill without the claim choice: refused, nothing posted")
+# not claimable (bill in a person's name): VAT Registered, TRN, Zero Rate
 orig = Z.call
 def with_zero(db_, method, path, params=None, body=None):
     if path == "settings/taxes":
         return {"taxes": [{"tax_name": "Standard Rate", "tax_percentage": 5, "tax_id": "VAT5"}, {"tax_name": "Zero Rate", "tax_percentage": 0, "tax_id": "VAT0"}]}
     return orig(db_, method, path, params, body)
-Z.call = with_zero
-hv.zoho_err = ""; s.commit()
-Z.push_many(s, [hv]); s.refresh(hv)
+Z.call = with_zero; Z._CACHE.pop("vat0", None)
+nc.vat_claim, nc.zoho_err = "zero", ""; s.commit()
+Z.push_many(s, [nc]); s.refresh(nc)
 zb = POSTED[-1][1]
-ok(hv.zoho_status == "sent" and zb["tax_id"] == "VAT0" and zb["tax_treatment"] == "vat_registered" and zb["vendor_id"] == "V-DANI" and zb["tax_reg_no"] == "100555666700003",
-   "zero: VAT Registered, TRN, supplier, Zero Rate - exactly as Zoho is entered today")
+ok(nc.zoho_status == "sent" and zb["tax_id"] == "VAT0" and zb["tax_treatment"] == "vat_registered" and zb["vendor_id"] == "V-DANI",
+   "not claimable: VAT Registered, supplier, Zero Rate - as entered today")
+# supplier not in Zoho: sent anyway, put on the to-do list
+nv = line(book="site", site="913", paid=50, desc="Paint", sup="Unknown Shop", vat=True, vat_claim="claim", trn="100555666700003",
+          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles")
+Z.push_many(s, [nv]); s.refresh(nv)
+ok(nv.zoho_status == "sent" and "vendor_id" not in POSTED[-1][1] and nv.zoho_todo == "supplier", "supplier not in Zoho: sent, and on the 'add supplier' list")
+import zohosync
+ok(any(r["id"] == nv.id for r in zohosync._todo(s)), "to-do list shows it")
+zohosync.todo_done({"src": "petty", "id": nv.id}, s, None); s.refresh(nv)
+ok(nv.zoho_todo == "", "Done clears it")
+# split receipt: one itemised expense, parts add up
+import json as _j
+sp = line(book="site", site="913", paid=500, desc="Mixed materials", sup="DANI BUILDING MATERIALS",
+          zoho_account="17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles",
+          splits=_j.dumps([{"account": "17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles", "amount": 300},
+                           {"account": "01. Preliminaries Including Mobilization", "amount": 200}]))
+Z.push_many(s, [sp]); s.refresh(sp)
+ib = POSTED[-1][1]
+ok(sp.zoho_status == "sent" and ib.get("is_itemized_expense") and [(l["account_id"], l["amount"]) for l in ib["line_items"]] == [("T17A", 300.0), ("P01", 200.0)]
+   and "account_id" not in ib and ib["project_id"] == "PRJ913", "split: one itemised expense, 300 + 200 to two cost heads, with the project")
 Z.call = orig
 P = {p[1].get("reference_number"): p for p in POSTED}
 pa = P[f"PC-{a.id}"]
@@ -116,4 +127,20 @@ GONE.add(a.zoho_id.split(":")[1])
 n = Z.check_deleted(s, force=True)
 s.refresh(a)
 ok(n == 1 and a.zoho_status == "cancelled" and "Deleted in Zoho" in a.zoho_err, "deleted in Zoho -> cancelled in the portal with the reason")
+# approval: VAT choice stored; split must add up
+import zohosync
+u = models.User(username="ca2", full_name="CA", hashed_password="x", role="admin"); s.add(u); s.commit()
+q1 = models.PettyCash(book="site", on_date=date(2026, 10, 12), description="Tiles", site="913", paid=400, vat=True, trn="100555666700003", zoho_status="")
+s.add(q1); s.commit()
+r = zohosync.approve({"lines": [{"id": q1.id, "account": "17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles",
+                                 "splits": [{"account": "17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles", "amount": 250},
+                                            {"account": "01. Preliminaries Including Mobilization", "amount": 100}]}]}, s, u)
+s.refresh(q1)
+ok(r["refused"] and "Pick VAT" in r["refused"][0]["why"] and "add up to 400.00" in r["refused"][0]["why"] and q1.zoho_status == "",
+   "approval refused: VAT not chosen and split 350 of 400 - both shown")
+r = zohosync.approve({"lines": [{"id": q1.id, "account": "x", "vat_claim": "zero",
+                                 "splits": [{"account": "17. Floors & Wall Tiles (Internal) › 17a. Ceramic Tiles", "amount": 300},
+                                            {"account": "01. Preliminaries Including Mobilization", "amount": 100}]}]}, s, u)
+s.refresh(q1)
+ok(not r["refused"] and q1.vat_claim == "zero" and q1.zoho_status in ("approved", "sent"), "approval with VAT choice and a split that adds up goes through")
 print("fails=", fails)

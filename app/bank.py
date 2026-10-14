@@ -54,7 +54,7 @@ def _row(x, users):
     return {"id": x.id, "date": x.on_date.isoformat(), "kind": x.kind, "kind_label": KINDS.get(x.kind, x.kind),
             "party": x.party or "", "party_id": x.party_id or "", "mode": x.mode or "", "reference": x.reference or "",
             "docs": _docs(x), "account": x.account or "", "site": x.site or "", "amount": round(x.amount or 0, 2),
-            "out": x.kind != "customer", "vat": bool(x.vat), "trn": x.trn or "", "notes": x.notes or "",
+            "out": x.kind != "customer", "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "notes": x.notes or "",
             "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "", "zoho_err": x.zoho_err or "",
             "scope_id": x.scope_id, "net_amount": round(x.net_amount or 0, 2), "pp_id": x.pp_id,
             "by": users.get(x.updated_by or x.created_by, "")}
@@ -133,6 +133,11 @@ def _clean(p):
         raise HTTPException(status_code=400, detail="The bills / invoices add up to more than the amount.")
     vat = bool(p.get("vat")) and kind in ("expense", "charge")
     trn = "".join(ch for ch in str(p.get("trn") or "") if ch.isdigit())[:15] if vat else ""
+    vat_claim = str(p.get("vat_claim") or "") if vat else ""
+    if vat and vat_claim not in ("claim", "zero"):
+        raise HTTPException(status_code=400, detail="VAT on the bill: pick Claim 5% or Not claimable.")
+    if vat_claim == "claim" and len(trn) != 15:
+        raise HTTPException(status_code=400, detail="To claim the VAT, type the supplier's TRN (15 digits).")
     if trn and len(trn) != 15:
         raise HTTPException(status_code=400, detail="A TRN has 15 digits.")
     scope_id, net = None, 0.0
@@ -147,7 +152,7 @@ def _clean(p):
             raise HTTPException(status_code=400, detail="The amount for Project payments (excl. VAT) must be more than 0 and not more than the amount received.")
     return {"scope_id": scope_id, "net_amount": net, "kind": kind, "on_date": d, "party": party, "party_id": str(p.get("party_id") or "")[:40], "mode": mode,
             "reference": ref, "docs": json.dumps(docs), "account": acc, "site": str(p.get("site") or "").strip()[:40],
-            "amount": amt, "vat": vat, "trn": trn, "notes": str(p.get("notes") or "").strip()[:300]}
+            "amount": amt, "vat": vat, "trn": trn, "vat_claim": vat_claim, "notes": str(p.get("notes") or "").strip()[:300]}
 
 
 BANK_PLACES = [("vendorpayments", "vendorpayments", "payment_id", "description_contains"),
@@ -392,14 +397,14 @@ def push(db, x):
             vendor = x.party_id or _contact_id(db, x.party, "vendor")
             body["vendor_id"] = vendor
         except Z.ZohoError:
-            if x.vat:
-                raise                                   # a VAT bill never goes without its supplier
+            vendor = ""                                 # sent without; on the chief accountant's list to add
     if x.site:
         p = Z.projects(db).get(x.site.strip())
         if p:
             body["project_id"], body["customer_id"] = p
-    body.update(Z.vat_fields(db, x.vat, x.trn, vendor, x.party))
+    body.update(Z.vat_fields(db, x.vat, x.trn, x.vat_claim or ""))
     d = Z.call(db, "POST", "expenses", body=body)
+    x.zoho_todo = "supplier" if (x.party or "").strip() and not vendor else ""
     return f"expense:{d['expense']['expense_id']}", "Expense"
 
 

@@ -49,13 +49,28 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  const N0=q.rows.length; ck('seeded lines waiting', N0>=14, N0);
  const sug=Object.fromEntries(q.rows.map(r=>[r.description,r.account]));
  console.log(JSON.stringify(sug,null,1));
- ck('VAT without TRN flagged', q.rows.find(r=>r.description.startsWith('Epoxy')&&r.vat).flags.includes('VAT without TRN'));
+ ck('VAT bill asks: claim or not', q.rows.find(r=>r.description.startsWith('Epoxy')&&r.vat).flags.includes('Pick VAT: claim or not'));
  ck('RTA advert permit suggested as marketing', /Ads/.test(sug['Advt Permit renewal M 28679']||''), sug['Advt Permit renewal M 28679']);
  ck('PRO to office is a transfer', sug['To Shafique for Company Cash book']==='Transfer to Company Petty Cash');
  await a.screenshot({path:SH+'z2-send.png',fullPage:true});
  // fill TRN for epoxy inline
  const ep=q.rows.find(r=>r.description.startsWith('Epoxy')&&r.vat).id;
+ await a.evaluate(id=>zhSet(id,'vat_claim','claim'),ep);
+ ck('Claim 5% without TRN asks for the TRN', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),ep)).includes('VAT claimed without TRN'));
+ ck('VAT box is on the row', await a.locator('#zh-body select.zh-vat').count() > 0);
  await a.evaluate(id=>zhSet(id,'trn','100555666700003'),ep);
+ ck('with TRN the VAT line is ready', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),ep)).length === 0);
+ // split: open the dialog on a bill, two parts that must add up
+ const dr=q.rows.find(r=>r.description.startsWith('Drinks')).id;
+ await a.evaluate(id=>zhSplit(id),dr); await a.waitForTimeout(300);
+ ck('split dialog opens with two parts', await a.locator('.zs-row').count() === 2);
+ await a.screenshot({path:SH+'z-split.png'});
+ await a.evaluate(id=>{ const r=ZH.rows.find(x=>x.id===id); ZH_PICK[id].splits=[{account:'Office › Office Pantry Expenses',amount:r.amount-5},{account:'Office › Staff Meals and Benefits',amount:3}]; },dr);
+ await a.click('#zs-ok'); await a.waitForTimeout(200);
+ ck('split not adding up is flagged', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),dr)).some(f=>/add up/.test(f)));
+ await a.evaluate(id=>{ const r=ZH.rows.find(x=>x.id===id); ZH_PICK[id].splits[1].amount=5; zhSet(id,'splits',ZH_PICK[id].splits); },dr);
+ ck('split adding up is ready', (await a.evaluate(id=>zhFlags(ZH.rows.find(r=>r.id===id)),dr)).length === 0);
+ ck('row shows "Split in 2"', /Split in 2/.test(await a.locator('#zh-body').textContent()));
  // crane: pick a project account without project -> flag
  const cr=q.rows.find(r=>r.description.startsWith('Paid to crane')).id;
  await a.evaluate(id=>zhSet(id,'account','01. Preliminaries Including Mobilization'),cr);

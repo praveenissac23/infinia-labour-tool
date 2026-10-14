@@ -1068,6 +1068,10 @@ class PettyCash(Base):
     vat = Column(Boolean, default=False)
     trn = Column(String, default="")
     zoho_account = Column(String, default="")
+    receipt_no = Column(String, default="")       # the receipt's own number, shown in Zoho's description
+    vat_claim = Column(String, default="")        # "claim" (5%) | "zero" (not claimable) - the chief accountant's call per bill
+    splits = Column(Text, default="")             # JSON [{"account":..., "amount":...}] - one receipt over several cost heads
+    zoho_todo = Column(String, default="")        # "supplier" - sent without its Zoho vendor; add it in Zoho
     zoho_status = Column(String, default="")
     zoho_ref = Column(String, default="")
     zoho_id = Column(String, default="")      # "expense:<id>", "journal:<id>", "banktransaction:<id>"
@@ -1101,6 +1105,8 @@ class BankEntry(Base):
     amount = Column(Float, default=0.0)
     vat = Column(Boolean, default=False)
     trn = Column(String, default="")
+    vat_claim = Column(String, default="")        # "claim" | "zero" when vat is ticked
+    zoho_todo = Column(String, default="")        # "supplier" - sent without its Zoho vendor
     notes = Column(String, default="")
     # A client's payment also goes on Accounts > Project payments, net of
     # VAT as that tracker is kept: the scope, the net figure and the

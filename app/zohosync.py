@@ -211,9 +211,30 @@ def _flags(x, account):
         out.append("Pick account")
     if account in PROJECT_ACCOUNTS and not (x.site or "").strip():
         out.append("Pick project")
-    if x.vat and not (x.trn or "").strip():
-        out.append("VAT without TRN")
+    if x.vat and (x.vat_claim or "") not in ("claim", "zero"):
+        out.append("Pick VAT: claim or not")
+    if x.vat and x.vat_claim == "claim" and not (x.trn or "").strip():
+        out.append("VAT claimed without TRN")
+    parts = _parts(x)
+    if parts is not None:
+        total = round((x.paid or 0), 2)
+        if len(parts) < 2 or any(not p.get("account") or p["account"] not in PAID_ACCOUNTS or float(p.get("amount") or 0) <= 0 for p in parts):
+            out.append("Split: each part needs an account and an amount")
+        elif abs(round(sum(float(p["amount"]) for p in parts), 2) - total) > 0.005:
+            out.append(f"Split parts must add up to {total:,.2f}")
+        elif any(p["account"] in PROJECT_ACCOUNTS for p in parts) and not (x.site or "").strip():
+            out.append("Pick project")
     return out
+
+
+def _parts(x):
+    """The split of one receipt, or None when it is not split."""
+    import json as _j
+    try:
+        v = _j.loads(x.splits or "null")
+    except ValueError:
+        return None
+    return v if isinstance(v, list) and v else None
 
 
 def _waiting(db):
@@ -229,7 +250,8 @@ def _row(x, learned, users):
     return {"id": x.id, "book": x.book or "site", "book_label": BOOKS.get(x.book or "site", x.book), "date": x.on_date.isoformat(),
             "description": x.description or "", "supplier": x.supplier or "", "site": x.site or "",
             "amount": round((x.paid or 0) or (x.received or 0), 2), "kind": "received" if x.received else "paid",
-            "vat": bool(x.vat), "trn": x.trn or "", "account": acc, "flags": _flags(x, acc),
+            "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "receipt_no": x.receipt_no or "",
+            "splits": _parts(x) or [], "account": acc, "flags": _flags(x, acc),
             "changed": x.zoho_status == "changed", "zoho_ref": x.zoho_ref or "",
             "by": users.get(x.updated_by or x.created_by, "")}
 
@@ -262,7 +284,29 @@ def queue(db: Session = Depends(get_db), user: models.User = ZG):
             "connected": zohoapi.connected(db),
             "waiting": len(rows), "waiting_total": round(sum(r["amount"] for r in rows), 2),
             "to_fix": sum(1 for r in rows if r["flags"]),
-            "sent_month": len(sent_month)}
+            "sent_month": len(sent_month), "todo": _todo(db)}
+
+
+def _todo(db):
+    """Sent without the supplier as a Zoho vendor - to add in Zoho."""
+    out = [{"src": "petty", "id": x.id, "date": x.on_date.isoformat(), "who": x.supplier or "", "amount": round(x.paid or 0, 2),
+            "what": x.description or "", "ref": x.zoho_ref or ""}
+           for x in db.query(models.PettyCash).filter(models.PettyCash.zoho_todo == "supplier").order_by(models.PettyCash.on_date).all()]
+    out += [{"src": "bank", "id": x.id, "date": x.on_date.isoformat(), "who": x.party or "", "amount": round(x.amount or 0, 2),
+             "what": x.notes or x.reference or "", "ref": x.zoho_ref or ""}
+            for x in db.query(models.BankEntry).filter(models.BankEntry.zoho_todo == "supplier").order_by(models.BankEntry.on_date).all()]
+    return out
+
+
+@router.post("/store/zoho/todo/done")
+def todo_done(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
+    """The supplier has been added on the entry in Zoho."""
+    model = models.BankEntry if payload.get("src") == "bank" else models.PettyCash
+    x = db.get(model, int(payload.get("id") or 0))
+    if x:
+        x.zoho_todo = ""
+        db.commit()
+    return {"ok": True}
 
 
 @router.post("/store/zoho/approve")
@@ -296,6 +340,15 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
         if x.vat and not (x.trn or "").strip() and len(t) == 15:
             x.trn = t
         acc = str(ln.get("account") or "").strip()
+        if x.vat and str(ln.get("vat_claim") or "") in ("claim", "zero"):
+            x.vat_claim = str(ln["vat_claim"])
+        if "splits" in ln:
+            parts = [{"account": str(p.get("account") or "").strip(), "amount": round(float(str(p.get("amount") or 0).replace(",", "") or 0), 2)}
+                     for p in (ln.get("splits") or []) if str(p.get("account") or "").strip() or float(str(p.get("amount") or 0).replace(",", "") or 0)]
+            import json as _j
+            x.splits = _j.dumps(parts) if parts else ""
+            if parts:
+                acc = parts[0]["account"]
         f = _flags(x, acc)
         if f:
             refused.append({"id": x.id, "why": ", ".join(f)})
@@ -457,3 +510,97 @@ def send_loans(payload: dict = Body(default={}), db: Session = Depends(get_db), 
     if sent:
         M.log_action(db, user.id, "zoho_loans", f"{sent} staff loan(s) sent to Zoho")
     return {"ok": True, "sent": sent, "failed": failed}
+
+
+# ---- October check: lines already typed into Zoho by hand ----------------------
+
+CHANGEOVER = "2026-10-14"      # the last day the chief accountant typed into Zoho
+
+
+def _zoho_entries(db, d0, d1):
+    """Zoho's expenses, journals and transfers between two dates - a few
+    large reads, kept for 15 minutes so the check costs Zoho little."""
+    import zohoapi
+    def fetch():
+        out = []
+        for path, key, idk in (("expenses", "expenses", "expense_id"), ("journals", "journals", "journal_id"),
+                               ("banktransactions", "banktransactions", "transaction_id")):
+            page = 1
+            while page <= 5:
+                d = zohoapi.call(db, "GET", path, {"date_start": d0, "date_end": d1, "per_page": 200, "page": page})
+                for e in d.get(key, []):
+                    amt = e.get("total") if path != "banktransactions" else e.get("amount")
+                    if amt is None:
+                        amt = e.get("amount")
+                    out.append({"kind": path, "id": e.get(idk), "date": e.get("date") or e.get("journal_date") or "",
+                                "amount": round(float(amt or 0), 2), "account": e.get("account_name") or "",
+                                "paid_through": e.get("paid_through_account_name") or e.get("offset_account_name") or "",
+                                "vendor": e.get("vendor_name") or "", "ref": e.get("reference_number") or "",
+                                "desc": (e.get("description") or e.get("notes") or "")[:80],
+                                "label": {"expenses": "Expense", "journals": "Journal " + str(e.get("entry_number") or ""),
+                                          "banktransactions": "Transfer"}[path]})
+                if not d.get("page_context", {}).get("has_more_page"):
+                    break
+                page += 1
+        return out
+    return zohoapi._cached(db, f"oct:{d0}:{d1}", fetch, ttl=900)
+
+
+@router.get("/store/zoho/october")
+def october(db: Session = Depends(get_db), user: models.User = ZG):
+    """Portal lines from the start date to the changeover that look like
+    they are in Zoho already (same date and amount; the same petty cash
+    account where Zoho shows it). The chief accountant confirms each."""
+    import zohoapi
+    if not zohoapi.connected(db):
+        raise HTTPException(status_code=400, detail="Zoho is not connected yet - press Connect Zoho.")
+    d0, d1 = _start(db).isoformat(), (M.get_setting(db, "zoho_changeover") or CHANGEOVER)
+    lines = (db.query(models.PettyCash).filter(models.PettyCash.on_date >= d0, models.PettyCash.on_date <= d1,
+                                               models.PettyCash.zoho_status.in_(["", "approved"]))
+               .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
+    try:
+        z = _zoho_entries(db, d0, d1)
+    except zohoapi.ZohoError as e:
+        raise HTTPException(status_code=400, detail=f"Could not read Zoho now ({e.msg[:120]}) - try again in a few minutes.")
+    used = set(x.zoho_ref.split("#")[-1] for x in db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "inzoho",
+                                                                                    models.PettyCash.zoho_ref.like("%#%")).all())
+    def norm(s):
+        return " ".join("".join(ch.lower() if ch.isalnum() else " " for ch in (s or "")).split())
+    out, taken = [], set()
+    for x in lines:
+        amt = round((x.paid or 0) or (x.received or 0), 2)
+        book_acc = norm(zohoapi.BOOK_ACCOUNT.get(x.book or "site", ""))
+        cands = [e for e in z if e["date"] == x.on_date.isoformat() and abs(e["amount"] - amt) < 0.01
+                 and f"{e['kind']}:{e['id']}" not in taken and str(e["id"]) not in used]
+        # prefer the one paid from this book's account
+        cands.sort(key=lambda e: (norm(e["paid_through"]) != book_acc, e["kind"] != "expenses"))
+        m = cands[0] if cands else None
+        if m:
+            taken.add(f"{m['kind']}:{m['id']}")
+        out.append({"id": x.id, "book_label": BOOKS.get(x.book or "site", x.book), "date": x.on_date.isoformat(),
+                    "description": x.description or "", "supplier": x.supplier or "", "amount": amt,
+                    "kind": "received" if x.received else "paid",
+                    "match": m and {k: m[k] for k in ("label", "id", "kind", "account", "paid_through", "vendor", "ref", "desc")},
+                    "sure": bool(m and norm(m["paid_through"]) == book_acc)})
+    return {"from": d0, "to": d1, "rows": out, "zoho_count": len(z),
+            "matched": sum(1 for r in out if r["match"]), "missing": sum(1 for r in out if not r["match"])}
+
+
+@router.post("/store/zoho/october/confirm")
+def october_confirm(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
+    """'Same' - the line is already in Zoho: never sent. Kept with the
+    Zoho entry it matched."""
+    n = 0
+    for it in payload.get("items") or []:
+        x = db.get(models.PettyCash, int(it.get("id") or 0))
+        if not x or (x.zoho_status or "") not in ("", "approved"):
+            continue
+        x.zoho_status = "inzoho"
+        x.zoho_ref = (f"{it.get('label') or 'In Zoho'} · typed by hand #{it.get('zid') or ''}")[:200]
+        x.zoho_err = ""
+        x.approved_by, x.approved_at = user.id, datetime.now(timezone.utc)
+        n += 1
+    db.commit()
+    if n:
+        M.log_action(db, user.id, "zoho_october", f"{n} October petty cash line(s) confirmed already in Zoho")
+    return {"ok": True, "marked": n}

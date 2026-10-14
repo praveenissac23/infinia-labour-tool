@@ -261,19 +261,18 @@ def zero_tax(db):
     return _cached(db, "vat0", fetch)
 
 
-def vat_fields(db, vat, trn, vendor, who=""):
-    """The tax fields of an expense, as the accountant enters them. Raises
-    rather than guess: a VAT bill never goes without its supplier."""
+def vat_fields(db, vat, trn, claim):
+    """The tax fields of an expense, as the chief accountant enters them.
+    A bill with VAT: he decides per bill - "claim" (5% Standard Rate) or
+    "zero" (not claimable, e.g. the bill is in a person's name). Raises
+    rather than guess."""
     if not vat:
         return {"tax_treatment": "vat_not_registered"}
-    mode = vat_mode(db)
-    if mode == "hold":
-        raise ZohoError(400, "Bills with VAT wait for the chief accountant's answer on how VAT is booked - nothing sent")
-    if not vendor:
-        raise ZohoError(400, f"VAT bill: link the supplier to its Zoho vendor first (Send to Zoho > Suppliers in Zoho): {who or 'no supplier typed'}")
-    t = vat_tax(db) if mode == "claim" else zero_tax(db)
+    if claim not in ("claim", "zero"):
+        raise ZohoError(400, "Bill with VAT: pick Claim 5% or Not claimable first - nothing sent")
+    t = vat_tax(db) if claim == "claim" else zero_tax(db)
     if not t:
-        raise ZohoError(400, f"Zoho has no {'5% Standard Rate' if mode == 'claim' else 'Zero Rate'} tax - nothing sent")
+        raise ZohoError(400, f"Zoho has no {'5% Standard Rate' if claim == 'claim' else 'Zero Rate'} tax - nothing sent")
     out = {"tax_id": t, "tax_treatment": "vat_registered"}
     if trn:
         out["tax_reg_no"] = trn
@@ -316,7 +315,8 @@ def push(db, x):
     book = x.book or "site"
     acc = x.zoho_account or ""
     ref = f"PC-{x.id}"
-    desc = (x.description or "")[:90] + (f" · {x.supplier}"[:40] if x.supplier else "")
+    rcpt = (getattr(x, "receipt_no", "") or "").strip()
+    desc = ((f"Rcpt {rcpt} · " if rcpt else "") + (x.description or ""))[:100] + (f" · {x.supplier}"[:40] if x.supplier else "")
     date = x.on_date.isoformat()
     amt = round((x.paid or 0) or (x.received or 0), 2)
     box = account_id(db, BOOK_ACCOUNT[book])
@@ -367,9 +367,32 @@ def push(db, x):
         vendor = (sup.zoho_id or "") if sup else ""
         if vendor:
             body["vendor_id"] = vendor
-    body.update(vat_fields(db, x.vat, x.trn, vendor, x.supplier))
+    tax = vat_fields(db, x.vat, x.trn, getattr(x, "vat_claim", "") or "")
+    parts = _splits(x)
+    if parts:
+        # One receipt over several cost heads: one itemised expense, each
+        # line to its own account. The parts were checked to add up.
+        line_tax = {k: v for k, v in tax.items() if k == "tax_id"}
+        body.pop("account_id"); body.pop("amount")
+        body["is_itemized_expense"] = True
+        body["line_items"] = [dict({"account_id": need(p["account"]), "amount": round(float(p["amount"]), 2),
+                                    "description": desc, "item_order": i + 1}, **line_tax) for i, p in enumerate(parts)]
+        tax = {k: v for k, v in tax.items() if k != "tax_id"}
+    body.update(tax)
     d = call(db, "POST", "expenses", body=body)
-    return f"expense:{d['expense']['expense_id']}", "Expense"
+    # Supplier typed but not a Zoho vendor yet: on the chief accountant's
+    # list to add in Zoho (he chose to send without it).
+    x.zoho_todo = "supplier" if (x.supplier or "").strip() and not vendor else ""
+    return f"expense:{d['expense']['expense_id']}", "Expense" + (" (itemised)" if parts else "")
+
+
+def _splits(x):
+    import json as _j
+    try:
+        parts = _j.loads(getattr(x, "splits", "") or "[]")
+    except ValueError:
+        return []
+    return parts if isinstance(parts, list) and len(parts) >= 2 else []
 
 
 def claim(db, model, x, states):

@@ -455,7 +455,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pp-sum { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
   .pp-sum b { font-variant-numeric: tabular-nums; }
   @media (max-width: 1100px) { .pp-form { grid-template-columns: 1fr 1fr; } }
-  .pc-form { display: grid; grid-template-columns: auto 140px minmax(180px, 2fr) minmax(150px, 1.4fr) 140px 120px auto; gap: 10px; align-items: end;
+  .pc-form { display: grid; grid-template-columns: auto 140px minmax(180px, 2fr) minmax(150px, 1.4fr) 140px 120px 120px auto; gap: 10px; align-items: end;
              border-top: 1px solid #EEE; padding-top: 12px; }
   .pc-form.nosup { grid-template-columns: auto 140px minmax(220px, 3fr) 160px 140px auto; }
   .pc-form input, .pc-form select { width: 100%; }
@@ -473,7 +473,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-table tfoot td { font-weight: 700; background: #F5F2EE; border-top: 1.5px solid #333; }
   .pc-table .pc-act { white-space: nowrap; } .pc-table .pc-act button { margin-left: 4px; }
   /* Company books: two rows - what & when, then where, how much, VAT. */
-  .pc-form.vat { grid-template-columns: 210px 150px minmax(260px, 2fr) minmax(220px, 1.4fr); }
+  .pc-form.vat { grid-template-columns: 200px 150px minmax(240px, 2fr) minmax(200px, 1.4fr) 140px; }
+  .pc-form.vat .pc-vat { grid-column: span 2; }
   .pc-form.vat .pc-kind { min-width: 0; }
   .pc-form.vat .pc-go { justify-self: start; }
   .pc-vat .pc-vatbox { display: flex; align-items: center; gap: 6px; height: 36px; font: 600 13px inherit; color: #333; white-space: nowrap; }
@@ -506,6 +507,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zx-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .zx-box { background: #fff; border-radius: 12px; width: 520px; max-width: 100%; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
   .zx-box select { width: 100%; height: 38px; }
+  .zh-oct-t { width: 100%; border-collapse: collapse; font-size: 13px; } .zh-oct-t th { text-align: left; font-size: 11px; color: #8A8079; text-transform: uppercase; padding: 4px 6px; }
+  .zh-oct-t td { border-top: 1px solid #EFEBE6; padding: 6px; vertical-align: top; } .zh-oct-t .n { text-align: right; white-space: nowrap; }
+  .zs-row { display: grid; grid-template-columns: 1fr 130px 36px; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .zs-row input { height: 38px; text-align: right; width: 100%; box-sizing: border-box; }
+  .zh-table select.zh-vat { min-width: 120px; width: 120px; }
+  .zh-splitbtn { border: 0; background: none; color: #B03A2E; font-size: 12px; cursor: pointer; padding: 2px 0 0; display: block; text-decoration: underline; }
 
   /* Labour accommodation - camp rooms and beds */
   #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
@@ -3096,6 +3103,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </table>
             </div>
             <div id="zh-loans"></div>
+            <div id="zh-todo"></div>
+            <div class="zh-sup" id="zh-oct-card" style="margin-top:14px;"><b>October check</b> <span class="sub" style="display:inline;">- lines from 1 to 14 Oct that were typed into Zoho by hand, so they are not sent twice</span>
+              <button type="button" class="btn btn-gray btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button>
+              <div id="zh-oct"></div></div>
             <details class="zh-sup" id="zh-sup" ontoggle="if (this.open) zhSupLoad(0)"><summary><b>Suppliers in Zoho</b> <span class="sub" style="display:inline;">- the portal's supplier list is the master; each supplier is linked to its Zoho vendor and changes are copied there</span></summary>
               <div class="zh-row" style="margin:8px 0;"><button class="btn btn-gray btn-sm" onclick="zhSupLoad(1)">Match with Zoho</button><span class="sub" id="zh-sup-n" style="display:inline;"></span></div>
               <div class="grid-wrap" style="max-height:420px;"><table class="pc-table"><thead><tr><th class="l">Supplier (portal)</th><th style="width:150px;">TRN</th><th class="l" style="width:46%;">Zoho vendor</th></tr></thead><tbody id="zh-sup-body"></tbody></table></div>
@@ -3131,6 +3142,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site" onchange="this.dataset.auto = ''"></select></label>
               <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
+              <label class="pc-f pc-rcpt"><span>Receipt no.</span><input type="text" id="pc-rcpt" maxlength="40" placeholder="Optional" data-spell="off"></label>
               <div class="pc-f pc-vat" id="pc-vat-f"><span>VAT on the receipt?<span class="help-i in-label" tabindex="0" data-tip="Tick when the receipt shows VAT, and type the supplier's TRN. The chief accountant needs it to claim the VAT.">i</span></span><span class="pc-vatbox"><input type="checkbox" id="pc-vat" onchange="pcVat()"><label for="pc-vat" id="pc-vat-l">Yes</label><input type="text" id="pc-trn" inputmode="numeric" maxlength="15" placeholder="Supplier TRN - 15 digits" style="display:none;"></span></div>
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
@@ -16068,8 +16080,9 @@ function bkKindDraw() {
   if (BK_KIND === "expense") {
     more.innerHTML = `<label class="pc-f"><span>Zoho account</span><select id="bk-acc">${`<option value="">- pick -</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
       <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">-</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
-      <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="document.getElementById('bk-trn-f').style.visibility=this.checked?'':'hidden'"> Yes</span></label>
-      <label class="pc-f" id="bk-trn-f" style="visibility:hidden;"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" placeholder="15 digits" data-spell="off"></label><div></div>`;
+      <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="['bk-trn-f','bk-vatc-f'].forEach(i=>document.getElementById(i).style.visibility=this.checked?'':'hidden')"> Yes</span></label>
+      <label class="pc-f" id="bk-vatc-f" style="visibility:hidden;"><span>Claim the VAT?</span><select id="bk-vatc"><option value="">- pick -</option><option value="claim">Claim 5%</option><option value="zero">Not claimable</option></select></label>
+      <label class="pc-f" id="bk-trn-f" style="visibility:hidden;"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" placeholder="15 digits" data-spell="off"></label>`;
   } else if (BK_KIND === "customer") {
     const byP = {}; (BK_SCOPES || []).forEach(x => (byP[x.project] = byP[x.project] || []).push(x));
     more.innerHTML = `<label class="pc-f"><span>Project payments - project and scope</span><select id="bk-scope" onchange="bkNet()"><option value="">- not on Project payments -</option>${Object.keys(byP).sort().map(pj => `<optgroup label="${escapeAttr(pj)}">${byP[pj].map(x => `<option value="${x.id}">${escapeHtml(x.project + " - " + x.scope)}</option>`).join("")}</optgroup>`).join("")}</select></label>
@@ -16182,7 +16195,7 @@ function bkBody() {
   return { kind: BK_KIND, date: v("bk-date"), party: ["charge", "transfer"].includes(BK_KIND) ? "" : v("bk-party").trim(), party_id: BK_PARTY_ID,
     mode: v("bk-mode"), reference: v("bk-ref").trim(), amount: v("bk-amt").replace(/,/g, ""), notes: v("bk-notes").trim(),
     account: BK_KIND === "expense" ? v("bk-acc") : (BK_KIND === "transfer" ? v("bk-to") : ""), site: BK_KIND === "expense" ? v("bk-site") : "",
-    vat: BK_KIND === "expense" && (document.getElementById("bk-vat") || {}).checked, trn: v("bk-trn"),
+    vat: BK_KIND === "expense" && (document.getElementById("bk-vat") || {}).checked, trn: v("bk-trn"), vat_claim: v("bk-vatc"),
     scope_id: BK_KIND === "customer" ? v("bk-scope") : "", net_amount: BK_KIND === "customer" ? v("bk-net").replace(/,/g, "") : "",
     docs: Object.entries(BK_PICK).map(([id, amount]) => ({ id, amount, number: (BK_DOCS.find(d => d.id === id) || {}).number || "" })) };
 }
@@ -16210,7 +16223,8 @@ async function bkEdit(id) {
   document.getElementById("bk-mode").value = r.mode; document.getElementById("bk-ref").value = r.reference;
   document.getElementById("bk-amt").value = r.amount; document.getElementById("bk-notes").value = r.notes;
   if (r.kind === "expense") { document.getElementById("bk-acc").value = r.account; document.getElementById("bk-site").value = r.site;
-    document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-trn-f").style.visibility = r.vat ? "" : "hidden"; }
+    document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-vatc").value = r.vat_claim || "";
+    ["bk-trn-f", "bk-vatc-f"].forEach(i => document.getElementById(i).style.visibility = r.vat ? "" : "hidden"); }
   if (r.kind === "transfer") document.getElementById("bk-to").value = r.account;
   if (r.kind === "customer") { BK_NET_AUTO = false; document.getElementById("bk-scope").value = r.scope_id || ""; document.getElementById("bk-net").value = r.net_amount ? r.net_amount.toFixed(2) : "";
     document.getElementById("bk-cvat").checked = !r.net_amount || Math.abs(r.net_amount * 1.05 - r.amount) < 0.02; bkNet(); }
@@ -16270,7 +16284,7 @@ async function zhLoad() {
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
   ZH_PICK = {};
-  ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, on: !r.flags.length }; });
+  ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || "", splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length }; });
   zhDraw();
 }
 function zhConnDraw() {
@@ -16374,8 +16388,15 @@ function zhFlags(r) {
   const p = ZH_PICK[r.id], out = [];
   const okList = r.kind === "received" ? ZH.groups[3].accounts : [].concat(ZH.groups[0].accounts, ZH.groups[1].accounts, ZH.groups[2].accounts);
   if (!p.account || !okList.includes(p.account)) out.push(r.kind === "received" ? "Pick where it came from" : "Pick account");
-  if (zhProjectAcc(p.account) && !(p.site || "").trim()) out.push("Pick project");
-  if (r.vat && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT without TRN");
+  const sp = (p.splits || []).filter(s => s.account || +s.amount);
+  if (sp.length) {
+    const tot = Math.round(sp.reduce((a, s) => a + (+s.amount || 0), 0) * 100) / 100;
+    if (sp.length < 2 || sp.some(s => !s.account || !(+s.amount > 0))) out.push("Split: each part needs an account and an amount");
+    else if (Math.abs(tot - r.amount) > 0.005) out.push(`Split parts must add up to ${pcMoney(r.amount)}`);
+    if (sp.some(s => zhProjectAcc(s.account)) && !(p.site || r.site || "").trim()) out.push("Pick project");
+  } else if (zhProjectAcc(p.account) && !(p.site || "").trim()) out.push("Pick project");
+  if (r.vat && !["claim", "zero"].includes(p.vat_claim)) out.push("Pick VAT: claim or not");
+  if (r.vat && p.vat_claim === "claim" && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT claimed without TRN");
   if (r.changed) out.push("Correct it in Zoho first");
   return out;
 }
@@ -16396,7 +16417,7 @@ function zhShown() {
 }
 function zhDraw() {
   if (!ZH) return;
-  zhConnDraw(); zhPendDraw(); zhLoansDraw();
+  zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
   document.getElementById("zh-stats").innerHTML =
@@ -16408,13 +16429,17 @@ function zhDraw() {
     if (f.length) p.on = false;
     const site = (r.site || "") ? escapeHtml(r.site)
       : (zhProjectAcc(p.account) ? `<select onchange="zhSet(${r.id},'site',this.value)"><option value="">- pick -</option>${(ZH_SITES || []).map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>` : "-");
-    const vat = !r.vat ? "No" : (r.trn ? `Yes<span class="sub">TRN ${escapeHtml(r.trn)}</span>`
-      : `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">`);
+    const vat = !r.vat ? "No" : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value)" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name.">
+        <option value="">- VAT? -</option><option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option></select>`
+      + (r.trn ? `<span class="sub">TRN ${escapeHtml(r.trn)}</span>` : (p.vat_claim === "claim" ? `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">` : ""));
+    const sp = (p.splits || []).filter(s => s.account || +s.amount);
+    const acc = sp.length ? `<button type="button" class="btn btn-gray btn-sm" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split in ${sp.length} · change</button>`
+      : `<select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select>${r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">Split</button>` : ""}`;
     return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
       <td>${escapeHtml(r.book_label)}</td><td>${pcDate(r.date)}</td>
       <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
       <td class="l">${escapeHtml(r.supplier || "-")}</td><td>${site}</td>
-      <td class="l"><select class="zh-acc" title="${escapeAttr(p.account || "")}" onchange="zhSet(${r.id},'account',this.value); this.title=this.value">${zhOptions(r, p.account)}</select></td>
+      <td class="l">${acc}</td>
       <td>${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
       <td><div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
   }).join("") || `<tr><td colspan="10" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
@@ -16428,10 +16453,77 @@ function zhSet(id, k, v) {
   if (k !== "on") { const r = ZH.rows.find(x => x.id === id); p.on = !zhFlags(r).length; }
   zhDraw();
 }
+// One receipt over several cost heads: parts that must add up to the bill.
+function zhSplit(id) {
+  const r = ZH.rows.find(x => x.id === id), p = ZH_PICK[id];
+  if (!(p.splits || []).length) p.splits = [{ account: p.account || "", amount: r.amount }, { account: "", amount: "" }];
+  const draw = () => {
+    const tot = Math.round(p.splits.reduce((a, s) => a + (+s.amount || 0), 0) * 100) / 100, left = Math.round((r.amount - tot) * 100) / 100;
+    ov.querySelector("#zs-rows").innerHTML = p.splits.map((s, i) => `<div class="zs-row"><select onchange="ZH_PICK[${id}].splits[${i}].account=this.value">${zhOptions(r, s.account)}</select>
+      <input type="text" inputmode="decimal" value="${s.amount === "" ? "" : s.amount}" placeholder="0.00" oninput="ZH_PICK[${id}].splits[${i}].amount=this.value.replace(/,/g,''); this.closest('.zx-box').dispatchEvent(new Event('sum'))">
+      <button type="button" class="btn btn-gray btn-sm" onclick="ZH_PICK[${id}].splits.splice(${i},1); this.closest('.zx-box').dispatchEvent(new Event('redraw'))" title="Remove this part">×</button></div>`).join("");
+    sum();
+  };
+  const sum = () => { const tot = Math.round(p.splits.reduce((a, s) => a + (+s.amount || 0), 0) * 100) / 100, left = Math.round((r.amount - tot) * 100) / 100;
+    ov.querySelector("#zs-sum").innerHTML = left === 0 ? `<span style="color:#2E7D32;font-weight:600;">Adds up to ${pcMoney(r.amount)} ✓</span>` : `<span style="color:#B03A2E;font-weight:600;">${left > 0 ? pcMoney(left) + " still to place" : pcMoney(-left) + " too much"}</span> of ${pcMoney(r.amount)}`; };
+  const ov = document.createElement("div"); ov.className = "zx-modal";
+  ov.innerHTML = `<div class="zx-box" style="width:620px;"><h3 style="margin:0 0 4px;">Split over cost heads</h3>
+    <div class="sub" style="display:block;margin-bottom:12px;">${escapeHtml(r.description)} · ${escapeHtml(r.supplier || "")} · AED ${pcMoney(r.amount)}${r.vat ? " (incl. VAT)" : ""}. It goes to Zoho as one itemised expense.</div>
+    <div id="zs-rows"></div><button type="button" class="btn btn-gray btn-sm" id="zs-add">+ Add a part</button>
+    <div id="zs-sum" style="margin-top:10px;font-size:13px;"></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:14px;"><button type="button" class="btn btn-gray" id="zs-none">No split</button><span><button type="button" class="btn btn-gray" id="zs-close">Cancel</button> <button type="button" class="btn btn-primary" id="zs-ok">Use this split</button></span></div></div>`;
+  document.body.appendChild(ov);
+  const box = ov.querySelector(".zx-box"); box.addEventListener("sum", sum); box.addEventListener("redraw", draw);
+  const before = JSON.stringify(p.splits);
+  ov.querySelector("#zs-add").onclick = () => { p.splits.push({ account: "", amount: "" }); draw(); };
+  ov.querySelector("#zs-close").onclick = () => { p.splits = JSON.parse(before); if (p.splits.length && !p.splits.some(s => s.account)) p.splits = []; ov.remove(); zhDraw(); };
+  ov.querySelector("#zs-none").onclick = () => { p.splits = []; ov.remove(); zhSet(id, "account", p.account); };
+  ov.querySelector("#zs-ok").onclick = () => { p.splits = p.splits.filter(s => s.account || +s.amount); ov.remove(); zhSet(id, "splits", p.splits); };
+  draw();
+}
+function zhTodoDraw() {
+  const el = document.getElementById("zh-todo"), L = (ZH && ZH.todo) || [];
+  if (!el) return;
+  el.innerHTML = L.length ? `<div class="zh-sup" style="margin-top:14px;border-color:#F3C9C4;background:#FFF8F7;"><b>${L.length} entr${L.length === 1 ? "y" : "ies"} in Zoho without the supplier</b> <span class="sub" style="display:inline;">- the supplier is not a Zoho vendor yet: add it on the entry in Zoho, then press Done</span>
+    <table style="width:100%;margin-top:6px;font-size:13px;border-collapse:collapse;">${L.map(x => `<tr style="border-top:1px solid #F3DCD8;"><td style="padding:5px 6px;width:80px;">${pcDate(x.date)}</td><td><b>${escapeHtml(x.who)}</b> · ${escapeHtml(x.what)}</td><td class="n" style="width:90px;text-align:right;">${pcMoney(x.amount)}</td><td style="width:150px;color:#6b625a;">${escapeHtml(x.ref)}</td>
+    <td style="width:70px;text-align:right;"><button type="button" class="btn btn-gray btn-sm" onclick="zhTodoDone('${x.src}',${x.id})">Done</button></td></tr>`).join("")}</table></div>` : "";
+}
+async function zhTodoDone(src, id) {
+  try { await apiCall("/store/zoho/todo/done", { method: "POST", body: JSON.stringify({ src, id }) }); ZH.todo = ZH.todo.filter(x => !(x.src === src && x.id === id)); zhTodoDraw(); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
+let ZH_OCT = null;
+async function zhOct() {
+  const btn = document.getElementById("zh-oct-btn"), el = document.getElementById("zh-oct");
+  btn.disabled = true; el.innerHTML = `<div class="sub" style="margin-top:8px;">Reading Zoho for 1-14 Oct...</div>`;
+  try { ZH_OCT = await apiCall("/store/zoho/october"); }
+  catch (e) { el.innerHTML = `<div class="zx-tag zx-bad" style="margin-top:8px;">${escapeHtml(errText(e))}</div>`; btn.disabled = false; return; }
+  btn.disabled = false; zhOctDraw();
+}
+function zhOctDraw() {
+  const d = ZH_OCT, el = document.getElementById("zh-oct"); if (!d) return;
+  const m = d.rows.filter(r => r.match), miss = d.rows.filter(r => !r.match);
+  el.innerHTML = `<div style="margin:8px 0;font-size:13px;">${d.rows.length} portal line${d.rows.length === 1 ? "" : "s"} from ${pcDate(d.from)} to ${pcDate(d.to)} not yet marked · <b>${m.length} look already in Zoho</b> · ${miss.length} not found (they will be sent)</div>
+    ${m.length ? `<table class="zh-oct-t"><thead><tr><th style="width:28px;"><input type="checkbox" id="zo-all" onchange="document.querySelectorAll('.zo-c').forEach(c=>c.checked=this.checked)" checked></th><th>Portal line</th><th>In Zoho</th><th class="n">Amount</th></tr></thead><tbody>
+      ${m.map(r => `<tr><td><input type="checkbox" class="zo-c" data-id="${r.id}" data-label="${escapeAttr(r.match.label)}" data-zid="${escapeAttr(String(r.match.id))}" ${r.sure ? "checked" : ""}></td>
+        <td><b>${pcDate(r.date)}</b> · ${escapeHtml(r.book_label)} · ${escapeHtml(r.description)}${r.supplier ? ` <span class="sub" style="display:inline;">${escapeHtml(r.supplier)}</span>` : ""}</td>
+        <td>${escapeHtml(r.match.label)} · ${escapeHtml(r.match.account || r.match.desc)}${r.match.vendor ? " · " + escapeHtml(r.match.vendor) : ""}<span class="sub">paid through ${escapeHtml(r.match.paid_through || "-")}${r.match.ref ? " · ref " + escapeHtml(r.match.ref) : ""}${r.sure ? "" : " · different account - check"}</span></td>
+        <td class="n">${pcMoney(r.amount)}</td></tr>`).join("")}</tbody></table>
+      <button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="zhOctConfirm()">Ticked ones are already in Zoho - never send them</button>` : ""}
+    ${miss.length ? `<details style="margin-top:8px;"><summary>${miss.length} not found in Zoho - they wait on the list above to be approved</summary><div style="font-size:12.5px;margin-top:4px;">${miss.map(r => `${pcDate(r.date)} · ${escapeHtml(r.book_label)} · ${escapeHtml(r.description)} · ${pcMoney(r.amount)}`).join("<br>")}</div></details>` : ""}`;
+}
+async function zhOctConfirm() {
+  const items = [...document.querySelectorAll(".zo-c:checked")].map(c => ({ id: +c.dataset.id, label: c.dataset.label, zid: c.dataset.zid }));
+  if (!items.length) return;
+  try { const d = await apiCall("/store/zoho/october/confirm", { method: "POST", body: JSON.stringify({ items }) });
+        showStatus("zh-status", "ok", `${d.marked} line${d.marked === 1 ? "" : "s"} marked as already in Zoho - they will not be sent.`); await zhLoad(); await zhOct(); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
+}
 function zhAll(on) { zhShown().forEach(r => { ZH_PICK[r.id].on = on && !zhFlags(r).length; }); zhDraw(); }
 async function zhApprove() {
   const lines = zhShown().filter(r => ZH_PICK[r.id].on && !zhFlags(r).length)
-    .map(r => ({ id: r.id, account: ZH_PICK[r.id].account, site: ZH_PICK[r.id].site || "", trn: ZH_PICK[r.id].trn || "" }));
+    .map(r => { const p = ZH_PICK[r.id], sp = (p.splits || []).filter(s => s.account || +s.amount);
+      return { id: r.id, account: sp.length ? sp[0].account : p.account, site: p.site || "", trn: p.trn || "", vat_claim: p.vat_claim || "", splits: sp }; });
   if (!lines.length) return;
   const go = document.getElementById("zh-go"); go.disabled = true;
   try {
@@ -16720,7 +16812,7 @@ function pcDescAuto() {
 function pcReset() {
   PC_EDIT = null;
   ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
-  ["pc-desc", "pc-sup", "pc-amt"].forEach(id => document.getElementById(id).value = "");
+  ["pc-desc", "pc-sup", "pc-amt", "pc-rcpt"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("pc-site").value = "";
   document.getElementById("pc-vat").checked = false; document.getElementById("pc-trn").value = ""; pcVat();
   document.getElementById("pc-date").value = pcToday();
@@ -16742,6 +16834,7 @@ function pcEdit(id) {
   sel.value = r.site;
   document.getElementById("pc-amt").value = r.received || r.paid;
   document.getElementById("pc-vat").checked = !!r.vat; document.getElementById("pc-trn").value = r.trn || ""; pcVat();
+  document.getElementById("pc-rcpt").value = r.receipt_no || "";
   document.getElementById("pc-save").textContent = "Save changes";
   document.getElementById("pc-cancel").style.display = "";
   pcDraw();
@@ -16753,7 +16846,8 @@ async function pcSave() {
   const body = { date: document.getElementById("pc-date").value, description: document.getElementById("pc-desc").value,
                  supplier: document.getElementById("pc-sup").value, site: document.getElementById("pc-site").value,
                  received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0, book: PC_BOOK,
-                 vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim() };
+                 vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
+                 receipt_no: document.getElementById("pc-rcpt").value.trim() };
   const btn = document.getElementById("pc-save"); btn.disabled = true;
   try {
     if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });

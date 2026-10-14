@@ -108,7 +108,7 @@ def register(db, month, book="site"):
                     "supplier": x.supplier or "", "site": x.site or "",
                     "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "balance": bal,
                     "by": users.get(x.updated_by or x.created_by, ""),
-                    "vat": bool(x.vat), "trn": x.trn or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
+                    "vat": bool(x.vat), "trn": x.trn or "", "receipt_no": x.receipt_no or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
                     "zoho_account": x.zoho_account or "", "zoho_err": x.zoho_err or ""})
     rec = round(sum(r["received"] for r in out), 2)
     paid = round(sum(r["paid"] for r in out), 2)
@@ -159,7 +159,8 @@ def _clean(payload):
     if vat and trn and len(trn) != 15:
         raise HTTPException(status_code=400, detail="A TRN has 15 digits - check the number on the receipt.")
     return {"on_date": d, "description": desc[:400], "supplier": str(payload.get("supplier") or "").strip()[:120],
-            "site": str(payload.get("site") or "").strip()[:40], "received": rec, "paid": paid, "vat": vat, "trn": trn}
+            "site": str(payload.get("site") or "").strip()[:40], "received": rec, "paid": paid, "vat": vat, "trn": trn,
+            "receipt_no": " ".join(str(payload.get("receipt_no") or "").split())[:40]}
 
 
 ZOHO_RIGHT = "accounts_zoho"
