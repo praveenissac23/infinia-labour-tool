@@ -186,6 +186,9 @@ ACCESS_GRANTS = {
     # A store report reads the store; a request history reads requests.
     **{f"reports.storerep.{k}": ["store"] for k in ("stock", "by_site", "usage", "site_cost", "assets", "issues", "lost", "hired")},
     "reports.storerep.mr_history": ["requests"],
+    # Accommodation: the tab is looked at with Labour reports; changing who
+    # sleeps where is its own tick (below).
+    "reports.labour.accom": ["reports"],
     # The leave report shows the registers this login has on Staff > Leave.
 }
 # Documents due are kept on Expiry Reminder; leave on Staff > Leave.
@@ -263,6 +266,8 @@ def access_tree():
                 for sb in t["subs"]:
                     sb["leaf"] = f"{tid}.{sb['id']}"
                     leaves.append(_leaf(sb["leaf"], sb["label"], sb["right"]))
+                    if sb["leaf"] == "reports.labour.accom":
+                        leaves.append(_leaf("reports.labour.accom_edit", "Accommodation - change who sleeps where", ["camp"], ["camp"]))
                 kids.append({"id": tid, "label": t["label"], "children": leaves})
             else:
                 label = t["label"] + (" (cash register, own password)" if t.get("hidden") else "")

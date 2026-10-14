@@ -731,7 +731,19 @@
        "reports",
        "camp"
       ],
-      "grant": []
+      "grant": [
+       "reports"
+      ]
+     },
+     {
+      "id": "reports.labour.accom_edit",
+      "label": "Accommodation - change who sleeps where",
+      "right": [
+       "camp"
+      ],
+      "grant": [
+       "camp"
+      ]
      }
     ]
    },

@@ -628,8 +628,9 @@ def _grant_camp(db):
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
         role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
         add = []
-        if role is not None and (role.name or "").strip().lower() in edit_roles and "camp" not in keys and keys:
-            add.append("camp")
+        if role is not None and (role.name or "").strip().lower() in edit_roles and keys:
+            # the right, and its tick on Settings > Access so a re-save keeps it
+            add += [k for k in ("camp", "reports.labour.accom_edit") if k not in keys]
         if any(k.startswith("reports.labour") for k in keys) and "reports.labour.accom" not in keys:
             add.append("reports.labour.accom")
         if add:
