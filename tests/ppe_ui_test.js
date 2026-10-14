@@ -22,45 +22,37 @@ const tiles = p => p.evaluate(() => [...document.querySelectorAll('#pe-tiles .pe
   ck('5 tiles', t0.length === 5, t0);
   const rows = await a.locator('#pe-body tr.pe-row').count();
   ck('grid lists the workers from the sheet', rows > 50, rows);
-  ck('cells coloured by state', (await a.locator('#pe-body .pe-s-full').count()) > 0 && (await a.locator('#pe-body .pe-s-ok, #pe-body .pe-s-some').count()) > 0);
+  ck('cells coloured by state', (await a.locator('#pe-body .pe-s-old').count()) > 0 && (await a.locator('#pe-body .pe-s-mid, #pe-body .pe-s-recent').count()) > 0);
   ck('recent issues listed', (await a.locator('#pe-recent .pe-li').count()) > 5);
   ck('Preview / PDF / Excel / Share buttons', (await a.locator('#screen-ppe .exp-btns .btn').count()) === 4);
   await a.screenshot({ path: SH + 'ppe_1440_full.png', fullPage: true });
   // search by ID without the dash
-  const pick = await a.evaluate(() => { const w = PE.workers.find(w => w.emp_id && w.cells['Safety Shoes'].state === 'full'); return w && { no: w.no, key: w.key, id: w.emp_id }; });
-  ck('a worker at the shoe limit exists in the sheet data', !!pick, pick);
+  const pick = await a.evaluate(() => { const w = PE.workers.find(w => w.emp_id && w.cells['Safety Shoes'].last); return w && { no: w.no, key: w.key, id: w.emp_id }; });
+  ck('a worker given shoes exists in the sheet data', !!pick, pick);
+  ck('no limits or due dates on the screen', !/limit|due /i.test(await a.locator('#pe-head').textContent() + await a.locator('#pe-body').textContent()));
+  ck('cells say how long ago', /ago|today/.test(await a.locator('#pe-body').textContent()));
   await a.fill('#pe-q', pick.no.replace('-', '')); await a.waitForTimeout(300);
   ck('search without the dash finds him', (await a.locator('#pe-body tr.pe-row').count()) === 1);
-  // worker card
   await a.click('#pe-body tr.pe-row'); await a.waitForTimeout(1200);
-  ck('worker card shows the history', (await a.locator('.pe-m .pe-hist tr').count()) >= 1 && (await a.locator('.pe-m .pe-sum > div').count()) >= 4);
+  ck('worker card shows the history', (await a.locator('.pe-m .pe-hist tr').count()) >= 1 && /ago|today/.test(await a.locator('.pe-m .pe-sum').textContent()));
   await a.screenshot({ path: SH + 'ppe_card.png' });
-  // give shoes again -> too soon
+  // give shoes: shows when last given, nothing required
   await a.click('.pe-m .btn-primary >> text=+ Give PPE'); await a.waitForTimeout(900);
   await a.click('#pe-its button[data-it="Safety Shoes"]'); await a.waitForTimeout(900);
-  ck('too-soon warning appears', /Too soon/.test(await a.locator('#pe-chk').textContent()));
-  ck('reason box is required', await a.locator('#pe-why').isVisible());
-  ck('last size filled in', (await a.inputValue('#pe-sz')) !== '' || true);
-  await a.screenshot({ path: SH + 'ppe_give_toosoon.png' });
-  await a.click('#pe-save'); await a.waitForTimeout(500);
-  ck('save without a reason is stopped', /write why/i.test(await a.locator('#pe-msg').textContent()));
-  const direct = await a.evaluate(async id => { try { await apiCall('/store/ppe', { method: 'POST', body: JSON.stringify({ employee_id: id, item: 'Safety Shoes', qty: 1, date: PE.today, condition: 'Issued' }) }); return 'saved'; } catch (e) { return errText(e); } }, pick.id);
-  ck('server refuses it too without a reason', /Too soon/.test(direct), direct);
-  await a.fill('#pe-why', 'Shoes torn on site - seen by Shaiju'); await a.fill('#pe-ins', 'Shaiju');
+  ck('shows when he last had shoes and how long ago', /Last safety shoes given on .* (ago|today)/.test(await a.locator('#pe-chk').textContent()), await a.locator('#pe-chk').textContent());
+  ck('no reason box', !(await a.locator('#pe-why').count()));
   await a.click('#pe-save'); await a.waitForTimeout(1800);
-  ck('saved with the reason, marked early', /given early/.test(await a.locator('#pe-status').textContent()));
+  ck('saved', /^Saved\.?$/.test((await a.locator('#pe-status').textContent()).trim()));
   const t1 = await tiles(a);
   ck('Given this month went up by one', +t1[0] === +t0[0] + 1, [t0, t1]);
-  ck('flag on his row', /early/.test(await a.locator('#pe-body tr.pe-row').first().textContent()));
-  // an OK give for someone never given a helmet
+  ck('his shoes cell now red - given today', await a.locator('#pe-body tr.pe-row').first().locator('.pe-s-recent').count() >= 1);
+  // asked again the same day: flagged, not blocked
+  await a.evaluate(id => ppeGive(id), pick.id); await a.waitForTimeout(800);
+  await a.click('#pe-its button[data-it="Safety Shoes"]'); await a.waitForTimeout(900);
+  ck('asked again: "Given recently ... today" shown', /Given recently.*today/.test(await a.locator('#pe-chk').textContent()));
+  await a.screenshot({ path: SH + 'ppe_give_recent.png' });
+  await a.click('.pe-m .btn-gray >> text=Cancel');
   await a.fill('#pe-q', ''); await a.waitForTimeout(200);
-  const ok = await a.evaluate(() => { const w = PE.workers.find(w => w.emp_id && !w.cells['Helmet'].last); return w && w.emp_id; });
-  await a.evaluate(id => ppeGive(id), ok); await a.waitForTimeout(800);
-  await a.click('#pe-its button[data-it="Helmet"]'); await a.waitForTimeout(900);
-  ck('never given: OK message, no reason box', /OK to give/.test(await a.locator('#pe-chk').textContent()) && !(await a.locator('#pe-why').count()));
-  await a.screenshot({ path: SH + 'ppe_give_ok.png' });
-  await a.click('#pe-save'); await a.waitForTimeout(1500);
-  ck('saved', /^Saved\.?$/.test((await a.locator('#pe-status').textContent()).trim()));
   // stock dialog
   await a.click('#pe-stockbtn'); await a.waitForTimeout(300);
   await a.selectOption('#pe-si', 'Helmet'); await a.fill('#pe-sc', '20'); await a.click('.pe-m .btn-primary'); await a.waitForTimeout(1500);

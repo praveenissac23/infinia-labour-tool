@@ -549,7 +549,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-ppe .pe-who b{display:block;font-weight:600;white-space:nowrap} #screen-ppe .pe-who small{color:#8A8079}
   #screen-ppe .pe-cell{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:3px 8px;border-radius:8px;min-width:78px;line-height:1.2}
   #screen-ppe .pe-cell b{font-size:12.5px;font-weight:600} #screen-ppe .pe-cell small{font-size:11px}
-  .pe-s-none{color:#C2B9B2} .pe-s-ok{background:#EEF7F0;color:#2E7D32} .pe-s-some{background:#FFF4E0;color:#9A5B00} .pe-s-full{background:#FDECEA;color:#B03A2E}
+  .pe-s-none{color:#C2B9B2} .pe-s-old{background:#EEF7F0;color:#2E7D32} .pe-s-mid{background:#FFF4E0;color:#9A5B00} .pe-s-recent{background:#FDECEA;color:#B03A2E}
   #screen-ppe .pe-flag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;background:#FDECEA;color:#B03A2E;margin-left:6px}
   #screen-ppe .pe-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:14px}
   #screen-ppe .pe-panel{border:1px solid #ECE6DF;border-radius:12px;background:#fff;overflow:hidden}
@@ -3125,14 +3125,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         <div class="screen" id="screen-ppe">
           <div class="card">
             <div class="pc-head">
-              <div class="pc-title"><h2 style="margin:0;">PPE register <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Coveralls, safety shoes, helmets given to workers</span></h2></div>
+              <div class="pc-title"><h2 style="margin:0;">PPE register <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">When each worker was last given a coverall, shoes, helmet...</span></h2></div>
               <div class="pc-btns"><label class="pc-f"><span>Report</span><select id="pe-rep"><option value="grid">By worker</option><option value="log">Issue register</option></select></label><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="ppeExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="ppeExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Share</button></div></div>
             </div>
             <div class="pe-tiles" id="pe-tiles"></div>
             <div class="pe-tools">
               <label class="pc-f"><span>Find a worker</span><input type="text" id="pe-q" placeholder="Name or ID, e.g. F782" data-spell="off" oninput="ppeDraw()"></label>
               <button type="button" class="btn btn-primary" id="pe-give" onclick="ppeGive()">+ Give PPE</button>
-              <div class="pe-legend"><span><i style="background:#CDE8D3"></i>Can be given</span><span><i style="background:#F6D9A8"></i>Given - more allowed</span><span><i style="background:#F3C2BC"></i>At the limit - too soon</span></div>
+              <div class="pe-legend"><span><i style="background:#F3C2BC"></i>Given in the last 30 days</span><span><i style="background:#F6D9A8"></i>1 - 3 months ago</span><span><i style="background:#CDE8D3"></i>Over 3 months ago</span></div>
             </div>
             <div class="status-msg" id="pe-status"></div>
             <div class="pe-wrap"><table class="pe-grid"><thead id="pe-head"></thead><tbody id="pe-body"><tr><td style="padding:18px;color:#999;">Loading...</td></tr></tbody></table></div>
@@ -16678,7 +16678,14 @@ async function ppeLoad() {
   ppeDraw();
 }
 function ppeD(iso, y) { if (!iso) return ""; const [Y, m, d] = iso.split("-"); return `${d} ${"Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")[+m - 1]}${y || (PE && Y !== PE.today.slice(0, 4)) ? " " + (y ? Y : "'" + Y.slice(2)) : ""}`; }
-function ppeLim(it) { const l = PE.limits[it]; return `${l[0]} in ${l[1] === 12 ? "a year" : l[1] + " months"}`; }
+function ppeAgo(days, long) {
+  if (days === null || days === undefined) return "";
+  if (days === 0) return "today";
+  if (days < 60) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const m = Math.round(days / 30.44);
+  if (m < 12) return long ? `${m} months ago` : `${m} mo ago`;
+  const y = Math.floor(m / 12), r = m % 12; return `${y} yr${r ? " " + r + " mo" : ""} ago`;
+}
 function ppeCols() { return PE.items.filter(it => PE.workers.some(w => w.cells[it].last) || ["Coverall", "Safety Shoes", "Helmet", "Safety Vest"].includes(it)); }
 function ppeFilter(f) { PE_F = PE_F === f ? "all" : f; ppeDraw(); }
 function ppeDraw() {
@@ -16689,7 +16696,7 @@ function ppeDraw() {
     + tile("Quick repeats (30 days)", t.quick, t.quick ? "bad" : "", "quick") + tile("Approved, not given", t.pending, t.pending ? "warn" : "", "pending")
     + tile("Low stock items", t.low, t.low ? "bad" : "");
   const cols = ppeCols();
-  document.getElementById("pe-head").innerHTML = `<tr><th style="min-width:190px;">Worker</th>${cols.map(it => `<th>${escapeHtml(it)}<small>limit ${ppeLim(it)}</small></th>`).join("")}<th style="text-align:right;">All time</th></tr>`;
+  document.getElementById("pe-head").innerHTML = `<tr><th style="min-width:190px;">Worker</th>${cols.map(it => `<th>${escapeHtml(it)}</th>`).join("")}<th style="text-align:right;">All time</th></tr>`;
   const quickKeys = new Set(PE.quick.map(x => x.no.replace(/-/g, "").toUpperCase()));
   let ws = PE.workers.filter(w => !q || `${w.name} ${w.no}`.toLowerCase().replace(/-/g, "").includes(q));
   if (PE_F === "quick") ws = ws.filter(w => quickKeys.has(w.no.replace(/-/g, "").toUpperCase()));
@@ -16697,13 +16704,13 @@ function ppeDraw() {
   const lastOf = w => PE.items.reduce((m, it) => (w.cells[it].last || "") > m ? w.cells[it].last : m, "");
   ws = ws.map(w => [lastOf(w), w]).sort((x, y) => x[0] === y[0] ? 0 : x[0] > y[0] ? -1 : 1).map(x => x[1]);   // latest given on top
   document.getElementById("pe-body").innerHTML = ws.map(w => `<tr class="pe-row" onclick="ppeCard('${escapeAttr(w.key)}')">
-    <td><span class="pe-who"><b>${escapeHtml(w.name)}${w.early ? `<span class="pe-flag" title="Given early (with a reason) in the last 6 months">${w.early} early</span>` : ""}${w.pending ? `<span class="pe-flag" style="background:#FFF4E0;color:#9A5B00;">${w.pending} to give</span>` : ""}</b><small>${escapeHtml(w.no)}${w.trade ? " · " + escapeHtml(w.trade) : ""}${w.active ? "" : " · left"}</small></span></td>
+    <td><span class="pe-who"><b>${escapeHtml(w.name)}${w.pending ? `<span class="pe-flag" style="background:#FFF4E0;color:#9A5B00;">${w.pending} to give</span>` : ""}</b><small>${escapeHtml(w.no)}${w.trade ? " · " + escapeHtml(w.trade) : ""}${w.active ? "" : " · left"}</small></span></td>
     ${cols.map(it => { const c = w.cells[it];
       if (!c.last) return `<td><span class="pe-cell pe-s-none"><b>—</b><small>never</small></span></td>`;
-      const tip = `Last ${ppeD(c.last, 1)}${c.last_size ? " · size " + c.last_size : ""} · ${c.used} of ${c.limit} in ${c.months} months${c.next_due ? " · next due " + ppeD(c.next_due, 1) : ""}`;
-      return `<td><span class="pe-cell pe-s-${c.state}" title="${escapeAttr(tip)}"><b>${ppeD(c.last)}${c.last_qty > 1 ? " ×" + c.last_qty : ""}</b><small>${c.state === "full" ? "due " + ppeD(c.next_due) : c.state === "ok" ? "can give" : c.used + " of " + c.limit + " used"}</small></span></td>`; }).join("")}
+      const tip = `Last given ${ppeD(c.last, 1)}${c.last_size ? " · size " + c.last_size : ""} · ${c.count_all} given in all`;
+      return `<td><span class="pe-cell pe-s-${c.state}" title="${escapeAttr(tip)}"><b>${ppeD(c.last)}${c.last_qty > 1 ? " ×" + c.last_qty : ""}</b><small>${ppeAgo(c.days_since)}</small></span></td>`; }).join("")}
     <td style="text-align:right;color:#6b625a;">${w.total_all}</td></tr>`).join("") || `<tr><td colspan="${cols.length + 2}" style="padding:18px;color:#999;">Nobody matches.</td></tr>`;
-  document.getElementById("pe-recent").innerHTML = PE.recent.slice(0, 40).map(r => `<div class="pe-li"><span class="d">${ppeD(r.date)}</span><span class="w"><b>${escapeHtml(r.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(r.no)}</span><br>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition === "Eligible" ? ` <span class="zx-tag zx-app">approved, not given</span>` : ""}${r.early ? ` <span class="zx-tag zx-bad" title="${escapeAttr(r.early)}">early</span>` : ""}${r.remarks ? `<span class="sub">${escapeHtml(r.remarks)}</span>` : ""}</span></div>`).join("") || `<div class="pe-li sub">Nothing yet.</div>`;
+  document.getElementById("pe-recent").innerHTML = PE.recent.slice(0, 40).map(r => `<div class="pe-li"><span class="d">${ppeD(r.date)}</span><span class="w"><b>${escapeHtml(r.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(r.no)}</span><br>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition === "Eligible" ? ` <span class="zx-tag zx-app">approved, not given</span>` : ""}${r.remarks ? `<span class="sub">${escapeHtml(r.remarks)}</span>` : ""}</span></div>`).join("") || `<div class="pe-li sub">Nothing yet.</div>`;
   document.getElementById("pe-quick").innerHTML = PE.quick.map(x => `<div class="pe-li"><span class="d" style="color:#B03A2E;font-weight:700;">${x.days} d</span><span class="w"><b>${escapeHtml(x.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(x.no)}</span> · ${escapeHtml(x.item)}<span class="sub">${ppeD(x.first)} then again ${ppeD(x.again)}${x.reason ? " · " + escapeHtml(x.reason) : ""}</span></span></div>`).join("") || `<div class="pe-li sub">None - good.</div>`;
   document.getElementById("pe-stock").innerHTML = `<table class="pe-stock"><thead><tr><th>Item</th><th class="n">Counted</th><th class="n">Given since</th><th class="n">In store</th><th></th></tr></thead><tbody>${PE.stock.map(s => `<tr><td>${escapeHtml(s.item)}</td>
     <td class="n">${s.counted === null ? `<span class="sub" style="display:inline;">not counted</span>` : s.counted + `<span class="sub">${ppeD(s.counted_on)}</span>`}</td><td class="n">${s.issued_since}</td>
@@ -16724,8 +16731,8 @@ async function ppeCard(key) {
   ppeModal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div><h3>${escapeHtml(w.name)}</h3><div class="sub2">${escapeHtml(w.no)}${w.trade ? " · " + escapeHtml(w.trade) : ""} · ${w.total_all} item${w.total_all === 1 ? "" : "s"} given in all</div></div>
       ${PE.may_edit && w.emp_id ? `<button type="button" class="btn btn-primary" onclick="ppeGive(${w.emp_id})">+ Give PPE</button>` : ""}</div>
     <div class="pe-sum">${cols.map(it => { const c = w.cells[it];
-      return `<div class="pe-s-${c.last ? c.state : "none"}" style="border:1px solid #EFE7E1;"><b>${escapeHtml(it)}</b>${c.last ? `last ${ppeD(c.last, 1)}${c.last_size ? " · " + escapeHtml(c.last_size) : ""}<br>${c.used} of ${c.limit} in ${c.months} months${c.next_due ? `<br>${c.state === "full" ? "next due" : "full after this, due"} ${ppeD(c.next_due, 1)}` : ""}` : "never given"}</div>`; }).join("")}</div>
-    <div class="pe-hist"><table>${h.rows.map(r => `<tr><td style="width:84px;">${ppeD(r.date, 1)}</td><td><b>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}</b>${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition !== "Issued" ? ` <span class="zx-tag ${r.condition === "Eligible" ? "zx-app" : "zx-ok"}">${r.condition === "Eligible" ? "approved, not given" : escapeHtml(r.condition)}</span>` : ""}${r.early ? `<span class="sub" style="color:#B03A2E;">Early: ${escapeHtml(r.early)}</span>` : ""}${r.remarks || r.instructed_by ? `<span class="sub">${escapeHtml([r.instructed_by && "by " + r.instructed_by, r.remarks].filter(Boolean).join(" · "))}</span>` : ""}</td>
+      return `<div class="pe-s-${c.last ? c.state : "none"}" style="border:1px solid #EFE7E1;"><b>${escapeHtml(it)}</b>${c.last ? `last ${ppeD(c.last, 1)}${c.last_size ? " · " + escapeHtml(c.last_size) : ""}<br>${ppeAgo(c.days_since, 1)} · ${c.count_all} in all` : "never given"}</div>`; }).join("")}</div>
+    <div class="pe-hist"><table>${h.rows.map(r => `<tr><td style="width:84px;">${ppeD(r.date, 1)}</td><td><b>${r.qty > 1 ? r.qty + " × " : ""}${escapeHtml(r.item)}</b>${r.size ? " · " + escapeHtml(r.size) : ""}${r.condition !== "Issued" ? ` <span class="zx-tag ${r.condition === "Eligible" ? "zx-app" : "zx-ok"}">${r.condition === "Eligible" ? "approved, not given" : escapeHtml(r.condition)}</span>` : ""}${r.remarks || r.instructed_by ? `<span class="sub">${escapeHtml([r.instructed_by && "by " + r.instructed_by, r.remarks].filter(Boolean).join(" · "))}</span>` : ""}</td>
       <td style="width:110px;text-align:right;">${PE.may_edit ? `${r.condition === "Eligible" ? `<button type="button" class="btn btn-sm btn-primary" onclick="ppeGiven(${r.id})">Given</button> ` : ""}<button type="button" class="btn btn-sm btn-gray" onclick="ppeDel(${r.id},'${escapeAttr(w.key)}')" title="Remove a wrong entry">×</button>` : ""}</td></tr>`).join("") || `<tr><td class="sub">Nothing given yet.</td></tr>`}</table></div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
 }
@@ -16733,15 +16740,15 @@ async function ppeGive(empId) {
   if (!PE_PEOPLE) { try { PE_PEOPLE = (await apiCall("/store/ppe/people")).people; } catch (e) { return showStatus("pe-status", "err", errText(e)); } }
   const today = PE.today, F = { emp: empId || 0, item: "", qty: 1 };
   window.PE_F2 = F;
-  const ov = ppeModal(`<h3>Give PPE</h3><div class="sub2">The register checks his last issue as you fill this in.</div>
+  const ov = ppeModal(`<h3>Give PPE</h3><div class="sub2">Shows when he was last given the item as you fill this in.</div>
     <label class="pc-f"><span>Worker</span><input type="text" id="pe-w" placeholder="Type name or ID" data-spell="off" list="pe-wl" oninput="ppeWho(this.value)"><datalist id="pe-wl">${PE_PEOPLE.map(p => `<option value="${escapeAttr(p.no + " " + p.name)}">`).join("")}</datalist></label>
     <div class="sub" style="margin:-4px 0 8px;" id="pe-wsel"></div>
     <div class="pe-items" id="pe-its">${PE.items.map(it => `<button type="button" data-it="${escapeAttr(it)}" onclick="ppeItem(this.dataset.it)">${escapeHtml(it)}</button>`).join("")}</div>
     <div class="pe-row3"><label class="pc-f"><span>Size</span><input type="text" id="pe-sz" maxlength="20" placeholder="e.g. XL or 42" list="pe-szl" data-spell="off"><datalist id="pe-szl"></datalist></label>
       <label class="pc-f"><span>Date given</span><input type="date" id="pe-dt" value="${today}" max="${today}" onchange="ppeCheck()"></label>
-      <label class="pc-f"><span>Qty</span><input type="number" id="pe-qty" min="1" max="10" value="1" oninput="ppeCheck()"></label></div>
+      <label class="pc-f"><span>Qty</span><input type="number" id="pe-qty" min="1" max="10" value="1"></label></div>
     <div id="pe-chk"></div>
-    <div class="pe-row2"><label class="pc-f"><span>Status</span><select id="pe-cond" onchange="ppeCheck()"><option value="Issued">Given now</option><option value="Replacement">Replacement (old one returned)</option><option value="Eligible">Approved - give later</option></select></label>
+    <div class="pe-row2"><label class="pc-f"><span>Status</span><select id="pe-cond"><option value="Issued">Given now</option><option value="Replacement">Replacement (old one returned)</option><option value="Eligible">Approved - give later</option></select></label>
       <label class="pc-f"><span>Instructed by</span><input type="text" id="pe-ins" maxlength="80" placeholder="e.g. Shaiju" data-spell="off"></label></div>
     <label class="pc-f"><span>Remarks</span><input type="text" id="pe-rem" maxlength="300" placeholder="e.g. New joiner, damaged shoes" data-spell="off"></label>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" id="pe-save" onclick="ppeSave()">Save</button></div>`);
@@ -16761,44 +16768,36 @@ function ppeItem(it) {
   document.getElementById("pe-szl").innerHTML = (PE.sizes[it] || []).map(s => `<option value="${escapeAttr(s)}">`).join("");
   ppeCheck(true);
 }
-let PE_LAST = null;
 async function ppeCheck(fillSize) {
   const F = window.PE_F2, el = document.getElementById("pe-chk"); if (!el) return;
-  PE_LAST = null;
   if (!F.emp || !F.item) { el.innerHTML = ""; return; }
-  const qty = +document.getElementById("pe-qty").value || 1, on = document.getElementById("pe-dt").value, cond = document.getElementById("pe-cond").value;
-  let c; try { c = await apiCall(`/store/ppe/check?employee_id=${F.emp}&item=${encodeURIComponent(F.item)}&qty=${qty}&on=${on}`); } catch (e) { return; }
-  PE_LAST = c;
+  const on = document.getElementById("pe-dt").value;
+  let c; try { c = await apiCall(`/store/ppe/check?employee_id=${F.emp}&item=${encodeURIComponent(F.item)}&on=${on}`); } catch (e) { return; }
   if (fillSize && c.last_size && !document.getElementById("pe-sz").value) document.getElementById("pe-sz").value = c.last_size;
-  const last = c.last ? `Last ${F.item.toLowerCase()} on <b>${ppeD(c.last, 1)}</b> (${c.days_since} days ago${c.last_size ? ", size " + escapeHtml(c.last_size) : ""}).` : `Never given ${F.item.toLowerCase()} before.`;
-  if (c.too_soon && cond !== "Eligible") {
-    el.innerHTML = `<div class="pe-check bad"><b>Too soon.</b> ${last} Limit ${c.limit} in ${c.months} months - ${c.used} already given${c.next_due ? `, next due <b>${ppeD(c.next_due, 1)}</b>` : ""}.
-      <label class="pc-f" style="margin:8px 0 0;"><span>Why is it given now? (required)</span><input type="text" id="pe-why" maxlength="200" placeholder="e.g. shoes torn on site - seen by Shaiju" data-spell="off"></label></div>`;
-  } else {
-    el.innerHTML = `<div class="pe-check ok">${last} ${c.used} of ${c.limit} used in ${c.months} months - OK to give.</div>`;
-  }
+  const it = F.item.toLowerCase();
+  if (!c.last) { el.innerHTML = `<div class="pe-check ok">Never given ${escapeHtml(it)} before.</div>`; return; }
+  const txt = `Last ${escapeHtml(it)} given on <b>${ppeD(c.last, 1)}</b> - <b>${ppeAgo(c.days_since, 1)}</b>${c.last_size ? ", size " + escapeHtml(c.last_size) : ""}. ${c.count_all} given to him in all.`;
+  el.innerHTML = c.recent ? `<div class="pe-check bad"><b>Given recently.</b> ${txt} Check before giving again - add the reason in Remarks.</div>` : `<div class="pe-check ok">${txt}</div>`;
 }
 async function ppeSave() {
-  const F = window.PE_F2, why = document.getElementById("pe-why");
+  const F = window.PE_F2;
   if (!F.emp) return showStatus("pe-msg", "err", "Pick the worker from the list.");
   if (!F.item) return showStatus("pe-msg", "err", "Pick the item.");
-  if (why && !why.value.trim()) { why.focus(); return showStatus("pe-msg", "err", "It is too soon - write why it is given now."); }
   const body = { employee_id: F.emp, item: F.item, size: document.getElementById("pe-sz").value, qty: document.getElementById("pe-qty").value,
     date: document.getElementById("pe-dt").value, condition: document.getElementById("pe-cond").value,
-    instructed_by: document.getElementById("pe-ins").value, remarks: document.getElementById("pe-rem").value, early_reason: why ? why.value : "" };
+    instructed_by: document.getElementById("pe-ins").value, remarks: document.getElementById("pe-rem").value };
   const b = document.getElementById("pe-save"); b.disabled = true;
-  try { const d = await apiCall("/store/ppe", { method: "POST", body: JSON.stringify(body) });
-        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad();
-        showStatus("pe-status", d.early ? "err" : "ok", d.early ? "Saved - marked as given early, with the reason." : "Saved."); }
+  try { await apiCall("/store/ppe", { method: "POST", body: JSON.stringify(body) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Saved."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); b.disabled = false; }
 }
 async function ppeGiven(id) {
   const r = PE.recent.find(x => x.id === id);
   let h; try { h = (await apiCall(`/store/ppe/history?employee_id=${r ? r.emp_id : 0}`)).rows.find(x => x.id === id); } catch (e) {}
   const x = h || r; if (!x) return;
-  try { await apiCall(`/store/ppe/${id}`, { method: "PUT", body: JSON.stringify({ employee_id: x.emp_id, item: x.item, size: x.size, qty: x.qty, date: PE.today, condition: "Issued", instructed_by: x.instructed_by, remarks: x.remarks, early_reason: x.early }) });
+  try { await apiCall(`/store/ppe/${id}`, { method: "PUT", body: JSON.stringify({ employee_id: x.emp_id, item: x.item, size: x.size, qty: x.qty, date: PE.today, condition: "Issued", instructed_by: x.instructed_by, remarks: x.remarks }) });
         document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Marked as given today."); }
-  catch (e) { showStatus("pe-msg", "err", errText(e) + " - use Give PPE to add it with the reason."); }
+  catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
 async function ppeDel(id, key) {
   try { await apiCall(`/store/ppe/${id}`, { method: "DELETE" }); await ppeLoad(); ppeCard(key); showStatus("pe-status", "ok", "Entry removed."); }

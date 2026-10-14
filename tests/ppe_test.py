@@ -1,5 +1,5 @@
-"""PPE register: the Excel log loaded once, item limits, too soon only with
-a reason, 'approved' lines not counted, quick repeats, stock, rights."""
+"""PPE register: the Excel log loaded once, last given + how long ago (no
+limits, nothing blocked), 'approved' lines not counted, quick repeats, stock, rights."""
 import os, sys, tempfile, json, asyncio, io
 from datetime import date, timedelta
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mktemp(suffix='.db')}"
@@ -37,41 +37,37 @@ W = {w["no"]: w for w in d["workers"]}
 # a worker's cells
 w = W["F-782"]
 ok(w["cells"]["Coverall"]["last"] and w["cells"]["Safety Shoes"]["last"], "F782's coverall and shoes shown with dates")
-# rules on a fresh worker
+# a tracker, not a rule: last given and how long ago, never blocked
 s.add(models.Employee(emp_no="F-900", name="Test Man", active=True, staff=False)); s.commit()
 t9 = s.query(models.Employee).filter_by(emp_no="F-900").first()
 today = M._dubai_today()
 ppe.add({"employee_id": t9.id, "item": "Safety Shoes", "size": "42", "qty": 1, "date": (today - timedelta(days=7)).isoformat()}, s, jomon)
-c = ppe.check(t9.id, "", "Safety Shoes", 1, today.isoformat(), 0, s, jomon)
-ok(c["too_soon"] and c["days_since"] == 7 and c["last_size"] == "42" and c["next_due"], f"shoes again after 7 days: too soon, last size 42, next due {c['next_due']}")
-from datetime import date as _d
-due = _d.fromisoformat(c["next_due"])
-ok(not ppe.check(t9.id, "", "Safety Shoes", 1, due.isoformat(), 0, s, jomon)["too_soon"] and ppe.check(t9.id, "", "Safety Shoes", 1, (due - timedelta(days=1)).isoformat(), 0, s, jomon)["too_soon"], f"due date is exact: allowed on {due}, not the day before")
-r = refused(ppe.add, {"employee_id": t9.id, "item": "Safety Shoes", "qty": 1}, s, jomon)
-ok("Too soon" in r and "7 days ago" in r and "next due" in r, "saving without a reason is refused with the last issue shown")
-ppe.add({"employee_id": t9.id, "item": "Safety Shoes", "qty": 1, "early_reason": "torn on site - seen by Shaiju"}, s, jomon)
-ok(s.query(models.PpeIssue).filter_by(employee_id=t9.id, item="Safety Shoes").count() == 2, "with a reason it is saved")
+c = ppe.check(t9.id, "", "Safety Shoes", today.isoformat(), 0, s, jomon)
+ok(c["days_since"] == 7 and c["last_size"] == "42" and c["recent"] and c["count_all"] == 1, "shoes asked again after 7 days: last date, 7 days ago, size 42, flagged recent")
+ok("too_soon" not in c and "next_due" not in c, "no limit and no due date")
+ppe.add({"employee_id": t9.id, "item": "Safety Shoes", "qty": 1, "remarks": "torn on site"}, s, jomon)
+ok(s.query(models.PpeIssue).filter_by(employee_id=t9.id, item="Safety Shoes").count() == 2, "giving again is saved - nothing blocked, no reason demanded")
 e2 = s.query(models.PpeIssue).filter_by(employee_id=t9.id).order_by(models.PpeIssue.id.desc()).first()
-ok(e2.early_reason.startswith("torn"), "the reason is kept on the entry")
-# coverall: 2 in 6 months allowed
 ppe.add({"employee_id": t9.id, "item": "Coverall", "qty": 2, "date": today.isoformat()}, s, jomon)
-ok("Too soon" in refused(ppe.add, {"employee_id": t9.id, "item": "Coverall", "qty": 1}, s, jomon), "coverall: 2 given (new joiner) - a 3rd is too soon")
+ppe.add({"employee_id": t9.id, "item": "Coverall", "qty": 1}, s, jomon)
+ok(s.query(models.PpeIssue).filter_by(employee_id=t9.id, item="Coverall").count() == 2, "coverall any number of times")
 # approved, not given: does not count
 s.add(models.Employee(emp_no="F-901", name="Other Man", active=True, staff=False)); s.commit()
 t1 = s.query(models.Employee).filter_by(emp_no="F-901").first()
 ppe.add({"employee_id": t1.id, "item": "Helmet", "qty": 1, "condition": "Eligible"}, s, jomon)
-c = ppe.check(t1.id, "", "Helmet", 1, today.isoformat(), 0, s, jomon)
-ok(not c["too_soon"], "'approved - give later' does not count until given")
+ok(not ppe.check(t1.id, "", "Helmet", today.isoformat(), 0, s, jomon)["last"], "'approved - give later' does not count until given")
 d = ppe.get_ppe(s, jomon); W = {w["no"]: w for w in d["workers"]}
-ok(W["F-900"]["cells"]["Safety Shoes"]["state"] == "full" and W["F-900"]["early"] == 1, "grid: F900 shoes red (at limit), 1 early flag")
+ok(W["F-900"]["cells"]["Safety Shoes"]["state"] == "recent" and W["F-900"]["cells"]["Safety Shoes"]["count_all"] == 2, "grid: F900 shoes red (given within 30 days), 2 in all")
 ok(W["F-901"]["pending"] == 1 and d["tiles"]["pending"] >= 1, "approved-not-given counted on the tile")
 ok(any(q["no"] == "F-900" and q["item"] == "Safety Shoes" and q["days"] == 7 for q in d["quick"]), "quick repeat listed: same item within 30 days")
-# helmet limit 1 a year
+# colour by age
 s.add(models.Employee(emp_no="F-902", name="Helmet Man", active=True, staff=False)); s.commit()
 t2 = s.query(models.Employee).filter_by(emp_no="F-902").first()
 ppe.add({"employee_id": t2.id, "item": "Helmet", "qty": 1, "date": (today - timedelta(days=200)).isoformat()}, s, jomon)
-ok(ppe.check(t2.id, "", "Helmet", 1, today.isoformat(), 0, s, jomon)["too_soon"], "helmet after 200 days: still too soon (1 a year)")
-ok(not ppe.check(t2.id, "", "Safety Vest", 1, today.isoformat(), 0, s, jomon)["too_soon"], "other items not affected")
+ppe.add({"employee_id": t2.id, "item": "Jacket", "qty": 1, "date": (today - timedelta(days=60)).isoformat()}, s, jomon)
+c = {w["no"]: w for w in ppe.get_ppe(s, jomon)["workers"]}["F-902"]["cells"]
+ok(c["Helmet"]["state"] == "old" and c["Jacket"]["state"] == "mid" and c["Safety Vest"]["state"] == "none", "helmet 200 days: green; jacket 60 days: amber; vest never")
+ok(ppe._ago(200) == "7 months ago" and ppe._ago(7) == "7 days ago" and ppe._ago(400) == "1 yr 1 mo ago", "how long ago, in words")
 # stock
 ppe.set_stock({"item": "Safety Shoes", "counted": 20, "reorder": 5}, s, jomon)
 st = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}
@@ -81,7 +77,7 @@ st2 = {x["item"]: x for x in ppe.get_ppe(s, jomon)["stock"]}
 ok(st2["Safety Shoes"]["available"] == st["Safety Shoes"]["available"] - 1, "giving a pair takes one off the store")
 # delete a wrong entry
 ppe.delete(e2.id, s, jomon)
-ok(not ppe.check(t9.id, "", "Safety Shoes", 1, (today + timedelta(days=200)).isoformat(), 0, s, jomon)["too_soon"], "wrong entry removed; after 6 months he is due again")
+ok(s.query(models.PpeIssue).filter_by(employee_id=t9.id, item="Safety Shoes").count() == 1, "wrong entry removed")
 # future date refused
 ok("future" in refused(ppe.add, {"employee_id": t9.id, "item": "Jacket", "date": (today + timedelta(days=3)).isoformat()}, s, jomon), "future date refused")
 # exports
