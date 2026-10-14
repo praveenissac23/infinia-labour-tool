@@ -215,8 +215,13 @@ def _period(start, end):
 def sent(start: str = "", end: str = "", source: str = "", all: int = 0,
          db: Session = Depends(get_db), user: models.User = ZG):
     a, b = _period(start, end)
-    t0 = datetime.combine(a, datetime.min.time()) - timedelta(hours=4)        # Dubai day boundaries
-    t1 = datetime.combine(b + timedelta(days=1), datetime.min.time()) - timedelta(hours=4)
+    # Dubai day boundaries. On PostgreSQL the time is stored with its zone,
+    # so the limits carry theirs too (whatever the server's own zone is).
+    dubai = timezone(timedelta(hours=4))
+    t0 = datetime.combine(a, datetime.min.time(), tzinfo=dubai)
+    t1 = datetime.combine(b + timedelta(days=1), datetime.min.time(), tzinfo=dubai)
+    if db.bind.dialect.name == "sqlite":
+        t0, t1 = (t.astimezone(timezone.utc).replace(tzinfo=None) for t in (t0, t1))
     q = db.query(models.ZohoLog).filter(models.ZohoLog.at >= t0, models.ZohoLog.at < t1)
     if source:
         q = q.filter(models.ZohoLog.source == source)

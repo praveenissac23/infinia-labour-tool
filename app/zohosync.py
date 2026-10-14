@@ -328,6 +328,33 @@ def _row(x, learned, users):
             "by": users.get(x.updated_by or x.created_by, "")}
 
 
+def _set_site(db, x, site, user):
+    """The chief accountant puts the project on a line the person who typed
+    it left blank (or got wrong). It is the petty cash line itself that
+    changes, so the petty cash book shows it too, and Zoho gets it."""
+    site = " ".join(str(site or "").split())[:40]
+    if site and not db.query(models.Site).filter(models.Site.code == site).first():
+        raise HTTPException(status_code=400, detail=f"No project {site}.")
+    was = x.site or ""
+    if site == was:
+        return
+    x.site = site
+    x.updated_by = user.id
+    M.log_action(db, user.id, "petty_site", f"petty cash #{x.id} {x.description}: project {was or 'none'} -> {site or 'none'} (Send to Zoho)")
+
+
+@router.post("/store/zoho/site")
+def set_site(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
+    x = db.get(models.PettyCash, int(payload.get("id") or 0))
+    if not x:
+        raise HTTPException(status_code=404, detail="That line is no longer there.")
+    if (x.zoho_status or "") not in ("",):
+        raise HTTPException(status_code=400, detail="It is already approved for Zoho - change it there.")
+    _set_site(db, x, payload.get("site"), user)
+    db.commit()
+    return {"ok": True, "site": x.site or ""}
+
+
 @router.get("/store/zoho/heads")
 def heads(user: models.User = ZG):
     return {"groups": GROUPS}
@@ -501,8 +528,8 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
             x.approved_by, x.approved_at = user.id, now
             M.log_action(db, user.id, "zoho_corrected", f"petty cash #{x.id} {x.description} confirmed corrected in Zoho")
             continue
-        if "site" in ln and str(ln.get("site") or "").strip() and not (x.site or "").strip():
-            x.site = str(ln["site"]).strip()[:40]
+        if "site" in ln and str(ln.get("site") or "").strip() != (x.site or "").strip():
+            _set_site(db, x, ln.get("site"), user)
         t = "".join(ch for ch in str(ln.get("trn") or "") if ch.isdigit())
         if x.vat and not (x.trn or "").strip() and len(t) == 15:
             x.trn = t

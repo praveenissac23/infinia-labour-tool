@@ -89,6 +89,19 @@ const TAG = String(Date.now()).slice(-6);
     ck('Bank: account picked into the form', /Tools & Machinery/.test(await p.inputValue('#bk-acc')), await p.inputValue('#bk-acc'));
     await p.screenshot({ path: SH + 'za_bank.png' });
   } else ck('Bank expense form has the picker', false, hasExp);
+  // project on a line nobody gave one: picked here, saved on the petty cash line
+  await p.evaluate(() => { const t = [...document.querySelectorAll('#pg-tabs .pg-tab')].find(x => x.textContent.trim() === 'Send to Zoho'); t.click(); }); await p.waitForTimeout(2500);
+  const orow2 = p.locator('#zh-body tr', { hasText: 'Machinery repair - generator ' + TAG });
+  if (await orow2.count()) {
+    const sel = orow2.locator('select.zh-site');
+    ck('project box on a line with no project', await sel.count() === 1);
+    const opt = await sel.evaluate(s => [...s.options].map(o => o.value).find(v => v));
+    await sel.selectOption(opt); await p.waitForTimeout(800);
+    const saved = await p.evaluate(async tag => { const d = await apiCall('/store/petty-cash?book=site&month=2026-10'); const rows = d.rows || d.entries || d; return JSON.stringify(rows).includes(tag); }, TAG);
+    const site = await p.evaluate(tag => { const r = ZH.rows.find(x => x.description === 'Machinery repair - generator ' + tag); return r && r.site; }, TAG);
+    ck('picked project saved on the petty cash line', site === opt, [site, opt]);
+    await p.screenshot({ path: SH + 'za_site.png' });
+  }
   // phone width
   await p.setViewportSize({ width: 390, height: 844 });
   await p.evaluate(() => { const t = [...document.querySelectorAll('#pg-tabs .pg-tab')].find(x => x.textContent.trim() === 'Send to Zoho'); t.click(); }); await p.waitForTimeout(2500);

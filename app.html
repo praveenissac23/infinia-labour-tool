@@ -1542,6 +1542,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .za-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid #EFEAE4; font-size:11.5px; color:#8A7F75; }
   .za-ref { border:0; background:none; color:#8B5E34; font:inherit; font-size:11.5px; cursor:pointer; padding:2px 4px; }
 
+  .zh-site.zh-need { border-color:#C0392B; background:#FDF4F3; }
   .zh-poacc { margin-top:6px; } .zh-poacc .za-btn { max-width:420px; }
   /* Sent to Zoho */
   #zh-tabs .zh-tab-end { margin-left:auto; }
@@ -1742,7 +1743,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="ce279b0307f5";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="d77522f98961";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3494,11 +3495,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="zh-intro"><b>Sent to Zoho</b> - every line the portal put into Zoho, and where it went: <b>from</b> which account <b>to</b> which account, with project, supplier and the Zoho number. <b>Check</b> compares with Zoho as it is now. <b>Reverse</b> deletes it in Zoho and puts the line back to waiting, to correct and send again.</div>
               <div class="zs-filters">
                 <label class="pc-f"><span>From</span><input type="date" id="zs-from" onchange="zsLoad()"></label>
-                <label class="pc-f"><span>To</span><input type="date" id="zs-to" onchange="zsLoad()"></label>
+                <label class="pc-f"><span>To</span><input type="date" id="zs-to" onchange="this.dataset.auto='0'; zsLoad()"></label>
                 <label class="pc-f"><span>What</span><select id="zs-src" onchange="zsLoad()"><option value="">Everything</option><option value="petty">Petty cash</option><option value="bank">Bank</option><option value="lpo">LPOs</option><option value="loan">Staff loans</option><option value="invoice">Tax invoices</option><option value="supplier">Suppliers</option></select></label>
                 <label class="pc-f"><span>Search</span><input type="search" id="zs-q" placeholder="Description, account, number" oninput="zsDraw()"></label>
                 <label class="zs-all"><input type="checkbox" id="zs-allc" onchange="zsLoad()"> All changes <small>(supplier updates, deletes, refusals)</small></label>
-                <div class="exp-btns zs-exp"><button type="button" class="btn btn-dark" onclick="zsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsExport('excel')">Export Excel</button></div>
+                <div class="exp-btns zs-exp"><button type="button" class="btn btn-dark" onclick="zsLoad()" title="Read the list again">Refresh</button><button type="button" class="btn btn-dark" onclick="zsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsExport('excel')">Export Excel</button></div>
               </div>
               <div class="pc-stats" id="zs-stats"></div>
               <div class="grid-wrap" style="max-height:640px;"><table class="pc-table zs-table" data-nomove><thead><tr><th class="l" style="width:92px;">Sent</th><th class="l">Portal line</th><th class="l" style="width:130px;">In Zoho</th><th class="l">Where it went in Zoho</th><th class="n" style="width:104px;">Amount</th><th style="width:262px;"></th></tr></thead><tbody id="zs-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
@@ -16930,6 +16931,8 @@ async function zhLoad() {
     if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
     ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
+  // Anything just sent shows on Sent to Zoho without leaving the screen.
+  if (ZS || ZH_PANE === "sent") zsLoad();
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
   ZH_PICK = {};
@@ -17138,6 +17141,8 @@ function zsQS() {
   return `start=${f.value}&end=${t.value}&source=${encodeURIComponent(document.getElementById("zs-src").value)}&all=${document.getElementById("zs-allc").checked ? 1 : 0}`;
 }
 async function zsLoad() {
+  const t = document.getElementById("zs-to");
+  if (t && t.dataset.auto !== "0" && t.value && t.value < pcToday()) t.value = pcToday();   // a page left open overnight still ends today
   try { ZS = await apiCall(`/store/zoho/sent?${zsQS()}`); } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   zsDraw();
 }
@@ -17257,8 +17262,10 @@ function zhDraw() {
   document.getElementById("zh-body").innerHTML = rows.map(r => {
     const p = ZH_PICK[r.id], f = zhFlags(r);
     if (f.length) p.on = false;
-    const site = (r.site || "") ? escapeHtml(r.site)
-      : (zhProjectAcc(p.account) || (p.splits || []).some(s => zhProjectAcc(s.account)) ? `<select class="zh-site" onchange="zhSet(${r.id},'site',this.value)"><option value="">Project…</option>${(ZH_SITES || []).map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>` : `<span class="zh-none">—</span>`);
+    // The chief accountant can put (or correct) the project on any paid line;
+    // it is saved on the petty cash line itself and goes to Zoho with it.
+    const site = r.kind === "received" ? `<span class="zh-none">—</span>`
+      : `<select class="zh-site${!p.site && (zhProjectAcc(p.account) || (p.splits || []).some(s => zhProjectAcc(s.account))) ? " zh-need" : ""}" onchange="zhSite(${r.id},this.value,this)" title="Project / site - saved on the petty cash line too"><option value="">${p.site ? "No project" : "Project…"}</option>${[...new Set([...(ZH_SITES || []), p.site].filter(Boolean))].map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`;
     const vat = !r.vat ? `<span class="zh-none">No VAT</span>` : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value)" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name.">
         <option value="">Claim VAT?</option><option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option></select>`
       + (r.trn ? `<span class="sub">TRN ${escapeHtml(r.trn)}</span>` : (p.vat_claim === "claim" ? `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">` : ""));
@@ -17278,6 +17285,14 @@ function zhDraw() {
   document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhFlags(r).length).length;
   const go = document.getElementById("zh-go");
   go.textContent = n ? `Approve ${n} for Zoho` : "Approve for Zoho"; go.disabled = !n;
+}
+async function zhSite(id, v, el) {
+  const p = ZH_PICK[id], was = p.site;
+  el.disabled = true;
+  try { await apiCall("/store/zoho/site", { method: "POST", body: JSON.stringify({ id, site: v }) });
+        const r = ZH.rows.find(x => x.id === id); if (r) r.site = v;
+        zhSet(id, "site", v); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); p.site = was; zhDraw(); }
 }
 function zhSet(id, k, v) {
   const p = ZH_PICK[id]; p[k] = v;
