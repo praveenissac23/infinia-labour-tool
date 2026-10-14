@@ -104,11 +104,11 @@ window.HELP_GUIDES = [
     words: "bank adcb transfer cheque payment supplier subcontractor client receipt received bill invoice zoho payment made customer payment charge",
     go: { page: "accounts", tab: "bank" },
     steps: [
-      { say: "Pick what it is: paid to a supplier, an expense, received from a client, a bank charge or a transfer to petty cash.", el: "#bk-kind" },
+      { say: "Step 1 - click the box for what happened: Paid a supplier, Paid an expense, Client paid us, Bank charge or Transfer. OUT, IN or MOVE shows which way the money went.", el: "#bk-kind" },
       { say: "Type the supplier or client - pick the name from Zoho's list, and their open bills or invoices appear.", el: "#bk-party" },
       { say: "For a cheque choose Cheque: the date is the cheque date and the reference is the cheque number. Otherwise type the ADCB reference (PHUB...).", el: "#bk-mode" },
       { say: "Type the amount - it is set against the oldest bills first; change any figure.", el: "#bk-amt" },
-      { say: "Save. The chief accountant's entries go straight to Zoho; anyone else's wait for him to send.", el: "#bk-save" }],
+      { say: "Step 3 - check the summary line (amount, in or out, to whom), then Save. The chief accountant's entries go straight to Zoho; anyone else's wait for him to send.", el: "#bk-save" }],
     tip: "Lines on the ADCB statement in Zoho that nobody has entered show in red at the top - press Enter on one to fill the form." },
   { id: "petty-vat", area: "Accounts", title: "How to enter a petty cash bill with VAT",
     words: "vat trn tax receipt petty cash bill supplier tax registration number 5%",

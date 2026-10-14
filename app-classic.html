@@ -505,6 +505,27 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .zh-foot span { color: #6b625a; font-size: 12.5px; }
   .bk-form { margin-top: 12px; border-top: 1px solid #EFEBE6; padding-top: 12px; }
+  .bk-step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #2B2622; margin: 6px 0 8px; }
+  .bk-step b { width: 22px; height: 22px; border-radius: 50%; background: #2B2622; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+  .bk-kinds2 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .bk-k { position: relative; text-align: left; border: 1px solid #E3D7D1; background: #fff; border-radius: 10px; padding: 10px 12px 10px; cursor: pointer; font: inherit; color: #2B2622; display: flex; flex-direction: column; gap: 3px; min-height: 74px; }
+  .bk-k b { font-size: 13.5px; } .bk-k small { font-size: 11.5px; color: #8A8079; line-height: 1.3; }
+  .bk-k:hover { border-color: #C9B7AE; } .bk-k.on { border-color: #B03A2E; box-shadow: 0 0 0 1px #B03A2E inset; background: #FFF8F7; }
+  .bk-k .bk-dir { position: absolute; top: 9px; right: 10px; }
+  .bk-dir { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding: 2px 7px; border-radius: 8px; }
+  .bk-dir.out { background: #FDECEA; color: #B03A2E; } .bk-dir.in { background: #EAF6EC; color: #2E7D32; } .bk-dir.move { background: #EEF0F7; color: #3B4A7A; }
+  .bk-grid4 { display: grid; grid-template-columns: 160px 180px 170px minmax(220px, 1fr); gap: 10px; margin-bottom: 10px; }
+  .bk-grid4 input, .bk-grid4 select, .bk-row1 input, .bk-more2 input, .bk-more2 select { width: 100%; height: 38px; box-sizing: border-box; }
+  .bk-row1 { margin-bottom: 10px; } .bk-row1 label.pc-f { display: flex; }
+  .bk-more2 { display: grid; gap: 10px; margin-bottom: 10px; } .bk-more2:empty { display: none; }
+  .bk-more2.k-expense { grid-template-columns: minmax(240px, 2fr) 150px 190px 150px 170px; }
+  .bk-more2.k-customer { grid-template-columns: minmax(240px, 2fr) 150px 220px; }
+  .bk-more2.k-transfer { grid-template-columns: minmax(240px, 360px); }
+  .bk-savebar { display: flex; align-items: center; gap: 12px; justify-content: space-between; border: 1px solid #ECE6DF; background: #FCFAF7; border-radius: 10px; padding: 10px 12px; }
+  .bk-sum { display: flex; align-items: center; gap: 10px; font-size: 13.5px; min-width: 0; } .bk-btns { display: flex; gap: 8px; flex: none; }
+  .bk-btns .btn { height: 38px; padding: 0 18px; }
+  @media (max-width: 1100px) { .bk-kinds2 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .bk-grid4, .bk-more2.k-expense, .bk-more2.k-customer { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .bk-k { min-height: 0; padding: 8px 12px; } .bk-kinds2, .bk-grid4, .bk-more2.k-expense, .bk-more2.k-customer, .bk-more2.k-transfer { grid-template-columns: 1fr; } .bk-savebar { flex-direction: column; align-items: stretch; } .bk-btns .btn { flex: 1; } }
   .bk-kinds { margin-bottom: 10px; height: auto; flex-wrap: wrap; } .bk-kinds button { height: 34px; }
   .bk-grid { display: grid; grid-template-columns: 140px minmax(220px, 2fr) 150px minmax(170px, 1.2fr) 140px; gap: 10px; align-items: end; margin-bottom: 10px; }
   .bk-grid input, .bk-grid select { width: 100%; height: 36px; }
@@ -3109,20 +3130,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div id="bk-stmt"></div>
             <div class="status-msg" id="bk-status"></div>
             <div class="bk-form" id="bk-form">
-              <div class="pc-kind bk-kinds" id="bk-kind"></div>
-              <div class="bk-grid">
+              <div class="bk-step"><b>1</b>What happened in the bank?</div>
+              <div class="bk-kinds2" id="bk-kind"></div>
+              <div class="bk-step"><b>2</b><span id="bk-step2">Fill in the details</span></div>
+              <div class="bk-grid4">
                 <label class="pc-f"><span id="bk-date-l">Date</span><input type="date" id="bk-date"></label>
-                <label class="pc-f bk-party-f"><span id="bk-party-l">Paid to (supplier / subcontractor)</span><input type="text" id="bk-party" list="bk-party-list" autocomplete="off" data-spell="off" oninput="bkParty()" onchange="bkPartyPicked()"><datalist id="bk-party-list"></datalist></label>
+                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="bk-amt" placeholder="e.g. 12,500.00" oninput="bkSpread(); bkNet(); bkSum()"></label>
                 <label class="pc-f"><span>Payment mode</span><select id="bk-mode" onchange="bkMode()"></select></label>
-                <label class="pc-f"><span id="bk-ref-l">Reference # (ADCB)</span><input type="text" id="bk-ref" maxlength="80" data-spell="off" placeholder="e.g. PHUB726068648"></label>
-                <label class="pc-f"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="bk-amt" placeholder="0.00" oninput="bkSpread(); bkNet()"></label>
+                <label class="pc-f"><span id="bk-ref-l">ADCB reference</span><input type="text" id="bk-ref" maxlength="80" data-spell="off" placeholder="From the statement, e.g. PHUB726068648" oninput="bkSum()"></label>
               </div>
-              <div class="bk-grid bk-more" id="bk-more"></div>
+              <div class="bk-row1 bk-party-f"><label class="pc-f"><span id="bk-party-l">Supplier / subcontractor</span><input type="text" id="bk-party" list="bk-party-list" autocomplete="off" data-spell="off" oninput="bkParty(); bkSum()" onchange="bkPartyPicked()"><datalist id="bk-party-list"></datalist></label></div>
+              <div class="bk-more2" id="bk-more"></div>
               <div class="bk-docs" id="bk-docs"></div>
-              <div class="bk-grid">
-                <label class="pc-f bk-wide"><span>Notes / project (as you write them in Zoho)</span><input type="text" id="bk-notes" maxlength="300" placeholder="e.g. 913 PC05" data-spell="off"></label>
-                <div class="pc-f pc-go" style="align-self:end;"><button class="btn btn-primary" id="bk-save" onclick="bkSave()">Save</button><button class="btn btn-gray" id="bk-cancel" onclick="bkReset()" style="display:none;">Cancel</button></div>
-              </div>
+              <div class="bk-row1"><label class="pc-f"><span>Description (goes to Zoho)</span><input type="text" id="bk-notes" maxlength="300" placeholder="e.g. 913 PC05" data-spell="off"></label></div>
+              <div class="bk-step"><b>3</b>Check and save</div>
+              <div class="bk-savebar"><div class="bk-sum" id="bk-sum"></div><div class="bk-btns"><button class="btn btn-gray" id="bk-cancel" onclick="bkReset()" style="display:none;">Cancel</button><button class="btn btn-primary" id="bk-save" onclick="bkSave()">Save</button></div></div>
             </div>
           </div>
           <div class="card pc-card">
@@ -16160,7 +16182,29 @@ function pcLocked(r) { return ["approved", "sent", "inzoho", "changed"].includes
 // payment against invoices, an expense, a bank charge or a transfer.
 let BK_SCOPES = null, BK_NET_AUTO = true;
 let BK = null, BK_KIND = "vendor", BK_EDIT = null, BK_SITES = null, BK_PARTY_ID = "", BK_DOCS = [], BK_PICK = {}, BK_T = null;
-const BK_LABEL = { vendor: "Paid to (supplier / subcontractor)", customer: "Received from (client)", expense: "Paid to (shop / supplier - optional)", charge: "Bank", transfer: "Transfer" };
+const BK_LABEL = { vendor: "Supplier / subcontractor paid", customer: "Client who paid", expense: "Paid to (shop or company - optional)", charge: "Bank", transfer: "Transfer" };
+// The five things that happen in the bank, said plainly.
+const BK_KINDS = {
+  vendor:   { t: "Paid a supplier", d: "Materials, subcontract work - against their bills", dir: "out" },
+  expense:  { t: "Paid an expense", d: "Fees, fines, rent, DEWA, visas - no supplier bill", dir: "out" },
+  customer: { t: "Client paid us", d: "Money received from a client", dir: "in" },
+  charge:   { t: "Bank charge", d: "A fee ADCB took from the account", dir: "out" },
+  transfer: { t: "Transfer", d: "To petty cash or another account", dir: "move" } };
+const BK_PH = { vendor: ["Start typing the name - pick it from the Zoho list", "e.g. LPO 1042 - steel for 913"],
+  expense: ["e.g. DEWA, Dubai Municipality (optional)", "e.g. DEWA September - camp"],
+  customer: ["Start typing the client - pick it from the Zoho list", "e.g. 913 - progress payment 5"],
+  charge: ["", "e.g. Monthly account fee"], transfer: ["", "e.g. Petty cash top-up for site"] };
+const BK_DIR = { out: ["OUT", "Money out of ADCB"], in: ["IN", "Money into ADCB"], move: ["MOVE", "Moved between accounts"] };
+function bkSum() {
+  const el = document.getElementById("bk-sum"); if (!el) return;
+  const k = BK_KINDS[BK_KIND] || {}, amt = parseFloat((document.getElementById("bk-amt").value || "").replace(/,/g, "")) || 0;
+  const who = (document.getElementById("bk-party").value || "").trim(), to = (document.getElementById("bk-to") || {}).value;
+  const dir = BK_DIR[k.dir] || ["", ""];
+  if (!amt) { el.innerHTML = `<span class="bk-dir ${k.dir}">${dir[0]}</span><span class="sub" style="display:inline;">Type the amount - a summary appears here before you save.</span>`; return; }
+  const line = BK_KIND === "vendor" ? `paid to <b>${escapeHtml(who || "?")}</b>` : BK_KIND === "customer" ? `received from <b>${escapeHtml(who || "?")}</b>`
+    : BK_KIND === "expense" ? `expense${who ? " paid to <b>" + escapeHtml(who) + "</b>" : ""}` : BK_KIND === "charge" ? "bank charge" : `transferred to <b>${escapeHtml(to || "?")}</b>`;
+  el.innerHTML = `<span class="bk-dir ${k.dir}">${dir[0]}</span><span><b>AED ${pcMoney(amt)}</b> ${line}</span>`;
+}
 async function bkLoad() {
   const m = document.getElementById("bk-month");
   if (!m.value) m.value = pcToday().slice(0, 7);
@@ -16173,32 +16217,37 @@ async function bkLoad() {
   bkKindDraw(); bkDraw(); bkStatement();
 }
 function bkKindDraw() {
-  document.getElementById("bk-kind").innerHTML = Object.entries(BK.kinds).map(([k, l]) => `<button type="button" class="${k === BK_KIND ? "on" : ""}" onclick="bkKind('${k}')">${escapeHtml(l)}</button>`).join("");
+  document.getElementById("bk-kind").innerHTML = Object.keys(BK.kinds).map(k => { const x = BK_KINDS[k] || { t: BK.kinds[k], d: "", dir: "out" };
+    return `<button type="button" class="bk-k ${k === BK_KIND ? "on" : ""}" onclick="bkKind('${k}')"><span class="bk-dir ${x.dir}">${BK_DIR[x.dir][0]}</span><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d)}</small></button>`; }).join("");
   document.getElementById("bk-party-l").textContent = BK_LABEL[BK_KIND];
-  const pf = document.querySelector(".bk-party-f"); pf.style.visibility = ["charge", "transfer"].includes(BK_KIND) ? "hidden" : "";
+  const pf = document.querySelector(".bk-party-f"); pf.style.display = ["charge", "transfer"].includes(BK_KIND) ? "none" : "";
+  const ph = BK_PH[BK_KIND] || ["", ""];
+  document.getElementById("bk-party").placeholder = ph[0]; document.getElementById("bk-notes").placeholder = ph[1];
+  document.getElementById("bk-step2").textContent = `Fill in the details - ${(BK_KINDS[BK_KIND] || {}).t || ""}`;
   const more = document.getElementById("bk-more");
   if (BK_KIND === "expense") {
-    more.innerHTML = `<label class="pc-f"><span>Zoho account</span><select id="bk-acc">${`<option value="">- pick -</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
-      <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">-</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
-      <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="['bk-trn-f','bk-vatc-f'].forEach(i=>document.getElementById(i).style.visibility=this.checked?'':'hidden')"> Yes</span></label>
-      <label class="pc-f" id="bk-vatc-f" style="visibility:hidden;"><span>Claim the VAT?</span><select id="bk-vatc"><option value="">- pick -</option><option value="claim">Claim 5%</option><option value="zero">Not claimable</option></select></label>
-      <label class="pc-f" id="bk-trn-f" style="visibility:hidden;"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" placeholder="15 digits" data-spell="off"></label>`;
+    more.innerHTML = `<label class="pc-f"><span>What was it for? (Zoho account)</span><select id="bk-acc">${`<option value="">Choose account...</option>` + BK.groups.map(g => `<optgroup label="${escapeAttr(g.group)}">${g.accounts.map(a => `<option value="${escapeAttr(a)}">${escapeHtml(a.replace(/^Office › /, ""))}</option>`).join("")}</optgroup>`).join("")}</select></label>
+      <label class="pc-f"><span>Project</span><select id="bk-site"><option value="">Office / none</option>${(BK_SITES || []).map(c => `<option>${escapeHtml(c)}</option>`).join("")}</select></label>
+      <label class="pc-f"><span>VAT on the bill?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-vat" style="width:18px;height:18px;" onchange="['bk-trn-f','bk-vatc-f'].forEach(i=>document.getElementById(i).style.display=this.checked?'':'none')"> Yes, the bill shows VAT</span></label>
+      <label class="pc-f" id="bk-vatc-f" style="display:none;"><span>Claim the VAT?</span><select id="bk-vatc"><option value="">Choose...</option><option value="claim">Claim 5%</option><option value="zero">Not claimable</option></select></label>
+      <label class="pc-f" id="bk-trn-f" style="display:none;"><span>Supplier TRN</span><input type="text" id="bk-trn" maxlength="15" inputmode="numeric" placeholder="15 digits" data-spell="off"></label>`;
   } else if (BK_KIND === "customer") {
     const byP = {}; (BK_SCOPES || []).forEach(x => (byP[x.project] = byP[x.project] || []).push(x));
-    more.innerHTML = `<label class="pc-f"><span>Project payments - project and scope</span><select id="bk-scope" onchange="bkNet()"><option value="">- not on Project payments -</option>${Object.keys(byP).sort().map(pj => `<optgroup label="${escapeAttr(pj)}">${byP[pj].map(x => `<option value="${x.id}">${escapeHtml(x.project + " - " + x.scope)}</option>`).join("")}</optgroup>`).join("")}</select></label>
+    more.innerHTML = `<label class="pc-f"><span>Which project and scope?</span><select id="bk-scope" onchange="bkNet()"><option value="">Not for a project scope</option>${Object.keys(byP).sort().map(pj => `<optgroup label="${escapeAttr(pj)}">${byP[pj].map(x => `<option value="${x.id}">${escapeHtml(x.project + " - " + x.scope)}</option>`).join("")}</optgroup>`).join("")}</select></label>
       <label class="pc-f"><span>Includes 5% VAT?</span><span class="pc-vatbox" style="display:flex;align-items:center;gap:6px;height:36px;"><input type="checkbox" id="bk-cvat" checked style="width:18px;height:18px;" onchange="BK_NET_AUTO = true; bkNet()"> Yes</span></label>
-      <label class="pc-f" id="bk-net-f"><span>For Project payments (excl. VAT)</span><input type="text" id="bk-net" inputmode="decimal" placeholder="0.00" oninput="BK_NET_AUTO = false"></label><div></div><div></div>`;
+      <label class="pc-f" id="bk-net-f"><span>Amount excl. VAT (for Project payments)</span><input type="text" id="bk-net" inputmode="decimal" placeholder="Worked out for you" oninput="BK_NET_AUTO = false"></label>`;
   } else if (BK_KIND === "transfer") {
-    more.innerHTML = `<label class="pc-f"><span>Transfer to</span><select id="bk-to">${BK.transfer_to.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></label>`;
+    more.innerHTML = `<label class="pc-f"><span>Transferred to</span><select id="bk-to" onchange="bkSum()">${BK.transfer_to.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></label>`;
   } else more.innerHTML = "";
   if (!["vendor", "customer"].includes(BK_KIND)) { BK_DOCS = []; BK_PICK = {}; }
-  bkDocsDraw(); bkMode();
+  more.className = "bk-more2 k-" + BK_KIND;
+  bkDocsDraw(); bkMode(); bkSum();
 }
 function bkKind(k) { BK_KIND = k; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; BK_NET_AUTO = true; bkKindDraw(); bkNet(); }
 function bkMode() {
   const chq = document.getElementById("bk-mode").value === "Cheque";
-  document.getElementById("bk-ref-l").textContent = chq ? "Cheque number" : "Reference # (ADCB)";
-  document.getElementById("bk-ref").placeholder = chq ? "e.g. 000318" : "e.g. PHUB726068648";
+  document.getElementById("bk-ref-l").textContent = chq ? "Cheque number" : "ADCB reference";
+  document.getElementById("bk-ref").placeholder = chq ? "e.g. 000318" : "From the statement, e.g. PHUB726068648";
   document.getElementById("bk-date-l").textContent = chq ? "Cheque date" : "Date";
   const btn = document.getElementById("bk-save");
   btn.textContent = BK_EDIT ? "Save changes" : (BK && BK.may_send && BK.connected ? "Save & send to Zoho" : "Save");
@@ -16312,6 +16361,7 @@ async function bkSave() {
 function bkReset() {
   BK_EDIT = null; BK_PARTY_ID = ""; BK_DOCS = []; BK_PICK = {}; BK_NET_AUTO = true;
   ["bk-party", "bk-ref", "bk-amt", "bk-notes"].forEach(id => document.getElementById(id).value = "");
+  bkSum();
   document.getElementById("bk-date").value = pcToday();
   document.getElementById("bk-cancel").style.display = "none";
   if (BK) { bkKindDraw(); bkDraw(); }
@@ -16324,7 +16374,7 @@ async function bkEdit(id) {
   document.getElementById("bk-amt").value = r.amount; document.getElementById("bk-notes").value = r.notes;
   if (r.kind === "expense") { document.getElementById("bk-acc").value = r.account; document.getElementById("bk-site").value = r.site;
     document.getElementById("bk-vat").checked = r.vat; document.getElementById("bk-trn").value = r.trn; document.getElementById("bk-vatc").value = r.vat_claim || "";
-    ["bk-trn-f", "bk-vatc-f"].forEach(i => document.getElementById(i).style.visibility = r.vat ? "" : "hidden"); }
+    ["bk-trn-f", "bk-vatc-f"].forEach(i => document.getElementById(i).style.display = r.vat ? "" : "none"); }
   if (r.kind === "transfer") document.getElementById("bk-to").value = r.account;
   if (r.kind === "customer") { BK_NET_AUTO = false; document.getElementById("bk-scope").value = r.scope_id || ""; document.getElementById("bk-net").value = r.net_amount ? r.net_amount.toFixed(2) : "";
     document.getElementById("bk-cvat").checked = !r.net_amount || Math.abs(r.net_amount * 1.05 - r.amount) < 0.02; bkNet(); }
@@ -16332,7 +16382,7 @@ async function bkEdit(id) {
   if (BK_PARTY_ID && BK.connected && ["vendor", "customer"].includes(r.kind)) {
     try { BK_DOCS = (await apiCall(`/store/bank/open?kind=${r.kind}&contact_id=${encodeURIComponent(BK_PARTY_ID)}`)).docs; } catch (e) { BK_DOCS = []; }
   }
-  bkDocsDraw(); bkMode();
+  bkDocsDraw(); bkMode(); bkSum();
   document.getElementById("bk-cancel").style.display = ""; bkDraw();
   document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -16362,7 +16412,7 @@ function bkFromStmt(i) {
   const t = BK._stmt[i]; bkReset();
   BK_KIND = t.in ? "customer" : (/charge|fee|commission/i.test(t.description) ? "charge" : "vendor"); bkKindDraw();
   document.getElementById("bk-date").value = t.date; document.getElementById("bk-amt").value = t.amount;
-  document.getElementById("bk-ref").value = t.reference; document.getElementById("bk-notes").value = t.description.slice(0, 120);
+  document.getElementById("bk-ref").value = t.reference; document.getElementById("bk-notes").value = t.description.slice(0, 120); bkSum();
   document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function bkExport(kind) {
