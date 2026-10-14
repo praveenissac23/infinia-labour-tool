@@ -504,6 +504,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .zh-foot span { color: #6b625a; font-size: 12.5px; }
+  .bs { border: 1px solid #ECE6DF; border-radius: 12px; padding: 12px 14px; margin: 12px 0 4px; background: #fff; }
+  .bs-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .bs-head b { font-size: 14px; } .bs-head .sub { display: block; font-size: 12px; color: #8A8079; margin-top: 2px; }
+  .bs-up { cursor: pointer; height: 34px; display: inline-flex; align-items: center; }
+  .bs-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
+  .bs-tile { text-align: left; border: 1px solid #ECE6DF; border-radius: 10px; padding: 8px 12px; background: #fff; cursor: pointer; font: inherit; color: inherit; }
+  .bs-tile span { display: block; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: #8A8079; } .bs-tile b { font-size: 19px; }
+  .bs-tile.good b { color: #2E7D32; } .bs-tile.bad b { color: #B03A2E; } .bs-tile.warn b { color: #B26A00; } .bs-tile.on { box-shadow: 0 0 0 2px #2B2622 inset; }
+  .bs-warn { padding: 8px 12px; border-radius: 8px; background: #FFF4E0; color: #8A5300; font-size: 12.5px; margin-bottom: 8px; }
+  .bs-list { max-height: 360px; overflow: auto; border-top: 1px solid #F1ECE6; } .bs-list table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .bs-list td { padding: 7px 8px; border-bottom: 1px solid #F6F2EE; vertical-align: middle; } .bs-list td.l .sub { display: block; font-size: 11px; color: #8A8079; }
+  .bs-list td.n { text-align: right; width: 110px; white-space: nowrap; font-weight: 600; } .bs-list td.neg { color: #B03A2E; } .bs-list td.pos { color: #2E7D32; }
+  .bs-list td.act { width: 330px; text-align: right; white-space: nowrap; } .bs-list tr.bad td:first-child { box-shadow: inset 3px 0 0 #B03A2E; } .bs-list tr.warn td:first-child { box-shadow: inset 3px 0 0 #E0A040; }
+  .bs-list tr.ok td:first-child { box-shadow: inset 3px 0 0 #6FBF7B; } .bs-list tr.ign { opacity: .7; }
+  .bs-x { border: 0; background: none; cursor: pointer; color: #8A8079; font-size: 15px; padding: 0 4px; } .bs-x:hover { color: #B03A2E; }
+  .bs-none { padding: 14px 4px; font-size: 13px; color: #6b625a; } .bs-empty { margin-top: 10px; padding: 10px 14px; background: #FCFAF7; border-radius: 8px; font-size: 13px; }
+  .bs-empty ol { margin: 6px 0 0 18px; padding: 0; } .bs-empty li { margin: 3px 0; }
+  .bs-c { width: 100%; border-collapse: collapse; font-size: 13px; } .bs-c td { padding: 7px 6px; border-bottom: 1px solid #F1ECE6; } .bs-c .sub { display: block; font-size: 11.5px; color: #8A8079; } .bs-c td.n { text-align: right; font-weight: 600; }
+  @media (max-width: 900px) { .bs-tiles { grid-template-columns: 1fr 1fr; } .bs-list td.act { width: auto; white-space: normal; } }
+  .zh-step { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid #F3C9C4; background: #FFF8F7; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .bk-form { margin-top: 12px; border-top: 1px solid #EFEBE6; padding-top: 12px; }
   .bk-step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #2B2622; margin: 6px 0 8px; }
   .bk-step b { width: 22px; height: 22px; border-radius: 50%; background: #2B2622; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
@@ -3164,7 +3184,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;">
               <table class="pc-table bk-table">
                 <thead><tr><th style="width:78px;">Date</th><th style="width:118px;">Type</th><th class="l">Paid to / received from</th><th style="width:96px;">Mode</th><th class="l" style="width:150px;">Reference #</th>
-                  <th class="l" style="width:150px;">Bills / invoices</th><th style="width:70px;">Project</th><th class="n" style="width:110px;">Paid out</th><th class="n" style="width:110px;">Received</th><th style="width:120px;">Zoho</th><th style="width:118px;"></th></tr></thead>
+                  <th class="l" style="width:150px;">Bills / invoices</th><th style="width:70px;">Project</th><th class="n" style="width:110px;">Paid out</th><th class="n" style="width:110px;">Received</th><th style="width:78px;">Bank</th><th style="width:120px;">Zoho</th><th style="width:118px;"></th></tr></thead>
                 <tbody id="bk-body"></tbody><tfoot id="bk-foot"></tfoot>
               </table>
             </div>
@@ -16353,11 +16373,11 @@ function bkDraw() {
   document.getElementById("bk-body").innerHTML = rows.map(r => `<tr${BK_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td><td>${escapeHtml(r.kind_label)}</td>
     <td class="l">${escapeHtml(r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "ADCB" : "-"))}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
     <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || "-")}${r.kind === "expense" && r.account ? `<span class="sub">${escapeHtml(r.account.replace(/^Office › /, "").split(" › ").pop())}</span>` : ""}${""}</td>
-    <td>${escapeHtml(r.site || ((BK_SCOPES || []).find(x => x.id === r.scope_id) || {}).project || "-")}${r.pp_id ? `<span class="sub" title="On Project payments, excl. VAT">PP ${pcMoney(r.net_amount)}</span>` : ""}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${bkTag(r)}</td>
+    <td>${escapeHtml(r.site || ((BK_SCOPES || []).find(x => x.id === r.scope_id) || {}).project || "-")}${r.pp_id ? `<span class="sub" title="On Project payments, excl. VAT">PP ${pcMoney(r.net_amount)}</span>` : ""}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${BK._verified && BK._verified.has(r.id) ? `<span class="zx-tag zx-ok" title="On the ADCB statement">Bank ✓</span>` : `<span class="sub" style="display:inline;" title="Not on an uploaded ADCB statement yet">-</span>`}</td><td>${bkTag(r)}</td>
     <td class="pc-act">${r.zoho === "sent" ? (r.kind === "customer" ? `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})" title="In Zoho - only the Project payments scope can change">Project</button>` : `<span class="sub">In Zoho</span>`) : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
-    || `<tr><td colspan="11" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
+    || `<tr><td colspan="12" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
   const po = rows.filter(r => r.out).reduce((a, r) => a + r.amount, 0), rc = rows.filter(r => !r.out).reduce((a, r) => a + r.amount, 0);
-  document.getElementById("bk-foot").innerHTML = rows.length ? `<tr><td colspan="7" class="l">TOTAL</td><td class="n">${pcMoney(po)}</td><td class="n">${pcMoney(rc)}</td><td colspan="2"></td></tr>` : "";
+  document.getElementById("bk-foot").innerHTML = rows.length ? `<tr><td colspan="7" class="l">TOTAL</td><td class="n">${pcMoney(po)}</td><td class="n">${pcMoney(rc)}</td><td colspan="3"></td></tr>` : "";
   const wait = (BK.rows || []).filter(r => r.zoho === "" || r.zoho === "sending").length;
   document.getElementById("bk-sendbar").innerHTML = BK.may_send && wait
     ? `<span>${wait} line${wait === 1 ? "" : "s"} not in Zoho yet${BK.connected ? "" : " - connect Zoho first (Send to Zoho tab)"}.</span><button class="btn btn-primary" onclick="bkSend(this)" ${BK.connected ? "" : "disabled"}>Send ${wait} to Zoho</button>`
@@ -16423,14 +16443,104 @@ async function bkSend(btn) {
   catch (e) { showStatus("bk-status", "err", errText(e)); }
 }
 // The ADCB statement lines Zoho has that nobody has entered here yet.
+// ADCB statement check: the bank's own lines, matched to what was entered.
+let BS = null, BS_F = "problems";
 async function bkStatement() {
-  const el = document.getElementById("bk-stmt");
-  if (!BK || !BK.connected) { el.innerHTML = ""; return; }
-  let d; try { d = await apiCall(`/store/bank/statement?month=${encodeURIComponent(BK.month)}`); } catch (e) { el.innerHTML = ""; return; }
-  BK._stmt = d.lines || [];
-  el.innerHTML = BK._stmt.length ? `<div class="bk-stmt"><b>${BK._stmt.length} ADCB statement line${BK._stmt.length === 1 ? "" : "s"} not entered yet</b> <span class="sub" style="display:inline;">- from the bank statement in Zoho</span>
-    <table>${BK._stmt.map((t, i) => `<tr><td style="width:84px;">${pcDate(t.date)}</td><td>${escapeHtml(t.description)}</td><td style="width:170px;">${escapeHtml(t.reference)}</td>
-      <td class="n" style="width:110px;">${t.in ? "+" : "-"}${pcMoney(t.amount)}</td><td style="width:90px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="bkFromStmt(${i})">Enter</button></td></tr>`).join("")}</table></div>` : "";
+  const el = document.getElementById("bk-stmt"); if (!BK) return;
+  try { BS = await apiCall(`/store/bank/stmt?month=${encodeURIComponent(BK.month)}`); } catch (e) { el.innerHTML = ""; return; }
+  BK._verified = new Map(BS.lines.filter(l => l.entry_id).map(l => [l.entry_id, l]));
+  bsDraw(); bkDraw();
+}
+function bsDraw() {
+  const el = document.getElementById("bk-stmt"); if (!BS) return;
+  const c = BS.counts, last = BS.last;
+  const upl = `<label class="btn btn-dark btn-sm bs-up">Upload ADCB statement<input type="file" accept=".xlsx,.xls,.csv,.htm,.html" style="display:none" onchange="bsUpload(this)"></label>`;
+  if (!last) {
+    el.innerHTML = `<div class="bs"><div class="bs-head"><div><b>ADCB statement check</b><span class="sub">Every debit and credit on the bank statement checked against what is entered here.</span></div>${upl}</div>
+      <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement as <b>Excel or CSV</b> (any period - a day, a week, a month).</li>
+      <li>Press <b>Upload ADCB statement</b>. Lines already uploaded are skipped, so overlapping periods are fine.</li>
+      <li>Each bank line is matched to its entry: <span class="zx-tag zx-ok">Bank ✓</span>. What is left shows in red: in the bank but not entered, or entered but not in the bank.</li></ol></div></div>`;
+    return;
+  }
+  const tile = (f, lab, n, cls) => `<button type="button" class="bs-tile ${cls || ""} ${BS_F === f ? "on" : ""}" onclick="BS_F='${f}';bsDraw()"><span>${lab}</span><b>${n}</b></button>`;
+  const covered = BS.covered_to ? pcDate(BS.covered_to) : "-";
+  let rows = "";
+  const L = BS.lines;
+  const show = BS_F === "all" ? L : BS_F === "ok" ? L.filter(l => l.entry_id) : BS_F === "missing" ? [] : L.filter(l => !l.entry_id && !l.ignored);
+  rows = show.map(l => {
+    const amt = l.debit ? `<td class="n neg">-${pcMoney(l.debit)}</td>` : `<td class="n pos">+${pcMoney(l.credit)}</td>`;
+    let st;
+    if (l.entry_id) st = `<span class="zx-tag zx-ok">Bank ✓</span> <span class="sub" style="display:inline;">${escapeHtml(l.entry.party || BK.kinds[l.entry.kind] || "")} · ${{ ref: "by reference", cheque: "by cheque no.", amount: "by amount and date", manual: "matched by hand" }[l.how] || ""}</span> <button type="button" class="bs-x" title="Not this one - unmatch" onclick="bsAct(${l.id},'unmatch')">×</button>`;
+    else if (l.ignored) st = `<span class="zx-tag">No entry needed</span> <span class="sub" style="display:inline;">${escapeHtml(l.ignore_reason)}</span> <button type="button" class="bs-x" title="Put back on the list" onclick="bsAct(${l.id},'undo')">↺</button>`;
+    else st = `<button type="button" class="btn btn-primary btn-sm" onclick="bsEnter(${l.id})">Enter</button> <button type="button" class="btn btn-gray btn-sm" onclick="bsMatch(${l.id})">Match...</button> <button type="button" class="btn btn-gray btn-sm" onclick="bsIgnore(${l.id})">No entry needed</button>`;
+    return `<tr class="${l.entry_id ? "ok" : l.ignored ? "ign" : "bad"}"><td style="width:78px;">${pcDate(l.date)}</td><td class="l">${escapeHtml(l.description)}${l.reference ? `<span class="sub">${escapeHtml(l.reference)}</span>` : ""}</td>${amt}<td class="act">${st}</td></tr>`; }).join("");
+  const miss = BS_F === "missing" || BS_F === "problems" ? BS.missing.map(m => `<tr class="warn"><td style="width:78px;">${pcDate(m.date)}</td><td class="l"><b>${escapeHtml(m.party || BK.kinds[m.kind] || "")}</b> <span class="zx-tag zx-wait">entered, not in the bank</span>${m.reference ? `<span class="sub">${escapeHtml(m.mode)} · ${escapeHtml(m.reference)}</span>` : ""}</td>
+      <td class="n ${m.out ? "neg" : "pos"}">${m.out ? "-" : "+"}${pcMoney(m.amount)}</td><td class="act"><button type="button" class="btn btn-gray btn-sm" onclick="bkEdit(${m.id})">Check entry</button></td></tr>`).join("") : "";
+  const body = rows + miss;
+  el.innerHTML = `<div class="bs"><div class="bs-head"><div><b>ADCB statement check</b><span class="sub">Statement uploaded up to <b>${covered}</b> · last file ${escapeHtml(last.file || "")} by ${escapeHtml(last.by || "-")}${last.closing !== null && last.closing !== undefined ? ` · closing balance AED ${pcMoney(last.closing)}` : ""}</span></div>${upl}</div>
+    <div class="bs-tiles">${tile("all", "Bank lines - " + escapeHtml(BK.label), c.lines)}${tile("ok", "Verified ✓", c.matched, "good")}${tile("problems", "In the bank, not entered", c.not_entered, c.not_entered ? "bad" : "good")}${tile("missing", "Entered, not in the bank", c.not_in_bank, c.not_in_bank ? "warn" : "good")}</div>
+    ${last.breaks ? `<div class="bs-warn">The last statement's running balance does not add up in ${last.breaks} place${last.breaks === 1 ? "" : "s"} - lines may be missing from that file. Download the full period again and upload it.</div>` : ""}
+    ${body ? `<div class="bs-list"><table>${body}</table></div>` : `<div class="bs-none">${BS_F === "problems" || BS_F === "missing" ? (c.lines ? "Nothing to sort out - every bank line this month is matched." : "No statement lines for this month yet - upload the statement.") : "Nothing here."}</div>`}</div>`;
+}
+async function bsUpload(inp) {
+  const f = inp.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  showStatus("bk-status", "ok", "Reading the statement...");
+  try { const d = await apiCall("/store/bank/stmt/upload", { method: "POST", body: fd });
+        showStatus("bk-status", d.breaks ? "err" : "ok", `Statement ${pcDate(d.from)} to ${pcDate(d.to)}: ${d.lines} lines, ${d.added} new${d.duplicates ? `, ${d.duplicates} already in` : ""}. ${d.matched} matched to entries.` + (d.breaks ? ` Warning: the running balance does not add up in ${d.breaks} place${d.breaks === 1 ? "" : "s"} - lines may be missing.` : ""));
+        BS_F = "problems"; await bkStatement(); }
+  catch (e) { showStatus("bk-status", "err", errText(e)); }
+  inp.value = "";
+}
+async function bsAct(id, what) {
+  try { await apiCall(`/store/bank/stmt/${id}/${what === "undo" ? "ignore" : what}`, { method: "POST", body: JSON.stringify(what === "undo" ? { undo: 1 } : {}) }); await bkStatement(); }
+  catch (e) { showStatus("bk-status", "err", errText(e)); }
+}
+function bsEnter(id) {
+  const l = BS.lines.find(x => x.id === id); if (!l) return;
+  bkReset();
+  BK_KIND = l.credit ? "customer" : (/charge|fee|commission|vat on/i.test(l.description) ? "charge" : "vendor"); bkKindDraw();
+  document.getElementById("bk-date").value = l.date; document.getElementById("bk-amt").value = (l.debit || l.credit).toFixed(2);
+  document.getElementById("bk-ref").value = l.reference; document.getElementById("bk-notes").value = l.description.slice(0, 120); bkSum();
+  showStatus("bk-status", "ok", "The form is filled from the bank line - check the type, pick the supplier or client, and save. It will match by itself.");
+  document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function bsModal(inner) {
+  document.querySelectorAll(".zx-modal.bs-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal bs-m";
+  ov.innerHTML = `<div class="zx-box" style="width:620px;">${inner}<div class="status-msg" id="bs-msg" style="margin-top:8px;"></div></div>`;
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+async function bsMatch(id) {
+  const l = BS.lines.find(x => x.id === id); if (!l) return;
+  let d; try { d = await apiCall(`/store/bank/stmt/${id}/candidates`); } catch (e) { return showStatus("bk-status", "err", errText(e)); }
+  bsModal(`<h3 style="margin:0 0 4px;">Which entry is this bank line?</h3>
+    <div class="sub" style="margin-bottom:10px;">${pcDate(l.date)} · ${escapeHtml(l.description)} · <b>${l.debit ? "-" + pcMoney(l.debit) : "+" + pcMoney(l.credit)}</b></div>
+    ${d.entries.length ? `<table class="bs-c">${d.entries.map(e => `<tr><td style="width:84px;">${pcDate(e.date)}</td><td><b>${escapeHtml(e.party || BK.kinds[e.kind] || "")}</b><span class="sub">${escapeHtml(e.mode)}${e.reference ? " · " + escapeHtml(e.reference) : ""}</span></td><td class="n">${pcMoney(e.amount)}</td>
+      <td style="width:80px;text-align:right;"><button type="button" class="btn btn-primary btn-sm" onclick="bsMatchDo(${id},${e.id})">This one</button></td></tr>`).join("")}</table>`
+      : `<div class="bs-none">No entry with exactly this amount, the same way, is waiting. Press <b>Enter</b> to enter it, or correct the entry's amount first.</div>`}
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`);
+}
+async function bsMatchDo(id, eid) {
+  try { await apiCall(`/store/bank/stmt/${id}/match`, { method: "POST", body: JSON.stringify({ entry_id: eid }) });
+        document.querySelectorAll(".zx-modal.bs-m").forEach(m => m.remove()); await bkStatement(); showStatus("bk-status", "ok", "Matched."); }
+  catch (e) { showStatus("bs-msg", "err", errText(e)); }
+}
+function bsIgnore(id) {
+  const l = BS.lines.find(x => x.id === id); if (!l) return;
+  bsModal(`<h3 style="margin:0 0 4px;">No entry needed for this line?</h3>
+    <div class="sub" style="margin-bottom:10px;">${pcDate(l.date)} · ${escapeHtml(l.description)} · <b>${l.debit ? "-" + pcMoney(l.debit) : "+" + pcMoney(l.credit)}</b></div>
+    <label class="pc-f" style="display:flex;"><span>Why</span><input type="text" id="bs-why" maxlength="200" placeholder="e.g. Reversed by the bank the same day" style="height:38px;width:100%;box-sizing:border-box;"></label>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="bsIgnoreDo(${id})">Save</button></div>`);
+  setTimeout(() => { const i = document.getElementById("bs-why"); if (i) i.focus(); }, 50);
+}
+async function bsIgnoreDo(id) {
+  const why = document.getElementById("bs-why").value.trim();
+  if (!why) return showStatus("bs-msg", "err", "Write why no entry is needed.");
+  try { await apiCall(`/store/bank/stmt/${id}/ignore`, { method: "POST", body: JSON.stringify({ reason: why }) });
+        document.querySelectorAll(".zx-modal.bs-m").forEach(m => m.remove()); await bkStatement(); }
+  catch (e) { showStatus("bs-msg", "err", errText(e)); }
 }
 function bkFromStmt(i) {
   const t = BK._stmt[i]; bkReset();
@@ -16673,13 +16783,26 @@ function zhPosDraw() {
   const el = document.getElementById("zh-pos"), L = (ZH && ZH.pos) || [];
   if (!el) return;
   const wait = L.filter(o => !o.status && !o.cancelled), flag = L.filter(o => o.status === "changed" || (o.cancelled && o.err));
+  const unl = wait.filter(o => !o.linked), sups = [...new Set(unl.map(o => o.supplier))];
   el.innerHTML = L.length ? `<div class="zh-sup" style="margin-top:14px;"><b>Purchase orders (LPOs)</b> <span class="sub" style="display:inline;">- ${wait.length} not in Zoho yet; they go with the LPO number from the portal</span>
     ${wait.length ? `<button type="button" class="btn btn-primary btn-sm" style="margin-left:6px;" onclick="zhPosSend(this)" ${ZH.connected ? "" : "disabled"}>Send ${wait.length} to Zoho</button>` : ""}
+    ${unl.length ? `<div class="zh-step"><b>Step 1:</b> ${unl.length} LPO${unl.length === 1 ? "" : "s"} wait because ${sups.length} supplier${sups.length === 1 ? " is" : "s are"} not linked to Zoho yet. Linking only tells the portal which Zoho supplier is which - nothing is created or changed in Zoho.
+      <button type="button" class="btn btn-primary btn-sm" onclick="zhLinkSuppliers(this)" ${ZH.connected ? "" : "disabled"}>Link suppliers now</button></div>` : ""}
     <table class="zh-oct-t" style="margin-top:6px;"><tbody>${L.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b><span class="sub">${pcDate(o.date)}${o.site ? " · " + escapeHtml(o.site) : ""}</span></td>
       <td>${escapeHtml(o.supplier)}${o.linked ? "" : ` <span class="zx-tag zx-bad" title="Link it on Suppliers in Zoho below - a PO needs its vendor">Supplier not linked</span>`}</td>
       <td class="n" style="width:110px;">${pcMoney(o.total)}</td>
       <td style="width:38%;">${o.status === "changed" || (o.cancelled && o.err) ? `<span class="zx-tag zx-bad">${escapeHtml(o.err)}</span> <button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>`
         : (o.err ? `<span class="zx-tag zx-bad">Zoho: ${escapeHtml(o.err)}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`)}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+async function zhLinkSuppliers(btn) {
+  btn.disabled = true; btn.textContent = "Reading Zoho's suppliers...";
+  const det = document.getElementById("zh-sup"); if (det) det.open = true;
+  await zhSupLoad(1); await zhLoad();
+  const left = ((ZH && ZH.pos) || []).filter(o => !o.status && !o.cancelled && !o.linked);
+  showStatus("zh-status", left.length ? "err" : "ok", left.length
+    ? `Linked what matched by name. ${[...new Set(left.map(o => o.supplier))].join(", ")} still need${left.length === 1 ? "s" : ""} a pick - see Suppliers in Zoho below (Link or Create in Zoho).`
+    : "All suppliers linked - the LPOs can be sent now.");
+  if (left.length && det) det.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function zhPosSend(btn) {
   btn.disabled = true;

@@ -1227,6 +1227,46 @@ class CampMove(Base):
     at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class BankStmtUpload(Base):
+    """One ADCB statement file uploaded on Accounts > Bank."""
+    __tablename__ = "bank_stmt_uploads"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String, default="")
+    date_from = Column(Date, nullable=True)
+    date_to = Column(Date, nullable=True)
+    lines = Column(Integer, default=0)          # lines in the file
+    added = Column(Integer, default=0)          # new ones (the rest were already in)
+    breaks = Column(Integer, default=0)         # places the running balance does not add up
+    opening = Column(Float, nullable=True)
+    closing = Column(Float, nullable=True)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BankStmtLine(Base):
+    """One line of the ADCB statement as the bank printed it, and the
+    portal entry it was matched to - so every debit and credit is checked
+    against what was entered."""
+    __tablename__ = "bank_stmt_lines"
+    id = Column(Integer, primary_key=True)
+    bank = Column(String, default="ADCB")
+    on_date = Column(Date, nullable=False, index=True)
+    value_date = Column(Date, nullable=True)
+    description = Column(String, default="")
+    reference = Column(String, default="")
+    debit = Column(Float, default=0.0)           # money out
+    credit = Column(Float, default=0.0)          # money in
+    balance = Column(Float, nullable=True)
+    fp = Column(String, unique=True, index=True)  # the same line uploaded twice is kept once
+    upload_id = Column(Integer, nullable=True, index=True)
+    entry_id = Column(Integer, nullable=True, index=True)   # BankEntry it matches
+    match_how = Column(String, default="")       # ref | cheque | amount | manual
+    ignored = Column(Boolean, default=False)
+    ignore_reason = Column(String, default="")
+    matched_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class PpeIssue(Base):
     """One handing-over of PPE (coverall, safety shoes, helmet...) to a
     worker - the register that stops it being asked for again and again.

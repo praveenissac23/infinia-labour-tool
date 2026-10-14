@@ -13045,6 +13045,8 @@ import ppe  # noqa: E402
 app.include_router(ppe.router)
 import forms  # noqa: E402  - Admin > Forms
 app.include_router(forms.router)
+import bankstmt  # noqa: E402  - Accounts > Bank: the ADCB statement check
+app.include_router(bankstmt.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques
