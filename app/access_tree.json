@@ -723,6 +723,15 @@
        "reports"
       ],
       "pay": "wages in the monthly report"
+     },
+     {
+      "id": "reports.labour.accom",
+      "label": "Accommodation",
+      "right": [
+       "reports",
+       "camp"
+      ],
+      "grant": []
      }
     ]
    },

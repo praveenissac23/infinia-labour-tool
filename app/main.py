@@ -216,6 +216,7 @@ def seed_on_startup():
         _grant_bank_to_chief_accountant(db)
         _tick_new_accounts_tabs(db)
         _grant_projects_to_chief_accountant(db)
+        _grant_camp(db)
         try:
             import credentials as _cr
             _cr.grant_once(db)
@@ -354,6 +355,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Bank: every ADCB payment and receipt, entered once and sent
                # to Zoho - the chief accountant; admin.
                "accounts_bank",
+               # Labour camp: change who sleeps where (Reports > Labour >
+               # Accommodation) - the PRO, the chief accountant and the store
+               # keeper; everyone with Labour reports can look.
+               "camp",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -607,6 +612,29 @@ def _tick_new_accounts_tabs(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="zoho_bank_tabs_ticked", value="1"))
+    db.commit()
+
+
+def _grant_camp(db):
+    """The camp list is changed by the PRO, the chief accountant and the
+    store keeper (their roles and logins); everyone who sees Labour
+    reports tab by tab gets the Accommodation tab to look at. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "camp_right_granted").first():
+        return
+    edit_roles = {"pro", "chief accountant", "store keeper"}
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        add = []
+        if role is not None and (role.name or "").strip().lower() in edit_roles and "camp" not in keys and keys:
+            add.append("camp")
+        if any(k.startswith("reports.labour") for k in keys) and "reports.labour.accom" not in keys:
+            add.append("reports.labour.accom")
+        if add:
+            setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="camp_right_granted", value="1"))
     db.commit()
 
 
@@ -12953,6 +12981,8 @@ import invzoho  # noqa: E402
 app.include_router(invzoho.router)
 import supzoho  # noqa: E402
 app.include_router(supzoho.router)
+import camp  # noqa: E402
+app.include_router(camp.router)
 import pdc  # noqa: E402
 app.include_router(pdc.router)
 import seccheque  # noqa: E402  - Expiry Reminder > Security cheques

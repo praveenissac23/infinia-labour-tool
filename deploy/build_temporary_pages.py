@@ -129,7 +129,8 @@ PAGES = {
     "reports": ("Reports", [
         tab("labour", "pgreports", "Labour", "reports", subs=[
             sub("builder", "Cycle report builder", screen="reports"),
-            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()")]),
+            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
+            sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()")]),
             # Salary cards are on Payroll > Labour payroll, not repeated here.
             # Leave is reported on Staff > Leave, not repeated here.
         # Office payroll and Staff are not repeated here: they are pages of

@@ -1165,3 +1165,54 @@ class Pdc(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
+
+class CampRoom(Base):
+    """A room at the labour camp. Beds are numbered 1..beds; who sleeps
+    where is in CampBed. Six beds a room today - changed here if a room
+    changes, never below the beds in use."""
+    __tablename__ = "camp_rooms"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)   # "49"
+    beds = Column(Integer, default=6)
+    sort = Column(Integer, default=0)
+    note = Column(String, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CampBed(Base):
+    """One bed and who has it: a worker on the staff list, a guest not on
+    it (typed name, shown 'no ID - check'), or a booking for a new joiner
+    who has not arrived. Vacation is never stored here - it is read from
+    leave records, so the bed stays his while he is away."""
+    __tablename__ = "camp_beds"
+    __table_args__ = (UniqueConstraint("room_id", "bed_no", name="uq_camp_bed"),)
+    id = Column(Integer, primary_key=True)
+    room_id = Column(Integer, ForeignKey("camp_rooms.id"), nullable=False, index=True)
+    bed_no = Column(Integer, nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, unique=True)
+    guest_name = Column(String, default="")
+    booked_name = Column(String, default="")
+    booked_trade = Column(String, default="")
+    booked_on = Column(Date, nullable=True)            # expected arrival
+    note = Column(String, default="")
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CampMove(Base):
+    """Every change at the camp, kept: who went into which bed, moved,
+    left (and why), was booked. The history of a bed and of a man."""
+    __tablename__ = "camp_moves"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    name = Column(String, default="")
+    kind = Column(String, default="")      # in | move | out | book | unbook | room
+    room = Column(String, default="")
+    bed_no = Column(Integer, nullable=True)
+    from_room = Column(String, default="")
+    from_bed = Column(Integer, nullable=True)
+    reason = Column(String, default="")
+    on_date = Column(Date, nullable=True)
+    by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    at = Column(DateTime(timezone=True), server_default=func.now())

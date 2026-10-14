@@ -506,6 +506,46 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zx-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .zx-box { background: #fff; border-radius: 12px; width: 520px; max-width: 100%; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
   .zx-box select { width: 100%; height: 38px; }
+
+  /* Labour accommodation - camp rooms and beds */
+  #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
+  #screen-camp .cp-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  #screen-camp .cp-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
+  #screen-camp .cp-tile b{font-size:22px;font-weight:700;color:#2B2622}
+  #screen-camp .cp-tile.on{box-shadow:0 0 0 2px #B03A2E inset}
+  #screen-camp .cp-tile.t-free b{color:#2E7D32} #screen-camp .cp-tile.t-vac b{color:#B26A00} #screen-camp .cp-tile.t-book b{color:#1F5FA8}
+  #screen-camp .cp-tools{display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap}
+  #screen-camp .cp-tools input{height:36px;width:260px;max-width:100%}
+  #screen-camp .cp-legend{display:flex;gap:14px;color:#6b625a;font-size:12px;margin-left:auto;flex-wrap:wrap}
+  #screen-camp .cp-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  #screen-camp .cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  #screen-camp .cp-room{background:#fff;border:1px solid #ECE6DF;border-radius:14px;overflow:hidden}
+  #screen-camp .cp-rh{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #F1ECE6;background:#FCFAF7}
+  #screen-camp .cp-rh b{font-size:15px} #screen-camp .cp-rh .cnt{font-size:12px;color:#8A8079} #screen-camp .cp-rh .cnt.has{color:#2E7D32;font-weight:600}
+  #screen-camp .cp-bed{display:flex;align-items:center;gap:10px;padding:0 14px;border:0;border-bottom:1px solid #F6F2EE;height:50px;width:100%;background:#fff;text-align:left;font:inherit;color:inherit}
+  #screen-camp .cp-room .cp-bed:last-child{border-bottom:0}
+  #screen-camp .cp-bed.click{cursor:pointer} #screen-camp .cp-bed.click:hover{background:#FBF8F5}
+  #screen-camp .cp-bed.dim{opacity:.28}
+  #screen-camp .cp-bed.hit{background:#FFF7E6}
+  #screen-camp .cp-n{width:18px;height:18px;border-radius:50%;background:#F1ECE6;color:#8A8079;font-size:10.5px;display:flex;align-items:center;justify-content:center;flex:none}
+  #screen-camp .cp-who{flex:1;min-width:0}
+  #screen-camp .cp-who b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #screen-camp .cp-who small{color:#8A8079;font-size:11.5px;white-space:nowrap}
+  #screen-camp .cp-tag{font-size:10.5px;border-radius:9px;padding:1px 7px;white-space:nowrap;font-weight:600;margin-left:6px}
+  #screen-camp .cp-vac{background:#FFF4E0;color:#9A5B00} #screen-camp .cp-book{background:#E8F0FB;color:#1F5FA8} #screen-camp .cp-soon{background:#F4EFEB;color:#6b625a} #screen-camp .cp-chk{background:#FDECEA;color:#B03A2E}
+  #screen-camp .cp-bed.free .cp-n{background:#E8F5EA;color:#2E7D32} #screen-camp .cp-bed.free .cp-who b{font-weight:500;color:#2E7D32}
+  #screen-camp .cp-add{font-size:12px;color:#2E7D32;border:1px dashed #8FC79A;border-radius:8px;padding:3px 10px;white-space:nowrap}
+  #screen-camp .cp-bed.vac .cp-who b{color:#6b625a}
+  #screen-camp .cp-nobed{border:1px solid #ECE6DF;border-radius:10px;padding:10px 14px;margin:0 0 12px;background:#FCFAF7;font-size:13px}
+  #screen-camp .cp-nobed summary{cursor:pointer}
+  #screen-camp .cp-empty{color:#8A8079;padding:18px}
+  .cp-box h3{margin:0 0 4px} .cp-box .cp-sub{color:#6b625a;font-size:13px;margin-bottom:12px}
+  .cp-box .cp-acts{display:flex;flex-direction:column;gap:8px}
+  .cp-box .cp-acts .btn{justify-content:flex-start;text-align:left}
+  .cp-box label.pc-f{display:flex;margin-bottom:10px} .cp-box label.pc-f input,.cp-box label.pc-f select{width:100%;height:38px}
+  .cp-box .cp-hist{max-height:220px;overflow:auto;font-size:12.5px;border-top:1px solid #EFEBE6;margin-top:10px;padding-top:8px}
+  .cp-box .cp-hist div{padding:3px 0;border-bottom:1px dashed #EFEBE6}
+  @media (max-width:700px){ #screen-camp .cp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-camp .cp-legend{margin-left:0} #screen-camp .cp-tools input{width:100%} }
   .zh-conn { border: 1px solid #ECE6DF; border-radius: 10px; padding: 12px 14px; margin: 12px 0 2px; background: #FCFAF7; font-size: 13px; }
   .zh-conn.ok { border-color: #CDE8D3; background: #F3FAF4; } .zh-conn b.ok { color: #2E7D32; }
   .zh-conn ol { margin: 6px 0 8px 18px; padding: 0; line-height: 1.7; } .zh-conn code { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: 1px 5px;  overflow-wrap: anywhere; word-break: break-all; }
@@ -3015,6 +3055,24 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         </div>
 
         <!-- ============ SEND TO ZOHO (Accounts) ============ -->
+        <div class="screen" id="screen-camp">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">Labour accommodation <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;" id="cp-asof"></span></h2></div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="campExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="campExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="campExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="campShare()">Share</button></div></div>
+            </div>
+            <div class="cp-tiles" id="cp-tiles"></div>
+            <div class="cp-tools">
+              <label class="pc-f"><span>Find</span><input type="text" id="cp-q" placeholder="Name, ID or room" data-spell="off" oninput="campDraw()"></label>
+              <button type="button" class="btn btn-primary" id="cp-bookbtn" onclick="campBookAny()">+ Book a bed for a new joiner</button>
+              <button type="button" class="btn btn-gray" id="cp-roombtn" onclick="campRoom()">Rooms</button>
+              <div class="cp-legend"><span><i style="background:#2B2622"></i>In camp</span><span><i style="background:#F0B44C"></i>On vacation - bed kept</span><span><i style="background:#5B8FD6"></i>Booked</span><span><i style="background:#7CC08A"></i>Free</span></div>
+            </div>
+            <div class="status-msg" id="cp-status"></div>
+            <div id="cp-nobed"></div>
+            <div class="cp-grid" id="cp-grid"><div class="cp-empty">Loading...</div></div>
+          </div>
+        </div>
         <div class="screen" id="screen-zoho">
           <div class="card">
             <div class="pc-head">
@@ -16409,6 +16467,147 @@ function zhCorrected(id) {
     catch (err) { showStatus("zx-msg", "err", errText(err)); e.target.disabled = false; }
   };
 }
+// ---- Labour accommodation (Reports > Labour > Accommodation) -------------
+// Vacation comes from leave records and leavers free their bed by
+// themselves - nothing here is typed twice.
+let CP = null, CP_F = "all", CP_PEOPLE = null;
+async function campLoad() {
+  try { CP = await apiCall("/store/camp"); } catch (e) { showStatus("cp-status", "err", errText(e)); return; }
+  CP_PEOPLE = null;
+  ["cp-bookbtn", "cp-roombtn"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = CP.may_edit ? "" : "none"; });
+  campDraw();
+}
+function campDmy(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); }
+function campFilter(f) { CP_F = f; campDraw(); }
+function campMatch(b) {
+  const q = (document.getElementById("cp-q").value || "").trim().toLowerCase();
+  const inF = CP_F === "all" || (CP_F === "in" && (b.kind === "in" || b.kind === "guest")) || CP_F === b.kind;
+  const inQ = !q || `${b.name || ""} ${b.no || ""} ${(b.no || "").replace("-", "")}`.toLowerCase().includes(q);
+  return inF && inQ;
+}
+function campDraw() {
+  if (!CP) return;
+  const t = CP.totals, q = (document.getElementById("cp-q").value || "").trim().toLowerCase();
+  document.getElementById("cp-asof").textContent = `Camp · ${CP.rooms.length} rooms · as on ${new Date(CP.today + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const tile = (f, label, n, cls) => `<button type="button" class="cp-tile ${cls || ""}${CP_F === f ? " on" : ""}" onclick="campFilter('${f}')"><span>${label}</span><b>${n}</b></button>`;
+  document.getElementById("cp-tiles").innerHTML = tile("all", "All beds", t.beds) + tile("in", "In camp", t.in) + tile("vac", "On vacation", t.vac, "t-vac") + tile("book", "Booked - arriving", t.book, "t-book") + tile("free", "Free beds", t.free, "t-free");
+  const nb = CP.nobed || [];
+  document.getElementById("cp-nobed").innerHTML = nb.length ? `<details class="cp-nobed"><summary><b>${nb.length} labour${nb.length === 1 ? "er has" : "ers have"} no bed here</b> <span class="sub" style="display:inline;">- living outside the camp, or not yet given one</span></summary>
+    <div style="margin-top:6px;">${nb.map(p => `${escapeHtml(p.no)} ${escapeHtml(p.name)}`).join(" · ")}</div></details>` : "";
+  const html = CP.rooms.map(r => {
+    const any = r.beds.some(campMatch);
+    if ((q || CP_F !== "all") && !any) return "";
+    const rows = r.beds.map(b => {
+      const hit = (q || CP_F !== "all") ? (campMatch(b) ? (q ? " hit" : "") : " dim") : "";
+      const click = CP.may_edit || b.kind !== "free" ? " click" : "";
+      const on = `onclick="campBed(${r.id},${b.bed})"`;
+      if (b.kind === "free") return `<button type="button" class="cp-bed free${click}${hit}" ${CP.may_edit ? on : ""}><span class="cp-n">${b.bed}</span><span class="cp-who"><b>Free</b></span>${CP.may_edit ? `<span class="cp-add">+ Put someone</span>` : ""}</button>`;
+      let tag = "", id = escapeHtml(b.no || "");
+      if (b.kind === "vac") tag = `<span class="cp-tag cp-vac">On vacation${b.back ? " · back " + campDmy(b.back) : ""}</span>`;
+      else if (b.kind === "book") { id = escapeHtml(b.trade || "new joiner"); tag = `<span class="cp-tag cp-book">${b.late ? "Was due " : "Booked · "}${b.due ? campDmy(b.due) : "date not set"}</span>`; }
+      else if (b.kind === "guest") { id = "—"; tag = `<span class="cp-tag cp-chk">No ID - check</span>`; }
+      else if (b.soon) tag = `<span class="cp-tag cp-soon">leave ${campDmy(b.soon)}</span>`;
+      return `<button type="button" class="cp-bed ${b.kind}${click}${hit}" ${on}><span class="cp-n">${b.bed}</span><span class="cp-who"><b>${escapeHtml(b.name)}</b><small>${id}</small>${tag}</span></button>`;
+    }).join("");
+    return `<div class="cp-room"><div class="cp-rh"><b>Room ${escapeHtml(r.name)}</b><span class="cnt${r.free ? " has" : ""}">${r.free ? r.free + " free" : "Full"}</span></div>${rows}</div>`;
+  }).join("");
+  document.getElementById("cp-grid").innerHTML = html || `<div class="cp-empty">Nothing matches.</div>`;
+}
+function campModal(inner) {
+  document.querySelectorAll(".zx-modal.cp-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal cp-m";
+  ov.innerHTML = `<div class="zx-box cp-box">${inner}<div class="status-msg" id="cp-msg" style="margin-top:8px;"></div><div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div></div>`;
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov); return ov;
+}
+async function campDo(path, body, okText) {
+  try { await apiCall(path, { method: "POST", body: JSON.stringify(body) }); document.querySelectorAll(".zx-modal.cp-m").forEach(m => m.remove()); await campLoad(); showStatus("cp-status", "ok", okText); }
+  catch (e) { showStatus("cp-msg", "err", errText(e)); }
+}
+async function campPeople() { if (!CP_PEOPLE) CP_PEOPLE = (await apiCall("/store/camp/people")).people; return CP_PEOPLE; }
+async function campHist(empId) {
+  try { const d = await apiCall(`/store/camp/history?employee_id=${empId}`); const el = document.getElementById("cp-hist");
+    if (el) el.innerHTML = d.moves.length ? d.moves.map(m => `<div>${campDmy(m.date)} · ${({ in: "Given", move: "Moved to", out: "Left", book: "Booked", unbook: "Booking cancelled" })[m.kind] || m.kind} ${m.room ? "room " + escapeHtml(m.room) + (m.bed ? " bed " + m.bed : "") : ""}${m.from ? " (from " + escapeHtml(m.from) + ")" : ""}${m.reason ? " - " + escapeHtml(m.reason) : ""} <span class="sub" style="display:inline;">· ${escapeHtml(m.by)}</span></div>`).join("") : `<div class="sub">No moves recorded yet.</div>`; } catch (e) {}
+}
+function campBed(roomId, bedNo) {
+  const r = CP.rooms.find(x => x.id === roomId), b = r && r.beds.find(x => x.bed === bedNo); if (!b) return;
+  const head = `<h3>Room ${escapeHtml(r.name)} · bed ${b.bed}</h3>`;
+  const ed = CP.may_edit;
+  if (b.kind === "free") {
+    if (!ed) return;
+    campModal(`${head}<div class="cp-sub">This bed is free.</div><div class="cp-acts">
+      <button type="button" class="btn btn-primary" onclick="campPut(${roomId},${bedNo})">Put someone from the staff list</button>
+      <button type="button" class="btn btn-gray" onclick="campBook(${roomId},${bedNo})">Book it for a new joiner (not arrived yet)</button>
+      <button type="button" class="btn btn-gray" onclick="campGuest(${roomId},${bedNo})">Someone not on the staff list (driver, visitor)</button></div>`);
+  } else if (b.kind === "book") {
+    campModal(`${head}<div class="cp-sub">Booked for <b>${escapeHtml(b.name)}</b>${b.trade ? " (" + escapeHtml(b.trade) + ")" : ""}${b.due ? ", arriving " + campDmy(b.due) : ""}.</div>${ed ? `<div class="cp-acts">
+      <button type="button" class="btn btn-primary" onclick="campPut(${roomId},${bedNo},'He has arrived - pick him on the staff list')">He has arrived - pick him on the staff list</button>
+      <button type="button" class="btn btn-gray" onclick="campDo('/store/camp/free',{room_id:${roomId},bed:${bedNo},reason:'booking cancelled'},'Booking cancelled.')">Cancel the booking</button></div>` : ""}`);
+  } else {
+    const st = b.kind === "vac" ? `On vacation${b.back ? ", back " + campDmy(b.back) : ""} - the bed stays his.` : b.kind === "guest" ? "Not on the staff list - check who this is, then put the right person." : (b.soon ? `Goes on leave ${campDmy(b.soon)} - the bed stays his.` : "In camp.");
+    campModal(`${head}<div class="cp-sub"><b>${escapeHtml(b.name)}</b> ${b.no ? "· " + escapeHtml(b.no) : ""} ${b.trade ? "· " + escapeHtml(b.trade) : ""}<br>${st}</div>${ed ? `<div class="cp-acts">
+      ${b.emp_id ? `<button type="button" class="btn btn-gray" onclick="campMove(${b.emp_id})">Move to another bed</button>` : ""}
+      <button type="button" class="btn btn-gray" onclick="campFree(${roomId},${bedNo})">He moved out of the camp - free the bed</button></div>` : ""}
+      ${b.emp_id ? `<div class="cp-hist" id="cp-hist">Loading history...</div>` : ""}`);
+    if (b.emp_id) campHist(b.emp_id);
+  }
+}
+async function campPut(roomId, bedNo, title) {
+  const ppl = await campPeople().catch(e => { showStatus("cp-status", "err", errText(e)); return null; }); if (!ppl) return;
+  const r = CP.rooms.find(x => x.id === roomId);
+  campModal(`<h3>Room ${escapeHtml(r.name)} · bed ${bedNo}</h3><div class="cp-sub">${escapeHtml(title || "Who sleeps here?")} Someone who has a bed already is moved, not given two.</div>
+    <label class="pc-f"><span>Find</span><input type="text" id="cp-pq" placeholder="Name or ID" data-spell="off" oninput="campPick()"></label>
+    <div id="cp-plist" class="cp-hist" style="max-height:260px;border-top:0;margin-top:0;"></div>`);
+  window.CP_PUT = { roomId, bedNo }; campPick();
+  setTimeout(() => { const i = document.getElementById("cp-pq"); if (i) i.focus(); }, 50);
+}
+function campPick() {
+  const q = (document.getElementById("cp-pq").value || "").trim().toLowerCase(), P = window.CP_PUT;
+  const list = (CP_PEOPLE || []).filter(p => !q || `${p.name} ${p.no} ${p.no.replace("-", "")}`.toLowerCase().includes(q)).slice(0, 60);
+  document.getElementById("cp-plist").innerHTML = list.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+    <div style="flex:1;min-width:0;"><b>${escapeHtml(p.name)}</b> <span class="sub" style="display:inline;">${escapeHtml(p.no)}${p.trade ? " · " + escapeHtml(p.trade) : ""}${p.staff ? " · office" : ""}</span>${p.bed ? `<div class="sub">has room ${escapeHtml(p.bed.replace("/", " bed "))}</div>` : ""}</div>
+    <button type="button" class="btn btn-sm ${p.bed ? "btn-gray" : "btn-primary"}" onclick="campDo('/store/camp/assign',{room_id:${P.roomId},bed:${P.bedNo},employee_id:${p.id}},'${escapeAttr(p.name).replace(/'/g, "")} ${p.bed ? "moved" : "given the bed"}.')">${p.bed ? "Move here" : "Put here"}</button></div>`).join("") || `<div class="sub">Nobody matches.</div>`;
+}
+function campBook(roomId, bedNo) {
+  const r = CP.rooms.find(x => x.id === roomId);
+  campModal(`<h3>Book room ${escapeHtml(r.name)} · bed ${bedNo}</h3><div class="cp-sub">For a new joiner who has not arrived. When he comes, open the bed and pick him on the staff list.</div>
+    <label class="pc-f"><span>Name</span><input type="text" id="cp-bn" maxlength="80" placeholder="e.g. Rakesh Kumar" data-spell="off"></label>
+    <label class="pc-f"><span>Trade</span><input type="text" id="cp-bt" maxlength="60" placeholder="e.g. Mason (optional)" data-spell="off"></label>
+    <label class="pc-f"><span>Arriving on</span><input type="date" id="cp-bd"></label>
+    <button type="button" class="btn btn-primary" onclick="campDo('/store/camp/book',{room_id:${roomId},bed:${bedNo},name:document.getElementById('cp-bn').value,trade:document.getElementById('cp-bt').value,date:document.getElementById('cp-bd').value},'Bed booked.')">Book the bed</button>`);
+}
+function campBookAny() {
+  for (const r of CP.rooms) { const b = r.beds.find(x => x.kind === "free"); if (b) return campBook(r.id, b.bed); }
+  showStatus("cp-status", "err", "No free bed - free one, or add beds with Rooms.");
+}
+function campGuest(roomId, bedNo) {
+  const r = CP.rooms.find(x => x.id === roomId);
+  campModal(`<h3>Room ${escapeHtml(r.name)} · bed ${bedNo}</h3><div class="cp-sub">Someone not on the staff list. It shows "No ID - check" until the right person is put.</div>
+    <label class="pc-f"><span>Name</span><input type="text" id="cp-gn" maxlength="80" placeholder="Full name" data-spell="off"></label>
+    <button type="button" class="btn btn-primary" onclick="campDo('/store/camp/guest',{room_id:${roomId},bed:${bedNo},name:document.getElementById('cp-gn').value},'Saved.')">Save</button>`);
+}
+function campFree(roomId, bedNo) {
+  const r = CP.rooms.find(x => x.id === roomId);
+  campModal(`<h3>Free room ${escapeHtml(r.name)} · bed ${bedNo}?</h3><div class="cp-sub">Only for someone who moved out of the camp. A vacation keeps the bed by itself, and a worker who leaves the company frees it by himself.</div>
+    <label class="pc-f"><span>Why</span><input type="text" id="cp-fr" maxlength="120" placeholder="e.g. moved to site accommodation" data-spell="off"></label>
+    <button type="button" class="btn btn-primary" onclick="campDo('/store/camp/free',{room_id:${roomId},bed:${bedNo},reason:document.getElementById('cp-fr').value},'Bed freed.')">Free the bed</button>`);
+}
+function campMove(empId) {
+  const free = []; CP.rooms.forEach(r => r.beds.forEach(b => { if (b.kind === "free") free.push([r, b]); }));
+  campModal(`<h3>Move to which bed?</h3><div class="cp-sub">Free beds now. His old bed is freed.</div>
+    <div class="cp-hist" style="border-top:0;margin-top:0;max-height:300px;">${free.map(([r, b]) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;"><span>Room ${escapeHtml(r.name)} · bed ${b.bed}</span><button type="button" class="btn btn-sm btn-primary" onclick="campDo('/store/camp/assign',{room_id:${r.id},bed:${b.bed},employee_id:${empId}},'Moved.')">Move here</button></div>`).join("") || `<div class="sub">No free bed.</div>`}</div>`);
+}
+function campRoom() {
+  campModal(`<h3>Rooms</h3><div class="cp-sub">Add a room, or change how many beds a room has. Beds in use cannot be taken away.</div>
+    <label class="pc-f"><span>Room</span><input type="text" id="cp-rn" maxlength="20" placeholder="e.g. 64" data-spell="off" list="cp-rlist"><datalist id="cp-rlist">${CP.rooms.map(r => `<option value="${escapeAttr(r.name)}">`).join("")}</datalist></label>
+    <label class="pc-f"><span>Beds</span><input type="number" id="cp-rb" min="1" max="20" value="6"></label>
+    <button type="button" class="btn btn-primary" onclick="campDo('/store/camp/room',{name:document.getElementById('cp-rn').value,beds:document.getElementById('cp-rb').value},'Room saved.')">Save room</button>`);
+}
+async function campExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/reports/camp?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+function campShare() { campExport("view"); }   // the preview has Share (WhatsApp, mail) built in
 async function zhExport(kind) {
   await refreshDownloadToken();
   const book = document.getElementById("zh-book").value;
