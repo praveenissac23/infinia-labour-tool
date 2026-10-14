@@ -203,6 +203,13 @@ window.HELP_GUIDES = [
       { say: "On Send to Zoho, Purchase orders (LPOs) lists the LPOs from 1 Oct not yet in Zoho. Press Send.", el: "#zh-pos" },
       { say: "Each goes with its portal number (IC/LPO/2026xxxx), the supplier's Zoho vendor, lines, VAT and discount.", el: "#zh-pos" }],
     tip: "A supplier marked 'not linked' must be linked on Suppliers in Zoho first. An LPO changed or cancelled after it went is flagged - do it in Zoho, then press Done in Zoho." },
+  { id: "tables-sort-move", area: "Everywhere", title: "How to sort a list or move its columns",
+    words: "sort order column heading drag move rearrange table list arrange ascending descending",
+    go: { page: "accounts", tab: "petty" },
+    steps: [
+      { say: "Click a column heading to sort the list by it - click again to reverse. An arrow shows which way. Totals and brought-forward lines stay where they are.", el: "#pc-head-row" },
+      { say: "Drag a heading left or right to move that column. The order is remembered on this computer for that list - drag it back to undo. It works the same on every list.", el: "#pc-head-row" }],
+    tip: "Lists that already sort themselves (e.g. Labour master data) keep their own sorting." },
   { id: "bank-statement-check", area: "Accounts", title: "How to check the bank: upload the ADCB statement",
     words: "bank statement adcb upload verify check credit debit reconcile reconciliation matched missing not entered procash",
     go: { page: "accounts", tab: "bank" },

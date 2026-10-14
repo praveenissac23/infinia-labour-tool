@@ -23,6 +23,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   }
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
+  /* One type everywhere: boxes, lists and buttons take the page's font and,
+     unless a screen sets its own, the standard 13px - not the browser's own. */
+  input, select, textarea, button { font-family: inherit; }
+  input, select, textarea { font-size: 13px; }
+  html { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 
   /* ---- Login screen ---- */
   /* A site at dawn: a fine blueprint grid over warm stone, a skyline of
@@ -505,6 +510,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table tr.zh-fix td { background: #FFF8F7; } .zh-flags { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
   .zh-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .zh-foot span { color: #6b625a; font-size: 12.5px; }
+  #bk-stats:empty { min-height: 62px; } #bk-stmt:empty { min-height: 190px; }
   .bs { border: 1px solid #ECE6DF; border-radius: 12px; padding: 12px 14px; margin: 12px 0 4px; background: #fff; }
   .bs-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   .bs-head b { font-size: 14px; } .bs-head .sub { display: block; font-size: 12px; color: #8A8079; margin-top: 2px; }
@@ -527,6 +533,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dq-tile { position: relative; } .dq-badge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; box-sizing: border-box; }
   .pz { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; margin-left: 6px; vertical-align: 1px; cursor: help; }
   .pz.ok { background: #E3F2E6; color: #2E7D32; } .pz.app { background: #E8EEFB; color: #2F5BB7; } .pz.wait { background: #FFF1D9; color: #A86A00; } .pz.bad { background: #FDECEA; color: #B03A2E; } .pz.skip { background: #EEE; color: #888; }
+  #screen-zoho .zh-pane { display: none; } #screen-zoho .zh-tabs { min-height: 35px; }
   .zh-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 10px; border-bottom: 1px solid #EFEBE6; padding-bottom: 10px; }
   .zh-tab { border: 1px solid #E3D7D1; background: #fff; border-radius: 18px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; color: #4A433D; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
   .zh-tab:hover { border-color: #C9B7AE; } .zh-tab.on { background: #2B2622; border-color: #2B2622; color: #fff; }
@@ -599,7 +606,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   @media (max-width:560px){ #screen-adminforms .af-grid{grid-template-columns:1fr} .af-thumb{width:96px;height:136px} }
   /* PPE register */
   #screen-ppe .pc-btns{align-items:flex-end} #screen-ppe .pc-btns .btn{height:36px;box-sizing:border-box} #screen-ppe .pc-btns select{height:36px}
-  #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
+  #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0;min-height:68px}
+  #screen-ppe .pe-wrap{min-height:420px}
   #screen-ppe .pe-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;text-align:left;font:inherit;color:inherit}
   #screen-ppe .pe-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
   #screen-ppe .pe-tile b{font-size:22px;font-weight:700;color:#2B2622}
@@ -658,7 +666,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   @media (max-width:900px){ #screen-ppe .pe-cols{grid-template-columns:1fr} #screen-ppe .pe-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-ppe .pe-legend{margin-left:0} #screen-ppe .pe-tools input{width:100%} }
   @media (max-width:1200px){ #screen-ppe .pe-grid th:first-child{min-width:140px!important} #screen-ppe .pe-grid th{white-space:normal} #screen-ppe .pe-who b{white-space:normal} #screen-ppe .pe-who small{display:block;line-height:1.25} #screen-ppe .pe-cell{min-width:64px;padding:3px 6px} #screen-ppe .pe-grid td,#screen-ppe .pe-grid th{padding-left:7px;padding-right:7px} }
   /* Labour accommodation - camp rooms and beds */
-  #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
+  #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0;min-height:68px}
+  @media (max-width:700px){ #screen-camp .cp-tiles:empty{min-height:226px} #screen-ppe .pe-tiles:empty{min-height:226px} }
   #screen-camp .cp-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit}
   #screen-camp .cp-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
   #screen-camp .cp-tile b{font-size:22px;font-weight:700;color:#2B2622}
@@ -1218,6 +1227,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* Dashboard skyline: Dubai, our own tower going up - one 48 s loop that never jumps */
   
   #dash-sky svg{position:absolute;inset:0;width:100%;height:100%}
+  /* only moves while it can be seen - off screen, or the tab in the
+     background, it stands still and costs nothing while scrolling */
+  #dash-sky{contain:layout paint} #dash-sky.dsk-paused *{animation-play-state:paused!important}
+  @media (prefers-reduced-motion:reduce){#dash-sky *{animation:none!important}}
   #dash-sky .txt{position:absolute;left:30px;top:24px;z-index:2}
   #dash-sky .txt b{display:block;font-size:21px;color:#7A3B33}
   #dash-sky .txt span{font-size:13px;color:#927068}
@@ -1234,7 +1247,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dsk-jib{transform-origin:640px 46px;animation:dskk-jib 24s ease-in-out infinite}@keyframes dskk-jib{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
   .dsk-trolley{animation:dskk-trolley 24s ease-in-out infinite}@keyframes dskk-trolley{0%,100%{transform:translateX(150px)}50%{transform:translateX(10px)}}
   .dsk-load{animation:dskk-load 24s ease-in-out infinite}@keyframes dskk-load{0%,100%{transform:translateY(80px)}50%{transform:translateY(0)}}
-  .dsk-cable{animation:dskk-cable 24s ease-in-out infinite}@keyframes dskk-cable{0%,100%{height:110px}50%{height:30px}}
+  .dsk-cable{transform-box:fill-box;transform-origin:top;animation:dskk-cable 24s ease-in-out infinite}@keyframes dskk-cable{0%,100%{transform:scaleY(3.667)}50%{transform:scaleY(1)}}
   .dsk-top{animation:dskk-top 24s ease-in-out infinite}@keyframes dskk-top{0%,40%,100%{opacity:.35}60%,90%{opacity:1}}
   .dsk-spark{animation:dskk-spark 2.4s ease-in-out infinite}@keyframes dskk-spark{0%,100%{opacity:0}50%{opacity:1}}
   .dsk-metro{animation:dskk-metro 24s linear infinite}@keyframes dskk-metro{from{transform:translateX(1700px)}to{transform:translateX(-700px)}}
@@ -1244,7 +1257,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dsk-car2{animation:dskk-truck 12s linear infinite;animation-delay:-4s}
   .dsk-boat{animation:dskk-boat 48s linear infinite}@keyframes dskk-boat{from{transform:translateX(-60px)}to{transform:translateX(330px)}}
   .dsk-wave{stroke-dasharray:10 14;animation:dskk-wave 4.8s linear infinite}@keyframes dskk-wave{to{stroke-dashoffset:-24}}
-  .dsk-win{fill:#F3E3E0;animation:dskk-win 12s ease-in-out infinite}@keyframes dskk-win{0%,100%{fill:#F3E3E0}50%{fill:#FFE0A0}}
+  .dsk-win{fill:#FFE0A0;opacity:.2;animation:dskk-win 12s ease-in-out infinite}@keyframes dskk-win{0%,100%{opacity:.2}50%{opacity:1}}
   .dsk-bird{animation:dskk-bird 48s linear infinite}@keyframes dskk-bird{from{transform:translate(1660px,52px)}to{transform:translate(-490px,26px)}}
   .dsk-blink{animation:dskk-blink 4.8s steps(1) infinite}@keyframes dskk-blink{50%{opacity:.15}}
   @media (prefers-reduced-motion:reduce){#dash-sky *{animation:none!important}}
@@ -1287,7 +1300,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dash-tile-sub { font-size: 12px; color: #927068; margin-top: 4px; }
   #store-report-stats:empty { display: none; } .dash-calendar { min-height: 131px; align-content: start; } .dash-calendar .empty-note { grid-column: 1 / -1; align-self: center; text-align: center; } #unfilled-btn.on { border-color: var(--red); color: var(--red); background: #fff; } .att-head > .att-cal { min-width: 222px; }
   .dash-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; max-width: 320px; margin: 0 auto; }
-  .dash-cal-head { font-size: 8px; font-weight: bold; color: #888; text-align: center; padding: 2px 0; }
+  .dash-cal-head { font-size: 9.5px; font-weight: bold; color: #888; text-align: center; padding: 2px 0; }
   .dash-cal-day { border-radius: 4px; padding: 4px 2px; text-align: center; font-size: 9px; font-weight: bold; cursor: pointer; color: white; }
   .dash-cal-day.complete { background: #2E7D32; }
   .dash-cal-day.incomplete { background: var(--red); }
@@ -1685,7 +1698,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="b03b9ca2980e";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="bd65344cfd7b";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -2396,12 +2409,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;" id="labinc-new">
                 <label class="hr-field"><span>Worker</span><select id="labinc-emp" style="width:285px;"></select></label>
                 <label class="hr-field"><span>Effective from</span><select id="labinc-from" style="width:200px;"></select></label>
-                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="labinc-amount" style="width:100px;"></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="labinc-amount" placeholder="e.g. 100" style="width:100px;"></label>
                 <label class="hr-field"><span>Goes onto</span><select id="labinc-onto" style="width:140px;">
                   <option value="allowance">Allowance</option>
                   <option value="basic">Basic</option>
                 </select></label>
-                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-reason" style="width:170px;"></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="labinc-reason" placeholder="e.g. Good work - new rate" style="width:170px;"></label>
                 <button class="btn btn-primary" onclick="labIncAdd()">Record increment</button>
               </div>
               <div class="status-msg" id="labinc-status" style="margin-top:8px;"></div>
@@ -2822,7 +2835,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 or correct it - a renewal is simply the new expiry date. Any other document can be
                 added: pick "Other - type the name".</p>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" style="width:140px;" onchange="hrDocRenewal()"></label>
+                <label class="hr-field"><span>Staff or labour code</span><input type="text" id="hr-doc-emp" placeholder="e.g. F-782" style="width:140px;" onchange="hrDocRenewal()"></label>
                 <label class="hr-field"><span>Document</span><select id="hr-doc-kind" class="hr-dd" style="width:190px;" onchange="hrDocKindChanged()"></select></label>
                 <label class="hr-field" id="hr-doc-custom-f" style="display:none;"><span>Document name</span><input type="text" id="hr-doc-custom" list="hr-doc-custom-list" style="width:170px;" placeholder="e.g. Safety card"></label>
                 <datalist id="hr-doc-custom-list"></datalist>
@@ -3083,11 +3096,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <details class="inv-terms" id="inv-terms" ontoggle="if (this.open) invTermsLoad()">
               <summary>Terms &amp; conditions and note printed on every invoice</summary>
               <div class="inv-terms-grid">
-                <label class="hr-field"><span>Tax invoice - one term a line</span><textarea id="inv-terms-tax" rows="6"></textarea></label>
-                <label class="hr-field"><span>Proforma invoice - one term a line</span><textarea id="inv-terms-proforma" rows="6"></textarea></label>
+                <label class="hr-field"><span>Tax invoice - one term a line</span><textarea id="inv-terms-tax" rows="6" placeholder="One term a line - e.g. Payment is due within 30 days of the invoice date."></textarea></label>
+                <label class="hr-field"><span>Proforma invoice - one term a line</span><textarea id="inv-terms-proforma" rows="6" placeholder="One term a line - e.g. This proforma is valid for 15 days."></textarea></label>
               </div>
               <div class="form-row" style="gap:10px; align-items:flex-end; margin-top:8px;">
-                <label class="hr-field" style="flex:1;"><span>Note</span><input type="text" id="inv-note" maxlength="200"></label>
+                <label class="hr-field" style="flex:1;"><span>Note</span><input type="text" id="inv-note" maxlength="200" placeholder="e.g. Retention 5% released with the final invoice"></label>
                 <button class="btn btn-primary" onclick="invTermsSave()">Save terms</button>
               </div>
             </details>
@@ -3219,9 +3232,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div style="display:flex; align-items:center; gap:8px;"><h2 id="cr-form-title" style="flex:1; margin:0 0 4px;">Add a login</h2><button class="btn btn-dark" id="cr-new" style="display:none; padding:5px 12px;" onclick="crReset(); document.getElementById('cr-url').focus();">+ New</button></div><p>Paste the website - the name and logo fill in by themselves.</p>
               <label class="cr-f"><span>Website or app</span><input type="text" id="cr-url" placeholder="e.g. dewa.gov.ae" oninput="crUrlTyped()"></label>
               <div class="cr-preview" id="cr-prev" style="display:none;"><div class="cr-logo" id="cr-prev-logo"></div><div style="min-width:0;"><div class="cr-name" id="cr-prev-name" style="font-size:13.5px"></div><div class="cr-url" id="cr-prev-dom"></div></div></div>
-              <label class="cr-f"><span>Name</span><input type="text" id="cr-name" oninput="this.dataset.auto=''"></label>
+              <label class="cr-f"><span>Name</span><input type="text" id="cr-name" placeholder="e.g. Dubai Municipality portal" oninput="this.dataset.auto=''"></label>
               <div class="cr-seg" id="cr-kind"><div data-k="login" class="on" onclick="crKind('login')">User + password</div><div data-k="pin" onclick="crKind('pin')">PIN only</div><div data-k="note" onclick="crKind('note')">Note</div></div>
-              <label class="cr-f" id="cr-user-f"><span>Username</span><input type="text" id="cr-user" autocomplete="off" data-spell="off"></label>
+              <label class="cr-f" id="cr-user-f"><span>Username</span><input type="text" id="cr-user" placeholder="e.g. infinia.admin" autocomplete="off" data-spell="off"></label>
               <label class="cr-f cr-pw" id="cr-secret-f"><span id="cr-secret-lab">Password</span><input type="password" id="cr-secret" autocomplete="new-password" data-spell="off"><a class="gen" href="#" onclick="crGen(); return false;">Make one</a></label>
               <div class="cr-hint" id="cr-secret-hint"></div>
               <label class="cr-f"><span>Category</span><select id="cr-cat"></select></label>
@@ -3403,18 +3416,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pc-head">
               <div class="pc-title"><h2 style="margin:0;">Send to Zoho <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Everything waiting for Zoho Books, one tab each - send a line, a selection or all</span></h2></div>
             </div>
-            <div class="zh-conn" id="zh-conn"></div>
             <div class="zh-tabs" id="zh-tabs"></div>
+            <div class="zh-conn" id="zh-conn"></div>
             <div class="status-msg" id="zh-status"></div>
             <div class="zh-pane" data-pane="petty">
               <div class="zh-ptools">
-                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option><option value="naveen">Naveen</option><option value="praveen">Praveen</option></select></label>
+                <label class="pc-f"><span>Book</span><select id="zh-book" onchange="zhDraw()"><option value="">All books</option><option value="site">Site</option><option value="pro">PRO</option><option value="office">Office</option></select></label>
                 <label class="pc-f"><span>Search</span><input type="text" id="zh-q" placeholder="Description or supplier" style="width:200px;" data-spell="off" oninput="zhDraw()"></label>
                 <div class="exp-btns" style="margin-left:auto;"><button type="button" class="btn btn-dark" onclick="zhExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zhExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zhExport('excel')">Export Excel</button></div>
               </div>
               <div class="pc-stats" id="zh-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
               <div class="grid-wrap" style="max-height:none;">
-                <table class="pc-table zh-table">
+                <table class="pc-table zh-table" data-nomove>
                   <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th class="l" style="width:58px;">Book</th><th class="l" style="width:78px;">Date</th>
                     <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:296px;">Zoho account</th>
                     <th class="l" style="width:128px;">VAT</th><th class="n" style="width:96px;">Amount</th><th style="width:116px;"></th></tr></thead>
@@ -4661,7 +4674,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <option value="add">Addition (+)</option><option value="deduct">Deduction (-)</option>
                 </select></label>
                 <label class="hr-field"><span>For</span><select id="hr-item-cat" style="width:210px;"></select></label>
-                <label class="hr-field"><span>Amount</span><input type="text" inputmode="decimal" id="hr-item-amount" style="width:120px;"></label>
+                <label class="hr-field"><span>Amount</span><input type="text" inputmode="decimal" id="hr-item-amount" placeholder="e.g. 500.00" style="width:120px;"></label>
                 <label class="hr-field"><span>Note (prints as the remark)</span><input type="text" id="hr-item-note" style="width:220px;" placeholder="e.g. SOE Fee 241.50"></label>
                 <button class="btn btn-primary" id="hr-item-save" onclick="saveItem()">Add</button>
                 <button class="btn btn-gray" id="hr-item-cancel" onclick="hrItemReset()" style="display:none;">Cancel</button>
@@ -4697,10 +4710,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <h2 id="hr-loan-form-title">Record a loan</h2>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <label class="hr-field"><span>Staff</span><select id="hr-loan-emp" class="hr-staff-pick" style="width:230px;"></select></label>
-                <label class="hr-field"><span>Amount lent</span><input type="text" inputmode="decimal" id="hr-loan-amount" style="width:120px;"></label>
+                <label class="hr-field"><span>Amount lent</span><input type="text" inputmode="decimal" id="hr-loan-amount" placeholder="e.g. 3,000.00" style="width:120px;"></label>
                 <label class="hr-field"><span>Taken on</span><input type="date" id="hr-loan-date" style="width:150px;"></label>
                 <label class="hr-field"><span>Monthly from salary</span><input type="text" inputmode="decimal" id="hr-loan-instalment" style="width:130px;" placeholder="0 = not from salary"></label>
-                <label class="hr-field"><span>Agreed terms</span><input type="text" id="hr-loan-terms" style="width:240px;"></label>
+                <label class="hr-field"><span>Agreed terms</span><input type="text" id="hr-loan-terms" placeholder="e.g. 500 a month from November" style="width:240px;"></label>
                 <label class="hr-field"><span>Paid from</span><select id="hr-loan-from" style="width:200px;"><option value="">- not said -</option><option value="ADCB">ADCB (bank)</option><option value="Cash">Cash</option><option value="petty">A petty cash book</option></select></label>
                 <button class="btn btn-primary" id="hr-loan-save" onclick="saveLoan()">Record loan</button>
                 <button class="btn btn-gray" id="hr-loan-cancel" onclick="hrLoanReset()" style="display:none;">Cancel</button>
@@ -4785,11 +4798,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;" id="hr-inc-new">
                 <label class="hr-field"><span>Staff</span><select id="hr-inc-emp" class="hr-staff-pick" style="width:230px;" onchange="hrIncDefaults()"></select></label>
                 <label class="hr-field"><span>Effective from</span><input type="date" id="hr-inc-date" style="width:150px;"></label>
-                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" style="width:110px;" oninput="hrIncDefaults()"></label>
+                <label class="hr-field"><span>Increase</span><input type="text" inputmode="decimal" id="hr-inc-amount" placeholder="e.g. 250" style="width:110px;" oninput="hrIncDefaults()"></label>
                 <label class="hr-field"><span>Goes onto</span><select id="hr-inc-where" style="width:210px;" disabled>
                   <option value="allowance">Allowance (house rule)</option>
                 </select></label>
-                <label class="hr-field"><span>Reason</span><input type="text" id="hr-inc-reason" style="width:200px;"></label>
+                <label class="hr-field"><span>Reason</span><input type="text" id="hr-inc-reason" placeholder="e.g. Annual increment" style="width:200px;"></label>
                 <button class="btn btn-primary" onclick="addIncrement()">Record increment</button>
               </div>
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end; display:none;" id="hr-inc-edit">
@@ -5528,7 +5541,12 @@ async function loadDate(dateStr, preserveStatus) {
   document.getElementById("grid-table").style.display = "none";
   if (!preserveStatus) showStatus("att-status", null);
 
-  const existing = await apiCall(`/attendance/${dateStr}`);
+  // The day, where each man last worked, and the staff as on that date -
+  // asked for together, not one after another.
+  const [existing, lastSites, dayStaffRaw] = await Promise.all([
+    apiCall(`/attendance/${dateStr}`),
+    MY_SCREENS.includes("attendance") ? apiCall(`/attendance/last-sites/${dateStr}`).catch(() => ({})) : Promise.resolve({}),
+    apiCall(`/employees?active_only=true&as_of=${dateStr}`).catch(() => null)]);
   const byEmp = {};
   existing.forEach(r => byEmp[r.emp_no] = r);
 
@@ -5549,16 +5567,11 @@ async function loadDate(dateStr, preserveStatus) {
   // Only somebody who may open attendance asks - an office login was
   // sending this at startup and being refused, a 403 in every log for
   // a screen it was never going to show.
-  if (MY_SCREENS.includes("attendance")) {
-    try { lastSiteByEmp = await apiCall(`/attendance/last-sites/${dateStr}`) || {}; }
-    catch (e) { /* no lookup - rows simply start blank */ }
-  }
+  lastSiteByEmp = lastSites || {};
 
   // The workforce as it stood on this date: a man who left in August
   // is still on August's grid and gone from September's.
-  let dayStaff = employees;
-  try { dayStaff = await apiCall(`/employees?active_only=true&as_of=${dateStr}`) || employees; }
-  catch (e) { /* fall back to everyone rather than show an empty day */ }
+  const dayStaff = dayStaffRaw || employees;   // fall back to everyone rather than show an empty day
   attendanceStaff = dayStaff;
 
   rowData = {};
@@ -8187,7 +8200,7 @@ function addHireInLine() {
     <td>${materialPickerHtml("hin-item", "material-list-all")}</td>
     <td><input type="number" step="any" min="0" class="hin-qty" placeholder="0"
           style="width:100%; text-align:right;"></td>
-    <td><input type="text" class="hin-note" style="width:100%;"></td>
+    <td><input type="text" class="hin-note" placeholder="Optional" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'hin-lines')">&times;</button></td>`;
   body.appendChild(tr);
   renumberRows("hin-lines");
@@ -9464,10 +9477,10 @@ function addOutLine() {
   tr.innerHTML = `
     <td class="row-no" style="color:#999; font-weight:600;"></td>
     <td>${materialPickerHtml("ol-item", outListName())}</td>
-    <td><input type="number" class="ol-qty" step="any" style="width:100%; min-width:90px;" oninput="checkOutQty(this)"></td>
+    <td><input type="number" class="ol-qty" step="any" placeholder="Qty" style="width:100%; min-width:90px;" oninput="checkOutQty(this)"></td>
     <td class="ol-have" style="color:#777;">-</td>
     <td class="ol-atsite at-site none">-</td>
-    <td><input type="text" class="ol-note" style="width:100%;"></td>
+    <td><input type="text" class="ol-note" placeholder="Optional" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'out-lines')">Remove</button></td>`;
   document.getElementById("out-lines").appendChild(tr);
   renumberRows("out-lines");
@@ -10716,11 +10729,11 @@ function addMrLine() {
           <option value="asset">Asset (to own)</option>
           <option value="rental">Rental (to hire)</option>
         </select></td>
-    <td><input type="number" class="mr-qty" step="any" style="width:100%; min-width:80px;"></td>
+    <td><input type="number" class="mr-qty" step="any" placeholder="Qty" style="width:100%; min-width:80px;"></td>
     <td><select class="mr-unit" style="width:100%; min-width:90px;"
                 onchange="this.dataset.touched='1'">${unitOptionsHtml("pcs")}</select></td>
     <td><input type="text" class="mr-purpose" placeholder="e.g. slab casting, block work" style="width:100%;"></td>
-    <td><input type="text" class="mr-note" style="width:100%;"></td>
+    <td><input type="text" class="mr-note" placeholder="Optional" style="width:100%;"></td>
     <td><button class="btn btn-gray" onclick="removeEntryRow(this,'mr-lines')">Remove</button></td>`;
   tb.appendChild(tr);
   renumberRows("mr-lines");
@@ -13308,6 +13321,17 @@ function dashQuick() {
   dqBadges();
 }
 // A red count on Send to Zoho when lines are not in Zoho after 3 days.
+(function dskWatch() {
+  const go = () => {
+    const sky = document.getElementById("dash-sky"); if (!sky || sky.__watched) return;
+    sky.__watched = true;
+    let seen = true;
+    const set = () => sky.classList.toggle("dsk-paused", !seen || document.hidden);
+    try { new IntersectionObserver(e => { seen = e[0].isIntersecting; set(); }).observe(sky); } catch (e) {}
+    document.addEventListener("visibilitychange", set);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
 function dqBadges() {
   const t = document.querySelector('.dq-tile[data-dq="zoho"]'); if (!t) return;
   const n = (typeof notifications !== "undefined" ? notifications : []).find(x => x.kind === "zoho");
@@ -16520,12 +16544,19 @@ async function bkLoad() {
   const m = document.getElementById("bk-month");
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("bk-date").value) document.getElementById("bk-date").value = pcToday();
-  if (!BK_SITES) { try { BK_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { BK_SITES = []; } }
-  if (!BK_SCOPES) { try { BK_SCOPES = (await apiCall("/store/bank/scopes")).scopes; } catch (e) { BK_SCOPES = []; } }
-  try { BK = await apiCall(`/store/bank?${bkQS()}`); }
+  const [sites, scopes, bk, bs] = await Promise.all([
+    BK_SITES ? Promise.resolve(null) : apiCall("/sites").catch(() => []),
+    BK_SCOPES ? Promise.resolve(null) : apiCall("/store/bank/scopes").catch(() => ({ scopes: [] })),
+    apiCall(`/store/bank?${bkQS()}`).catch(e => ({ __err: e })),
+    apiCall(`/store/bank/stmt?${bkQS()}`).catch(() => null)]);
+  if (sites) BK_SITES = sites.map(x => x.code).filter(Boolean);
+  if (scopes) BK_SCOPES = scopes.scopes || [];
+  try { if (bk.__err) throw bk.__err; BK = bk; }
   catch (e) { showStatus("bk-status", "err", errText(e)); return; }
   document.getElementById("bk-mode").innerHTML = BK.modes.map(x => `<option>${escapeHtml(x)}</option>`).join("");
-  bkKindDraw(); bkDraw(); bkStatement();
+  if (bs) { BS = bs; BK._verified = new Map(BS.lines.filter(l => l.entry_id).map(l => [l.entry_id, l])); }
+  bkKindDraw(); if (bs) bsDraw(); bkDraw();
+  if (!bs) bkStatement();
 }
 function bkKindDraw() {
   document.getElementById("bk-kind").innerHTML = Object.keys(BK.kinds).map(k => { const x = BK_KINDS[k] || { t: BK.kinds[k], d: "", dir: "out" };
@@ -16590,6 +16621,9 @@ async function bkPartyPicked() {
 // The amount goes against the oldest open bills / invoices first; change any figure.
 function bkSpread() {
   if (!["vendor", "customer"].includes(BK_KIND) || !BK_DOCS.length) { bkDocsDraw(); return; }
+  // A client's payment: the chief accountant picks the invoices himself
+  // (go-live answers) - nothing is filled in for him.
+  if (BK_KIND === "customer") { bkDocsDraw(); return; }
   if (!BK_EDIT || !Object.keys(BK_PICK).length) {
     let left = parseFloat((document.getElementById("bk-amt").value || "0").replace(/,/g, "")) || 0;
     BK_PICK = {};
@@ -16607,7 +16641,9 @@ function bkDocsDraw() {
   if (!BK_PARTY_ID) { el.innerHTML = `<span class="sub">Pick the ${BK_KIND === "vendor" ? "supplier" : "client"} from the list to see the open ${word}.</span>`; return; }
   if (!BK_DOCS.length) { el.innerHTML = `<span class="sub">No open ${word} in Zoho - it goes as a payment on account.</span>`; return; }
   const tot = Object.values(BK_PICK).reduce((a, b) => a + b, 0);
-  el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- against this payment: ${pcMoney(tot)}</span><table>${BK_DOCS.map(d => `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
+  const amt = parseFloat((document.getElementById("bk-amt").value || "0").replace(/,/g, "")) || 0;
+  const left = Math.round((amt - tot) * 100) / 100;
+  el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- ${BK_KIND === "customer" ? "type how much of this payment goes to each invoice" : "against this payment"}: ${pcMoney(tot)}${amt && BK_KIND === "customer" ? ` of ${pcMoney(amt)}${left > 0.004 ? ` · ${pcMoney(left)} left on account` : left < -0.004 ? ` · <b style="color:#B03A2E;">${pcMoney(-left)} more than the payment</b>` : " ✓"}` : ""}</span><table>${BK_DOCS.map(d => `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
     <td class="n">Balance ${pcMoney(d.balance)}</td><td style="width:130px;text-align:right;"><input type="text" value="${BK_PICK[d.id] ? BK_PICK[d.id].toFixed(2) : ""}" placeholder="0.00" onchange="bkPick('${d.id}', this.value)"></td></tr>`).join("")}</table>`;
 }
 // What goes on Project payments: the receipt net of VAT, as that tracker is kept.
@@ -16826,13 +16862,16 @@ async function bkExport(kind) {
 // account on each line and approves it. Nothing is typed in Zoho again.
 let ZH = null, ZH_PICK = {}, ZH_SITES = null;
 async function zhLoad() {
+  if (!ZH) zhTabsSkeleton();
   try {
-    if (!ZH_SITES) { try { ZH_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { ZH_SITES = []; } }
-    ZH = await apiCall("/store/zoho/queue");
-    ZH.conn = await apiCall("/store/zoho/link/status");
-    try { ZH.loans = (await apiCall("/store/zoho/loans")).rows; } catch (e) { ZH.loans = []; }
-    try { ZH.pos = (await apiCall("/store/zoho/pos")).rows; } catch (e) { ZH.pos = []; }
-    try { const bw = await apiCall("/store/bank/waiting"); ZH.bank = bw.rows; ZH.may_send_bank = bw.may_send; } catch (e) { ZH.bank = []; }
+    // Everything for the tabs asked for at once.
+    const [sites, q, conn, loans, pos, bw] = await Promise.all([
+      ZH_SITES ? Promise.resolve(null) : apiCall("/sites").catch(() => []),
+      apiCall("/store/zoho/queue"), apiCall("/store/zoho/link/status"),
+      apiCall("/store/zoho/loans").catch(() => ({ rows: [] })), apiCall("/store/zoho/pos").catch(() => ({ rows: [] })),
+      apiCall("/store/bank/waiting").catch(() => ({ rows: [] }))]);
+    if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
+    ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
@@ -16840,8 +16879,9 @@ async function zhLoad() {
   ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || "", splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length }; });
   zhDraw();
 }
-function zhConnDraw() {
-  const c = ZH.conn || {}, el = document.getElementById("zh-conn");
+function zhConnDraw(cached) {
+  const c = cached || (ZH && ZH.conn) || {}, el = document.getElementById("zh-conn");
+  if (!cached) { try { localStorage.setItem("infinia_zh_conn", JSON.stringify({ connected: !!c.connected, org_name: c.org_name || "", by: c.by || "", at: c.at || "", home: c.home || "", redirect: c.redirect || "", has_keys: !!c.has_keys })); } catch (e) {} }
   el.classList.toggle("ok", !!c.connected);
   if (c.connected) {
     el.innerHTML = `<div class="zh-row" style="margin:0;justify-content:space-between;"><span><b class="ok">✓ Connected to Zoho Books</b> - ${escapeHtml(c.org_name || "Infinia Contracting LLC")}${c.by ? ` · by ${escapeHtml(c.by)}` : ""}${c.at ? `, ${pcDate(c.at.slice(0, 10))}` : ""}. Approved lines go straight to Zoho.</span>
@@ -17099,6 +17139,17 @@ function zhBankDraw() {
 // The tabs: what is waiting where, with counts.
 let ZH_PANE = null;
 try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
+// The tab bar the moment the screen opens - the counts arrive a moment later,
+// so nothing below it moves.
+function zhTabsSkeleton() {
+  const el = document.getElementById("zh-tabs"); if (!el || el.children.length) return;
+  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["october", "October check"], ["suppliers", "Suppliers"]];
+  const on = ZH_PANE || "petty";
+  el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
+  document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === on ? "block" : "none");
+  // the connection line as it was last time, so it does not drop in late
+  try { const c = JSON.parse(localStorage.getItem("infinia_zh_conn") || "null"); if (c) zhConnDraw(c); } catch (e) {}
+}
 function zhTabsDraw() {
   const el = document.getElementById("zh-tabs"); if (!el || !ZH) return;
   const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => o.status === "changed" || (o.cancelled && o.err)).length;
@@ -17107,7 +17158,7 @@ function zhTabsDraw() {
              ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""]];
   if (!ZH_PANE || !T.some(t => t[0] === ZH_PANE)) ZH_PANE = (T.find(t => t[2]) || T[0])[0];
   el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
-  document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === ZH_PANE ? "" : "none");
+  document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === ZH_PANE ? "block" : "none");
   const none = document.getElementById("zh-attn-none"); if (none) none.innerHTML = attn ? "" : `<div class="zh-none">Nothing needs attention - no refused lines and no entries waiting for a supplier.</div>`;
 }
 function zhPane(k) {
@@ -17572,13 +17623,17 @@ let PC_BOOK = "";
 function pcMayBook(b) { return typeof pgHas !== "function" || pgHas("petty_" + b); }
 function pcBook(b) {
   if (!PC_BOOKS[b] || !pcMayBook(b)) return;
+  if (PC_BOOK === b && window.__pcLoad && window.__pcLoad.book === b && Date.now() - window.__pcLoad.t < 800) return;   // just loaded for this tab
   if (PC_BOOK !== b) { PC_BOOK = b; PC = null; if (typeof pcReset === "function") { PC_EDIT = null; } }
   loadPettyCash();
 }
 
 async function loadPettyCash() {
+  // Opened on a book's tab: that book from the first frame (not Site first).
+  if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
   if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
   document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
+  window.__pcLoad = { book: PC_BOOK, t: Date.now() };
   const book = PC_BOOK;
   pcKind(PC_KIND);
   pcHead();
@@ -17629,7 +17684,7 @@ function pcDraw() {
   const cell = v => v ? pcMoney(v) : "";
   const sup = !!t.supplier && d.rows.some(r => r.supplier), site = d.rows.some(r => r.site);
   pcHead(sup, site);
-  const zc = pcZohoCol();
+  const zc = pcZohoCol() && !t.director;   // directors' books are portal only
   const ncols = 6 + sup + site, ntext = 2 + sup + site;
   document.getElementById("pc-body").innerHTML =
     `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
@@ -19511,6 +19566,161 @@ async function pushAfterLogin() {
 </script>
 
 <script>
+// ---- Every table: click a heading to sort, drag a heading to move the
+// column. The column order is remembered per table on this computer; the
+// sort lasts until the page is left. Totals, group and "nothing yet" rows
+// stay where they are. Headings that already sort themselves, and the
+// tick-box column, are left alone.
+(function () {
+  const KEY = "infinia_cols:";
+  const txt = td => { if (!td) return ""; const s = td.getAttribute("data-s"); if (s !== null) return s;
+    const f = td.querySelector("input:not([type=checkbox]),select,textarea"); return (f ? f.value : td.textContent).trim(); };
+  const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  function key(v) {
+    let t = String(v).replace(/AED|,/gi, "").replace(/\s+/g, " ").trim();
+    const neg = /^\(.*\)$/.test(t) || /^-/.test(t);
+    const n = t.replace(/[()%+\-]/g, "").trim();
+    if (n !== "" && !isNaN(n)) return { n: (neg ? -1 : 1) * parseFloat(n) };
+    let m = t.match(/^(\d{1,2})[- ]([A-Za-z]{3})[a-z]*[- ,]*(\d{2,4})?/);
+    if (m && MON[m[2].toLowerCase()] !== undefined) { const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear(); return { n: new Date(y, MON[m[2].toLowerCase()], +m[1]).getTime() }; }
+    m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return { n: new Date(+m[1], +m[2] - 1, +m[3]).getTime() };
+    m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return { n: new Date(+m[3], +m[2] - 1, +m[1]).getTime() };
+    return { s: t.toLowerCase() };
+  }
+  const cmp = (a, b) => a.n !== undefined && b.n !== undefined ? a.n - b.n : a.n !== undefined ? -1 : b.n !== undefined ? 1 : a.s.localeCompare(b.s, undefined, { numeric: true });
+  const fixed = tr => /(^|\s)(bf|tot|total|grp|group|sub|empty|edit-row|rep-group)(\s|$)/i.test(tr.className) || [...tr.cells].some(c => c.colSpan > 1)
+    || /^(total|grand total|sub ?total|balance brought forward)/i.test((tr.cells[0] || {}).textContent || "") || /^(total|balance brought forward)/i.test((tr.cells[1] || {}).textContent || "");
+  const headRow = t => t.tHead && t.tHead.rows.length ? t.tHead.rows[t.tHead.rows.length - 1] : null;
+  const label = th => (th.textContent || "").replace(/[▲▼]/g, "").trim();
+  function sigOf(t) { const h = headRow(t); return h ? [...h.cells].map(label).join("|") : ""; }
+  function storeKey(t) { const scr = t.closest(".screen"); return KEY + (t.id || (scr ? scr.id : "") + "/" + (t.className || "").split(" ")[0]) + "/" + [...headRow(t).cells].map(label).filter(Boolean).sort().join("|").slice(0, 160); }
+  // A totals row that spans a few columns ("TOTAL" over Date - Site) is
+  // split into single cells, the words kept in the first, so it can move
+  // with the columns.
+  function normalize(t) {
+    const n = headRow(t).cells.length;
+    for (const sec of [...t.tBodies, t.tFoot].filter(Boolean))
+      for (const tr of sec.rows) {
+        const cells = [...tr.cells]; if (cells.length < 2) continue;
+        if (cells.reduce((a, c) => a + c.colSpan, 0) !== n || !cells.some(c => c.colSpan > 1)) continue;
+        cells.forEach(c => { const k = c.colSpan; if (k < 2) return; c.colSpan = 1; c.style.whiteSpace = "nowrap";
+          for (let j = 1; j < k; j++) { const e = document.createElement(c.tagName); e.className = c.className; c.after(e); } });
+      }
+  }
+  function canMove(t) {
+    if (t.hasAttribute("data-nomove") || t.closest(".lc-compact")) return false;   // widths set per column position
+    const n = headRow(t).cells.length;
+    if (t.tHead.rows.length > 1) return false;
+    for (const sec of [...t.tBodies, t.tFoot].filter(Boolean))
+      for (const tr of sec.rows) { if (tr.cells.length === 1 && tr.cells[0].colSpan >= n - 1) continue; if (tr.cells.length !== n) return false; }
+    return true;
+  }
+  function moveCol(t, from, to) {
+    for (const sec of [t.tHead, ...t.tBodies, t.tFoot].filter(Boolean))
+      for (const tr of sec.rows) { if (tr.cells.length === 1) continue; const c = tr.cells[from], ref = tr.cells[to];
+        if (!c || !ref) continue; if (from < to) ref.after(c); else ref.before(c); }
+  }
+  // Each heading remembers where its column was drawn (data-txi); a row the
+  // screen has just drawn is in that natural order and is put into the
+  // order the headings show now. Rows already arranged are marked.
+  function arrange(t) {
+    const h = headRow(t), n = h.cells.length;
+    [...h.cells].forEach((c, i) => { if (c.dataset.txi === undefined) c.dataset.txi = i; });
+    const perm = [...h.cells].map(c => +c.dataset.txi);
+    const natural = perm.every((v, i) => v === i);
+    for (const sec of [...t.tBodies, t.tFoot].filter(Boolean))
+      for (const tr of sec.rows) {
+        if (tr.__txo || tr.cells.length !== n) continue;
+        tr.__txo = true;
+        if (natural) continue;
+        const cells = [...tr.cells]; perm.forEach(k => tr.appendChild(cells[k]));
+      }
+  }
+  function applyOrder(t) {
+    if (t.hasAttribute("data-nomove") || t.closest(".lc-compact")) return;
+    t.__busy = true; normalize(t);
+    if (!canMove(t)) { t.__busy = false; return; }
+    const h = headRow(t);
+    [...h.cells].forEach((c, i) => { if (c.dataset.txi === undefined) c.dataset.txi = i; });
+    let want; try { want = JSON.parse(localStorage.getItem(storeKey(t)) || "null"); } catch (e) { want = null; }
+    if (want) {
+      // headings into the remembered order (the rows follow in arrange)
+      const cells = [...h.cells], used = new Set(), order = [];
+      want.forEach(lab => { const c = cells.find(x => !used.has(x) && label(x) === lab); if (c) { used.add(c); order.push(c); } });
+      cells.forEach(c => { if (!used.has(c)) order.push(c); });
+      if (order.some((c, i) => c !== cells[i])) {
+        // rows already arranged to the old heading order go back to natural first
+        const old = cells.map(c => +c.dataset.txi);
+        for (const sec of [...t.tBodies, t.tFoot].filter(Boolean))
+          for (const tr of sec.rows) if (tr.__txo && tr.cells.length === cells.length) { const cs = [...tr.cells]; const nat = []; old.forEach((k, pos) => nat[k] = cs[pos]); nat.forEach(c => tr.appendChild(c)); tr.__txo = false; }
+        order.forEach(c => h.appendChild(c));
+      }
+    }
+    arrange(t);
+    t.__busy = false;
+  }
+  function saveOrder(t) { try { localStorage.setItem(storeKey(t), JSON.stringify([...headRow(t).cells].map(label))); } catch (e) {} }
+  function applySort(t) {
+    const st = t.__sort; if (!st) return;
+    const h = headRow(t); const ci = [...h.cells].findIndex(c => label(c) === st.lab); if (ci < 0) return;
+    t.__busy = true;
+    [...t.tBodies].forEach(b => { const rows = [...b.rows], out = []; let seg = [];
+      const flush = () => { seg.sort((r1, r2) => { const c = cmp(key(txt(r1.cells[ci])), key(txt(r2.cells[ci]))); return st.dir === "asc" ? c : -c; }); out.push(...seg); seg = []; };
+      rows.forEach(r => { if (fixed(r)) { flush(); out.push(r); } else seg.push(r); }); flush();
+      out.forEach(r => b.appendChild(r)); });
+    [...h.cells].forEach(c => { const a = c.querySelector(".tx-a"); if (a) a.textContent = label(c) === st.lab ? (st.dir === "asc" ? "▲" : "▼") : ""; });
+    t.__busy = false;
+  }
+  function wire(t) {
+    const h = headRow(t); if (!h || h.cells.length < 2) return;
+    if (t.closest(".zx-modal,.cp-m,.pe-m,.bs-m") || t.hasAttribute("data-nosort")) return;
+    const sig = sigOf(t);
+    if (t.__sig === sig) return;           // headings unchanged since last wired
+    t.__sig = sig;
+    applyOrder(t);
+    const move = canMove(t);
+    [...headRow(t).cells].forEach((th, i) => {
+      if (th.__tx) return; th.__tx = true;
+      const plain = !th.onclick && !th.hasAttribute("onclick") && !th.querySelector("input,select,button") && label(th) && !th.hasAttribute("data-col");
+      if (plain) {
+        th.classList.add("tx-s"); if (!th.querySelector(".tx-a")) { const a = document.createElement("span"); a.className = "tx-a"; th.appendChild(a); }
+        th.title = th.title || "Click to sort" + (move ? " - drag to move the column" : "");
+        th.addEventListener("click", () => { if (t.__dragged) return; const lab = label(th);
+          t.__sort = { lab, dir: t.__sort && t.__sort.lab === lab && t.__sort.dir === "asc" ? "desc" : "asc" }; applySort(t); });
+      }
+      if (move && label(th)) {
+        th.draggable = true; th.classList.add("tx-d");
+        th.addEventListener("dragstart", e => { t.__from = [...headRow(t).cells].indexOf(th); t.__dragged = true; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", "col"); } catch (x) {} th.classList.add("tx-drag"); });
+        th.addEventListener("dragend", () => { th.classList.remove("tx-drag"); setTimeout(() => { t.__dragged = false; }, 50); headRow(t) && [...headRow(t).cells].forEach(c => c.classList.remove("tx-over")); });
+        th.addEventListener("dragover", e => { if (t.__from === undefined) return; e.preventDefault(); th.classList.add("tx-over"); });
+        th.addEventListener("dragleave", () => th.classList.remove("tx-over"));
+        th.addEventListener("drop", e => { e.preventDefault(); th.classList.remove("tx-over"); const to = [...headRow(t).cells].indexOf(th);
+          if (t.__from !== undefined && to !== t.__from) { t.__busy = true; arrange(t); moveCol(t, t.__from, to); t.__busy = false; saveOrder(t); t.__sig = sigOf(t); }
+          t.__from = undefined; });
+      }
+    });
+    if (!t.__obs) {
+      // Redrawn by its screen: put the remembered order and the sort back.
+      t.__obs = new MutationObserver(() => { if (t.__busy) return; cancelAnimationFrame(t.__raf); t.__raf = requestAnimationFrame(() => {
+        if (!headRow(t)) return; t.__sig = null; wire(t); t.__busy = true; arrange(t); t.__busy = false; applySort(t); }); });
+      t.__obs.observe(t, { childList: true, subtree: true });
+    }
+  }
+  function scan() { document.querySelectorAll(".screen.active table").forEach(t => { if (t.tHead) wire(t); }); }
+  let pend = false;
+  const kick = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; scan(); }); };
+  const start = () => { scan(); new MutationObserver(m => { if (m.some(x => [...x.addedNodes].some(n => n.nodeType === 1 && (n.tagName === "TABLE" || n.tagName === "THEAD" || (n.querySelector && n.querySelector("table")))) || x.attributeName === "class")) kick(); })
+    .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] }); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();
+</script>
+<style>
+  th.tx-s { cursor: pointer; user-select: none; } th.tx-s:hover { color: #2B2622; }
+  th.tx-d { cursor: grab; } th.tx-drag { opacity: .45; } th.tx-over { box-shadow: inset 3px 0 0 #C0392B; }
+  th .tx-a { font-size: .8em; margin-left: 4px; color: #C0392B; }
+</style>
+
+<script>
 // ---- temporary page: app ---------------------------------------------
 // Which screens live on this page, which page every other screen lives
 // on, and the tabs. The app's own switchScreen does the work; this only
@@ -19887,7 +20097,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=c11810c020"></script>
+<script src="/portal/help/guides.js?v=949500d77e"></script>
 <script src="/portal/help/auto_guides.js?v=175dcbf809"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

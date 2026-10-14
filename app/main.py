@@ -221,6 +221,13 @@ def seed_on_startup():
         _grant_admin_forms(db)
         _grant_zoho_notice(db)
         try:
+            import zohosync as _zsg
+            _n = _zsg.golive_office_skip(db)
+            if _n:
+                print(f"go-live: {_n} Office lines (1-14 Oct) marked Not for Zoho - adjusted by the chief accountant")
+        except Exception as e:
+            db.rollback(); print("go-live office lines:", e)
+        try:
             import credentials as _cr
             _cr.grant_once(db)
         except Exception as e:

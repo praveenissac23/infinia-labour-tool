@@ -35,6 +35,10 @@ router = APIRouter()
 RIGHT = "accounts_zoho"
 ZG = Depends(M.require_any_screen(RIGHT))
 BOOKS = {"site": "Site", "pro": "PRO", "office": "Office", "naveen": "Naveen", "praveen": "Praveen"}
+# The books that go to Zoho. The directors' books (Naveen, Praveen) are kept
+# in the portal only - the chief accountant makes those Zoho entries himself
+# (his go-live answers, 14 Oct 2026).
+ZOHO_BOOKS = ("site", "pro", "office")
 START_DEFAULT = "2026-10-01"
 
 # ---- The accounts on offer ------------------------------------------------
@@ -239,7 +243,7 @@ def _parts(x):
 
 def _waiting(db):
     q = (db.query(models.PettyCash)
-           .filter(models.PettyCash.book.in_(list(BOOKS)), models.PettyCash.on_date >= _start(db))
+           .filter(models.PettyCash.book.in_(list(ZOHO_BOOKS)), models.PettyCash.on_date >= _start(db))
            .filter((models.PettyCash.zoho_status == "") | (models.PettyCash.zoho_status.is_(None)) | (models.PettyCash.zoho_status == "changed"))
            .order_by(models.PettyCash.on_date, models.PettyCash.id))
     return q.all()
@@ -322,6 +326,9 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
     for ln in lines:
         x = db.get(models.PettyCash, int(ln.get("id") or 0))
         if not x or (x.zoho_status or "") not in ("", "changed"):
+            continue
+        if (x.book or "site") not in ZOHO_BOOKS:
+            refused.append({"id": x.id, "why": f"{BOOKS.get(x.book, x.book)} book is kept in the portal only"})
             continue
         if x.zoho_status == "changed":
             # Already in Zoho once: never posted a second time. Only the
@@ -556,6 +563,7 @@ def october(db: Session = Depends(get_db), user: models.User = ZG):
         raise HTTPException(status_code=400, detail="Zoho is not connected yet - press Connect Zoho.")
     d0, d1 = _start(db).isoformat(), (M.get_setting(db, "zoho_changeover") or CHANGEOVER)
     lines = (db.query(models.PettyCash).filter(models.PettyCash.on_date >= d0, models.PettyCash.on_date <= d1,
+                                               models.PettyCash.book.in_(list(ZOHO_BOOKS)),
                                                models.PettyCash.zoho_status.in_(["", "approved"]))
                .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
     try:
@@ -616,7 +624,7 @@ def overdue(db, today=None):
     LPOs and staff loans - from the Zoho start date on."""
     today = today or M._dubai_today()
     cut, start = today - timedelta(days=OVERDUE_DAYS), _start(db)
-    petty = (db.query(models.PettyCash).filter(models.PettyCash.book.in_(list(BOOKS)), models.PettyCash.on_date >= start, models.PettyCash.on_date <= cut)
+    petty = (db.query(models.PettyCash).filter(models.PettyCash.book.in_(list(ZOHO_BOOKS)), models.PettyCash.on_date >= start, models.PettyCash.on_date <= cut)
                .filter((models.PettyCash.zoho_status.in_(["", "approved", "sending", "changed", "cancelled"])) | (models.PettyCash.zoho_status.is_(None))).count())
     bank = (db.query(models.BankEntry).filter(models.BankEntry.on_date <= cut)
               .filter((models.BankEntry.zoho_status.in_(["", "sending"])) | (models.BankEntry.zoho_status.is_(None))).count())
@@ -638,3 +646,21 @@ def overdue_notice(db, today=None):
             "title": f"{o['total']} line{'s' if o['total'] != 1 else ''} not in Zoho for over {OVERDUE_DAYS} days",
             "detail": ", ".join(parts) + " - Accounts > Send to Zoho", "screen": "zoho", "when": today.isoformat(),
             "count": o["total"], "level": "warn"}
+
+
+def golive_office_skip(db):
+    """Go-live answers (14 Oct 2026): the 1-14 Oct Office lines not yet in
+    Zoho are adjusted in Zoho by the chief accountant himself - marked
+    'Not for Zoho' so the portal never sends them. Once."""
+    if M.get_setting(db, "golive_office_skip"):
+        return 0
+    from datetime import date as _d
+    rows = (db.query(models.PettyCash).filter(models.PettyCash.book == "office",
+                                              models.PettyCash.on_date >= _d(2026, 10, 1), models.PettyCash.on_date <= _d(2026, 10, 14))
+              .filter((models.PettyCash.zoho_status == "") | (models.PettyCash.zoho_status.is_(None))).all())
+    for x in rows:
+        x.zoho_status = "skip"
+        x.zoho_ref = "Adjusted in Zoho by the chief accountant (go-live, 14 Oct)"
+    M.put_setting(db, "golive_office_skip", str(len(rows)))
+    db.commit()
+    return len(rows)
