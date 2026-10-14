@@ -52,8 +52,14 @@ SOURCE_ACC = {"From ADCB (transfer / cheque cashed)": "ADCB", "From Cash": "Cash
               "From Current Capital - Naveen": "Current Capital - Naveen", "Staff advance / loan repaid": "Employee Advance"}
 CASHLIKE = {"ADCB", "Cash", "Company Petty Cash", "Jomon Petty Cash", "Site Petty Cash"}
 # A cost head or office account named a little differently in Zoho.
-ALIAS = {"authority payments": "authority payment", "parking fees and fines": "parkin fees and fines",
-         "10. painting works & false ceiling": "10. painting works & false ceiling"}
+# Portal name (folded) -> the name it has in Zoho. Checked against Zoho on 14 Oct 2026.
+ALIAS = {"authority payments": "Authority Payment",
+         "parking fees and fines": "Parkin Fees and Fines",
+         "soil investigation and other surveys": "Soil Investigation, Topo survey & Gate Level Survey",
+         # Zoho's "Design & Supervision Fee" is an INCOME account - costs go here:
+         "design & supervision fee": "Design and Supervision Charges",
+         "agent commission and key money": "Agent Commission & Service Charges",
+         "land purchase": "00. Land Expenses"}
 
 _TOKEN = {"value": "", "until": 0.0}
 _CACHE = {}
@@ -169,16 +175,36 @@ def _cached(db, key, fetch, ttl=3600):
 def chart(db):
     """Every Zoho account by its folded name."""
     def fetch():
-        out, page = {}, 1
-        while page < 15:
-            d = call(db, "GET", "chartofaccounts", {"page": page, "per_page": 200, "filter_by": "AccountType.Active"})
-            for a in d.get("chartofaccounts", []):
-                out.setdefault(_norm(a["account_name"]), a["account_id"])
-            if not d.get("page_context", {}).get("has_more_page"):
-                break
-            page += 1
+        # Zoho's "Active" list stops after the asset accounts (and says there
+        # is no more), so each type is read on its own, page by page.
+        out = {}
+        for kind in ("Asset", "Liability", "Equity", "Expense"):   # never income: petty and bank costs only
+            page = 1
+            while page < 30:
+                d = call(db, "GET", "chartofaccounts", {"page": page, "per_page": 200, "filter_by": f"AccountType.{kind}"})
+                rows = d.get("chartofaccounts", [])
+                for a in rows:
+                    if a.get("is_active", True) and a.get("account_type") != "income":
+                        out.setdefault(_norm(a["account_name"]), a["account_id"])
+                if not (d.get("page_context", {}).get("has_more_page") or len(rows) >= 200):
+                    break
+                page += 1
         return out
     return _cached(db, "chart", fetch)
+
+
+def _search_account(db, name):
+    """Zoho's list leaves out sub-accounts, so a name not in it is asked
+    for directly - exact name first, then a search. Never an income account."""
+    for params in ({"account_name": name}, {"search_text": name}):
+        try:
+            d = call(db, "GET", "chartofaccounts", dict(params, per_page=200, filter_by="AccountType.Active"))
+        except ZohoError:
+            continue
+        for a in d.get("chartofaccounts", []):
+            if _norm(a.get("account_name")) == _norm(name) and a.get("account_type") != "income":
+                return a["account_id"]
+    return ""
 
 
 def projects(db):
@@ -203,7 +229,14 @@ def account_id(db, name):
     leaf = name.split(" › ")[-1].strip()
     c = chart(db)
     k = _norm(leaf)
-    return c.get(k) or c.get(ALIAS.get(k, "")) or ""
+    if k in ALIAS:                      # a known different name in Zoho wins
+        want = ALIAS[k]
+        hit = c.get(_norm(want)) or _search_account(db, want)
+    else:
+        hit = c.get(k) or _search_account(db, leaf)
+    if hit:
+        c[k] = hit
+    return hit or ""
 
 
 # ---- one line into Zoho ----------------------------------------------------

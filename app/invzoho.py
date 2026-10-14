@@ -42,6 +42,23 @@ def income_accounts(db):
     return Z._cached(db, "income", fetch)
 
 
+def income_id(db, name):
+    """The income account by name. Zoho's list can leave out sub-accounts
+    (these sit under "Income"), so the exact name is asked for too."""
+    import zohoapi as Z
+    hit = income_accounts(db).get(Z._norm(name))
+    if hit:
+        return hit
+    try:
+        d = Z.call(db, "GET", "chartofaccounts", {"account_name": name, "per_page": 20, "filter_by": "AccountType.Active"})
+    except Z.ZohoError:
+        return ""
+    for a in d.get("chartofaccounts", []):
+        if Z._norm(a.get("account_name")) == Z._norm(name) and a.get("account_type") == "income":
+            return a["account_id"]
+    return ""
+
+
 def zero_tax(db):
     import zohoapi as Z
     def fetch():
@@ -67,7 +84,7 @@ def push_invoice(db, x, account):
     if len(hits) != 1:
         raise Z.ZohoError(400, f"Client '{x.client}' is {'not' if not hits else 'more than once'} in Zoho under that exact name - "
                                "fix the name in Zoho (or on the invoice) and release again")
-    acc = income_accounts(db).get(Z._norm(account))
+    acc = income_id(db, account)
     if not acc:
         raise Z.ZohoError(400, f"Zoho has no income account named {account}")
     vat5, vat0 = Z.vat_tax(db), zero_tax(db)
