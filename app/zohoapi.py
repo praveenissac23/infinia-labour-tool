@@ -172,38 +172,56 @@ def _cached(db, key, fetch, ttl=3600):
     return v
 
 
+def _take(out, rows):
+    for a in rows:
+        if a.get("is_active", True) and a.get("account_type") != "income":
+            out.setdefault(_norm(a["account_name"]), a["account_id"])
+
+
 def chart(db):
-    """Every Zoho account by its folded name."""
+    """Every Zoho account (not income) by its folded name. Zoho's plain list
+    leaves out sub-accounts, but its search does not - so a few broad
+    searches read them all. Kept in settings too, so a send never waits."""
     def fetch():
-        # Zoho's "Active" list stops after the asset accounts (and says there
-        # is no more), so each type is read on its own, page by page.
         out = {}
-        for kind in ("Asset", "Liability", "Equity", "Expense"):   # never income: petty and bank costs only
+        for kind in ("Asset", "Liability", "Equity", "Expense"):
+            d = call(db, "GET", "chartofaccounts", {"per_page": 200, "filter_by": f"AccountType.{kind}"})
+            _take(out, d.get("chartofaccounts", []))
+        for letter in ("a", "e", "i", "o", "u"):
             page = 1
-            while page < 30:
-                d = call(db, "GET", "chartofaccounts", {"page": page, "per_page": 200, "filter_by": f"AccountType.{kind}"})
-                rows = d.get("chartofaccounts", [])
-                for a in rows:
-                    if a.get("is_active", True) and a.get("account_type") != "income":
-                        out.setdefault(_norm(a["account_name"]), a["account_id"])
-                if not (d.get("page_context", {}).get("has_more_page") or len(rows) >= 200):
+            while page <= 15:
+                d = call(db, "GET", "chartofaccounts", {"search_text": letter, "per_page": 200, "page": page, "filter_by": "AccountType.Active"})
+                _take(out, d.get("chartofaccounts", []))
+                if not d.get("page_context", {}).get("has_more_page"):
                     break
                 page += 1
+        try:
+            _put(db, "accmap", json.dumps({"at": time.time(), "map": out}))
+        except Exception:
+            db.rollback()
         return out
-    return _cached(db, "chart", fetch)
+    try:
+        return _cached(db, "chart", fetch)
+    except ZohoError:
+        saved = json.loads(_get(db, "accmap") or "{}")
+        if saved.get("map"):
+            return saved["map"]
+        raise
 
 
 def _search_account(db, name):
     """Zoho's list leaves out sub-accounts, so a name not in it is asked
     for directly - exact name first, then a search. Never an income account."""
-    for params in ({"account_name": name}, {"search_text": name}):
-        try:
-            d = call(db, "GET", "chartofaccounts", dict(params, per_page=200, filter_by="AccountType.Active"))
-        except ZohoError:
-            continue
-        for a in d.get("chartofaccounts", []):
-            if _norm(a.get("account_name")) == _norm(name) and a.get("account_type") != "income":
-                return a["account_id"]
+    try:
+        d = call(db, "GET", "chartofaccounts", {"account_name": name, "per_page": 50, "filter_by": "AccountType.Active"})
+    except ZohoError as e:
+        if e.code == 429 or "maximum number of requests" in e.msg:
+            # Nothing has been posted yet - a plain "try again", not a doubt.
+            raise ZohoError(400, "Zoho is busy (too many requests this minute) - press Send again in a minute")
+        return ""
+    for a in d.get("chartofaccounts", []):
+        if _norm(a.get("account_name")) == _norm(name) and a.get("account_type") != "income":
+            return a["account_id"]
     return ""
 
 
@@ -522,9 +540,22 @@ def test(db: Session = Depends(get_db), user: models.User = ZG):
     """Reads the accounts the portal will post to - proves the link and
     shows any name Zoho does not have."""
     import zohosync
-    missing = [n for n in set(BOOK_ACCOUNT.values()) | set(TRANSFER_TO.values()) | {"ADCB", "Cash", "Employee Advance"}
-               if not account_id(db, n)]
+    hit = _CACHE.get("chart")                      # read Zoho fresh - but not twice a minute
+    if hit and 3600 - (hit[0] - time.time()) > 120:
+        _CACHE.pop("chart", None)
+    t0 = time.time()
+    names = sorted(set(BOOK_ACCOUNT.values()) | set(TRANSFER_TO.values()) | {"ADCB", "Cash", "Employee Advance"})
     acc = [a for g in zohosync.GROUPS for a in g["accounts"] if a not in SOURCE_ACC and a not in TRANSFER_TO
            and not a.startswith("Employee Advance") and a != "Client payment received in cash"]
-    unknown = [a for a in acc if not account_id(db, a)]
-    return {"ok": True, "missing_boxes": missing, "accounts_not_in_zoho": unknown, "projects": len(projects(db))}
+    missing, unknown, later = [], [], []
+    for group, out in ((names, missing), (acc, unknown)):
+        for n in group:
+            if time.time() - t0 > 25:              # always answer; the rest next press
+                later.append(n); continue
+            try:
+                if not account_id(db, n):
+                    out.append(n)
+            except ZohoError:
+                later.append(n)                    # Zoho busy: not checked, not "missing"
+    return {"ok": True, "missing_boxes": missing, "accounts_not_in_zoho": unknown, "not_checked": later,
+            "found": len(names) + len(acc) - len(missing) - len(unknown) - len(later), "projects": len(projects(db))}

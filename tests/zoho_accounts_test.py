@@ -25,7 +25,9 @@ def fake(db_, method, path, params=None, body=None):
     if "account_name" in p:
         return {"chartofaccounts": [r for r in rows if r["account_name"].lower() == p["account_name"].lower()]}
     if "search_text" in p:
-        return {"chartofaccounts": [r for r in rows if p["search_text"].lower() in r["account_name"].lower()]}
+        hit = [r for r in rows if p["search_text"].lower() in r["account_name"].lower()]
+        pg = int(p.get("page", 1)); per = 3      # small pages: paging must be followed
+        return {"chartofaccounts": hit[(pg - 1) * per: pg * per], "page_context": {"has_more_page": len(hit) > pg * per}}
     kind = p.get("filter_by", "").split(".")[-1]
     # the plain list: top-level accounts only, as Zoho does
     return {"chartofaccounts": [r for (n, i, t, top), r in zip(ALL, rows) if top and t in KIND.get(kind, ())], "page_context": {"has_more_page": False}}
@@ -38,4 +40,18 @@ ok(Z.account_id(s, "01. Preliminaries Including Mobilization › Authority Payme
 ok(Z.account_id(s, "Current Capital - Praveen") == "CCP", "Praveen's book account found")
 ok(Z.account_id(s, "Something Zoho Lacks") == "", "a name Zoho lacks stays unfound - the line is refused, not guessed")
 ok(not any(c.get("filter_by") == "AccountType.Income" for c in CALLS), "income accounts are never read for costs")
+n_calls = len(CALLS); Z.account_id(s, "17a. Ceramic Tiles"); Z.account_id(s, "Office Pantry Expenses")
+ok(len(CALLS) == n_calls, "once read, names cost no more calls to Zoho")
+ok(sum(1 for c in CALLS if "account_name" in c) <= 2, f"few one-by-one look-ups ({sum(1 for c in CALLS if 'account_name' in c)})")
+import json as _j
+ok(_j.loads(M.get_setting(s, "zoho_accmap") or "{}").get("map", {}).get("17a. ceramic tiles") == "T17A", "the account map is kept in settings")
+def busy(db_, method, path, params=None, body=None):
+    if "account_name" in (params or {}):
+        raise Z.ZohoError(400, "For security reasons you have been blocked for some time as you have exceeded the maximum number of requests per minute.")
+    return fake(db_, method, path, params, body)
+Z.call = busy
+try:
+    Z.account_id(s, "Not In The Map"); ok(False, "Zoho busy -> clear try-again")
+except Z.ZohoError as e:
+    ok("busy" in e.msg and e.code == 400, "Zoho busy on a look-up -> 'press Send again in a minute', not a doubt")
 print("fails=", fails)
