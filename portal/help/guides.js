@@ -531,6 +531,12 @@ window.HELP_GUIDES = [
     steps: [
       { say: "These boxes show what is expired, due in 7 days, due in 30 days, and missing. Click one to see the list.", el: "#exp-cards" },
       { say: "Red means renew now. Every morning the bell lists them once." }] },
+  { id: "expiry-started", area: "Expiry", title: "How to stop reminders once a renewal has started",
+    words: "mark started renewal started stop reminder visa labour card emirates id eid together group one reminder pro",
+    go: { page: "expiry", tab: "expiry", sub: "all" },
+    steps: [
+      { say: "A man's visa, labour card and Emirates ID are renewed together, so they show as one line and are reminded once." },
+      { say: "When the PRO starts the renewal, click Mark started on that line. All three stop reminding until the new dates are entered.", el: "#exp-all-body" }] },
   { id: "expiry-person", area: "Expiry", title: "How to add a visa, Emirates ID or passport date",
     words: "add document visa emirates id eid passport labour card expiry date person",
     go: { page: "expiry", tab: "expiry", sub: "people" },

@@ -29,6 +29,10 @@ from database import get_db, SessionLocal, Base, engine
 router = APIRouter()
 MILESTONES = {90, 30, 14, 7, 3, 1, 0}
 REQUIRED = [("eid", "Emirates ID"), ("visa", "Visa / labour card"), ("passport", "Passport")]
+# Visa, labour card and Emirates ID are renewed as one process by the PRO:
+# one reminder for the three, one "Mark started" for the three.
+GROUP = ("visa", "labour_card", "eid")
+GROUP_LABEL = "Visa, labour card & Emirates ID"
 
 
 class ExpiryStarted(Base):
@@ -55,9 +59,17 @@ def started_keys(db):
     return {(r.doc_type, r.doc_id): r for r in db.query(ExpiryStarted).all()}
 
 
+def _one_started(t, i, expires_on, marks):
+    m = marks.get((t, i))
+    return bool(m) and (m.expires_on.isoformat() if m.expires_on else None) == (expires_on or None)
+
+
 def _is_started(item, marks):
-    m = marks.get((item["type"], item["id"]))
-    return bool(m) and (m.expires_on.isoformat() if m.expires_on else None) == (item.get("expires_on") or None)
+    """A grouped item (visa + labour card + EID) is started once its renewal
+    is marked - any of the three still carrying a current mark."""
+    if item.get("members"):
+        return any(_one_started("person", i, e, marks) for i, e in item["members"])
+    return _one_started(item["type"], item["id"], item.get("expires_on"), marks)
 
 
 def notice_items(db):
@@ -66,17 +78,50 @@ def notice_items(db):
     return [i for i in _items(db) if not _is_started(i, marks)]
 
 
-def _items(db):
+def _raw_items(db):
+    """One line a document - what 'Mark started' is kept against."""
     people = M.list_documents(db=db, user=None)["rows"]
     company = M.list_expiries(db=db, user=None)["rows"]
     out = []
     for d in people:
-        out.append({"type": "person", "who": f"{d['emp_no']} {d['name']}", "what": d["kind_label"],
-                    "expires_on": d["expires_on"], "days_left": d["days_left"], "id": d["id"]})
+        out.append({"type": "person", "who": f"{d['emp_no']} {d['name']}", "what": d["kind_label"], "kind": d["kind"],
+                    "employee_id": d["employee_id"], "expires_on": d["expires_on"], "days_left": d["days_left"], "id": d["id"]})
     for x in company:
         out.append({"type": "company", "who": x["item"], "what": x["kind"], "category": x["category"],
                     "expires_on": x["expires_on"], "days_left": x["days_left"], "id": x["id"]})
     return [i for i in out if i["days_left"] is not None]
+
+
+def group_members(raw, item):
+    """The person's visa, labour card and EID lines due in the same round as
+    this one (within 60 days of the first) - renewed together, reminded once."""
+    if item["type"] != "person" or item.get("kind") not in GROUP:
+        return [item]
+    allp = sorted((x for x in raw if x["type"] == "person" and x.get("kind") in GROUP and x["employee_id"] == item["employee_id"]),
+                  key=lambda x: x["days_left"])
+    parts = [x for x in allp if x["days_left"] <= allp[0]["days_left"] + 60]
+    return parts if item in parts else [item]
+
+
+def _items(db):
+    """What is reminded about: a person's visa, labour card and EID as one
+    line, dated by whichever of them expires first."""
+    raw = _raw_items(db)
+    out, groups = [], {}
+    for i in raw:
+        if i["type"] == "person" and i.get("kind") in GROUP:
+            groups.setdefault(i["employee_id"], []).append(i)
+        else:
+            out.append(i)
+    for allp in groups.values():
+        allp.sort(key=lambda x: x["days_left"])
+        # due in the same round go together; one good for much longer stands alone
+        parts = [x for x in allp if x["days_left"] <= allp[0]["days_left"] + 60]
+        out += [x for x in allp if x not in parts]
+        first = parts[0]
+        out.append({**first, "what": GROUP_LABEL if len(parts) > 1 else first["what"],
+                    "members": [(x["id"], x["expires_on"]) for x in parts]})
+    return out
 
 
 def missing_people(db):
@@ -175,11 +220,11 @@ def mail_body(db):
 
 @router.get("/employees/expiry/started")
 def get_started(db: Session = Depends(get_db), user: models.User = M.DOCS):
-    items = {(i["type"], i["id"]): i for i in _items(db)}
+    items = {(i["type"], i["id"]): i for i in _raw_items(db)}
     out = []
     for (t, i), m in started_keys(db).items():
         it = items.get((t, i))
-        current = bool(it) and _is_started(it, {(t, i): m})
+        current = bool(it) and _one_started(t, i, it["expires_on"], {(t, i): m})
         if current:
             out.append({"type": t, "id": i, "by": m.marked_by, "at": m.marked_at.isoformat() if m.marked_at else ""})
     return {"rows": out}
@@ -194,20 +239,25 @@ def set_started(payload: dict = Body(...), db: Session = Depends(get_db), user: 
         raise HTTPException(status_code=400, detail="Which document?")
     if t not in ("person", "company"):
         raise HTTPException(status_code=400, detail="Which document?")
-    item = next((x for x in _items(db) if x["type"] == t and x["id"] == i), None)
+    raw = _raw_items(db)
+    item = next((x for x in raw if x["type"] == t and x["id"] == i), None)
     if not item:
         raise HTTPException(status_code=404, detail="That document is not on file.")
-    row = db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == t, ExpiryStarted.doc_id == i).first()
-    if payload.get("on", True):
-        if not row:
-            row = ExpiryStarted(doc_type=t, doc_id=i); db.add(row)
-        row.expires_on = M._as_date(item["expires_on"])
-        row.marked_by = user.full_name or user.username
-        row.marked_at = datetime.utcnow()
-        M.log_action(db, user.id, "expiry_started", f"{item['who']}: {item['what']} {item['expires_on']}")
-    elif row:
-        db.delete(row)
-        M.log_action(db, user.id, "expiry_started_off", f"{item['who']}: {item['what']}")
+    members = group_members(raw, item)     # visa, labour card and EID go together
+    on = payload.get("on", True)
+    what = GROUP_LABEL if len(members) > 1 else item["what"]
+    for it in members:
+        row = db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == t, ExpiryStarted.doc_id == it["id"]).first()
+        if on:
+            if not row:
+                row = ExpiryStarted(doc_type=t, doc_id=it["id"]); db.add(row)
+            row.expires_on = M._as_date(it["expires_on"])
+            row.marked_by = user.full_name or user.username
+            row.marked_at = datetime.utcnow()
+        elif row:
+            db.delete(row)
+    M.log_action(db, user.id, "expiry_started" if on else "expiry_started_off",
+                 f"{item['who']}: {what}" + (f" {item['expires_on']}" if on else ""))
     db.commit()
     return {"ok": True, "on": bool(payload.get("on", True))}
 
