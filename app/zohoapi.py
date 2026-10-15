@@ -16,6 +16,7 @@ What each petty cash line becomes in Zoho, the way it is entered today:
   cash received, other            -> Journal: this box / where it came from
 Every entry carries "PC-<line no>" as its reference, so it is found again.
 """
+import re
 import json
 import secrets
 import time
@@ -554,10 +555,13 @@ def push(db, x):
             body["project_id"], body["customer_id"] = p
     # Paid To: the supplier's Zoho vendor, as the accountant enters it.
     vendor = ""
-    if (x.supplier or "").strip():
+    named = (x.supplier or "").strip() and not not_vendor(x.supplier)
+    if named:
         key = M._supplier_key(x.supplier)
         sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first() if key else None
         vendor = (sup.zoho_id or "") if sup else ""
+        if not vendor:
+            vendor = vendor_by_name(db, x.supplier)    # "ENOC" -> Zoho's "Enoc Retail LLC"
         if vendor:
             body["vendor_id"] = vendor
     tax = vat_fields(db, x.vat, x.trn, getattr(x, "vat_claim", "") or "")
@@ -575,7 +579,7 @@ def push(db, x):
     d = call(db, "POST", "expenses", body=body)
     # Supplier typed but not a Zoho vendor yet: on the chief accountant's
     # list to add in Zoho (he chose to send without it).
-    x.zoho_todo = "supplier" if (x.supplier or "").strip() and not vendor else ""
+    x.zoho_todo = "supplier" if named and not vendor else ""
     return f"expense:{d['expense']['expense_id']}", "Expense" + (" (itemised)" if parts else "")
 
 
@@ -853,3 +857,52 @@ def test(db: Session = Depends(get_db), user: models.User = ZG):
                 later.append(n)                    # Zoho busy: not checked, not "missing"
     return {"ok": True, "missing_boxes": missing, "accounts_not_in_zoho": unknown, "not_checked": later,
             "found": len(names) + len(acc) - len(missing) - len(unknown) - len(later), "projects": len(projects(db))}
+
+
+# "Supplier" boxes that hold no supplier: a worker's salary or extra-work
+# pay, cash, the office. Sent with no Paid To and not put on the
+# Needs attention list.
+_NOT_VENDOR = re.compile(r"^(salary|salaries|wages?|labou?r|workers?|staff|cash|self|office|various|misc\.?|others?|n/?a|none|nil|site|-+)$", re.I)
+
+
+def not_vendor(name):
+    n = " ".join(str(name or "").split())
+    return bool(_NOT_VENDOR.match(n)) or bool(re.search(r"\bsalar(y|ies)\b|\bwages?\b", n, re.I))
+
+
+_VENDORS = {"t": 0.0, "list": []}
+
+
+def vendor_by_name(db, name):
+    """A Zoho vendor for a supplier typed on petty cash but not in the
+    portal's supplier list: the one vendor with the same name, or the one
+    whose name starts with it ("ENOC" -> "Enoc Retail LLC"). Else none."""
+    import time
+    key = M._supplier_key(name)
+    if len(key) < 3:
+        return ""
+    try:
+        if time.time() - _VENDORS["t"] > 900:
+            import supzoho
+            _VENDORS["list"], _VENDORS["t"] = supzoho._vendors(db), time.time()
+    except Exception:
+        return ""
+    keys = [(M._supplier_key(v["name"]), v["id"]) for v in _VENDORS["list"]]
+    hit = [i for k, i in keys if k == key]
+    if len(hit) != 1 and len(key) >= 4:
+        hit = [i for k, i in keys if k == key or k.startswith(key + " ")]
+    return hit[0] if len(hit) == 1 else ""
+
+
+def clear_not_vendor_todo(db):
+    """Once: lines on Needs attention only because SALARY (or the like)
+    was typed as the supplier - nothing to add in Zoho."""
+    if db.query(models.Setting).filter(models.Setting.key == "zoho_todo_notvendor").first():
+        return 0
+    n = 0
+    for x in db.query(models.PettyCash).filter(models.PettyCash.zoho_todo == "supplier").all():
+        if not_vendor(x.supplier):
+            x.zoho_todo = ""; n += 1
+    db.add(models.Setting(key="zoho_todo_notvendor", value=str(n)))
+    db.commit()
+    return n

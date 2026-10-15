@@ -222,6 +222,11 @@ def seed_on_startup():
         _grant_docs_office(db)
         _docs_office_to_admin(db)
         try:
+            import zohoapi as _zn
+            _zn.clear_not_vendor_todo(db)
+        except Exception as e:
+            db.rollback(); print("zoho todo cleanup:", e)
+        try:
             import visa as _vs
             _n = _vs.seed_existing(db)
             if _n:
