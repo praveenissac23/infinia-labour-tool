@@ -718,3 +718,29 @@ def move_ongoing_to_held(db):
     if moved:
         M.log_action(db, None, "visa_moved_held", "Ongoing visa lines moved from PRO petty cash to the Visa tab: " + ", ".join(moved))
     return moved
+
+
+def tidy_oct15(db):
+    """Once (agreed 15 Oct): Ian Kiplayapy's line (now 354.91) to the Visa
+    tab like the other four; the two empty test visas removed."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_tidy_oct15").first():
+        return []
+    done = []
+    x = db.get(models.PettyCash, 3051)
+    if x and (x.book or "") == "pro" and abs((x.paid or 0) - 354.91) <= 0.005 and not (x.zoho_status or "") and x.visa_file_id:
+        v = db.get(models.VisaFile, x.visa_file_id)
+        if v and v.status == "ongoing":
+            db.add(models.VisaPayment(visa_file_id=v.id, on_date=x.on_date, step=x.visa_stage or "", amount=round(x.paid, 2),
+                                      supplier=x.supplier or "", description=x.description or "", receipt_no=x.receipt_no or "",
+                                      created_by=x.created_by))
+            db.delete(x); done.append("Ian Kiplayapy 354.91 moved to the Visa tab")
+    for name in ("Abdul Matin", "sreelakshmi new visa exp out side"):
+        for v in db.query(models.VisaFile).filter(models.VisaFile.person == name).all():
+            if not db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == v.id).count() \
+                    and not db.query(models.PettyCash).filter(models.PettyCash.visa_file_id == v.id).count():
+                db.delete(v); done.append(f"empty visa '{name}' removed")
+    db.add(models.Setting(key="visa_tidy_oct15", value="; ".join(done)))
+    db.commit()
+    if done:
+        M.log_action(db, None, "visa_tidy", "; ".join(done))
+    return done
