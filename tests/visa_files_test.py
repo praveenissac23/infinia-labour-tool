@@ -110,7 +110,9 @@ s.commit()
 n = V.seed_existing(s)
 ok(n == 7, "seed: 7 files opened, the changed line left for the PRO", n)
 ok(V.seed_existing(s) == 0, "seed runs once only")
-seeded = [r for r in V.listing(s, "ongoing")["rows"] if r["note"].startswith("Opened when")]
+seed_ids = {pid for pid, *_ in V.SEED}
+seed_files = {x.visa_file_id for x in s.query(models.PettyCash).filter(models.PettyCash.id.in_(seed_ids)).all() if x.visa_file_id}
+seeded = [r for r in V.listing(s, "ongoing")["rows"] if r["id"] in seed_files]
 ok(round(sum(r["spent"] for r in seeded), 2) == 25468.19, "seeded total exact", round(sum(r["spent"] for r in seeded), 2))
 b = next(r for r in seeded if r["emp_no"] == "F-727")
 ok(b["person"] == "Benchep Oliver Karngong" and b["kind"] == "renewal" and b["started"] == "2026-10-14", "renewal file named from the staff list")
@@ -119,4 +121,7 @@ ok(not any("(if needed)" in x for x in V.steps_master(s)), "no '(if needed)' in 
 vv = s.query(models.VisaFile).first(); vv.stages = json.dumps(["ILOE insurance (if needed)", "Medical and EID"]); vv.done = json.dumps(["ILOE insurance (if needed)"]); s.commit()
 V.drop_if_needed(s); s.refresh(vv)
 ok(json.loads(vv.stages) == ["ILOE insurance", "Medical and EID"] and json.loads(vv.done) == ["ILOE insurance"], "old names on files renamed once")
+vv = s.query(models.VisaFile).first(); vv.note = "Opened when Visa files started - tick the stages already done"; s.commit()
+V.clear_seed_note(s); s.refresh(vv)
+ok(vv.note == "", "the 'Opened when Visa files started' note is removed")
 print("ALL PASS" if not fails else f"{fails} FAILED"); sys.exit(1 if fails else 0)

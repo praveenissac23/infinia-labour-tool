@@ -240,6 +240,7 @@ def seed_on_startup():
             _n = _vs.seed_existing(db)
             _vs.new_step_lists(db)
             _vs.drop_if_needed(db)
+            _vs.clear_seed_note(db)
             _mv = _vs.move_ongoing_to_held(db) + _vs.tidy_oct15(db)
             if _mv:
                 print("visa: moved to the Visa tab -", ", ".join(_mv))

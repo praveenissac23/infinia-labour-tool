@@ -643,7 +643,7 @@ def seed_existing(db):
         person = (" ".join((e.name or "").split()).title() if e else name) or no
         v = models.VisaFile(employee_id=e.id if e else None, emp_no=e.emp_no if e else no, person=person, kind=kind,
                             stages=json.dumps(KINDS[kind][1]), done="[]", started_on=x.on_date, status="ongoing",
-                            note="Opened when Visa files started - tick the stages already done")
+                            note="")
         db.add(v); db.flush()
         x.visa_file_id, x.visa_stage = v.id, ""
         n += 1
@@ -843,3 +843,13 @@ body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}} .pg{{
                                  headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
     return StreamingResponse(sheet_pdf(v, pays), media_type="application/pdf",
                              headers={"Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{name}.pdf"'})
+
+
+def clear_seed_note(db):
+    """Once: the 'Opened when Visa files started...' note taken off."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_seed_note_off").first():
+        return
+    for v in db.query(models.VisaFile).filter(models.VisaFile.note.like("Opened when Visa files started%")).all():
+        v.note = ""
+    db.add(models.Setting(key="visa_seed_note_off", value="1"))
+    db.commit()
