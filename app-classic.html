@@ -16822,7 +16822,7 @@ async function zhLoad() {
       apiCall("/store/zoho/loans").catch(() => ({ rows: [] })), apiCall("/store/zoho/pos").catch(() => ({ rows: [] })),
       apiCall("/store/bank/waiting").catch(() => ({ rows: [] })), zaLoad()]);
     if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
-    ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.po_hint = !!pos.hint; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
+    ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.po_hint = !!pos.hint; ZH.po_del = !!pos.may_delete; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   // Anything just sent shows on Sent to Zoho without leaving the screen.
   if (ZS || ZH_PANE === "sent") zsLoad();
@@ -17242,7 +17242,7 @@ function zhPosDraw() {
   const fl = flag.length ? `<div class="zh-step" style="border-color:#E8C27A;background:#FFF9EE;"><b>${flag.length} LPO${flag.length === 1 ? "" : "s"} changed or cancelled here after going to Zoho</b> - make the same change in Zoho, then press Done.
       <table class="zh-oct-t" style="margin-top:6px;width:100%;"><tbody>${flag.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b></td><td>${escapeHtml(o.supplier)}</td><td class="n" style="width:110px;">${pcMoney(o.total)}</td><td><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></td><td style="width:110px;text-align:right;"><button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button></td></tr>`).join("")}</tbody></table></div>` : "";
   zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + (o.site ? " · " + o.site : ""), sub: o.supplier, amount: o.total, out: true,
-      err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
+      err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, del: ZH.po_del ? `zhPoDelete(${o.id})` : "", block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
     "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number. Pick the Zoho account the bill will be booked to - next time the supplier's last account is filled in.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
   if (ZH_PANE === "lpo") setTimeout(zhPoHint, 250);
 }
@@ -17264,7 +17264,7 @@ function zhList(kind, rows, elId, title, intro, empty, before, after) {
         <td class="l">${pcDate(r.date)}</td><td class="l">${r.view ? `<a href="#" class="zh-open" onclick="event.preventDefault(); event.stopPropagation(); ${r.view}" title="Open the LPO">${escapeHtml(r.main || "-")}</a>` : `<b>${escapeHtml(r.main || "-")}</b>`}${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}${r.accPick ? `<div class="zh-poacc">${zaButton(r.acc || "", "paid-cost", r.accPick, "zh-acc")}</div>` : ""}</td>
         <td class="n">${r.out ? "" : "+"}${pcMoney(r.amount)}</td>
         <td class="l">${r.block ? `<span class="zx-tag zx-bad">${escapeHtml(r.block)}</span>` : r.err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.err)}">Zoho refused</span><span class="sub">${escapeHtml(r.err.slice(0, 90))}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`}</td>
-        <td style="text-align:right;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>Send</button>`}</td></tr>`).join("")}</tbody></table></div>
+        <td style="text-align:right;white-space:nowrap;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>Send</button>`}${r.del ? ` <button type="button" class="btn btn-gray btn-sm" onclick="${r.del}" title="Delete this LPO everywhere (made by mistake)">Delete</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
       <div class="zh-foot"><span>${n ? `<b>${n} ${n === 1 ? w[0] : w[1]} ticked</b> · AED ${pcMoney(tot)}` : `Tick lines to send several at once.`}${ZH.connected ? "" : " Connect Zoho first."}</span>
         <span style="display:flex;gap:8px;"><button type="button" class="btn btn-gray" onclick="zhSelAll('${kind}',${n === ok.length ? "false" : "true"})" ${ok.length ? "" : "disabled"}>${n && n === ok.length ? "Untick all" : `Tick all ${ok.length}`}</button>
         <button type="button" class="btn btn-primary" onclick="zhSendIds('${kind}',[...ZH_SEL.${kind}],this)" ${n && can ? "" : "disabled"}>Send ${n || ""} ticked to Zoho</button></span></div>`
@@ -17345,6 +17345,17 @@ async function zhPosSend(btn) {
   try { const d = await apiCall("/store/zoho/pos/send", { method: "POST", body: "{}" }); await zhLoad();
         showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} purchase order${d.sent === 1 ? "" : "s"} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
   catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; }
+}
+// Admin only: an LPO made by mistake, deleted in the portal (with the
+// material request made with it). One in Zoho is reversed first.
+async function zhPoDelete(id) {
+  const o = (ZH.pos || []).find(x => x.id === id); if (!o) return;
+  const why = prompt(`Delete ${o.ref} (${o.supplier}, AED ${pcMoney(o.total)}) everywhere?\nIts lines and the material request made with it go too. This cannot be undone.\n\nWhy? (e.g. made by mistake)`);
+  if (why === null) return;
+  if (!why.trim()) return showStatus("zh-status", "err", "Say why it is deleted.");
+  try { await apiCall(`/store/zoho/pos/${id}/delete`, { method: "POST", body: JSON.stringify({ reason: why.trim() }) });
+        ZH_SEL.lpo.delete(id); await zhLoad(); showStatus("zh-status", "ok", `${o.ref} deleted.`); }
+  catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 // Once per login: an arrow to the first LPO number - click it to open the LPO.
 function zhPoHint() {

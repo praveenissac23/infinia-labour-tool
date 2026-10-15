@@ -39,6 +39,16 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   ck('clicking the number opens the LPO PDF', /\/export\/purchase\//.test(u) && r && r.status() === 200 && /pdf/.test(r.headers()['content-type'] || ''), [u, r && r.status()]);
   await p.reload(); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500); await open();
   ck('not shown again after a reload', await p.locator('.zh-tip').count() === 0);
+  ck('admin sees Delete on the LPO row', await p.locator('#zh-pos button:has-text("Delete")').count() > 0);
+  p.once('dialog', d => d.accept('made by mistake'));
+  await p.locator('#zh-pos button:has-text("Delete")').first().click(); await p.waitForTimeout(1800);
+  ck('deleted: gone from the list', await p.locator('#zh-pos .zh-open').count() === 0 && /deleted/.test(await p.textContent('#zh-status')), await p.textContent('#zh-status'));
   ck('no page errors', errs.length === 0, errs);
+  const q = await (await b.newContext({ viewport: { width: 1440, height: 950 } })).newPage();
+  await q.goto(B + '/?p=accounts'); await q.fill('#login-username', 'shafiq'); await q.fill('#login-password', 'pass12345'); await q.evaluate('doLogin()');
+  await q.waitForSelector('#app-screen', { state: 'visible' }); await q.waitForTimeout(2500);
+  await q.evaluate(() => { const t = [...document.querySelectorAll('#pg-tabs .pg-tab')].find(x => x.textContent.trim() === 'Send to Zoho'); t.click(); }); await q.waitForTimeout(3000);
+  await q.click('#zh-tabs .zh-tab >> text=LPOs'); await q.waitForTimeout(1000);
+  ck('chief accountant: no Delete button', await q.locator('#zh-pos button:has-text("Delete")').count() === 0);
   await b.close(); console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0);
 })();

@@ -24,4 +24,17 @@ s.get(models.PurchaseOrder, b[0]).zoho_id = ""; s.commit()          # reversed o
 ok(P.drop_admin_lpos(s) == [] and s.get(models.PurchaseOrder, b[0]) is None, "after the reverse: 0126 deleted too")
 ok(s.query(models.PurchaseOrderLine).count() == 1 and s.query(models.MaterialRequest).count() == 1, "only the other LPO's lines and request remain")
 ok(P.drop_admin_lpos(s) == [], "done once")
+from fastapi import HTTPException
+adm = models.User(username="ad", full_name="Admin", hashed_password="x", role="admin")
+ca = models.User(username="ca", full_name="CA", hashed_password="x", role="user")
+s.add_all([adm, ca]); s.commit()
+d1, _ = po(20260140, "Test Supplier"); d2, _ = po(20260141, "Test Supplier", "purchaseorder:9")
+def refused(fn):
+    try: fn(); return False
+    except HTTPException: s.rollback(); return True
+ok(refused(lambda: P.delete(d1, {"reason": "x"}, s, ca)), "Delete button: only the admin")
+ok(refused(lambda: P.delete(d1, {}, s, adm)), "a reason is needed")
+ok(refused(lambda: P.delete(d2, {"reason": "x"}, s, adm)), "one still in Zoho is refused - reverse first")
+ok(P.delete(d1, {"reason": "made by mistake"}, s, adm)["ref"] == "IC/LPO/20260140" and s.get(models.PurchaseOrder, d1) is None, "admin deletes it, with a reason")
+ok(s.query(models.AuditLog).filter(models.AuditLog.action == "delete_lpo", models.AuditLog.details.like("%20260140%")).count() == 1, "in the activity log")
 print("ALL PASS" if all(f) else "FAILED")

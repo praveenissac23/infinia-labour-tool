@@ -142,7 +142,43 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
                      "cancelled": o.status == "cancelled",
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
-    return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}")}
+    return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}"), "may_delete": (user.role or "") == "admin"}
+
+
+def delete_lpo(db, o, who=None, why=""):
+    """An LPO made by mistake, gone everywhere in the portal: its lines and
+    the material request it was made with (when nothing else uses it and
+    nothing was received on it). Never one still in Zoho."""
+    if (o.zoho_id or "").strip():
+        raise HTTPException(status_code=400, detail=f"{o.ref} is in Zoho - press Reverse on Sent to Zoho first (that deletes it in Zoho), then delete it here.")
+    ref, sup = o.ref, o.supplier_name or ""
+    mr = db.get(models.MaterialRequest, o.request_id) if o.request_id else None
+    for l in list(o.lines):
+        db.delete(l)
+    db.delete(o); db.flush()
+    mr_ref = ""
+    if mr and not db.query(models.PurchaseOrder).filter(models.PurchaseOrder.request_id == mr.id).count() \
+            and not db.query(models.StoreMovement).filter(models.StoreMovement.request_id == mr.id).count():
+        mr_ref = mr.ref
+        for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.request_id == mr.id).all():
+            db.delete(l)
+        db.delete(mr)
+    db.commit()
+    M.log_action(db, who, "delete_lpo", f"{ref} ({sup}) deleted" + (f", with {mr_ref}" if mr_ref else "") + (f" - {why}" if why else ""))
+    return ref
+
+
+@router.post("/store/zoho/pos/{oid}/delete")
+def delete(oid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = ZG):
+    if (user.role or "") != "admin":
+        raise HTTPException(status_code=403, detail="Only the admin deletes an LPO.")
+    o = db.get(models.PurchaseOrder, oid)
+    if not o:
+        raise HTTPException(status_code=404, detail="That LPO is no longer there.")
+    why = " ".join(str(payload.get("reason") or "").split())[:200]
+    if not why:
+        raise HTTPException(status_code=400, detail="Say why it is deleted.")
+    return {"ok": True, "ref": delete_lpo(db, o, user.id, why)}
 
 
 @router.post("/store/zoho/pos/hint-seen")
@@ -216,19 +252,7 @@ def drop_admin_lpos(db):
             gone.append(ref); continue                     # not the order meant - never touch it
         if (o.zoho_id or "").strip():
             wait.append(ref); continue
-        mr = db.get(models.MaterialRequest, o.request_id) if o.request_id else None
-        for l in list(o.lines):
-            db.delete(l)
-        db.delete(o); db.flush()
-        mr_ref = ""
-        if mr and not db.query(models.PurchaseOrder).filter(models.PurchaseOrder.request_id == mr.id).count() \
-                and not db.query(models.StoreMovement).filter(models.StoreMovement.request_id == mr.id).count():
-            mr_ref = mr.ref
-            for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.request_id == mr.id).all():
-                db.delete(l)
-            db.delete(mr)
-        db.commit()
-        M.log_action(db, None, "delete_lpo", f"{ref} ({sup}) deleted as asked" + (f", with {mr_ref}" if mr_ref else ""))
+        delete_lpo(db, o, None, "made by mistake on the admin login, deleted as asked")
         gone.append(ref)
     if not wait:
         db.add(models.Setting(key="drop_lpo_0125_0126", value="1")); db.commit()
