@@ -221,6 +221,13 @@ def seed_on_startup():
         _grant_admin_forms(db)
         _grant_docs_office(db)
         _grant_visa(db)
+        try:
+            import visa as _vs
+            _n = _vs.seed_existing(db)
+            if _n:
+                print(f"visa files: {_n} files opened for the visas in progress")
+        except Exception as e:
+            db.rollback(); print("visa files seed:", e)
         _grant_zoho_notice(db)
         try:
             import zohosync as _zsg

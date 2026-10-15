@@ -10,9 +10,9 @@ from database import SessionLocal, engine
 from fastapi import HTTPException
 models.Base.metadata.create_all(bind=engine); M._add_missing_columns()
 s = SessionLocal(); fails = 0
-def ok(c, m):
+def ok(c, m, i=""):
     global fails
-    print(("PASS " if c else "FAIL ") + m); fails += 0 if c else 1
+    print(("PASS " if c else "FAIL ") + m + ("" if c else f"  {i}")); fails += 0 if c else 1
 def refused(fn, m):
     try:
         fn(); ok(False, m)
@@ -66,4 +66,18 @@ ok(len(V.open_files(s, admin)["files"]) == 2, "reopened: back on the list")
 V.remove(g["id"], s, admin)
 ok(s.get(models.VisaFile, g["id"]) is None, "an empty file can be deleted")
 ok(any(u["description"] for u in V._unlinked(s)) or True, "unlinked suggestions run")
+# the visas in progress at go-live: opened once, payments tied, money exact
+s.add(models.Employee(emp_no="F-727", name="BENCHEP OLIVER KARNGONG", active=True))
+for pid, amt, *_ in V.SEED:
+    s.add(models.PettyCash(id=pid, book="pro", on_date=date(2026, 10, 14), description="visa", paid=amt))
+s.flush(); s.get(models.PettyCash, 2896).paid = 1.0     # changed since: left alone
+s.commit()
+n = V.seed_existing(s)
+ok(n == 7, "seed: 7 files opened, the changed line left for the PRO", n)
+ok(V.seed_existing(s) == 0, "seed runs once only")
+seeded = [r for r in V.listing(s, "ongoing")["rows"] if r["note"].startswith("Opened when")]
+ok(round(sum(r["spent"] for r in seeded), 2) == 25468.19, "seeded total exact", round(sum(r["spent"] for r in seeded), 2))
+b = next(r for r in seeded if r["emp_no"] == "F-727")
+ok(b["person"] == "Benchep Oliver Karngong" and b["kind"] == "renewal" and b["started"] == "2026-10-14", "renewal file named from the staff list")
+ok(any(r["person"] == "Eric Mambo" and r["kind"] == "new" for r in seeded), "Eric Mambo: new visa by name")
 print("ALL PASS" if not fails else f"{fails} FAILED"); sys.exit(1 if fails else 0)

@@ -334,3 +334,41 @@ def export(token: str, format: str = "excel", status: str = "ongoing", db: Sessi
     return StreamingResponse(export_web.build_store_report_excel(title, rows, sub, money_cols=["Spent (AED)"]),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+
+
+# The visas in progress when Visa files went live (PRO book, October 2026),
+# agreed with Praveen: (petty cash id, amount, person, emp no, type).
+SEED = [(2891, 4570.33, "Eric Mambo", "", "new"),
+        (3050, 278.77, "Hebson Hondra", "", "new_out"),
+        (3051, 76.14, "Ian Kiplayapy", "", "new_out"),
+        (2897, 4724.85, "", "F-732", "renewal"),
+        (2893, 5272.70, "", "F-727", "renewal"),
+        (2894, 5272.70, "", "F-728", "renewal"),
+        (2895, 5272.70, "", "F-729", "renewal"),
+        (2896, 5272.70, "", "F-730", "renewal")]
+
+
+def seed_existing(db):
+    """Once: a file for each visa in progress, its payment tied to it. A
+    line is tied only if it is still that PRO payment (same amount, not on
+    a file) - anything else is left for the PRO to tie by hand."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_seed_oct26").first():
+        return 0
+    key = lambda n: "".join(ch for ch in str(n or "").upper() if ch.isalnum())
+    emps = {key(e.emp_no): e for e in db.query(models.Employee).all()}
+    n = 0
+    for pid, amt, name, no, kind in SEED:
+        x = db.get(models.PettyCash, pid)
+        if not x or (x.book or "") != "pro" or abs((x.paid or 0) - amt) > 0.005 or x.visa_file_id:
+            continue
+        e = emps.get(key(no)) if no else None
+        person = (" ".join((e.name or "").split()).title() if e else name) or no
+        v = models.VisaFile(employee_id=e.id if e else None, emp_no=e.emp_no if e else no, person=person, kind=kind,
+                            stages=json.dumps(KINDS[kind][1]), done="[]", started_on=x.on_date, status="ongoing",
+                            note="Opened when Visa files started - tick the stages already done")
+        db.add(v); db.flush()
+        x.visa_file_id, x.visa_stage = v.id, ""
+        n += 1
+    db.add(models.Setting(key="visa_seed_oct26", value=str(n)))
+    db.commit()
+    return n
