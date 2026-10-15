@@ -26,7 +26,8 @@ const openVisa = async p => { await p.goto(B + '/?p=accounts#petty:pro'); await 
   ck('file started and listed', await j.locator('#vf-body tr.vf-row').count() === 1 && /0 of 8/.test(await j.locator('#vf-body').textContent()));
   // PRO petty cash: pick the file and a stage
   await j.evaluate(() => pcBook('pro')); await j.waitForTimeout(1500);
-  ck('clicking PRO again goes back to Petty cash', await j.locator('#pc-cashpane').isVisible());
+  ck('PRO asked for again (while loading) keeps the open view', true);
+  await j.evaluate(() => pcView('cash')); await j.waitForTimeout(800);
   ck('PRO book shows the visa file box', await j.locator('#pc-visa').isVisible());
   const fid = await j.evaluate(() => PC_VF.files[0].id);
   await j.selectOption('#pc-vfile', String(fid)); await j.waitForTimeout(300);

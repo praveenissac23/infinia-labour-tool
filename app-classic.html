@@ -18098,7 +18098,9 @@ let PC_BOOK = "";
 function pcMayBook(b) { return typeof pgHas !== "function" || pgHas("petty_" + b); }
 function pcBook(b) {
   if (!PC_BOOKS[b] || !pcMayBook(b)) return;
-  if (PC_VIEW !== "cash") pcView("cash");   // a book's tab opens on its petty cash
+  // Moving to another book opens on its petty cash; the same book asked
+  // for again (a second call while it loads) leaves Visa files open.
+  if (PC_BOOK !== b && PC_VIEW !== "cash") pcView("cash");
   if (PC_BOOK === b && window.__pcLoad && window.__pcLoad.book === b && Date.now() - window.__pcLoad.t < 800) return;   // just loaded for this tab
   if (PC_BOOK !== b) { PC_BOOK = b; PC = null; if (typeof pcReset === "function") { PC_EDIT = null; } }
   loadPettyCash();
@@ -18217,7 +18219,12 @@ async function pcVisaShow() {
   const on = PC_BOOK === "pro" && PC_KIND === "paid";
   box.style.display = on ? "" : "none";
   if (!on) return;
-  if (!PC_VF) { try { PC_VF = await apiCall("/store/visa/open"); } catch (e) { PC_VF = { files: [], kinds: [] }; } }
+  if (!PC_VF) {
+    if (pcVisaShow.busy) return;                 // one fetch at a time
+    pcVisaShow.busy = true;
+    try { PC_VF = await apiCall("/store/visa/open"); } catch (e) { PC_VF = { files: [], kinds: [] }; }
+    pcVisaShow.busy = false;
+  }
   pcVisaDraw();
 }
 function pcVisaDraw() {
@@ -18225,8 +18232,11 @@ function pcVisaDraw() {
   const files = PC_VF.files.slice();
   const cur = PC_VSEL.file && !files.some(f => String(f.id) === String(PC_VSEL.file)) ? (PC_VF.extra || null) : null;
   if (cur) files.push(cur);
-  sel.innerHTML = `<option value="">- not a visa cost -</option>` + files.map(f => `<option value="${f.id}"${String(f.id) === String(PC_VSEL.file) ? " selected" : ""}>${escapeHtml(f.person)} - ${escapeHtml(f.kind_label)} (${f.n_done} of ${f.stages.length}${f.status === "completed" ? ", completed" : ""})</option>`).join("")
+  const html = `<option value="">- not a visa cost -</option>` + files.map(f => `<option value="${f.id}"${String(f.id) === String(PC_VSEL.file) ? " selected" : ""}>${escapeHtml(f.person)} - ${escapeHtml(f.kind_label)} (${f.n_done} of ${f.stages.length}${f.status === "completed" ? ", completed" : ""})</option>`).join("")
     + `<option value="new">+ Start a new visa file</option>`;
+  // Only redrawn when it changed - redrawing an open list closes it.
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  if (sel.value !== String(PC_VSEL.file || "")) sel.value = String(PC_VSEL.file || "");
   const f = files.find(x => String(x.id) === String(PC_VSEL.file));
   document.getElementById("pc-vstage-l").style.visibility = f ? "" : "hidden";
   document.getElementById("pc-vstages").innerHTML = f ? f.stages.map(st => {
