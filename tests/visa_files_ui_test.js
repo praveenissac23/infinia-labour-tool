@@ -32,13 +32,27 @@ async function login(b, u, pw, W = 1440) {
   ck('two visas held: Eric 1,320.00, Diwakar 75.00', /Eric Mambo/.test(body) && /1,320\.00/.test(body) && /Diwakar/.test(body) && /75\.00/.test(body), body.slice(0, 200));
   ck('held total AED 1,395.00', /1,395\.00/.test(await j.textContent('#vh-stats')));
   ck('Eric offered under Whose visa', await j.evaluate(() => [...document.querySelectorAll('#vh-person-list option')].some(o => o.value === 'Eric Mambo')));
-  await j.locator('#vh-body tr', { hasText: 'Eric Mambo' }).locator('button', { hasText: 'View' }).click(); await j.waitForTimeout(300);
-  ck('View: the payments one by one', await j.locator('#vh-body .vh-pays tr').count() === 2);
+  await j.locator('#vh-body tr', { hasText: 'Eric Mambo' }).locator('button', { hasText: 'Edit / note' }).click(); await j.waitForTimeout(300);
+  ck('Edit / note: the payments one by one', await j.locator('#vh-body .vh-pays tr').count() === 2);
+  const eid = await j.evaluate(() => VH.ongoing.find(v => v.person === 'Eric Mambo').id);
+  await j.fill(`#vh-note-${eid}`, 'Deduct AED 126 ILOE from his salary - 10 months'); await j.click('#vh-body button:has-text("Save note")'); await j.waitForTimeout(1200);
+  ck('note saved and shown under his name', /Note: Deduct AED 126/.test(await j.textContent('#vh-body')));
+  await j.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });
+  await j.locator('#vh-body tr', { hasText: 'Eric Mambo' }).first().locator('button', { hasText: 'Preview' }).click(); await j.waitForTimeout(800);
+  const pu = await j.evaluate(() => window.__opened[0] || '');
+  const pr = pu ? await j.context().request.get(new URL(pu, B).href) : null;
+  const pdfu = pu.replace('format=view', 'format=pdf');
+  const pp = pu ? await j.context().request.get(new URL(pdfu, B).href) : null;
+  ck('Preview: the visa sheet opens (preview page + PDF)', pr && pr.status() === 200 && /Visa Expenses/.test(await pr.text()) && pp && pp.status() === 200 && /pdf/.test(pp.headers()['content-type']), pu);
+  await j.locator('#vh-body tr', { hasText: 'Eric Mambo' }).first().locator('button', { hasText: 'Close' }).click(); await j.waitForTimeout(300);
+  await j.locator('#vh-body tr', { hasText: 'Eric Mambo' }).first().locator('button', { hasText: 'Edit / note' }).click(); await j.waitForTimeout(300);
   await j.screenshot({ path: SH + 'visa_tab.png' });
   // General: not booked yet, balance reduced
   await j.click('#pc-protabs [data-v="cash"]'); await j.waitForTimeout(1800);
   ck('General: visa payments not in petty cash yet', !/Eric Mambo/.test(await j.textContent('#pc-body')));
   const st = await j.textContent('#pc-stats');
+  const gv = await j.evaluate(async () => { await refreshDownloadToken(); const r = await fetch(`${API}/export/store/petty-cash/view?month=${pcToday().slice(0,7)}&book=pro&token=${encodeURIComponent(cachedDownloadToken)}`); return await r.text(); });
+  ck('General preview ends with visa held (negative) and cash in hand', /Visa expenses held/.test(gv) && /-1,395\.00/.test(gv) && /CASH IN HAND/.test(gv));
   ck('Balance in hand takes the held money off', /after AED 1,395\.00 visa payments held/.test(st) && await j.evaluate(h => Math.abs(PC.closing - PC.visa_held - (h - 1395)) < 0.01, hand0), st);
   // complete Eric
   await j.click('#pc-protabs [data-v="visa"]'); await j.waitForTimeout(1200);

@@ -1582,6 +1582,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #vh-new { font-size:11.5px; color:#8A6200; margin-top:3px; }
   .vh-table td { vertical-align:middle; } .vh-steps { display:flex; flex-wrap:wrap; gap:4px; } .vh-steps span { font-size:11.5px; background:#E7F4EA; color:#2E7D32; border-radius:10px; padding:2px 8px; }
   .vh-acts { display:flex; gap:6px; justify-content:flex-end; flex-wrap:nowrap; }
+  .vh-note { display:block; font-size:11.5px; color:#8A6200; margin-top:2px; }
+  .vh-noteed { display:flex; gap:8px; align-items:flex-end; margin:4px 0 10px; text-align:left; } .vh-noteed textarea { width:100%; box-sizing:border-box; font:inherit; font-size:13px; padding:6px 8px; border:1px solid #DDD4CC; border-radius:7px; resize:vertical; }
   .vh-detail td { background:#FBF8F5; padding:6px 14px !important; } .vh-pays { width:100%; border-collapse:collapse; font-size:12.5px; } .vh-pays td { padding:5px 6px; border-bottom:1px solid #EFE7E0; text-align:left; }
   .pc-held { display:block; font-size:11px; color:#8A6200; font-weight:600; margin-top:2px; }
   .pc-vbd { color:#C0392B; text-decoration:none; border-bottom:1px dashed #C0392B; }
@@ -18281,20 +18283,30 @@ function vhDraw() {
     `<div class="pc-stat"><span>Ongoing visas</span><b>${VH.ongoing.length}</b></div>
      <div class="pc-stat hand${VH.held > 0 ? " neg" : ""}" title="Already paid out of the PRO box for visas still in progress"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
   document.getElementById("vh-body").innerHTML = VH.ongoing.map(v => {
-    const row = `<tr><td class="l"><b>${escapeHtml(v.person)}</b>${v.emp_no ? `<span class="sub">${escapeHtml(v.emp_no)}</span>` : ""}<span class="sub">since ${pcDate(v.started)}</span></td>
+    const row = `<tr><td class="l"><b>${escapeHtml(v.person)}</b>${v.emp_no ? `<span class="sub">${escapeHtml(v.emp_no)}</span>` : ""}<span class="sub">since ${pcDate(v.started)}</span>${v.note ? `<span class="vh-note" title="${escapeAttr(v.note)}">Note: ${escapeHtml(v.note.length > 70 ? v.note.slice(0, 70) + "..." : v.note)}</span>` : ""}</td>
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
       <td>${v.payments.length}</td><td class="n"><b>${pcMoney(v.total)}</b></td>
-      <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Hide" : "View"}</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
-    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5">${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
+      <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Close" : "Edit / note"}</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
+    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
     return row + det;
   }).join("") || `<tr><td colspan="5" class="sub" style="padding:16px;">No visa in progress. Type a name under Whose visa to start one.</td></tr>`;
   document.getElementById("vh-foot").innerHTML = VH.ongoing.length ? `<tr><td colspan="3" class="l">TOTAL HELD</td><td class="n">${pcMoney(VH.held)}</td><td></td></tr>` : "";
   document.getElementById("vh-done").innerHTML = VH.completed.length ? `<h3 style="margin:16px 0 8px;font-size:15px;">Completed - moved to General</h3>
     <table class="pc-table"><tbody>${VH.completed.map(v => `<tr><td class="l" style="width:220px;"><b>${escapeHtml(v.person)}</b></td><td class="l">Completed ${pcDate(v.completed)} · ${v.payments.length} payment${v.payments.length === 1 ? "" : "s"}</td><td class="n" style="width:130px;"><b>${pcMoney(v.total)}</b></td>
-      <td style="width:250px;"><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhBreakdown(${v.id})">Breakdown</button><button class="btn btn-gray btn-sm" onclick="vhReopen(${v.id})">Reopen</button></div></td></tr>`).join("")}</tbody></table>` : "";
+      <td style="width:250px;"><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhReopen(${v.id})">Reopen</button></div></td></tr>`).join("")}</tbody></table>` : "";
   vhWhoNote();
 }
 function vhToggle(id) { VH_OPEN = VH_OPEN === id ? null : id; vhDraw(); }
+// The sheet the PRO hands to accounts: every step with its amount, the total, the note.
+async function vhPreview(id) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/visa/file/${id}?format=view&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+async function vhNote(id) {
+  const t = document.getElementById(`vh-note-${id}`).value;
+  try { await apiCall(`/store/visa/files/${id}`, { method: "PUT", body: JSON.stringify({ note: t }) }); await vhLoad(); showStatus("vh-status", "ok", "Note saved - it prints on the sheet."); }
+  catch (e) { showStatus("vh-status", "err", errText(e)); }
+}
 function vhPick(name) { vhReset(); document.getElementById("vh-person").value = name; vhWhoNote(); document.getElementById("vh-step").focus(); }
 function vhReset() {
   VH_EDIT = null; ["vh-person", "vh-step", "vh-amt", "vh-sup", "vh-desc", "vh-rcpt"].forEach(i => document.getElementById(i).value = "");
@@ -18350,7 +18362,8 @@ async function vhBreakdown(fid) {
   ov.innerHTML = `<div class="zx-box" style="width:640px;max-height:calc(100vh - 40px);overflow-y:auto;"><h3 style="margin:0 0 2px;">${escapeHtml(d.person)} - visa expenses</h3><div class="sub" style="margin-bottom:10px;">${d.completed ? "Completed " + pcDate(d.completed) : "In progress"} · ${d.payments.length} payment${d.payments.length === 1 ? "" : "s"}</div>
     <table class="vh-pays">${d.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td><b>${escapeHtml(p.step || "-")}</b>${p.description ? `<span class="sub">${escapeHtml(p.description)}</span>` : ""}</td><td>${escapeHtml(p.supplier)}</td><td style="text-align:right;width:100px;">${pcMoney(p.amount)}</td></tr>`).join("") || `<tr><td class="sub">No held payments (paid before the Visa tab).</td></tr>`}
     <tr><td></td><td><b>Total</b></td><td></td><td style="text-align:right;"><b>${pcMoney(d.total)}</b></td></tr></table>
-    <div style="text-align:right;margin-top:12px;"><button type="button" class="btn btn-gray">Close</button></div></div>`;
+    ${d.note ? `<div style="margin-top:10px;font-size:13px;"><b>Note:</b> ${escapeHtml(d.note)}</div>` : ""}
+    <div style="text-align:right;margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button type="button" class="btn btn-gray" onclick="vhPreview(${fid})">Preview sheet</button><button type="button" class="btn btn-gray">Close</button></div></div>`;
   ov.addEventListener("click", e => { if (e.target === ov || e.target.textContent === "Close") ov.remove(); });
   document.body.appendChild(ov);
 }

@@ -54,4 +54,27 @@ refused(lambda: V.reopen(e["id"], s, u), "reopen refused once the chief accounta
 d = V.held_listing(s)["ongoing"][0]["id"]
 V.add_payment({"date": t, "person": "Diwakar", "step": "Residency renewal", "amount": "20", "complete": True}, s, u)
 ok(s.get(models.VisaFile, d).status == "completed" and s.get(models.VisaFile, d).posted_id, "add + complete in one go")
+# the sheet for accounts, notes, and the General register paper
+g = V.held_listing(s)
+fid = next(v["id"] for v in V.held_listing(s)["completed"])
+V.edit(fid, {"note": "ILOE insurance renewal AED 126 paid by the company.\nDeduct AED 126 from his next salary."}, s, u)
+vf = s.get(models.VisaFile, fid)
+ok("Deduct AED 126" in vf.note and "\n" in vf.note, "a note (more than one line) is kept on the visa")
+pays = s.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == fid).all()
+pdf = V.sheet_pdf(vf, pays).read()
+ok(pdf[:4] == b"%PDF", "the visa sheet prints as a PDF")
+open("/tmp/claude-0/visa_sheet.pdf", "wb").write(pdf)
+V.add_payment({"date": t, "person": "Held Man", "step": "Medical and EID", "amount": "300"}, s, u)
+reg = P.register(s, mon, "pro")
+html = P._html(reg, "#", "#")
+ok("Visa expenses held" in html and f"-{reg['visa_held']:,.2f}" in html and "CASH IN HAND" in html, "General preview: visa expenses held (negative) and cash in hand at the end")
+pdf2 = P._pdf(reg).read(); open("/tmp/claude-0/pro_register.pdf", "wb").write(pdf2)
+ok(pdf2[:4] == b"%PDF", "General PDF builds with the held lines")
+import openpyxl, io as _io
+wb = openpyxl.load_workbook(_io.BytesIO(P._excel(reg).read()))
+vals = [c.value for row in wb.active.iter_rows() for c in row if c.value is not None]
+ok(any(isinstance(x, str) and x.startswith("Visa expenses held") for x in vals) and -reg["visa_held"] in vals and "CASH IN HAND" in vals, "General Excel: held (negative) and cash in hand rows")
+s.query(models.VisaFile).filter(models.VisaFile.person == "Held Man").delete(); s.commit()
+reg0 = P.register(s, "2026-01", "site")
+ok("Visa expenses held" not in P._html(reg0, "#", "#"), "other books: no visa lines on the paper")
 print("ALL PASS" if all(f) else "FAILED")

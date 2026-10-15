@@ -368,6 +368,27 @@ def _sum_boxes(r):
 NUM = ("a1", "a2", "bal")
 
 
+def _held(r):
+    return round(r.get("visa_held") or 0, 2) if r.get("book") == "pro" else 0
+
+
+def _held_rows_html(r, ntext):
+    h = _held(r)
+    if not h:
+        return ""
+    return (f"<tr class='held'><td colspan='{ntext + 2}' class='l'>Visa expenses held - paid out, not yet in petty cash (Visa tab)</td>"
+            f"<td class='n neg'>-{_money(h)}</td></tr>"
+            f"<tr class='cash'><td colspan='{ntext + 2}' class='l'>CASH IN HAND</td><td class='n'>{_money(r['closing'] - h)}</td></tr>")
+
+
+def _held_boxes_html(r):
+    h = _held(r)
+    if not h:
+        return ""
+    return (f"<div><span>Visa expenses held</span><b style='color:{RED}'>-{_money(h)}</b></div>"
+            f"<div><span>Cash in hand</span><b>{_money(r['closing'] - h)}</b></div>")
+
+
 def _html(r, pdf_url, excel_url):
     logo = export_web.logo_data_uri()
     m = lambda v: _money(v) if v not in ("", None) else ""
@@ -396,6 +417,7 @@ td:first-child,th:first-child{{white-space:nowrap;width:80px}}
 td.b{{font-weight:600}} td.neg{{color:{RED}}} tr.bf td{{background:#FBF6F4;font-style:italic}}
 tbody tr:nth-child(even):not(.bf) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
+tfoot tr.held td{{background:#fff;border-top:1px solid #ddd;font-weight:600}} tfoot tr.held td.neg{{color:{RED}}} tfoot tr.cash td{{background:#EEF6EF;border-top:1.5px solid #222}}
 .sum{{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}} .sum div{{flex:1;min-width:150px;border:1px solid #e3e3e3;border-radius:6px;padding:8px 12px}}
 .sum span{{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.05em}} .sum b{{font-size:15px}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
@@ -407,9 +429,9 @@ tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-
  <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>{escape(r['book_label'].upper())} REGISTER</h1></div>
  <div class="meta"><div><span>Company</span><b>{COMPANY}</b></div><div><span>Month / Period</span><b>{escape(r['label'])}</b></div></div>
  <div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody>
- <tfoot><tr><td colspan="{ntext}" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr></tfoot></table></div>
+ <tfoot><tr><td colspan="{ntext}" class="l">TOTAL</td>{''.join(f'<td class="n">{_money(v)}</td>' for v in _pair(r, r['received'], r['paid']))}<td class="n">{_money(r['closing'])}</td></tr>{_held_rows_html(r, ntext)}</tfoot></table></div>
  <div class="sum"><div><span>Brought forward</span><b>{_money(r['opening'])}</b></div>{_sum_boxes(r)}
-  <div><span>{escape(r['terms']['balance'])}</span><b>{_money(r['closing'])}</b></div></div>
+  <div><span>{escape(r['terms']['balance'])}</span><b>{_money(r['closing'])}</b></div>{_held_boxes_html(r)}</div>
  <div class="sign"><div>Prepared By</div><div>Checked By</div><div>Approved By</div></div>
 </div></body></html>"""
 
@@ -464,13 +486,22 @@ def _pdf(r):
         data.append(row)
     ntext = len(spec) - 3
     data.append([P("TOTAL", bold)] + [""] * (ntext - 1) + [*(P(_money(v), rtb) for v in _pair(r, r["received"], r["paid"])), P(_money(r["closing"]), rtb)])
+    h = _held(r)
+    if h:
+        neg = ParagraphStyle("ng", parent=rtb, textColor=R)
+        data.append([P("Visa expenses held - paid out, not yet in petty cash (Visa tab)", bold)] + [""] * (ntext + 1) + [P(f"-{_money(h)}", neg)])
+        data.append([P("CASH IN HAND", bold)] + [""] * (ntext + 1) + [P(_money(r["closing"] - h), rtb)])
     t = Table(data, colWidths=[W * c["w"] for c in spec], repeatRows=1)
+    tot = len(data) - (3 if h else 1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),
           ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FBF6F4")),
-          ("SPAN", (0, -1), (ntext - 1, -1)), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F1EF")),
-          ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black)]
-    for i in range(3, len(data) - 1, 2):
+          ("SPAN", (0, tot), (ntext - 1, tot)), ("BACKGROUND", (0, tot), (-1, tot), colors.HexColor("#F3F1EF")),
+          ("LINEABOVE", (0, tot), (-1, tot), 1, colors.black)]
+    if h:
+        st += [("SPAN", (0, -2), (ntext + 1, -2)), ("SPAN", (0, -1), (ntext + 1, -1)),
+               ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#EEF6EF")), ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black)]
+    for i in range(3, tot, 2):
         st.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FAFAFA")))
     t.setStyle(TableStyle(st))
     sign = Table([[P("Prepared By", cen), "", P("Checked By", cen), "", P("Approved By", cen)]],
@@ -554,6 +585,19 @@ def _excel(r):
         cell = ws.cell(row, c); cell.fill = PatternFill("solid", fgColor="F3F1EF")
         cell.border = Border(top=Side(style="medium", color="000000"))
         if c >= cE: cell.number_format = "#,##0.00"; cell.font = Font(bold=True)
+    h = _held(r)
+    if h:
+        tot_row = row
+        row += 1
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=cF)
+        ws.cell(row, 1, "Visa expenses held - paid out, not yet in petty cash (Visa tab)").font = Font(bold=True)
+        ws.cell(row, cG, -h).number_format = "#,##0.00"; ws.cell(row, cG).font = Font(bold=True, color=R)
+        row += 1
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=cF)
+        ws.cell(row, 1, "CASH IN HAND").font = Font(bold=True)
+        ws.cell(row, cG, f"={G}{tot_row}+{G}{row - 1}").number_format = "#,##0.00"; ws.cell(row, cG).font = Font(bold=True)
+        for c in range(1, N + 1):
+            ws.cell(row, c).fill = PatternFill("solid", fgColor="EEF6EF"); ws.cell(row, c).border = Border(top=Side(style="medium", color="000000"))
     row += 4
     third = max(1, N // 3)
     signs = ((1, third, "Prepared By"), (third + 1, 2 * third, "Checked By"), (2 * third + 1, N, "Approved By"))

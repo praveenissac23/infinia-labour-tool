@@ -256,7 +256,7 @@ def _out(db, v):
 def edit(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
     v = _get(db, vid)
     if "note" in payload:
-        v.note = " ".join(str(payload.get("note") or "").split())[:300]
+        v.note = "\n".join(" ".join(l.split()) for l in str(payload.get("note") or "").strip().splitlines())[:1500]
     if payload.get("started"):
         d = M._as_date(payload.get("started"))
         if not d or d > M._dubai_today():
@@ -382,7 +382,7 @@ def held_listing(db):
         ps = pays.get(v.id, [])
         d = {"id": v.id, "person": v.person, "emp_no": v.emp_no or "", "started": v.started_on.isoformat(), "status": v.status,
              "payments": ps, "total": round(sum(x["amount"] for x in ps), 2), "steps": sorted({x["step"] for x in ps if x["step"]}),
-             "completed": v.completed_on.isoformat() if v.completed_on else "", "posted_id": v.posted_id}
+             "completed": v.completed_on.isoformat() if v.completed_on else "", "posted_id": v.posted_id, "note": v.note or ""}
         if v.status == "ongoing":
             out_on.append(d)
         elif ps and v.completed_on and v.completed_on >= since:
@@ -467,7 +467,7 @@ def breakdown(vid: int, db: Session = Depends(get_db), user: models.User = LOOK)
     users = _users(db)
     ps = [_pay_dict(p, users) for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == vid)
           .order_by(models.VisaPayment.on_date, models.VisaPayment.id)]
-    return {"person": v.person, "completed": v.completed_on.isoformat() if v.completed_on else "", "payments": ps,
+    return {"person": v.person, "note": v.note or "", "completed": v.completed_on.isoformat() if v.completed_on else "", "payments": ps,
             "total": round(sum(x["amount"] for x in ps), 2)}
 
 
@@ -744,3 +744,102 @@ def tidy_oct15(db):
     if done:
         M.log_action(db, None, "visa_tidy", "; ".join(done))
     return done
+
+
+# ---- the sheet the PRO hands to accounts ----------------------------------------
+
+def sheet_pdf(v, pays):
+    """'<Name> Visa Expenses': No / Item / Amount, the total, the PRO's note
+    (e.g. a deduction from the worker's salary) and the signatures - on the
+    company's letterhead, one page, signatures kept with the note."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
+    from html import escape
+    import io
+    R = colors.HexColor("#B7322A")
+    base = ParagraphStyle("b", fontName="Helvetica", fontSize=9.5, leading=12.5)
+    bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
+    rt, rtb = ParagraphStyle("r", parent=base, alignment=TA_RIGHT), ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
+    cen = ParagraphStyle("c", parent=base, alignment=TA_CENTER)
+    hd = ParagraphStyle("h", parent=bold, fontSize=8.5, textColor=colors.white)
+    small = ParagraphStyle("s", parent=base, fontSize=8, leading=10, textColor=colors.HexColor("#777777"))
+    P = lambda t, st=base: Paragraph(escape(str(t)).replace("\n", "<br/>"), st)
+    buf = io.BytesIO()
+    W = A4[0] - 32 * mm
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+                            title=f"{v.person} Visa Expenses")
+    logo = export_web._logo_image(46)
+    top = Table([[logo or P("INFINIA", bold), Paragraph("VISA EXPENSES", ParagraphStyle("t", parent=bold, fontSize=16, leading=20, textColor=R, alignment=TA_RIGHT))]],
+                colWidths=[W / 2, W / 2])
+    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.5, R),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    dmy = lambda d: d.strftime("%d-%m-%Y") if d else ""
+    span = f"{dmy(min(p.on_date for p in pays))} to {dmy(max(p.on_date for p in pays))}" if pays else dmy(v.started_on)
+    title = Paragraph(f"<b>{escape(v.person)} Visa Expenses</b>" + (f" &nbsp;<font color='#777777'>{escape(v.emp_no)}</font>" if v.emp_no else "")
+                      + f" &nbsp;<font color='#777777'>( {span} )</font>", ParagraphStyle("tt", parent=base, fontSize=12, leading=16))
+    st_txt = f"Completed {dmy(v.completed_on)}" if v.status == "completed" else "In progress"
+    data = [[P("NO", hd), P("ITEM", hd), P("DATE", ParagraphStyle("hc", parent=hd, alignment=TA_CENTER)), P("AMOUNT (AED)", ParagraphStyle("hr", parent=hd, alignment=TA_RIGHT))]]
+    for i, p in enumerate(pays, 1):
+        item = p.step or p.description or "Payment"
+        extra = " · ".join(x for x in ((p.description if p.step and p.description else ""), p.supplier or "", f"Rcpt {p.receipt_no}" if p.receipt_no else "") if x)
+        data.append([P(i, cen), Paragraph(escape(item) + (f"<br/><font size='7.5' color='#777777'>{escape(extra)}</font>" if extra else ""), base),
+                     P(dmy(p.on_date), cen), P(f"{p.amount or 0:,.2f}", rt)])
+    total = round(sum(p.amount or 0 for p in pays), 2)
+    data.append(["", P("Total", bold), "", P(f"{total:,.2f}", rtb)])
+    t = Table(data, colWidths=[W * .08, W * .6, W * .14, W * .18], repeatRows=1)
+    sty = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+           ("GRID", (0, 0), (-1, -1), .4, colors.HexColor("#BBBBBB")), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F1EF")),
+           ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]
+    t.setStyle(TableStyle(sty))
+    tail = []
+    if (v.note or "").strip():
+        tail += [Spacer(1, 10), Paragraph(f"<b>Note:</b> {escape(v.note).replace(chr(10), '<br/>')}", ParagraphStyle("n", parent=base, fontSize=10, leading=14))]
+    sign = Table([[P("Prepared by (PRO)", cen), "", P("Checked by (Accounts)", cen), "", P("Approved by", cen)]],
+                 colWidths=[W * .28, W * .08, W * .28, W * .08, W * .28])
+    sign.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), .8, colors.black), ("LINEABOVE", (2, 0), (2, 0), .8, colors.black),
+                              ("LINEABOVE", (4, 0), (4, 0), .8, colors.black)]))
+    tail += [Spacer(1, 46), sign, Spacer(1, 8), P(f"{st_txt} · {len(pays)} payment{'' if len(pays) == 1 else 's'} · printed {dmy(M._dubai_today())}", small)]
+    doc.build([top, Spacer(1, 10), title, Spacer(1, 8), t, KeepTogether(tail)])
+    buf.seek(0)
+    return buf
+
+
+@router.get("/export/visa/file/{vid}")
+def export_sheet(vid: int, token: str, format: str = "view", dl: int = 0, db: Session = Depends(get_db)):
+    from fastapi.responses import HTMLResponse
+    from html import escape
+    u = auth.get_download_user_from_token(token, db)
+    pp = M.effective_permissions(u)
+    if (u.role or "") != "admin" and RIGHT not in pp and "petty_pro" not in pp:
+        raise HTTPException(status_code=403, detail="Visa expenses are for the PRO and accounts.")
+    v = db.get(models.VisaFile, vid)
+    if not v:
+        raise HTTPException(status_code=404, detail="That visa is no longer there.")
+    pays = (db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == vid)
+            .order_by(models.VisaPayment.on_date, models.VisaPayment.id).all())
+    name = "".join(ch for ch in v.person if ch.isalnum() or ch in " -").strip().replace(" ", "_") + "_Visa_Expenses"
+    if format == "view":
+        vt = quote(auth.create_view_token(u.username), safe="")
+        pdf, xl = f"/export/visa/file/{vid}?format=pdf&token={vt}", f"/export/visa/file/{vid}?format=excel&token={vt}"
+        title = f"{v.person} Visa Expenses"
+        return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{escape(title)}</title><style>{export_web.PREVIEW_BAR_CSS}
+body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
+.pg iframe{{width:100%;height:1180px;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
+<div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(pays)} payment(s) &middot; AED {sum(p.amount or 0 for p in pays):,.2f}</span><span class="sp"></span>
+<a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{xl}">Excel</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>
+<div class="pg"><iframe src="{pdf}#toolbar=0&view=FitH" title="{escape(title)}"></iframe></div>
+{export_web.SHARE_JS}</body></html>""")
+    if format == "excel":
+        rows = [{"No": i, "Item": p.step or p.description or "Payment", "Details": " · ".join(x for x in ((p.description if p.step else ""), p.supplier or "", f"Rcpt {p.receipt_no}" if p.receipt_no else "") if x),
+                 "Date": p.on_date.strftime("%d-%b-%y"), "Amount (AED)": round(p.amount or 0, 2)} for i, p in enumerate(pays, 1)]
+        sub = f"{v.person}{' ' + v.emp_no if v.emp_no else ''} | {'Completed ' + v.completed_on.strftime('%d %b %Y') if v.completed_on else 'In progress'}" + (f" | Note: {v.note}" if v.note else "")
+        return StreamingResponse(export_web.build_store_report_excel(f"{v.person} Visa Expenses", rows, sub, money_cols=["Amount (AED)"]),
+                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+    return StreamingResponse(sheet_pdf(v, pays), media_type="application/pdf",
+                             headers={"Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{name}.pdf"'})
