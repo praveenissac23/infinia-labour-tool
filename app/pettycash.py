@@ -378,7 +378,7 @@ def _held_rows_html(r, ntext):
         return ""
     return (f"<tr class='held'><td colspan='{ntext + 2}' class='l'>Visa expenses held - paid out, not yet in petty cash (Visa tab)</td>"
             f"<td class='n neg'>-{_money(h)}</td></tr>"
-            f"<tr class='cash'><td colspan='{ntext + 2}' class='l'>CASH IN HAND</td><td class='n'>{_money(r['closing'] - h)}</td></tr>")
+            f"<tr class='cash'><td colspan='{ntext + 2}' class='l'>CASH IN HAND</td><td class='n' style='color:#2E7D32'>{_money(r['closing'] - h)}</td></tr>")
 
 
 def _held_boxes_html(r):
@@ -386,7 +386,7 @@ def _held_boxes_html(r):
     if not h:
         return ""
     return (f"<div><span>Visa expenses held</span><b style='color:{RED}'>-{_money(h)}</b></div>"
-            f"<div><span>Cash in hand</span><b>{_money(r['closing'] - h)}</b></div>")
+            f"<div style='border-color:#A9D3B0;background:#F1F8F2'><span>Cash in hand</span><b style='color:{'#2E7D32' if r['closing'] - h >= 0 else RED}'>{_money(r['closing'] - h)}</b></div>")
 
 
 def _html(r, pdf_url, excel_url):
@@ -418,8 +418,9 @@ td.b{{font-weight:600}} td.neg{{color:{RED}}} tr.bf td{{background:#FBF6F4;font-
 tbody tr:nth-child(even):not(.bf) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
 tfoot tr.held td{{background:#fff;border-top:1px solid #ddd;font-weight:600}} tfoot tr.held td.neg{{color:{RED}}} tfoot tr.cash td{{background:#EEF6EF;border-top:1.5px solid #222}}
-.sum{{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}} .sum div{{flex:1;min-width:150px;border:1px solid #e3e3e3;border-radius:6px;padding:8px 12px}}
-.sum span{{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.05em}} .sum b{{font-size:15px}}
+.sum{{display:flex;gap:10px;margin-top:14px;flex-wrap:nowrap}} .sum div{{flex:1;min-width:0;border:1px solid #e3e3e3;border-radius:6px;padding:8px 10px}}
+.sum span{{display:block;font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}} .sum b{{font-size:15px;white-space:nowrap}}
+@media(max-width:700px){{.sum{{flex-wrap:wrap}} .sum div{{min-width:140px}}}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
 @media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}} .sign{{gap:14px}}}}
@@ -490,7 +491,7 @@ def _pdf(r):
     if h:
         neg = ParagraphStyle("ng", parent=rtb, textColor=R)
         data.append([P("Visa expenses held - paid out, not yet in petty cash (Visa tab)", bold)] + [""] * (ntext + 1) + [P(f"-{_money(h)}", neg)])
-        data.append([P("CASH IN HAND", bold)] + [""] * (ntext + 1) + [P(_money(r["closing"] - h), rtb)])
+        data.append([P("CASH IN HAND", bold)] + [""] * (ntext + 1) + [P(_money(r["closing"] - h), ParagraphStyle("gr", parent=rtb, textColor=colors.HexColor("#2E7D32")))])
     t = Table(data, colWidths=[W * c["w"] for c in spec], repeatRows=1)
     tot = len(data) - (3 if h else 1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -595,7 +596,7 @@ def _excel(r):
         row += 1
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=cF)
         ws.cell(row, 1, "CASH IN HAND").font = Font(bold=True)
-        ws.cell(row, cG, f"={G}{tot_row}+{G}{row - 1}").number_format = "#,##0.00"; ws.cell(row, cG).font = Font(bold=True)
+        ws.cell(row, cG, f"={G}{tot_row}+{G}{row - 1}").number_format = "#,##0.00"; ws.cell(row, cG).font = Font(bold=True, color="2E7D32")
         for c in range(1, N + 1):
             ws.cell(row, c).fill = PatternFill("solid", fgColor="EEF6EF"); ws.cell(row, c).border = Border(top=Side(style="medium", color="000000"))
     row += 4
