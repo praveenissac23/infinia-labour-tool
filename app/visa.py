@@ -37,6 +37,16 @@ KINDS = {
     "cancel": ("Cancellation", ["Labour card cancel", "Visa cancel", "File closed"]),
 }
 SUPPLIER = "MOHRE & GDRFA"
+# A PRO payment that says this must be on a visa file (from the day Visa
+# files started; older lines are left as they are).
+MUST = re.compile(r"\bvisa\b|emirates id|entry permit|change of status|\bmohre\b|\bgdrfa\b|labour card|visa stamping", re.I)
+START = date(2026, 10, 15)
+
+
+def must_have_file(x):
+    return bool(x.on_date and x.on_date >= START and MUST.search(f"{x.description or ''} {x.supplier or ''}"))
+
+
 LOOKS_VISA = re.compile(r"visa|emirates id|\beid\b|medical|entry permit|labour card|mohre|gdrfa|ilo|insurance|tasheel|amer", re.I)
 
 
@@ -132,7 +142,10 @@ def _unlinked(db):
 def get_files(status: str = "ongoing", db: Session = Depends(get_db), user: models.User = LOOK):
     d = listing(db, status if status in ("ongoing", "completed", "all") else "ongoing")
     d["may_edit"] = may_edit(user)
+    d["may_pay"] = (user.role or "") == "admin" or "petty_pro" in M.effective_permissions(user)
     d["unlinked"] = _unlinked(db) if d["may_edit"] else []
+    d["supplier"] = SUPPLIER
+    d["today"] = M._dubai_today().isoformat()
     return d
 
 
@@ -285,6 +298,42 @@ def link(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
         tick(v, x.visa_stage)
     db.commit()
     M.log_action(db, user.id, "visa_link", f"Visa file {v.person}: tied {x.on_date:%d %b %Y} {x.description} {x.paid:,.2f}")
+    return _out(db, v)
+
+
+@router.post("/store/visa/files/{vid}/pay")
+def pay(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    """A stage paid now: the payment goes into PRO petty cash, tied to this
+    file and stage (and on to Send to Zoho like any PRO bill)."""
+    import pettycash as P
+    v = check_link(db, vid, str(payload.get("stage") or ""))
+    st = str(payload.get("stage") or "")
+    if not st:
+        raise HTTPException(status_code=400, detail="Which stage is this payment for?")
+    desc = " ".join(str(payload.get("description") or "").split()) or f"{v.person} - {kind_label(v.kind)} - {st}"
+    P.add_petty_cash({"book": "pro", "date": payload.get("date"), "description": desc,
+                      "supplier": payload.get("supplier") if payload.get("supplier") is not None else SUPPLIER,
+                      "paid": payload.get("amount"), "receipt_no": payload.get("receipt_no") or "",
+                      "visa_file_id": v.id, "visa_stage": st}, db, user)
+    db.refresh(v)
+    return _out(db, v)
+
+
+@router.post("/store/visa/files/{vid}/paystage")
+def pay_stage(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    """Say which stage a payment already on the file was for."""
+    v = _get(db, vid)
+    x = db.get(models.PettyCash, int(payload.get("petty_id") or 0))
+    if not x or x.visa_file_id != v.id:
+        raise HTTPException(status_code=400, detail="That payment is not on this file.")
+    st = str(payload.get("stage") or "")
+    if st and st not in _j(v.stages):
+        raise HTTPException(status_code=400, detail=f"'{st}' is not a stage of this file.")
+    x.visa_stage = st
+    if st:
+        tick(v, st)
+    db.commit()
+    M.log_action(db, user.id, "visa_paystage", f"Visa file {v.person}: {x.on_date:%d %b %Y} {x.paid:,.2f} was for {st or '-'}")
     return _out(db, v)
 
 

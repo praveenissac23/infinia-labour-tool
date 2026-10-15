@@ -66,6 +66,26 @@ ok(len(V.open_files(s, admin)["files"]) == 2, "reopened: back on the list")
 V.remove(g["id"], s, admin)
 ok(s.get(models.VisaFile, g["id"]) is None, "an empty file can be deleted")
 ok(any(u["description"] for u in V._unlinked(s)) or True, "unlinked suggestions run")
+# a stage paid from Visa files goes into PRO petty cash
+h = V.create({"person": "Hebson Test", "kind": "new_out"}, s, admin)
+r = V.pay(h["id"], {"stage": "Medical test", "date": today.isoformat(), "amount": "320.50"}, s, admin)
+px = s.query(models.PettyCash).filter(models.PettyCash.visa_file_id == h["id"]).one()
+ok(px.book == "pro" and px.paid == 320.5 and px.supplier == "MOHRE & GDRFA" and px.description == "Hebson Test - New visa (outside UAE) - Medical test",
+   "Enter the payment now: a PRO petty cash line, supplier and description filled")
+ok(r["spent"] == 320.5 and "Medical test" in r["done"], "the stage is ticked and the cost on the file")
+refused(lambda: V.pay(h["id"], {"stage": "", "date": today.isoformat(), "amount": "5"}, s, admin), "a payment needs its stage")
+r = V.pay_stage(h["id"], {"petty_id": px.id, "stage": "Entry permit"}, s, admin)
+ok("Entry permit" in r["done"] and r["payments"][0]["stage"] == "Entry permit", "a payment's stage can be pinpointed after")
+# a visa cost on PRO petty cash must name its file
+refused(lambda: P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Ali visa exp", "paid": 50}, s, admin),
+        "PRO: 'visa' in the description without a visa file is refused")
+P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Diesel for car", "paid": 50}, s, admin)
+ok(True, "PRO: other costs save as before")
+P.add_petty_cash({"book": "site", "date": today.isoformat(), "description": "visa photo copies", "paid": 5}, s, admin)
+ok(True, "site book is not asked for a visa file")
+old = P.add_petty_cash({"book": "pro", "date": (V.START - timedelta(days=3)).isoformat(), "description": "Old visa exp", "paid": 9}, s, admin)
+ok(True, "a line dated before Visa files started is not asked")
+
 # the visas in progress at go-live: opened once, payments tied, money exact
 s.add(models.Employee(emp_no="F-727", name="BENCHEP OLIVER KARNGONG", active=True))
 for pid, amt, *_ in V.SEED:

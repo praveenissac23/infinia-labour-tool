@@ -254,8 +254,9 @@ window.HELP_GUIDES = [
     go: { page: "reports", tab: "labour", sub: "visa" },
     steps: [
       { say: "Reports > Labour > Visa files lists every visa process with its stages, what was spent so far and the next step. Press + New visa file: pick the person and the type.", el: "#vf-new" },
-      { say: "On PRO petty cash, when you enter a visa payment, pick the Visa file and the stage it is for. The description fills itself and the stage is ticked.", el: "#vf-body" },
-      { say: "Click a row to see all its payments; tie a payment made before, or tick a stage that had no payment. Press Mark completed when the visa is done.", el: "#vf-body" }],
+      { say: "Click a stage when it is done: Enter the payment now (it goes into PRO petty cash by itself), pick one Already in petty cash, or Done - no payment.", el: "#vf-body" },
+      { say: "Or enter it on PRO petty cash and pick the Visa file and stage there - a visa cost cannot be saved without its visa file.", el: "#vf-body" },
+      { say: "Click a row to see its payments line by line: say which stage each was for, and tie the person's other PRO payments. Press Mark completed when the visa is done.", el: "#vf-body" }],
     tip: "Completed files drop off the PRO's list and keep their full cost history. Preview, PDF, Excel and Share print the list." },
   { id: "ppe-give", area: "Reports", title: "How to record PPE given to a worker",
     words: "ppe uniform coverall safety shoes helmet vest jacket give issue register misuse",

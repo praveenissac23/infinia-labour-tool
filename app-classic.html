@@ -1589,6 +1589,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .vf-chip.sel { border-color:#C0392B; color:#C0392B; background:#FDF1EF; font-weight:700; }
   .vf-chip[disabled] { cursor:default; }
   .vf-pays { width:100%; border-collapse:collapse; font-size:12.5px; margin:4px 0 8px; } .vf-pays td { padding:4px 6px; border-bottom:1px solid #EFE7E0; }
+  .vf-pst { height:30px; max-width:190px; font-size:12.5px; } .vf-pst.need { border-color:#E0A23A; background:#FFF8EA; }
+  .vf-cand { margin-top:6px; padding-top:6px; border-top:1px dashed #E6DCD4; }
+  .vf-opt { display:grid; grid-template-columns:18px 78px 1fr auto; gap:8px; align-items:center; padding:6px 8px; border:1px solid #EFE7E0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:13px; }
+  .vf-opt:hover { border-color:#C0392B66; } .vf-opt .d { color:#3A3330; } .vf-opt b { white-space:nowrap; }
   .vf-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .vf-link select { height:32px; max-width:420px; }
   .pc-visa { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; border-top:1px dashed #E6DCD4; padding-top:10px; margin-top:2px; }
   .pc-visa .pc-f select { min-width:280px; height:36px; }
@@ -3423,7 +3427,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="vf-bar"><div class="vf-pills" id="vf-pills"></div><button type="button" class="btn btn-primary" id="vf-new" onclick="vfNew()">+ New visa file</button></div>
             <div class="pc-stats" id="vf-stats"></div>
             <div class="status-msg" id="vf-status"></div>
-            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vf-table" data-nomove><thead><tr><th class="l" style="width:200px;">Person</th><th class="l" style="width:150px;">Type</th><th class="l">Stages <span class="sub" style="display:inline;font-weight:400;text-transform:none;letter-spacing:0;">(click a stage to tick it)</span></th><th class="l" style="width:96px;">Started</th><th class="n" style="width:120px;">Spent so far</th><th style="width:150px;"></th></tr></thead><tbody id="vf-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody><tfoot id="vf-foot"></tfoot></table></div>
+            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vf-table" data-nomove><thead><tr><th class="l" style="width:200px;">Person</th><th class="l" style="width:150px;">Type</th><th class="l">Stages <span class="sub" style="display:inline;font-weight:400;text-transform:none;letter-spacing:0;">(click a stage to record it)</span></th><th class="l" style="width:96px;">Started</th><th class="n" style="width:120px;">Spent so far</th><th style="width:150px;"></th></tr></thead><tbody id="vf-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody><tfoot id="vf-foot"></tfoot></table></div>
             <div class="sub" style="margin-top:8px;font-size:12px;color:#8A7F78;">Click a row to see its payments. The PRO ties each payment to the file on PRO petty cash (Visa file and stage); completed files keep their full cost history.</div>
           </div>
         </div>
@@ -17514,7 +17518,7 @@ function vfDraw() {
   const ed = VF.may_edit;
   document.getElementById("vf-body").innerHTML = VF.rows.map(r => {
     const live = r.status === "ongoing";
-    const segs = r.stages.map(st => `<button type="button" class="vf-seg${r.done.includes(st) ? " done" : ""}" title="${escapeAttr(st)}${r.done.includes(st) ? " - done" : ""}"${ed && live ? ` onclick="event.stopPropagation(); vfStage(${r.id}, this.title.replace(' - done',''), ${!r.done.includes(st)})"` : " disabled"}></button>`).join("");
+    const segs = r.stages.map(st => `<button type="button" class="vf-seg${r.done.includes(st) ? " done" : ""}" title="${escapeAttr(st)}${r.done.includes(st) ? " - done" : ""}"${ed && live ? ` data-s="${escapeAttr(st)}" onclick="event.stopPropagation(); vfStageClick(${r.id}, this.dataset.s)"` : " disabled"}></button>`).join("");
     const state = live ? `${r.n_done} of ${r.stages.length}${r.next ? ` <span class="sub" style="display:inline;">· next: <b>${escapeHtml(r.next)}</b></span>` : ` <span class="sub" style="display:inline;">· all stages done</span>`}`
                        : `<span class="zx-tag zx-ok">Completed ✓</span> <span class="sub">${pcDate(r.completed)}${r.completed_by ? " · " + escapeHtml(r.completed_by) : ""}</span>`;
     const act = !ed ? "" : live ? `<button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); vfComplete(${r.id})">Mark completed</button>`
@@ -17530,14 +17534,83 @@ function vfDraw() {
 function vfToggle(id) { VF_OPEN = VF_OPEN === id ? null : id; vfDraw(); }
 function vfDetail(r) {
   const ed = VF.may_edit, live = r.status === "ongoing";
-  const chips = r.stages.map(st => `<button type="button" class="vf-chip${r.done.includes(st) ? " done" : ""}" data-s="${escapeAttr(st)}"${ed && live ? ` onclick="vfStage(${r.id}, this.dataset.s, ${!r.done.includes(st)})"` : " disabled"}>${escapeHtml(st)}${r.done.includes(st) ? " ✓" : ""}</button>`).join("");
-  const pays = r.payments.length ? `<table class="vf-pays">${r.payments.map(l => `<tr><td style="width:84px;">${pcDate(l.date)}</td><td style="width:180px;"><b>${escapeHtml(l.stage || "-")}</b></td><td>${escapeHtml(l.description)}${l.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(l.supplier)}</span>` : ""}${l.by ? ` <span class="sub" style="display:inline;">· PRO petty cash, by ${escapeHtml(l.by)}</span>` : ""}</td><td class="n" style="width:100px;">${pcMoney(l.amount)}</td><td style="width:70px;text-align:right;">${ed ? `<button class="btn btn-gray btn-sm" onclick="vfUnlink(${r.id}, ${l.id})" title="Untie this payment from the file">Untie</button>` : ""}</td></tr>`).join("")}</table>`
+  const chips = r.stages.map(st => `<button type="button" class="vf-chip${r.done.includes(st) ? " done" : ""}" data-s="${escapeAttr(st)}"${ed && live ? ` onclick="vfStageClick(${r.id}, this.dataset.s)"` : " disabled"}>${escapeHtml(st)}${r.done.includes(st) ? " ✓" : ""}</button>`).join("");
+  const stSel = (l, on) => `<select class="vf-pst${l.stage ? "" : " need"}" onchange="${on}"><option value="">${l.stage ? "-" : "Which stage?"}</option>${r.stages.map(st => `<option${st === l.stage ? " selected" : ""}>${escapeHtml(st)}</option>`).join("")}</select>`;
+  const pays = r.payments.length ? `<table class="vf-pays">${r.payments.map(l => `<tr><td style="width:84px;">${pcDate(l.date)}</td><td style="width:200px;">${ed && live ? stSel(l, `vfDo('/store/visa/files/${r.id}/paystage', {petty_id: ${l.id}, stage: this.value})`) : `<b>${escapeHtml(l.stage || "-")}</b>`}</td><td>${escapeHtml(l.description)}${l.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(l.supplier)}</span>` : ""}${l.by ? ` <span class="sub" style="display:inline;">· PRO petty cash, by ${escapeHtml(l.by)}</span>` : ""}</td><td class="n" style="width:100px;">${pcMoney(l.amount)}</td><td style="width:70px;text-align:right;">${ed ? `<button class="btn btn-gray btn-sm" onclick="vfUnlink(${r.id}, ${l.id})" title="Untie this payment from the file">Untie</button>` : ""}</td></tr>`).join("")}</table>`
                                : `<div class="sub" style="margin:4px 0 8px;">No payments tied to this file yet.</div>`;
-  const opts = (VF.unlinked || []).map(u => `<option value="${u.id}">${pcDate(u.date)} · ${escapeHtml(u.description).slice(0, 60)} · ${pcMoney(u.amount)}</option>`).join("");
-  const link = ed && live && opts ? `<div class="vf-link"><span class="sub" style="display:inline;">Tie a PRO payment made before:</span><select id="vf-lp-${r.id}"><option value="">Pick the payment</option>${opts}</select>
+  const mine = vfMine(r);
+  const cand = ed && live && mine.length ? `<div class="vf-cand"><div class="sub" style="margin:2px 0 4px;">${escapeHtml(r.person)}'s other PRO payments, not on the file yet - pick the stage to tie each one:</div><table class="vf-pays">${mine.map(u => `<tr><td style="width:84px;">${pcDate(u.date)}</td><td style="width:200px;">${stSel({ stage: "" }, `if(this.value) vfDo('/store/visa/files/${r.id}/link', {petty_id: ${u.id}, stage: this.value}, 'Payment tied to the file.')`)}</td><td>${escapeHtml(u.description)}</td><td class="n" style="width:100px;">${pcMoney(u.amount)}</td><td style="width:70px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vfDo('/store/visa/files/${r.id}/link', {petty_id: ${u.id}, stage: ''}, 'Payment tied to the file.')" title="Tie without a stage">Tie</button></td></tr>`).join("")}</table></div>` : "";
+  const opts = (VF.unlinked || []).filter(u => !mine.includes(u)).map(u => `<option value="${u.id}">${pcDate(u.date)} · ${escapeHtml(u.description).slice(0, 60)} · ${pcMoney(u.amount)}</option>`).join("");
+  const link = ed && live && opts ? `<div class="vf-link"><span class="sub" style="display:inline;">Tie another PRO payment:</span><select id="vf-lp-${r.id}"><option value="">Pick the payment</option>${opts}</select>
       <select id="vf-ls-${r.id}"><option value="">Stage (optional)</option>${r.stages.map(st => `<option>${escapeHtml(st)}</option>`).join("")}</select><button class="btn btn-gray btn-sm" onclick="vfLink(${r.id})">Tie</button></div>` : "";
   const del = ed && !r.payments.length ? `<button class="btn btn-gray btn-sm" style="float:right;" onclick="vfDelete(${r.id})">Delete file</button>` : "";
-  return `<tr class="vf-detail"><td colspan="6">${del}<div class="vf-stchips">${chips}</div>${r.note ? `<div class="sub" style="margin-bottom:6px;">Note: ${escapeHtml(r.note)}</div>` : ""}${pays}${link}</td></tr>`;
+  return `<tr class="vf-detail"><td colspan="6">${del}<div class="vf-stchips">${chips}</div>${r.note ? `<div class="sub" style="margin-bottom:6px;">Note: ${escapeHtml(r.note)}</div>` : ""}${pays}${cand}${link}</td></tr>`;
+}
+// A PRO payment that names this person (any word of the name, or the ID).
+function vfMine(r) {
+  const words = r.person.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  const no = (r.emp_no || "").replace(/\D/g, "");
+  return (VF.unlinked || []).filter(u => { const d = u.description.toLowerCase(); return words.some(w => d.includes(w)) || (no && d.replace(/\D+/g, " ").split(" ").includes(no)); });
+}
+// Clicking a stage: done -> undo; not done -> how was it paid: enter the
+// payment now (goes into PRO petty cash), a payment already in petty cash,
+// or done with no payment.
+async function vfStageClick(id, st) {
+  const r = VF.rows.find(x => x.id === id); if (!r) return;
+  if (r.done.includes(st)) {
+    const paid = r.payments.filter(l => l.stage === st).length;
+    if (!await hrAsk(`Mark "${st}" not done for ${r.person}?${paid ? ` Its payment stays on the file.` : ""}`, "Not done")) return;
+    return vfStage(id, st, false);
+  }
+  const mine = vfMine(r), others = (VF.unlinked || []).filter(u => !mine.includes(u));
+  const nopay = r.payments.filter(l => !l.stage);
+  const modes = [...(VF.may_pay ? [["new", "Enter the payment now"]] : []), ["old", "Already in petty cash"], ["none", "Done - no payment"]];
+  document.querySelectorAll(".zx-modal.vf-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal vf-m";
+  const opt = (u, tag) => `<label class="vf-opt"><input type="radio" name="vf-old" value="${tag}:${u.id}"><span>${pcDate(u.date)}</span><span class="d">${escapeHtml(u.description)}</span><b>${pcMoney(u.amount)}</b></label>`;
+  ov.innerHTML = `<div class="zx-box" style="width:620px;"><h3 style="margin:0 0 2px;">${escapeHtml(st)}</h3><div class="sub" style="margin-bottom:12px;">${escapeHtml(r.person)} · ${escapeHtml(r.kind_label)}</div>
+    <div class="vf-pills" id="vf-modes" style="margin-bottom:12px;">${modes.map(([k, l], i) => `<button type="button" class="vf-pill${i === 0 ? " on" : ""}" data-m="${k}">${l}</button>`).join("")}</div>
+    <div data-p="new">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label class="pc-f" style="flex:1;min-width:140px;"><span>Date</span><input type="date" id="vs-d" value="${VF.today}" max="${VF.today}" style="width:100%;box-sizing:border-box;"></label>
+        <label class="pc-f" style="flex:1;min-width:140px;"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="vs-a" placeholder="0.00" style="width:100%;box-sizing:border-box;"></label>
+        <label class="pc-f" style="flex:1.4;min-width:160px;"><span>Paid to</span><input type="text" id="vs-s" value="${escapeAttr(VF.supplier || "")}" style="width:100%;box-sizing:border-box;"></label>
+        <label class="pc-f" style="flex:1;min-width:120px;"><span>Receipt no.</span><input type="text" id="vs-r" placeholder="Optional" style="width:100%;box-sizing:border-box;"></label></div>
+      <label class="pc-f" style="display:block;margin-top:10px;"><span>Description</span><input type="text" id="vs-desc" value="${escapeAttr(`${r.person} - ${r.kind_label} - ${st}`)}" style="width:100%;box-sizing:border-box;"></label>
+      <div class="sub" style="margin-top:6px;">Goes into PRO petty cash (and on to Send to Zoho) - no need to enter it there again.</div></div>
+    <div data-p="old" style="display:none;">
+      ${nopay.length ? `<div class="sub" style="margin-bottom:4px;">On this file, stage not said yet:</div>${nopay.map(u => opt(u, "on")).join("")}` : ""}
+      ${mine.length ? `<div class="sub" style="margin:8px 0 4px;">${escapeHtml(r.person)}'s PRO payments:</div>${mine.map(u => opt(u, "tie")).join("")}` : ""}
+      ${others.length ? `<details style="margin-top:8px;"><summary class="sub" style="cursor:pointer;">Other PRO visa payments (${others.length})</summary>${others.map(u => opt(u, "tie")).join("")}</details>` : ""}
+      ${!nopay.length && !mine.length && !others.length ? `<div class="sub">No PRO payments waiting to be tied.</div>` : ""}</div>
+    <div data-p="none" style="display:none;"><div class="sub">The stage is ticked with no payment (e.g. a step the company did not pay for).</div></div>
+    <div class="status-msg" id="vs-msg" style="margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn btn-gray" id="vs-x">Cancel</button><button type="button" class="btn btn-primary" id="vs-ok">Save</button></div></div>`;
+  document.body.appendChild(ov);
+  let mode = modes[0][0];
+  const show = m => { mode = m; ov.querySelectorAll("#vf-modes .vf-pill").forEach(b => b.classList.toggle("on", b.dataset.m === m)); ov.querySelectorAll("[data-p]").forEach(d => d.style.display = d.dataset.p === m ? "" : "none"); };
+  ov.querySelectorAll("#vf-modes .vf-pill").forEach(b => b.onclick = () => show(b.dataset.m));
+  if (!VF.may_pay && (nopay.length || mine.length)) show("old");
+  ov.querySelector("#vs-x").onclick = () => ov.remove();
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector("#vs-ok").onclick = async () => {
+    const b = ov.querySelector("#vs-ok"); b.disabled = true;
+    try {
+      if (mode === "new") {
+        await apiCall(`/store/visa/files/${id}/pay`, { method: "POST", body: JSON.stringify({ stage: st, date: ov.querySelector("#vs-d").value, amount: ov.querySelector("#vs-a").value.replace(/,/g, "").trim(),
+          supplier: ov.querySelector("#vs-s").value, receipt_no: ov.querySelector("#vs-r").value, description: ov.querySelector("#vs-desc").value }) });
+      } else if (mode === "old") {
+        const pick = ov.querySelector('input[name="vf-old"]:checked'); if (!pick) throw new Error("Pick the payment.");
+        const [tag, pid] = pick.value.split(":");
+        await apiCall(`/store/visa/files/${id}/${tag === "on" ? "paystage" : "link"}`, { method: "POST", body: JSON.stringify({ petty_id: +pid, stage: st }) });
+      } else {
+        await apiCall(`/store/visa/files/${id}/stage`, { method: "POST", body: JSON.stringify({ stage: st, done: true }) });
+      }
+      ov.remove(); VF_OPEN = id; PC_VF = null; await vfLoad();
+      showStatus("vf-status", "ok", `${r.person}: ${st} done${mode === "new" ? " - payment added to PRO petty cash" : ""}.`);
+    } catch (e) { showStatus("vs-msg", "err", errText(e)); b.disabled = false; }
+  };
+  setTimeout(() => { const a = ov.querySelector("#vs-a"); if (a && mode === "new") a.focus(); }, 50);
 }
 async function vfDo(url, body, msg) {
   try { await apiCall(url, { method: "POST", body: JSON.stringify(body || {}) }); await vfLoad(); if (msg) showStatus("vf-status", "ok", msg); }

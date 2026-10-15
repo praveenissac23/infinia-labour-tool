@@ -199,9 +199,15 @@ def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models
     return {"trn": ""}
 
 
-def _visa(db, x, payload):
+def _visa(db, x, payload, new=False):
     """PRO book: the visa file and stage this payment is for. Saving it
-    ticks the stage on the file. Left alone when the form did not send it."""
+    ticks the stage on the file. Left alone when the form did not send it.
+    A visa cost (from Visa files' start) must be on a visa file."""
+    import visa
+    if (x.book or "") == "pro" and (x.paid or 0) and (new or "visa_file_id" in payload) \
+            and not str(payload.get("visa_file_id") or "").isdigit() and visa.must_have_file(x):
+        raise HTTPException(status_code=400, detail="This is a visa cost - pick the Visa file below "
+                                                    "(or + Start a new visa file), so it adds up on that person's visa.")
     if "visa_file_id" not in payload:
         if (x.book or "") != "pro" or not (x.paid or 0):
             x.visa_file_id, x.visa_stage = None, ""
@@ -210,7 +216,6 @@ def _visa(db, x, payload):
     if (x.book or "") != "pro" or not (x.paid or 0) or not str(vid or "").isdigit():
         x.visa_file_id, x.visa_stage = None, ""
         return
-    import visa
     st = " ".join(str(payload.get("visa_stage") or "").split())
     v = visa.check_link(db, vid, st, keep_id=x.visa_file_id)
     x.visa_file_id, x.visa_stage = v.id, st
@@ -222,7 +227,7 @@ def _visa(db, x, payload):
 def add_petty_cash(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PC):
     book = _book(user, payload.get("book"))
     x = models.PettyCash(**_clean(payload), book=book, created_by=user.id, updated_by=user.id)
-    _visa(db, x, payload)
+    _visa(db, x, payload, new=True)
     db.add(x); db.commit()
     M.log_action(db, user.id, "petty_cash_add",
                  f"{BOOKS[book][0]}: {x.on_date} {x.description} {'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
