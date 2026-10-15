@@ -3440,20 +3440,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
-          <div class="pc-protabs" id="pc-protabs" style="display:none;"><button type="button" class="vf-pill on" data-v="cash" onclick="pcView('cash')">Petty cash</button><button type="button" class="vf-pill" data-v="visa" onclick="pcView('visa')">Visa files</button></div>
-          <div id="pc-visapane" style="display:none;">
-          <div class="card">
-            <div class="pc-head">
-              <div class="pc-title"><h2 style="margin:0;">Visa files <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Every visa process, all its costs across months, and where it stands</span></h2></div>
-              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="vfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="vfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="vfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="vfExport('view')">Share</button></div></div>
-            </div>
-            <div class="vf-bar"><div class="vf-pills" id="vf-pills"></div><button type="button" class="btn btn-primary" id="vf-new" onclick="vfNew()">+ New visa file</button></div>
-            <div class="pc-stats" id="vf-stats"></div>
-            <div class="status-msg" id="vf-status"></div>
-            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vf-table" data-nomove><thead><tr><th class="l" style="width:200px;">Person</th><th class="l" style="width:150px;">Type</th><th class="l">Steps <span class="sub" style="display:inline;font-weight:400;text-transform:none;letter-spacing:0;">(click a step to record it)</span></th><th class="l" style="width:96px;">Started</th><th class="n" style="width:120px;">Spent so far</th><th style="width:150px;"></th></tr></thead><tbody id="vf-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody><tfoot id="vf-foot"></tfoot></table></div>
-            <div class="sub" style="margin-top:8px;font-size:12px;color:#8A7F78;">Click a row to see its payments. The PRO ties each payment to the file on PRO petty cash (Visa file and stage); completed files keep their full cost history.</div>
-          </div>
-          </div>
           <div id="pc-cashpane">
           <div class="card">
             <div class="pc-head">
@@ -3488,8 +3474,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pc-visa" id="pc-visa" style="display:none;">
                 <div class="pc-f"><span>Visa related expense?</span><div class="vf-yn" id="pc-vyn"><button type="button" data-v="no" class="vf-pill on" onclick="pcVisaYes(false)">No</button><button type="button" data-v="yes" class="vf-pill" onclick="pcVisaYes(true)">Yes</button></div></div>
                 <div class="pc-vmore" id="pc-vmore" style="display:none;">
-                  <label class="pc-f"><span>Whose visa?</span><select id="pc-vfile" onchange="pcVisaPick(this.value)"></select></label>
-                  <label class="pc-f"><span>Step <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new one)</span></span><input type="text" id="pc-vstep" list="pc-vstep-list" placeholder="e.g. Medical and EID" autocomplete="off" data-spell="off" oninput="PC_VSEL.stage=this.value.trim(); pcVisaDesc()"><datalist id="pc-vstep-list"></datalist></label>
+                  <label class="pc-f"><span>Whose visa? <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new name)</span></span><input type="text" id="pc-vperson" list="pc-vperson-list" placeholder="e.g. Eric Mambo" autocomplete="off" data-spell="off" oninput="pcVisaWho(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('pc-vstep').focus()}"><datalist id="pc-vperson-list"></datalist><span class="sub" id="pc-vnew" style="display:none;"></span></label>
+                  <label class="pc-f"><span>Step <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new one)</span></span><input type="text" id="pc-vstep" list="pc-vstep-list" placeholder="e.g. Medical and EID" autocomplete="off" data-spell="off" oninput="PC_VSEL.stage=this.value.trim()"><datalist id="pc-vstep-list"></datalist></label>
                   <div class="pc-f"><span>Visa process status</span><div class="vf-yn" id="pc-vdone"><button type="button" data-v="no" class="vf-pill on" onclick="pcVisaDone(false)">Not completed</button><button type="button" data-v="yes" class="vf-pill" onclick="pcVisaDone(true)">Completed</button></div></div>
                 </div>
               </div>
@@ -18139,8 +18125,7 @@ async function loadPettyCash() {
   if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
   if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
   document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
-  document.getElementById("pc-protabs").style.display = PC_BOOK === "pro" ? "" : "none";
-  if (PC_BOOK !== "pro" && PC_VIEW !== "cash") pcView("cash");
+
   window.__pcLoad = { book: PC_BOOK, t: Date.now() };
   const book = PC_BOOK;
   pcKind(PC_KIND);
@@ -18233,15 +18218,9 @@ function pcDescAuto() {
 }
 // PRO book: Petty cash | Visa files, inside the PRO tab.
 let PC_VIEW = "cash";
-function pcView(v) {
-  PC_VIEW = PC_BOOK === "pro" ? v : "cash";
-  document.querySelectorAll("#pc-protabs .vf-pill").forEach(b => b.classList.toggle("on", b.dataset.v === PC_VIEW));
-  document.getElementById("pc-cashpane").style.display = PC_VIEW === "cash" ? "" : "none";
-  document.getElementById("pc-visapane").style.display = PC_VIEW === "visa" ? "" : "none";
-  if (PC_VIEW === "visa") vfLoad(); else if (PC_VF) { PC_VF = null; pcVisaShow(); }
-}
+function pcView(v) { PC_VIEW = "cash"; }     // Visa files tab removed - petty cash only
 // ---- PRO book: the visa file and stage a payment is for --------------------
-let PC_VF = null, PC_VSEL = { yes: false, file: "", stage: "", done: false };
+let PC_VF = null, PC_VSEL = { yes: false, person: "", stage: "", done: false };
 async function pcVisaShow() {
   const box = document.getElementById("pc-visa"); if (!box) return;
   const on = PC_BOOK === "pro" && PC_KIND === "paid";
@@ -18250,47 +18229,32 @@ async function pcVisaShow() {
   if (!PC_VF) {
     if (pcVisaShow.busy) return;                 // one fetch at a time
     pcVisaShow.busy = true;
-    try { PC_VF = await apiCall("/store/visa/open"); } catch (e) { PC_VF = { files: [], kinds: [], steps: [] }; }
+    try { PC_VF = await apiCall("/store/visa/open"); } catch (e) { PC_VF = { files: [], steps: [] }; }
     pcVisaShow.busy = false;
   }
   pcVisaDraw();
 }
 function pcPills(id, on) { document.querySelectorAll(`#${id} .vf-pill`).forEach(b => b.classList.toggle("on", (b.dataset.v === "yes") === !!on)); }
+// Lists are only rewritten when they changed - rewriting an open list closes it.
+function pcSetList(id, items) { const dl = document.getElementById(id), h = items.map(x => `<option value="${escapeAttr(x)}">`).join(""); if (dl.dataset.html !== h) { dl.innerHTML = h; dl.dataset.html = h; } }
 function pcVisaDraw() {
-  const sel = document.getElementById("pc-vfile"); if (!sel || !PC_VF) return;
+  if (!PC_VF || !document.getElementById("pc-vmore")) return;
   pcPills("pc-vyn", PC_VSEL.yes); pcPills("pc-vdone", PC_VSEL.done);
   document.getElementById("pc-vmore").style.display = PC_VSEL.yes ? "" : "none";
-  const files = PC_VF.files.slice();
-  const cur = PC_VSEL.file && !files.some(f => String(f.id) === String(PC_VSEL.file)) ? (PC_VF.extra || null) : null;
-  if (cur) files.push(cur);
-  const html = `<option value="">- pick whose visa -</option>` + files.map(f => `<option value="${f.id}">${escapeHtml(f.person)} - ${escapeHtml(f.kind_label)} (AED ${pcMoney(f.spent)} so far${f.status === "completed" ? ", completed" : ""})</option>`).join("")
-    + `<option value="new">+ Start a new visa file</option>`;
-  // Only redrawn when it changed - redrawing an open list closes it.
-  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
-  if (sel.value !== String(PC_VSEL.file || "")) sel.value = String(PC_VSEL.file || "");
-  // Steps offered: this person's list first, then every other step known.
-  const f = files.find(x => String(x.id) === String(PC_VSEL.file));
-  const steps = [...new Set([...(f ? f.stages.filter(s => !f.done.includes(s)) : []), ...(PC_VF.steps || [])])];
-  const dl = document.getElementById("pc-vstep-list"), dh = steps.map(x => `<option value="${escapeAttr(x)}">`).join("");
-  if (dl.dataset.html !== dh) { dl.innerHTML = dh; dl.dataset.html = dh; }
+  pcSetList("pc-vperson-list", (PC_VF.files || []).map(f => f.person));       // visas still ongoing
+  pcSetList("pc-vstep-list", PC_VF.steps || []);
+  const p = document.getElementById("pc-vperson"); if (p.value !== PC_VSEL.person) p.value = PC_VSEL.person;
   const st = document.getElementById("pc-vstep"); if (st.value !== PC_VSEL.stage) st.value = PC_VSEL.stage;
+  pcVisaWhoNote();
 }
-function pcVisaYes(on) { PC_VSEL.yes = on; if (!on) { PC_VSEL.file = ""; PC_VSEL.stage = ""; PC_VSEL.done = false; } pcVisaDraw(); pcVisaDesc(); }
+function pcVisaWho(v) { PC_VSEL.person = v.trim(); pcVisaWhoNote(); }
+function pcVisaWhoNote() {
+  const el = document.getElementById("pc-vnew"), who = PC_VSEL.person.toLowerCase();
+  const known = !who || (PC_VF.files || []).some(f => f.person.toLowerCase() === who);
+  el.style.display = known ? "none" : ""; el.textContent = known ? "" : `New visa - opened for ${PC_VSEL.person} when you press Add.`;
+}
+function pcVisaYes(on) { PC_VSEL.yes = on; if (!on) { PC_VSEL.person = ""; PC_VSEL.stage = ""; PC_VSEL.done = false; } pcVisaDraw(); if (on) setTimeout(() => document.getElementById("pc-vperson").focus(), 30); }
 function pcVisaDone(on) { PC_VSEL.done = on; pcVisaDraw(); }
-async function pcVisaPick(v) {
-  if (v === "new") { document.getElementById("pc-vfile").value = PC_VSEL.file; return vfNew(async d => { PC_VF = null; PC_VSEL.file = String(d.id); await pcVisaShow(); pcVisaDesc(); }); }
-  PC_VSEL.file = v; pcVisaDraw(); pcVisaDesc();
-}
-// "Eric Mambo - Medical and EID", filled in while the description is empty
-// (or still holds what was filled in before).
-function pcVisaDesc() {
-  const f = (PC_VF && PC_VF.files || []).find(x => String(x.id) === String(PC_VSEL.file));
-  const desc = document.getElementById("pc-desc");
-  if (!desc.value.trim() || desc.dataset.vauto === desc.value) {
-    desc.value = f && PC_VSEL.yes ? [f.person, PC_VSEL.stage || f.kind_label].filter(Boolean).join(" - ") : (desc.dataset.vauto === desc.value ? "" : desc.value);
-    desc.dataset.vauto = desc.value;
-  }
-}
 function pcReset() {
   PC_EDIT = null;
   ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
@@ -18298,7 +18262,7 @@ function pcReset() {
   document.getElementById("pc-site").value = "";
   document.getElementById("pc-vat").checked = false; document.getElementById("pc-trn").value = ""; pcVat();
   document.getElementById("pc-date").value = pcToday();
-  PC_VSEL = { yes: false, file: "", stage: "", done: false }; document.getElementById("pc-desc").dataset.vauto = ""; if (PC_VF) PC_VF.extra = null; pcVisaShow();
+  PC_VSEL = { yes: false, person: "", stage: "", done: false }; pcVisaShow();
   document.getElementById("pc-save").textContent = "Add";
   document.getElementById("pc-cancel").style.display = "none";
   if (PC) pcDraw();
@@ -18318,11 +18282,7 @@ function pcEdit(id) {
   document.getElementById("pc-amt").value = r.received || r.paid;
   document.getElementById("pc-vat").checked = !!r.vat; document.getElementById("pc-trn").value = r.trn || ""; pcVat();
   document.getElementById("pc-rcpt").value = r.receipt_no || "";
-  PC_VSEL = { yes: !!r.visa_file_id, file: r.visa_file_id ? String(r.visa_file_id) : "", stage: r.visa_stage || "", done: false };
-  document.getElementById("pc-desc").dataset.vauto = "";
-  if (PC_VF) PC_VF.extra = null;
-  if (r.visa_file_id && PC_VF && !PC_VF.files.some(f => f.id === r.visa_file_id))   // a completed file still shows on its own line
-    apiCall(`/store/visa/files?status=all`).then(d => { PC_VF.extra = (d.rows || []).find(f => f.id === r.visa_file_id) || null; pcVisaDraw(); }).catch(() => {});
+  PC_VSEL = { yes: !!r.visa_file_id, person: r.visa_person || "", stage: r.visa_stage || "", done: false };
   pcVisaShow();
   document.getElementById("pc-save").textContent = "Save changes";
   document.getElementById("pc-cancel").style.display = "";
@@ -18338,8 +18298,8 @@ async function pcSave() {
                  vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
                  receipt_no: document.getElementById("pc-rcpt").value.trim() };
   if (PC_BOOK === "pro" && PC_KIND === "paid") {
-    if (PC_VSEL.yes && !PC_VSEL.file) return showStatus("pc-status", "err", "Visa related: pick whose visa (or + Start a new visa file).");
-    body.visa_file_id = PC_VSEL.yes && PC_VSEL.file ? +PC_VSEL.file : null;
+    if (PC_VSEL.yes && !PC_VSEL.person) return showStatus("pc-status", "err", "Visa related: type or pick whose visa.");
+    body.visa_person = PC_VSEL.yes ? PC_VSEL.person : "";
     body.visa_stage = PC_VSEL.yes ? PC_VSEL.stage : ""; body.visa_complete = PC_VSEL.yes && PC_VSEL.done;
   }
   const btn = document.getElementById("pc-save"); btn.disabled = true;
@@ -18347,7 +18307,7 @@ async function pcSave() {
     if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
     else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
     const was = PC_EDIT;
-    if (body.visa_file_id) PC_VF = null;   // the stage moved on
+    if (body.visa_person) PC_VF = null;   // a new visa, or one completed
     // Show the month the line went into.
     if (document.getElementById("pc-range").value !== "all") document.getElementById("pc-month").value = body.date.slice(0, 7);
     pcReset();

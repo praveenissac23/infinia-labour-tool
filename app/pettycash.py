@@ -200,28 +200,31 @@ def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models
 
 
 def _visa(db, x, payload, new=False):
-    """PRO book: the visa file and stage this payment is for. Saving it
-    ticks the stage on the file. Left alone when the form did not send it.
-    A visa cost (from Visa files' start) must be on a visa file."""
+    """PRO book, "Visa related expense?" Yes: whose visa (an ongoing one, or
+    a new name typed - that opens a new visa by itself), the step, and
+    Completed / Not completed. Left alone when the form did not send it."""
     import visa
-    if (x.book or "") == "pro" and (x.paid or 0) and (new or "visa_file_id" in payload) \
-            and not str(payload.get("visa_file_id") or "").isdigit() and visa.must_have_file(x):
-        raise HTTPException(status_code=400, detail="This says visa - answer Yes to 'Visa related expense?' and pick whose visa, "
-                                                    "so it adds up on that person's visa.")
-    if "visa_file_id" not in payload:
+    if "visa_person" not in payload and "visa_file_id" not in payload:
         if (x.book or "") != "pro" or not (x.paid or 0):
             x.visa_file_id, x.visa_stage = None, ""
         return
-    vid = payload.get("visa_file_id")
-    if (x.book or "") != "pro" or not (x.paid or 0) or not str(vid or "").isdigit():
+    if (x.book or "") != "pro" or not (x.paid or 0):
         x.visa_file_id, x.visa_stage = None, ""
         return
-    v = visa.check_link(db, vid, "", keep_id=x.visa_file_id)
+    vid = payload.get("visa_file_id")
+    who = " ".join(str(payload.get("visa_person") or "").split())[:80]
+    if str(vid or "").isdigit():
+        v = visa.check_link(db, vid, "", keep_id=x.visa_file_id)
+    elif who:
+        v = visa.file_for(db, who, x.created_by or x.updated_by, x.on_date, keep_id=x.visa_file_id)
+    else:
+        x.visa_file_id, x.visa_stage = None, ""
+        return
     st = visa.add_step(db, payload.get("visa_stage") or "")
     x.visa_file_id, x.visa_stage = v.id, st
     if st:
         visa.tick(v, st)
-    # The PRO's answer to "visa process status": Completed closes the file.
+    # "Completed" closes the visa: it is no longer offered under Whose visa.
     if payload.get("visa_complete") and v.status == "ongoing":
         v.status, v.completed_on, v.completed_by = "completed", M._dubai_today(), x.updated_by or x.created_by
 

@@ -43,6 +43,7 @@ KINDS = {
     "cancel": ("Cancellation (inside UAE)", ["Labour contract cancellation", "Work permit cancellation", "Visa cancellation"]),
     "work_permit": ("Work permit", list(_WP)),
     "national_wp": ("National work permit", list(_WP)),
+    "other": ("Visa", []),            # opened from petty cash by typing a new name
 }
 
 
@@ -80,6 +81,10 @@ START = date(2026, 10, 15)
 
 
 def must_have_file(x):
+    return False      # the PRO answers "Visa related expense?" himself - no check on the words
+
+
+def _old_must_have_file(x):
     # The description decides, not the supplier: GDRFA / MOHRE also sell
     # travel reports, fines and the like that are no visa.
     return bool(x.on_date and x.on_date >= START and MUST.search(x.description or ""))
@@ -337,6 +342,28 @@ def remove(vid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     M.log_action(db, user.id, "visa_file_delete", f"Visa file deleted: {v.person} - {kind_label(v.kind)}")
     db.delete(v); db.commit()
     return {"ok": True}
+
+
+def file_for(db, who, user_id, on_date=None, keep_id=None):
+    """The ongoing visa of this person - or a new one opened for him (the
+    PRO typed a name not on the list). The line's own file, if completed
+    since, is kept when it is edited."""
+    key = who.strip().lower()
+    for v in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").all():
+        if v.person.strip().lower() == key or (v.emp_no and v.emp_no.lower() == key):
+            return v
+    if keep_id:
+        v = db.get(models.VisaFile, keep_id)
+        if v and v.person.strip().lower() == key:
+            return v
+    e = next((e for e in db.query(models.Employee).all()
+              if (e.name or "").strip().lower() == key or (e.emp_no or "").lower() == key), None)
+    name = (" ".join((e.name or "").split()).title() if (e.name or "").isupper() else e.name) if e else who
+    v = models.VisaFile(employee_id=e.id if e else None, emp_no=e.emp_no if e else "", person=name, kind="other",
+                        stages="[]", done="[]", started_on=on_date or M._dubai_today(), status="ongoing", created_by=user_id)
+    db.add(v); db.flush()
+    M.log_action(db, user_id, "visa_file_add", f"Visa opened from PRO petty cash: {name}")
+    return v
 
 
 def check_link(db, vid, stage_name, keep_id=None):

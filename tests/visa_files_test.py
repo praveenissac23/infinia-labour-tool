@@ -92,17 +92,14 @@ P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Work
 ok(s.get(models.VisaFile, w["id"]).status == "completed", "Visa process status Completed: the visa is closed")
 nw = V.create({"person": "National Man", "kind": "national_wp"}, s, admin)
 ok(nw["kind_label"] == "National work permit", "national work permit type")
-# a visa cost on PRO petty cash must name its file
-refused(lambda: P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Ali visa exp", "paid": 50}, s, admin),
-        "PRO: 'visa' in the description without a visa file is refused")
 P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Diesel for car", "paid": 50}, s, admin)
 ok(True, "PRO: other costs save as before")
 P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Asathy Travel Report", "supplier": "GDRFA", "paid": 275.65}, s, admin)
 ok(True, "PRO: a GDRFA travel report (no visa in the description) saves without a visa file")
 P.add_petty_cash({"book": "site", "date": today.isoformat(), "description": "visa photo copies", "paid": 5}, s, admin)
 ok(True, "site book is not asked for a visa file")
-old = P.add_petty_cash({"book": "pro", "date": (V.START - timedelta(days=3)).isoformat(), "description": "Old visa exp", "paid": 9}, s, admin)
-ok(True, "a line dated before Visa files started is not asked")
+P.add_petty_cash({"book": "pro", "date": today.isoformat(), "description": "Ali visa exp", "paid": 50}, s, admin)
+ok(True, "any description saves - the PRO answers 'Visa related expense?' himself")
 
 # the visas in progress at go-live: opened once, payments tied, money exact
 s.add(models.Employee(emp_no="F-727", name="BENCHEP OLIVER KARNGONG", active=True))
