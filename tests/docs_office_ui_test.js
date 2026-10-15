@@ -38,6 +38,18 @@ const open = async p => { await p.evaluate(() => { pgTab('docs'); }); await p.wa
   await m.click('#dt-body button:has-text("Mark received")'); await m.waitForTimeout(1500);
   ck('one unticked: shows 1 not received', /1 not received/.test(await m.locator('#dt-body').textContent()));
   await m.screenshot({ path: SH + 'docs_office_checked.png' });
+  ck('office sees the next number', /Next number DOF:006/.test(await m.locator('#dt-next').textContent()));
+  await m.fill('#dt-q', 'INV-771'); await m.waitForTimeout(200);
+  ck('history search by delivery note finds it', await m.locator('#dt-body tr').count() === 1 && /1 of 1/.test(await m.locator('#dt-count').textContent()));
+  await m.fill('#dt-q', 'nothing like this'); await m.waitForTimeout(200);
+  ck('no match says so', /Nothing matches/.test(await m.locator('#dt-body').textContent()));
+  await m.fill('#dt-q', ''); await m.selectOption('#dt-st', 'partial'); await m.waitForTimeout(200);
+  ck('filter: something missing', await m.locator('#dt-body tr').count() === 1);
+  await m.selectOption('#dt-st', '');
+  const reg = await m.evaluate(async () => { await refreshDownloadToken(); const r = await fetch(`${API}/export/store/docs?format=excel&token=${encodeURIComponent(cachedDownloadToken)}`); return [r.status, r.headers.get('content-type')]; });
+  ck('history exports to Excel', reg[0] === 200 && /sheet/.test(reg[1]), reg);
+  const pv = await m.evaluate(async () => { const r = await fetch(`${API}/export/store/docs?format=view&token=${encodeURIComponent(cachedDownloadToken)}`); return r.status; });
+  ck('history preview opens', pv === 200, pv);
   ck('no page errors (Muhsina)', m.errs.length === 0, m.errs);
   const w = await login(b, 'amal', 'pass12345', 390); await open(w);
   ck('phone width: no sideways scroll', await w.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));

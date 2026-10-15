@@ -1572,6 +1572,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-foot { display:flex; justify-content:space-between; gap:8px; margin-top:10px; }
   .dt-table td { vertical-align:top; } .dt-l { padding:2px 0; line-height:1.45; } .dt-l.miss { color:#B03A2E; } .dt-ok { color:#2E7D32; font-weight:700; }
   .dt-acts { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .dt-next { font-size:13px; color:#6B625A; margin-right:6px; } .dt-next b { color:#C0392B; }
+  .dt-filter { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:6px 0 10px; } .dt-filter > b { align-self:center; font-size:14px; margin-right:4px; }
+  .dt-filter input[type=text] { width:240px; }
   /* Visa files */
   .pc-protabs { display:flex; gap:8px; margin:0 0 12px; }
   .vf-m .zx-box { max-height:calc(100vh - 40px); overflow-y:auto; }
@@ -3319,10 +3322,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         <!-- ============ DOCS TO OFFICE (Store & Purchasing > Stock) ============ -->
         <div class="screen" id="screen-docsoffice">
           <div class="card">
-            <div class="pc-head"><div class="pc-title"><h2 style="margin:0;">Docs to office <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Delivery notes and papers sent from site to the office - the office ticks each one received</span></h2></div></div>
+            <div class="pc-head"><div class="pc-title"><h2 style="margin:0;">Docs to office <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Delivery notes and papers sent from site to the office - the office ticks each one received</span></h2></div>
+              <div class="pc-btns"><span class="dt-next" id="dt-next"></span><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="dtRegExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="dtRegExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="dtRegExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="dtRegExport('view')">Share</button></div></div></div>
             <div id="dt-status" class="status-msg"></div>
             <div id="dt-form"></div>
             <div class="pc-stats" id="dt-stats"></div>
+            <div class="dt-filter"><b>History</b>
+              <label class="pc-f"><span>Find</span><input type="text" id="dt-q" placeholder="No., supplier, delivery note, site" data-spell="off" oninput="dtDraw()"></label>
+              <label class="pc-f"><span>Show</span><select id="dt-st" onchange="dtDraw()"><option value="">All</option><option value="sent">Waiting for the office</option><option value="received">Received</option><option value="partial">Something missing</option></select></label>
+              <label class="pc-f"><span>Month</span><input type="month" id="dt-m" onchange="dtDraw()"></label>
+              <button type="button" class="btn btn-gray btn-sm" onclick="document.getElementById('dt-q').value='';document.getElementById('dt-st').value='';document.getElementById('dt-m').value='';dtDraw()">Clear</button>
+              <span class="sub" id="dt-count" style="display:inline;margin-left:auto;"></span></div>
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table" data-nomove><thead><tr><th class="l" style="width:96px;">No.</th><th class="l" style="width:96px;">Date</th><th class="l">Documents</th><th class="l" style="width:150px;">Sent by</th><th class="l" style="width:190px;">Office</th><th style="width:300px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
         </div>
@@ -17502,7 +17512,11 @@ function dtDraw() {
     `<div class="pc-stat${DT.waiting ? " hand" : ""}"><span>Waiting for the office</span><b>${DT.waiting}</b></div>
      <div class="pc-stat"><span>Received</span><b>${rows.filter(r => r.status === "received").length}</b></div>
      <div class="pc-stat${rows.some(r => r.status === "partial") ? " neg" : ""}"><span>Something missing</span><b>${rows.filter(r => r.status === "partial").length}</b></div>`;
-  document.getElementById("dt-body").innerHTML = rows.map(r => {
+  document.getElementById("dt-next").innerHTML = `Next number <b>${escapeHtml(DT.next_ref)}</b>`;
+  const shown = dtFiltered();
+  const filtered = shown.length !== rows.length;
+  document.getElementById("dt-count").textContent = rows.length ? `${shown.length} of ${rows.length} transmittal${rows.length === 1 ? "" : "s"}` : "";
+  document.getElementById("dt-body").innerHTML = shown.map(r => {
     const st = r.status === "received" ? `<span class="zx-tag zx-ok">Received ✓</span><span class="sub">${escapeHtml(r.received_by)} · ${r.received_at ? pcDate(r.received_at.slice(0, 10)) : ""}</span>`
       : r.status === "partial" ? `<span class="zx-tag zx-bad">${r.n_missing} not received</span><span class="sub">${escapeHtml(r.received_by)}${r.received_note ? " · " + escapeHtml(r.received_note) : ""}</span>`
       : `<span class="zx-tag zx-app">Waiting</span>`;
@@ -17513,7 +17527,17 @@ function dtDraw() {
       + (DT.may_send && r.status === "sent" ? `<button class="btn btn-gray btn-sm" onclick="dtEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="dtDelete(${r.id})">Delete</button>` : "");
     return `<tr><td class="l"><b>${escapeHtml(r.ref)}</b></td><td class="l">${pcDate(r.date)}${r.from_site ? `<span class="sub">${escapeHtml(r.from_site)}</span>` : ""}</td>
       <td class="l">${lines}</td><td class="l">${escapeHtml(r.sent_by)}</td><td class="l">${st}</td><td><div class="dt-acts">${acts}</div></td></tr>`;
-  }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">Nothing sent to the office yet.</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">${filtered ? "Nothing matches - press Clear." : DT.may_send ? "Nothing sent to the office yet." : "Nothing sent to the office yet - the store keeper sends from site; each transmittal shows here to tick in."}</td></tr>`;
+}
+function dtFiltered() {
+  const q = (document.getElementById("dt-q").value || "").trim().toLowerCase(), st = document.getElementById("dt-st").value, m = document.getElementById("dt-m").value;
+  return (DT.rows || []).filter(r => (!st || r.status === st) && (!m || r.date.slice(0, 7) === m) &&
+    (!q || [r.ref, r.ref.replace(":", ""), r.from_site, r.sent_by, r.received_by, r.note, ...r.lines.map(l => `${l.description} ${l.dn_no} ${l.site} ${l.remarks}`)].join(" ").toLowerCase().includes(q)));
+}
+async function dtRegExport(kind) {
+  await refreshDownloadToken();
+  const q = encodeURIComponent((document.getElementById("dt-q").value || "").trim()), st = document.getElementById("dt-st").value, m = document.getElementById("dt-m").value;
+  window.open(`${API}/export/store/docs?format=${kind}&status=${st}&month=${m}&q=${q}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function dtReceive(id) {
   const marks = [...document.querySelectorAll(`.dt-ck[data-t="${id}"]`)].map(c => ({ id: +c.dataset.l, received: c.checked }));
