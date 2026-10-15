@@ -114,7 +114,9 @@ PAGES = {
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
             sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')"),
             sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
-            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
+            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')"),
+            # Delivery notes and papers the store keeper sends to the office.
+            sub("docs", "Docs to office", screen="docsoffice", right=["docs_send", "docs_verify"], go="dtLoad()")]),
         tab("rentals", "store", "Rentals", "store", subs=[
             sub("hire", "On rent", screen="store", right="store", go="pgStorePanel('hire')"),
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),

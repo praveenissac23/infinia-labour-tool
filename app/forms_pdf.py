@@ -124,7 +124,8 @@ FORMS["transmittal"] = {
     ],
     "sign": ["Site Accountant (sent)", "Office Admin (received)"],
 }
-ORDER = ["leave_office", "leave_site", "passport_release", "passport_submit", "visa_renewal", "transmittal"]
+ORDER = ["leave_office", "leave_site", "passport_release", "passport_submit", "visa_renewal"]
+# The transmittal is filled in on Store & Purchasing > Stock > Docs to office, not a blank form here.
 REV = "Rev. 01"
 
 

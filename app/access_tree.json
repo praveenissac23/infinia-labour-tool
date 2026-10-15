@@ -386,6 +386,15 @@
       "grant": [
        "store"
       ]
+     },
+     {
+      "id": "store.store.docs",
+      "label": "Docs to office",
+      "right": [
+       "docs_send",
+       "docs_verify"
+      ],
+      "grant": []
      }
     ]
    },

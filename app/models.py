@@ -1344,3 +1344,37 @@ class ZohoLog(Base):
     reversed_at = Column(DateTime(timezone=True), nullable=True)
     reversed_by = Column(Integer, nullable=True)
     reverse_reason = Column(String, default="")
+
+
+class DocTransmittal(Base):
+    """Store & Purchasing > Stock > Docs to office: the store keeper's list of
+    papers (delivery notes and the like) sent from site to the office; the
+    assistant accountant ticks each one received. Numbered DOF:005 on,
+    following the paper forms."""
+    __tablename__ = "doc_transmittals"
+    id = Column(Integer, primary_key=True)
+    no = Column(Integer, nullable=False, unique=True, index=True)
+    on_date = Column(Date, nullable=False)
+    from_site = Column(String, default="")
+    note = Column(String, default="")
+    status = Column(String, default="sent")          # sent | received | partial
+    sent_by = Column(Integer, nullable=True)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+    received_by = Column(Integer, nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=True)
+    received_note = Column(String, default="")
+    lines = relationship("DocTransmittalLine", order_by="DocTransmittalLine.sl", cascade="all, delete-orphan")
+
+
+class DocTransmittalLine(Base):
+    __tablename__ = "doc_transmittal_lines"
+    id = Column(Integer, primary_key=True)
+    transmittal_id = Column(Integer, ForeignKey("doc_transmittals.id"), nullable=False, index=True)
+    sl = Column(Integer, default=1)
+    description = Column(String, default="")
+    dn_no = Column(String, default="")
+    site = Column(String, default="")
+    on_date = Column(Date, nullable=True)
+    remarks = Column(String, default="")
+    movement_id = Column(Integer, nullable=True)     # the delivery it came from, when picked from Material arrived
+    received = Column(Boolean, nullable=True)        # None = not checked yet

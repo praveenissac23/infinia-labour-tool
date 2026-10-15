@@ -219,6 +219,7 @@ def seed_on_startup():
         _grant_camp(db)
         _grant_ppe(db)
         _grant_admin_forms(db)
+        _grant_docs_office(db)
         _grant_zoho_notice(db)
         try:
             import zohosync as _zsg
@@ -375,6 +376,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Admin > Forms: the blank HR forms (leave, passport, visa
                # renewal) - admin, the PRO and accounts.
                "admin_forms",
+               # Docs to office: the store keeper sends delivery notes to the
+               # office (docs_send); the assistant accountant checks them in
+               # (docs_verify).
+               "docs_send", "docs_verify",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -652,6 +657,26 @@ def _grant_camp(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="camp_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_docs_office(db):
+    """Docs to office: the store keeper sends, the assistant and chief
+    accountant check in; each gets the Stock > Docs to office tab. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "docs_office_granted").first():
+        return
+    give = {"store keeper": ["docs_send"], "assistant accountant": ["docs_verify"], "chief accountant": ["docs_verify"]}
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        name = (role.name or "").strip().lower() if role is not None else ""
+        if name in give and keys:
+            add = [k for k in give[name] + ["store.store.docs"] if k not in keys]
+            if add:
+                setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="docs_office_granted", value="1"))
     db.commit()
 
 
@@ -13107,6 +13132,8 @@ import supzoho  # noqa: E402
 app.include_router(supzoho.router)
 import zoholog  # noqa: E402
 app.include_router(zoholog.router)
+import docsoffice  # noqa: E402
+app.include_router(docsoffice.router)
 import camp  # noqa: E402
 app.include_router(camp.router)
 import pozoho  # noqa: E402
