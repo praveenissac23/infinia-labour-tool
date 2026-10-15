@@ -238,6 +238,7 @@ def seed_on_startup():
         try:
             import visa as _vs
             _n = _vs.seed_existing(db)
+            _vs.new_step_lists(db)
             if _n:
                 print(f"visa files: {_n} files opened for the visas in progress")
         except Exception as e:

@@ -21,25 +21,30 @@ const openVisa = async p => { await p.goto(B + '/?p=accounts#petty:pro'); await 
   await j.click('#vf-new'); await j.waitForTimeout(500);
   await j.fill('#vf-p', `${who.name} · ${who.no}`);
   await j.selectOption('#vf-k', 'new');
-  ck('the type shows its 8 stages', await j.locator('#vf-kst .vf-chip').count() === 8);
+  ck('the type shows its 10 steps', await j.locator('#vf-kst .vf-chip').count() === 10);
   await j.click('#vf-ok'); await j.waitForTimeout(1500);
-  ck('file started and listed', await j.locator('#vf-body tr.vf-row').count() === 1 && /0 of 8/.test(await j.locator('#vf-body').textContent()));
+  ck('file started and listed', await j.locator('#vf-body tr.vf-row').count() === 1 && /0 of 10/.test(await j.locator('#vf-body').textContent()));
   // PRO petty cash: pick the file and a stage
   await j.evaluate(() => pcBook('pro')); await j.waitForTimeout(1500);
   ck('PRO asked for again (while loading) keeps the open view', true);
   await j.evaluate(() => pcView('cash')); await j.waitForTimeout(800);
   ck('PRO book shows the visa file box', await j.locator('#pc-visa').isVisible());
   const fid = await j.evaluate(() => PC_VF.files[0].id);
+  ck('asks: visa related expense? (No by default)', await j.locator('#pc-vyn .vf-pill.on').textContent() === 'No' && !(await j.locator('#pc-vmore').isVisible()));
+  await j.click('#pc-vyn [data-v="yes"]'); await j.waitForTimeout(200);
+  ck('Yes: whose visa, step and status appear', await j.locator('#pc-vmore').isVisible());
   await j.selectOption('#pc-vfile', String(fid)); await j.waitForTimeout(300);
-  await j.click('#pc-vstages .vf-chip >> text=Entry permit'); await j.waitForTimeout(200);
+  ck('step list offers his steps and all known ones', await j.locator('#pc-vstep-list option').count() >= 10);
+  await j.fill('#pc-vstep', 'New labour contract'); await j.waitForTimeout(200);
   const desc = await j.inputValue('#pc-desc');
-  ck('description fills itself', /New visa - Entry permit$/.test(desc), desc);
+  ck('description fills itself', / - New labour contract$/.test(desc), desc);
+  ck('status defaults to Not completed', await j.locator('#pc-vdone .vf-pill.on').textContent() === 'Not completed');
   ck('supplier left empty', await j.inputValue('#pc-sup') === '');
   await j.fill('#pc-amt', '2750');
   await j.screenshot({ path: SH + 'visa_pro_form.png' });
   await j.click('#pc-save'); await j.waitForTimeout(2000);
-  ck('the line shows its visa file', /Visa file: .* · Entry permit/.test(await j.locator('#pc-body').textContent()));
-  ck('form cleared, no visa picked', await j.inputValue('#pc-vfile') === '');
+  ck('the line shows its visa file', /Visa file: .* · New labour contract/.test(await j.locator('#pc-body').textContent()));
+  ck('form cleared, back to No', await j.locator('#pc-vyn .vf-pill.on').textContent() === 'No');
   // the cash-received side has no visa box
   await j.click('#screen-pettycash .pc-kind button[data-k="received"]'); await j.waitForTimeout(200);
   ck('no visa box on cash received', !(await j.locator('#pc-visa').isVisible()));
@@ -47,25 +52,31 @@ const openVisa = async p => { await p.goto(B + '/?p=accounts#petty:pro'); await 
   // back to Visa files
   await openVisa(j);
   const t = await j.locator('#vf-body').textContent();
-  ck('cost and stage on the file', /2,750\.00/.test(t) && /1 of 8/.test(t) && /next: Change of status/.test(t), t.slice(0, 200));
+  ck('cost and step on the file', /2,750\.00/.test(t) && /1 of 10/.test(t) && /next: WPP insurance/.test(t), t.slice(0, 200));
   // click the next stage: enter the payment there, it goes into PRO petty cash
-  await j.locator('#vf-body tr.vf-row').first().locator('.vf-seg').nth(1).click(); await j.waitForTimeout(400);
+  await j.locator('#vf-body tr.vf-row').first().locator('.vf-seg').nth(2).click(); await j.waitForTimeout(400);
   ck('stage click asks how it was paid (3 ways)', await j.locator('.vf-m #vf-modes .vf-pill').count() === 3);
   ck('the window scrolls when long', await j.evaluate(() => getComputedStyle(document.querySelector('.vf-m .zx-box')).overflowY) === 'auto');
   await j.fill('#vs-a', '1320.33');
   await j.screenshot({ path: SH + 'visa_stage_pay.png' });
   await j.click('#vs-ok'); await j.waitForTimeout(1500);
   const t2 = await j.locator('#vf-body').textContent();
-  ck('paid from the visa file: 2 of 8, AED 4,070.33', /2 of 8/.test(t2) && /4,070\.33/.test(t2), t2.slice(0, 200));
+  ck('paid from the visa file: 2 of 10, AED 4,070.33', /2 of 10/.test(t2) && /4,070\.33/.test(t2), t2.slice(0, 200));
   ck('row stays open with both payments', await j.locator('#vf-body .vf-pays tr').count() === 2);
   const pc = await j.evaluate(async () => (await apiCall('/store/petty-cash?book=pro')).rows.map(r => r.description + '|' + r.paid));
-  ck('the payment is in PRO petty cash', pc.some(x => /Change of status\|1320\.33/.test(x)), pc);
+  ck('the payment is in PRO petty cash', pc.some(x => /WPP insurance\|1320\.33/.test(x)), pc);
   // done with no payment
-  await j.locator('#vf-body tr.vf-row').first().locator('.vf-seg').nth(2).click(); await j.waitForTimeout(400);
+  await j.locator('#vf-body tr.vf-row').first().locator('.vf-seg').nth(3).click(); await j.waitForTimeout(400);
   await j.click('.vf-m #vf-modes .vf-pill >> text=Done - no payment'); await j.click('#vs-ok'); await j.waitForTimeout(1200);
-  ck('stage ticked with no payment: 3 of 8', /3 of 8/.test(await j.locator('#vf-body').textContent()));
+  ck('stage ticked with no payment: 3 of 10', /3 of 10/.test(await j.locator('#vf-body').textContent()));
+  const fidr = await j.evaluate(() => VF.rows[0].id);
+  await j.fill(`#vf-as-${fidr}`, 'Medical re-test'); await j.click(`#vf-as-${fidr} + button`); await j.waitForTimeout(1200);
+  ck('+ Add step: a typed step joins the file', /Medical re-test/.test(await j.locator('#vf-body').textContent()));
+  ck('...and the list offered next time', await j.evaluate(() => VF.steps.includes('Medical re-test')));
+  await j.locator('.vf-chipw:has(.vf-chip:text-is("Quota modification (if needed)")) .vf-x').click(); await j.waitForTimeout(1200);
+  ck('× takes a step off (not needed)', !/Quota modification/.test(await j.locator('#vf-body .vf-stchips').textContent()));
   // a visa cost on PRO petty cash without the file is refused
-  const refused = await j.evaluate(async () => { try { await apiCall('/store/petty-cash', { method: 'POST', body: JSON.stringify({ book: 'pro', date: pcToday(), description: 'Ali visa exp', paid: 10 }) }); return false; } catch (e) { return /visa file/i.test(errText(e)); } });
+  const refused = await j.evaluate(async () => { try { await apiCall('/store/petty-cash', { method: 'POST', body: JSON.stringify({ book: 'pro', date: pcToday(), description: 'Ali visa exp', paid: 10 }) }); return false; } catch (e) { return /whose visa/i.test(errText(e)); } });
   ck('PRO: visa cost without its file is refused', refused);
   await j.screenshot({ path: SH + 'visa_files.png' });
   j.on('dialog', d => d.accept());

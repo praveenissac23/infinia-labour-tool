@@ -206,8 +206,8 @@ def _visa(db, x, payload, new=False):
     import visa
     if (x.book or "") == "pro" and (x.paid or 0) and (new or "visa_file_id" in payload) \
             and not str(payload.get("visa_file_id") or "").isdigit() and visa.must_have_file(x):
-        raise HTTPException(status_code=400, detail="This is a visa cost - pick the Visa file below "
-                                                    "(or + Start a new visa file), so it adds up on that person's visa.")
+        raise HTTPException(status_code=400, detail="This says visa - answer Yes to 'Visa related expense?' and pick whose visa, "
+                                                    "so it adds up on that person's visa.")
     if "visa_file_id" not in payload:
         if (x.book or "") != "pro" or not (x.paid or 0):
             x.visa_file_id, x.visa_stage = None, ""
@@ -216,11 +216,14 @@ def _visa(db, x, payload, new=False):
     if (x.book or "") != "pro" or not (x.paid or 0) or not str(vid or "").isdigit():
         x.visa_file_id, x.visa_stage = None, ""
         return
-    st = " ".join(str(payload.get("visa_stage") or "").split())
-    v = visa.check_link(db, vid, st, keep_id=x.visa_file_id)
+    v = visa.check_link(db, vid, "", keep_id=x.visa_file_id)
+    st = visa.add_step(db, payload.get("visa_stage") or "")
     x.visa_file_id, x.visa_stage = v.id, st
     if st:
         visa.tick(v, st)
+    # The PRO's answer to "visa process status": Completed closes the file.
+    if payload.get("visa_complete") and v.status == "ongoing":
+        v.status, v.completed_on, v.completed_by = "completed", M._dubai_today(), x.updated_by or x.created_by
 
 
 @router.post("/store/petty-cash")

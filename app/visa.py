@@ -27,15 +27,51 @@ router = APIRouter()
 RIGHT = "visa"
 LOOK = Depends(M.require_any_screen(RIGHT, "petty_pro"))
 
+# Each type starts from the PRO's own list of steps. A file's list can
+# change as the case goes (add a step, take one off); "(if needed)" steps
+# are not counted as the next step.
+_WP = ["New labour contract", "Contract submission", "WPP insurance", "New work permit", "ILOE insurance (if needed)"]
 KINDS = {
-    "new": ("New visa", ["Entry permit", "Change of status", "Medical test", "Emirates ID", "Labour contract (MOHRE)",
-                         "Insurance (ILOE / medical)", "Visa stamping", "EID collected"]),
-    "new_out": ("New visa (outside UAE)", ["Entry permit", "Entry to UAE", "Medical test", "Emirates ID", "Labour contract (MOHRE)",
-                                          "Insurance (ILOE / medical)", "Visa stamping", "EID collected"]),
-    "renewal": ("Renewal", ["Medical test", "Emirates ID", "Labour contract (MOHRE)", "Insurance (ILOE / medical)",
-                            "Visa stamping", "EID collected"]),
-    "cancel": ("Cancellation", ["Labour card cancel", "Visa cancel", "File closed"]),
+    "new_out": ("New visa (outside UAE)", ["Quota modification (if needed)", "New labour contract", "WPP insurance", "New work permit",
+                                          "New entry permit", "Medical and EID", "Contract submission", "New ILOE insurance",
+                                          "New residency stamping"]),
+    "new": ("New visa (inside UAE)", ["Quota modification (if needed)", "New labour contract", "WPP insurance", "New work permit",
+                                      "New entry permit (inside)", "Change of status", "Medical and EID", "Contract submission",
+                                      "New ILOE insurance", "New residency stamping"]),
+    "renewal": ("Visa renewal", ["Labour contract renewal", "WPP insurance", "Work permit renewal and contract submission",
+                                 "ILOE insurance renewal (if needed)", "Medical and EID", "Residency renewal"]),
+    "cancel": ("Cancellation (inside UAE)", ["Labour contract cancellation", "Work permit cancellation", "Visa cancellation"]),
+    "work_permit": ("Work permit", list(_WP)),
+    "national_wp": ("National work permit", list(_WP)),
 }
+
+
+def steps_master(db):
+    """Every step the PRO picks from: the standard lists plus each step he
+    has typed in himself (kept, so it is offered next time)."""
+    base = []
+    for _, (_, st) in KINDS.items():
+        base += [x for x in st if x not in base]
+    try:
+        extra = json.loads(M.get_setting(db, "visa_steps_added") or "[]")
+    except ValueError:
+        extra = []
+    return base + [x for x in extra if x not in base]
+
+
+def add_step(db, name):
+    name = " ".join(str(name or "").split())[:80]
+    if not name or name in steps_master(db):
+        return name
+    try:
+        extra = json.loads(M.get_setting(db, "visa_steps_added") or "[]")
+    except ValueError:
+        extra = []
+    extra.append(name)
+    M.put_setting(db, "visa_steps_added", json.dumps(extra))
+    return name
+
+
 SUPPLIER = "MOHRE & GDRFA"
 # A PRO payment that says this must be on a visa file (from the day Visa
 # files started; older lines are left as they are).
@@ -90,7 +126,7 @@ def _pays(db, ids=None):
 
 def _dict(v, pays, users, emps=None):
     stages, done = _j(v.stages), set(_j(v.done))
-    nxt = next((s for s in stages if s not in done), "")
+    nxt = next((s for s in stages if s not in done and "(if needed)" not in s), "") or next((s for s in stages if s not in done), "")
     e = (emps or {}).get(v.employee_id)
     lines = [{"id": x.id, "date": x.on_date.isoformat(), "stage": x.visa_stage or "", "description": x.description or "",
               "supplier": x.supplier or "", "amount": round(x.paid or 0, 2), "book": x.book or "",
@@ -148,6 +184,7 @@ def get_files(status: str = "ongoing", db: Session = Depends(get_db), user: mode
     d["unlinked"] = _unlinked(db) if d["may_edit"] else []
     d["supplier"] = SUPPLIER
     d["today"] = M._dubai_today().isoformat()
+    d["steps"] = steps_master(db)
     return d
 
 
@@ -157,7 +194,8 @@ def open_files(db: Session = Depends(get_db), user: models.User = LOOK):
     vs = db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").order_by(models.VisaFile.person).all()
     pays, users = _pays(db, [v.id for v in vs]), _users(db)
     return {"files": [_dict(v, pays.get(v.id, []), users) for v in vs],
-            "kinds": [{"id": k, "label": v[0], "stages": v[1]} for k, v in KINDS.items()], "supplier": SUPPLIER}
+            "kinds": [{"id": k, "label": v[0], "stages": v[1]} for k, v in KINDS.items()], "supplier": SUPPLIER,
+            "steps": steps_master(db)}
 
 
 @router.get("/store/visa/people")
@@ -225,9 +263,16 @@ def edit(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
 
 
 def tick(v, stage, on=True):
+    """A step done (or not). A step not on the file's list yet is added to
+    it - the list follows the case."""
     stages = _j(v.stages)
+    stage = " ".join(str(stage or "").split())[:80]
+    if not stage:
+        return
     if stage not in stages:
-        raise HTTPException(status_code=400, detail=f"'{stage}' is not a stage of this file.")
+        if not on:
+            return
+        stages.append(stage); v.stages = json.dumps(stages)
     done = set(_j(v.done))
     done.add(stage) if on else done.discard(stage)
     v.done = json.dumps([s for s in stages if s in done])
@@ -242,6 +287,27 @@ def stage(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), us
     tick(v, st, on)
     db.commit()
     M.log_action(db, user.id, "visa_stage", f"Visa file {v.person} ({kind_label(v.kind)}): {st} {'done' if on else 'not done'}")
+    return _out(db, v)
+
+
+@router.post("/store/visa/files/{vid}/steps")
+def edit_steps(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    """Add a step to this file's list (a new one joins the list offered next
+    time) or take one off (not needed for this case)."""
+    v = _get(db, vid)
+    stages = _j(v.stages)
+    if payload.get("add"):
+        st = add_step(db, payload.get("add"))
+        if st and st not in stages:
+            stages.append(st)
+        M.log_action(db, user.id, "visa_step_add", f"Visa file {v.person}: step added - {st}")
+    elif payload.get("remove"):
+        st = str(payload.get("remove"))
+        stages = [x for x in stages if x != st]
+        v.done = json.dumps([x for x in _j(v.done) if x != st])
+        M.log_action(db, user.id, "visa_step_off", f"Visa file {v.person}: step not needed - {st}")
+    v.stages = json.dumps(stages)
+    db.commit()
     return _out(db, v)
 
 
@@ -281,8 +347,6 @@ def check_link(db, vid, stage_name, keep_id=None):
         raise HTTPException(status_code=400, detail="That visa file is no longer there.")
     if v.status != "ongoing" and v.id != keep_id:
         raise HTTPException(status_code=400, detail=f"{v.person}'s visa file is completed - reopen it on Visa files first.")
-    if stage_name and stage_name not in _j(v.stages):
-        raise HTTPException(status_code=400, detail=f"'{stage_name}' is not a stage of this visa file.")
     return v
 
 
@@ -295,7 +359,7 @@ def link(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
         raise HTTPException(status_code=400, detail="Pick a payment from the PRO petty cash.")
     if x.visa_file_id and x.visa_file_id != v.id:
         raise HTTPException(status_code=400, detail="That payment is already on another visa file.")
-    x.visa_file_id, x.visa_stage = v.id, str(payload.get("stage") or "")
+    x.visa_file_id, x.visa_stage = v.id, add_step(db, payload.get("stage") or "")
     if x.visa_stage:
         tick(v, x.visa_stage)
     db.commit()
@@ -311,7 +375,8 @@ def pay(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user
     v = check_link(db, vid, str(payload.get("stage") or ""))
     st = str(payload.get("stage") or "")
     if not st:
-        raise HTTPException(status_code=400, detail="Which stage is this payment for?")
+        raise HTTPException(status_code=400, detail="Which step is this payment for?")
+    st = add_step(db, st)
     desc = " ".join(str(payload.get("description") or "").split()) or f"{v.person} - {kind_label(v.kind)} - {st}"
     P.add_petty_cash({"book": "pro", "date": payload.get("date"), "description": desc,
                       "supplier": payload.get("supplier") or "",
@@ -328,9 +393,7 @@ def pay_stage(vid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     x = db.get(models.PettyCash, int(payload.get("petty_id") or 0))
     if not x or x.visa_file_id != v.id:
         raise HTTPException(status_code=400, detail="That payment is not on this file.")
-    st = str(payload.get("stage") or "")
-    if st and st not in _j(v.stages):
-        raise HTTPException(status_code=400, detail=f"'{st}' is not a stage of this file.")
+    st = add_step(db, payload.get("stage") or "")
     x.visa_stage = st
     if st:
         tick(v, st)
@@ -421,5 +484,18 @@ def seed_existing(db):
         x.visa_file_id, x.visa_stage = v.id, ""
         n += 1
     db.add(models.Setting(key="visa_seed_oct26", value=str(n)))
+    db.commit()
+    return n
+
+
+def new_step_lists(db):
+    """Once: files with no step ticked yet take the PRO's new step lists."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_steps_v2").first():
+        return 0
+    n = 0
+    for v in db.query(models.VisaFile).all():
+        if not _j(v.done) and v.kind in KINDS:
+            v.stages = json.dumps(KINDS[v.kind][1]); n += 1
+    db.add(models.Setting(key="visa_steps_v2", value=str(n)))
     db.commit()
     return n
