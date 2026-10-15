@@ -479,10 +479,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-table tfoot td { font-weight: 700; background: #F5F2EE; border-top: 1.5px solid #333; }
   .pc-table .pc-act { white-space: nowrap; } .pc-table .pc-act button { margin-left: 4px; }
   /* Company books: two rows - what & when, then where, how much, VAT. */
-  .pc-form.vat { grid-template-columns: 200px 150px minmax(240px, 2fr) minmax(200px, 1.4fr) 140px; }
+  .pc-form.vat { grid-template-columns: 200px 150px minmax(240px, 2fr) minmax(200px, 1.4fr) 230px; }
   .pc-form.vat .pc-vat { grid-column: span 2; }
   .pc-form.vat .pc-kind { min-width: 0; }
-  .pc-form.vat .pc-go { justify-self: start; }
+  .pc-form.vat .pc-go { justify-self: end; }
   .pc-vat .pc-vatbox { display: flex; align-items: center; gap: 6px; height: 36px; font: 600 13px inherit; color: #333; white-space: nowrap; }
   .pc-vat input[type=checkbox] { width: 18px; height: 18px; margin: 0; }
   .pc-vat #pc-trn { width: 190px; height: 36px; font-size: 13px; letter-spacing: .02em; }
@@ -1606,9 +1606,19 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .vf-opt:hover { border-color:#C0392B66; } .vf-opt .d { color:#3A3330; } .vf-opt b { white-space:nowrap; }
   .vf-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .vf-link select { height:32px; max-width:420px; }
   .pc-visa { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; border-top:1px dashed #E6DCD4; padding-top:10px; margin-top:2px; }
+  /* PRO visa row: on the same columns as the form above it. */
+  .pc-form.vat .pc-visa { display:grid; grid-template-columns:subgrid; gap:10px; align-items:start; }
+  .pc-form.vat .pc-visa > .pc-f:first-child { grid-column:1; }
+  .pc-form.vat .pc-vmore { display:contents; }
+  .pc-form.vat .pc-vmore > :nth-child(1) { grid-column:2 / span 2; }
+  .pc-form.vat .pc-vmore > :nth-child(2) { grid-column:4; }
+  .pc-form.vat .pc-vmore > :nth-child(3) { grid-column:5; }
+  .pc-form.vat .pc-vmore input { min-width:0; width:100%; }
+  .pc-vmore #pc-vnew { font-size:11.5px; color:#8A6200; margin-top:3px; }
   .pc-visa .pc-f select { min-width:280px; height:36px; }
-  .vf-yn { display:flex; gap:6px; } .vf-yn .vf-pill { padding:7px 16px; }
-  .pc-vmore { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; } .pc-vmore input { min-width:260px; height:36px; }
+  .vf-yn { display:flex; gap:6px; } .vf-yn .vf-pill { padding:0 14px; height:36px; white-space:nowrap; font-size:12.5px; }
+  .pc-form.vat #pc-vdone .vf-pill { flex:1; padding:0 8px; }
+  .pc-vmore { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; } .pc-vmore input { min-width:260px; height:36px; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -18179,16 +18189,17 @@ function pcDraw() {
   pcHead(sup, site);
   const zc = pcZohoCol() && !t.director;   // directors' books are portal only
   const ncols = 6 + sup + site, ntext = 2 + sup + site;
+  // Newest on top (the balance column still runs in date order); the
+  // balance brought forward sits at the bottom, where the month starts.
   document.getElementById("pc-body").innerHTML =
-    `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
-       <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
-    (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
+    (d.rows.slice().reverse().map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
        <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) || r.visa_file_id ? `<span class="sub">${[r.visa_file_id ? "Visa file: " + escapeHtml(r.visa_person) + (r.visa_stage ? " · " + escapeHtml(r.visa_stage) : "") : "", r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}${v && zc ? pcZohoMark(r) : ""}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
        <td class="pc-act">${pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
-     || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`);
+     || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`) + (d.rows.length ? `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
+       <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` : "");
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
     <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();

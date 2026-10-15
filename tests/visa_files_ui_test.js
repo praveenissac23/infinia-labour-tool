@@ -44,6 +44,14 @@ async function login(b, u, pw, W = 1440) {
   await entry('Travel report', 275.65, '', '', false); await j.fill('#pc-sup', 'GDRFA');
   await j.click('#pc-save'); await j.waitForTimeout(1500);
   ck('a normal line (No) saves with any description', /Travel report/.test(await j.textContent('#pc-body')));
+  ck('newest on top, brought forward at the bottom', /Travel report/.test(await j.locator('#pc-body tr').first().textContent()) && /brought forward/.test(await j.locator('#pc-body tr').last().textContent()));
+  await j.click('#pc-vyn [data-v="yes"]'); await j.fill('#pc-vperson', 'New Person'); await j.waitForTimeout(200);
+  const al = await j.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect();
+    return { add: Math.round(r('pc-save').right), site: Math.round(r('pc-site').right), status: Math.round(document.querySelector('#pc-vdone').getBoundingClientRect().left), sitel: Math.round(r('pc-site').left),
+             step: Math.round(r('pc-vstep').left), sup: Math.round(r('pc-sup').left), who: Math.round(r('pc-vperson').left), date: Math.round(r('pc-date').left) }; });
+  ck('aligned: Add under Site right edge; visa boxes on the form columns', Math.abs(al.add - al.site) <= 2 && Math.abs(al.status - al.sitel) <= 2 && Math.abs(al.step - al.sup) <= 2 && Math.abs(al.who - al.date) <= 2, al);
+  await j.screenshot({ path: SH + 'pro_form_aligned.png' });
+  await j.click('#pc-vyn [data-v="no"]');
   ck('no page errors', j.errs.length === 0, j.errs);
   const w = await login(b, 'jomon', 'pass12345', 390);
   ck('phone width: no sideways scroll', await w.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
