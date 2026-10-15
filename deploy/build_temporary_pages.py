@@ -133,7 +133,8 @@ PAGES = {
             sub("builder", "Cycle report builder", screen="reports"),
             sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()"),
-            sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()")]),
+            sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()"),
+            sub("visa", "Visa files", screen="visa", right=["visa"], go="vfLoad()")]),
             # Salary cards are on Payroll > Labour payroll, not repeated here.
             # Leave is reported on Staff > Leave, not repeated here.
         # Office payroll and Staff are not repeated here: they are pages of

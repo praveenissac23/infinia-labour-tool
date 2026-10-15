@@ -18,10 +18,10 @@ const open = async p => { await p.evaluate(() => { pgTab('store'); }); await p.w
   ck('new transmittal numbered DOF:005', await a.locator('#dt-form input[readonly]').inputValue() === 'DOF:005');
   ck('date defaults to today', (await a.locator('#dt-date').inputValue()).length === 10);
   const rows = a.locator('#dt-form .dt-lines tbody tr');
-  await rows.nth(0).locator('input[type=text]').nth(0).fill('Delivery note - cement 50 bags');
+  await rows.nth(0).locator('input[type=text]').nth(0).fill('Al Noor Building Materials');
   await rows.nth(0).locator('input[type=text]').nth(1).fill('84295');
   await a.click('#dt-form >> text=+ Add line'); await a.waitForTimeout(200);
-  await rows.nth(1).locator('input[type=text]').nth(0).fill('Tax invoice copy');
+  await rows.nth(1).locator('input[type=text]').nth(0).fill('Emirates Steel Trading');
   await rows.nth(1).locator('input[type=text]').nth(1).fill('INV-771');
   await a.screenshot({ path: SH + 'docs_office_form.png' });
   await a.click('#dt-save'); await a.waitForTimeout(1500);

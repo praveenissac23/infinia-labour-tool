@@ -790,6 +790,16 @@
       "grant": [
        "ppe"
       ]
+     },
+     {
+      "id": "reports.labour.visa",
+      "label": "Visa files",
+      "right": [
+       "visa"
+      ],
+      "grant": [
+       "visa"
+      ]
      }
     ]
    },

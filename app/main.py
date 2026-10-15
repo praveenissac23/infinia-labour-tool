@@ -220,6 +220,7 @@ def seed_on_startup():
         _grant_ppe(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
+        _grant_visa(db)
         _grant_zoho_notice(db)
         try:
             import zohosync as _zsg
@@ -380,6 +381,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # office (docs_send); the assistant accountant checks them in
                # (docs_verify).
                "docs_send", "docs_verify",
+               # Visa files (Reports > Labour > Visa files): each visa process,
+               # its stages and its costs - the PRO and accounts.
+               "visa",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -700,6 +704,26 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_visa(db):
+    """Visa files: the PRO, the chief and the assistant accountant keep
+    them; each gets the Reports > Labour > Visa files tab. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_files_granted").first():
+        return
+    give = {"pro", "chief accountant", "assistant accountant"}
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        name = (role.name or "").strip().lower() if role is not None else ""
+        if keys and (name in give or (isinstance(obj, models.User) and "petty_pro" in keys)):
+            add = [k for k in ("visa", "reports.labour.visa") if k not in keys]
+            if add:
+                setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="visa_files_granted", value="1"))
     db.commit()
 
 
@@ -13134,6 +13158,8 @@ import zoholog  # noqa: E402
 app.include_router(zoholog.router)
 import docsoffice  # noqa: E402
 app.include_router(docsoffice.router)
+import visa  # noqa: E402
+app.include_router(visa.router)
 import camp  # noqa: E402
 app.include_router(camp.router)
 import pozoho  # noqa: E402

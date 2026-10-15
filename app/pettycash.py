@@ -102,6 +102,8 @@ def register(db, month, book="site"):
               .order_by(models.PettyCash.on_date, models.PettyCash.id).all())
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     bal, out = opening, []
+    vids = {x.visa_file_id for x in rows if x.visa_file_id}
+    vfiles = {v.id: v for v in db.query(models.VisaFile).filter(models.VisaFile.id.in_(vids)).all()} if vids else {}
     for x in rows:
         bal = round(bal + sg * ((x.received or 0) - (x.paid or 0)), 2)
         out.append({"id": x.id, "date": x.on_date.isoformat(), "description": x.description or "",
@@ -109,7 +111,9 @@ def register(db, month, book="site"):
                     "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "balance": bal,
                     "by": users.get(x.updated_by or x.created_by, ""),
                     "vat": bool(x.vat), "trn": x.trn or "", "receipt_no": x.receipt_no or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
-                    "zoho_account": x.zoho_account or "", "zoho_err": x.zoho_err or ""})
+                    "zoho_account": x.zoho_account or "", "zoho_err": x.zoho_err or "",
+                    "visa_file_id": x.visa_file_id, "visa_stage": x.visa_stage or "",
+                    "visa_person": vfiles[x.visa_file_id].person if x.visa_file_id in vfiles else ""})
     rec = round(sum(r["received"] for r in out), 2)
     paid = round(sum(r["paid"] for r in out), 2)
     by_site = {}
@@ -195,10 +199,30 @@ def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models
     return {"trn": ""}
 
 
+def _visa(db, x, payload):
+    """PRO book: the visa file and stage this payment is for. Saving it
+    ticks the stage on the file. Left alone when the form did not send it."""
+    if "visa_file_id" not in payload:
+        if (x.book or "") != "pro" or not (x.paid or 0):
+            x.visa_file_id, x.visa_stage = None, ""
+        return
+    vid = payload.get("visa_file_id")
+    if (x.book or "") != "pro" or not (x.paid or 0) or not str(vid or "").isdigit():
+        x.visa_file_id, x.visa_stage = None, ""
+        return
+    import visa
+    st = " ".join(str(payload.get("visa_stage") or "").split())
+    v = visa.check_link(db, vid, st, keep_id=x.visa_file_id)
+    x.visa_file_id, x.visa_stage = v.id, st
+    if st:
+        visa.tick(v, st)
+
+
 @router.post("/store/petty-cash")
 def add_petty_cash(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PC):
     book = _book(user, payload.get("book"))
     x = models.PettyCash(**_clean(payload), book=book, created_by=user.id, updated_by=user.id)
+    _visa(db, x, payload)
     db.add(x); db.commit()
     M.log_action(db, user.id, "petty_cash_add",
                  f"{BOOKS[book][0]}: {x.on_date} {x.description} {'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
@@ -233,6 +257,7 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
             x.zoho_status = ""
         elif x.zoho_status in ("sent", "inzoho"):
             x.zoho_status = "changed"
+    _visa(db, x, payload)
     x.updated_by = user.id
     db.commit()
     M.log_action(db, user.id, "petty_cash_edit", f"#{pid} {x.book or 'site'} book, {x.description}: "

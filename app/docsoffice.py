@@ -2,9 +2,7 @@
 
 The store keeper sends delivery notes and other papers from site to the
 office with a transmittal: numbered by itself (DOF:005 on, following the
-paper forms), dated, one line per paper. Lines can be picked from the
-deliveries already entered under Material arrived, so a delivery note is
-typed once. In the office the assistant accountant ticks each paper as it
+paper forms), dated, one line per paper (supplier picked from the list, delivery note no.). In the office the assistant accountant ticks each paper as it
 arrives and marks the transmittal received. It prints on the company's
 form (Preview / PDF / Excel / Share).
 """
@@ -55,26 +53,19 @@ def _next_no(db):
     return max(FIRST_NO, (last.no + 1) if last else FIRST_NO)
 
 
-def _suggestions(db):
-    """Deliveries entered under Material arrived in the last 45 days with a
-    delivery note number, not yet on any transmittal."""
-    since = M._dubai_today() - timedelta(days=45)
-    used = {l.movement_id for l in db.query(models.DocTransmittalLine.movement_id)
-            .filter(models.DocTransmittalLine.movement_id.isnot(None)).all()}
-    items = {}
-    out = []
-    q = (db.query(models.StoreMovement).filter(models.StoreMovement.kind == "in", models.StoreMovement.moved_on >= since)
-           .order_by(models.StoreMovement.moved_on.desc(), models.StoreMovement.id.desc()).limit(300))
-    for m in q:
-        if m.id in used or not (m.reference or "").strip():
-            continue
-        if m.item_id not in items:
-            it = db.get(models.StoreItem, m.item_id)
-            items[m.item_id] = it.name if it else ""
-        out.append({"movement_id": m.id, "date": m.moved_on.isoformat() if m.moved_on else "", "dn_no": (m.reference or "").strip(),
-                    "supplier": (m.supplier or "").strip(), "item": items[m.item_id], "qty": m.qty,
-                    "site": "" if (m.location or "") in ("", M.CENTRAL) else m.location})
-    return out[:120]
+def _supplier_names(db):
+    """The supplier list for the Supplier box: the supplier register plus
+    names used on transmittals before."""
+    names = {}
+    for (n,) in db.query(models.Supplier.name).all():
+        n = " ".join((n or "").split())
+        if n:
+            names.setdefault(n.lower(), n)
+    for (n,) in db.query(models.DocTransmittalLine.description).distinct().limit(2000):
+        n = " ".join((n or "").split())
+        if n:
+            names.setdefault(n.lower(), n)
+    return sorted(names.values(), key=str.lower)
 
 
 @router.get("/store/docs")
@@ -84,7 +75,7 @@ def listing(db: Session = Depends(get_db), user: models.User = DG):
     sites = [s.code for s in db.query(models.Site).order_by(models.Site.code).all()]
     return {"rows": rows, "next_ref": ref(_next_no(db)), "sites": sites,
             "may_send": _may(user, SEND), "may_verify": _may(user, VERIFY),
-            "suggestions": _suggestions(db) if _may(user, SEND) else [],
+            "suppliers": _supplier_names(db) if _may(user, SEND) else [],
             "waiting": sum(1 for r in rows if r["status"] == "sent")}
 
 
@@ -104,7 +95,9 @@ def _clean(payload):
         if ld and ld > M._dubai_today():
             raise HTTPException(status_code=400, detail=f"Line {len(lines) + 1}: that date is in the future.")
         mid = l.get("movement_id")
-        lines.append({"description": desc or "Delivery note", "dn_no": dn, "site": " ".join(str(l.get("site") or "").split())[:40],
+        if not desc:
+            raise HTTPException(status_code=400, detail=f"Line {len(lines) + 1}: pick the supplier.")
+        lines.append({"description": desc, "dn_no": dn, "site": " ".join(str(l.get("site") or "").split())[:40],
                       "on_date": ld, "remarks": " ".join(str(l.get("remarks") or "").split())[:200],
                       "movement_id": int(mid) if str(mid or "").isdigit() else None})
     if not lines:
@@ -259,10 +252,10 @@ def build_pdf(x, users, co=None):
                  colWidths=[tw * 0.24, tw * 0.22, tw * 0.36, tw * 0.18])
     head.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, F.RULE), ("LINEAFTER", (0, 0), (-2, -1), 0.6, F.RULE),
                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 1), (-1, 1), 7), ("LEFTPADDING", (0, 0), (-1, -1), 7)]))
-    cols = [("NO.", 0.06), ("DESCRIPTION", 0.36), ("DELIVERY NOTE NO.", 0.16), ("SITE", 0.09), ("DATE", 0.12), ("REMARKS", 0.21)]
+    cols = [("NO.", 0.06), ("SUPPLIER", 0.36), ("DELIVERY NOTE NO.", 0.16), ("SITE", 0.09), ("DATE", 0.12), ("REMARKS", 0.21)]
     show_rec = x.status in ("received", "partial")
     if show_rec:
-        cols = [("NO.", 0.06), ("DESCRIPTION", 0.32), ("DELIVERY NOTE NO.", 0.15), ("SITE", 0.08), ("DATE", 0.11), ("REMARKS", 0.17), ("RECEIVED", 0.11)]
+        cols = [("NO.", 0.06), ("SUPPLIER", 0.32), ("DELIVERY NOTE NO.", 0.15), ("SITE", 0.08), ("DATE", 0.11), ("REMARKS", 0.17), ("RECEIVED", 0.11)]
     data = [[Paragraph(c, hd) for c, _ in cols]]
     for l in x.lines:
         r = [Paragraph(str(l.sl), cell), Paragraph(l.description or "", cell), Paragraph(l.dn_no or "", cell), Paragraph(l.site or "", cell),
@@ -336,7 +329,7 @@ body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}} .pg{{
 {export_web.SHARE_JS}</body></html>""")
     if format == "excel":
         d = _dict(x, users)
-        rows = [{"No.": l["sl"], "Description": l["description"], "Delivery note no.": l["dn_no"], "Site": l["site"],
+        rows = [{"No.": l["sl"], "Supplier": l["description"], "Delivery note no.": l["dn_no"], "Site": l["site"],
                  "Date": M._as_date(l["date"]).strftime("%d-%b-%y") if l["date"] else "", "Remarks": l["remarks"],
                  **({"Received": "Yes" if l["received"] else "No"} if x.status != "sent" else {})} for l in d["lines"]]
         sub = f"{ref(x.no)} | {x.on_date:%d %b %Y} | from {x.from_site or '-'} | sent by {d['sent_by']}" + (

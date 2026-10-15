@@ -1082,10 +1082,36 @@ class PettyCash(Base):
     zoho_err = Column(String, default="")     # Zoho's refusal, kept to retry; or why it was cancelled
     approved_by = Column(Integer, nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # PRO book: the visa file this cost belongs to, and the stage it paid
+    # for (Entry permit, Medical test ...). See VisaFile.
+    visa_file_id = Column(Integer, nullable=True, index=True)
+    visa_stage = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class VisaFile(Base):
+    """One visa process for one person (new visa, renewal, cancellation):
+    its stages ticked as they are done, and every PRO petty cash payment
+    made for it across the months. Marked completed when done; it then
+    drops off the list the PRO picks from."""
+    __tablename__ = "visa_files"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, nullable=True, index=True)
+    emp_no = Column(String, default="")
+    person = Column(String, nullable=False)
+    kind = Column(String, default="new")            # new | new_out | renewal | cancel | other
+    stages = Column(Text, default="[]")            # JSON list of stage names, in order
+    done = Column(Text, default="[]")              # JSON list of the stages done
+    started_on = Column(Date, nullable=False)
+    status = Column(String, default="ongoing", index=True)   # ongoing | completed
+    completed_on = Column(Date, nullable=True)
+    completed_by = Column(Integer, nullable=True)
+    note = Column(String, default="")
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class BankEntry(Base):

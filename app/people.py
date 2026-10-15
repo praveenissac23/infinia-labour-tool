@@ -1612,6 +1612,7 @@ SCREEN_LABELS = {
     "camp": "Labour camp - change who sleeps where (others with Labour reports can look)",
     "docs_send": "Docs to office - send delivery notes and papers to the office (store keeper)",
     "docs_verify": "Docs to office - check documents in at the office (assistant accountant)",
+    "visa": "Visa files - each visa process, its stages and costs (PRO and accounts)",
     "ppe": "PPE register - record coveralls, shoes, helmets given (others with Labour reports can look)",
     "admin_forms": "Admin - forms (leave, passport, visa renewal) to print",
     "settings_company": "General - store in-charge, LPO and invoice signatures",
@@ -1631,7 +1632,7 @@ RIGHT_PAGES = [
     ("Expiry Reminder", ["expiry", "pdc", "security_cheques"]),
     ("Accounts", ["accounts_invoices", "petty_site", "petty_pro", "petty_office", "petty_naveen", "petty_praveen", "accounts_projects", "accounts_expense", "accounts_bank", "accounts_zoho", "accounts_credentials", "accounts_register"]),
     ("Admin", ["admin_forms"]),
-    ("Reports", ["reports", "camp", "ppe"]),
+    ("Reports", ["reports", "camp", "ppe", "visa"]),
     ("Settings", ["settings_company", "settings_data", "settings_companies", "settings_logins", "settings_access", "activity"]),
 ]
 

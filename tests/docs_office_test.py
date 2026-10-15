@@ -32,6 +32,10 @@ ok(x["ref"] == "DOF:005" and len(x["lines"]) == 2, "sent with its number; the em
 ok(D.listing(s, admin)["next_ref"] == "DOF:006", "the next one is DOF:006")
 refused(lambda: D.create({**p, "date": (today + timedelta(days=1)).isoformat()}, s, admin), "a future date is refused")
 refused(lambda: D.create({"date": today.isoformat(), "lines": []}, s, admin), "at least one document is needed")
+refused(lambda: D.create({"date": today.isoformat(), "lines": [{"dn_no": "DN-9"}]}, s, admin), "a line without the supplier is refused")
+s.add(models.Supplier(name="Al Noor Building Materials", name_key="alnoorbuildingmaterials")); s.commit()
+sl = D.listing(s, admin)["suppliers"]
+ok("Al Noor Building Materials" in sl and "Delivery note" in sl, "supplier list: the register plus names used before")
 x = D.edit(x["id"], {**p, "lines": p["lines"][:1]}, s, admin)
 ok(len(x["lines"]) == 1, "the store keeper can change it before the office checks")
 x = D.edit(x["id"], p, s, admin)

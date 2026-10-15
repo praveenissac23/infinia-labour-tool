@@ -1568,12 +1568,30 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-new { border:1px solid #EFE7E0; border-radius:10px; padding:12px 14px; margin:8px 0 14px; background:#FDFBF9; }
   .dt-h { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin-bottom:8px; } .dt-h > b { font-size:14px; margin-right:auto; align-self:center; }
   .dt-h input[readonly] { background:#F4F0EC; font-weight:700; width:110px; }
-  .dt-sug { margin:6px 0 10px; line-height:2; } .dt-chip { border:1px dashed #C9B7AE; background:#fff; border-radius:16px; padding:3px 10px; font:inherit; font-size:12px; cursor:pointer; margin:0 4px 4px 0; }
-  .dt-chip:hover { border-color:#C0392B; color:#C0392B; }
   .dt-lines td { padding:4px 6px; } .dt-lines input, .dt-lines select { width:100%; box-sizing:border-box; height:34px; }
   .dt-foot { display:flex; justify-content:space-between; gap:8px; margin-top:10px; }
   .dt-table td { vertical-align:top; } .dt-l { padding:2px 0; line-height:1.45; } .dt-l.miss { color:#B03A2E; } .dt-ok { color:#2E7D32; font-weight:700; }
   .dt-acts { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  /* Visa files */
+  .vf-bar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 12px; }
+  .vf-pills { display:flex; gap:8px; flex-wrap:wrap; }
+  .vf-pill { border:1px solid #E2D8D0; background:#fff; color:#3A3330; border-radius:18px; padding:6px 16px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+  .vf-pill.on { border-color:#C0392B; color:#C0392B; background:#FDF1EF; }
+  .vf-table td { vertical-align:middle; } .vf-table tr.vf-row { cursor:pointer; } .vf-table tr.vf-row:hover td { background:#FCF8F5; }
+  .vf-who b { display:block; } .vf-who small { color:#8A7F78; }
+  .vf-st { font-size:13px; margin-bottom:5px; } .vf-st .sub { display:inline; }
+  .vf-segs { display:flex; gap:4px; } .vf-seg { flex:1; height:8px; border-radius:4px; background:#E9E2DC; border:0; padding:0; cursor:pointer; min-width:14px; }
+  .vf-seg.done { background:#2E7D32; } .vf-seg:hover { outline:2px solid #C0392B55; } .vf-seg[disabled] { cursor:default; outline:none; }
+  .vf-detail td { background:#FBF8F5; padding:10px 14px !important; }
+  .vf-stchips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .vf-chip { border:1px solid #DCD2CA; background:#fff; border-radius:16px; padding:4px 12px; font:inherit; font-size:12.5px; cursor:pointer; color:#3A3330; }
+  .vf-chip.done { border-color:#A9D3B0; background:#E7F4EA; color:#2E7D32; }
+  .vf-chip.sel { border-color:#C0392B; color:#C0392B; background:#FDF1EF; font-weight:700; }
+  .vf-chip[disabled] { cursor:default; }
+  .vf-pays { width:100%; border-collapse:collapse; font-size:12.5px; margin:4px 0 8px; } .vf-pays td { padding:4px 6px; border-bottom:1px solid #EFE7E0; }
+  .vf-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .vf-link select { height:32px; max-width:420px; }
+  .pc-visa { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; border-top:1px dashed #E6DCD4; padding-top:10px; margin-top:2px; }
+  .pc-visa .pc-f select { min-width:280px; height:36px; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -3395,6 +3413,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
+        <!-- ============ VISA FILES ============ -->
+        <div class="screen" id="screen-visa">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">Visa files <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Every visa process, all its costs across months, and where it stands</span></h2></div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="vfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="vfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="vfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="vfExport('view')">Share</button></div></div>
+            </div>
+            <div class="vf-bar"><div class="vf-pills" id="vf-pills"></div><button type="button" class="btn btn-primary" id="vf-new" onclick="vfNew()">+ New visa file</button></div>
+            <div class="pc-stats" id="vf-stats"></div>
+            <div class="status-msg" id="vf-status"></div>
+            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vf-table" data-nomove><thead><tr><th class="l" style="width:200px;">Person</th><th class="l" style="width:150px;">Type</th><th class="l">Stages <span class="sub" style="display:inline;font-weight:400;text-transform:none;letter-spacing:0;">(click a stage to tick it)</span></th><th class="l" style="width:96px;">Started</th><th class="n" style="width:120px;">Spent so far</th><th style="width:150px;"></th></tr></thead><tbody id="vf-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody><tfoot id="vf-foot"></tfoot></table></div>
+            <div class="sub" style="margin-top:8px;font-size:12px;color:#8A7F78;">Click a row to see its payments. The PRO ties each payment to the file on PRO petty cash (Visa file and stage); completed files keep their full cost history.</div>
+          </div>
+        </div>
+
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
           <div class="card">
@@ -3426,6 +3459,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
                 <button class="btn btn-gray" id="pc-cancel" onclick="pcReset()" style="display:none;">Cancel</button>
+              </div>
+              <div class="pc-visa" id="pc-visa" style="display:none;">
+                <label class="pc-f"><span>Visa file <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(for a visa cost)</span></span><select id="pc-vfile" onchange="pcVisaPick(this.value)"></select></label>
+                <div><div class="pc-f"><span id="pc-vstage-l">Stage this payment is for</span></div><div class="vf-stchips" id="pc-vstages" style="padding-top:4px;"></div></div>
               </div>
             </div>
           </div>
@@ -16339,6 +16376,7 @@ function pcKind(k) {
   document.getElementById("pc-desc").placeholder = t.director ? (k === "paid" ? "e.g. Etisalat bill payment" : "e.g. Company bank transfer")
                                                               : (k === "paid" ? "e.g. Cement for plastering" : "e.g. Cash received");
   const site = document.querySelector("#pc-form .pc-site span"); if (site) site.textContent = t.site;
+  pcVisaShow();
   // VAT is on bills in the three company boxes; a director's book has none.
   const vatOk = !t.director;
   document.getElementById("pc-form").classList.toggle("vat", vatOk);
@@ -17384,30 +17422,21 @@ function dtFormDraw() {
   const el = document.getElementById("dt-form");
   if (!DT.may_send) { el.innerHTML = ""; return; }
   const ed = DT_EDIT ? DT.rows.find(r => r.id === DT_EDIT) : null;
-  const used = new Set(DT_ROWS.map(r => r.movement_id).filter(Boolean));
-  const sug = (DT.suggestions || []).filter(x => !used.has(x.movement_id));
   el.innerHTML = `<div class="dt-new"><div class="dt-h"><b>${ed ? "Change " + escapeHtml(ed.ref) : "New transmittal"}</b>
       <label class="pc-f"><span>No.</span><input type="text" value="${escapeAttr(ed ? ed.ref : DT.next_ref)}" readonly title="Numbered by itself"></label>
       <label class="pc-f"><span>Date</span><input type="date" id="dt-date" value="${escapeAttr(ed ? ed.date : (document.getElementById("dt-date") || {}).value || pcToday())}" max="${pcToday()}"></label>
       <label class="pc-f"><span>From site / project</span><span id="dt-fs">${dtSiteSel(ed ? ed.from_site : (DT._fs || ""), "DT._fs=this.value")}</span></label></div>
-    ${sug.length ? `<div class="dt-sug"><span class="sub" style="display:inline;">Add from deliveries entered (Material arrived):</span> ${sug.slice(0, 12).map(x => `<button type="button" class="dt-chip" onclick="dtFromDelivery(${x.movement_id})" title="${escapeAttr(x.supplier + ' - ' + x.item)}">DN ${escapeHtml(x.dn_no)} · ${escapeHtml(x.supplier || x.item).slice(0, 22)} · ${pcDate(x.date)}</button>`).join("")}${sug.length > 12 ? `<span class="sub" style="display:inline;"> +${sug.length - 12} more</span>` : ""}</div>` : ""}
-    <table class="pc-table dt-lines"><thead><tr><th style="width:44px;">No.</th><th class="l">Description</th><th class="l" style="width:150px;">Delivery note no.</th><th class="l" style="width:110px;">Site</th><th class="l" style="width:140px;">Date</th><th class="l" style="width:22%;">Remarks</th><th style="width:40px;"></th></tr></thead><tbody>
+    <table class="pc-table dt-lines"><thead><tr><th style="width:44px;">No.</th><th class="l">Supplier</th><th class="l" style="width:150px;">Delivery note no.</th><th class="l" style="width:110px;">Site</th><th class="l" style="width:140px;">Date</th><th class="l" style="width:22%;">Remarks</th><th style="width:40px;"></th></tr></thead><tbody>
     ${DT_ROWS.map((r, i) => `<tr><td class="sub" style="text-align:center;">${i + 1}</td>
-      <td><input type="text" value="${escapeAttr(r.description)}" placeholder="e.g. Delivery note - cement 50 bags" oninput="DT_ROWS[${i}].description=this.value"></td>
+      <td><input type="text" value="${escapeAttr(r.description)}" list="dt-sup-list" autocomplete="off" data-spell="off" placeholder="Pick or type the supplier" oninput="DT_ROWS[${i}].description=this.value"></td>
       <td><input type="text" value="${escapeAttr(r.dn_no)}" placeholder="e.g. 84295" oninput="DT_ROWS[${i}].dn_no=this.value"></td>
       <td>${dtSiteSel(r.site, `DT_ROWS[${i}].site=this.value`)}</td>
       <td><input type="date" value="${escapeAttr(r.date || "")}" max="${pcToday()}" onchange="DT_ROWS[${i}].date=this.value"></td>
       <td><input type="text" value="${escapeAttr(r.remarks)}" placeholder="Optional" oninput="DT_ROWS[${i}].remarks=this.value"></td>
       <td><button type="button" class="btn btn-gray btn-sm" onclick="DT_ROWS.splice(${i},1); if(!DT_ROWS.length) DT_ROWS=[dtBlank()]; dtFormDraw()" title="Remove this line">×</button></td></tr>`).join("")}</tbody></table>
+    <datalist id="dt-sup-list">${(DT.suppliers || []).map(n => `<option value="${escapeAttr(n)}">`).join("")}</datalist>
     <div class="dt-foot"><button type="button" class="btn btn-gray" onclick="DT_ROWS.push(dtBlank()); dtFormDraw()">+ Add line</button>
       <span style="display:flex;gap:8px;">${ed ? `<button type="button" class="btn btn-gray" onclick="dtCancel()">Cancel</button>` : ""}<button type="button" class="btn btn-primary" id="dt-save" onclick="dtSave()">${ed ? "Save changes" : "Send to office"}</button></span></div></div>`;
-}
-function dtFromDelivery(mid) {
-  const x = (DT.suggestions || []).find(s => s.movement_id === mid); if (!x) return;
-  const row = { description: `Delivery note - ${x.supplier ? x.supplier + " - " : ""}${x.item}${x.qty ? " (" + x.qty + ")" : ""}`, dn_no: x.dn_no, site: x.site || "", date: x.date, remarks: "", movement_id: x.movement_id };
-  const blank = DT_ROWS.findIndex(r => !r.description && !r.dn_no);
-  if (blank >= 0) DT_ROWS[blank] = row; else DT_ROWS.push(row);
-  dtFormDraw();
 }
 async function dtSave() {
   const b = document.getElementById("dt-save"); b.disabled = true;
@@ -17465,6 +17494,108 @@ async function dtReopen(id) {
 async function dtExport(id, kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/store/docs/${id}?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+// ---- Reports > Labour > Visa files ------------------------------------------
+let VF = null, VF_ST = "ongoing", VF_OPEN = null, VF_PEOPLE = null;
+async function vfLoad() {
+  try { VF = await apiCall(`/store/visa/files?status=${VF_ST}`); } catch (e) { showStatus("vf-status", "err", errText(e)); return; }
+  document.getElementById("vf-new").style.display = VF.may_edit ? "" : "none";
+  vfDraw();
+}
+function vfFilter(st) { VF_ST = st; VF_OPEN = null; vfLoad(); }
+function vfDraw() {
+  const t = VF.tiles, money = v => pcMoney(v);
+  document.getElementById("vf-pills").innerHTML = [["ongoing", `Ongoing (${t.ongoing})`], ["completed", `Completed (${t.n_completed})`], ["all", `All (${t.n_all})`]]
+    .map(([k, l]) => `<button type="button" class="vf-pill${VF_ST === k ? " on" : ""}" onclick="vfFilter('${k}')">${l}</button>`).join("");
+  document.getElementById("vf-stats").innerHTML =
+    `<div class="pc-stat"><span>Ongoing files</span><b>${t.ongoing}</b></div>
+     <div class="pc-stat hand"><span>Spent on ongoing</span><b>AED ${money(t.spent_ongoing)}</b></div>
+     <div class="pc-stat"><span>Completed this year</span><b>${t.completed_year} · AED ${money(t.spent_completed_year)}</b></div>`;
+  const ed = VF.may_edit;
+  document.getElementById("vf-body").innerHTML = VF.rows.map(r => {
+    const live = r.status === "ongoing";
+    const segs = r.stages.map(st => `<button type="button" class="vf-seg${r.done.includes(st) ? " done" : ""}" title="${escapeAttr(st)}${r.done.includes(st) ? " - done" : ""}"${ed && live ? ` onclick="event.stopPropagation(); vfStage(${r.id}, this.title.replace(' - done',''), ${!r.done.includes(st)})"` : " disabled"}></button>`).join("");
+    const state = live ? `${r.n_done} of ${r.stages.length}${r.next ? ` <span class="sub" style="display:inline;">· next: <b>${escapeHtml(r.next)}</b></span>` : ` <span class="sub" style="display:inline;">· all stages done</span>`}`
+                       : `<span class="zx-tag zx-ok">Completed ✓</span> <span class="sub">${pcDate(r.completed)}${r.completed_by ? " · " + escapeHtml(r.completed_by) : ""}</span>`;
+    const act = !ed ? "" : live ? `<button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); vfComplete(${r.id})">Mark completed</button>`
+                                : `<button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); vfReopen(${r.id})">Reopen</button>`;
+    const row = `<tr class="vf-row" onclick="vfToggle(${r.id})"><td class="l"><span class="vf-who"><b>${escapeHtml(r.person)}</b><small>${[r.group, r.emp_no].filter(Boolean).map(escapeHtml).join(" · ")}</small></span></td>
+      <td class="l">${escapeHtml(r.kind_label)}</td><td class="l"><div class="vf-st">${state}</div><div class="vf-segs">${segs}</div></td>
+      <td class="l">${pcDate(r.started)}</td><td class="n"><b>${money(r.spent)}</b><span class="sub">${r.payments.length} payment${r.payments.length === 1 ? "" : "s"}</span></td><td style="text-align:right;">${act}</td></tr>`;
+    return row + (VF_OPEN === r.id ? vfDetail(r) : "");
+  }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">${VF_ST === "completed" ? "No completed visa files yet." : "No visa files here yet - press + New visa file, or pick Start a new visa file on PRO petty cash."}</td></tr>`;
+  const tot = VF.rows.reduce((a, r) => a + r.spent, 0);
+  document.getElementById("vf-foot").innerHTML = VF.rows.length ? `<tr><td colspan="4" class="l">TOTAL - ${VF.rows.length} file${VF.rows.length === 1 ? "" : "s"}</td><td class="n">${money(tot)}</td><td></td></tr>` : "";
+}
+function vfToggle(id) { VF_OPEN = VF_OPEN === id ? null : id; vfDraw(); }
+function vfDetail(r) {
+  const ed = VF.may_edit, live = r.status === "ongoing";
+  const chips = r.stages.map(st => `<button type="button" class="vf-chip${r.done.includes(st) ? " done" : ""}" data-s="${escapeAttr(st)}"${ed && live ? ` onclick="vfStage(${r.id}, this.dataset.s, ${!r.done.includes(st)})"` : " disabled"}>${escapeHtml(st)}${r.done.includes(st) ? " ✓" : ""}</button>`).join("");
+  const pays = r.payments.length ? `<table class="vf-pays">${r.payments.map(l => `<tr><td style="width:84px;">${pcDate(l.date)}</td><td style="width:180px;"><b>${escapeHtml(l.stage || "-")}</b></td><td>${escapeHtml(l.description)}${l.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(l.supplier)}</span>` : ""}${l.by ? ` <span class="sub" style="display:inline;">· PRO petty cash, by ${escapeHtml(l.by)}</span>` : ""}</td><td class="n" style="width:100px;">${pcMoney(l.amount)}</td><td style="width:70px;text-align:right;">${ed ? `<button class="btn btn-gray btn-sm" onclick="vfUnlink(${r.id}, ${l.id})" title="Untie this payment from the file">Untie</button>` : ""}</td></tr>`).join("")}</table>`
+                               : `<div class="sub" style="margin:4px 0 8px;">No payments tied to this file yet.</div>`;
+  const opts = (VF.unlinked || []).map(u => `<option value="${u.id}">${pcDate(u.date)} · ${escapeHtml(u.description).slice(0, 60)} · ${pcMoney(u.amount)}</option>`).join("");
+  const link = ed && live && opts ? `<div class="vf-link"><span class="sub" style="display:inline;">Tie a PRO payment made before:</span><select id="vf-lp-${r.id}"><option value="">Pick the payment</option>${opts}</select>
+      <select id="vf-ls-${r.id}"><option value="">Stage (optional)</option>${r.stages.map(st => `<option>${escapeHtml(st)}</option>`).join("")}</select><button class="btn btn-gray btn-sm" onclick="vfLink(${r.id})">Tie</button></div>` : "";
+  const del = ed && !r.payments.length ? `<button class="btn btn-gray btn-sm" style="float:right;" onclick="vfDelete(${r.id})">Delete file</button>` : "";
+  return `<tr class="vf-detail"><td colspan="6">${del}<div class="vf-stchips">${chips}</div>${r.note ? `<div class="sub" style="margin-bottom:6px;">Note: ${escapeHtml(r.note)}</div>` : ""}${pays}${link}</td></tr>`;
+}
+async function vfDo(url, body, msg) {
+  try { await apiCall(url, { method: "POST", body: JSON.stringify(body || {}) }); await vfLoad(); if (msg) showStatus("vf-status", "ok", msg); }
+  catch (e) { showStatus("vf-status", "err", errText(e)); }
+}
+function vfStage(id, st, on) { return vfDo(`/store/visa/files/${id}/stage`, { stage: st, done: on }); }
+async function vfComplete(id) {
+  const r = VF.rows.find(x => x.id === id);
+  const left = r.stages.length - r.n_done;
+  if (!await hrAsk(`Mark ${r.person}'s ${r.kind_label.toLowerCase()} completed?${left ? ` ${left} stage${left === 1 ? " is" : "s are"} not ticked.` : ""} It drops off the PRO's list and keeps its costs (AED ${pcMoney(r.spent)}).`, "Mark completed")) return;
+  vfDo(`/store/visa/files/${id}/complete`, {}, `${r.person} - completed.`);
+}
+function vfReopen(id) { return vfDo(`/store/visa/files/${id}/reopen`, {}, "Reopened."); }
+function vfLink(id) {
+  const p = document.getElementById(`vf-lp-${id}`).value; if (!p) return showStatus("vf-status", "err", "Pick the payment to tie.");
+  vfDo(`/store/visa/files/${id}/link`, { petty_id: +p, stage: document.getElementById(`vf-ls-${id}`).value }, "Payment tied to the file.");
+}
+function vfUnlink(id, pid) { return vfDo(`/store/visa/files/${id}/unlink`, { petty_id: pid }, "Payment untied."); }
+async function vfDelete(id) {
+  const r = VF.rows.find(x => x.id === id);
+  if (!await hrAsk(`Delete ${r.person}'s ${r.kind_label.toLowerCase()} file? It has no payments.`, "Delete", true)) return;
+  try { await apiCall(`/store/visa/files/${id}`, { method: "DELETE" }); VF_OPEN = null; await vfLoad(); showStatus("vf-status", "ok", "Deleted."); }
+  catch (e) { showStatus("vf-status", "err", errText(e)); }
+}
+// New visa file: whose (from the staff list, or a name typed), the type, the start date.
+async function vfNew(done) {
+  if (!VF_PEOPLE) { try { VF_PEOPLE = (await apiCall("/store/visa/people")).people; } catch (e) { VF_PEOPLE = []; } }
+  const kinds = (VF && VF.kinds) || (PC_VF && PC_VF.kinds) || [];
+  document.querySelectorAll(".zx-modal.vf-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal vf-m";
+  const lab = p => `${p.name} · ${p.no}${p.staff ? " · office" : ""}${p.left ? " · left" : ""}`;
+  ov.innerHTML = `<div class="zx-box" style="width:520px;"><h3 style="margin:0 0 12px;">New visa file</h3>
+    <label class="pc-f" style="display:block;margin-bottom:10px;"><span>Person</span><input type="text" id="vf-p" list="vf-pl" placeholder="Type a name or ID, e.g. F767" autocomplete="off" data-spell="off" style="width:100%;box-sizing:border-box;"><datalist id="vf-pl">${VF_PEOPLE.map(p => `<option value="${escapeAttr(lab(p))}">`).join("")}</datalist></label>
+    <label class="pc-f" style="display:block;margin-bottom:10px;"><span>Type</span><select id="vf-k">${kinds.map(k => `<option value="${k.id}">${escapeHtml(k.label)} - ${k.stages.length} stages</option>`).join("")}</select></label>
+    <div class="vf-stchips" id="vf-kst" style="margin-bottom:10px;"></div>
+    <div style="display:flex;gap:12px;"><label class="pc-f" style="flex:1;"><span>Started</span><input type="date" id="vf-d" value="${pcToday()}" max="${pcToday()}" style="width:100%;box-sizing:border-box;"></label>
+      <label class="pc-f" style="flex:2;"><span>Note (optional)</span><input type="text" id="vf-n" maxlength="300" style="width:100%;box-sizing:border-box;"></label></div>
+    <div class="status-msg" id="vf-msg" style="margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn btn-gray" id="vf-x">Cancel</button><button type="button" class="btn btn-primary" id="vf-ok">Start file</button></div></div>`;
+  document.body.appendChild(ov);
+  const showSt = () => { const k = kinds.find(x => x.id === ov.querySelector("#vf-k").value); ov.querySelector("#vf-kst").innerHTML = k ? k.stages.map(s => `<span class="vf-chip" style="cursor:default;">${escapeHtml(s)}</span>`).join("") : ""; };
+  ov.querySelector("#vf-k").onchange = showSt; showSt();
+  ov.querySelector("#vf-x").onclick = () => ov.remove();
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector("#vf-ok").onclick = async () => {
+    const typed = ov.querySelector("#vf-p").value.trim();
+    const p = VF_PEOPLE.find(x => lab(x) === typed) || VF_PEOPLE.find(x => x.no && x.no.replace(/-/g, "").toUpperCase() === typed.replace(/-/g, "").toUpperCase());
+    const body = { employee_id: p ? p.id : null, person: p ? "" : typed, kind: ov.querySelector("#vf-k").value, started: ov.querySelector("#vf-d").value, note: ov.querySelector("#vf-n").value };
+    try { const d = await apiCall("/store/visa/files", { method: "POST", body: JSON.stringify(body) }); ov.remove();
+          if (done) return done(d);
+          VF_ST = "ongoing"; VF_OPEN = d.id; await vfLoad(); showStatus("vf-status", "ok", `${d.person} - ${d.kind_label} file started.`); }
+    catch (e) { showStatus("vf-msg", "err", errText(e)); }
+  };
+  setTimeout(() => ov.querySelector("#vf-p").focus(), 50);
+}
+async function vfExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/visa?format=${kind}&status=${VF_ST}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function ppeLoad() {
   try { PE = await apiCall("/store/ppe"); } catch (e) { showStatus("pe-status", "err", errText(e)); return; }
@@ -17899,7 +18030,7 @@ function pcDraw() {
     `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
        <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` +
     (d.rows.map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
-       <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) ? `<span class="sub">${[r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
+       <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) || r.visa_file_id ? `<span class="sub">${[r.visa_file_id ? "Visa file: " + escapeHtml(r.visa_person) + (r.visa_stage ? " · " + escapeHtml(r.visa_stage) : "") : "", r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}${v && zc ? pcZohoMark(r) : ""}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
@@ -17932,6 +18063,45 @@ function pcDescAuto() {
     sup.dataset.auto = prev ? "1" : "";
   }
 }
+// ---- PRO book: the visa file and stage a payment is for --------------------
+let PC_VF = null, PC_VSEL = { file: "", stage: "" };
+async function pcVisaShow() {
+  const box = document.getElementById("pc-visa"); if (!box) return;
+  const on = PC_BOOK === "pro" && PC_KIND === "paid";
+  box.style.display = on ? "" : "none";
+  if (!on) return;
+  if (!PC_VF) { try { PC_VF = await apiCall("/store/visa/open"); } catch (e) { PC_VF = { files: [], kinds: [] }; } }
+  pcVisaDraw();
+}
+function pcVisaDraw() {
+  const sel = document.getElementById("pc-vfile"); if (!sel || !PC_VF) return;
+  const files = PC_VF.files.slice();
+  const cur = PC_VSEL.file && !files.some(f => String(f.id) === String(PC_VSEL.file)) ? (PC_VF.extra || null) : null;
+  if (cur) files.push(cur);
+  sel.innerHTML = `<option value="">- not a visa cost -</option>` + files.map(f => `<option value="${f.id}"${String(f.id) === String(PC_VSEL.file) ? " selected" : ""}>${escapeHtml(f.person)} - ${escapeHtml(f.kind_label)} (${f.n_done} of ${f.stages.length}${f.status === "completed" ? ", completed" : ""})</option>`).join("")
+    + `<option value="new">+ Start a new visa file</option>`;
+  const f = files.find(x => String(x.id) === String(PC_VSEL.file));
+  document.getElementById("pc-vstage-l").style.visibility = f ? "" : "hidden";
+  document.getElementById("pc-vstages").innerHTML = f ? f.stages.map(st => {
+      const done = f.done.includes(st), on = PC_VSEL.stage === st;
+      return `<button type="button" class="vf-chip${on ? " sel" : done ? " done" : ""}" onclick="pcVisaStage(this.dataset.s)" data-s="${escapeAttr(st)}">${escapeHtml(st)}${done && !on ? " ✓" : ""}</button>`; }).join("") : "";
+}
+async function pcVisaPick(v) {
+  if (v === "new") { document.getElementById("pc-vfile").value = PC_VSEL.file; return vfNew(async d => { PC_VF = null; PC_VSEL = { file: String(d.id), stage: "" }; await pcVisaShow(); pcVisaDesc(); }); }
+  PC_VSEL = { file: v, stage: "" }; pcVisaDraw(); pcVisaDesc();
+}
+function pcVisaStage(st) { PC_VSEL.stage = PC_VSEL.stage === st ? "" : st; pcVisaDraw(); pcVisaDesc(); }
+// "Eric Mambo - New visa - Medical test" and the supplier, filled in while
+// the boxes are empty (or still hold what was filled in before).
+function pcVisaDesc() {
+  const f = (PC_VF && PC_VF.files || []).find(x => String(x.id) === String(PC_VSEL.file));
+  const desc = document.getElementById("pc-desc"), sup = document.getElementById("pc-sup");
+  if (!desc.value.trim() || desc.dataset.vauto === desc.value) {
+    desc.value = f ? [f.person, f.kind_label, PC_VSEL.stage].filter(Boolean).join(" - ") : (desc.dataset.vauto === desc.value ? "" : desc.value);
+    desc.dataset.vauto = desc.value;
+  }
+  if (f && !sup.value.trim()) { sup.value = PC_VF.supplier || ""; sup.dataset.auto = "1"; }
+}
 function pcReset() {
   PC_EDIT = null;
   ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
@@ -17939,6 +18109,7 @@ function pcReset() {
   document.getElementById("pc-site").value = "";
   document.getElementById("pc-vat").checked = false; document.getElementById("pc-trn").value = ""; pcVat();
   document.getElementById("pc-date").value = pcToday();
+  PC_VSEL = { file: "", stage: "" }; document.getElementById("pc-desc").dataset.vauto = ""; if (PC_VF) PC_VF.extra = null; pcVisaShow();
   document.getElementById("pc-save").textContent = "Add";
   document.getElementById("pc-cancel").style.display = "none";
   if (PC) pcDraw();
@@ -17958,6 +18129,12 @@ function pcEdit(id) {
   document.getElementById("pc-amt").value = r.received || r.paid;
   document.getElementById("pc-vat").checked = !!r.vat; document.getElementById("pc-trn").value = r.trn || ""; pcVat();
   document.getElementById("pc-rcpt").value = r.receipt_no || "";
+  PC_VSEL = { file: r.visa_file_id ? String(r.visa_file_id) : "", stage: r.visa_stage || "" };
+  document.getElementById("pc-desc").dataset.vauto = "";
+  if (PC_VF) PC_VF.extra = null;
+  if (r.visa_file_id && PC_VF && !PC_VF.files.some(f => f.id === r.visa_file_id))   // a completed file still shows on its own line
+    apiCall(`/store/visa/files?status=all`).then(d => { PC_VF.extra = (d.rows || []).find(f => f.id === r.visa_file_id) || null; pcVisaDraw(); }).catch(() => {});
+  pcVisaShow();
   document.getElementById("pc-save").textContent = "Save changes";
   document.getElementById("pc-cancel").style.display = "";
   pcDraw();
@@ -17971,11 +18148,13 @@ async function pcSave() {
                  received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0, book: PC_BOOK,
                  vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
                  receipt_no: document.getElementById("pc-rcpt").value.trim() };
+  if (PC_BOOK === "pro" && PC_KIND === "paid") { body.visa_file_id = PC_VSEL.file ? +PC_VSEL.file : null; body.visa_stage = PC_VSEL.file ? PC_VSEL.stage : ""; }
   const btn = document.getElementById("pc-save"); btn.disabled = true;
   try {
     if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
     else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
     const was = PC_EDIT;
+    if (body.visa_file_id) PC_VF = null;   // the stage moved on
     // Show the month the line went into.
     if (document.getElementById("pc-range").value !== "all") document.getElementById("pc-month").value = body.date.slice(0, 7);
     pcReset();
