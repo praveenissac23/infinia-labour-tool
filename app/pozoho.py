@@ -142,7 +142,14 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
                      "cancelled": o.status == "cancelled",
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
-    return {"rows": rows}
+    return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}")}
+
+
+@router.post("/store/zoho/pos/hint-seen")
+def hint_seen(db: Session = Depends(get_db), user: models.User = ZG):
+    """The one-time 'click the LPO number to open it' tip, once per login."""
+    M.put_setting(db, f"hint_lpo_open:{user.id}", "1"); db.commit()
+    return {"ok": True}
 
 
 @router.post("/store/zoho/pos/send")

@@ -1576,6 +1576,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* Visa files */
   .pc-protabs { display:flex; gap:8px; margin:0 0 12px; }
   .vf-m .zx-box { max-height:calc(100vh - 40px); overflow-y:auto; }
+  .zh-open { font-weight:700; color:inherit; text-decoration:none; border-bottom:1px dashed #C0392B; } .zh-open:hover { color:#C0392B; }
+  .zh-tip { position:absolute; z-index:9000; background:#C0392B; color:#fff; border-radius:10px; padding:10px 14px; font-size:13px; max-width:290px; box-shadow:0 8px 24px rgba(0,0,0,.2); line-height:1.4; }
+  .zh-tip:before { content:""; position:absolute; top:-7px; left:22px; border:7px solid transparent; border-top:0; border-bottom-color:#C0392B; }
+  .zh-tip button { margin-top:8px; background:#fff; color:#C0392B; border:0; border-radius:6px; padding:4px 12px; font:inherit; font-weight:700; cursor:pointer; }
   .vf-bar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 12px; }
   .vf-pills { display:flex; gap:8px; flex-wrap:wrap; }
   .vf-pill { border:1px solid #E2D8D0; background:#fff; color:#3A3330; border-radius:18px; padding:6px 16px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
@@ -1778,7 +1782,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="2c2351c16df3";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="af66494f31e6";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -17014,7 +17018,7 @@ async function zhLoad() {
       apiCall("/store/zoho/loans").catch(() => ({ rows: [] })), apiCall("/store/zoho/pos").catch(() => ({ rows: [] })),
       apiCall("/store/bank/waiting").catch(() => ({ rows: [] })), zaLoad()]);
     if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
-    ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
+    ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.po_hint = !!pos.hint; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
   // Anything just sent shows on Sent to Zoho without leaving the screen.
   if (ZS || ZH_PANE === "sent") zsLoad();
@@ -17434,8 +17438,9 @@ function zhPosDraw() {
   const fl = flag.length ? `<div class="zh-step" style="border-color:#E8C27A;background:#FFF9EE;"><b>${flag.length} LPO${flag.length === 1 ? "" : "s"} changed or cancelled here after going to Zoho</b> - make the same change in Zoho, then press Done.
       <table class="zh-oct-t" style="margin-top:6px;width:100%;"><tbody>${flag.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b></td><td>${escapeHtml(o.supplier)}</td><td class="n" style="width:110px;">${pcMoney(o.total)}</td><td><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></td><td style="width:110px;text-align:right;"><button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button></td></tr>`).join("")}</tbody></table></div>` : "";
   zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + (o.site ? " · " + o.site : ""), sub: o.supplier, amount: o.total, out: true,
-      err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
+      err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
     "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number. Pick the Zoho account the bill will be booked to - next time the supplier's last account is filled in.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
+  if (ZH_PANE === "lpo") setTimeout(zhPoHint, 250);
 }
 // One list for Bank, LPOs and Loans: tick lines, send one, the ticked ones or all.
 const ZH_SEL = { bank: new Set(), lpo: new Set(), loans: new Set() };
@@ -17452,7 +17457,7 @@ function zhList(kind, rows, elId, title, intro, empty, before, after) {
     ${rows.length ? `<div class="grid-wrap" style="max-height:none;"><table class="pc-table zh-lt"><thead><tr><th style="width:34px;"><input type="checkbox" ${n && n === ok.length ? "checked" : ""} onchange="zhSelAll('${kind}',this.checked)" title="Tick all"></th>
       <th class="l" style="width:84px;">Date</th><th class="l">What</th><th class="n" style="width:120px;">Amount</th><th class="l" style="width:30%;">Status</th><th style="width:90px;"></th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.block ? "zh-fix" : ""}"><td><input type="checkbox" ${sel.has(r.id) ? "checked" : ""} ${r.block ? "disabled" : ""} onchange="zhSel('${kind}',${r.id},this.checked)"></td>
-        <td class="l">${pcDate(r.date)}</td><td class="l"><b>${escapeHtml(r.main || "-")}</b>${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}${r.accPick ? `<div class="zh-poacc">${zaButton(r.acc || "", "paid-cost", r.accPick, "zh-acc")}</div>` : ""}</td>
+        <td class="l">${pcDate(r.date)}</td><td class="l">${r.view ? `<a href="#" class="zh-open" onclick="event.preventDefault(); event.stopPropagation(); ${r.view}" title="Open the LPO">${escapeHtml(r.main || "-")}</a>` : `<b>${escapeHtml(r.main || "-")}</b>`}${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}${r.accPick ? `<div class="zh-poacc">${zaButton(r.acc || "", "paid-cost", r.accPick, "zh-acc")}</div>` : ""}</td>
         <td class="n">${r.out ? "" : "+"}${pcMoney(r.amount)}</td>
         <td class="l">${r.block ? `<span class="zx-tag zx-bad">${escapeHtml(r.block)}</span>` : r.err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.err)}">Zoho refused</span><span class="sub">${escapeHtml(r.err.slice(0, 90))}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`}</td>
         <td style="text-align:right;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>Send</button>`}</td></tr>`).join("")}</tbody></table></div>
@@ -17519,6 +17524,8 @@ function zhPane(k) {
   zhTabsDraw();
   if (k === "suppliers") zhSupLoad(0);
   if (k === "sent") zsLoad();
+  if (k !== "lpo") document.querySelectorAll(".zh-tip").forEach(t => t.remove());
+  if (k === "lpo") setTimeout(zhPoHint, 250);
 }
 async function zhLinkSuppliers(btn) {
   btn.disabled = true; btn.textContent = "Reading Zoho's suppliers...";
@@ -17534,6 +17541,27 @@ async function zhPosSend(btn) {
   try { const d = await apiCall("/store/zoho/pos/send", { method: "POST", body: "{}" }); await zhLoad();
         showStatus("zh-status", d.failed.length ? "err" : "ok", `${d.sent} purchase order${d.sent === 1 ? "" : "s"} in Zoho now.` + (d.failed.length ? ` ${d.failed.length} refused - see the list.` : "")); }
   catch (e) { showStatus("zh-status", "err", errText(e)); btn.disabled = false; }
+}
+// Once per login: an arrow to the first LPO number - click it to open the LPO.
+function zhPoHint() {
+  if (!ZH || !ZH.po_hint || document.querySelector(".zh-tip")) return;
+  const a = document.querySelector("#zh-pos .zh-open"); if (!a || !a.offsetParent) return;
+  const r = a.getBoundingClientRect(), tip = document.createElement("div");
+  tip.className = "zh-tip";
+  tip.innerHTML = `<b>Tip:</b> click the LPO number to open the LPO and see what was ordered - it helps pick the right account.<br><button type="button">Got it</button>`;
+  tip.style.left = (r.left + window.scrollX - 10) + "px"; tip.style.top = (r.bottom + window.scrollY + 10) + "px";
+  document.body.appendChild(tip);
+  ZH.po_hint = false;
+  apiCall("/store/zoho/pos/hint-seen", { method: "POST", body: "{}" }).catch(() => {});
+  const close = () => { tip.remove(); document.removeEventListener("click", away, true); };
+  const away = e => { if (!tip.contains(e.target)) close(); };
+  tip.querySelector("button").onclick = close;
+  setTimeout(() => document.addEventListener("click", away, true), 0);
+}
+// The LPO itself, in a new tab, to see what was ordered before picking the account.
+async function zhPoView(id) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/purchase/${id}?format=pdf&inline=true&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function zhPoAcc(id, v) {
   try { await apiCall(`/store/zoho/pos/${id}/account`, { method: "POST", body: JSON.stringify({ account: v }) });
