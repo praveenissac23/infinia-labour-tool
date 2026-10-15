@@ -1110,6 +1110,27 @@ class VisaFile(Base):
     completed_on = Column(Date, nullable=True)
     completed_by = Column(Integer, nullable=True)
     note = Column(String, default="")
+    # The one PRO petty cash line made when the visa was completed (its
+    # held payments, as one total).
+    posted_id = Column(Integer, nullable=True)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class VisaPayment(Base):
+    """A payment the PRO made for a visa still in progress. Held here - not
+    in petty cash - until the visa is completed; then the total goes into
+    PRO petty cash as one line (and on to Zoho), and these stay as its
+    breakdown."""
+    __tablename__ = "visa_payments"
+    id = Column(Integer, primary_key=True)
+    visa_file_id = Column(Integer, nullable=False, index=True)
+    on_date = Column(Date, nullable=False)
+    step = Column(String, default="")
+    amount = Column(Float, default=0.0)
+    supplier = Column(String, default="")
+    description = Column(String, default="")
+    receipt_no = Column(String, default="")
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

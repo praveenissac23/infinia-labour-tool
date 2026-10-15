@@ -315,22 +315,160 @@ def edit_steps(vid: int, payload: dict = Body(...), db: Session = Depends(get_db
     return _out(db, v)
 
 
+def held_total(db, vid):
+    return round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == vid)), 2)
+
+
+def post_completed(db, v, user_id):
+    """Completed: the payments held for this visa go into PRO petty cash as
+    one line - the person's name and the total - dated today, and from
+    there to the chief accountant's approval for Zoho like any PRO bill."""
+    total = held_total(db, v.id)
+    v.status, v.completed_on, v.completed_by = "completed", M._dubai_today(), user_id
+    if total > 0 and not v.posted_id:
+        n = db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == v.id).count()
+        x = models.PettyCash(book="pro", on_date=M._dubai_today(), description=f"{v.person} - visa expenses ({n} payment{'' if n == 1 else 's'})",
+                             supplier="", site="", received=0, paid=total, visa_file_id=v.id, visa_stage="",
+                             created_by=user_id, updated_by=user_id)
+        db.add(x); db.flush()
+        v.posted_id = x.id
+    db.commit()
+    M.log_action(db, user_id, "visa_complete", f"Visa completed: {v.person}" + (f" - AED {total:,.2f} moved to PRO petty cash" if total > 0 else ""))
+    return total
+
+
 @router.post("/store/visa/files/{vid}/complete")
 def complete(vid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     v = _get(db, vid)
-    v.status, v.completed_on, v.completed_by = "completed", M._dubai_today(), user.id
-    db.commit()
-    M.log_action(db, user.id, "visa_complete", f"Visa file completed: {v.person} - {kind_label(v.kind)}")
+    if v.status != "ongoing":
+        raise HTTPException(status_code=400, detail="This visa is already completed.")
+    post_completed(db, v, user.id)
     return _out(db, v)
 
 
 @router.post("/store/visa/files/{vid}/reopen")
 def reopen(vid: int, db: Session = Depends(get_db), user: models.User = EDIT):
+    """Back to ongoing: its petty cash line is taken out again - only while
+    the chief accountant has not approved it for Zoho."""
     v = _get(db, vid)
+    if v.posted_id:
+        x = db.get(models.PettyCash, v.posted_id)
+        if x and (x.zoho_status or ""):
+            raise HTTPException(status_code=400, detail="Its petty cash line is already approved for Zoho - ask the chief accountant first.")
+        if x:
+            db.delete(x)
+        v.posted_id = None
     v.status, v.completed_on, v.completed_by = "ongoing", None, None
     db.commit()
-    M.log_action(db, user.id, "visa_reopen", f"Visa file reopened: {v.person} - {kind_label(v.kind)}")
+    M.log_action(db, user.id, "visa_reopen", f"Visa reopened: {v.person} (its petty cash line taken out)")
     return _out(db, v)
+
+
+# ---- Visa tab: payments held until the visa is completed ------------------------
+
+def _pay_dict(p, users):
+    return {"id": p.id, "date": p.on_date.isoformat(), "step": p.step or "", "amount": round(p.amount or 0, 2), "supplier": p.supplier or "",
+            "description": p.description or "", "receipt_no": p.receipt_no or "", "by": users.get(p.created_by, "")}
+
+
+def held_listing(db):
+    users = _users(db)
+    pays = {}
+    for p in db.query(models.VisaPayment).order_by(models.VisaPayment.on_date.desc(), models.VisaPayment.id.desc()):
+        pays.setdefault(p.visa_file_id, []).append(_pay_dict(p, users))
+    since = M._dubai_today() - timedelta(days=62)
+    out_on, out_done = [], []
+    for v in db.query(models.VisaFile).order_by(models.VisaFile.person).all():
+        ps = pays.get(v.id, [])
+        d = {"id": v.id, "person": v.person, "emp_no": v.emp_no or "", "started": v.started_on.isoformat(), "status": v.status,
+             "payments": ps, "total": round(sum(x["amount"] for x in ps), 2), "steps": sorted({x["step"] for x in ps if x["step"]}),
+             "completed": v.completed_on.isoformat() if v.completed_on else "", "posted_id": v.posted_id}
+        if v.status == "ongoing":
+            out_on.append(d)
+        elif ps and v.completed_on and v.completed_on >= since:
+            out_done.append(d)
+    out_done.sort(key=lambda d: d["completed"], reverse=True)
+    return {"ongoing": out_on, "completed": out_done, "held": round(sum(d["total"] for d in out_on), 2),
+            "steps": steps_master(db), "today": M._dubai_today().isoformat()}
+
+
+@router.get("/store/visa/held")
+def get_held(db: Session = Depends(get_db), user: models.User = LOOK):
+    return held_listing(db)
+
+
+def _clean_pay(db, payload):
+    d = M._as_date(payload.get("date")) or M._dubai_today()
+    if d > M._dubai_today():
+        raise HTTPException(status_code=400, detail="That date is in the future.")
+    try:
+        amt = round(float(str(payload.get("amount") or 0).replace(",", "")), 2)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="The amount must be a number.")
+    if amt <= 0:
+        raise HTTPException(status_code=400, detail="Enter the amount paid.")
+    clip = lambda k, n: " ".join(str(payload.get(k) or "").split())[:n]
+    return {"on_date": d, "amount": amt, "step": add_step(db, payload.get("step") or ""), "supplier": clip("supplier", 120),
+            "description": clip("description", 300), "receipt_no": clip("receipt_no", 40)}
+
+
+@router.post("/store/visa/payments")
+def add_payment(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    who = " ".join(str(payload.get("person") or "").split())[:80]
+    if not who:
+        raise HTTPException(status_code=400, detail="Whose visa? Pick a name or type a new one.")
+    c = _clean_pay(db, payload)
+    v = file_for(db, who, user.id, c["on_date"])
+    p = models.VisaPayment(visa_file_id=v.id, created_by=user.id, **c)
+    db.add(p)
+    if c["step"]:
+        tick(v, c["step"])
+    db.commit()
+    M.log_action(db, user.id, "visa_payment", f"Visa {v.person}: {c['step'] or 'payment'} AED {c['amount']:,.2f} (held until completed)")
+    if payload.get("complete"):
+        post_completed(db, v, user.id)
+    return {"ok": True, "file_id": v.id}
+
+
+def _held_pay(db, pid):
+    p = db.get(models.VisaPayment, pid)
+    if not p:
+        raise HTTPException(status_code=404, detail="That payment is no longer there.")
+    v = db.get(models.VisaFile, p.visa_file_id)
+    if not v or v.status != "ongoing":
+        raise HTTPException(status_code=400, detail="This visa is completed - reopen it first.")
+    return p, v
+
+
+@router.put("/store/visa/payments/{pid}")
+def edit_payment(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
+    p, v = _held_pay(db, pid)
+    for k, val in _clean_pay(db, payload).items():
+        setattr(p, k, val)
+    if p.step:
+        tick(v, p.step)
+    db.commit()
+    M.log_action(db, user.id, "visa_payment_edit", f"Visa {v.person}: payment #{pid} now {p.step or 'payment'} AED {p.amount:,.2f}")
+    return {"ok": True}
+
+
+@router.delete("/store/visa/payments/{pid}")
+def remove_payment(pid: int, db: Session = Depends(get_db), user: models.User = EDIT):
+    p, v = _held_pay(db, pid)
+    M.log_action(db, user.id, "visa_payment_delete", f"Visa {v.person}: payment {p.step or ''} AED {p.amount:,.2f} removed")
+    db.delete(p); db.commit()
+    return {"ok": True}
+
+
+@router.get("/store/visa/files/{vid}/breakdown")
+def breakdown(vid: int, db: Session = Depends(get_db), user: models.User = LOOK):
+    """What a 'visa expenses' petty cash line is made of."""
+    v = _get(db, vid)
+    users = _users(db)
+    ps = [_pay_dict(p, users) for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == vid)
+          .order_by(models.VisaPayment.on_date, models.VisaPayment.id)]
+    return {"person": v.person, "completed": v.completed_on.isoformat() if v.completed_on else "", "payments": ps,
+            "total": round(sum(x["amount"] for x in ps), 2)}
 
 
 @router.delete("/store/visa/files/{vid}")

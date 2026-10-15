@@ -113,7 +113,8 @@ def register(db, month, book="site"):
                     "vat": bool(x.vat), "trn": x.trn or "", "receipt_no": x.receipt_no or "", "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "",
                     "zoho_account": x.zoho_account or "", "zoho_err": x.zoho_err or "",
                     "visa_file_id": x.visa_file_id, "visa_stage": x.visa_stage or "",
-                    "visa_person": vfiles[x.visa_file_id].person if x.visa_file_id in vfiles else ""})
+                    "visa_person": vfiles[x.visa_file_id].person if x.visa_file_id in vfiles else "",
+                    "visa_total": bool(x.visa_file_id in vfiles and vfiles[x.visa_file_id].posted_id == x.id)})
     rec = round(sum(r["received"] for r in out), 2)
     paid = round(sum(r["paid"] for r in out), 2)
     by_site = {}
@@ -123,7 +124,14 @@ def register(db, month, book="site"):
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
     first = rows[0].on_date if rows else a
     label = (f"Full history - {first:%d %b %Y} to {M._dubai_today():%d %b %Y}" if whole else f"{a:%B %Y}")
-    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
+    held = 0.0
+    if book == "pro":
+        # Visa payments made but held until each visa is completed: the cash
+        # has left the box, so Balance in hand takes them off.
+        ongoing = [v.id for v in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").all()]
+        if ongoing:
+            held = round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id.in_(ongoing))), 2)
+    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "visa_held": held, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
             "opening": opening, "rows": out, "received": rec, "paid": paid,
             "zoho_start": M.get_setting(db, "zoho_start") or "2026-10-01",
@@ -199,6 +207,15 @@ def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models
     return {"trn": ""}
 
 
+def _visa_total_guard(db, x, action):
+    """A completed visa's total line is made on the Visa tab - changed there
+    (reopen the visa), so it always equals its payments."""
+    if x.visa_file_id:
+        v = db.get(models.VisaFile, x.visa_file_id)
+        if v and v.posted_id == x.id:
+            raise HTTPException(status_code=400, detail=f"This is {v.person}'s visa total - to {action} it, reopen the visa on the Visa tab.")
+
+
 def _visa(db, x, payload, new=False):
     """PRO book, "Visa related expense?" Yes: whose visa (an ongoing one, or
     a new name typed - that opens a new visa by itself), the step, and
@@ -256,6 +273,7 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
     _zoho_guard(user, x, "change")
+    _visa_total_guard(db, x, "change")
     was = (x.on_date, round(x.received or 0, 2), round(x.paid or 0, 2))
     new = _clean(payload)
     moved = any(getattr(x, k) != v for k, v in new.items())
@@ -283,6 +301,7 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
     _zoho_guard(user, x, "remove")
+    _visa_total_guard(db, x, "remove")
     if (x.zoho_status or "") in ("sent", "inzoho", "changed"):
         try:
             import watch

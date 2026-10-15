@@ -1578,6 +1578,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-filter input[type=text] { width:240px; }
   /* Visa files */
   .pc-protabs { display:flex; gap:8px; margin:0 0 12px; }
+  /* PRO > Visa: payments held until the visa is completed */
+  .vh-form .vh-who, .vh-form .vh-desc { grid-column: span 2; }
+  #vh-new { font-size:11.5px; color:#8A6200; margin-top:3px; }
+  .vh-table td { vertical-align:middle; } .vh-steps { display:flex; flex-wrap:wrap; gap:4px; } .vh-steps span { font-size:11.5px; background:#E7F4EA; color:#2E7D32; border-radius:10px; padding:2px 8px; }
+  .vh-acts { display:flex; gap:6px; justify-content:flex-end; flex-wrap:nowrap; }
+  .vh-detail td { background:#FBF8F5; padding:6px 14px !important; } .vh-pays { width:100%; border-collapse:collapse; font-size:12.5px; } .vh-pays td { padding:5px 6px; border-bottom:1px solid #EFE7E0; text-align:left; }
+  .pc-held { display:block; font-size:11px; color:#8A6200; font-weight:600; margin-top:2px; }
+  .pc-vbd { color:#C0392B; text-decoration:none; border-bottom:1px dashed #C0392B; }
+
   .vf-m .zx-box { max-height:calc(100vh - 40px); overflow-y:auto; }
   .zh-open { font-weight:700; color:inherit; text-decoration:none; border-bottom:1px dashed #C0392B; } .zh-open:hover { color:#C0392B; }
   .zh-tip { position:absolute; z-index:9000; background:#C0392B; color:#fff; border-radius:10px; padding:10px 14px; font-size:13px; max-width:290px; box-shadow:0 8px 24px rgba(0,0,0,.2); line-height:1.4; }
@@ -1799,7 +1808,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="d529a12ce693";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="0ad16644e203";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3588,6 +3597,29 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
         <!-- ============ PETTY CASH ============ -->
         <div class="screen" id="screen-pettycash">
+          <div class="pc-protabs" id="pc-protabs" style="display:none;"><button type="button" class="vf-pill on" data-v="cash" onclick="pcView('cash')">General</button><button type="button" class="vf-pill" data-v="visa" onclick="pcView('visa')">Visa</button></div>
+          <div id="pc-visapane" style="display:none;">
+          <div class="card">
+            <div class="pc-head"><div class="pc-title"><h2 style="margin:0;">Visa expenses <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Held here until the visa is completed - then the total moves to General as one line, for the chief accountant to send to Zoho</span></h2></div></div>
+            <div class="pc-stats" id="vh-stats" style="grid-template-columns:repeat(2,minmax(0,280px));"></div>
+            <div class="status-msg" id="vh-status"></div>
+            <div class="pc-form vat vh-form" id="vh-form">
+              <label class="pc-f"><span>Date</span><input type="date" id="vh-date"></label>
+              <label class="pc-f vh-who"><span>Whose visa? <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new name)</span></span><input type="text" id="vh-person" list="vh-person-list" placeholder="e.g. Eric Mambo" autocomplete="off" data-spell="off" oninput="vhWhoNote()"><datalist id="vh-person-list"></datalist><span class="sub" id="vh-new" style="display:none;"></span></label>
+              <label class="pc-f"><span>Step <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new one)</span></span><input type="text" id="vh-step" list="vh-step-list" placeholder="e.g. Medical and EID" autocomplete="off" data-spell="off"><datalist id="vh-step-list"></datalist></label>
+              <label class="pc-f"><span>Paid (AED)</span><input type="text" inputmode="decimal" id="vh-amt" placeholder="0.00"></label>
+              <label class="pc-f"><span>Supplier / contact</span><input type="text" id="vh-sup" placeholder="Optional" maxlength="120" data-spell="off"></label>
+              <label class="pc-f vh-desc"><span>Description</span><input type="text" id="vh-desc" placeholder="Optional" maxlength="300"></label>
+              <label class="pc-f"><span>Receipt no.</span><input type="text" id="vh-rcpt" placeholder="Optional" maxlength="40" data-spell="off"></label>
+              <div class="pc-f pc-go"><button class="btn btn-gray" id="vh-cancel" onclick="vhReset()" style="display:none;">Cancel</button><button class="btn btn-primary" id="vh-save" onclick="vhSave()">Add</button></div>
+            </div>
+          </div>
+          <div class="card pc-card">
+            <h3 style="margin:0 0 8px;font-size:15px;">Ongoing visas</h3>
+            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vh-table"><thead><tr><th class="l" style="width:220px;">Whose visa</th><th class="l">Steps paid</th><th style="width:90px;">Payments</th><th class="n" style="width:130px;">Held (AED)</th><th style="width:340px;"></th></tr></thead><tbody id="vh-body"></tbody><tfoot id="vh-foot"></tfoot></table></div>
+            <div id="vh-done"></div>
+          </div>
+          </div>
           <div id="pc-cashpane">
           <div class="card">
             <div class="pc-head">
@@ -3618,14 +3650,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
                 <button class="btn btn-gray" id="pc-cancel" onclick="pcReset()" style="display:none;">Cancel</button>
-              </div>
-              <div class="pc-visa" id="pc-visa" style="display:none;">
-                <div class="pc-f"><span>Visa related expense?</span><div class="vf-yn" id="pc-vyn"><button type="button" data-v="no" class="vf-pill on" onclick="pcVisaYes(false)">No</button><button type="button" data-v="yes" class="vf-pill" onclick="pcVisaYes(true)">Yes</button></div></div>
-                <div class="pc-vmore" id="pc-vmore" style="display:none;">
-                  <label class="pc-f"><span>Whose visa? <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new name)</span></span><input type="text" id="pc-vperson" list="pc-vperson-list" placeholder="e.g. Eric Mambo" autocomplete="off" data-spell="off" oninput="pcVisaWho(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('pc-vstep').focus()}"><datalist id="pc-vperson-list"></datalist><span class="sub" id="pc-vnew" style="display:none;"></span></label>
-                  <label class="pc-f"><span>Step <span class="sub" style="display:inline;font-weight:400;text-transform:none;">(pick, or type a new one)</span></span><input type="text" id="pc-vstep" list="pc-vstep-list" placeholder="e.g. Medical and EID" autocomplete="off" data-spell="off" oninput="PC_VSEL.stage=this.value.trim()"><datalist id="pc-vstep-list"></datalist></label>
-                  <div class="pc-f"><span>Visa process status</span><div class="vf-yn" id="pc-vdone"><button type="button" data-v="no" class="vf-pill on" onclick="pcVisaDone(false)">Not completed</button><button type="button" data-v="yes" class="vf-pill" onclick="pcVisaDone(true)">Completed</button></div></div>
-                </div>
               </div>
             </div>
           </div>
@@ -18342,6 +18366,8 @@ async function loadPettyCash() {
   if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
   if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
   document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
+  document.getElementById("pc-protabs").style.display = PC_BOOK === "pro" ? "" : "none";
+  if (PC_BOOK !== "pro" && PC_VIEW !== "cash") pcView("cash");
 
   window.__pcLoad = { book: PC_BOOK, t: Date.now() };
   const book = PC_BOOK;
@@ -18382,7 +18408,8 @@ function pcHead(showSup = !!pcTerms().supplier, showSite = true) {
 
 function pcDraw() {
   const d = PC;
-  const hand = d.closing;
+  const held = d.book === "pro" ? (d.visa_held || 0) : 0;
+  const hand = Math.round((d.closing - held) * 100) / 100;
   const t = pcTerms(d.book);
   const pair = (rec, paid) => t.director ? [paid, rec] : [rec, paid];
   const when = d.all ? " in all" : " this month";
@@ -18390,7 +18417,7 @@ function pcDraw() {
                      `<div class="pc-stat"><span>${escapeHtml(t.out + when)}</span><b>${pcMoney(d.paid)}</b></div>`);
   document.getElementById("pc-stats").innerHTML = `
     <div class="pc-stat"><span>Brought forward</span><b>${pcMoney(d.opening)}</b></div>${stats.join("")}
-    <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b></div>`;
+    <div class="pc-stat hand${hand < 0 ? " neg" : ""}"><span>${escapeHtml(t.balance)}</span><b>${pcMoney(hand)}</b>${held ? `<small class="pc-held" title="Paid out for visas still in progress - on the Visa tab, not in petty cash yet">after AED ${pcMoney(held)} visa payments held</small>` : ""}</div>`;
   const cell = v => v ? pcMoney(v) : "";
   const sup = !!t.supplier && d.rows.some(r => r.supplier), site = d.rows.some(r => r.site);
   pcHead(sup, site);
@@ -18400,11 +18427,11 @@ function pcDraw() {
   // balance brought forward sits at the bottom, where the month starts.
   document.getElementById("pc-body").innerHTML =
     (d.rows.slice().reverse().map(r => `<tr${PC_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td>
-       <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) || r.visa_file_id ? `<span class="sub">${[r.visa_file_id ? "Visa file: " + escapeHtml(r.visa_person) + (r.visa_stage ? " · " + escapeHtml(r.visa_stage) : "") : "", r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
+       <td class="l">${escapeHtml(r.description)}${r.by || (zc && r.vat) || r.visa_file_id ? `<span class="sub">${[r.visa_file_id ? `<a href="#" class="pc-vbd" onclick="event.preventDefault(); vhBreakdown(${r.visa_file_id})">Visa: ${escapeHtml(r.visa_person)}${r.visa_stage ? " · " + escapeHtml(r.visa_stage) : ""} - see breakdown</a>` : "", r.by ? "by " + escapeHtml(r.by) : "", zc && r.vat ? "VAT" + (r.trn ? " · TRN " + escapeHtml(r.trn) : " · no TRN") : ""].filter(Boolean).join(" · ")}</span>` : ""}</td>
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}${v && zc ? pcZohoMark(r) : ""}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
-       <td class="pc-act">${pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+       <td class="pc-act">${r.visa_total ? `<span class="sub" title="Made from the Visa tab - reopen the visa there to change it">Visa total - change on the Visa tab</span>` : pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
      || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`) + (d.rows.length ? `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
        <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` : "");
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
@@ -18433,7 +18460,107 @@ function pcDescAuto() {
 }
 // PRO book: Petty cash | Visa files, inside the PRO tab.
 let PC_VIEW = "cash";
-function pcView(v) { PC_VIEW = "cash"; }     // Visa files tab removed - petty cash only
+// PRO: General (petty cash) | Visa (payments held until each visa is done).
+function pcView(v) {
+  PC_VIEW = PC_BOOK === "pro" && v === "visa" ? "visa" : "cash";
+  document.querySelectorAll("#pc-protabs .vf-pill").forEach(b => b.classList.toggle("on", b.dataset.v === PC_VIEW));
+  document.getElementById("pc-cashpane").style.display = PC_VIEW === "cash" ? "" : "none";
+  document.getElementById("pc-visapane").style.display = PC_VIEW === "visa" ? "" : "none";
+  if (PC_VIEW === "visa") vhLoad(); else if (PC_BOOK === "pro" && VH_DIRTY) { VH_DIRTY = false; loadPettyCash(); }
+}
+// ---- PRO > Visa: payments held until each visa is completed ----------------
+let VH = null, VH_EDIT = null, VH_OPEN = null, VH_DIRTY = false;
+async function vhLoad() {
+  try { VH = await apiCall("/store/visa/held"); } catch (e) { showStatus("vh-status", "err", errText(e)); return; }
+  const d = document.getElementById("vh-date"); if (!d.value) d.value = VH.today; d.max = VH.today;
+  vhDraw();
+}
+function vhSetList(id, items) { const dl = document.getElementById(id), h = items.map(x => `<option value="${escapeAttr(x)}">`).join(""); if (dl.dataset.html !== h) { dl.innerHTML = h; dl.dataset.html = h; } }
+function vhWhoNote() {
+  const el = document.getElementById("vh-new"), who = (document.getElementById("vh-person").value || "").trim();
+  const known = !who || (VH && VH.ongoing.some(v => v.person.toLowerCase() === who.toLowerCase()));
+  el.style.display = known ? "none" : ""; el.textContent = known ? "" : `New visa - opened for ${who} when you press Add.`;
+}
+function vhDraw() {
+  vhSetList("vh-person-list", VH.ongoing.map(v => v.person));
+  vhSetList("vh-step-list", VH.steps || []);
+  document.getElementById("vh-stats").innerHTML =
+    `<div class="pc-stat"><span>Ongoing visas</span><b>${VH.ongoing.length}</b></div>
+     <div class="pc-stat hand"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
+  document.getElementById("vh-body").innerHTML = VH.ongoing.map(v => {
+    const row = `<tr><td class="l"><b>${escapeHtml(v.person)}</b>${v.emp_no ? `<span class="sub">${escapeHtml(v.emp_no)}</span>` : ""}<span class="sub">since ${pcDate(v.started)}</span></td>
+      <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
+      <td>${v.payments.length}</td><td class="n"><b>${pcMoney(v.total)}</b></td>
+      <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Hide" : "View"}</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
+    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5">${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
+    return row + det;
+  }).join("") || `<tr><td colspan="5" class="sub" style="padding:16px;">No visa in progress. Type a name under Whose visa to start one.</td></tr>`;
+  document.getElementById("vh-foot").innerHTML = VH.ongoing.length ? `<tr><td colspan="3" class="l">TOTAL HELD</td><td class="n">${pcMoney(VH.held)}</td><td></td></tr>` : "";
+  document.getElementById("vh-done").innerHTML = VH.completed.length ? `<h3 style="margin:16px 0 8px;font-size:15px;">Completed - moved to General</h3>
+    <table class="pc-table"><tbody>${VH.completed.map(v => `<tr><td class="l" style="width:220px;"><b>${escapeHtml(v.person)}</b></td><td class="l">Completed ${pcDate(v.completed)} · ${v.payments.length} payment${v.payments.length === 1 ? "" : "s"}</td><td class="n" style="width:130px;"><b>${pcMoney(v.total)}</b></td>
+      <td style="width:250px;"><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhBreakdown(${v.id})">Breakdown</button><button class="btn btn-gray btn-sm" onclick="vhReopen(${v.id})">Reopen</button></div></td></tr>`).join("")}</tbody></table>` : "";
+  vhWhoNote();
+}
+function vhToggle(id) { VH_OPEN = VH_OPEN === id ? null : id; vhDraw(); }
+function vhPick(name) { vhReset(); document.getElementById("vh-person").value = name; vhWhoNote(); document.getElementById("vh-step").focus(); }
+function vhReset() {
+  VH_EDIT = null; ["vh-person", "vh-step", "vh-amt", "vh-sup", "vh-desc", "vh-rcpt"].forEach(i => document.getElementById(i).value = "");
+  document.getElementById("vh-person").disabled = false;
+  document.getElementById("vh-date").value = (VH && VH.today) || pcToday();
+  document.getElementById("vh-save").textContent = "Add"; document.getElementById("vh-cancel").style.display = "none"; if (VH) vhWhoNote();
+}
+function vhEdit(fid, pid) {
+  const v = VH.ongoing.find(x => x.id === fid), p = v && v.payments.find(x => x.id === pid); if (!p) return;
+  VH_EDIT = pid;
+  document.getElementById("vh-person").value = v.person; document.getElementById("vh-person").disabled = true;
+  document.getElementById("vh-date").value = p.date; document.getElementById("vh-step").value = p.step; document.getElementById("vh-amt").value = p.amount;
+  document.getElementById("vh-sup").value = p.supplier; document.getElementById("vh-desc").value = p.description; document.getElementById("vh-rcpt").value = p.receipt_no;
+  document.getElementById("vh-save").textContent = "Save changes"; document.getElementById("vh-cancel").style.display = "";
+  document.getElementById("vh-form").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+async function vhSave() {
+  const g = id => document.getElementById(id).value.trim();
+  const body = { person: g("vh-person"), date: g("vh-date"), step: g("vh-step"), amount: g("vh-amt").replace(/,/g, ""), supplier: g("vh-sup"), description: g("vh-desc"), receipt_no: g("vh-rcpt") };
+  if (!body.person) return showStatus("vh-status", "err", "Whose visa? Pick a name or type a new one.");
+  const b = document.getElementById("vh-save"); b.disabled = true;
+  try {
+    if (VH_EDIT) await apiCall(`/store/visa/payments/${VH_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
+    else await apiCall("/store/visa/payments", { method: "POST", body: JSON.stringify(body) });
+    const was = VH_EDIT; VH_DIRTY = true; vhReset(); await vhLoad();
+    showStatus("vh-status", "ok", was ? "Saved." : `Held for ${body.person} - goes to petty cash when the visa is completed.`);
+  } catch (e) { showStatus("vh-status", "err", errText(e)); }
+  finally { b.disabled = false; }
+}
+async function vhDel(pid) {
+  if (!await hrAsk("Remove this visa payment?", "Remove", true)) return;
+  try { await apiCall(`/store/visa/payments/${pid}`, { method: "DELETE" }); VH_DIRTY = true; await vhLoad(); showStatus("vh-status", "ok", "Removed."); }
+  catch (e) { showStatus("vh-status", "err", errText(e)); }
+}
+async function vhComplete(id) {
+  const v = VH.ongoing.find(x => x.id === id); if (!v) return;
+  if (!await hrAsk(`Mark ${v.person}'s visa completed?\n\nAED ${pcMoney(v.total)} (${v.payments.length} payment${v.payments.length === 1 ? "" : "s"}) goes into General petty cash today as one line "${v.person} - visa expenses", and from there to the chief accountant for Zoho.`, "Mark completed")) return;
+  try { await apiCall(`/store/visa/files/${id}/complete`, { method: "POST", body: "{}" }); VH_DIRTY = true; await vhLoad();
+        showStatus("vh-status", "ok", `${v.person}: completed - AED ${pcMoney(v.total)} moved to General.`); }
+  catch (e) { showStatus("vh-status", "err", errText(e)); }
+}
+async function vhReopen(id) {
+  const v = VH.completed.find(x => x.id === id); if (!v) return;
+  if (!await hrAsk(`Reopen ${v.person}'s visa? Its line comes out of General petty cash again (only while the chief accountant has not approved it).`, "Reopen")) return;
+  try { await apiCall(`/store/visa/files/${id}/reopen`, { method: "POST", body: "{}" }); VH_DIRTY = true; await vhLoad(); showStatus("vh-status", "ok", `${v.person}: back to ongoing.`); }
+  catch (e) { showStatus("vh-status", "err", errText(e)); }
+}
+// The payments behind a "visa expenses" line.
+async function vhBreakdown(fid) {
+  let d; try { d = await apiCall(`/store/visa/files/${fid}/breakdown`); } catch (e) { return showStatus("pc-status", "err", errText(e)); }
+  document.querySelectorAll(".zx-modal.vh-m").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal vh-m";
+  ov.innerHTML = `<div class="zx-box" style="width:640px;max-height:calc(100vh - 40px);overflow-y:auto;"><h3 style="margin:0 0 2px;">${escapeHtml(d.person)} - visa expenses</h3><div class="sub" style="margin-bottom:10px;">${d.completed ? "Completed " + pcDate(d.completed) : "In progress"} · ${d.payments.length} payment${d.payments.length === 1 ? "" : "s"}</div>
+    <table class="vh-pays">${d.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td><b>${escapeHtml(p.step || "-")}</b>${p.description ? `<span class="sub">${escapeHtml(p.description)}</span>` : ""}</td><td>${escapeHtml(p.supplier)}</td><td style="text-align:right;width:100px;">${pcMoney(p.amount)}</td></tr>`).join("") || `<tr><td class="sub">No held payments (paid before the Visa tab).</td></tr>`}
+    <tr><td></td><td><b>Total</b></td><td></td><td style="text-align:right;"><b>${pcMoney(d.total)}</b></td></tr></table>
+    <div style="text-align:right;margin-top:12px;"><button type="button" class="btn btn-gray">Close</button></div></div>`;
+  ov.addEventListener("click", e => { if (e.target === ov || e.target.textContent === "Close") ov.remove(); });
+  document.body.appendChild(ov);
+}
 // ---- PRO book: the visa file and stage a payment is for --------------------
 let PC_VF = null, PC_VSEL = { yes: false, person: "", stage: "", done: false };
 async function pcVisaShow() {
@@ -18512,17 +18639,11 @@ async function pcSave() {
                  received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0, book: PC_BOOK,
                  vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
                  receipt_no: document.getElementById("pc-rcpt").value.trim() };
-  if (PC_BOOK === "pro" && PC_KIND === "paid") {
-    if (PC_VSEL.yes && !PC_VSEL.person) return showStatus("pc-status", "err", "Visa related: type or pick whose visa.");
-    body.visa_person = PC_VSEL.yes ? PC_VSEL.person : "";
-    body.visa_stage = PC_VSEL.yes ? PC_VSEL.stage : ""; body.visa_complete = PC_VSEL.yes && PC_VSEL.done;
-  }
   const btn = document.getElementById("pc-save"); btn.disabled = true;
   try {
     if (PC_EDIT) await apiCall(`/store/petty-cash/${PC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
     else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
     const was = PC_EDIT;
-    if (body.visa_person) PC_VF = null;   // a new visa, or one completed
     // Show the month the line went into.
     if (document.getElementById("pc-range").value !== "all") document.getElementById("pc-month").value = body.date.slice(0, 7);
     pcReset();
@@ -20852,7 +20973,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=8008fb5c7b"></script>
+<script src="/portal/help/guides.js?v=b9b34aa0a4"></script>
 <script src="/portal/help/auto_guides.js?v=0957d949d2"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

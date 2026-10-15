@@ -16,5 +16,5 @@ ok(Z.vendor_by_name(s, "Dubai") == "", "two Dubai vendors: none picked")
 ok(Z.vendor_by_name(s, "ADNOC") == "", "unknown: none")
 s.add_all([models.PettyCash(book="site", on_date=M._dubai_today(), description="x", supplier="SALARY", paid=50, zoho_todo="supplier"),
            models.PettyCash(book="site", on_date=M._dubai_today(), description="x", supplier="ENOC", paid=35, zoho_todo="supplier")]); s.commit()
-ok(Z.clear_not_vendor_todo(s) == 1 and Z.clear_not_vendor_todo(s) == 0, "cleanup: SALARY off the list once, ENOC stays")
+ok(Z.clear_not_vendor_todo(s) == 2 and Z.clear_not_vendor_todo(s) == 0, "cleanup: petty cash lines off the Needs attention list, once")
 print("ALL PASS" if all(f) else "FAILED")

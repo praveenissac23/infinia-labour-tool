@@ -579,7 +579,12 @@ def push(db, x):
     d = call(db, "POST", "expenses", body=body)
     # Supplier typed but not a Zoho vendor yet: on the chief accountant's
     # list to add in Zoho (he chose to send without it).
-    x.zoho_todo = "supplier" if named and not vendor else ""
+    # Small petty cash shops (a tea seller, a hardware counter) are not Zoho
+    # vendors and need not be: the supplier rides in the description. Only a
+    # bill whose VAT is claimed needs its vendor in Zoho, so only that one is
+    # put on "Needs attention".
+    claim = bool(x.vat) and (getattr(x, "vat_claim", "") or "claim") == "claim"
+    x.zoho_todo = "supplier" if named and not vendor and claim else ""
     return f"expense:{d['expense']['expense_id']}", "Expense" + (" (itemised)" if parts else "")
 
 
@@ -895,14 +900,14 @@ def vendor_by_name(db, name):
 
 
 def clear_not_vendor_todo(db):
-    """Once: lines on Needs attention only because SALARY (or the like)
-    was typed as the supplier - nothing to add in Zoho."""
-    if db.query(models.Setting).filter(models.Setting.key == "zoho_todo_notvendor").first():
+    """Once: petty cash lines are no longer listed for a missing Zoho vendor
+    (small shops need not be vendors) - clear the ones already listed."""
+    if db.query(models.Setting).filter(models.Setting.key == "zoho_todo_petty_off").first():
         return 0
     n = 0
     for x in db.query(models.PettyCash).filter(models.PettyCash.zoho_todo == "supplier").all():
-        if not_vendor(x.supplier):
+        if not (x.vat and (x.vat_claim or "claim") == "claim"):
             x.zoho_todo = ""; n += 1
-    db.add(models.Setting(key="zoho_todo_notvendor", value=str(n)))
+    db.add(models.Setting(key="zoho_todo_petty_off", value=str(n)))
     db.commit()
     return n
