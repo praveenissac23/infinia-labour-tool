@@ -60,4 +60,23 @@ c.post("/employees/expiry/started", headers=H, json={"type": "person", "id": e, 
 st = {x["id"] for x in c.get("/employees/expiry/started", headers=H).json()["rows"]}
 ck("undo takes the mark off the group", lc not in st and e not in st, st)
 s.close()
+
+# ---- Close: set new expiry, or delete the entry ----
+x = c.get(f"/employees/expiry/close?type=person&id={lc}", headers=H).json()
+ck("Close pop-up: his labour card and EID (visa already renewed)", sorted(d["id"] for d in x["docs"]) == sorted([lc, e]), x)
+r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": lc, "dates": {str(lc): D(5)}})
+ck("a date before the old one is refused", r.status_code == 400, r.text)
+c.post("/employees/expiry/started", headers=H, json={"type": "person", "id": lc, "on": True})
+r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": lc, "dates": {str(lc): D(731), str(e): D(732)}})
+ck("Set new expiry: both dates saved", r.status_code == 200 and r.json()["n"] == 2, r.text)
+docs = {d["id"]: d for d in c.get("/employees/documents", headers=H).json()["rows"]}
+ck("new dates on file", docs[lc]["expires_on"] == D(731) and docs[e]["expires_on"] == D(732), (docs[lc], docs[e]))
+st = {x["id"] for x in c.get("/employees/expiry/started", headers=H).json()["rows"]}
+ck("started mark cleared on close", lc not in st and e not in st, st)
+r = c.post("/employees/expiry/remove", headers=H, json={"type": "person", "id": pp})
+docs = {d["id"] for d in c.get("/employees/documents", headers=H).json()["rows"]}
+ck("Delete entry: the passport is gone", r.status_code == 200 and pp not in docs and lc in docs, r.text)
+s = SessionLocal()
+ck("closing and deleting are in the activity log", s.query(models.AuditLog).filter(models.AuditLog.action.in_(["expiry_closed", "expiry_removed"])).count() == 2)
+s.close()
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}"); sys.exit(1 if FAIL else 0)

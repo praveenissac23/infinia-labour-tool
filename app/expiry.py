@@ -262,6 +262,83 @@ def set_started(payload: dict = Body(...), db: Session = Depends(get_db), user: 
     return {"ok": True, "on": bool(payload.get("on", True))}
 
 
+# ---- Closed: the renewal is done - the new date goes in (or the entry goes) ----
+
+def _find(db, payload):
+    t = (payload.get("type") or "").strip()
+    try:
+        i = int(payload.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Which document?")
+    raw = _raw_items(db)
+    item = next((x for x in raw if x["type"] == t and x["id"] == i), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="That document is not on file.")
+    return item, group_members(raw, item)
+
+
+def _years(kind):
+    return 2 if kind in GROUP else 1
+
+
+@router.get("/employees/expiry/close")
+def close_info(type: str = "", id: int = 0, db: Session = Depends(get_db), user: models.User = M.DOCS):
+    """What the Close pop-up asks for: the new date of each document in the renewal."""
+    item, members = _find(db, {"type": type, "id": id})
+    out = []
+    for x in members:
+        old = M._as_date(x["expires_on"])
+        try:
+            sug = old.replace(year=old.year + _years(x.get("kind")))
+        except ValueError:                       # 29 Feb
+            sug = old.replace(year=old.year + _years(x.get("kind")), day=28)
+        out.append({"id": x["id"], "what": x["what"], "expires_on": x["expires_on"], "suggest": sug.isoformat()})
+    return {"who": item["who"], "what": GROUP_LABEL if len(members) > 1 else item["what"], "type": item["type"], "docs": out}
+
+
+@router.post("/employees/expiry/close")
+def close(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = M.DOCS):
+    """Renewal closed: each document gets its new expiry date, the 'started' mark goes."""
+    item, members = _find(db, payload)
+    dates = {str(k): v for k, v in (payload.get("dates") or {}).items()}
+    new = {}
+    for x in members:
+        d = M._as_date(dates.get(str(x["id"])))
+        if not d:
+            raise HTTPException(status_code=400, detail=f"Type the new expiry date for the {x['what']}.")
+        if d <= M._as_date(x["expires_on"]):
+            raise HTTPException(status_code=400, detail=f"The new {x['what']} date must be after the old one ({M._dmy(M._as_date(x['expires_on']))}).")
+        new[x["id"]] = d
+    Model = models.EmployeeDocument if item["type"] == "person" else models.CompanyExpiry
+    for x in members:
+        o = db.get(Model, x["id"]); o.expires_on = new[x["id"]]
+        if item["type"] == "person" and o.kind == "contract":      # People file shows the same contract
+            prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == o.employee_id).first()
+            if prof:
+                prof.contract_expiry = new[x["id"]]
+        db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == item["type"], ExpiryStarted.doc_id == x["id"]).delete()
+    M.log_action(db, user.id, "expiry_closed", f"{item['who']}: " + ", ".join(
+        f"{x['what']} {x['expires_on']} -> {new[x['id']].isoformat()}" for x in members))
+    db.commit()
+    return {"ok": True, "n": len(members)}
+
+
+@router.post("/employees/expiry/remove")
+def remove(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = M.DOCS):
+    """No longer needed: the entry (all of the renewal's documents) is deleted."""
+    item, members = _find(db, payload)
+    Model = models.EmployeeDocument if item["type"] == "person" else models.CompanyExpiry
+    for x in members:
+        o = db.get(Model, x["id"])
+        if o:
+            db.delete(o)
+        db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == item["type"], ExpiryStarted.doc_id == x["id"]).delete()
+    M.log_action(db, user.id, "expiry_removed", f"{item['who']}: " + ", ".join(f"{x['what']} {x['expires_on']}" for x in members)
+                 + (f" - {str(payload.get('reason')).strip()[:200]}" if payload.get("reason") else ""))
+    db.commit()
+    return {"ok": True, "n": len(members)}
+
+
 @router.get("/employees/expiry/summary")
 def get_summary(db: Session = Depends(get_db), user: models.User = M.DOCS):
     return summary(db)

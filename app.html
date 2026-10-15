@@ -1414,6 +1414,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .exp-mini { margin-top: 4px; }
   .exp-mini .exp-start-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
   .exp-start-btn.on { background: #E6F4EA; border-color: #9CD3AE; color: #1E7A3A; }
+  .exp-acts { display: inline-flex; gap: 5px; flex-wrap: nowrap; }
+  .exp-close-btn { white-space: nowrap; }
+  .exp-mini .exp-close-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
+  .exp-cm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #EEE; }
+  .exp-cm-row input { width: 170px; padding: 7px 9px; border: 1px solid #CCC; border-radius: 6px; font: inherit; }
+  .exp-cm-btns { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   /* The report preview is a sheet of figures: every column as wide as
      what is in it and no wider, so a number is not an inch from the
      next - the box fits the table instead of the table being stretched
@@ -1810,7 +1816,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="a57032193647";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="c494158101d9";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -16136,8 +16142,51 @@ function expStartedTag(type, id) {
 }
 function expStartBtn(type, id) {
   const m = expStarted(type, id);
-  return m ? `<button class="btn btn-gray hr-mini exp-start-btn on" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, false)" title="Started by ${escapeAttr(m.by)} - click to undo">&#10003; Started</button>`
-           : `<button class="btn btn-gray hr-mini exp-start-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true)" title="Renewal is in hand - stop the reminders for this document">Mark started</button>`;
+  const close = `<button class="btn btn-gray hr-mini exp-close-btn" onclick="event.stopPropagation(); expClose('${type}', ${id})" title="Renewal done - type the new expiry date (or delete the entry if no longer needed)">Close</button>`;
+  return `<span class="exp-acts">` + (m ? `<button class="btn btn-gray hr-mini exp-start-btn on" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, false)" title="Started by ${escapeAttr(m.by)} - click to undo">&#10003; Started</button>`
+           : `<button class="btn btn-gray hr-mini exp-start-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true)" title="Renewal is in hand - stop the reminders for this document">Mark started</button>`) + close + `</span>`;
+}
+// ---- Close: renewal done - the new date goes in, or the entry is deleted ----
+async function expAfterChange() {
+  await expLoadStarted();
+  if (expIsAll()) await loadAllDocs();
+  if (document.getElementById("hr-doc-company").style.display !== "none") await loadExpiries();
+  if (document.getElementById("hr-doc-people").style.display !== "none") await loadDocuments();
+  ["hr-doc-editing", "hr-exp-editing"].forEach(b => { const x = document.getElementById(b); if (x) x.style.display = "none"; });
+  if (typeof loadNotifications === "function") loadNotifications();
+}
+async function expClose(type, id) {
+  let d; try { d = await apiCall(`/employees/expiry/close?type=${type}&id=${id}`); } catch (e) { return expMsg("err", errText(e)); }
+  document.querySelectorAll(".zx-modal.exp-cm").forEach(m => m.remove());
+  const ov = document.createElement("div"); ov.className = "zx-modal exp-cm";
+  ov.innerHTML = `<div class="zx-box" style="width:520px;max-width:calc(100vw - 32px);">
+    <h3 style="margin:0 0 2px;">Close - ${escapeHtml(d.what)}</h3><div class="sub" style="margin-bottom:12px;">${escapeHtml(d.who)} · renewal done? Set the new expiry date${d.docs.length > 1 ? "s" : ""}, or delete the entry if it is no longer needed.</div>
+    ${d.docs.map(x => `<div class="exp-cm-row"><div><b>${escapeHtml(x.what)}</b><span class="sub" style="display:block;">was ${dmyShort(x.expires_on)}</span></div>
+      <input type="date" data-id="${x.id}" value="${x.suggest}" min="${x.expires_on}"></div>`).join("")}
+    <div class="exp-cm-msg sub" style="color:#B7322A;min-height:16px;margin-top:6px;"></div>
+    <div class="exp-cm-btns"><button type="button" class="btn btn-gray exp-cm-del" style="color:#B7322A;">Delete entry</button><span style="flex:1"></span>
+      <button type="button" class="btn btn-gray" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="save">Set new expiry</button></div></div>`;
+  const msg = t => ov.querySelector(".exp-cm-msg").textContent = t;
+  ov.addEventListener("click", async e => {
+    const a = e.target.dataset && e.target.dataset.a;
+    if (e.target === ov || a === "no") return ov.remove();
+    if (a === "save") {
+      const dates = {}; ov.querySelectorAll("input[type=date]").forEach(i => dates[i.dataset.id] = i.value);
+      try { await apiCall("/employees/expiry/close", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, dates }) }); }
+      catch (err) { return msg(errText(err)); }
+      ov.remove(); await expAfterChange(); expMsg("ok", `Closed - ${d.what} renewed for ${d.who}. Reminders start again before the new date.`);
+    }
+    if (e.target.classList.contains("exp-cm-del")) {
+      ov.style.display = "none";
+      const yes = await hrAsk(`Delete ${d.what} for ${d.who}? Use this only if it is no longer needed (e.g. left the company, vehicle sold). It cannot be undone.`, "Delete entry", true);
+      ov.style.display = "";
+      if (!yes) return;
+      try { await apiCall("/employees/expiry/remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id }) }); }
+      catch (err) { return msg(errText(err)); }
+      ov.remove(); await expAfterChange(); expMsg("ok", `Deleted - ${d.what} for ${d.who} is off the list.`);
+    }
+  });
+  document.body.appendChild(ov);
 }
 async function expMarkStarted(type, id, on) {
   try {
@@ -21001,7 +21050,7 @@ async function pgRepOpen() { const u = await pgRepUrl("view"); if (u) window.ope
 async function pgRepDownload(fmt) { const u = await pgRepUrl(fmt); if (u) window.open(u, "_blank"); }
 </script>
 <link rel="stylesheet" href="/portal/help/help.css?v=c59af62991">
-<script src="/portal/help/guides.js?v=2f4c6588a2"></script>
+<script src="/portal/help/guides.js?v=37a93c7531"></script>
 <script src="/portal/help/auto_guides.js?v=0957d949d2"></script>
 <script src="/portal/help/img/manifest.js?v=76945015d3"></script>
 <script src="/portal/help/tips.js?v=305729e445"></script>

@@ -29,6 +29,26 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   const bell = await p.evaluate(async no => { const n = (await apiCall('/notifications')).notifications.find(x => x.kind === 'expiry'); return n ? n.detail : ''; }, emp.emp_no);
   ck('bell no longer names him', !bell.includes(emp.emp_no), bell);
   await p.screenshot({ path: SH + 'expiry_group_started.png' });
+  // Close: pop-up asks for the new expiry; Delete entry also offered
+  await p.locator('#exp-all-body tr', { hasText: 'Visa, labour card & Emirates ID' }).locator('button', { hasText: 'Close' }).click(); await p.waitForTimeout(800);
+  ck('Close pop-up: a new date for each of the three + Delete entry', await p.locator('.exp-cm input[type=date]').count() === 3 && await p.locator('.exp-cm button', { hasText: 'Delete entry' }).count() === 1 && await p.locator('.exp-cm button', { hasText: 'Set new expiry' }).count() === 1);
+  await p.screenshot({ path: SH + 'expiry_close_popup.png' });
+  await p.click('.exp-cm button:has-text("Set new expiry")'); await p.waitForTimeout(1800);
+  const gl = await p.locator('#exp-all-body tr', { hasText: 'Visa, labour card & Emirates ID' }).textContent();
+  ck('closed: new dates on file, line now Valid with no buttons', /2028/.test(gl) && /Valid/.test(gl) && !/Started|Close/.test(gl) && /Closed/.test(await p.textContent('body')), gl);
+  await p.screenshot({ path: SH + 'expiry_closed.png' });
+  // Delete entry on the passport
+  await p.evaluate(() => { document.getElementById('exp-all-within').value = document.getElementById('exp-all-within').options[0].value; renderAllDocs(); });
+  const pass = p.locator('#exp-all-body tr', { hasText: 'Passport' });
+  if (await pass.count()) {
+    await pass.first().click(); await p.waitForTimeout(500);
+  }
+  const pid = await p.evaluate(no => (HR_DOCS.find(x => x.emp_no === no && x.kind === 'passport') || {}).id, emp.emp_no);
+  await p.evaluate(id => expClose('person', id), pid); await p.waitForTimeout(800);
+  await p.click('.exp-cm button:has-text("Delete entry")'); await p.waitForTimeout(400);
+  await p.click('.hr-ask [data-a="yes"]'); await p.waitForTimeout(1800);
+  const gone = await p.evaluate(async id => !(await apiCall('/employees/documents')).rows.some(x => x.id === id), pid);
+  ck('Delete entry: removed after confirming', gone);
   ck('no page errors', errs.length === 0, errs);
   await b.close(); console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0);
 })();
