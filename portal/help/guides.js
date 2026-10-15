@@ -149,7 +149,7 @@ window.HELP_GUIDES = [
     tip: "Shown once Zoho is connected." },
   { id: "invoice-release", area: "Accounts", title: "How to release a tax invoice to Zoho",
     words: "invoice release zoho tax invoice send vat quarter held post",
-    go: { page: "accounts", tab: "taxinv" },
+    go: { page: "accounts", tab: "invoices", sub: "tax" },
     steps: [
       { say: "A tax invoice made here stays Held - it is not in Zoho yet.", el: "#inv-body" },
       { say: "Open its ⋯ menu and choose Release to Zoho, pick the income account (Progressive Payments for an IPA) and release.", el: "#inv-body" }],
@@ -610,7 +610,7 @@ window.HELP_GUIDES = [
   // ---------------- Accounts ----------------
   { id: "inv-tax", area: "Accounts", title: "How to make a tax invoice",
     words: "tax invoice bill client vat trn progress payment ipc raise issue print pdf accounts",
-    go: { page: "accounts", tab: "taxinv" },
+    go: { page: "accounts", tab: "invoices", sub: "tax" },
     steps: [
       { say: "Type the project number. A project used before fills in its client and site.", el: "#inv-pno" },
       { say: "The invoice number fills in by itself. Change it only if you need to.", el: "#inv-no" },
@@ -622,22 +622,22 @@ window.HELP_GUIDES = [
     tip: "The signature and stamp are the invoice ones kept in Settings > General (separate from the purchase-order signature)." },
   { id: "inv-proforma", area: "Accounts", title: "How to make a proforma invoice",
     words: "proforma pro forma performa quotation advance invoice client accounts",
-    go: { page: "accounts", tab: "proforma" },
+    go: { page: "accounts", tab: "invoices", sub: "proforma" },
     steps: [
-      { say: "Open the Proforma Invoice tab.", el: ".pg-tab[data-tab='proforma']" },
+      { say: "Open Invoices, then the Proforma Invoice tab under it.", el: "#pg-tabs" },
       { say: "Type the project number - the proforma number fills in by itself.", el: "#inv-pno" },
       { say: "Type the client and the lines, the same as a tax invoice.", el: "#inv-client" },
       { say: "Press Save & open PDF.", el: "#inv-save-pdf" }] },
   { id: "inv-convert", area: "Accounts", title: "How to turn a proforma into a tax invoice",
     words: "proforma convert change make tax invoice from proforma paid accounts",
-    go: { page: "accounts", tab: "proforma" },
+    go: { page: "accounts", tab: "invoices", sub: "proforma" },
     steps: [
       { say: "On the Proforma Invoice tab, find the proforma in the list.", el: "#inv-body" },
       { say: "Press the ... button on its line and choose 'Make tax invoice from this'. It is made with today's date and the next tax invoice number.", el: "#inv-body .hr-menu-btn" }],
     tip: "The proforma is then marked Invoiced, so it cannot be invoiced twice." },
   { id: "inv-fix", area: "Accounts", title: "How to change or cancel an invoice",
     words: "invoice edit change correct mistake cancel void wrong invoice accounts",
-    go: { page: "accounts", tab: "taxinv" },
+    go: { page: "accounts", tab: "invoices", sub: "tax" },
     steps: [
       { say: "Find the invoice in the list. Type the number or client to search.", el: "#inv-search" },
       { say: "Press the ... button on its line: Edit to correct it, or Cancel invoice.", el: "#inv-body .hr-menu-btn" }],

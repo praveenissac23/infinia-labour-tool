@@ -755,12 +755,13 @@ window.HELP_AUTO = [
  {
   "id": "scr-accounts-taxinv",
   "area": "Every screen",
-  "title": "Accounts > Tax Invoice",
+  "title": "Accounts > Invoices > Tax Invoice",
   "auto": true,
   "words": "accounts   tax invoice   add line save   open pdf save clear screen buttons what is",
   "go": {
    "page": "accounts",
-   "tab": "taxinv"
+   "tab": "invoices",
+   "sub": "tax"
   },
   "steps": [
    {
@@ -787,12 +788,13 @@ window.HELP_AUTO = [
  {
   "id": "scr-accounts-proforma",
   "area": "Every screen",
-  "title": "Accounts > Proforma Invoice",
+  "title": "Accounts > Invoices > Proforma Invoice",
   "auto": true,
   "words": "accounts   proforma invoice   add line save   open pdf save clear screen buttons what is",
   "go": {
    "page": "accounts",
-   "tab": "proforma"
+   "tab": "invoices",
+   "sub": "proforma"
   },
   "steps": [
    {

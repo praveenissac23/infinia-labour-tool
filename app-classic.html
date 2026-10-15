@@ -13198,8 +13198,8 @@ const DASH_ACTIONS = {
   expiry:   ["Expiry reminder", "Visas, IDs, permits due", "expiry", "expiry:all", "bell", "expiry"],
   pdc:      ["PDCs", "Post-dated cheques due", "expiry", "expiry:pdc", "cheque", "pdc"],
   secq:     ["Security cheques", "Guarantees to collect back", "expiry", "expiry:security", "lock", "security_cheques"],
-  taxinv:   ["Tax invoice", "Raise and list tax invoices", "accounts", "taxinv", "doc", "accounts_invoices"],
-  proforma: ["Proforma invoice", "Quotes before the invoice", "accounts", "proforma", "doc", "accounts_invoices"],
+  taxinv:   ["Tax invoice", "Raise and list tax invoices", "accounts", "invoices:tax", "doc", "accounts_invoices"],
+  proforma: ["Proforma invoice", "Quotes before the invoice", "accounts", "invoices:proforma", "doc", "accounts_invoices"],
   petty:    ["Petty cash", "Cash spent and topped up", "accounts", "petty", "cash", "petty_site"],
   pettypro: ["PRO petty cash", "Cash spent and topped up", "accounts", "petty:pro", "cash", "petty_pro"],
   projpay:  ["Project payments", "Contract, paid and balance", "accounts", "projects", "chart", "accounts_projects"],
@@ -18652,8 +18652,8 @@ function accNum(s) { const v = parseFloat(String(s || "").replace(/,/g, "")); re
 
 async function invOpen(kind) {
   if (kind) { if (kind !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = kind; }
-  else if (typeof PG_TAB !== "undefined" && PG_TAB && ["taxinv", "proforma"].includes(PG_TAB.id)) {
-    const k = PG_TAB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = k;
+  else if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.id === "invoices" && PG_SUB && ["tax", "proforma"].includes(PG_SUB.id)) {
+    const k = PG_SUB.id === "proforma" ? "proforma" : "tax"; if (k !== INV_KIND) { INV_EDIT = null; INV = null; } INV_KIND = k;
   }
   const pro = INV_KIND === "proforma";
   const t = document.getElementById("screen-title"); if (t) t.textContent = pro ? "Proforma Invoices" : "Tax Invoices";
@@ -19399,8 +19399,7 @@ function materialLink(code, text) { return code ? xlink(text || code, `openMater
 
 // An invoice: its own tab, opened in the form.
 function openInvoice(id, kind) {
-  const tab = kind === "proforma" ? "proforma" : "taxinv";
-  xlGo("accounts", tab, null, () => xlOn("invoices") && INV && INV.rows.some(r => r.id === id), () => invEdit(id));
+  xlGo("accounts", "invoices", kind === "proforma" ? "proforma" : "tax", () => xlOn("invoices") && INV && INV.rows.some(r => r.id === id), () => invEdit(id));
 }
 
 // ---- Final settlement -------------------------------------------------

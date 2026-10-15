@@ -17,7 +17,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
       await p.waitForTimeout(900);
       ck(`${dev}: three taps on ${sel} bring the Register up`, (await tabs()).includes('Register') && await p.locator('#reg-lock').isVisible(), await tabs());
       if (dev === 'iPhone 13' && sel === '#screen-title') await p.screenshot({ path: SH + 'acc_mobile_2.png' });
-      await p.tap('.pg-tab[data-tab="taxinv"]'); await p.waitForTimeout(900);
+      await p.tap('.pg-tab[data-tab="invoices"]'); await p.waitForTimeout(500); await p.tap('#pg-sub .pg-subtab[data-sub="tax"]'); await p.waitForTimeout(900);
       ck(`${dev}: gone again after leaving`, !(await tabs()).includes('Register'));
     }
     // slow taps do nothing

@@ -31,7 +31,7 @@ ck('every tab a gate names is in the tree', named <= set(tabrights.LEAVES), name
 grants = {g for l in tabrights.LEAVES.values() for g in l['grant']}
 ck('every right can be given by a tick', all(s in grants for s in main.ALL_SCREENS if s != 'settings'),
    [s for s in main.ALL_SCREENS if s not in grants])
-ck('pages in the app order', [p['id'] for p in tabrights.TREE] == ['dashboard', 'attendance', 'people', 'payroll', 'store', 'expiry', 'accounts', 'reports', 'settings'])
+ck('pages in the app order', [p['id'] for p in tabrights.TREE] == ['dashboard', 'attendance', 'people', 'payroll', 'store', 'expiry', 'accounts', 'admin', 'reports', 'settings'])
 ck('three levels: page > tab > tab inside', 'store.store.items' in tabrights.LEAVES and 'people.leave.office' in tabrights.LEAVES
    and 'accounts.petty.pro' in tabrights.LEAVES and 'payroll.hrpayroll.loans' in tabrights.LEAVES)
 
@@ -123,7 +123,7 @@ ck('clerk: gratuity refused', c.get('/employees/staff/IC1/settlement', headers=C
 ck('clerk: statement allowed', c.get(f"/export/payroll/statement?token={auth.create_download_token('clerk')}").status_code != 403)
 
 # ---- Invoices: tax and proforma apart -----------------------------------------
-r = c.post('/permissions/roles', headers=A, json={'name': 'Proforma only', 'tabs': ['accounts.proforma']})
+r = c.post('/permissions/roles', headers=A, json={'name': 'Proforma only', 'tabs': ['accounts.invoices.proforma']})
 c.post('/permissions/roles/new-user', headers=A, json={'username': 'pf', 'full_name': 'PF', 'password': 'pppppp', 'role_id': r.json()['id']})
 PF = tok('pf')
 ck('proforma list', c.get('/employees/accounts/invoices?kind=proforma', headers=PF).status_code == 200)

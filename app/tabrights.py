@@ -125,7 +125,7 @@ def _store_report(params, body, db):
 
 def _invoice_kind(params, body, db):
     kind = (body or {}).get("kind") or params.get("kind") or "tax"
-    return ["accounts.proforma"] if kind == "proforma" else ["accounts.taxinv"]
+    return ["accounts.invoices.proforma"] if kind == "proforma" else ["accounts.invoices.tax"]
 
 
 def _invoice_by_id(params, body, db):
@@ -137,7 +137,7 @@ def _invoice_by_id(params, body, db):
     x = db.query(Invoice).filter(Invoice.id == iid).first()
     if not x:
         return None
-    return ["accounts.proforma"] if x.kind == "proforma" else ["accounts.taxinv"]
+    return ["accounts.invoices.proforma"] if x.kind == "proforma" else ["accounts.invoices.tax"]
 
 
 CARDS = ["payroll.labourpay.combine"]
@@ -244,7 +244,7 @@ GATES = {
     ("POST", "/employees/accounts/invoices"): _invoice_kind,
     ("PUT", "/employees/accounts/invoices/{iid}"): _invoice_by_id,
     ("POST", "/employees/accounts/invoices/{iid}/cancel"): _invoice_by_id,
-    ("POST", "/employees/accounts/invoices/{iid}/convert"): ["accounts.taxinv"],
+    ("POST", "/employees/accounts/invoices/{iid}/convert"): ["accounts.invoices.tax"],
 }
 
 

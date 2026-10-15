@@ -87,8 +87,10 @@ PAGES = {
             sub("security", "Security cheques & deposits", screen="seccheque", right="security_cheques")])]),
     # Accounts: invoices, and the cash register behind its own password.
     "accounts": ("Accounts", [
-        tab("taxinv", "invoices", "Tax Invoice", "accounts_invoices", go="invOpen('tax')"),
-        tab("proforma", "invoices", "Proforma Invoice", "accounts_invoices", go="invOpen('proforma')"),
+        # Invoices: tax and proforma, one tab with two sub-tabs.
+        tab("invoices", "invoices", "Invoices", "accounts_invoices", subs=[
+            sub("tax", "Tax Invoice", screen="invoices", right="accounts_invoices", go="invOpen('tax')"),
+            sub("proforma", "Proforma Invoice", screen="invoices", right="accounts_invoices", go="invOpen('proforma')")]),
         # Petty cash: one cash box per sub-tab, each behind its own right.
         tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
             sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),
@@ -114,9 +116,7 @@ PAGES = {
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
             sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')"),
             sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
-            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')"),
-            # Delivery notes and papers the store keeper sends to the office.
-            sub("docs", "Docs to office", screen="docsoffice", right=["docs_send", "docs_verify"], go="dtLoad()")]),
+            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
         tab("rentals", "store", "Rentals", "store", subs=[
             sub("hire", "On rent", screen="store", right="store", go="pgStorePanel('hire')"),
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
@@ -281,6 +281,9 @@ def access_tree():
             else:
                 label = t["label"] + (" (cash register, own password)" if t.get("hidden") else "")
                 kids.append(_leaf(tid, label, t["right"]))
+                if tid == "admin.docs":
+                    kids.append(_leaf("admin.docs_send", "Docs to office - send to the office", ["docs_send"], ["docs_send"]))
+                    kids.append(_leaf("admin.docs_verify", "Docs to office - check in at the office", ["docs_verify"], ["docs_verify"]))
         pages.append({"id": key, "label": LABELS.get(key, title), "children": kids})
     for t in VIRTUAL["people"][1]:
         t["leaf"] = "people"          # any Staff tick opens the Staff page

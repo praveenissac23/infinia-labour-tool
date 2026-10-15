@@ -53,7 +53,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await c.screenshot({ path: SH + 'acc_2_taxlist.png', fullPage: true });
 
   // ---- proforma tab, same screen ---------------------------------------
-  await c.click('.pg-tab[data-tab="proforma"]'); await c.waitForTimeout(900);
+  await c.click('#pg-sub .pg-subtab[data-sub="proforma"]'); await c.waitForTimeout(900);
   ck('proforma: title', (await c.textContent('#screen-title')).includes('Proforma'), await c.textContent('#screen-title'));
   ck('proforma: list empty', (await c.textContent('#inv-body')).includes('No proforma'), await c.textContent('#inv-body'));
   await c.fill('#inv-pno', '920'); await c.dispatchEvent('#inv-pno', 'change'); await c.waitForTimeout(700);
@@ -67,7 +67,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('converted note', (await c.textContent('#inv-status')).includes(`IC/${yy}/920/01`), await c.textContent('#inv-status'));
   ck('proforma tagged Invoiced', (await c.textContent('#inv-body')).includes('Invoiced'));
   await c.screenshot({ path: SH + 'acc_3_proforma.png', fullPage: true });
-  await c.click('.pg-tab[data-tab="taxinv"]'); await c.waitForTimeout(900);
+  await c.click('.pg-tab[data-tab="invoices"]'); await c.waitForTimeout(500); await c.click('#pg-sub .pg-subtab[data-sub="tax"]'); await c.waitForTimeout(900);
   ck('back on tax: both invoices', (await c.textContent('#inv-body')).includes(`IC/${yy}/920/01`) && (await c.textContent('#inv-body')).includes(`IC/${yy}/906/01`));
 
   // ---- help: invoice guides yes, nothing at all about the register -------
@@ -84,10 +84,10 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // two clicks do nothing; three on the proforma heading do nothing
   await c.click('#inv-list-title', { clickCount: 2 }); await c.waitForTimeout(400);
   ck('two clicks: still hidden', !(await tabs(c)).includes('Register'));
-  await c.click('.pg-tab[data-tab="proforma"]'); await c.waitForTimeout(700);
+  await c.click('#pg-sub .pg-subtab[data-sub="proforma"]'); await c.waitForTimeout(700);
   await c.click('#inv-list-title', { clickCount: 3 }); await c.waitForTimeout(600);
   ck('three clicks on Proforma heading: still hidden', !(await tabs(c)).includes('Register'));
-  await c.click('.pg-tab[data-tab="taxinv"]'); await c.waitForTimeout(700);
+  await c.click('.pg-tab[data-tab="invoices"]'); await c.waitForTimeout(500); await c.click('#pg-sub .pg-subtab[data-sub="tax"]'); await c.waitForTimeout(700);
   await c.click('#screen-title', { clickCount: 3 }); await c.waitForTimeout(900);
   ck('three clicks on Tax Invoices heading: Register appears', (await tabs(c)).includes('Register'), await tabs(c));
   ck('register: locked on open', await vis(c, '#reg-lock') && !(await vis(c, '#reg-body')));
@@ -117,7 +117,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await rp.waitForURL(/^blob:/, { timeout: 8000 }).catch(() => {}); ck('register PDF opens from memory (blob)', rp.url().startsWith('blob:') || c.reqs.some(u => u.startsWith('blob:')), c.reqs.slice(-4));
   ck('register key fetched, not navigated', !(await rp.evaluate(() => location.href)).includes('rk=')); await rp.close();
   // leave and come back: locked again
-  await c.click('.pg-tab[data-tab="taxinv"]'); await c.waitForTimeout(700);
+  await c.click('.pg-tab[data-tab="invoices"]'); await c.waitForTimeout(500); await c.click('#pg-sub .pg-subtab[data-sub="tax"]'); await c.waitForTimeout(700);
   ck('key dropped on leaving', await c.evaluate(() => REG_KEY === ''));
   ck('Register tab gone again after leaving', !(await tabs(c)).includes('Register'), await tabs(c));
   await c.goto(B + '/?p=accounts#register'); await c.waitForTimeout(3500);

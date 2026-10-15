@@ -221,6 +221,7 @@ def seed_on_startup():
         _grant_admin_forms(db)
         _grant_docs_office(db)
         _docs_office_to_admin(db)
+        _invoices_one_tab(db)
         _docs_office_full_for_assistant(db)
         try:
             import zohoapi as _zn
@@ -394,9 +395,7 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # office (docs_send); the assistant accountant checks them in
                # (docs_verify).
                "docs_send", "docs_verify",
-               # Visa files sit inside PRO petty cash (whoever has petty_pro);
-               # "visa" alone also opens them.
-               "visa",
+
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
@@ -735,6 +734,22 @@ def _docs_office_full_for_assistant(db):
             if add:
                 setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="docs_office_assistant_send", value="1"))
+    db.commit()
+
+
+def _invoices_one_tab(db):
+    """Tax Invoice and Proforma Invoice became two sub-tabs of one
+    Accounts > Invoices tab: whoever had either keeps it there. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "invoices_one_tab").first():
+        return
+    move = {"accounts.taxinv": "accounts.invoices.tax", "accounts.proforma": "accounts.invoices.proforma"}
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        new = [move[k] for k in keys if k in move and move[k] not in keys]
+        if new:
+            setattr(obj, field, ",".join(keys + new))
+    db.add(models.Setting(key="invoices_one_tab", value="1"))
     db.commit()
 
 

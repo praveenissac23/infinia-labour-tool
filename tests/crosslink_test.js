@@ -86,7 +86,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     ck('supplier line -> that supplier\'s orders one by one', (await a.inputValue('#lpr-group')) === 'order' && (await a.inputValue('#lpr-supplier')) === 'Al Raha Trading LLC', [await a.inputValue('#lpr-group'), await a.inputValue('#lpr-supplier')]);
   }
   // ---- invoices: proforma <-> tax invoice ---------------------------------
-  await a.evaluate(() => pgGo('accounts', 'proforma')); await a.waitForTimeout(3000);
+  await a.evaluate(() => pgGo('accounts', 'invoices:proforma')); await a.waitForTimeout(3000);
   const conv = a.locator('#inv-body a.inv-tag.conv').first();
   ck('proforma: Invoiced is a link', await conv.count() > 0);
   if (await conv.count()) {

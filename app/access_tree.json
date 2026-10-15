@@ -386,15 +386,6 @@
       "grant": [
        "store"
       ]
-     },
-     {
-      "id": "store.store.docs",
-      "label": "Docs to office",
-      "right": [
-       "docs_send",
-       "docs_verify"
-      ],
-      "grant": []
      }
     ]
    },
@@ -565,23 +556,29 @@
   "label": "Accounts",
   "children": [
    {
-    "id": "accounts.taxinv",
-    "label": "Tax Invoice",
-    "right": [
-     "accounts_invoices"
-    ],
-    "grant": [
-     "accounts_invoices"
-    ]
-   },
-   {
-    "id": "accounts.proforma",
-    "label": "Proforma Invoice",
-    "right": [
-     "accounts_invoices"
-    ],
-    "grant": [
-     "accounts_invoices"
+    "id": "accounts.invoices",
+    "label": "Invoices",
+    "children": [
+     {
+      "id": "accounts.invoices.tax",
+      "label": "Tax Invoice",
+      "right": [
+       "accounts_invoices"
+      ],
+      "grant": [
+       "accounts_invoices"
+      ]
+     },
+     {
+      "id": "accounts.invoices.proforma",
+      "label": "Proforma Invoice",
+      "right": [
+       "accounts_invoices"
+      ],
+      "grant": [
+       "accounts_invoices"
+      ]
+     }
     ]
    },
    {
@@ -725,6 +722,26 @@
      "docs_verify"
     ],
     "grant": []
+   },
+   {
+    "id": "admin.docs_send",
+    "label": "Docs to office - send to the office",
+    "right": [
+     "docs_send"
+    ],
+    "grant": [
+     "docs_send"
+    ]
+   },
+   {
+    "id": "admin.docs_verify",
+    "label": "Docs to office - check in at the office",
+    "right": [
+     "docs_verify"
+    ],
+    "grant": [
+     "docs_verify"
+    ]
    }
   ]
  },

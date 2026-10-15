@@ -177,18 +177,29 @@ def build(inv, company=None, bank=None, signature=None):
         proj_head = "  -  ".join(x for x in ((inv.get("project", "") or "").strip().rstrip("-").strip(),
                                              (f"Plot No. {inv['plot']}" if inv.get("plot") else "")) if x)
         proj = [(proj_head, True), (inv.get("location", ""), False), (inv.get("work", ""), False)]
-        for i, (head, rows) in enumerate((("Bill To", bill), ("Project", proj))):
+        # Every line shown in full: a long name or address wraps onto more
+        # lines and both panels grow to the taller one (never cut off).
+        def wrapped(rows):
+            out = []
+            for s, bold in rows:
+                if s:
+                    f, sz = ("Helvetica-Bold", 10) if bold else ("Helvetica", 8.8)
+                    out += [(ln, bold) for ln in simpleSplit(s, f, sz, bw - 10 * mm)]
+            return out
+        panels = [("Bill To", wrapped(bill)), ("Project", wrapped(proj))]
+        step = lambda bold: 12.5 if bold else 11
+        need = max(sum(step(b) for _, b in rows) for _, rows in panels)
+        ph = max(24 * mm, 13.5 * mm + need - 12.5 + 6 * mm)
+        for i, (head, rows) in enumerate(panels):
             x = M + i * (bw + 8 * mm)
-            c.setFillColor(TINT); c.roundRect(x, py - 24 * mm, bw, 24 * mm, 2.2 * mm, stroke=0, fill=1)
-            c.setFillColor(RED); c.rect(x, py - 24 * mm, 0.6 * mm, 24 * mm, stroke=0, fill=1)
+            c.setFillColor(TINT); c.roundRect(x, py - ph, bw, ph, 2.2 * mm, stroke=0, fill=1)
+            c.setFillColor(RED); c.rect(x, py - ph, 0.6 * mm, ph, stroke=0, fill=1)
             label(x + 6 * mm, py - 7 * mm, head)
             ly = py - 13.5 * mm
-            for s, bold in rows[:3]:
-                if s:
-                    s = simpleSplit(s, "Helvetica-Bold" if bold else "Helvetica", 10 if bold else 8.8, bw - 10 * mm)[0]
-                    text(x + 6 * mm, ly, s, 10 if bold else 8.8, "Helvetica-Bold" if bold else "Helvetica", INK if bold else MUTED)
-                ly -= 12.5
-        return py - 31 * mm
+            for s, bold in rows:
+                text(x + 6 * mm, ly, s, 10 if bold else 8.8, "Helvetica-Bold" if bold else "Helvetica", INK if bold else MUTED)
+                ly -= step(bold)
+        return py - ph - 7 * mm
 
     # ---- the line table, page by page ------------------------------------------
     cols = [("#", 8 * mm, "center"), ("Description", 0, "left"), ("Net Amount", 25 * mm, "right"),
