@@ -18279,7 +18279,7 @@ function vhDraw() {
   vhSetList("vh-step-list", VH.steps || []);
   document.getElementById("vh-stats").innerHTML =
     `<div class="pc-stat"><span>Ongoing visas</span><b>${VH.ongoing.length}</b></div>
-     <div class="pc-stat hand"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
+     <div class="pc-stat hand${VH.held > 0 ? " neg" : ""}" title="Already paid out of the PRO box for visas still in progress"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
   document.getElementById("vh-body").innerHTML = VH.ongoing.map(v => {
     const row = `<tr><td class="l"><b>${escapeHtml(v.person)}</b>${v.emp_no ? `<span class="sub">${escapeHtml(v.emp_no)}</span>` : ""}<span class="sub">since ${pcDate(v.started)}</span></td>
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>

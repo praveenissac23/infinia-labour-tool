@@ -1808,7 +1808,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="0ad16644e203";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="3bfc98cfab00";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -18486,7 +18486,7 @@ function vhDraw() {
   vhSetList("vh-step-list", VH.steps || []);
   document.getElementById("vh-stats").innerHTML =
     `<div class="pc-stat"><span>Ongoing visas</span><b>${VH.ongoing.length}</b></div>
-     <div class="pc-stat hand"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
+     <div class="pc-stat hand${VH.held > 0 ? " neg" : ""}" title="Already paid out of the PRO box for visas still in progress"><span>Held - not in petty cash yet</span><b>AED ${pcMoney(VH.held)}</b></div>`;
   document.getElementById("vh-body").innerHTML = VH.ongoing.map(v => {
     const row = `<tr><td class="l"><b>${escapeHtml(v.person)}</b>${v.emp_no ? `<span class="sub">${escapeHtml(v.emp_no)}</span>` : ""}<span class="sub">since ${pcDate(v.started)}</span></td>
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
