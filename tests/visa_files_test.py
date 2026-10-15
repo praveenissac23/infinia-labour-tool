@@ -1,6 +1,6 @@
 """Visa files: one file per visa process, PRO payments tied to it by stage,
 stages ticked, completed files drop off the PRO's list, money adds up."""
-import os, sys, tempfile
+import os, sys, tempfile, json
 from datetime import date, timedelta
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mktemp(suffix='.db')}"
 os.environ["INFINIA_CRED_KEY_FILE"] = tempfile.mktemp(suffix=".key")
@@ -23,7 +23,7 @@ e = models.Employee(emp_no="IC-L-0412", name="ERIC MAMBO", active=True)
 s.add_all([admin, e]); s.commit()
 today = M._dubai_today()
 f = V.create({"employee_id": e.id, "kind": "new"}, s, admin)
-ok(f["person"] == "Eric Mambo" and len(f["stages"]) == 10 and f["next"] == "New labour contract", "new visa (inside): the PRO's 10 steps; '(if needed)' is not the next step")
+ok(f["person"] == "Eric Mambo" and len(f["stages"]) == 10 and f["next"] == "Quota modification", "new visa (inside): the PRO's 10 steps, no '(if needed)'")
 refused(lambda: V.create({"employee_id": e.id, "kind": "new"}, s, admin), "a second ongoing new-visa file for him is refused")
 g = V.create({"person": "Md Imran Alam", "emp_no": "F767", "kind": "cancel"}, s, admin)
 ok(len(g["stages"]) == 3, "cancellation: 3 stages, person typed by name")
@@ -34,7 +34,7 @@ def pay(amt, stage, fid=f["id"], book="pro"):
                              "paid": amt, "visa_file_id": fid, "visa_stage": stage}, s, admin)["id"]
 pay(2750, "New labour contract"); pay(1320.33, "WPP insurance"); p3 = pay(500, "New work permit")
 L = V.listing(s, "ongoing"); r = next(x for x in L["rows"] if x["id"] == f["id"])
-ok(r["spent"] == 4570.33 and r["n_done"] == 3 and r["next"] == "New entry permit (inside)", "three payments: AED 4,570.33, 3 done, next New entry permit (inside)")
+ok(r["spent"] == 4570.33 and r["n_done"] == 3 and r["next"] == "Quota modification", "three payments: AED 4,570.33, 3 done, next New entry permit (inside)")
 ok(L["tiles"]["ongoing"] == 2 and L["tiles"]["spent_ongoing"] == 4570.33, "tiles: 2 ongoing, AED 4,570.33")
 pay(60, "Medical re-test")
 ff = V._out(s, s.get(models.VisaFile, f["id"]))
@@ -56,9 +56,9 @@ site = P.add_petty_cash({"book": "site", "date": today.isoformat(), "description
 ok(s.get(models.PettyCash, site).visa_file_id is None, "a site petty cash line is never tied to a visa file")
 V.stage(f["id"], {"stage": "New entry permit (inside)", "done": True}, s, admin)
 r = V._out(s, s.get(models.VisaFile, f["id"]))
-ok(r["next"] == "Change of status", "a step ticked by hand")
-r = V.edit_steps(f["id"], {"remove": "Quota modification (if needed)"}, s, admin)
-ok("Quota modification (if needed)" not in r["stages"], "a step not needed is taken off this file")
+ok("New entry permit (inside)" in r["done"], "a step ticked by hand")
+r = V.edit_steps(f["id"], {"remove": "Quota modification"}, s, admin)
+ok("Quota modification" not in r["stages"], "a step not needed is taken off this file")
 r = V.edit_steps(f["id"], {"add": "Typing correction"}, s, admin)
 ok("Typing correction" in r["stages"] and "Typing correction" in V.steps_master(s), "+ Add step: on the file and in the list for next time")
 refused(lambda: V.remove(f["id"], s, admin), "a file with payments cannot be deleted")
@@ -115,4 +115,8 @@ ok(round(sum(r["spent"] for r in seeded), 2) == 25468.19, "seeded total exact", 
 b = next(r for r in seeded if r["emp_no"] == "F-727")
 ok(b["person"] == "Benchep Oliver Karngong" and b["kind"] == "renewal" and b["started"] == "2026-10-14", "renewal file named from the staff list")
 ok(any(r["person"] == "Eric Mambo" and r["kind"] == "new" for r in seeded), "Eric Mambo: new visa by name")
+ok(not any("(if needed)" in x for x in V.steps_master(s)), "no '(if needed)' in the step list")
+vv = s.query(models.VisaFile).first(); vv.stages = json.dumps(["ILOE insurance (if needed)", "Medical and EID"]); vv.done = json.dumps(["ILOE insurance (if needed)"]); s.commit()
+V.drop_if_needed(s); s.refresh(vv)
+ok(json.loads(vv.stages) == ["ILOE insurance", "Medical and EID"] and json.loads(vv.done) == ["ILOE insurance"], "old names on files renamed once")
 print("ALL PASS" if not fails else f"{fails} FAILED"); sys.exit(1 if fails else 0)

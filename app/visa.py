@@ -28,18 +28,17 @@ RIGHT = "visa"
 LOOK = Depends(M.require_any_screen(RIGHT, "petty_pro"))
 
 # Each type starts from the PRO's own list of steps. A file's list can
-# change as the case goes (add a step, take one off); "(if needed)" steps
-# are not counted as the next step.
-_WP = ["New labour contract", "Contract submission", "WPP insurance", "New work permit", "ILOE insurance (if needed)"]
+# change as the case goes (add a step, take one off).
+_WP = ["New labour contract", "Contract submission", "WPP insurance", "New work permit", "ILOE insurance"]
 KINDS = {
-    "new_out": ("New visa (outside UAE)", ["Quota modification (if needed)", "New labour contract", "WPP insurance", "New work permit",
+    "new_out": ("New visa (outside UAE)", ["Quota modification", "New labour contract", "WPP insurance", "New work permit",
                                           "New entry permit", "Medical and EID", "Contract submission", "New ILOE insurance",
                                           "New residency stamping"]),
-    "new": ("New visa (inside UAE)", ["Quota modification (if needed)", "New labour contract", "WPP insurance", "New work permit",
+    "new": ("New visa (inside UAE)", ["Quota modification", "New labour contract", "WPP insurance", "New work permit",
                                       "New entry permit (inside)", "Change of status", "Medical and EID", "Contract submission",
                                       "New ILOE insurance", "New residency stamping"]),
     "renewal": ("Visa renewal", ["Labour contract renewal", "WPP insurance", "Work permit renewal and contract submission",
-                                 "ILOE insurance renewal (if needed)", "Medical and EID", "Residency renewal"]),
+                                 "ILOE insurance renewal", "Medical and EID", "Residency renewal"]),
     "cancel": ("Cancellation (inside UAE)", ["Labour contract cancellation", "Work permit cancellation", "Visa cancellation"]),
     "work_permit": ("Work permit", list(_WP)),
     "national_wp": ("National work permit", list(_WP)),
@@ -526,3 +525,22 @@ def new_step_lists(db):
     db.add(models.Setting(key="visa_steps_v2", value=str(n)))
     db.commit()
     return n
+
+
+def drop_if_needed(db):
+    """Once: the "(if needed)" tail taken off step names everywhere."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_steps_ifneeded").first():
+        return
+    fix = lambda t: (t or "").replace(" (if needed)", "")
+    for v in db.query(models.VisaFile).all():
+        v.stages = json.dumps(list(dict.fromkeys(fix(x) for x in _j(v.stages))))
+        v.done = json.dumps(list(dict.fromkeys(fix(x) for x in _j(v.done))))
+    for x in db.query(models.PettyCash).filter(models.PettyCash.visa_stage.like("% (if needed)%")).all():
+        x.visa_stage = fix(x.visa_stage)
+    try:
+        extra = json.loads(M.get_setting(db, "visa_steps_added") or "[]")
+        M.put_setting(db, "visa_steps_added", json.dumps(list(dict.fromkeys(fix(x) for x in extra))))
+    except ValueError:
+        pass
+    db.add(models.Setting(key="visa_steps_ifneeded", value="1"))
+    db.commit()
