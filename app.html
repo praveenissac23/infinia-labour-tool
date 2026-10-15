@@ -1789,7 +1789,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="15b6b3da6dea";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="c82423b06357";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3598,7 +3598,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button type="button" data-k="received" onclick="pcKind('received')">Cash received</button>
               </div>
               <label class="pc-f"><span>Date</span><input type="date" id="pc-date"></label>
-              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400" list="pc-desc-list" autocomplete="off" oninput="pcDescAuto()"><datalist id="pc-desc-list"></datalist></label>
+              <label class="pc-f pc-wide"><span>Description</span><input type="text" id="pc-desc" placeholder="e.g. Cement for plastering" maxlength="400" autocomplete="off" oninput="pcDescAuto()"></label>
               <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off" data-spell="off" oninput="this.dataset.auto = ''" onchange="pcTrnLookup()"></label>
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site" onchange="this.dataset.auto = ''"></select></label>
@@ -18400,9 +18400,6 @@ function pcDraw() {
     <td class="n">${pcMoney(d.closing)}</td><td></td></tr>`;
   const sups = [...new Set(d.rows.map(r => r.supplier).filter(Boolean))].sort();
   document.getElementById("pc-sup-list").innerHTML = sups.map(x => `<option value="${escapeAttr(x)}">`).join("");
-  // Descriptions used before, so a regular expense is one pick.
-  const descs = [...new Set(d.rows.map(r => (r.description || "").trim()).filter(Boolean))].slice(-200);
-  document.getElementById("pc-desc-list").innerHTML = descs.map(x => `<option value="${escapeAttr(x)}">`).join("");
 }
 
 // What the description already says: a site number in it picks the site
