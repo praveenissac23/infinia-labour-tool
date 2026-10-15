@@ -221,6 +221,7 @@ def seed_on_startup():
         _grant_admin_forms(db)
         _grant_docs_office(db)
         _docs_office_to_admin(db)
+        _docs_office_full_for_assistant(db)
         try:
             import zohoapi as _zn
             _zn.clear_not_vendor_todo(db)
@@ -716,6 +717,24 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _docs_office_full_for_assistant(db):
+    """Muhsina (assistant accountant) uses the whole Docs to office page:
+    she sends transmittals as well as checking them in. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "docs_office_assistant_send").first():
+        return
+    roles = {r.id: r for r in db.query(models.AccessRole).all()}
+    for obj in list(roles.values()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
+        if role is not None and (role.name or "").strip().lower() == "assistant accountant" and keys:
+            add = [k for k in ("docs_send", "docs_verify", "admin.docs") if k not in keys]
+            if add:
+                setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="docs_office_assistant_send", value="1"))
     db.commit()
 
 

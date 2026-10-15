@@ -301,7 +301,8 @@ def build_pdf(x, users, co=None):
 
 
 @router.get("/export/store/docs")
-def export_register(token: str, format: str = "excel", status: str = "", month: str = "", q: str = "", db: Session = Depends(get_db)):
+def export_register(token: str, format: str = "excel", status: str = "", date_from: str = "", date_to: str = "", q: str = "",
+                    db: Session = Depends(get_db)):
     """The history of transmittals, as filtered on screen."""
     from urllib.parse import quote, urlencode
     import auth, export_web
@@ -311,7 +312,9 @@ def export_register(token: str, format: str = "excel", status: str = "", month: 
     users = _users(db)
     rows = [_dict(x, users) for x in db.query(models.DocTransmittal).order_by(models.DocTransmittal.no.desc()).all()]
     k = q.strip().lower()
-    rows = [r for r in rows if (not status or r["status"] == status) and (not month or r["date"][:7] == month) and
+    df, dt_ = (M._as_date(date_from) if date_from else None), (M._as_date(date_to) if date_to else None)
+    rows = [r for r in rows if (not status or r["status"] == status) and (not df or r["date"] >= df.isoformat())
+            and (not dt_ or r["date"] <= dt_.isoformat()) and
             (not k or k in " ".join([r["ref"], r["ref"].replace(":", ""), r["from_site"], r["sent_by"], r["received_by"], r["note"]]
                                      + [f"{l['description']} {l['dn_no']} {l['site']} {l['remarks']}" for l in r["lines"]]).lower())]
     st = {"sent": "Waiting", "received": "Received", "partial": "Something missing"}
@@ -324,13 +327,14 @@ def export_register(token: str, format: str = "excel", status: str = "", month: 
                         "Received": "" if l["received"] is None else ("Yes" if l["received"] else "No"),
                         "Checked by": r["received_by"]})
     title = "Docs to Office - History"
-    sub = (f"{len(rows)} transmittal(s), {len(out)} document(s)" + (f" | {month}" if month else "") + (f" | {st.get(status)}" if status else "")
+    span = (f"{df:%d %b %Y} to {dt_:%d %b %Y}" if df and dt_ else f"from {df:%d %b %Y}" if df else f"up to {dt_:%d %b %Y}" if dt_ else "all dates")
+    sub = (f"{len(rows)} transmittal(s), {len(out)} document(s) | {span}" + (f" | {st.get(status)}" if status else "")
            + (f" | '{q.strip()}'" if k else "") + f" | As at {M._dubai_today():%d %b %Y}")
     if format == "view":
         vt = quote(auth.create_view_token(u.username), safe="")
-        url = f"/export/store/docs?{urlencode({'status': status, 'month': month, 'q': q})}&token={vt}"
+        url = f"/export/store/docs?{urlencode({'status': status, 'date_from': date_from, 'date_to': date_to, 'q': q})}&token={vt}"
         return M._preview_page(title, sub, out, url, url, money_cols=[])
-    name = f"Docs_to_Office_{M._dubai_today():%d.%m.%Y}"
+    name = f"Docs_to_Office_{(df or M._dubai_today()):%d.%m.%Y}" + (f"_to_{dt_:%d.%m.%Y}" if dt_ else "")
     if format == "pdf":
         return StreamingResponse(export_web.build_store_report_pdf(title, out, sub, money_cols=[], orientation="landscape"),
                                  media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})

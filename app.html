@@ -1785,7 +1785,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="e59e5a7408e6";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="9280f6f7210f";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -3468,8 +3468,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="dt-filter"><b>History</b>
               <label class="pc-f"><span>Find</span><input type="text" id="dt-q" placeholder="No., supplier, delivery note, site" data-spell="off" oninput="dtDraw()"></label>
               <label class="pc-f"><span>Show</span><select id="dt-st" onchange="dtDraw()"><option value="">All</option><option value="sent">Waiting for the office</option><option value="received">Received</option><option value="partial">Something missing</option></select></label>
-              <label class="pc-f"><span>Month</span><input type="month" id="dt-m" onchange="dtDraw()"></label>
-              <button type="button" class="btn btn-gray btn-sm" onclick="document.getElementById('dt-q').value='';document.getElementById('dt-st').value='';document.getElementById('dt-m').value='';dtDraw()">Clear</button>
+              <label class="pc-f"><span>From</span><input type="date" id="dt-f" onchange="dtDraw()"></label>
+              <label class="pc-f"><span>To</span><input type="date" id="dt-t" onchange="dtDraw()"></label>
+              <button type="button" class="btn btn-gray btn-sm" onclick="['dt-q','dt-st','dt-f','dt-t'].forEach(i=>document.getElementById(i).value='');dtDraw()">Clear</button>
               <span class="sub" id="dt-count" style="display:inline;margin-left:auto;"></span></div>
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table" data-nomove><thead><tr><th class="l" style="width:96px;">No.</th><th class="l" style="width:96px;">Date</th><th class="l">Documents</th><th class="l" style="width:150px;">Sent by</th><th class="l" style="width:190px;">Office</th><th style="width:300px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
@@ -17737,14 +17738,17 @@ function dtDraw() {
   }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">${filtered ? "Nothing matches - press Clear." : DT.may_send ? "Nothing sent to the office yet." : "Nothing sent to the office yet - the store keeper sends from site; each transmittal shows here to tick in."}</td></tr>`;
 }
 function dtFiltered() {
-  const q = (document.getElementById("dt-q").value || "").trim().toLowerCase(), st = document.getElementById("dt-st").value, m = document.getElementById("dt-m").value;
-  return (DT.rows || []).filter(r => (!st || r.status === st) && (!m || r.date.slice(0, 7) === m) &&
+  const q = (document.getElementById("dt-q").value || "").trim().toLowerCase(), st = document.getElementById("dt-st").value;
+  const f = document.getElementById("dt-f").value, t = document.getElementById("dt-t").value;
+  return (DT.rows || []).filter(r => (!st || r.status === st) && (!f || r.date >= f) && (!t || r.date <= t) &&
     (!q || [r.ref, r.ref.replace(":", ""), r.from_site, r.sent_by, r.received_by, r.note, ...r.lines.map(l => `${l.description} ${l.dn_no} ${l.site} ${l.remarks}`)].join(" ").toLowerCase().includes(q)));
 }
 async function dtRegExport(kind) {
   await refreshDownloadToken();
-  const q = encodeURIComponent((document.getElementById("dt-q").value || "").trim()), st = document.getElementById("dt-st").value, m = document.getElementById("dt-m").value;
-  window.open(`${API}/export/store/docs?format=${kind}&status=${st}&month=${m}&q=${q}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+  const q = encodeURIComponent((document.getElementById("dt-q").value || "").trim()), st = document.getElementById("dt-st").value;
+  const f = document.getElementById("dt-f").value, t = document.getElementById("dt-t").value;
+  if (f && t && f > t) return showStatus("dt-status", "err", "The From date is after the To date.");
+  window.open(`${API}/export/store/docs?format=${kind}&status=${st}&date_from=${f}&date_to=${t}&q=${q}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function dtReceive(id) {
   const marks = [...document.querySelectorAll(`.dt-ck[data-t="${id}"]`)].map(c => ({ id: +c.dataset.l, received: c.checked }));

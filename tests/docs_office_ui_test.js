@@ -33,7 +33,7 @@ const open = async p => { await p.evaluate(() => { pgTab('docs'); }); await p.wa
   ck('no page errors (Amal)', a.errs.length === 0, a.errs);
   const m = await login(b, 'muhsina', 'pass12345');
   await open(m);
-  ck('Muhsina sees it, without the send form', await m.locator('#dt-body .dt-l').count() === 2 && (await m.locator('#dt-form').innerHTML()).trim() === '');
+  ck('Muhsina sees the full page: send form too', await m.locator('#dt-body .dt-l').count() === 2 && await m.locator('#dt-form #dt-save').count() === 1);
   await m.locator('.dt-ck').nth(1).uncheck();
   await m.click('#dt-body button:has-text("Mark received")'); await m.waitForTimeout(1500);
   ck('one unticked: shows 1 not received', /1 not received/.test(await m.locator('#dt-body').textContent()));
@@ -46,6 +46,15 @@ const open = async p => { await p.evaluate(() => { pgTab('docs'); }); await p.wa
   await m.fill('#dt-q', ''); await m.selectOption('#dt-st', 'partial'); await m.waitForTimeout(200);
   ck('filter: something missing', await m.locator('#dt-body tr').count() === 1);
   await m.selectOption('#dt-st', '');
+  const today = await m.evaluate(() => pcToday());
+  await m.fill('#dt-f', today); await m.fill('#dt-t', today); await m.waitForTimeout(200);
+  ck('date range: today shows it', await m.locator('#dt-body tr').count() === 1);
+  await m.fill('#dt-f', '2026-01-01'); await m.fill('#dt-t', '2026-01-31'); await m.waitForTimeout(200);
+  ck('date range: January shows nothing', /Nothing matches/.test(await m.locator('#dt-body').textContent()));
+  const pdf = await m.evaluate(async t => { await refreshDownloadToken(); const r = await fetch(`${API}/export/store/docs?format=pdf&date_from=${t}&date_to=${t}&token=${encodeURIComponent(cachedDownloadToken)}`); return [r.status, r.headers.get('content-type'), r.headers.get('content-disposition')]; }, today);
+  ck('PDF for the date range', pdf[0] === 200 && /pdf/.test(pdf[1]) && /_to_/.test(pdf[2]), pdf);
+  await m.click('.dt-filter button:has-text("Clear")'); await m.waitForTimeout(200);
+  await m.screenshot({ path: SH + 'docs_office_muhsina.png' });
   const reg = await m.evaluate(async () => { await refreshDownloadToken(); const r = await fetch(`${API}/export/store/docs?format=excel&token=${encodeURIComponent(cachedDownloadToken)}`); return [r.status, r.headers.get('content-type')]; });
   ck('history exports to Excel', reg[0] === 200 && /sheet/.test(reg[1]), reg);
   const pv = await m.evaluate(async () => { const r = await fetch(`${API}/export/store/docs?format=view&token=${encodeURIComponent(cachedDownloadToken)}`); return r.status; });
