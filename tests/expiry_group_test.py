@@ -84,4 +84,22 @@ ck("Delete entry: the passport is gone", r.status_code == 200 and pp not in docs
 s = SessionLocal()
 ck("closing and deleting are in the activity log", s.query(models.AuditLog).filter(models.AuditLog.action.in_(["expiry_closed", "expiry_removed"])).count() == 3)
 s.close()
+
+# ---- the PRO's visa file: open = started; completed = new dates asked ----
+import visa as V
+s = SessionLocal()
+g3 = models.Employee(emp_no="G-3", name="PRADEEP K", trade="MASON", total_salary=1500, basic_salary=1000, active=True); s.add(g3); s.commit()
+s.close()
+pv = add("G-3", "visa", 4); pe = add("G-3", "eid", 4)
+s = SessionLocal()
+ck("no visa file: Pradeep is reminded", any(i["who"].startswith("G-3") for i in expiry.notice_items(s)))
+adm = s.query(models.User).filter(models.User.username == "boss3").one()
+f = V.file_for(s, "G-3", adm.id); s.commit()
+ck("visa file open: reminders stop", not any(i["who"].startswith("G-3") for i in expiry.notice_items(s)))
+st = {x["id"]: x for x in c.get("/employees/expiry/started", headers=H).json()["rows"]}
+ck("page shows Started (visa file) on his visa and EID", st.get(pv, {}).get("visa") and st.get(pe, {}).get("visa"), st)
+r = V.complete(f.id, s, adm)
+ck("visa completed: the Close pop-up is offered for his documents", r.get("expiry_doc") in (pv, pe), r)
+ck("completed, dates not yet set: reminders come back", any(i["who"].startswith("G-3") for i in expiry.notice_items(s)))
+s.close()
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}"); sys.exit(1 if FAIL else 0)

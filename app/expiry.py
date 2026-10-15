@@ -65,18 +65,26 @@ def _one_started(t, i, expires_on, marks):
     return bool(m) and (m.expires_on.isoformat() if m.expires_on else None) == (expires_on or None)
 
 
-def _is_started(item, marks):
+def visa_open(db):
+    """Employees whose visa the PRO is processing now (an ongoing visa file,
+    not a cancellation) - their visa, labour card and EID count as started."""
+    return {v.employee_id for v in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").all()
+            if v.employee_id and (v.kind or "") != "cancel"}
+
+
+def _is_started(item, marks, opens=()):
     """A grouped item (visa + labour card + EID) is started once its renewal
-    is marked - any of the three still carrying a current mark."""
+    is marked - any of the three still carrying a current mark - or while
+    the PRO has a visa file open for him."""
     if item.get("members"):
-        return any(_one_started("person", i, e, marks) for i, e in item["members"])
+        return item.get("employee_id") in opens or any(_one_started("person", i, e, marks) for i, e in item["members"])
     return _one_started(item["type"], item["id"], item.get("expires_on"), marks)
 
 
 def notice_items(db):
     """What the reminders talk about: everything due, less what is marked started."""
-    marks = started_keys(db)
-    return [i for i in _items(db) if not _is_started(i, marks)]
+    marks, opens = started_keys(db), visa_open(db)
+    return [i for i in _items(db) if not _is_started(i, marks, opens)]
 
 
 def _raw_items(db):
@@ -222,6 +230,10 @@ def get_started(db: Session = Depends(get_db), user: models.User = M.DOCS):
         current = bool(it) and _one_started(t, i, it["expires_on"], {(t, i): m})
         if current:
             out.append({"type": t, "id": i, "by": m.marked_by, "at": m.marked_at.isoformat() if m.marked_at else ""})
+    opens, seen = visa_open(db), {(r["type"], r["id"]) for r in out}
+    for it in items.values():
+        if it["type"] == "person" and it.get("kind") in GROUP and it["employee_id"] in opens and ("person", it["id"]) not in seen:
+            out.append({"type": "person", "id": it["id"], "by": "PRO - visa file open", "at": "", "visa": True})
     return {"rows": out}
 
 

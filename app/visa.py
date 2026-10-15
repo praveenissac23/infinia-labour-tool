@@ -343,7 +343,13 @@ def complete(vid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     if v.status != "ongoing":
         raise HTTPException(status_code=400, detail="This visa is already completed.")
     post_completed(db, v, user.id)
-    return _out(db, v)
+    out = _out(db, v)
+    # Expiry Reminder: his visa, labour card and EID - the new dates go in next.
+    d = (db.query(models.EmployeeDocument).filter(models.EmployeeDocument.employee_id == v.employee_id,
+            models.EmployeeDocument.kind.in_(("visa", "labour_card", "eid"))).order_by(models.EmployeeDocument.expires_on).first()
+         if v.employee_id and (v.kind or "") != "cancel" else None)
+    out["expiry_doc"] = d.id if d else None
+    return out
 
 
 @router.post("/store/visa/files/{vid}/reopen")
