@@ -15,7 +15,7 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  ck('Bank opens', await c.locator('#screen-bank').isVisible());
  await c.evaluate(()=>{document.getElementById('bk-month').value='2026-10'; bkLoad();}); await c.waitForTimeout(1200);
  const add=async(kind,f)=>{ await c.evaluate(k=>bkKind(k),kind); await c.waitForTimeout(200);
-   for(const [id,v] of Object.entries(f)){ if(id==='bk-mode'||id==='bk-acc'||id==='bk-site'||id==='bk-to'){ await c.selectOption('#'+id,v); await c.evaluate(()=>bkMode()); } else await c.fill('#'+id,String(v)); }
+   for(const [id,v] of Object.entries(f)){ if(id==='bk-acc'){ await c.evaluate(v=>bkAccSet(v),v); } else if(id==='bk-mode'||id==='bk-site'||id==='bk-to'){ await c.selectOption('#'+id,v); await c.evaluate(()=>bkMode()); } else await c.fill('#'+id,String(v)); }
    await c.click('#bk-save'); await c.waitForTimeout(1200); return (await c.locator('#bk-status').textContent()); };
  let m=await add('vendor',{'bk-date':'2026-10-10','bk-party':'Al Raida Electromechanical Services','bk-ref':'PHUB732241116','bk-amt':'83535.22','bk-notes':'908PC08'});
  ck('supplier payment saved', /Saved/.test(m), m);

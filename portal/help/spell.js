@@ -16,8 +16,19 @@
   const MINE = new Set();
   try { (JSON.parse(localStorage.getItem("infinia-spell-keep") || "[]")).forEach(w => MINE.add(w)); } catch (e) {}
 
+  // The word list (a quarter of a megabyte) is fetched the first time a box
+  // that takes words is clicked - never at start-up.
+  let asked = false;
+  function fetchWords() {
+    if (asked || window.SPELL_WORDS) return; asked = true;
+    const sc = document.createElement("script");
+    sc.src = (window.SPELL_WORDS_SRC || "/portal/help/words.js"); sc.async = true;
+    document.head.appendChild(sc);
+  }
+  document.addEventListener("focusin", e => { if (eligible(e.target)) fetchWords(); });
   function load() {
-    if (WORDS) return;
+    if (WORDS) return true;
+    if (!window.SPELL_WORDS) { fetchWords(); return false; }
     const list = String(window.SPELL_WORDS || "").split(" ").filter(Boolean);
     WORDS = new Set(list); RANK = new Map(list.map((w, i) => [w, i]));
     // the company's own words, once a session
@@ -104,7 +115,7 @@
   // Look at the word just finished (a space or punctuation typed after it),
   // or every word when the box is left.
   function check(el, all) {
-    load();
+    if (!load()) return;
     const v = el.value; if (!v) { close(); return; }
     const re = /[A-Za-z]+(?:'[A-Za-z]+)?/g; let m, found = null;
     const end = all ? v.length : el.selectionStart;
@@ -131,5 +142,5 @@
   document.addEventListener("focusout", e => { const el = e.target; if (eligible(el)) setTimeout(() => check(el, true), 0); });
   document.addEventListener("keydown", e => { if (e.key === "Escape" && hint) close(); });
   window.addEventListener("scroll", () => { if (hint && cur) { const r = cur.el.getBoundingClientRect(); hint.style.top = (r.bottom + 4) + "px"; } }, true);
-  window.SPELL = { suggest: w => { load(); return suggest(String(w).toLowerCase()); }, known: w => { load(); return known(String(w).toLowerCase()); } };
+  window.SPELL = { suggest: w => load() ? suggest(String(w).toLowerCase()) : null, known: w => load() ? known(String(w).toLowerCase()) : true };
 })();

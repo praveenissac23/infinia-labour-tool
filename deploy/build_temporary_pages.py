@@ -656,7 +656,12 @@ firstScreenFor = function () {
   setTimeout(() => {
     PG_BOOTED = true;
     // Staff is loaded quietly in the background, so the first click shows it at once.
-    setTimeout(() => { if (pgAllowed("pgstaff") && document.getElementById("pg-staff-frame") && !document.getElementById("pg-staff-frame").getAttribute("src")) pgFrame("pg-staff-frame"); }, 1500);
+    // Not at start-up: the page's own work comes first. Pointing at (or
+    // touching) Staff in the menu starts it; otherwise once the app is idle.
+    const pre = () => { if (pgAllowed("pgstaff") && document.getElementById("pg-staff-frame") && !document.getElementById("pg-staff-frame").getAttribute("src")) pgFrame("pg-staff-frame"); };
+    const item = document.querySelector('.pg-side .pg-item[data-page="people"]');
+    if (item) { item.addEventListener("pointerenter", pre, { once: true }); item.addEventListener("touchstart", pre, { once: true, passive: true }); }
+    setTimeout(() => (window.requestIdleCallback || setTimeout)(pre, { timeout: 4000 }), 6000);
   }, 0);
   const [want, extra] = (location.hash || "").slice(1).split(":");
   const t = want ? pgTabFor(want) : null;
@@ -888,13 +893,23 @@ def _logo_to_file(src):
     big = [m for m in re.finditer(r'data:image/(png|jpeg);base64,([A-Za-z0-9+/=]+)', src) if len(m.group(2)) > 20000]
     if not big:
         return src
-    data = base64.b64decode(big[0].group(2))
+    src_data = base64.b64decode(big[0].group(2))
     ext = "png" if big[0].group(1) == "png" else "jpg"
+    data = src_data
+    try:   # shown at most 210 px wide: twice that is sharp on any phone, at a fraction of the bytes
+        from PIL import Image
+        import io
+        im = Image.open(io.BytesIO(src_data))
+        if im.width > 480:
+            im = im.resize((480, round(im.height * 480 / im.width)), Image.LANCZOS)
+            buf = io.BytesIO(); im.save(buf, "PNG", optimize=True); data = buf.getvalue()
+    except Exception:
+        pass
     name = f"logo-{hashlib.sha1(data).hexdigest()[:8]}.{ext}"   # a new logo gets a new name
     with open(os.path.join(OUT, name), "wb") as f:
         f.write(data)
     for m in sorted(big, key=lambda m: -m.start()):
-        if base64.b64decode(m.group(2)) == data:
+        if base64.b64decode(m.group(2)) == src_data:
             src = src[:m.start()] + "/portal/" + name + src[m.end():]
     # The sign-in page names the file directly; a new logo renames it.
     src = re.sub(r"/portal/logo-[0-9a-f]{8}\.(png|jpg)", "/portal/" + name, src)
@@ -983,11 +998,15 @@ def build():
     side = ['<div class="pg-side">', brand]
     for pg in ORDER:
         label = LABELS.get(pg) or STANDALONE[pg][0]
-        side.append(f'<div class="pg-item {"active" if pg == "dashboard" else ""}" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
+        side.append(f'<div class="pg-item" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
+    # The page in the address lit from the first frame (not Dashboard first, then the right one).
+    side.append('<script>(function(){var e=document.querySelector(\'.pg-side .pg-item[data-page="\'+(window.PG_KEY||"dashboard")+\'"]\');if(e)e.classList.add("active")})()</script>')
     side.append("</div>")
     page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
     page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
     _titles = dict(re.findall(r'(\w+):\s*"([^"]*)"', re.search(r'const SCREEN_TITLES = \{(.*?)\};', src, re.S).group(1)))
+    # The embedded pages' names too, so their first frame is not titled "Dashboard".
+    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports"})
     early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts), "titles": json.dumps(_titles)}
     # The page name and who is signed in, right from the first frame.
     page = page.replace('<h1 id="screen-title">Dashboard</h1>', '<h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>', 1)
@@ -1011,13 +1030,13 @@ def build():
         except OSError:
             return "0"
     help_tags = (f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">\n'
-                 f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>\n'
-                 f'<script src="/portal/help/auto_guides.js?v={_v("portal/help/auto_guides.js")}"></script>\n'
-                 f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}"></script>\n'
-                 f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>\n'
-                 f'<script src="/portal/help/words.js?v={_v("portal/help/words.js")}" defer></script>\n'
+                 f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}" defer></script>\n'
+                 f'<script src="/portal/help/auto_guides.js?v={_v("portal/help/auto_guides.js")}" defer></script>\n'
+                 f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}" defer></script>\n'
+                 f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}" defer></script>\n'
+                 f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>\n'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
-                 f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}"></script>\n')
+                 f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)
     # A browser can keep an old app.html for a while after a deploy (no
     # cache header on a static file). The page asks for the build it
@@ -1033,6 +1052,15 @@ def build():
     page = page.replace("</head>", check + "</head>", 1)
     with open(APP_OUT, "w", encoding="utf-8") as f:
         f.write(page)
+    # Squeezed for the browser (a quarter smaller to fetch and to read on a
+    # phone). Where node or the minifier is missing the page stays as is.
+    import subprocess
+    try:
+        subprocess.run(["node", os.path.join(ROOT, "deploy", "minify_page.js"), APP_OUT, APP_OUT],
+                       check=True, timeout=300, capture_output=True)
+        page = open(APP_OUT, encoding="utf-8").read()
+    except Exception as e:
+        print("  (not minified:", str(e)[:120], ")")
     with open(os.path.join(ROOT, "app-version.json"), "w") as f:
         json.dump({"build": build}, f)
     print(f"wrote app.html  ({len(page) // 1024} KB)")
@@ -1083,7 +1111,7 @@ def brand_hand_written(menu_rights=None):
                  f'<link rel="stylesheet" href="/portal/help/help.css?v={_v("portal/help/help.css")}">'
                  f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>'
                  f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>'
-                 f'<script src="/portal/help/words.js?v={_v("portal/help/words.js")}" defer></script>'
+                 f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:

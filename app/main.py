@@ -3700,6 +3700,27 @@ def _add_missing_columns():
                         print(f"  backfilled {table.name}.{col.name} = {d}")
                 except Exception as e:
                     print(f"Could not add {table.name}.{col.name}: {e}")
+    # Indexes the models declare on a column added later (ALTER TABLE does
+    # not make them): made once, so lookups stay quick as the tables grow.
+    have_ix = set()
+    for tname in existing_tables:
+        try:
+            have_ix |= {i["name"] for i in insp.get_indexes(tname)}
+        except Exception:
+            pass
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        for ix in table.indexes:
+            if ix.name in have_ix or ix.unique:
+                continue
+            cols = ", ".join(c.name for c in ix.columns)
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f'CREATE INDEX IF NOT EXISTS {ix.name} ON {table.name} ({cols})'))
+                print(f"Added index {ix.name}")
+            except Exception as e:
+                print(f"Could not add index {ix.name}: {e}")
 
 
 AUTO_BACKUP_KEEP_DAYS = 40
@@ -5597,7 +5618,7 @@ def _add_store_movement(payload, db, user):
             raise HTTPException(status_code=400, detail="That hire supplier is not on file.")
     if payload.qty <= 0 and payload.kind != "adjust":
         raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
-    if payload.moved_on > date.today():
+    if payload.moved_on > _dubai_today():
         raise HTTPException(status_code=400, detail="Date is in the future.")
     # Moving something from a place to the same place changes nothing but
     # leaves a confusing entry in the ledger, so reject it outright.
@@ -6211,7 +6232,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "lost_damaged": round(lost, 2) if lost else 0,
                           "since": since.isoformat() if since else "-",
                           "due_back": i.rental_due.isoformat() if i.rental_due else "no date set",
-                          "days_out": (date.today() - since).days if since else ""})
+                          "days_out": (_dubai_today() - since).days if since else ""})
         return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
 
     if kind == "lost":
@@ -6414,7 +6435,7 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
         ref=_next_mr_ref(db), site=payload.site,
         requested_by=_person_name(payload.requested_by),
         needed_by=payload.needed_by, urgency=payload.urgency, notes=payload.notes,
-        requested_on=payload.requested_on or date.today(), created_by=user.id,
+        requested_on=payload.requested_on or _dubai_today(), created_by=user.id,
     )
     db.add(mr)
     db.flush()
@@ -6512,7 +6533,7 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
             mr.supplier_id = sup.id if len(sup_ids) == 1 and None not in sup_ids else None
     if getattr(payload, "expected_on", None):
         mr.expected_on = payload.expected_on
-    mr.closed_on = date.today() if payload.status in ("delivered", "received", "closed", "rejected") else None
+    mr.closed_on = _dubai_today() if payload.status in ("delivered", "received", "closed", "rejected") else None
     db.commit()
     log_action(db, user.id, "material_request_status", f"{mr.ref} -> {payload.status}")
     return {"ok": True, "status": mr.status}
@@ -6562,14 +6583,14 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
 
     db.add(models.StoreMovement(item_id=line.item_id, kind="in", qty=qty, location="",
                                  supplier=supplier, unit_cost=unit_cost,
-                                 reference=reference or mr.ref, moved_on=date.today(),
+                                 reference=reference or mr.ref, moved_on=_dubai_today(),
                                  notes=f"Against {mr.ref}", created_by=user.id, request_id=mr.id))
     line.qty_received = (line.qty_received or 0) + qty
     all_done = all((l.qty_received or 0) >= l.qty_requested - 1e-9 for l in mr.lines)
     any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
     mr.status = "received" if all_done else ("partial" if any_done else mr.status)
     if all_done:
-        mr.closed_on = date.today()
+        mr.closed_on = _dubai_today()
     db.commit()
     log_action(db, user.id, "material_request_receive", f"{mr.ref} line {line_id}: {qty}")
     return {"ok": True, "status": mr.status, "qty_received": line.qty_received}
@@ -9103,7 +9124,7 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         buf = export_web.build_store_report_excel(data["title"], data["rows"], sub, **cols_kw)
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ext = "xlsx"
-    name = f"{kind}_{date.today().isoformat()}.{ext}"
+    name = f"{kind}_{_dubai_today().isoformat()}.{ext}"
     how = "inline" if (inline and format == "pdf") else "attachment"
     return StreamingResponse(buf, media_type=media,
                               headers={"Content-Disposition": f'{how}; filename="{name}"'})
@@ -13104,12 +13125,12 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
         if known:
             where = known.code
 
-    when = payload.received_on or date.today()
+    when = payload.received_on or _dubai_today()
     # Deliveries are often written up a few days late, and sometimes
     # booked a day or two ahead for a load already on its way. Both are
     # real, so only a date far in the future is refused - that is a
     # typed year or month slip, not a delivery.
-    if when > date.today() + timedelta(days=30):
+    if when > _dubai_today() + timedelta(days=30):
         raise HTTPException(status_code=400,
             detail="Delivery date is more than a month ahead - check the date.")
 

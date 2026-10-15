@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<link rel="preload" as="image" href="/portal/logo-bb952b26.png" fetchpriority="high">
 <script>/* a phone notification's address, kept before the page tidies it away */ window.__ARRIVAL = /[?&]n_screen=/.test(location.search) ? location.href : "";</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -66,8 +67,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
   .topbar { background: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; }
-  .topbar h1 { font-size: 17px; margin: 0; }
-  .topbar .who { font-size: 12px; color: #888; }
+  .topbar h1 { font-size: 17px; margin: 0 12px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+  .topbar > div { flex: none; }
+  .topbar .who { font-size: 12px; color: #888; white-space: nowrap; }
   .topbar button { background: transparent; border: 1px solid #ccc; color: #555; padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; }
   .topbar button:hover { background: #f0f0f0; }
 
@@ -2859,7 +2861,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </div>
 
               <!-- Vehicles, licences and anything else that expires -->
-              <div id="hr-doc-company" style="display:none;">
+              <div id="hr-doc-company" style="display:none;"><script>/* the part in the address, from the first frame - not People first, then the right one */try{var _m=(location.hash.match(/^#expiry:(all|people|company)/)||[])[1]||(location.hash?"":"all");if(_m){["all","people","company"].forEach(function(k){document.getElementById("hr-doc-"+k).style.display=k===_m?"":"none"});document.querySelectorAll("#hr-doc-mode button").forEach(function(b){b.classList.toggle("on",b.dataset.m===_m)});if(_m!=="people"){var _c=document.querySelectorAll("#exp-cards .exp-card");["documents - renew now","documents - start renewal","documents - plan ahead"].forEach(function(t,i){_c[i].querySelector("small").textContent=t});_c[3].querySelector("span").textContent=_m==="all"?"All documents":"All company documents";_c[3].querySelector("small").textContent=_m==="all"?"people and company, everything on file":"everything on file";}}}catch(e){}</script>
                 <p style="font-size:12px; color:#888; margin:0 0 10px;">
                   NOCs, permits, the trade licence, vehicle registration and insurance, a tenancy, an equipment
                   certificate - any document with an expiry date. Type any category or document; new ones are remembered.
@@ -3494,7 +3496,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="card">
             <div class="pc-head">
               <div class="pc-title">
-                <h2 style="margin:0;" id="pc-heading">Petty cash register</h2>
+                <h2 style="margin:0;" id="pc-heading">Petty cash register</h2><script>/* the book in the address, from the first frame */try{var _b=(location.hash.match(/^#petty:(\w+)/)||[])[1],_n={site:"Site petty cash",pro:"PRO petty cash",office:"Office petty cash",naveen:"Naveen petty cash",praveen:"Praveen petty cash"};if(_n[_b]){document.getElementById("pc-heading").textContent=_n[_b];if(_b==="pro")document.getElementById("pc-protabs").style.display="";}}catch(e){}</script>
                 <label class="pc-f"><span>Show</span><select id="pc-range" onchange="loadPettyCash()"><option value="month">One month</option><option value="all">Full history</option></select></label>
                 <label class="pc-f" id="pc-month-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
               </div>
@@ -4899,20 +4901,39 @@ function natCompare(a, b) {
 // Reads that several parts of one screen ask for at the same moment (the
 // whole stock list is ~3,600 materials) are asked for once and shared, and
 // kept a few seconds; any change saved to the store or petty cash clears them.
-const API_SHARE = { "/store/stock": 15000 }, API_SHARED = {};
+// Reads asked for twice at the same moment share one trip to the server
+// (each caller still gets its own copy). A few lists that change only in
+// Settings are kept for a short while too. Any save empties all of it, so
+// the next read after a change is always fresh.
+const API_SHARE = { "/store/stock": 15000, "/employees/companies": 30000, "/sites": 30000, "/engineers": 30000,
+                    "/auth/me": 4000, "/permissions/me": 4000 }, API_SHARED = {}, API_INFLIGHT = {};
+const apiCopy = d => (d === null || typeof d !== "object" ? d : typeof structuredClone === "function" ? structuredClone(d) : JSON.parse(JSON.stringify(d)));
 async function apiCall(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
-  if (method !== "GET") { if (/^\/store\//.test(path)) for (const k in API_SHARED) delete API_SHARED[k]; }
-  else if (API_SHARE[path] !== undefined) {
+  if (method !== "GET") {
+    if (path === "/auth/download-token") return apiFetch(path, options);    // changes nothing
+    for (const k in API_SHARED) delete API_SHARED[k];
+    for (const k in API_INFLIGHT) delete API_INFLIGHT[k];
+    return apiFetch(path, options);
+  }
+  if (options.body || options.signal) return apiFetch(path, options);
+  if (API_SHARE[path] !== undefined) {
     const hit = API_SHARED[path];
-    const copy = d => (typeof structuredClone === "function" ? structuredClone(d) : JSON.parse(JSON.stringify(d)));
-    if (hit && Date.now() - hit.at < API_SHARE[path]) return hit.p.then(copy);   // each caller its own copy
+    if (hit && Date.now() - hit.at < API_SHARE[path]) return hit.p.then(apiCopy);   // each caller its own copy
     const p = apiFetch(path, options);
     API_SHARED[path] = { at: Date.now(), p };
     p.catch(() => { delete API_SHARED[path]; });
-    return p.then(copy);
+    return p.then(apiCopy);
   }
-  return apiFetch(path, options);
+  // The same read again within 1.5 s (a screen and its tab both asking as
+  // it opens) is answered from the first - one trip, one drawing.
+  const f = API_INFLIGHT[path];
+  if (f && (!f.end || Date.now() - f.end < 1500)) return f.p.then(apiCopy);
+  const p = apiFetch(path, options), rec = { p, end: 0 };
+  API_INFLIGHT[path] = rec;
+  p.then(() => { rec.end = Date.now(); setTimeout(() => { if (API_INFLIGHT[path] === rec) delete API_INFLIGHT[path]; }, 1600); },
+         () => { if (API_INFLIGHT[path] === rec) delete API_INFLIGHT[path]; });
+  return p.then(apiCopy);
 }
 async function apiFetch(path, options = {}) {
   const headers = options.headers || {};
@@ -5212,11 +5233,18 @@ function switchScreen(name) {
 // with a real https:// URL (not just blob: URLs).
 let cachedDownloadToken = null;
 let downloadTokenTimer = null;
+let downloadTokenAt = 0, downloadTokenBusy = null;
 async function refreshDownloadToken() {
-  try {
-    const { token } = await apiCall("/auth/download-token", { method: "POST" });
-    cachedDownloadToken = token;
-  } catch (e) { /* left null; buttons will show an error if used */ }
+  // Asked for by many screens as they open: one trip, and none while the last one is fresh.
+  if (cachedDownloadToken && Date.now() - downloadTokenAt < 20000) return;
+  if (downloadTokenBusy) return downloadTokenBusy;
+  downloadTokenBusy = (async () => {
+    try {
+      const { token } = await apiCall("/auth/download-token", { method: "POST" });
+      cachedDownloadToken = token; downloadTokenAt = Date.now();
+    } catch (e) { /* left null; buttons will show an error if used */ }
+  })();
+  await downloadTokenBusy; downloadTokenBusy = null;
   clearTimeout(downloadTokenTimer);
   downloadTokenTimer = setTimeout(refreshDownloadToken, 45000);
 }
@@ -7985,7 +8013,7 @@ function storeGo(which) {
     if (el) el.style.display = (p === which) ? "" : "none";
   });
   clearStoreMessages();
-  if (which === "home") loadStoreHome();
+  if (which === "home") loadStoreHome(true);   // just opened with the screen: not drawn twice
   if (which === "arrive") loadArrivePanel();
   if (which === "suppliers") switchScreen("suppliers");   // its own screen now
   if (which === "reports") {
@@ -8554,7 +8582,13 @@ function goDirectPurchase() {
 // browser tab, then redrawn when the fresh ones arrive - opening the store
 // never shows an empty table while the server answers.
 const STOCK_HOME_KEY = "infinia_stock_home";
-async function loadStoreHome() {
+let STORE_HOME_P = null, STORE_HOME_AT = 0;
+function loadStoreHome(soft) {
+  if (soft && STORE_HOME_P && Date.now() - STORE_HOME_AT < 4000) return STORE_HOME_P;
+  STORE_HOME_AT = Date.now();
+  return (STORE_HOME_P = loadStoreHomeNow());
+}
+async function loadStoreHomeNow() {
   let shown = false;
   try {
     const c = JSON.parse(sessionStorage.getItem(STOCK_HOME_KEY) || "null");
@@ -18238,16 +18272,19 @@ async function loadPettyCash() {
   if (!m.value) m.value = pcToday().slice(0, 7);
   if (!document.getElementById("pc-date").value) document.getElementById("pc-date").value = pcToday();
   document.getElementById("pc-date").max = pcToday();
+  const all = document.getElementById("pc-range").value === "all";
+  document.getElementById("pc-month-f").style.visibility = all ? "hidden" : "";
+  const want = all ? "all" : m.value;
+  // The book and the site list asked for together, not one after the other.
+  const bookP = apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}&book=${book}`);
+  bookP.catch(() => {});
   if (!PC_SITES) {
     try { PC_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { PC_SITES = []; }
     document.getElementById("pc-site").innerHTML = `<option value="">Office / general</option>` +
       PC_SITES.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
   }
-  const all = document.getElementById("pc-range").value === "all";
-  document.getElementById("pc-month-f").style.visibility = all ? "hidden" : "";
-  const want = all ? "all" : m.value;
   let d;
-  try { d = await apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}&book=${book}`); }
+  try { d = await bookP; }
   catch (e) { showStatus("pc-status", "err", errText(e)); return; }
   if ((all ? "all" : m.value) !== want || book !== PC_BOOK) return;
   PC = d; pcDraw();
@@ -18353,7 +18390,7 @@ function vhDraw() {
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
       <td>${v.payments.length}</td><td class="n"><b>${pcMoney(v.total)}</b></td>
       <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Close" : "Edit / note"}</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
-    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
+    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500" data-tip="A note for this visa, e.g. an amount to deduct from his salary - it prints on the visa sheet.">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
     return row + det;
   }).join("") || `<tr><td colspan="5" class="sub" style="padding:16px;">No visa in progress. Type a name under Whose visa to start one.</td></tr>`;
   document.getElementById("vh-foot").innerHTML = VH.ongoing.length ? `<tr><td colspan="3" class="l">TOTAL HELD</td><td class="n">${pcMoney(VH.held)}</td><td></td></tr>` : "";
@@ -18877,9 +18914,8 @@ async function invOpen(kind) {
   document.getElementById("inv-no-l").textContent = pro ? "Proforma No. *" : "Invoice No. *";
   document.getElementById("inv-date-l").textContent = pro ? "Proforma date *" : "Invoice date *";
   document.getElementById("inv-tot-l").textContent = pro ? "Total" : "Total due";
-  if (!INV_EDIT) invReset();          // the empty form at once; the list fills in after
+  if (!INV_EDIT) invReset();          // the empty form at once (with its next number); the list fills in after
   await invLoad();
-  if (!INV_EDIT) invNextNumber();
 }
 async function invLoad() {
   try { INV = await apiCall(`/employees/accounts/invoices?kind=${INV_KIND}`); }
@@ -18918,7 +18954,7 @@ function invDrawList() {
       : (cx ? "" : (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Not released</span>` : `<span class="zx-tag zx-skip" title="Held - goes to Zoho when released">Held</span>`)));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
       <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}</td><td>${accDmy(r.date)}</td>
-      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no && !(r.project || "").startsWith(r.project_no) ? [r.project_no, r.project].filter(Boolean).join(" - ") : (r.project || r.project_no || ""))}</td>
+      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${r.project_no ? xlink(r.project_no, `xlProjectPay(${jsq(r.project_no)})`, "projpay", "This project's payment tracker") + escapeHtml(r.project && !r.project.startsWith(r.project_no) ? " - " + r.project : (r.project || "").slice(r.project_no.length)) : escapeHtml(r.project || "")}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})" title="Opens it with PDF, Excel, Print and Share">Preview</button>${cx ? "" :
         `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
@@ -19220,7 +19256,7 @@ function ppDraw() {
   const pays = r => { const ps = per ? r.period_payments : r.payments;
     return ps.length ? `<div class="pppays">${ps.map(p => `<span><em>${accDmy(p.date)}</em>${ppMoney(p.amount)}</span>`).join("")}</div>` : '<span class="ppnone">No payment yet</span>'; };
   const cell = (k, r, g, i, n) => ({
-    proj: () => i === 0 ? `<td class="proj" rowspan="${n + (n > 1 ? 1 : 0)}">${escapeHtml(g.project)}</td>` : "",
+    proj: () => i === 0 ? `<td class="proj" rowspan="${n + (n > 1 ? 1 : 0)}">${xlink(g.project, `xlInvoicesFor(${jsq(g.project)})`, "invoices", "Tax invoices for this project")}</td>` : "",
     scope: () => `<td class="l scope">${escapeHtml(r.scope)}</td>`,
     contract: () => `<td class="n">${ppMoney(r.contract)}</td>`,
     pays: () => `<td class="l" style="min-width:380px;">${pays(r)}</td>`,
@@ -19454,6 +19490,13 @@ function xlGo(page, tab, sub, ready, act) {
     if (ok) { setTimeout(() => { try { act(); } catch (e) { console.error(e); } }, 60); return; }
     if (Date.now() - t0 < 9000) setTimeout(wait, 120);
   })();
+}
+// Tax invoices <-> project payment tracker, by project number.
+function xlInvoicesFor(pno) {
+  xlGo("accounts", "invoices", "tax", () => xlOn("invoices") && INV && INV_KIND === "tax", () => { const q = document.getElementById("inv-search"); q.value = pno; invDrawList(); xlFlash(document.getElementById("inv-body")); });
+}
+function xlProjectPay(pno) {
+  xlGo("accounts", "projects", null, () => xlOn("projpay") && PP, () => { const q = document.getElementById("pp-q"); q.value = pno; ppDraw(); xlFlash(document.getElementById("pp-body")); });
 }
 const xlOn = id => { const el = document.getElementById("screen-" + id); return el && el.classList.contains("active"); };
 function xlFlash(el) {
@@ -20099,7 +20142,7 @@ async function dailyReportCopy() {
     border: 0; padding: 0; cursor: pointer; background: radial-gradient(circle at 50% 40%, #fff, #EDEAE6 70%);
     box-shadow: 0 6px 18px rgba(0,0,0,.22), 0 0 0 3px rgba(192,57,43,.18); display: none; overflow: hidden;
     animation: infiFloat 3.2s ease-in-out infinite; }
-  #infi-btn img { width: 92%; margin-top: 8%; display: block; margin-left: 4%; pointer-events: none; }
+  #infi-btn img { width: 92%; height: auto; margin-top: 8%; display: block; margin-left: 4%; pointer-events: none; }
   #infi-btn:hover { box-shadow: 0 8px 22px rgba(0,0,0,.26), 0 0 0 3px rgba(192,57,43,.4); }
   #infi-btn:focus-visible { outline: 2px solid #C0392B; outline-offset: 3px; }
   @keyframes infiFloat { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
@@ -20116,10 +20159,10 @@ async function dailyReportCopy() {
   @media (prefers-reduced-motion: reduce) { #infi-btn { animation: none; } }
   @media print { #infi-btn, #infi-pop { display: none !important; } }
 </style>
-<button id="infi-btn" type="button" title="Ask INFI" aria-label="Ask INFI" onclick="infiToggle()"><img src="/portal/infi-face.png" alt=""></button>
+<button id="infi-btn" type="button" title="Ask INFI" aria-label="Ask INFI" onclick="infiToggle()"><img src="/portal/infi-face-128.webp" width="128" height="80" alt=""></button>
 <div id="infi-pop" role="dialog" aria-label="Ask INFI">
   <button class="x" type="button" onclick="infiToggle(false)" aria-label="Close">&times;</button>
-  <div class="hd"><img src="/portal/infi.png" alt=""><div><b>Hi, I'm INFI</b><small>Infinia's AI agent</small></div></div>
+  <div class="hd"><img src="/portal/infi-120.webp" width="120" height="159" loading="lazy" alt=""><div><b>Hi, I'm INFI</b><small>Infinia's AI agent</small></div></div>
   <p>Ask me anything about the app - "LPOs sent in the last 50 days", "all increments, both companies, as Excel". I open in Claude: start a chat, turn on <b>Infinia</b> in the tools menu, and ask.</p>
   <div class="acts"><a class="btn btn-primary" href="https://claude.ai/new" target="_blank" rel="noopener" onclick="infiToggle(false)">Ask INFI in Claude</a>
     <button class="btn btn-gray" type="button" onclick="infiHide()" title="Hide the INFI button on this device">Hide</button></div>

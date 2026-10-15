@@ -174,6 +174,9 @@
   @media (max-width: 900px) { .two { grid-template-columns: 1fr; } .grid { grid-template-columns: repeat(2, 1fr); } .sidebar { display: none; } }
 </style>
 <script>
+// Today in Dubai as YYYY-MM-DD (toISOString alone gives yesterday between midnight and 4 am).
+function pgTodayIso() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+
 // Inside the app (Staff menu, Settings > Access) this page is shown in a
 // frame: no menu, top bar or sign-in box of its own - the app around it
 // has those - so it appears in place with nothing flashing.
@@ -222,7 +225,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
 
 <div class="shell" id="shell">
   <div class="sidebar">
-    <div class="logo" id="pg-brand"><img width="995" height="168" src="/portal/logo-bb952b26.png" alt="Infinia Contracting"></div>
+    <div class="logo" id="pg-brand"><img width="995" height="168" src="/portal/logo-b52895d9.png" alt="Infinia Contracting"></div>
     <div data-page="dashboard" class="nav-item" onclick="location.href='/'">Dashboard</div>
     <div data-page="attendance" class="nav-item" onclick="location.href='/?p=attendance'">Attendance</div>
     <div data-page="people" class="nav-item active">Staff</div>
@@ -961,7 +964,7 @@ async function removeDoc(id, label) {
 function openAsset(id) {
   const a = id ? P.file.assets.find(x => x.id === id) : null; P.editingAsset = a ? a.id : null;
   document.getElementById("asset-title").textContent = (a ? "Edit item" : "Issue an item") + " · " + P.file.person.name;
-  ["item", "tag", "issued_on", "returned_on", "condition", "notes"].forEach(k => setVal("a-" + k, a ? a[k] : (k === "issued_on" ? new Date().toISOString().slice(0, 10) : "")));
+  ["item", "tag", "issued_on", "returned_on", "condition", "notes"].forEach(k => setVal("a-" + k, a ? a[k] : (k === "issued_on" ? pgTodayIso() : "")));
   document.getElementById("asset-msg").textContent = ""; openDlg("dlg-asset");
 }
 async function saveAsset() {
@@ -980,7 +983,7 @@ async function removeAsset(id, label) {
 // ---- Loans: the payroll register, entered from here too ------------------------
 let REPAY_LOAN = null;
 function openLoan() {
-  ["l-amount", "l-instalment", "l-terms", "l-notes"].forEach(id => setVal(id, "")); setVal("l-taken_on", new Date().toISOString().slice(0, 10));
+  ["l-amount", "l-instalment", "l-terms", "l-notes"].forEach(id => setVal(id, "")); setVal("l-taken_on", pgTodayIso());
   document.getElementById("loan-title").textContent = "New loan · " + P.file.person.name; document.getElementById("loan-msg").textContent = ""; openDlg("dlg-loan");
 }
 async function saveLoan() {
@@ -989,7 +992,7 @@ async function saveLoan() {
   catch (e) { document.getElementById("loan-msg").textContent = errText(e); }
 }
 function openInc() {
-  ["i-amount", "i-to_basic", "i-reason"].forEach(id => setVal(id, "")); setVal("i-effective_on", new Date().toISOString().slice(0, 10));
+  ["i-amount", "i-to_basic", "i-reason"].forEach(id => setVal(id, "")); setVal("i-effective_on", pgTodayIso());
   // Office staff: every increment goes onto the allowance (house rule), so there is no basic share to ask for.
   document.getElementById("i-to_basic-f").style.display = P.file.person.group === "labour" ? "" : "none";
   document.getElementById("inc-title").textContent = "Increment · " + P.file.person.name; document.getElementById("inc-msg").textContent = ""; openDlg("dlg-inc");
@@ -1001,8 +1004,8 @@ async function saveInc() {
 }
 function openRate() {
   const p = P.file.person;
-  setVal("rt-gross", p.gross); setVal("rt-basic", p.basic); setVal("rt-reason", ""); setVal("rt-effective_on", new Date().toISOString().slice(0, 10));
-  document.getElementById("rt-effective_on").max = new Date().toISOString().slice(0, 10);
+  setVal("rt-gross", p.gross); setVal("rt-basic", p.basic); setVal("rt-reason", ""); setVal("rt-effective_on", pgTodayIso());
+  document.getElementById("rt-effective_on").max = pgTodayIso();
   document.getElementById("rate-title").textContent = "Change rate · " + p.name; document.getElementById("rate-msg").textContent = ""; openDlg("dlg-rate");
 }
 async function saveRate() {
@@ -1013,7 +1016,7 @@ async function saveRate() {
 function openRepay(id) {
   REPAY_LOAN = id; const l = P.file.loans.find(x => x.id === id);
   document.getElementById("repay-title").textContent = `Repayment · loan of ${money(l.amount)} (balance ${money(l.balance)})`;
-  setVal("r-amount", ""); setVal("r-paid_on", new Date().toISOString().slice(0, 10)); setVal("r-notes", ""); document.getElementById("repay-msg").textContent = ""; openDlg("dlg-repay");
+  setVal("r-amount", ""); setVal("r-paid_on", pgTodayIso()); setVal("r-notes", ""); document.getElementById("repay-msg").textContent = ""; openDlg("dlg-repay");
 }
 async function saveRepay() {
   try { await apiCall(`/employees/loans/${REPAY_LOAN}/repay`, { method: "POST", body: JSON.stringify({ amount: getVal("r-amount"), paid_on: getVal("r-paid_on"), notes: getVal("r-notes") }) }); closeDlg("dlg-repay"); status("ok", "Repayment recorded."); await openPerson(P.current); }
@@ -1448,6 +1451,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 window.pgRefresh = async () => { if (!ME) return start(); try { await loadPeople(); } catch (e) {} };
 if (TOKEN) start(); else signInBox();
 </script>
-<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=c59af62991"><script src="/portal/help/guides.js?v=37a93c7531"></script><script src="/portal/help/tips.js?v=305729e445"></script><script src="/portal/help/words.js?v=ff86ea776f" defer></script><script src="/portal/help/spell.js?v=e0b7d63d01" defer></script><!--/help-tips-->
+<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=c59af62991"><script src="/portal/help/guides.js?v=f4a23e6a61"></script><script src="/portal/help/tips.js?v=305729e445"></script><script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v=ff86ea776f";</script><script src="/portal/help/spell.js?v=4775d9f55b" defer></script><!--/help-tips-->
 </body>
 </html>

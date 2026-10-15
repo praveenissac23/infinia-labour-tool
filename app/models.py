@@ -252,7 +252,7 @@ class EmployeeSummary(Base):
 class SalaryAdjustment(Base):
     __tablename__ = "salary_adjustments"
     id = Column(Integer, primary_key=True)
-    summary_id = Column(Integer, ForeignKey("employee_summaries.id"), nullable=False)
+    summary_id = Column(Integer, ForeignKey("employee_summaries.id"), nullable=False, index=True)
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     is_deduction = Column(Boolean, default=True)
@@ -272,10 +272,10 @@ class AuditLog(Base):
     """
     __tablename__ = "audit_log"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    action = Column(String, nullable=False)  # e.g. "save_attendance", "add_adjustment"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action = Column(String, nullable=False, index=True)  # e.g. "save_attendance", "add_adjustment"
     details = Column(Text, default="")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class Backup(Base):
