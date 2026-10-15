@@ -12,7 +12,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
     const d = n => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
     const docs = (await apiCall('/employees/documents')).rows.filter(x => x.emp_no === e.emp_no && ['visa', 'labour_card', 'eid'].includes(x.kind));
     for (const x of docs) await apiCall(`/employees/documents/${x.id}`, { method: 'DELETE' }).catch(() => 0);
-    for (const [k, n] of [['visa', 5], ['labour_card', 6], ['eid', 9]])
+    for (const [k, n] of [['visa', 5], ['labour_card', 5], ['eid', 75]])
       await apiCall('/employees/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emp_no: e.emp_no, kind: k, number: k.toUpperCase() + '-1', expires_on: d(n) }) });
     return e;
   });

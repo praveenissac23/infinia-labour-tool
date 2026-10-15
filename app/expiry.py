@@ -33,6 +33,7 @@ REQUIRED = [("eid", "Emirates ID"), ("visa", "Visa / labour card"), ("passport",
 # one reminder for the three, one "Mark started" for the three.
 GROUP = ("visa", "labour_card", "eid")
 GROUP_LABEL = "Visa, labour card & Emirates ID"
+GROUP_NAMES = {"visa": "Visa", "labour_card": "Labour card", "eid": "Emirates ID"}
 
 
 class ExpiryStarted(Base):
@@ -93,14 +94,11 @@ def _raw_items(db):
 
 
 def group_members(raw, item):
-    """The person's visa, labour card and EID lines due in the same round as
-    this one (within 60 days of the first) - renewed together, reminded once."""
+    """The person's visa, labour card and Emirates ID - renewed together, reminded once."""
     if item["type"] != "person" or item.get("kind") not in GROUP:
         return [item]
-    allp = sorted((x for x in raw if x["type"] == "person" and x.get("kind") in GROUP and x["employee_id"] == item["employee_id"]),
+    return sorted((x for x in raw if x["type"] == "person" and x.get("kind") in GROUP and x["employee_id"] == item["employee_id"]),
                   key=lambda x: x["days_left"])
-    parts = [x for x in allp if x["days_left"] <= allp[0]["days_left"] + 60]
-    return parts if item in parts else [item]
 
 
 def _items(db):
@@ -114,12 +112,9 @@ def _items(db):
         else:
             out.append(i)
     for allp in groups.values():
-        allp.sort(key=lambda x: x["days_left"])
-        # due in the same round go together; one good for much longer stands alone
-        parts = [x for x in allp if x["days_left"] <= allp[0]["days_left"] + 60]
-        out += [x for x in allp if x not in parts]
+        parts = sorted(allp, key=lambda x: x["days_left"])
         first = parts[0]
-        out.append({**first, "what": GROUP_LABEL if len(parts) > 1 else first["what"],
+        out.append({**first, "what": GROUP_LABEL,
                     "members": [(x["id"], x["expires_on"]) for x in parts]})
     return out
 
@@ -283,7 +278,8 @@ def _years(kind):
 
 @router.get("/employees/expiry/close")
 def close_info(type: str = "", id: int = 0, db: Session = Depends(get_db), user: models.User = M.DOCS):
-    """What the Close pop-up asks for: the new date of each document in the renewal."""
+    """What the Close pop-up asks for: the new date of each document in the renewal -
+    for visa, labour card and Emirates ID always the three (one not on file can be added)."""
     item, members = _find(db, {"type": type, "id": id})
     out = []
     for x in members:
@@ -292,35 +288,58 @@ def close_info(type: str = "", id: int = 0, db: Session = Depends(get_db), user:
             sug = old.replace(year=old.year + _years(x.get("kind")))
         except ValueError:                       # 29 Feb
             sug = old.replace(year=old.year + _years(x.get("kind")), day=28)
-        out.append({"id": x["id"], "what": x["what"], "expires_on": x["expires_on"], "suggest": sug.isoformat()})
-    return {"who": item["who"], "what": GROUP_LABEL if len(members) > 1 else item["what"], "type": item["type"], "docs": out}
+        out.append({"id": x["id"], "kind": x.get("kind", ""), "what": GROUP_NAMES.get(x.get("kind"), x["what"]),
+                    "expires_on": x["expires_on"], "suggest": sug.isoformat()})
+    grouped = item["type"] == "person" and item.get("kind") in GROUP
+    if grouped:
+        have = {x["kind"] for x in out}
+        out += [{"id": f"new:{k}", "kind": k, "what": GROUP_NAMES[k], "expires_on": "", "suggest": ""} for k in GROUP if k not in have]
+        order = {k: n for n, k in enumerate(GROUP)}
+        out.sort(key=lambda x: order.get(x["kind"], 9))
+    return {"who": item["who"], "what": GROUP_LABEL if grouped else item["what"], "type": item["type"], "docs": out}
 
 
 @router.post("/employees/expiry/close")
 def close(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = M.DOCS):
-    """Renewal closed: each document gets its new expiry date, the 'started' mark goes."""
+    """Renewal closed: each document gets its new expiry date, the 'started' mark goes.
+    A date left as it was is left alone; a document not on file is added if a date is typed."""
     item, members = _find(db, payload)
     dates = {str(k): v for k, v in (payload.get("dates") or {}).items()}
-    new = {}
+    new, changes = {}, []
     for x in members:
-        d = M._as_date(dates.get(str(x["id"])))
+        raw = dates.get(str(x["id"]))
+        d = M._as_date(raw)
+        name = GROUP_NAMES.get(x.get("kind"), x["what"])
+        old = M._as_date(x["expires_on"])
         if not d:
-            raise HTTPException(status_code=400, detail=f"Type the new expiry date for the {x['what']}.")
-        if d <= M._as_date(x["expires_on"]):
-            raise HTTPException(status_code=400, detail=f"The new {x['what']} date must be after the old one ({M._dmy(M._as_date(x['expires_on']))}).")
-        new[x["id"]] = d
+            raise HTTPException(status_code=400, detail=f"Type the new expiry date for the {name}.")
+        if d < old:
+            raise HTTPException(status_code=400, detail=f"The new {name} date cannot be before the old one ({M._dmy(old)}).")
+        if d != old:
+            new[x["id"]] = d; changes.append(f"{name} {x['expires_on']} -> {d.isoformat()}")
+    adds = {}
+    if item["type"] == "person" and item.get("kind") in GROUP:
+        have = {x.get("kind") for x in members}
+        for k in GROUP:
+            d = M._as_date(dates.get(f"new:{k}"))
+            if k not in have and d:
+                adds[k] = d; changes.append(f"{GROUP_NAMES[k]} added, expires {d.isoformat()}")
+    if not changes:
+        raise HTTPException(status_code=400, detail="Nothing changed - type the new expiry date.")
     Model = models.EmployeeDocument if item["type"] == "person" else models.CompanyExpiry
     for x in members:
-        o = db.get(Model, x["id"]); o.expires_on = new[x["id"]]
-        if item["type"] == "person" and o.kind == "contract":      # People file shows the same contract
-            prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == o.employee_id).first()
-            if prof:
-                prof.contract_expiry = new[x["id"]]
+        if x["id"] in new:
+            o = db.get(Model, x["id"]); o.expires_on = new[x["id"]]
+            if item["type"] == "person" and o.kind == "contract":      # People file shows the same contract
+                prof = db.query(models.PeopleProfile).filter(models.PeopleProfile.employee_id == o.employee_id).first()
+                if prof:
+                    prof.contract_expiry = new[x["id"]]
         db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == item["type"], ExpiryStarted.doc_id == x["id"]).delete()
-    M.log_action(db, user.id, "expiry_closed", f"{item['who']}: " + ", ".join(
-        f"{x['what']} {x['expires_on']} -> {new[x['id']].isoformat()}" for x in members))
+    for k, d in adds.items():
+        db.add(models.EmployeeDocument(employee_id=item["employee_id"], kind=k, expires_on=d, number=""))
+    M.log_action(db, user.id, "expiry_closed", f"{item['who']}: " + ", ".join(changes))
     db.commit()
-    return {"ok": True, "n": len(members)}
+    return {"ok": True, "n": len(changes)}
 
 
 @router.post("/employees/expiry/remove")

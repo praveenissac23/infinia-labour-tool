@@ -33,7 +33,7 @@ grp = [i for i in its if i["what"] == expiry.GROUP_LABEL]
 ck("Eric: visa, labour card and EID on ONE line", len(grp) == 1 and grp[0]["days_left"] == 7, its)
 ck("passport stays its own line", any(i["what"] == "Passport" for i in its) and len(its) == 2, its)
 ian = [i for i in expiry.notice_items(s) if i["who"].startswith("G-2")]
-ck("Ian: an EID good for a year is not clubbed with a visa due now", len(ian) == 2 and not any(i["what"] == expiry.GROUP_LABEL for i in ian), ian)
+ck("Ian: visa and EID on one line even with the EID a year away", len(ian) == 1 and ian[0]["what"] == expiry.GROUP_LABEL and ian[0]["days_left"] == 2, ian)
 mail = expiry.mail_body(s)[1]
 ck("morning email: Eric's three as one line", mail.count("G-1 ERIC MAMBO: " + expiry.GROUP_LABEL) == 1 and "G-1 ERIC MAMBO: Labour card" not in mail, mail)
 ck("the count treats the three as one", expiry.summary(s)["badge"] == 3, expiry.summary(s)["badge"])  # Eric group, Eric passport, Ian visa
@@ -46,11 +46,16 @@ s.close(); s = SessionLocal()
 its = [i for i in expiry.notice_items(s) if i["who"].startswith("G-1")]
 ck("no more reminder for the three; passport still reminded", [i["what"] for i in its] == ["Passport"], its)
 b = [x for x in c.get("/notifications", headers=H).json()["notifications"] if x.get("kind") == "expiry"][0]
-ck("the bell leaves Eric's visa group out", expiry.GROUP_LABEL not in b["detail"], b)
+ck("the bell leaves Eric's visa group out", "ERIC MAMBO (" + expiry.GROUP_LABEL not in b["detail"], b)
 
 c.post("/employees/expiry/started", headers=H, json={"type": "person", "id": iv, "on": True})
 st = {x["id"] for x in c.get("/employees/expiry/started", headers=H).json()["rows"]}
-ck("Ian: started marks his visa only, not the EID due next year", iv in st and ie not in st, st)
+ck("Ian: started marks his visa and EID", iv in st and ie in st, st)
+x = c.get(f"/employees/expiry/close?type=person&id={iv}", headers=H).json()
+ck("Ian's Close pop-up: Visa, Labour card (not on file), Emirates ID", [d["what"] for d in x["docs"]] == ["Visa", "Labour card", "Emirates ID"] and x["docs"][1]["id"] == "new:labour_card", x)
+r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": iv, "dates": {str(iv): D(730), str(ie): D(400), "new:labour_card": D(730)}})
+docs = [d for d in c.get("/employees/documents", headers=H).json()["rows"] if d["emp_no"] == "G-2"]
+ck("visa renewed, EID left as it was, labour card added", r.status_code == 200 and {d["kind"]: d["expires_on"] for d in docs} == {"visa": D(730), "eid": D(400), "labour_card": D(730)}, (r.text, docs))
 
 # visa renewed first, EID still in process: stays quiet
 c.post("/employees/documents", headers=H, json={"id": v, "emp_no": "G-1", "kind": "visa", "number": "v2", "expires_on": D(730)})
@@ -63,12 +68,12 @@ s.close()
 
 # ---- Close: set new expiry, or delete the entry ----
 x = c.get(f"/employees/expiry/close?type=person&id={lc}", headers=H).json()
-ck("Close pop-up: his labour card and EID (visa already renewed)", sorted(d["id"] for d in x["docs"]) == sorted([lc, e]), x)
+ck("Close pop-up: always Visa, Labour card, Emirates ID", [d["what"] for d in x["docs"]] == ["Visa", "Labour card", "Emirates ID"] and sorted(d["id"] for d in x["docs"]) == sorted([v, lc, e]), x)
 r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": lc, "dates": {str(lc): D(5)}})
 ck("a date before the old one is refused", r.status_code == 400, r.text)
 c.post("/employees/expiry/started", headers=H, json={"type": "person", "id": lc, "on": True})
-r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": lc, "dates": {str(lc): D(731), str(e): D(732)}})
-ck("Set new expiry: both dates saved", r.status_code == 200 and r.json()["n"] == 2, r.text)
+r = c.post("/employees/expiry/close", headers=H, json={"type": "person", "id": lc, "dates": {str(v): D(730), str(lc): D(731), str(e): D(732)}})
+ck("Set new expiry: labour card and EID saved, visa unchanged left alone", r.status_code == 200 and r.json()["n"] == 2, r.text)
 docs = {d["id"]: d for d in c.get("/employees/documents", headers=H).json()["rows"]}
 ck("new dates on file", docs[lc]["expires_on"] == D(731) and docs[e]["expires_on"] == D(732), (docs[lc], docs[e]))
 st = {x["id"] for x in c.get("/employees/expiry/started", headers=H).json()["rows"]}
@@ -77,6 +82,6 @@ r = c.post("/employees/expiry/remove", headers=H, json={"type": "person", "id": 
 docs = {d["id"] for d in c.get("/employees/documents", headers=H).json()["rows"]}
 ck("Delete entry: the passport is gone", r.status_code == 200 and pp not in docs and lc in docs, r.text)
 s = SessionLocal()
-ck("closing and deleting are in the activity log", s.query(models.AuditLog).filter(models.AuditLog.action.in_(["expiry_closed", "expiry_removed"])).count() == 2)
+ck("closing and deleting are in the activity log", s.query(models.AuditLog).filter(models.AuditLog.action.in_(["expiry_closed", "expiry_removed"])).count() == 3)
 s.close()
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED: {FAIL}"); sys.exit(1 if FAIL else 0)

@@ -1816,7 +1816,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="c494158101d9";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="e3a3984e28ed";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -16161,8 +16161,8 @@ async function expClose(type, id) {
   const ov = document.createElement("div"); ov.className = "zx-modal exp-cm";
   ov.innerHTML = `<div class="zx-box" style="width:520px;max-width:calc(100vw - 32px);">
     <h3 style="margin:0 0 2px;">Close - ${escapeHtml(d.what)}</h3><div class="sub" style="margin-bottom:12px;">${escapeHtml(d.who)} · renewal done? Set the new expiry date${d.docs.length > 1 ? "s" : ""}, or delete the entry if it is no longer needed.</div>
-    ${d.docs.map(x => `<div class="exp-cm-row"><div><b>${escapeHtml(x.what)}</b><span class="sub" style="display:block;">was ${dmyShort(x.expires_on)}</span></div>
-      <input type="date" data-id="${x.id}" value="${x.suggest}" min="${x.expires_on}"></div>`).join("")}
+    ${d.docs.map(x => `<div class="exp-cm-row"><div><b>${escapeHtml(x.what)}</b><span class="sub" style="display:block;">${x.expires_on ? "was " + dmyShort(x.expires_on) : "not on file - add the date if he has one"}</span></div>
+      <input type="date" data-id="${x.id}" value="${x.suggest}" ${x.expires_on ? `min="${x.expires_on}"` : ""}></div>`).join("")}
     <div class="exp-cm-msg sub" style="color:#B7322A;min-height:16px;margin-top:6px;"></div>
     <div class="exp-cm-btns"><button type="button" class="btn btn-gray exp-cm-del" style="color:#B7322A;">Delete entry</button><span style="flex:1"></span>
       <button type="button" class="btn btn-gray" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="save">Set new expiry</button></div></div>`;
@@ -16171,7 +16171,7 @@ async function expClose(type, id) {
     const a = e.target.dataset && e.target.dataset.a;
     if (e.target === ov || a === "no") return ov.remove();
     if (a === "save") {
-      const dates = {}; ov.querySelectorAll("input[type=date]").forEach(i => dates[i.dataset.id] = i.value);
+      const dates = {}; ov.querySelectorAll("input[type=date]").forEach(i => { if (i.value) dates[i.dataset.id] = i.value; });
       try { await apiCall("/employees/expiry/close", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, dates }) }); }
       catch (err) { return msg(errText(err)); }
       ov.remove(); await expAfterChange(); expMsg("ok", `Closed - ${d.what} renewed for ${d.who}. Reminders start again before the new date.`);
@@ -16423,18 +16423,18 @@ async function loadAllDocs() {
   await expLoadStarted();
   renderAllDocs(); expDrawCards();
 }
-// Visa, labour card and Emirates ID are one renewal: one line a man (those due within 60 days of the first).
+// Visa, labour card and Emirates ID are one renewal: one line a man.
 const EXP_GROUP = ["visa", "labour_card", "eid"];
 function expClubVisa(rows) {
   const by = {}, out = [];
   rows.forEach(r => (EXP_GROUP.includes(r.kind) && r.days_left !== null ? (by[r.emp] = by[r.emp] || []).push(r) : out.push(r)));
+  const NM = { visa: "Visa", labour_card: "Labour card", eid: "Emirates ID" };
   Object.values(by).forEach(g => {
     g.sort((a, b) => a.days_left - b.days_left);
-    const same = g.filter(x => x.days_left <= g[0].days_left + 60);
-    g.filter(x => !same.includes(x)).forEach(x => out.push(x));
-    out.push(same.length > 1 ? { ...same[0], doc: "Visa, labour card & Emirates ID",
-      number: same.map(x => x.number).filter(Boolean).join(" / "),
-      parts: same.map(x => `${x.doc} ${dmyShort(x.expires_on)}`).join(", ") } : same[0]);
+    const miss = EXP_GROUP.filter(k => !g.some(x => x.kind === k)).map(k => `${NM[k]} not on file`);
+    out.push({ ...g[0], doc: "Visa, labour card & Emirates ID",
+      number: g.map(x => x.number).filter(Boolean).join(" / "),
+      parts: [...EXP_GROUP.filter(k => g.some(x => x.kind === k)).map(k => { const x = g.find(y => y.kind === k); return `${NM[k]} ${dmyShort(x.expires_on)}`; }), ...miss].join(", ") });
   });
   return out;
 }
