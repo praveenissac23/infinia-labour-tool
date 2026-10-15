@@ -1785,7 +1785,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   } catch (e) {}
 })();
 </script>
-<script>(function(){var B="56afa70588f9";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
+<script>(function(){var B="a90a4ed8228d";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})]).catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script></head>
 <body>
 
 <div id="toast-wrap"></div>
@@ -17852,7 +17852,7 @@ async function vfStageClick(id, st) {
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <label class="pc-f" style="flex:1;min-width:140px;"><span>Date</span><input type="date" id="vs-d" value="${VF.today}" max="${VF.today}" style="width:100%;box-sizing:border-box;"></label>
         <label class="pc-f" style="flex:1;min-width:140px;"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="vs-a" placeholder="0.00" style="width:100%;box-sizing:border-box;"></label>
-        <label class="pc-f" style="flex:1.4;min-width:160px;"><span>Paid to</span><input type="text" id="vs-s" value="${escapeAttr(VF.supplier || "")}" style="width:100%;box-sizing:border-box;"></label>
+        <label class="pc-f" style="flex:1.4;min-width:160px;"><span>Paid to</span><input type="text" id="vs-s" value="" placeholder="Optional" style="width:100%;box-sizing:border-box;"></label>
         <label class="pc-f" style="flex:1;min-width:120px;"><span>Receipt no.</span><input type="text" id="vs-r" placeholder="Optional" style="width:100%;box-sizing:border-box;"></label></div>
       <label class="pc-f" style="display:block;margin-top:10px;"><span>Description</span><input type="text" id="vs-desc" value="${escapeAttr(`${r.person} - ${r.kind_label} - ${st}`)}" style="width:100%;box-sizing:border-box;"></label>
       <div class="sub" style="margin-top:6px;">Goes into PRO petty cash (and on to Send to Zoho) - no need to enter it there again.</div></div>
@@ -18475,7 +18475,6 @@ function pcVisaDesc() {
     desc.value = f ? [f.person, f.kind_label, PC_VSEL.stage].filter(Boolean).join(" - ") : (desc.dataset.vauto === desc.value ? "" : desc.value);
     desc.dataset.vauto = desc.value;
   }
-  if (f && !sup.value.trim()) { sup.value = PC_VF.supplier || ""; sup.dataset.auto = "1"; }
 }
 function pcReset() {
   PC_EDIT = null;

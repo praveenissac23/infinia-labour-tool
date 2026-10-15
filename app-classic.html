@@ -17645,7 +17645,7 @@ async function vfStageClick(id, st) {
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <label class="pc-f" style="flex:1;min-width:140px;"><span>Date</span><input type="date" id="vs-d" value="${VF.today}" max="${VF.today}" style="width:100%;box-sizing:border-box;"></label>
         <label class="pc-f" style="flex:1;min-width:140px;"><span>Amount (AED)</span><input type="text" inputmode="decimal" id="vs-a" placeholder="0.00" style="width:100%;box-sizing:border-box;"></label>
-        <label class="pc-f" style="flex:1.4;min-width:160px;"><span>Paid to</span><input type="text" id="vs-s" value="${escapeAttr(VF.supplier || "")}" style="width:100%;box-sizing:border-box;"></label>
+        <label class="pc-f" style="flex:1.4;min-width:160px;"><span>Paid to</span><input type="text" id="vs-s" value="" placeholder="Optional" style="width:100%;box-sizing:border-box;"></label>
         <label class="pc-f" style="flex:1;min-width:120px;"><span>Receipt no.</span><input type="text" id="vs-r" placeholder="Optional" style="width:100%;box-sizing:border-box;"></label></div>
       <label class="pc-f" style="display:block;margin-top:10px;"><span>Description</span><input type="text" id="vs-desc" value="${escapeAttr(`${r.person} - ${r.kind_label} - ${st}`)}" style="width:100%;box-sizing:border-box;"></label>
       <div class="sub" style="margin-top:6px;">Goes into PRO petty cash (and on to Send to Zoho) - no need to enter it there again.</div></div>
@@ -18268,7 +18268,6 @@ function pcVisaDesc() {
     desc.value = f ? [f.person, f.kind_label, PC_VSEL.stage].filter(Boolean).join(" - ") : (desc.dataset.vauto === desc.value ? "" : desc.value);
     desc.dataset.vauto = desc.value;
   }
-  if (f && !sup.value.trim()) { sup.value = PC_VF.supplier || ""; sup.dataset.auto = "1"; }
 }
 function pcReset() {
   PC_EDIT = null;

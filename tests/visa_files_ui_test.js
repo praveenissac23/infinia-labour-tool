@@ -34,7 +34,7 @@ const openVisa = async p => { await p.goto(B + '/?p=accounts#petty:pro'); await 
   await j.click('#pc-vstages .vf-chip >> text=Entry permit'); await j.waitForTimeout(200);
   const desc = await j.inputValue('#pc-desc');
   ck('description fills itself', /New visa - Entry permit$/.test(desc), desc);
-  ck('supplier fills MOHRE & GDRFA', await j.inputValue('#pc-sup') === 'MOHRE & GDRFA');
+  ck('supplier left empty', await j.inputValue('#pc-sup') === '');
   await j.fill('#pc-amt', '2750');
   await j.screenshot({ path: SH + 'visa_pro_form.png' });
   await j.click('#pc-save'); await j.waitForTimeout(2000);

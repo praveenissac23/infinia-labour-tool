@@ -39,12 +39,14 @@ KINDS = {
 SUPPLIER = "MOHRE & GDRFA"
 # A PRO payment that says this must be on a visa file (from the day Visa
 # files started; older lines are left as they are).
-MUST = re.compile(r"\bvisa\b|emirates id|entry permit|change of status|\bmohre\b|\bgdrfa\b|labour card|visa stamping", re.I)
+MUST = re.compile(r"\bvisa\b|emirates id|entry permit|change of status|labour card", re.I)
 START = date(2026, 10, 15)
 
 
 def must_have_file(x):
-    return bool(x.on_date and x.on_date >= START and MUST.search(f"{x.description or ''} {x.supplier or ''}"))
+    # The description decides, not the supplier: GDRFA / MOHRE also sell
+    # travel reports, fines and the like that are no visa.
+    return bool(x.on_date and x.on_date >= START and MUST.search(x.description or ""))
 
 
 LOOKS_VISA = re.compile(r"visa|emirates id|\beid\b|medical fitness|medical test|entry permit|labour card|mohre|gdrfa|\biloe\b|tasheel|\bamer\b|change of status", re.I)
@@ -312,7 +314,7 @@ def pay(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user
         raise HTTPException(status_code=400, detail="Which stage is this payment for?")
     desc = " ".join(str(payload.get("description") or "").split()) or f"{v.person} - {kind_label(v.kind)} - {st}"
     P.add_petty_cash({"book": "pro", "date": payload.get("date"), "description": desc,
-                      "supplier": payload.get("supplier") if payload.get("supplier") is not None else SUPPLIER,
+                      "supplier": payload.get("supplier") or "",
                       "paid": payload.get("amount"), "receipt_no": payload.get("receipt_no") or "",
                       "visa_file_id": v.id, "visa_stage": st}, db, user)
     db.refresh(v)
