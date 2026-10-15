@@ -240,6 +240,9 @@ def seed_on_startup():
             _n = _vs.seed_existing(db)
             _vs.new_step_lists(db)
             _vs.drop_if_needed(db)
+            _mv = _vs.move_ongoing_to_held(db)
+            if _mv:
+                print("visa: moved to the Visa tab -", ", ".join(_mv))
             if _n:
                 print(f"visa files: {_n} files opened for the visas in progress")
         except Exception as e:

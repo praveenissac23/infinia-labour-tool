@@ -682,3 +682,39 @@ def drop_if_needed(db):
         pass
     db.add(models.Setting(key="visa_steps_ifneeded", value="1"))
     db.commit()
+
+
+# Agreed with Praveen (15 Oct): the October visa lines still in progress go
+# from PRO petty cash to the Visa tab (held); the completed ones stay.
+HOLD_MOVE = {2891: 4570.33, 3050: 278.77, 3051: 76.14, 2895: 5272.70, 2896: 5272.70}
+DONE_KEEP = (2893, 2894, 2897)
+
+
+def move_ongoing_to_held(db):
+    """Once. A line is moved only if it is still that PRO payment, on an
+    ongoing visa, and not approved for (or sent to) Zoho."""
+    if db.query(models.Setting).filter(models.Setting.key == "visa_held_move_oct26").first():
+        return []
+    moved = []
+    for pid, amt in HOLD_MOVE.items():
+        x = db.get(models.PettyCash, pid)
+        if not x or (x.book or "") != "pro" or abs((x.paid or 0) - amt) > 0.005 or (x.zoho_status or "") or not x.visa_file_id:
+            continue
+        v = db.get(models.VisaFile, x.visa_file_id)
+        if not v or v.status != "ongoing":
+            continue
+        db.add(models.VisaPayment(visa_file_id=v.id, on_date=x.on_date, step=x.visa_stage or "", amount=round(x.paid, 2),
+                                  supplier=x.supplier or "", description=x.description or "", receipt_no=x.receipt_no or "",
+                                  created_by=x.created_by))
+        moved.append(f"{v.person} {amt:,.2f}")
+        db.delete(x)
+    for pid in DONE_KEEP:
+        x = db.get(models.PettyCash, pid)
+        v = db.get(models.VisaFile, x.visa_file_id) if x and x.visa_file_id else None
+        if v and v.status == "ongoing":
+            v.status, v.completed_on = "completed", x.on_date
+    db.add(models.Setting(key="visa_held_move_oct26", value="; ".join(moved)))
+    db.commit()
+    if moved:
+        M.log_action(db, None, "visa_moved_held", "Ongoing visa lines moved from PRO petty cash to the Visa tab: " + ", ".join(moved))
+    return moved
