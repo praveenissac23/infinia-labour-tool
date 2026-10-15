@@ -1573,6 +1573,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-table td { vertical-align:top; } .dt-l { padding:2px 0; line-height:1.45; } .dt-l.miss { color:#B03A2E; } .dt-ok { color:#2E7D32; font-weight:700; }
   .dt-acts { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
   /* Visa files */
+  .pc-protabs { display:flex; gap:8px; margin:0 0 12px; }
+  .vf-m .zx-box { max-height:calc(100vh - 40px); overflow-y:auto; }
   .vf-bar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 12px; }
   .vf-pills { display:flex; gap:8px; flex-wrap:wrap; }
   .vf-pill { border:1px solid #E2D8D0; background:#fff; color:#3A3330; border-radius:18px; padding:6px 16px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
@@ -3417,8 +3419,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
-        <!-- ============ VISA FILES ============ -->
-        <div class="screen" id="screen-visa">
+        <!-- ============ PETTY CASH ============ -->
+        <div class="screen" id="screen-pettycash">
+          <div class="pc-protabs" id="pc-protabs" style="display:none;"><button type="button" class="vf-pill on" data-v="cash" onclick="pcView('cash')">Petty cash</button><button type="button" class="vf-pill" data-v="visa" onclick="pcView('visa')">Visa files</button></div>
+          <div id="pc-visapane" style="display:none;">
           <div class="card">
             <div class="pc-head">
               <div class="pc-title"><h2 style="margin:0;">Visa files <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Every visa process, all its costs across months, and where it stands</span></h2></div>
@@ -3430,10 +3434,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table vf-table" data-nomove><thead><tr><th class="l" style="width:200px;">Person</th><th class="l" style="width:150px;">Type</th><th class="l">Stages <span class="sub" style="display:inline;font-weight:400;text-transform:none;letter-spacing:0;">(click a stage to record it)</span></th><th class="l" style="width:96px;">Started</th><th class="n" style="width:120px;">Spent so far</th><th style="width:150px;"></th></tr></thead><tbody id="vf-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody><tfoot id="vf-foot"></tfoot></table></div>
             <div class="sub" style="margin-top:8px;font-size:12px;color:#8A7F78;">Click a row to see its payments. The PRO ties each payment to the file on PRO petty cash (Visa file and stage); completed files keep their full cost history.</div>
           </div>
-        </div>
-
-        <!-- ============ PETTY CASH ============ -->
-        <div class="screen" id="screen-pettycash">
+          </div>
+          <div id="pc-cashpane">
           <div class="card">
             <div class="pc-head">
               <div class="pc-title">
@@ -3480,6 +3482,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <tfoot id="pc-foot"></tfoot>
               </table>
             </div>
+          </div>
           </div>
         </div>
 
@@ -5040,6 +5043,7 @@ function switchScreen(name) {
   if (name === "credentials") crLoad();
   if (name === "expiry") expOpen();
   if (name === "adminforms") formsOpen();
+  if (name === "docsoffice") dtLoad();
   if (name === "pdc") pdcOpen();
   if (name === "seccheque") scOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -17581,7 +17585,7 @@ async function vfStageClick(id, st) {
     <div data-p="old" style="display:none;">
       ${nopay.length ? `<div class="sub" style="margin-bottom:4px;">On this file, stage not said yet:</div>${nopay.map(u => opt(u, "on")).join("")}` : ""}
       ${mine.length ? `<div class="sub" style="margin:8px 0 4px;">${escapeHtml(r.person)}'s PRO payments:</div>${mine.map(u => opt(u, "tie")).join("")}` : ""}
-      ${others.length ? `<details style="margin-top:8px;"><summary class="sub" style="cursor:pointer;">Other PRO visa payments (${others.length})</summary>${others.map(u => opt(u, "tie")).join("")}</details>` : ""}
+      ${others.length ? `<details style="margin-top:8px;"><summary class="sub" style="cursor:pointer;">Other PRO visa payments (${others.length})</summary><input type="text" id="vs-q" placeholder="Find by name, amount or date" data-spell="off" style="width:100%;box-sizing:border-box;margin:6px 0;"><div id="vs-others">${others.map(u => opt(u, "tie")).join("")}</div></details>` : ""}
       ${!nopay.length && !mine.length && !others.length ? `<div class="sub">No PRO payments waiting to be tied.</div>` : ""}</div>
     <div data-p="none" style="display:none;"><div class="sub">The stage is ticked with no payment (e.g. a step the company did not pay for).</div></div>
     <div class="status-msg" id="vs-msg" style="margin-top:8px;"></div>
@@ -17591,6 +17595,8 @@ async function vfStageClick(id, st) {
   const show = m => { mode = m; ov.querySelectorAll("#vf-modes .vf-pill").forEach(b => b.classList.toggle("on", b.dataset.m === m)); ov.querySelectorAll("[data-p]").forEach(d => d.style.display = d.dataset.p === m ? "" : "none"); };
   ov.querySelectorAll("#vf-modes .vf-pill").forEach(b => b.onclick = () => show(b.dataset.m));
   if (!VF.may_pay && (nopay.length || mine.length)) show("old");
+  const q = ov.querySelector("#vs-q");
+  if (q) q.oninput = () => { const k = q.value.trim().toLowerCase().replace(/,/g, ""); ov.querySelectorAll("#vs-others .vf-opt").forEach(l => l.style.display = !k || l.textContent.toLowerCase().replace(/,/g, "").includes(k) ? "" : "none"); };
   ov.querySelector("#vs-x").onclick = () => ov.remove();
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
   ov.querySelector("#vs-ok").onclick = async () => {
@@ -18036,6 +18042,7 @@ let PC_BOOK = "";
 function pcMayBook(b) { return typeof pgHas !== "function" || pgHas("petty_" + b); }
 function pcBook(b) {
   if (!PC_BOOKS[b] || !pcMayBook(b)) return;
+  if (PC_VIEW !== "cash") pcView("cash");   // a book's tab opens on its petty cash
   if (PC_BOOK === b && window.__pcLoad && window.__pcLoad.book === b && Date.now() - window.__pcLoad.t < 800) return;   // just loaded for this tab
   if (PC_BOOK !== b) { PC_BOOK = b; PC = null; if (typeof pcReset === "function") { PC_EDIT = null; } }
   loadPettyCash();
@@ -18046,6 +18053,8 @@ async function loadPettyCash() {
   if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
   if (!PC_BOOK || !pcMayBook(PC_BOOK)) PC_BOOK = Object.keys(PC_BOOKS).find(pcMayBook) || "site";
   document.getElementById("pc-heading").textContent = PC_BOOKS[PC_BOOK];
+  document.getElementById("pc-protabs").style.display = PC_BOOK === "pro" ? "" : "none";
+  if (PC_BOOK !== "pro" && PC_VIEW !== "cash") pcView("cash");
   window.__pcLoad = { book: PC_BOOK, t: Date.now() };
   const book = PC_BOOK;
   pcKind(PC_KIND);
@@ -18135,6 +18144,15 @@ function pcDescAuto() {
     sup.value = prev ? prev.supplier : (sup.dataset.auto ? "" : sup.value);
     sup.dataset.auto = prev ? "1" : "";
   }
+}
+// PRO book: Petty cash | Visa files, inside the PRO tab.
+let PC_VIEW = "cash";
+function pcView(v) {
+  PC_VIEW = PC_BOOK === "pro" ? v : "cash";
+  document.querySelectorAll("#pc-protabs .vf-pill").forEach(b => b.classList.toggle("on", b.dataset.v === PC_VIEW));
+  document.getElementById("pc-cashpane").style.display = PC_VIEW === "cash" ? "" : "none";
+  document.getElementById("pc-visapane").style.display = PC_VIEW === "visa" ? "" : "none";
+  if (PC_VIEW === "visa") vfLoad(); else if (PC_VF) { PC_VF = null; pcVisaShow(); }
 }
 // ---- PRO book: the visa file and stage a payment is for --------------------
 let PC_VF = null, PC_VSEL = { file: "", stage: "" };

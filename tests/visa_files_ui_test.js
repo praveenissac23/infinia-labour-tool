@@ -8,13 +8,15 @@ async function login(b, u, pw, url, W = 1440) {
   await p.goto(B + url); await p.fill('#login-username', u); await p.fill('#login-password', pw); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500); return p;
 }
-const openVisa = async p => { await p.evaluate(() => pgTab('labour')); await p.waitForTimeout(600); await p.evaluate(() => pgSub('visa')); await p.waitForTimeout(1800); };
+const openVisa = async p => { await p.goto(B + '/?p=accounts#petty:pro'); await p.reload(); await p.waitForTimeout(3000); await p.click('#pc-protabs [data-v="visa"]'); await p.waitForTimeout(1500); };
 (async () => {
   const b = await chromium.launch();
-  const j = await login(b, 'jomon', 'pass12345', '/?p=reports');
-  await openVisa(j);
-  ck('Visa files opens for the PRO', await j.locator('#screen-visa').isVisible());
-  ck('Preview / PDF / Excel / Share', await j.locator('#screen-visa .exp-btns .btn').count() === 4);
+  const j = await login(b, 'jomon', 'pass12345', '/?p=accounts#petty:pro');
+  await j.goto(B + '/?p=accounts#petty:pro'); await j.waitForTimeout(3000);
+  ck('PRO tab opens on Petty cash, Visa files next to it', await j.locator('#pc-protabs').isVisible() && await j.locator('#pc-cashpane').isVisible() && !(await j.locator('#pc-visapane').isVisible()));
+  await j.click('#pc-protabs [data-v="visa"]'); await j.waitForTimeout(1500);
+  ck('Visa files opens for the PRO', await j.locator('#pc-visapane').isVisible());
+  ck('Preview / PDF / Excel / Share', await j.locator('#pc-visapane .exp-btns .btn').count() === 4);
   const who = await j.evaluate(async () => (await apiCall('/store/visa/people')).people.find(p => !p.staff));
   await j.click('#vf-new'); await j.waitForTimeout(500);
   await j.fill('#vf-p', `${who.name} · ${who.no}`);
@@ -23,7 +25,8 @@ const openVisa = async p => { await p.evaluate(() => pgTab('labour')); await p.w
   await j.click('#vf-ok'); await j.waitForTimeout(1500);
   ck('file started and listed', await j.locator('#vf-body tr.vf-row').count() === 1 && /0 of 8/.test(await j.locator('#vf-body').textContent()));
   // PRO petty cash: pick the file and a stage
-  await j.goto(B + '/?p=accounts#petty:pro'); await j.waitForTimeout(3500);
+  await j.evaluate(() => pcBook('pro')); await j.waitForTimeout(1500);
+  ck('clicking PRO again goes back to Petty cash', await j.locator('#pc-cashpane').isVisible());
   ck('PRO book shows the visa file box', await j.locator('#pc-visa').isVisible());
   const fid = await j.evaluate(() => PC_VF.files[0].id);
   await j.selectOption('#pc-vfile', String(fid)); await j.waitForTimeout(300);
@@ -41,12 +44,13 @@ const openVisa = async p => { await p.evaluate(() => pgTab('labour')); await p.w
   ck('no visa box on cash received', !(await j.locator('#pc-visa').isVisible()));
   await j.click('#screen-pettycash .pc-kind button[data-k="paid"]');
   // back to Visa files
-  await j.goto(B + '/?p=reports'); await j.waitForTimeout(2500); await openVisa(j);
+  await openVisa(j);
   const t = await j.locator('#vf-body').textContent();
   ck('cost and stage on the file', /2,750\.00/.test(t) && /1 of 8/.test(t) && /next: Change of status/.test(t), t.slice(0, 200));
   // click the next stage: enter the payment there, it goes into PRO petty cash
   await j.locator('#vf-body tr.vf-row').first().locator('.vf-seg').nth(1).click(); await j.waitForTimeout(400);
   ck('stage click asks how it was paid (3 ways)', await j.locator('.vf-m #vf-modes .vf-pill').count() === 3);
+  ck('the window scrolls when long', await j.evaluate(() => getComputedStyle(document.querySelector('.vf-m .zx-box')).overflowY) === 'auto');
   await j.fill('#vs-a', '1320.33');
   await j.screenshot({ path: SH + 'visa_stage_pay.png' });
   await j.click('#vs-ok'); await j.waitForTimeout(1500);
@@ -72,7 +76,9 @@ const openVisa = async p => { await p.evaluate(() => pgTab('labour')); await p.w
   await j.click('.vf-pill >> text=Completed'); await j.waitForTimeout(1200);
   ck('listed under Completed with its cost', /Completed ✓/.test(await j.locator('#vf-body').textContent()) && /4,070\.33/.test(await j.locator('#vf-body').textContent()));
   ck('no page errors', j.errs.length === 0, j.errs);
-  const w = await login(b, 'jomon', 'pass12345', '/?p=reports', 390); await openVisa(w);
+  await j.goto(B + '/?p=accounts#petty:office'); await j.waitForTimeout(2500);
+  ck('other books have no Visa files tab', !(await j.locator('#pc-protabs').isVisible()));
+  const w = await login(b, 'jomon', 'pass12345', '/?p=accounts', 390); await openVisa(w);
   ck('phone width: no sideways scroll', await w.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await b.close();
   console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0);

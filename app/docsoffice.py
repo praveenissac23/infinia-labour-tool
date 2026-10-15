@@ -1,4 +1,4 @@
-"""Store & Purchasing > Stock > Docs to office.
+"""Admin > Docs to office.
 
 The store keeper sends delivery notes and other papers from site to the
 office with a transmittal: numbered by itself (DOF:005 on, following the

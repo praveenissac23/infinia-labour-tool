@@ -1,4 +1,4 @@
-"""Visa files (Reports > Labour > Visa files).
+"""Visa files (Accounts > Petty cash > PRO > Visa files).
 
 Every visa process - a new visa, a renewal, a cancellation - is one file
 for one person, with its stages (entry permit, medical, Emirates ID ...).
@@ -47,7 +47,7 @@ def must_have_file(x):
     return bool(x.on_date and x.on_date >= START and MUST.search(f"{x.description or ''} {x.supplier or ''}"))
 
 
-LOOKS_VISA = re.compile(r"visa|emirates id|\beid\b|medical|entry permit|labour card|mohre|gdrfa|ilo|insurance|tasheel|amer", re.I)
+LOOKS_VISA = re.compile(r"visa|emirates id|\beid\b|medical fitness|medical test|entry permit|labour card|mohre|gdrfa|\biloe\b|tasheel|\bamer\b|change of status", re.I)
 
 
 def may_edit(user):

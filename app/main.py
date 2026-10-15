@@ -220,7 +220,7 @@ def seed_on_startup():
         _grant_ppe(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
-        _grant_visa(db)
+        _docs_office_to_admin(db)
         try:
             import visa as _vs
             _n = _vs.seed_existing(db)
@@ -388,8 +388,8 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # office (docs_send); the assistant accountant checks them in
                # (docs_verify).
                "docs_send", "docs_verify",
-               # Visa files (Reports > Labour > Visa files): each visa process,
-               # its stages and its costs - the PRO and accounts.
+               # Visa files sit inside PRO petty cash (whoever has petty_pro);
+               # "visa" alone also opens them.
                "visa",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
@@ -684,7 +684,7 @@ def _grant_docs_office(db):
         role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
         name = (role.name or "").strip().lower() if role is not None else ""
         if name in give and keys:
-            add = [k for k in give[name] + ["store.store.docs"] if k not in keys]
+            add = [k for k in give[name] + ["admin.docs"] if k not in keys]
             if add:
                 setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="docs_office_granted", value="1"))
@@ -714,23 +714,20 @@ def _grant_ppe(db):
     db.commit()
 
 
-def _grant_visa(db):
-    """Visa files: the PRO, the chief and the assistant accountant keep
-    them; each gets the Reports > Labour > Visa files tab. Once."""
-    if db.query(models.Setting).filter(models.Setting.key == "visa_files_granted").first():
+def _docs_office_to_admin(db):
+    """Docs to office moved from Store > Stock to its own Admin tab:
+    whoever had it keeps it there. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "docs_office_admin_tab").first():
         return
-    give = {"pro", "chief accountant", "assistant accountant"}
-    roles = {r.id: r for r in db.query(models.AccessRole).all()}
-    for obj in list(roles.values()) + list(db.query(models.User).all()):
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
         field = "permissions" if isinstance(obj, models.User) else "screens"
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
-        role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
-        name = (role.name or "").strip().lower() if role is not None else ""
-        if keys and (name in give or (isinstance(obj, models.User) and "petty_pro" in keys)):
-            add = [k for k in ("visa", "reports.labour.visa") if k not in keys]
-            if add:
-                setattr(obj, field, ",".join(keys + add))
-    db.add(models.Setting(key="visa_files_granted", value="1"))
+        if any(k in keys for k in ("store.store.docs", "docs_send", "docs_verify")):
+            keys = [k for k in keys if k != "store.store.docs"]
+            if "admin.docs" not in keys:
+                keys.append("admin.docs")
+            setattr(obj, field, ",".join(keys))
+    db.add(models.Setting(key="docs_office_admin_tab", value="1"))
     db.commit()
 
 

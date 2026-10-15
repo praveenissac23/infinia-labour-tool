@@ -17,7 +17,10 @@ const side = p => p.evaluate(() => [...document.querySelectorAll('.pg-side .pg-i
     await p.close();
   }
   const a = await login(b, 'amal', 'pass12345');
-  ck('store keeper: no Admin', !(await side(a)).some(x => /^Admin/.test(x)), await side(a));
+  ck('store keeper: Admin shows only Docs to office', (await side(a)).some(x => /^Admin/.test(x)), await side(a));
+  await a.goto(B + '/?p=admin'); await a.waitForTimeout(2500);
+  const at = await a.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
+  ck('store keeper: no Forms tab', at.length === 1 && at[0] === 'Docs to office', at);
   const r = await a.evaluate(async () => { try { await apiCall('/store/admin/forms'); return 'opened'; } catch (e) { return 'refused'; } });
   ck('store keeper cannot open the forms even directly', r === 'refused', r);
 

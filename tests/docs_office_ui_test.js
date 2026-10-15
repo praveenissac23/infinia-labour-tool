@@ -6,15 +6,16 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
 async function login(b, u, pw, W = 1440) {
   const ctx = await b.newContext({ viewport: { width: W, height: W < 500 ? 844 : 950 } }); const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.errs = errs;
   p.on('dialog', d => d.accept(d.type() === 'prompt' ? 'invoice copy not in the envelope' : undefined));
-  await p.goto(B + '/?p=store'); await p.fill('#login-username', u); await p.fill('#login-password', pw); await p.evaluate('doLogin()');
+  await p.goto(B + '/?p=admin'); await p.fill('#login-username', u); await p.fill('#login-password', pw); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500); return p;
 }
-const open = async p => { await p.evaluate(() => { pgTab('store'); }); await p.waitForTimeout(700); await p.evaluate(() => pgSub('docs')); await p.waitForTimeout(1800); };
+const open = async p => { await p.evaluate(() => { pgTab('docs'); }); await p.waitForTimeout(1800); };
 (async () => {
   const b = await chromium.launch();
   const a = await login(b, 'amal', 'pass12345');
   await open(a);
   ck('Docs to office opens for Amal', await a.locator('#screen-docsoffice').isVisible());
+  ck('it is a tab on Admin', await a.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].some(t => t.textContent.trim() === 'Docs to office')));
   ck('new transmittal numbered DOF:005', await a.locator('#dt-form input[readonly]').inputValue() === 'DOF:005');
   ck('date defaults to today', (await a.locator('#dt-date').inputValue()).length === 10);
   const rows = a.locator('#dt-form .dt-lines tbody tr');

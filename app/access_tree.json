@@ -716,6 +716,15 @@
     "grant": [
      "admin_forms"
     ]
+   },
+   {
+    "id": "admin.docs",
+    "label": "Docs to office",
+    "right": [
+     "docs_send",
+     "docs_verify"
+    ],
+    "grant": []
    }
   ]
  },
@@ -789,16 +798,6 @@
       ],
       "grant": [
        "ppe"
-      ]
-     },
-     {
-      "id": "reports.labour.visa",
-      "label": "Visa files",
-      "right": [
-       "visa"
-      ],
-      "grant": [
-       "visa"
       ]
      }
     ]

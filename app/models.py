@@ -1373,7 +1373,7 @@ class ZohoLog(Base):
 
 
 class DocTransmittal(Base):
-    """Store & Purchasing > Stock > Docs to office: the store keeper's list of
+    """Admin > Docs to office: the store keeper's list of
     papers (delivery notes and the like) sent from site to the office; the
     assistant accountant ticks each one received. Numbered DOF:005 on,
     following the paper forms."""

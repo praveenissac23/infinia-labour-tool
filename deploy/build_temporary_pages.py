@@ -133,8 +133,7 @@ PAGES = {
             sub("builder", "Cycle report builder", screen="reports"),
             sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()"),
-            sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()"),
-            sub("visa", "Visa files", screen="visa", right=["visa"], go="vfLoad()")]),
+            sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()")]),
             # Salary cards are on Payroll > Labour payroll, not repeated here.
             # Leave is reported on Staff > Leave, not repeated here.
         # Office payroll and Staff are not repeated here: they are pages of
@@ -152,7 +151,8 @@ PAGES = {
             # Requests are read by whoever raises or approves them - not by stock alone.
             sub("mr_history", "Requests", screen="store", right=["requests", "approvals"], go="pgStoreReport('mr_history')")])]),
     # Admin: the company's blank forms to print - leave, passport, visa renewal.
-    "admin": ("Admin", [tab("forms", "adminforms", "Forms", "admin_forms", go="formsOpen()")]),
+    "admin": ("Admin", [tab("forms", "adminforms", "Forms", "admin_forms", go="formsOpen()"),
+                        tab("docs", "docsoffice", "Docs to office", ["docs_send", "docs_verify"], go="dtLoad()")]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
             ["#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
