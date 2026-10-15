@@ -166,7 +166,7 @@ def _item(db, source, item_id):
         return x, (f"{x.kind.title()} · {x.party or x.notes or ''}" if x else "")
     if source == "lpo":
         x = db.get(models.PurchaseOrder, item_id)
-        return x, (f"{x.ref} · {x.supplier}" if x else "")
+        return x, (f"{x.ref} · {x.supplier_name or ''}" if x else "")
     if source == "loan":
         x = db.get(models.StaffLoan, item_id)
         if not x:

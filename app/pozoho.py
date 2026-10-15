@@ -194,3 +194,42 @@ def corrected(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
         db.commit()
         M.log_action(db, user.id, "zoho_pos", f"{o.ref} confirmed matching in Zoho")
     return {"ok": True}
+
+
+# LPOs Praveen asked to delete everywhere (made on the admin login on
+# 9 Oct, with the material requests made alongside them).
+DROP = {"IC/LPO/20260125": "Abc International Tr LLC", "IC/LPO/20260126": "Absolute Royal Technologies"}
+
+
+def drop_admin_lpos(db):
+    """Each start until done: delete those LPOs, their lines and the
+    material request each was made with. One still in Zoho is left until
+    it is reversed on Sent to Zoho (that deletes it in Zoho)."""
+    if db.query(models.Setting).filter(models.Setting.key == "drop_lpo_0125_0126").first():
+        return []
+    gone, wait = [], []
+    for ref, sup in DROP.items():
+        o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.ref == ref).first()
+        if not o:
+            gone.append(ref); continue
+        if (o.supplier_name or "") != sup:
+            gone.append(ref); continue                     # not the order meant - never touch it
+        if (o.zoho_id or "").strip():
+            wait.append(ref); continue
+        mr = db.get(models.MaterialRequest, o.request_id) if o.request_id else None
+        for l in list(o.lines):
+            db.delete(l)
+        db.delete(o); db.flush()
+        mr_ref = ""
+        if mr and not db.query(models.PurchaseOrder).filter(models.PurchaseOrder.request_id == mr.id).count() \
+                and not db.query(models.StoreMovement).filter(models.StoreMovement.request_id == mr.id).count():
+            mr_ref = mr.ref
+            for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.request_id == mr.id).all():
+                db.delete(l)
+            db.delete(mr)
+        db.commit()
+        M.log_action(db, None, "delete_lpo", f"{ref} ({sup}) deleted as asked" + (f", with {mr_ref}" if mr_ref else ""))
+        gone.append(ref)
+    if not wait:
+        db.add(models.Setting(key="drop_lpo_0125_0126", value="1")); db.commit()
+    return wait

@@ -222,6 +222,13 @@ def seed_on_startup():
         _grant_docs_office(db)
         _docs_office_to_admin(db)
         _invoices_one_tab(db)
+        try:
+            import pozoho as _pz
+            _w = _pz.drop_admin_lpos(db)
+            if _w:
+                print("LPOs to delete still in Zoho - reverse them on Sent to Zoho, then restart:", ", ".join(_w))
+        except Exception as e:
+            db.rollback(); print("drop LPOs:", e)
         _docs_office_full_for_assistant(db)
         try:
             import zohoapi as _zn
