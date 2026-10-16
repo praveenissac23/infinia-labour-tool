@@ -35,6 +35,17 @@ SIZES = {"Coverall": ["S", "M", "L", "XL", "XXL", "XXXL"], "Safety Shoes": [str(
          "Helmet": ["Blue", "White", "Yellow", "Red", "Green"], "Safety Vest": ["M", "L", "XL", "XXL"],
          "Jacket": ["M", "L", "XL", "XXL"], "Driver T-Shirt": ["S", "M", "L", "XL", "XXL"], "Engineer Vest": ["M", "L", "XL", "XXL"]}
 NOT_GIVEN = ("Eligible",)
+# Kept size by size: safety shoes and the uniforms (the helmet goes by colour, not size).
+SIZED = ["Safety Shoes", "Coverall", "Safety Vest", "Jacket", "Driver T-Shirt", "Engineer Vest"]
+
+
+def _sz(item, v):
+    """A size as written on an issue ('xl ', '42.0') -> the size in the list, or '' if it is not one."""
+    t = str(v or "").strip().upper().replace(" ", "")
+    if t.endswith(".0"):
+        t = t[:-2]
+    t = {"2XL": "XXL", "3XL": "XXXL", "SMALL": "S", "MEDIUM": "M", "LARGE": "L"}.get(t, t)
+    return t if t in SIZES.get(item, []) else ""
 
 
 def _key(no):
@@ -117,7 +128,7 @@ def stock(db, issues=None):
     """In hand at each place, per item."""
     issues = issues if issues is not None else db.query(models.PpeIssue).all()
     given = _given(issues)
-    moves = db.query(models.PpeStockMove).all()
+    moves = [m for m in db.query(models.PpeStockMove).all() if not m.size]
     reorder = {x.item: (x.reorder if x.reorder is not None else 5) for x in db.query(models.PpeStock).all()}
     out = []
     for it in ITEMS:
@@ -146,6 +157,78 @@ def stock(db, issues=None):
         row["low"] = known and total <= row["reorder"]
         out.append(row)
     return out
+
+
+def sized_stock(db, issues=None):
+    """In hand size by size at each place, for safety shoes and uniforms:
+    last size count + size received since - given in that size since."""
+    issues = issues if issues is not None else db.query(models.PpeIssue).all()
+    given = _given(issues)
+    moves = [m for m in db.query(models.PpeStockMove).all() if m.size]
+    out = []
+    for it in SIZED:
+        mine = [m for m in moves if m.item == it]
+        row = {"item": it, "sizes": SIZES[it], "cells": {}, "tracked": bool(mine), "no_size": 0}
+        for sz in SIZES[it]:
+            cell, total, known = {}, 0, False
+            for pl in PLACES:
+                mv = [m for m in mine if m.location == pl and m.size == sz]
+                counts = [m for m in mv if m.kind == "count"]
+                last = max(counts, key=lambda m: (m.moved_on, m.id), default=None)
+                if last:
+                    base, d0, mid, after = last.qty, last.moved_on, last.id, last.after_issue or 0
+                else:
+                    rec = [m for m in mv if m.kind == "received"]
+                    if not rec:
+                        cell[pl] = None
+                        continue
+                    first = min(rec, key=lambda m: (m.moved_on, m.id))
+                    base, d0, mid, after = 0, first.moved_on, first.id - 1, 0
+                rec = sum(m.qty for m in mv if m.kind == "received" and m.moved_on >= d0 and m.id > mid)
+                out_ = sum(r.qty or 1 for r in given if r.item == it and _src(r) == pl and _sz(it, r.size) == sz
+                           and r.issued_on >= d0 and r.id > after)
+                cell[pl] = base + rec - out_
+                total += cell[pl]; known = True
+            cell["total"] = total if known else None
+            row["cells"][sz] = cell
+        if mine:   # given since sizes were first kept, with no size (or an odd one) written down
+            d0 = min(m.moved_on for m in mine)
+            row["no_size"] = sum(r.qty or 1 for r in given if r.item == it and r.issued_on >= d0 and not _sz(it, r.size))
+        out.append(row)
+    return out
+
+
+def _sizes_in(item, payload):
+    """{size: n} from a count or delivery entered size by size (blank = 0); None when not given that way."""
+    raw = payload.get("sizes")
+    if not raw or item not in SIZED:
+        return None
+    out = {}
+    for k, v in dict(raw).items():
+        sz = _sz(item, k)
+        if not sz:
+            raise HTTPException(status_code=400, detail=f"{k} is not a size of {item}.")
+        try:
+            n = int(v) if str(v).strip() != "" else 0
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"Size {k}: type a whole number.")
+        if n < 0:
+            raise HTTPException(status_code=400, detail="Numbers cannot be below zero.")
+        out[sz] = n
+    return out
+
+
+def _add_sized(db, item, pl, kind, sizes, moved_on, after_issue, note, user_id):
+    """The whole-item entry plus one per size, tied by batch."""
+    head = models.PpeStockMove(item=item, location=pl, kind=kind, qty=sum(sizes.values()), moved_on=moved_on,
+                               after_issue=after_issue, note=note, size="", created_by=user_id)
+    db.add(head); db.flush(); head.batch = head.id
+    for sz, n in sizes.items():
+        if kind == "received" and not n:
+            continue
+        db.add(models.PpeStockMove(item=item, location=pl, kind=kind, qty=n, moved_on=moved_on, after_issue=after_issue,
+                                   note=note, size=sz, batch=head.id, created_by=user_id))
+    return head
 
 
 def _given(rows):
@@ -225,6 +308,7 @@ def dashboard(db):
     quick.sort(key=lambda q: q["again"], reverse=True)
     stk = stock(db, issues)
     return {"today": today.isoformat(), "items": items, "sizes": SIZES, "recent_days": RECENT_DAYS, "places": list(PLACES),
+            "sized_items": SIZED, "by_size": sized_stock(db, issues),
             "workers": workers,
             "recent": [_issue_dict(r, users) for r in sorted(issues, key=lambda r: (r.issued_on, r.id), reverse=True)[:80]],
             "tiles": {"month": sum(r.qty or 1 for r in given_all if r.issued_on >= month0),
@@ -347,8 +431,9 @@ def set_stock(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     if item not in ITEMS:
         raise HTTPException(status_code=400, detail="Pick the item.")
     pl = _place(payload)
+    sizes = _sizes_in(item, payload)
     try:
-        counted = int(payload.get("counted"))
+        counted = sum(sizes.values()) if sizes is not None else int(payload.get("counted"))
         reorder = int(payload.get("reorder")) if payload.get("reorder") not in (None, "") else None
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Type the number counted.")
@@ -356,14 +441,18 @@ def set_stock(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
         raise HTTPException(status_code=400, detail="Numbers cannot be below zero.")
     from sqlalchemy import func as F
     last_issue = db.query(F.max(models.PpeIssue.id)).scalar() or 0
-    db.add(models.PpeStockMove(item=item, location=pl, kind="count", qty=counted, moved_on=M._dubai_today(), after_issue=last_issue,
-                               created_by=user.id))
+    if sizes is not None:
+        _add_sized(db, item, pl, "count", sizes, M._dubai_today(), last_issue, "", user.id)
+    else:
+        db.add(models.PpeStockMove(item=item, location=pl, kind="count", qty=counted, moved_on=M._dubai_today(), after_issue=last_issue,
+                                   created_by=user.id))
     if reorder is not None:
         st = db.query(models.PpeStock).filter(models.PpeStock.item == item).first() or models.PpeStock(item=item)
         st.reorder = reorder
         db.add(st)
     db.commit()
-    M.log_action(db, user.id, "ppe", f"stock counted: {item} at the {pl}: {counted}")
+    M.log_action(db, user.id, "ppe", f"stock counted: {item} at the {pl}: {counted}"
+                 + (" (" + ", ".join(f"{k}: {v}" for k, v in sizes.items()) + ")" if sizes else ""))
     return {"ok": True}
 
 
@@ -374,8 +463,9 @@ def received(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     if item not in ITEMS:
         raise HTTPException(status_code=400, detail="Pick the item.")
     pl = _place(payload)
+    sizes = _sizes_in(item, payload)
     try:
-        qty = int(payload.get("qty"))
+        qty = sum(sizes.values()) if sizes is not None else int(payload.get("qty"))
     except (TypeError, ValueError):
         qty = 0
     if not 1 <= qty <= 2000:
@@ -383,19 +473,31 @@ def received(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     d = M._as_date(payload.get("date")) or M._dubai_today()
     if d > M._dubai_today():
         raise HTTPException(status_code=400, detail="The date is in the future.")
-    m = models.PpeStockMove(item=item, location=pl, kind="received", qty=qty, moved_on=d, note=M.tidy_text(payload.get("note"))[:120],
-                            created_by=user.id)
-    db.add(m); db.commit()
-    M.log_action(db, user.id, "ppe", f"stock received: {qty} x {item} at the {pl} on {d}")
+    note = M.tidy_text(payload.get("note"))[:120]
+    if sizes is not None:
+        m = _add_sized(db, item, pl, "received", sizes, d, 0, note, user.id)
+    else:
+        m = models.PpeStockMove(item=item, location=pl, kind="received", qty=qty, moved_on=d, note=note, created_by=user.id)
+        db.add(m)
+    db.commit()
+    M.log_action(db, user.id, "ppe", f"stock received: {qty} x {item} at the {pl} on {d}"
+                 + (" (" + ", ".join(f"{k}: {v}" for k, v in sizes.items() if v) + ")" if sizes else ""))
     return {"ok": True, "id": m.id}
 
 
 @router.get("/store/ppe/stock/history")
 def stock_history(item: str = "", db: Session = Depends(get_db), user: models.User = VIEW):
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
-    mv = db.query(models.PpeStockMove).filter(models.PpeStockMove.item == item).all()
+    allmv = db.query(models.PpeStockMove).filter(models.PpeStockMove.item == item).all()
+    mv = [m for m in allmv if not m.size]
+    parts = {}
+    for m in allmv:
+        if m.size and m.batch:
+            parts.setdefault(m.batch, {})[m.size] = m.qty
     gv = [r for r in _given(db.query(models.PpeIssue).filter(models.PpeIssue.item == item).all())]
+    order = {sz: i for i, sz in enumerate(SIZES.get(item, []))}
     rows = [{"id": m.id, "date": m.moved_on.isoformat(), "place": m.location, "kind": m.kind, "qty": m.qty, "note": m.note or "",
+             "sizes": dict(sorted(parts.get(m.batch, {}).items(), key=lambda kv: order.get(kv[0], 99))) if m.batch else {},
              "by": users.get(m.created_by, "")} for m in mv]
     rows.sort(key=lambda r: (r["date"], r["id"]), reverse=True)
     by_place = {pl: sum(r.qty or 1 for r in gv if _src(r) == pl) for pl in PLACES}
@@ -408,7 +510,12 @@ def delete_move(mid: int, db: Session = Depends(get_db), user: models.User = EDI
     if not m:
         raise HTTPException(status_code=404, detail="That stock entry is not there.")
     M.log_action(db, user.id, "ppe_removed", f"stock {m.kind} removed: {m.qty} x {m.item} at the {m.location} on {m.moved_on}")
-    db.delete(m); db.commit()
+    if m.batch:   # the sizes go with it
+        for x in db.query(models.PpeStockMove).filter(models.PpeStockMove.batch == m.batch).all():
+            db.delete(x)
+    else:
+        db.delete(m)
+    db.commit()
     return {"ok": True}
 
 
@@ -446,7 +553,21 @@ def export(token: str, format: str = "excel", view: str = "grid", db: Session = 
     if (u.role or "") != "admin" and "reports" not in perms and RIGHT not in perms:
         raise HTTPException(status_code=403, detail="Labour reports only.")
     d = dashboard(db)
-    if view == "log":
+    if view == "sizes":
+        title = "PPE Stock by Size"
+        rows = []
+        for x in d["by_size"]:
+            if not x["tracked"]:
+                continue
+            for sz in x["sizes"]:
+                c = x["cells"][sz]
+                if c["total"] is None:
+                    continue
+                f = lambda v: "-" if v is None else v
+                rows.append({"Item": x["item"], "Size": sz, "Store": f(c.get("Store")), "Office": f(c.get("Office")), "Total": c["total"]})
+            if x["no_size"]:
+                rows.append({"Item": x["item"], "Size": "Given, size not noted", "Store": "", "Office": "", "Total": -x["no_size"]})
+    elif view == "log":
         title = "PPE Issue Register"
         rows = [{"Date": _fmt(r["date"]), "Employee ID": r["no"], "Name": r["name"], "Item": r["item"], "Size": r["size"],
                  "Qty": r["qty"], "From": r["source"], "Status": r["condition"], "Instructed by": r["instructed_by"],
@@ -464,7 +585,9 @@ def export(token: str, format: str = "excel", view: str = "grid", db: Session = 
             rows.append(row)
     t = d["tiles"]
     sub = (f"Last 6 months: {t['six']} items | this month: {t['month']} | quick repeats (30 days): {t['quick']}"
-           f" | As at {M._dubai_today():%d %b %Y}" + ("" if view == "log" else " | each item: last given (how long ago)"))
+           f" | As at {M._dubai_today():%d %b %Y}" + ("" if view in ("log", "sizes") else " | each item: last given (how long ago)"))
+    if view == "sizes":
+        sub = f"In hand size by size = last count + received - given from there | As at {M._dubai_today():%d %b %Y}"
     if format == "view":
         url = f"/export/reports/ppe?view={view}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, rows, url, url, money_cols=[])

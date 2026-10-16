@@ -1351,6 +1351,10 @@ class PpeStockMove(Base):
     moved_on = Column(Date, nullable=False)
     after_issue = Column(Integer, default=0)                     # count: last issue id entered before it
     note = Column(String, default="")                            # supplier / LPO for a delivery
+    # Size-wise (safety shoes, uniforms): one entry for the item ("" size,
+    # the whole quantity) plus one per size, all sharing `batch`.
+    size = Column(String, default="")
+    batch = Column(Integer, nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

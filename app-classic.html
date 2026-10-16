@@ -629,8 +629,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-ppe .pe-cell b{font-size:12.5px;font-weight:600;white-space:nowrap} #screen-ppe .pe-cell small{font-size:11px;white-space:nowrap}
   .pe-s-none{color:#C2B9B2} .pe-s-old{background:#EEF7F0;color:#2E7D32} .pe-s-mid{background:#FFF4E0;color:#9A5B00} .pe-s-recent{background:#FDECEA;color:#B03A2E}
   #screen-ppe .pe-flag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;background:#FDECEA;color:#B03A2E;margin-left:6px}
-  #screen-ppe .pe-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:14px}
-  #screen-ppe .pe-panel{border:1px solid #ECE6DF;border-radius:12px;background:#fff;overflow:hidden}
+  #screen-ppe .pe-cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px;margin-top:14px}
+  #screen-ppe .pe-panel{border:1px solid #ECE6DF;border-radius:12px;background:#fff;overflow:hidden;min-width:0;max-width:100%}
   #screen-ppe .pe-panel h3{margin:0;padding:10px 14px;font-size:13.5px;background:#FCFAF7;border-bottom:1px solid #F1ECE6;display:flex;justify-content:space-between;align-items:center}
   #screen-ppe .pe-list{max-height:330px;overflow:auto;font-size:12.5px}
   #screen-ppe .pe-list div.pe-li{display:flex;gap:10px;padding:7px 14px;border-bottom:1px solid #F6F2EE;align-items:center}
@@ -638,6 +638,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-ppe .pe-stock{width:100%;border-collapse:collapse;font-size:12.5px} #screen-ppe .pe-stock td,#screen-ppe .pe-stock th{padding:7px 12px;border-bottom:1px solid #F6F2EE;text-align:left} #screen-ppe .pe-stock th{font-size:11px;color:#8A8079;text-transform:uppercase}
   #screen-ppe .pe-stock .n{text-align:right;width:70px} #screen-ppe .pe-stock .pe-tot{background:#FBF8F5}
   #screen-ppe .pe-stock tr.pe-srow{cursor:pointer} #screen-ppe .pe-stock tr.pe-srow:hover td{background:#FBF8F5}
+  #screen-ppe .pe-szhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:16px 12px 6px;font-size:13px}
+  #screen-ppe .pe-szseg{display:inline-flex;border:1px solid #E3D7D1;border-radius:8px;overflow:hidden}
+  #screen-ppe .pe-szseg button{border:0;background:#fff;font:inherit;font-size:12px;padding:4px 12px;color:#4A433D;cursor:pointer}
+  #screen-ppe .pe-szseg button.on{background:#FBEDEB;color:var(--red);font-weight:700}
+  #screen-ppe .pe-szwrap{overflow-x:auto;margin-bottom:8px} #screen-ppe .pe-sz td,#screen-ppe .pe-sz th{padding:7px 5px} #screen-ppe .pe-sz td:first-child,#screen-ppe .pe-sz th:first-child{padding-left:12px} #screen-ppe .pe-sz td:last-child,#screen-ppe .pe-sz th:last-child{padding-right:12px} #screen-ppe .pe-sz .n{width:auto;min-width:26px} #screen-ppe .pe-sz td:first-child,#screen-ppe .pe-sz th:first-child{white-space:nowrap}
+  .pe-szgrid{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end} .pe-szgrid label{display:flex;flex-direction:column;align-items:center;width:58px} .pe-szgrid small{font-size:11px;color:#8A8079;font-weight:700}
+  .pe-szgrid input{width:58px;text-align:center;padding:6px 4px} .pe-szsum{margin-left:6px;font-weight:700;font-size:12.5px;color:#4A433D;padding-bottom:8px}
   .pe-nc{color:#B5ACA5;font-size:11px;white-space:nowrap} .pe-m b.neg,#screen-ppe b.neg,.pe-seg small.neg{color:#B03A2E}
   #screen-ppe .pe-snote{padding:8px 12px;font-size:11.5px;color:#8A8079}
   #screen-ppe .pe-hbtns{display:flex;gap:6px}
@@ -665,7 +672,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pe-box .pe-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0}
   .pe-box .pe-sum div{border-radius:10px;padding:8px 10px;font-size:12px} .pe-box .pe-sum b{display:block;font-size:13px}
   .pe-box .pe-pick div.pe-p{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F6F2EE}
-  @media (max-width:900px){ #screen-ppe .pe-cols{grid-template-columns:1fr} #screen-ppe .pe-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-ppe .pe-legend{margin-left:0} #screen-ppe .pe-tools input{width:100%} }
+  @media (max-width:900px){ #screen-ppe .pe-cols{grid-template-columns:minmax(0,1fr)} #screen-ppe .pe-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-ppe .pe-legend{margin-left:0} #screen-ppe .pe-tools input{width:100%} }
   @media (max-width:1200px){ #screen-ppe .pe-grid th:first-child{min-width:140px!important} #screen-ppe .pe-grid th{white-space:normal} #screen-ppe .pe-who b{white-space:normal} #screen-ppe .pe-who small{display:block;line-height:1.25} #screen-ppe .pe-cell{min-width:64px;padding:3px 6px} #screen-ppe .pe-grid td,#screen-ppe .pe-grid th{padding-left:7px;padding-right:7px} }
   /* Labour accommodation - camp rooms and beds */
   #screen-camp .cp-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0;min-height:68px}
@@ -3375,7 +3382,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="card">
             <div class="pc-head">
               <div class="pc-title"><h2 style="margin:0;">PPE register <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">When each worker was last given a coverall, shoes, helmet...</span></h2></div>
-              <div class="pc-btns"><label class="pc-f"><span>Report</span><select id="pe-rep"><option value="grid">By worker</option><option value="log">Issue register</option></select></label><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="ppeExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="ppeExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Share</button></div></div>
+              <div class="pc-btns"><label class="pc-f"><span>Report</span><select id="pe-rep"><option value="grid">By worker</option><option value="log">Issue register</option><option value="sizes">Stock by size</option></select></label><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="ppeExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="ppeExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="ppeExport('view')">Share</button></div></div>
             </div>
             <div class="pe-tiles" id="pe-tiles"></div>
             <div class="pe-tools">
@@ -17924,7 +17931,45 @@ function ppeDraw() {
     : `<td class="n" title="${escapeAttr(`${x.counted !== null ? "Counted " + x.counted + " on " + ppeD(x.counted_on, 1) : "From the first delivery, " + ppeD(x.since, 1)} + received ${x.received} - given ${x.given}`)}"><b class="${x.in_hand < 0 ? "neg" : ""}">${x.in_hand}</b></td>`;
   document.getElementById("pe-stock").innerHTML = `<table class="pe-stock"><thead><tr><th>Item</th><th class="n">Store</th><th class="n">Office</th><th class="n">Total</th></tr></thead><tbody>${PE.stock.map(x => `<tr class="pe-srow" onclick="ppeStockHist('${escapeAttr(x.item)}')"><td>${escapeHtml(x.item)}${x.low ? ` <span class="zx-tag zx-bad" title="At or below ${x.reorder} - order more">order</span>` : ""}</td>
     ${cell(x.Store)}${cell(x.Office)}<td class="n pe-tot">${x.total === null ? "—" : `<b>${x.total}</b>`}</td></tr>`).join("")}</tbody></table>
-    <div class="pe-snote">In hand = last count + received - given from there. — = not counted yet. Click an item for its history.</div>`;
+    <div class="pe-snote">In hand = last count + received - given from there. — = not counted yet. Click an item for its history.</div>
+    ${ppeSizeHtml()}`;
+}
+// ---- Stock by size: safety shoes and uniforms ---------------------------------
+let PE_SZPL = "total";
+function ppeSizeHtml() {
+  const bs = (PE.by_size || []); if (!bs.length) return "";
+  const pl = PE_SZPL, val = c => c ? (pl === "total" ? c.total : c[pl]) : null;
+  const num = (c, it, sz) => { const v = val(c);
+    const tip = c && c.total !== null ? `${it} size ${sz}: Store ${c.Store ?? "—"} · Office ${c.Office ?? "—"}` : `${it} size ${sz}: not counted by size yet`;
+    return `<td class="n" title="${escapeAttr(tip)}">${v === null || v === undefined ? '<span class="pe-nc">—</span>' : `<b class="${v < 0 ? "neg" : ""}">${v}</b>`}</td>`; };
+  const sumOf = x => { let t = 0, k = false; x.sizes.forEach(sz => { const v = val(x.cells[sz]); if (v !== null && v !== undefined) { t += v; k = true; } }); return k ? t : null; };
+  const shoes = bs.find(x => x.item === "Safety Shoes"), cloth = bs.filter(x => x.item !== "Safety Shoes");
+  const csz = [...new Set(cloth.flatMap(x => x.sizes))];
+  const order = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]; csz.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const nosz = x => x.no_size ? ` <span class="zx-tag zx-skip" title="${x.no_size} given since sizes were kept, with no size written on the issue">${x.no_size} no size</span>` : "";
+  const tot = x => { const t = sumOf(x); return `<td class="n pe-tot">${t === null ? "—" : `<b>${t}</b>`}</td>`; };
+  const seg = `<span class="pe-seg pe-szseg">${[["total", "Both"], ["Store", "Store"], ["Office", "Office"]].map(([k, l]) => `<button type="button" class="${pl === k ? "on" : ""}" onclick="PE_SZPL='${k}'; ppeDraw()">${l}</button>`).join("")}</span>`;
+  return `<div class="pe-szhead"><b>Stock by size</b>${seg}</div>
+    ${shoes ? `<div class="pe-szwrap"><table class="pe-stock pe-sz"><thead><tr><th>Safety shoes</th>${shoes.sizes.map(z => `<th class="n">${z}</th>`).join("")}<th class="n">Total</th></tr></thead>
+      <tbody><tr class="pe-srow" onclick="ppeStockHist('Safety Shoes')"><td>In hand${nosz(shoes)}</td>${shoes.sizes.map(z => num(shoes.cells[z], "Safety Shoes", z)).join("")}${tot(shoes)}</tr></tbody></table></div>` : ""}
+    <div class="pe-szwrap"><table class="pe-stock pe-sz"><thead><tr><th>Uniforms</th>${csz.map(z => `<th class="n">${z}</th>`).join("")}<th class="n">Total</th></tr></thead>
+      <tbody>${cloth.map(x => `<tr class="pe-srow" onclick="ppeStockHist('${escapeAttr(x.item)}')"><td>${escapeHtml(x.item)}${nosz(x)}</td>${csz.map(z => x.sizes.includes(z) ? num(x.cells[z], x.item, z) : '<td class="n"></td>').join("")}${tot(x)}</tr>`).join("")}</tbody></table></div>
+    <div class="pe-snote">Counted and received size by size (Count / + Received). Given items come off the size written on the issue. — = not counted by size yet.</div>`;
+}
+function ppeSizeGrid(id, item, ph) {
+  const box = document.getElementById(id); if (!box) return;
+  const sized = (PE.sized_items || []).includes(item);
+  box.innerHTML = sized ? `<div class="pc-f"><span>${ph} - size by size (blank = 0)</span><div class="pe-szgrid">${(PE.sizes[item] || []).map(z => `<label><small>${escapeHtml(z)}</small><input type="number" min="0" data-sz="${escapeAttr(z)}" oninput="ppeSizeSum('${id}')"></label>`).join("")}<span class="pe-szsum" id="${id}-sum">Total 0</span></div></div>` : "";
+  box.dataset.sized = sized ? "1" : "";
+  document.querySelectorAll(`[data-plain-for="${id}"]`).forEach(el => el.style.display = sized ? "none" : "");
+}
+function ppeSizeSum(id) {
+  let t = 0; document.querySelectorAll(`#${id} input[data-sz]`).forEach(i => t += +i.value || 0);
+  const el = document.getElementById(id + "-sum"); if (el) el.textContent = `Total ${t}`;
+}
+function ppeSizeVals(id) {
+  const box = document.getElementById(id); if (!box || !box.dataset.sized) return null;
+  const o = {}; box.querySelectorAll("input[data-sz]").forEach(i => o[i.dataset.sz] = i.value); return o;
 }
 function ppeModal(inner, wide) {
   document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove());
@@ -18029,32 +18074,37 @@ const ppeSegVal = id => { const b = document.querySelector(`#${id} button.on`); 
 const ppeItemOpts = () => `<option value="">Choose item...</option>` + PE.items.map(it => `<option>${escapeHtml(it)}</option>`).join("");
 function ppeStock() {
   ppeModal(`<h3>Count stock</h3><div class="sub2">Type what is there now. Items given from there after this are taken off it.</div>
-    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-si">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-sl")}</div>
-    <div class="pe-row2"><label class="pc-f"><span>Counted now</span><input type="number" id="pe-sc" min="0" placeholder="e.g. 25"></label><label class="pc-f"><span>Order more when total is at</span><input type="number" id="pe-sr" min="0" placeholder="e.g. 5"></label></div>
+    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-si" onchange="ppeSizeGrid('pe-sg', this.value, 'Counted now')">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-sl")}</div>
+    <div id="pe-sg"></div>
+    <div class="pe-row2"><label class="pc-f" data-plain-for="pe-sg"><span>Counted now</span><input type="number" id="pe-sc" min="0" placeholder="e.g. 25"></label><label class="pc-f"><span>Order more when total is at</span><input type="number" id="pe-sr" min="0" placeholder="e.g. 5"></label></div>
     <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeStockSave()">Save count</button></div>`);
 }
 async function ppeStockSave() {
-  const item = document.getElementById("pe-si").value, c = document.getElementById("pe-sc").value;
+  const item = document.getElementById("pe-si").value, c = document.getElementById("pe-sc").value, sizes = ppeSizeVals("pe-sg");
   if (!item) return showStatus("pe-msg", "err", "Choose the item.");
-  if (c === "") return showStatus("pe-msg", "err", "Type the number counted.");
-  try { await apiCall("/store/ppe/stock", { method: "POST", body: JSON.stringify({ item, location: ppeSegVal("pe-sl"), counted: c, reorder: document.getElementById("pe-sr").value }) });
+  if (!sizes && c === "") return showStatus("pe-msg", "err", "Type the number counted.");
+  if (sizes && !Object.values(sizes).some(v => v !== "")) return showStatus("pe-msg", "err", "Type what is there in each size (blank = none).");
+  try { await apiCall("/store/ppe/stock", { method: "POST", body: JSON.stringify({ item, location: ppeSegVal("pe-sl"), counted: c, sizes, reorder: document.getElementById("pe-sr").value }) });
         document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", "Count saved."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
 function ppeRecv() {
   ppeModal(`<h3>Stock received</h3><div class="sub2">A delivery of new PPE - it is added to the place it went to.</div>
-    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-ri">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-rl")}</div>
+    <div class="pe-row2"><label class="pc-f"><span>Item</span><select id="pe-ri" onchange="ppeSizeGrid('pe-rg', this.value, 'Received')">${ppeItemOpts()}</select></label>${ppePlaceSeg("pe-rl")}</div>
+    <div id="pe-rg"></div>
     <div class="pe-row3"><label class="pc-f"><span>Supplier / LPO</span><input type="text" id="pe-rn" maxlength="120" placeholder="e.g. LPO 1042 - Al Safa Safety" data-spell="off"></label>
       <label class="pc-f"><span>Date received</span><input type="date" id="pe-rd" value="${PE.today}" max="${PE.today}"></label>
-      <label class="pc-f"><span>Qty</span><input type="number" id="pe-rq" min="1" placeholder="e.g. 50"></label></div>
+      <label class="pc-f" data-plain-for="pe-rg"><span>Qty</span><input type="number" id="pe-rq" min="1" placeholder="e.g. 50"></label></div>
     <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button><button type="button" class="btn btn-primary" onclick="ppeRecvSave()">Save</button></div>`);
 }
 async function ppeRecvSave() {
-  const item = document.getElementById("pe-ri").value, q = document.getElementById("pe-rq").value;
+  const item = document.getElementById("pe-ri").value, sizes = ppeSizeVals("pe-rg");
+  const q = sizes ? Object.values(sizes).reduce((a, v) => a + (+v || 0), 0) : document.getElementById("pe-rq").value;
   if (!item) return showStatus("pe-msg", "err", "Choose the item.");
-  if (!(+q > 0)) return showStatus("pe-msg", "err", "How many were received?");
-  try { await apiCall("/store/ppe/received", { method: "POST", body: JSON.stringify({ item, location: ppeSegVal("pe-rl"), qty: q, date: document.getElementById("pe-rd").value, note: document.getElementById("pe-rn").value }) });
-        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", `${q} x ${item} added to the ${ppeSegVal("pe-rl") || "stock"}.`); }
+  if (!(+q > 0)) return showStatus("pe-msg", "err", sizes ? "Type how many came in each size." : "How many were received?");
+  const pl = ppeSegVal("pe-rl");
+  try { await apiCall("/store/ppe/received", { method: "POST", body: JSON.stringify({ item, location: pl, qty: q, sizes, date: document.getElementById("pe-rd").value, note: document.getElementById("pe-rn").value }) });
+        document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove()); await ppeLoad(); showStatus("pe-status", "ok", `${q} x ${item} added to the ${pl || "stock"}.`); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
 async function ppeStockHist(item) {
@@ -18064,7 +18114,7 @@ async function ppeStockHist(item) {
   ppeModal(`<h3>${escapeHtml(item)} - stock</h3><div class="sub2">Counts and deliveries, newest first.</div>
     <div class="pe-sbox">${box("Store")}${box("Office")}</div>
     <div class="pe-hist"><table>${h.moves.map(m => `<tr><td style="width:96px;">${ppeD(m.date, 1)}</td><td style="width:64px;">${m.place}</td>
-      <td><b>${m.kind === "count" ? "Counted " + m.qty : "+" + m.qty + " received"}</b>${m.note ? `<span class="sub">${escapeHtml(m.note)}</span>` : ""}${m.by ? `<span class="sub">by ${escapeHtml(m.by)}</span>` : ""}</td>
+      <td><b>${m.kind === "count" ? "Counted " + m.qty : "+" + m.qty + " received"}</b>${m.sizes && Object.keys(m.sizes).length ? `<span class="sub">${Object.entries(m.sizes).map(([z, n]) => `${escapeHtml(z)}: ${n}`).join(" · ")}</span>` : ""}${m.note ? `<span class="sub">${escapeHtml(m.note)}</span>` : ""}${m.by ? `<span class="sub">by ${escapeHtml(m.by)}</span>` : ""}</td>
       <td style="width:40px;text-align:right;">${PE.may_edit ? `<button type="button" class="btn btn-sm btn-gray" title="Remove a wrong entry" onclick="ppeMoveDel(${m.id},'${escapeAttr(item)}')">×</button>` : ""}</td></tr>`).join("") || `<tr><td class="sub">No counts or deliveries yet.</td></tr>`}</table></div>
     <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
 }
