@@ -1415,7 +1415,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .exp-mini { margin-top: 4px; }
   .exp-mini .exp-start-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
   .exp-start-btn.on { background: #E6F4EA; border-color: #9CD3AE; color: #1E7A3A; }
-  .exp-acts { display: inline-flex; gap: 5px; flex-wrap: nowrap; }
+  .exp-acts { display: inline-flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
+  td.exp-act-cell { text-align: right; }
   .exp-close-btn { white-space: nowrap; }
   .exp-mini .exp-close-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
   .exp-cm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #EEE; }
@@ -2897,9 +2898,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <div class="grid-wrap" style="max-height:60vh; margin-top:10px;">
                   <table class="hr-grid">
                     <thead><tr>
-                      <th class="txt" style="width:11%;">Category</th><th class="txt" style="width:22%;">Item</th>
-                      <th class="txt" style="width:18%;">Document</th><th style="width:10%;">Number</th>
-                      <th style="width:12%;">Expires</th><th style="width:11%;">Standing</th><th class="txt" style="width:16%;">Notes</th>
+                      <th class="txt" style="width:10%;">Category</th><th class="txt" style="width:19%;">Item</th>
+                      <th class="txt" style="width:16%;">Document</th><th style="width:9%;">Number</th>
+                      <th style="width:11%;">Expires</th><th style="width:10%;">Standing</th><th class="txt" style="width:12%;">Notes</th><th style="width:176px;"></th>
                     </tr></thead>
                     <tbody id="hr-exp-body"></tbody>
                   </table>
@@ -16334,9 +16335,10 @@ function renderExpiries() {
       <td class="txt">${escapeHtml(r.category)}</td><td class="txt"><b>${escapeHtml(r.item)}</b></td>
       <td class="txt">${escapeHtml(r.kind)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
       <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>
-      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}${r.status === "valid" && !expStarted("company", r.id) ? "" : `<div style="margin-top:3px;">${expStartBtn("company", r.id)}</div>`}</td>
-      <td class="txt">${escapeHtml(r.notes) || '<span class="hr-nil">-</span>'}</td></tr>`;
-  }).join("") || `<tr><td colspan="7" class="hr-nil" style="padding:14px;">${HR_EXP.rows.length ? "Nothing matches." : "Nothing on file yet - add a vehicle, the trade licence, anything that expires."}</td></tr>`;
+      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}</td>
+      <td class="txt">${escapeHtml(r.notes) || '<span class="hr-nil">-</span>'}</td>
+      <td class="exp-act-cell">${r.status === "valid" && !expStarted("company", r.id) ? "" : expStartBtn("company", r.id)}</td></tr>`;
+  }).join("") || `<tr><td colspan="8" class="hr-nil" style="padding:14px;">${HR_EXP.rows.length ? "Nothing matches." : "Nothing on file yet - add a vehicle, the trade licence, anything that expires."}</td></tr>`;
 }
 const HR_EXP_F = { category: "hr-exp-cat", item: "hr-exp-item", kind: "hr-exp-kind", number: "hr-exp-number",
                    issued_on: "hr-exp-issued", expires_on: "hr-exp-expires", notes: "hr-exp-notes" };
