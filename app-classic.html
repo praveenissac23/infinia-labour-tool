@@ -212,6 +212,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .act-grid .act-det { white-space: normal; word-break: break-word; color: #444; }
   .act-grid tr.act-day td { background: #F3EFEA; font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #6A5C55; padding: 6px 8px; }
   .act-grid tr.act-bad td { background: #FDF0EE; }
+  .act-grid .act-ref { color: #A5301F; font-weight: 700; }
+  .act-grid .act-to { color: #333; }
+  .act-chips { margin-top: 2px; }
+  .act-chip { display: inline-block; margin: 4px 6px 0 0; padding: 2px 9px; border-radius: 10px; background: #F4F1EE; color: #5c524d; font-size: 11.5px; font-weight: 600; }
+  .act-chip.new { background: #E6F4EA; color: #1E7A3A; }
+  .act-more { display: inline-block; margin-top: 6px; padding: 0; border: 0; background: none; font-size: 12px; font-weight: 700; color: #A5301F; cursor: pointer; }
+  .act-items { margin-top: 8px; padding-top: 8px; border-top: 1px solid #EFE9E4; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 18px; font-size: 12px; color: #444; }
+  .act-items[hidden] { display: none; }
+  .act-items div { display: flex; gap: 8px; min-width: 0; }
+  .act-items code { flex: none; font: 600 11px/1.6 ui-monospace, monospace; color: #8a7f79; }
+  @media (max-width: 700px) { .act-items { grid-template-columns: 1fr; } }
   .act-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
   .act-pill.g { background: #E6F4EA; color: #1E7A3A; } .act-pill.y { background: #FFF3D6; color: #8A6100; } .act-pill.r { background: #FBE4E1; color: #A5301F; }
   .act-pill.b { background: #E3F0F7; color: #1F5F80; } .act-pill.gr { background: #EEE; color: #666; }
@@ -11591,6 +11602,54 @@ function actLinks(text) {
   const parts = String(text).split(/(MR-\d{3,})/);
   return parts.map((p, i) => i % 2 ? requestLink(p) : escapeHtml(p)).join("");
 }
+// Details read as a headline, small facts and - for long lists such as
+// the materials added with an order - a count that folds the list out,
+// instead of one run-on paragraph.
+function actDetails(text) {
+  const CODE = /^[A-Z]{2,5}\d{2,}\s/;
+  // "Something: a, b, c, ..." with more than six entries becomes a fold-out list.
+  const asList = seg => {
+    const k = /^([^:]{2,80}?):\s*(.+)$/.exec(seg);
+    if (!k) return null;
+    const items = (/(^|,\s*)[A-Z]{2,5}\d{2,}\s/.test(k[2]) ? k[2].split(/,\s*(?=[A-Z]{2,5}\d{2,}\s)/) : k[2].split(/,\s*/)).map(x => x.trim()).filter(Boolean);
+    const codes = items.every(x => CODE.test(x));
+    if (items.length <= 6 && !(codes && /material/i.test(k[1]))) return null;
+    return { key: k[1], items, noun: /material list/i.test(k[1]) ? "new materials" : codes ? "materials" : "items" };
+  };
+  const parts = String(text).split(/;\s+/);
+  const head = parts.shift();
+  const chips = [], lists = [];
+  let html;
+  const m = /^(\S+\/\S+)\s+to\s+(.+?)\s*\((\d+) line\(s\)\)(?:,\s*(.*))?$/.exec(head);
+  if (m) {
+    html = `<div><b class="act-ref">${escapeHtml(m[1])}</b> <span class="act-to">&middot; ${supplierLink(m[2])}</span></div>`;
+    chips.push(`${m[3]} line${m[3] === "1" ? "" : "s"}`);
+    if (m[4]) parts.unshift(m[4]);
+  } else {
+    const l = asList(head);
+    if (l) { html = `<div>${actLinks(l.key)}</div>`; lists.push(l); }
+    else html = `<div>${actLinks(head)}</div>`;
+  }
+  for (const p of parts) {
+    const l = asList(p);
+    if (l) lists.push(l);
+    else chips.push(p.replace(/(\S+)\s*->\s*\1(?=,|$)/g, "$1 (unchanged)").replace(/\s*->\s*/g, " → ").replace(/^amount/, "Amount").replace(/^supplier list updated/, "Supplier details updated"));
+  }
+  if (chips.length || lists.length)
+    html += `<div class="act-chips">${chips.map(c => `<span class="act-chip">${actLinks(c)}</span>`).join("")}${lists.map(l => `<span class="act-chip new">${l.items.length} ${l.items.length === 1 ? l.noun.replace(/s$/, "") : l.noun}</span>`).join("")}</div>`;
+  lists.forEach(l => {
+    html += `<button type="button" class="act-more" data-tip="Show or hide the full list" onclick="actFold(this)">Show ${l.items.length === 1 ? l.noun.replace(/s$/, "") : l.noun} &#9662;</button><div class="act-items" hidden>${l.items.map(x => {
+      const c = /^([A-Z]{2,5}\d{2,})\s+(.*)$/.exec(x);
+      return c ? `<div><code>${materialLink(c[1])}</code><span>${escapeHtml(c[2])}</span></div>` : `<div><span>${actLinks(x)}</span></div>`;
+    }).join("")}</div>`;
+  });
+  return html;
+}
+function actFold(b) {
+  const box = b.nextElementSibling, open = box.hidden;
+  box.hidden = !open;
+  b.innerHTML = b.innerHTML.replace(open ? /^Show/ : /^Hide/, open ? "Hide" : "Show").replace(open ? "▾" : "▴", open ? "▴" : "▾");
+}
 function renderActivityLog() {
   const body = document.getElementById("activity-body");
   const rows = currentActivityLog;
@@ -11612,7 +11671,7 @@ function renderActivityLog() {
       <td class="txt"><b>${escapeHtml(r.full_name)}</b><span class="sub">${escapeHtml(r.username)}</span></td>
       <td><span class="act-pill ${tone[r.group] || "gr"}">${escapeHtml(r.group_label)}</span></td>
       <td class="txt">${escapeHtml(r.label)}</td>
-      <td class="txt act-det">${r.details ? actLinks(r.details) : '<span class="hr-nil">-</span>'}</td></tr>`;
+      <td class="txt act-det">${r.details ? actDetails(r.details) : '<span class="hr-nil">-</span>'}</td></tr>`;
   }
   body.innerHTML = out;
 }

@@ -1128,6 +1128,7 @@ window.HELP_TIPS = {
   "#cfg-incharge-mobile": "Mobile number printed with the person in charge.",
   "#act-user": "Show one login's activity, or everyone's.",
   "#activity-search": "Type a word from the details, e.g. a name or number.",
+  ".act-more": "Opens the full list - e.g. every new material added with a purchase order. Click again to fold it away.",
   "#zs-src": "Which kind of entries to look at: petty cash, bills, LPOs or bank payments.",
   "#vh-rcpt": "The receipt or transaction number from GDRFA / MOHRE / the typing centre.",
   "#zr-why": "Why it is being taken back out of Zoho - kept in the activity log.",
