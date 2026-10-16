@@ -318,7 +318,7 @@ window.HELP_GUIDES = [
       { say: "His last wage comes from his labour card for that cycle - type over it only if it is different.", el: "#fs-sal" },
       { say: "Add the air ticket if he gets one, and check leave, loan and anything else.", el: "#fs-ticket" },
       { say: "Print it with Preview or Export PDF.", el: "#hr-fs-card button[onclick=\"fsOpen('pdf')\"]" }],
-    tip: "Gratuity and leave are on his basic; Absent and Leave days are not service. Leave owed follows the labour rule (60 days in 24 months)." },
+    tip: "Gratuity and leave are on his basic; absent / leave days are taken off the service. Leave owed follows the labour rule (60 days in 24 months)." },
   { id: "staff-add", area: "Workers", title: "How to add new office staff",
     words: "add new office staff employee join joiner hire staff register local staff",
     go: { page: "payroll", tab: "hrpayroll", sub: "staff" },

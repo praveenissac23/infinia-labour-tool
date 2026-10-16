@@ -9385,8 +9385,7 @@ def gratuity_detail(e, db=None, upto=None):
     out["amount"] = round(amount, 2)
     out["why"] = (f"{years:.2f} yrs x {'21' if years <= 5 else '21/30'} days = {days:.1f} days"
                   f" x {daily:,.2f} a day (basic {basic:,.0f} x 12 / 365)"
-                  + (f", {unpaid_only:g} unpaid day(s) not counted" if unpaid_only else "")
-                  + (f", {vacation:g} vacation day(s) not counted (company rule)" if vacation else "")
+                  + (f", {unpaid:g} absent / leave day(s) not counted" if unpaid else "")
                   + (", capped at two years' basic" if out["capped"] else ""))
     return out
 
@@ -12087,9 +12086,7 @@ def _labour_gratuity_one(db, emp_no):
     rows = [{"Item": "Labourer", "Detail": f"{e.emp_no} {e.name} - {e.trade or ''}".rstrip(" -")},
             {"Item": "Joining date", "Detail": _dmy(e.joined_on) if e.joined_on else "-"},
             {"Item": "Service days", "Detail": f"{g['service_days']}"},
-            {"Item": "Absent days (not service)", "Detail": f"{g.get('unpaid_only_days', 0):g}"},
-            {"Item": "Leave days (not service - company rule)", "Detail": f"{g.get('vacation_days', 0):g}"},
-            {"Item": "Before the app - absent / leave from old statements", "Detail": f"{g.get('past_days', 0):g}"},
+            {"Item": "Absent / leave days", "Detail": f"{g.get('unpaid_days', 0):g}"},
             {"Item": "Service counted", "Detail": f"{g['years']:.2f} years"},
             {"Item": "Basic wage", "Detail": f"{(e.basic_salary or 0):,.2f}"},
             {"Item": "A day's basic (basic x 12 / 365)", "Detail": f"{g['daily']:,.2f}"},
@@ -12112,13 +12109,12 @@ def _labour_gratuity_parts(db, include_left=False):
         total += g["amount"]
         rows.append({"Code": e.emp_no, "Name": e.name, "Trade": e.trade or "",
                      "Joined": _dmy(e.joined_on) if e.joined_on else "-",
-                     "Service days": g["service_days"], "Absent (not service)": g.get("unpaid_only_days", 0),
-                     "Leave (not service)": g.get("vacation_days", 0), "Before the app (not service)": g.get("past_days", 0),
+                     "Service days": g["service_days"], "Absent / leave days": g.get("unpaid_days", 0),
                      "Years counted": round(g["years"], 2),
                      "Basic": round(e.basic_salary or 0, 2), "Day's basic": g["daily"],
                      "Gratuity to date": g["amount"], "Note": g["why"] if not g["amount"] else ("capped" if g["capped"] else "")})
     sub = (f"{len(rows)} labourers   |   as at {_dmy(_dubai_today())}   |   21 days' basic a year for the first 5 years, 30 after; "
-           f"from one year's service; Absent and Leave days are not service; capped at 24 months' basic   |   total {total:,.2f}")
+           f"from one year's service; absent / leave days taken off the service; capped at 24 months' basic   |   total {total:,.2f}")
     return rows, "Labour Gratuity", sub
 
 
@@ -12469,9 +12465,13 @@ def _gratuity_parts(db, emp_no=""):
         r = rows[0]
         s = d["rows"][0]
         # One person: the working, line by line, rather than a register.
+        e1 = db.query(models.Employee).filter(models.Employee.emp_no == s["emp_no"]).first()
+        g1 = gratuity_detail(e1, db) if e1 else {}
         rows = [{"Item": "Employee", "Detail": f"{r['Emp. Code']} {r['Employee Name']} - {r['Company']}"},
                 {"Item": "Joining date", "Detail": r["Joining Date"]},
                 {"Item": "Service", "Detail": f"{s['years']:.2f} years"},
+                {"Item": "Absent / leave days", "Detail": f"{g1.get('unpaid_days', 0) or 0:g}"},
+                {"Item": "Service counted", "Detail": f"{g1['years']:.2f} years" if g1.get("years") is not None else "-"},
                 {"Item": "Basic wage", "Detail": f"{s['basic']:,.2f}"},
                 {"Item": "A day's basic (basic x 12 / 365)", "Detail": f"{s['gratuity_daily']:,.2f}"},
                 {"Item": "Days accrued (21 a year first 5 years, 30 after)", "Detail": f"{s['gratuity_days']:.1f}"},

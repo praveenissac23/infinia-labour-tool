@@ -37,8 +37,7 @@ def ck(l, ok, x=""):
 r = c.get("/employees/labour-gratuity", headers=H); ck("list loads", r.status_code == 200, r.text)
 rows = {x["Code"]: x for x in r.json()["rows"]}
 a = rows["L-900"]
-ck("absent halves counted", a["Absent (not service)"] == 1.5, a)
-ck("leave days counted", a["Leave (not service)"] == 10, a)
+ck("absent halves and leave days counted together", a["Absent / leave days"] == 11.5, a)
 yrs = (3 * 365 - 11.5) / 365
 want = round(yrs * 21 * 1095 * 12 / 365, 2)
 ck("gratuity = years x 21 x day's basic", abs(a["Gratuity to date"] - want) < 0.02, (a["Gratuity to date"], want))

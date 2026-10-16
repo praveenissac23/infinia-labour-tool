@@ -14842,9 +14842,7 @@ async function labGratShowInner() {
       ${kv("Joined", w.joined_on ? hrDate(w.joined_on) : "not on file")}
       ${w.terminated_on ? kv("Left", hrDate(w.terminated_on)) : ""}
       ${kv("Service", w.joined_on ? hrService(w.years) : "-")}
-      ${kv("Absent days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
-      ${kv("Leave days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
-      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
+      ${kv("Absent / leave days", g.unpaid_days ? g.unpaid_days : "none")}
       ${kv("Service counted", w.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(w.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}
@@ -14879,7 +14877,7 @@ async function labGratShowInner() {
         <div class="hr-steps">${kv("Basic", hrMoney(w.basic))}${kv("Allowance", hrMoney(w.allowance))}${kv("Gross", hrMoney(w.gross))}
         ${kv("Trade", escapeHtml(w.trade || "-"))}${kv("Statement", "Labour payroll")}${kv("End of service", "Gratuity")}</div></section>
       <section><h3>Gratuity working (UAE labour law, art. 51)</h3>${step}</section>
-      <section style="grid-column:1 / -1;"><h3>Absence and leave on the attendance (${d.absent_days} absent, ${d.leave_days} leave - not service)</h3>${absence}</section>
+      <section style="grid-column:1 / -1;"><h3>Absence and leave on the attendance (${d.absent_days} absent, ${d.leave_days} leave)</h3>${absence}</section>
       <section style="grid-column:1 / -1;"><h3>Salary history</h3>${hist}</section>
     </div>`;
 }
@@ -16421,9 +16419,7 @@ async function renderGratuityInner() {
   const step = `<div class="hr-steps">
       ${kv("Joined", s.joined_on ? hrDate(s.joined_on) : "not on file")}
       ${kv("Service", s.joined_on ? hrService(s.years) : "-")}
-      ${kv("Unpaid days (not service)", g.unpaid_only_days ? g.unpaid_only_days : "none")}
-      ${kv("Vacation days (not service - company rule)", g.vacation_days ? g.vacation_days : "none")}
-      ${kv("Before the app (old statements)", g.past_days ? g.past_days : "none")}
+      ${kv("Absent / leave days", g.unpaid_days ? g.unpaid_days : "none")}
       ${kv("Service counted", s.joined_on ? `${g.years.toFixed(2)} years` : "-")}
       ${kv("Basic wage", hrMoney(s.basic))}
       ${kv("A day's basic (basic x 12 / 365)", hrMoney(g.daily))}

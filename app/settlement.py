@@ -211,7 +211,7 @@ def settlement(db, emp_no, q):
                      "only notice not served is deducted (art. 43).")
     if reason == "art44":
         notes.append("Dismissal under article 44: no notice either way; gratuity is still due.")
-    notes.append("Gratuity and leave are paid on the basic wage only; unpaid absence and, by company rule, vacation days are not service.")
+    notes.append("Gratuity and leave are paid on the basic wage only; absent / leave days are taken off the service.")
     if not e.staff:
         notes.append("Leave owed follows the labour rule (60 days in 24 months), less the days marked Leave in the app. "
                      "Leave taken before the app is not on record - check the unused leave days before paying.")
@@ -307,9 +307,7 @@ def _basis(s):
     return [("Basic salary", _money(sal["basic"])), ("Gross salary", _money(sal["gross"])),
             ("Daily basic (basic x 12 / 365)", _money(sal["day_basic"])),
             ("Service days", f"{sv['days']:,}"),
-            ("Unpaid days (not service)", f"{sv.get('unpaid_only', sv['unpaid']):g}"),
-            ("Vacation days (not service - company rule)", f"{sv.get('vacation', 0):g}"),
-            ("Before the app - absent / leave from old statements", f"{sv.get('past', 0):g}"),
+            ("Absent / leave days", f"{sv['unpaid']:g}"),
             ("Unused leave days", f"{i['leave_days']:g}"),
             ("Notice required / served", f"{i['notice_required']} / {i['notice_served']:g} days")]
 
