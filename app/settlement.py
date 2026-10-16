@@ -206,15 +206,8 @@ def settlement(db, emp_no, q):
         notes.append(f"No gratuity: {g['why']}.")
     if g.get("capped"):
         notes.append("Gratuity capped at two years' basic wage (art. 51).")
-    if reason == "resignation":
-        notes.append("Resignation does not reduce gratuity under Decree-Law 33 of 2021; "
-                     "only notice not served is deducted (art. 43).")
     if reason == "art44":
         notes.append("Dismissal under article 44: no notice either way; gratuity is still due.")
-    notes.append("Gratuity and leave are paid on the basic wage only; absent / leave days are taken off the service.")
-    if not e.staff:
-        notes.append("Leave owed follows the labour rule (60 days in 24 months), less the days marked Leave in the app. "
-                     "Leave taken before the app is not on record - check the unused leave days before paying.")
 
     return {
         "emp": {"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
