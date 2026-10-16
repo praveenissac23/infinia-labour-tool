@@ -11638,7 +11638,7 @@ function actDetails(text) {
   if (chips.length || lists.length)
     html += `<div class="act-chips">${chips.map(c => `<span class="act-chip">${actLinks(c)}</span>`).join("")}${lists.map(l => `<span class="act-chip new">${l.items.length} ${l.items.length === 1 ? l.noun.replace(/s$/, "") : l.noun}</span>`).join("")}</div>`;
   lists.forEach(l => {
-    html += `<button type="button" class="act-more" data-tip="Show or hide the full list" onclick="actFold(this)">Show ${l.items.length === 1 ? l.noun.replace(/s$/, "") : l.noun} &#9662;</button><div class="act-items" hidden>${l.items.map(x => {
+    html += `<button type="button" class="act-more" onclick="actFold(this)">Show ${l.items.length === 1 ? l.noun.replace(/s$/, "") : l.noun} &#9662;</button><div class="act-items" hidden>${l.items.map(x => {
       const c = /^([A-Z]{2,5}\d{2,})\s+(.*)$/.exec(x);
       return c ? `<div><code>${materialLink(c[1])}</code><span>${escapeHtml(c[2])}</span></div>` : `<div><span>${actLinks(x)}</span></div>`;
     }).join("")}</div>`;
@@ -11646,7 +11646,11 @@ function actDetails(text) {
   return html;
 }
 function actFold(b) {
-  const box = b.nextElementSibling, open = box.hidden;
+  // The (i) tip sits right after the button, so look past it for the list.
+  let box = b.nextElementSibling;
+  while (box && !box.classList.contains("act-items")) box = box.nextElementSibling;
+  if (!box) return;
+  const open = box.hidden;
   box.hidden = !open;
   b.innerHTML = b.innerHTML.replace(open ? /^Show/ : /^Hide/, open ? "Hide" : "Show").replace(open ? "▾" : "▴", open ? "▴" : "▾");
 }
