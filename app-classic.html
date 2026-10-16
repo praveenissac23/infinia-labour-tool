@@ -1599,6 +1599,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-foot { display:flex; justify-content:space-between; gap:8px; margin-top:10px; }
   .dt-table td { vertical-align:top; } .dt-l { padding:2px 0; line-height:1.45; } .dt-l.miss { color:#B03A2E; } .dt-ok { color:#2E7D32; font-weight:700; }
   .dt-acts { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .dt2 { table-layout:fixed; } .dt2 td { vertical-align:middle; } .dt2 th { white-space:nowrap; }
+  .dt2 tr.dt2-r { cursor:pointer; } .dt2 tr.dt2-r:hover td { background:#FBF6F3; }
+  .dt2 tr.dt2-r td { padding-top:11px; padding-bottom:11px; }
+  .dt2-n { font-weight:700; font-size:13.5px; color:#222; white-space:nowrap; }
+  .dt2-who { color:#6b625d; font-size:12.5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dt2-sites { display:inline-block; margin-left:8px; padding:1px 8px; border-radius:10px; background:#F4F1EE; color:#5c524d; font-size:11px; font-weight:600; }
+  .dt2-prog { display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11.5px; color:#888; }
+  .dt2-bar { width:70px; height:5px; border-radius:3px; background:#EEE6E1; overflow:hidden; } .dt2-bar i { display:block; height:100%; background:#2E7D32; }
+  .dt-m .dt2-box { width:1000px; max-width:calc(100vw - 32px); max-height:calc(100vh - 40px); display:flex; flex-direction:column; padding:18px 20px; }
+  .dt2-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; } .dt2-head h3 { margin:0; font-size:17px; }
+  .dt2-close { border:0; background:#F4F1EE; border-radius:50%; width:30px; height:30px; cursor:pointer; flex:none; }
+  .dt2-btns { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+  .dt2-in { border:1px solid #EFE6E1; border-radius:10px; overflow:auto; flex:1; min-height:0; }
+  .dt2-in table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .dt2-in th { position:sticky; top:0; background:#F6F2EF; color:#6A5C55; font-size:11px; letter-spacing:.5px; text-transform:uppercase; text-align:left; padding:8px 10px; z-index:1; }
+  .dt2-in td { padding:6px 10px; border-top:1px solid #F3EDE9; text-align:left; }
+  .dt2-in .c { text-align:center; width:36px; } .dt2-in td.m { color:#8a7f79; }
+  .dt2-in tr.miss td { color:#B03A2E; background:#FEF5F3; } .dt2-x { color:#B03A2E; font-weight:700; }
+  .dt2-bot { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 2px 0; font-size:13px; color:#6b625d; flex-wrap:wrap; }
+  @media (max-width: 760px) { .dt2 .dt2-by { display:none; } .dt2-sites { display:none; } }
   .dt-next { font-size:13px; color:#6B625A; margin-right:6px; } .dt-next b { color:#C0392B; }
   .dt-filter { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:6px 0 10px; } .dt-filter > b { align-self:center; font-size:14px; margin-right:4px; }
   .dt-filter input[type=text] { width:240px; }
@@ -3387,7 +3407,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="pc-f"><span>To</span><input type="date" id="dt-t" onchange="dtDraw()"></label>
               <button type="button" class="btn btn-gray btn-sm" onclick="['dt-q','dt-st','dt-f','dt-t'].forEach(i=>document.getElementById(i).value='');dtDraw()">Clear</button>
               <span class="sub" id="dt-count" style="display:inline;margin-left:auto;"></span></div>
-            <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table" data-nomove><thead><tr><th class="l" style="width:96px;">No.</th><th class="l" style="width:96px;">Date</th><th class="l">Documents</th><th class="l" style="width:150px;">Sent by</th><th class="l" style="width:190px;">Office</th><th style="width:300px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
+            <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table dt2" data-nomove><thead><tr><th class="l" style="width:104px;">No.</th><th class="l" style="width:100px;">Date</th><th class="l">Documents</th><th class="l dt2-by" style="width:96px;">Sent by</th><th class="l" style="width:160px;">Office</th><th style="width:160px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
         </div>
         <div class="screen" id="screen-ppe">
@@ -17711,17 +17731,61 @@ function dtDraw() {
   const filtered = shown.length !== rows.length;
   document.getElementById("dt-count").textContent = rows.length ? `${shown.length} of ${rows.length} transmittal${rows.length === 1 ? "" : "s"}` : "";
   document.getElementById("dt-body").innerHTML = shown.map(r => {
+    const n = r.lines.length, got = r.lines.filter(l => l.received).length;
     const st = r.status === "received" ? `<span class="zx-tag zx-ok">Received ✓</span><span class="sub">${escapeHtml(r.received_by)} · ${r.received_at ? pcDate(r.received_at.slice(0, 10)) : ""}</span>`
-      : r.status === "partial" ? `<span class="zx-tag zx-bad">${r.n_missing} not received</span><span class="sub">${escapeHtml(r.received_by)}${r.received_note ? " · " + escapeHtml(r.received_note) : ""}</span>`
-      : `<span class="zx-tag zx-app">Waiting</span>`;
-    const lines = r.lines.map(l => `<div class="dt-l${l.received === false ? " miss" : ""}">${DT.may_verify && r.status === "sent" ? `<label><input type="checkbox" class="dt-ck" data-t="${r.id}" data-l="${l.id}" checked> ` : ""}<b>${l.sl}.</b> ${escapeHtml(l.description)}${l.dn_no ? ` <span class="sub" style="display:inline;">DN ${escapeHtml(l.dn_no)}</span>` : ""}${l.site ? ` <span class="sub" style="display:inline;">· ${escapeHtml(l.site)}</span>` : ""}${l.date ? ` <span class="sub" style="display:inline;">· ${pcDate(l.date)}</span>` : ""}${l.remarks ? ` <span class="sub" style="display:inline;">· ${escapeHtml(l.remarks)}</span>` : ""}${l.received === false ? ` <span class="zx-tag zx-bad">Not received</span>` : l.received ? ` <span class="dt-ok">✓</span>` : ""}${DT.may_verify && r.status === "sent" ? "</label>" : ""}</div>`).join("");
-    const acts = `<button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'view')">Preview</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'pdf')">PDF</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'excel')">Excel</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'view')">Share</button>`
-      + (DT.may_verify && r.status === "sent" ? `<button class="btn btn-primary btn-sm" onclick="dtReceive(${r.id})" title="Untick any document that did not come">Mark received</button>` : "")
-      + (DT.may_verify && r.status !== "sent" ? `<button class="btn btn-gray btn-sm" onclick="dtReopen(${r.id})">Check again</button>` : "")
-      + (DT.may_send && r.status === "sent" ? `<button class="btn btn-gray btn-sm" onclick="dtEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="dtDelete(${r.id})">Delete</button>` : "");
-    return `<tr><td class="l"><b>${escapeHtml(r.ref)}</b></td><td class="l">${pcDate(r.date)}${r.from_site ? `<span class="sub">${escapeHtml(r.from_site)}</span>` : ""}</td>
-      <td class="l">${lines}</td><td class="l">${escapeHtml(r.sent_by)}</td><td class="l">${st}</td><td><div class="dt-acts">${acts}</div></td></tr>`;
+      : r.status === "partial" ? `<span class="zx-tag zx-bad">${r.n_missing} not received</span><span class="dt2-prog"><span class="dt2-bar"><i style="width:${n ? got / n * 100 : 0}%"></i></span>${got} of ${n}</span>`
+      : `<span class="zx-tag zx-app">Waiting</span><span class="sub">${n} to check</span>`;
+    const main = DT.may_verify && r.status === "sent"
+      ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); dtOpen(${r.id})">Check &amp; receive</button>`
+      : `<button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); dtOpen(${r.id})">Open</button>`;
+    return `<tr class="dt2-r" onclick="dtOpen(${r.id})" title="Open ${escapeAttr(r.ref)}"><td class="l"><b>${escapeHtml(r.ref)}</b></td><td class="l">${pcDate(r.date)}${r.from_site ? `<span class="sub">${escapeHtml(r.from_site)}</span>` : ""}</td>
+      <td class="l">${dtSummary(r)}</td><td class="l dt2-by">${escapeHtml(r.sent_by)}</td><td class="l">${st}</td><td><div class="dt-acts">${main}</div></td></tr>`;
   }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">${filtered ? "Nothing matches - press Clear." : DT.may_send ? "Nothing sent to the office yet." : "Nothing sent to the office yet - the store keeper sends from site; each transmittal shows here to tick in."}</td></tr>`;
+}
+// One line for a transmittal: how many papers, which sites, the main suppliers.
+function dtSummary(r) {
+  const n = r.lines.length, cnt = {};
+  r.lines.forEach(l => { const k = String(l.description || "-").trim().replace(/\s+(L\.?L\.?C\.?|FZ-?LLC|FZE)$/i, ""); cnt[k] = (cnt[k] || 0) + 1; });
+  const sup = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
+  const who = sup.slice(0, 3).map(([k, c]) => `${escapeHtml(k)}${c > 1 ? ` ×${c}` : ""}`).join(" · ") + (sup.length > 3 ? ` · +${sup.length - 3} more` : "");
+  const sites = [...new Set(r.lines.map(l => String(l.site || "").trim()).filter(Boolean))].sort(natCompare);
+  const sl = sites.length ? `<span class="dt2-sites">Site${sites.length === 1 ? "" : "s"} ${escapeHtml(sites.length > 3 ? sites[0] + "–" + sites[sites.length - 1] : sites.join(", "))}</span>` : "";
+  return `<div class="dt2-n">${n} document${n === 1 ? "" : "s"}${sl}</div><div class="dt2-who" title="${escapeAttr(sup.map(([k, c]) => k + (c > 1 ? " ×" + c : "")).join(", "))}">${who}</div>`;
+}
+// The whole transmittal in a window: every paper in a table, the tick
+// boxes for the office, and every button in one place.
+function dtOpen(id) {
+  const r = (DT.rows || []).find(x => x.id === id); if (!r) return;
+  dtClose();
+  const ck = DT.may_verify && r.status === "sent", n = r.lines.length;
+  const st = r.status === "received" ? `<span class="zx-tag zx-ok">Received ✓</span> <span class="sub" style="display:inline;">${escapeHtml(r.received_by)} · ${r.received_at ? pcDate(r.received_at.slice(0, 10)) : ""}</span>`
+    : r.status === "partial" ? `<span class="zx-tag zx-bad">${r.n_missing} not received</span> <span class="sub" style="display:inline;">${escapeHtml(r.received_by)}</span>`
+    : `<span class="zx-tag zx-app">Waiting for the office</span>`;
+  const btns = `<button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'view')">Preview</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'pdf')">PDF</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'excel')">Excel</button><button class="btn btn-gray btn-sm" onclick="dtExport(${r.id},'view')">Share</button>`
+    + (DT.may_send && r.status === "sent" ? `<button class="btn btn-gray btn-sm" onclick="dtClose(); dtEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" style="color:#B7322A;" onclick="dtClose(); dtDelete(${r.id})">Delete</button>` : "")
+    + (DT.may_verify && r.status !== "sent" ? `<button class="btn btn-gray btn-sm" onclick="dtClose(); dtReopen(${r.id})">Check again</button>` : "");
+  const rows = r.lines.map(l => `<tr class="${l.received === false ? "miss" : ""}"><td class="c">${ck ? `<input type="checkbox" class="dt-ck" data-t="${r.id}" data-l="${l.id}" checked onchange="dtCount(${r.id})">` : l.received === false ? `<span class="dt2-x" title="Not received">✕</span>` : l.received ? `<span class="dt-ok">✓</span>` : ""}</td>
+      <td class="m">${l.sl}</td><td>${escapeHtml(l.description)}</td><td>${escapeHtml(l.dn_no || "")}</td><td>${escapeHtml(l.site || "")}</td><td class="m">${l.date ? pcDate(l.date) : ""}</td><td class="m">${escapeHtml(l.remarks || "")}</td></tr>`).join("");
+  const foot = ck ? `<div class="dt2-bot"><span id="dt-cnt-${r.id}"><b>${n} of ${n}</b> ticked - untick any that did not come</span><button class="btn btn-primary" onclick="dtReceive(${r.id})">Mark received</button></div>`
+    : r.received_note ? `<div class="dt2-bot"><span>Note from the office: ${escapeHtml(r.received_note)}</span></div>` : "";
+  const ov = document.createElement("div"); ov.className = "zx-modal dt-m";
+  ov.onclick = e => { if (e.target === ov) dtClose(); };
+  ov.innerHTML = `<div class="zx-box dt2-box">
+    <div class="dt2-head"><div><h3>${escapeHtml(r.ref)} <span class="sub" style="display:inline;font-weight:400;">· ${pcDate(r.date)}${r.from_site ? " · " + escapeHtml(r.from_site) : ""} · sent by ${escapeHtml(r.sent_by)}</span></h3>
+      <div style="margin-top:6px;">${st} <span class="sub" style="display:inline;margin-left:6px;">${n} document${n === 1 ? "" : "s"}</span></div></div>
+      <button type="button" class="dt2-close" onclick="dtClose()" title="Close">✕</button></div>
+    <div class="dt2-btns">${btns}</div>
+    <div class="dt2-in"><table><thead><tr><th class="c">${ck ? `<input type="checkbox" checked title="Tick or untick all" onchange="document.querySelectorAll('.dt-ck[data-t=&quot;${r.id}&quot;]').forEach(c => c.checked = this.checked); dtCount(${r.id})">` : ""}</th><th style="width:34px;">#</th><th>Supplier</th><th style="width:130px;">Delivery note</th><th style="width:60px;">Site</th><th style="width:92px;">Date</th><th>Remarks</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${foot}</div>`;
+  document.body.appendChild(ov);
+  document.addEventListener("keydown", dtEsc);
+}
+function dtEsc(e) { if (e.key === "Escape") dtClose(); }
+function dtClose() { document.querySelectorAll(".zx-modal.dt-m").forEach(m => m.remove()); document.removeEventListener("keydown", dtEsc); }
+function dtCount(id) {
+  const all = [...document.querySelectorAll(`.dt-ck[data-t="${id}"]`)], on = all.filter(c => c.checked).length;
+  const el = document.getElementById(`dt-cnt-${id}`);
+  if (el) el.innerHTML = `<b>${on} of ${all.length}</b> ticked${on < all.length ? ` - <span style="color:#B03A2E;">${all.length - on} will be marked not received</span>` : " - untick any that did not come"}`;
 }
 function dtFiltered() {
   const q = (document.getElementById("dt-q").value || "").trim().toLowerCase(), st = document.getElementById("dt-st").value;
@@ -17742,7 +17806,7 @@ async function dtReceive(id) {
   let note = "";
   if (miss) { note = prompt(`${miss} document${miss === 1 ? "" : "s"} not received. A note for the store keeper? (optional)`) || ""; }
   try { const d = await apiCall(`/store/docs/${id}/receive`, { method: "POST", body: JSON.stringify({ lines: marks, note }) });
-        await dtLoad(); showStatus("dt-status", miss ? "err" : "ok", `${d.ref}: ${d.n_received} of ${d.lines.length} received.`); }
+        dtClose(); await dtLoad(); showStatus("dt-status", miss ? "err" : "ok", `${d.ref}: ${d.n_received} of ${d.lines.length} received.`); }
   catch (e) { showStatus("dt-status", "err", errText(e)); }
 }
 async function dtReopen(id) {

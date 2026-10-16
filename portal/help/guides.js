@@ -240,7 +240,7 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Admin > Docs to office. The number (DOF:005, 006...) fills in by itself; pick the date.", el: "#dt-form" },
       { say: "Add a line per paper: pick the supplier from the list (or type a new one), the delivery note no., site and date. Then Send to office.", el: "#dt-form" },
-      { say: "In the office: untick any paper that did not come and press Mark received. Preview, PDF, Excel and Share print it on the company's form.", el: "#dt-body" }],
+      { say: "Each transmittal is one line: how many papers, the sites and the main suppliers. In the office press Check & receive (or click the line) - a window opens with every paper; untick any that did not come and press Mark received. Preview, PDF, Excel, Share, Edit and Delete are in that window.", el: "#dt-body" }],
     tip: "The store keeper can change or delete a transmittal until the office starts checking it." },
   { id: "admin-forms", area: "Admin", title: "Where are the leave, passport and visa renewal forms?",
     words: "form forms leave application annual leave emergency passport release submission visa renewal transmittal delivery note dn documents site to office print blank admin hr",
@@ -1123,6 +1123,7 @@ window.HELP_TIPS = {
   "#dt-st": "Which transmittals to show by where they stand.",
   "#dt-f": "From this date.",
   "#dt-t": "Up to this date.",
+  ".dt2-btns": "Print, export or share this transmittal; Edit and Delete only while the office has not checked it.",
   "#pw-current": "Your password now.",
   "#pw-new": "The new password - at least 6 characters.",
   "#cfg-incharge": "Name printed as the person in charge on forms.",
