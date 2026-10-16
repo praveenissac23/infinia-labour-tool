@@ -2370,7 +2370,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <input type="text" id="adj-desc" placeholder="Description">
               <input type="number" id="adj-amount" placeholder="Amount (AED)">
               <select id="adj-type"><option value="true">Deduction</option><option value="false">Addition</option></select>
-              <button class="btn btn-primary" onclick="addAdjustmentRow()">Add</button>
+              <button class="btn btn-primary" id="adj-save" onclick="addAdjustmentRow()">Add</button>
+              <button class="btn btn-gray" id="adj-cancel" style="display:none;" onclick="adjEditReset()">Cancel</button>
             </div>
           </div>
           <div class="card" id="adj-all-card">
@@ -7286,6 +7287,7 @@ function renderAdjustmentsWorkerList() {
 
 function selectSummary(id) {
   selectedSummaryId = id;
+  if (ADJ_EDIT && ADJ_EDIT.summary !== id) adjEditReset();
   const s = currentSummaries.find(x => x.id === id);
   document.getElementById("adj-detail-card").style.display = "block";
   document.getElementById("adj-selected-label").textContent = `${s.emp_no} - ${s.emp_name}`;
@@ -7301,9 +7303,10 @@ function renderAdjustmentRows(s) {
   }
   el.innerHTML = s.adjustments.map(a => `
     <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:13px;">
-      <span>${a.description}</span>
+      <span>${escapeHtml(a.description)}</span>
       <span style="display:flex; gap:10px; align-items:center;">
         <strong style="color:${a.is_deduction ? '#C0392B' : '#2E7D32'}">${a.is_deduction ? "-" : "+"}AED ${money(a.amount)}</strong>
+        <button class="btn btn-gray" onclick="adjEdit(${s.id}, ${a.id})">Edit</button>
         <button class="btn btn-gray" onclick="removeAdjustmentRow(${s.id}, ${a.id})">Remove</button>
       </span>
     </div>
@@ -7320,22 +7323,47 @@ async function addAdjustmentRow() {
     return;
   }
   try {
-    await apiCall(`/summaries/${selectedSummaryId}/adjustments`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+    const editing = ADJ_EDIT && ADJ_EDIT.summary === selectedSummaryId ? ADJ_EDIT.id : null;
+    await apiCall(`/summaries/${selectedSummaryId}/adjustments${editing ? "/" + editing : ""}`, {
+      method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ description: desc, amount, is_deduction: isDeduction }),
     });
-    document.getElementById("adj-desc").value = "";
-    document.getElementById("adj-amount").value = "";
-    showStatus("adj-status", "ok", "Adjustment added.");
+    adjEditReset();
+    showStatus("adj-status", "ok", editing ? "Adjustment corrected." : "Adjustment added.");
     await refreshCurrentCycleSummaries();
   } catch (e) {
     showStatus("adj-status", "err", "Failed: " + errText(e));
   }
 }
 
+// Edit: the row's figures go back into the boxes below; Save changes
+// corrects it in place, Cancel leaves it as it was.
+let ADJ_EDIT = null;
+function adjEdit(summaryId, adjId) {
+  const s = currentSummaries.find(x => x.id === summaryId);
+  const a = s && s.adjustments.find(x => x.id === adjId);
+  if (!a) return;
+  ADJ_EDIT = { summary: summaryId, id: adjId };
+  document.getElementById("adj-desc").value = a.description;
+  document.getElementById("adj-amount").value = a.amount;
+  document.getElementById("adj-type").value = a.is_deduction ? "true" : "false";
+  document.getElementById("adj-save").textContent = "Save changes";
+  document.getElementById("adj-cancel").style.display = "";
+  showStatus("adj-status", "warn", `Correcting "${a.description}" - change it below and press Save changes.`);
+  document.getElementById("adj-desc").focus();
+}
+function adjEditReset() {
+  ADJ_EDIT = null;
+  document.getElementById("adj-desc").value = "";
+  document.getElementById("adj-amount").value = "";
+  document.getElementById("adj-save").textContent = "Add";
+  document.getElementById("adj-cancel").style.display = "none";
+}
+
 async function removeAdjustmentRow(summaryId, adjId) {
   try {
     await apiCall(`/summaries/${summaryId}/adjustments/${adjId}`, { method: "DELETE" });
+    if (ADJ_EDIT && ADJ_EDIT.id === adjId) adjEditReset();
     showStatus("adj-status", "ok", "Adjustment removed.");
     await refreshCurrentCycleSummaries();
   } catch (e) {

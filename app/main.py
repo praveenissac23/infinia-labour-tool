@@ -1285,7 +1285,7 @@ ACTION_GROUPS = {
     "signin": ("Sign-ins", ["login", "login_failed", "change_password", "reset_password"]),
     "attendance": ("Attendance", ["save_attendance", "clear_day", "monthly_note"]),
     "labour": ("Labour & salary", ["save_employee", "import_employees", "deactivate_employee", "delete_employee",
-                                   "terminate_employee", "add_adjustment", "remove_adjustment", "rename_site",
+                                   "terminate_employee", "add_adjustment", "remove_adjustment", "edit_adjustment", "rename_site",
                                    "remove_site", "rename_engineer", "remove_engineer"]),
     "office": ("Office payroll", ["payroll_opened", "payroll_approved", "payroll_reopened", "payroll_draft_removed",
                                   "staff_saved", "increment_added", "salary_history_changed", "salary_history_removed",
@@ -1317,7 +1317,7 @@ ACTION_LABELS = {
     "reset_password": "Reset a password", "save_attendance": "Attendance saved", "clear_day": "Attendance day cleared",
     "monthly_note": "Monthly note", "save_employee": "Worker saved", "import_employees": "Workers imported",
     "deactivate_employee": "Worker deactivated", "delete_employee": "Worker removed", "terminate_employee": "Worker left",
-    "add_adjustment": "Salary adjustment added", "remove_adjustment": "Salary adjustment removed",
+    "add_adjustment": "Salary adjustment added", "remove_adjustment": "Salary adjustment removed", "edit_adjustment": "Salary adjustment corrected",
     "payroll_opened": "Cycle opened", "payroll_approved": "Cycle approved & locked", "payroll_reopened": "Cycle reopened",
     "payroll_draft_removed": "Draft cycle discarded", "staff_saved": "Staff record saved", "increment_added": "Increment recorded",
     "salary_history_changed": "Salary history changed", "salary_history_removed": "Salary history removed",
@@ -2809,6 +2809,30 @@ def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session
     log_action(db, user.id, "add_adjustment",
                f"{summary.emp_no} - {adj.description}: {'-' if adj.is_deduction else '+'}{adj.amount}")
     return new_adj
+
+
+@app.put("/summaries/{summary_id}/adjustments/{adjustment_id}", response_model=schemas.SalaryAdjustmentOut)
+def edit_adjustment(summary_id: int, adjustment_id: int, adj: schemas.SalaryAdjustmentIn,
+                     db: Session = Depends(get_db),
+                     user: models.User = Depends(require_screen("adjustments"))):
+    """Correct an addition or deduction in place - description, amount or
+    direction - instead of removing it and typing it again."""
+    row = db.query(models.SalaryAdjustment).filter(models.SalaryAdjustment.id == adjustment_id,
+                                                     models.SalaryAdjustment.summary_id == summary_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Adjustment not found")
+    desc = (adj.description or "").strip()
+    if not desc or not adj.amount or adj.amount <= 0:
+        raise HTTPException(status_code=400, detail="Enter a description and an amount above zero.")
+    summary = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.id == summary_id).first()
+    sign = lambda d: "-" if d else "+"
+    before = f"{row.description}: {sign(row.is_deduction)}{row.amount:.2f}"
+    row.description, row.amount, row.is_deduction = desc, round(float(adj.amount), 2), bool(adj.is_deduction)
+    db.commit()
+    db.refresh(row)
+    log_action(db, user.id, "edit_adjustment",
+               f"{summary.emp_no if summary else ''} - {before} -> {row.description}: {sign(row.is_deduction)}{row.amount:.2f}")
+    return row
 
 
 # Under /summaries/ rather than its own /adjustments/ prefix: nginx only
