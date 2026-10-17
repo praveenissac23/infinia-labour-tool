@@ -160,8 +160,24 @@ def message_for(n: dict) -> dict:
     q = "/?" + urlencode({"n_screen": n.get("screen") or "", "n_target": n.get("target") or "", "n_id": n.get("id") or "",
                           "n_kind": n.get("kind") or "", "n_status": n.get("status") or "", "n_when": n.get("when") or "",
                           "n_people": n.get("people") or 0, "n_company": n.get("company") or 0})
-    return {"title": n.get("title") or "Infinia", "body": n.get("detail") or "", "tag": n.get("id") or "",
+    return {"title": n.get("title") or "Infinia", "body": body_for(n), "tag": n.get("id") or "",
             "url": q}
+
+
+SHOW = 5    # lines a phone shows before "+ more"
+
+
+def body_for(n: dict) -> str:
+    """One item a line, in the same order on every line (date · amount ·
+    name), so the lock screen reads as a list instead of one long run-on
+    sentence. Five at most; the rest are a tap away."""
+    lines = [str(x).strip() for x in (n.get("lines") or []) if str(x).strip()]
+    if not lines:
+        return n.get("detail") or ""
+    out = [f"• {x}" for x in lines[:SHOW]]
+    if len(lines) > SHOW:
+        out.append(f"+ {len(lines) - SHOW} more - tap to see all")
+    return "\n".join(out)
 
 
 # ---- The round every two minutes ------------------------------------------------

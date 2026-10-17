@@ -234,6 +234,7 @@ def notification(db, today):
     more = len(s["first"]) - 3
     return {"id": f"secchq-{today}", "kind": "seccheque", "title": "Security cheques: " + ", ".join(b for b in bits if b),
             "detail": first + (f" and {more} more" if more > 0 else ""), "screen": "seccheque",
+            "lines": [f"{x.remind_on:%d %b}  ·  AED {x.amount or 0:,.2f}  ·  {x.party}" for x in s["first"]],
             "when": today.isoformat(), "count": s["due"] + s["week"], "level": "warn" if s["due"] else "info"}
 
 

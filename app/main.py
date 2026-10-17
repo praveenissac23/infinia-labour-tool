@@ -13058,6 +13058,7 @@ def get_notifications(db: Session = Depends(get_db),
                 out.append({"id": f"expiry-{today}", "kind": "expiry",
                             "title": "Expiries: " + ", ".join(b for b in bits if b),
                             "detail": first + (f" and {len(attention) - 3} more" if len(attention) > 3 else ""),
+                            "lines": [f"{_ex._when(i['days_left'])[0].upper() + _ex._when(i['days_left'])[1:]}  ·  {i['who']}  ·  {i['what']}" for i in attention],
                             "screen": "expiry", "when": today.isoformat(), "count": exp_n + week_n,
                             # Split for the tabs inside Expiry Reminder.
                             "people": sum(1 for i in its if i["days_left"] <= 7 and i["type"] == "person"),

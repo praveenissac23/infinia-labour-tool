@@ -522,14 +522,16 @@ def notification(db, today):
     if not (s["overdue"] or s["week"] or s["fortnight"] or s["no_date"]):
         return None
     bits = [f"{s['overdue']} overdue" if s["overdue"] else "",
-            f"{s['week']} due within 7 days" if s["week"] else "",
-            f"{s['fortnight']} within 14 days" if s["fortnight"] else "",
-            f"{s['no_date']} with no date yet" if s["no_date"] else ""]
+            f"{s['week']} this week" if s["week"] else "",
+            f"{s['fortnight']} next week" if s["fortnight"] else "",
+            f"{s['no_date']} with no date" if s["no_date"] else ""]
     first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d %b}" for x in s["soon"][:3]) \
         or "Put the cheque dates in so the reminders can work"
     more = len(s["soon"]) - 3
+    lines = [f"{x.cheque_date:%d %b}  ·  AED {_money(x.amount)}  ·  {x.payee}" + ("  (overdue)" if x.cheque_date < today else "")
+             for x in s["soon"]]
     return {"id": f"pdc-{today}" if s["milestone"] else f"pdc-wk{today.isocalendar()[1]}", "kind": "pdc",
-            "title": "PDCs: " + ", ".join(b for b in bits if b),
-            "detail": first + (f" and {more} more" if more > 0 else ""),
+            "title": "PDCs due: " + " · ".join(b for b in bits if b),
+            "detail": first + (f" and {more} more" if more > 0 else ""), "lines": lines,
             "screen": "pdc", "when": today.isoformat(), "count": s["overdue"] + s["week"],
             "level": "warn" if s["overdue"] else "info"}

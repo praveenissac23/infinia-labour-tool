@@ -817,7 +817,8 @@ def overdue_notice(db, today=None):
                                               ("loans", "staff loan" + ("s" if o["loans"] != 1 else ""))) if o[k]]
     return {"id": f"zoho-{today}-{o['total']}", "kind": "zoho",
             "title": f"{o['total']} line{'s' if o['total'] != 1 else ''} not in Zoho for over {OVERDUE_DAYS} days",
-            "detail": ", ".join(parts) + " - Accounts > Send to Zoho", "screen": "zoho", "when": today.isoformat(),
+            "detail": ", ".join(parts) + " - Accounts > Send to Zoho", "lines": parts + ["Accounts > Send to Zoho"],
+            "screen": "zoho", "when": today.isoformat(),
             "count": o["total"], "level": "warn"}
 
 
