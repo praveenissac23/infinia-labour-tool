@@ -105,7 +105,7 @@ window.HELP_GUIDES = [
     go: { page: "accounts", tab: "bank" },
     steps: [
       { say: "Step 1 - click the box for what happened: Paid a supplier, Paid an expense, Client paid us, Bank charge or Transfer. OUT, IN or MOVE shows which way the money went.", el: "#bk-kind" },
-      { say: "Type the supplier or client - pick the name from Zoho's list, and their open bills or invoices appear.", el: "#bk-party" },
+      { say: "Type the supplier or client - pick the name from Zoho's list, and their open bills or invoices appear. A client's tax invoice made here but not yet released to Zoho shows as 'Held' - press Release to Zoho on it, then type the amount against it.", el: "#bk-party" },
       { say: "For a cheque choose Cheque: the date is the cheque date and the reference is the cheque number. Otherwise type the ADCB reference (PHUB...).", el: "#bk-mode" },
       { say: "Type the amount - it is set against the oldest bills first; change any figure.", el: "#bk-amt" },
       { say: "Step 3 - check the summary line (amount, in or out, to whom), then Save. The chief accountant's entries go straight to Zoho; anyone else's wait for him to send.", el: "#bk-save" }],
@@ -783,6 +783,7 @@ window.HELP_TIPS = {
   "#bk-mode": "Bank Transfer, Cheque, Credit Card or Cash - as in Zoho.",
   "#bk-ref": "The ADCB reference (PHUB...) from the transfer, or the cheque number for a cheque.",
   "#bk-amt": "The full amount that left or reached the bank. It is set against the oldest open bills or invoices first.",
+  "#bk-docs": "The open bills or invoices this payment is set against. 'Held' = a tax invoice made here, not released to Zoho yet - release it first.",
   "#bk-notes": "Anything you write in Zoho's notes today, e.g. the project and bill: 913 PC05.",
   "#bk-acc": "The cost head or office account the expense belongs to.",
   "#bk-site": "The project this expense is for. Leave empty for office costs.",

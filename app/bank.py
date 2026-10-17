@@ -365,7 +365,32 @@ def open_docs(contact_id: str, kind: str = "vendor", db: Session = Depends(get_d
         d = zohoapi.call(db, "GET", "invoices", {"customer_id": contact_id, "status": "unpaid", "per_page": 100})
         docs = [{"id": i["invoice_id"], "number": i.get("invoice_number") or "", "date": i.get("date") or "",
                  "balance": i.get("balance") or 0, "total": i.get("total") or 0} for i in d.get("invoices", [])]
+        docs += held_invoices(db, contact_id)
     return {"docs": docs}
+
+
+def held_invoices(db, contact_id):
+    """The client's tax invoices made here but not released to Zoho yet.
+    They are listed so the office sees them - a receipt is applied to one
+    only once it is released (the Release button on the list)."""
+    import zohoapi
+    from accounts import Invoice
+    try:
+        c = zohoapi.call(db, "GET", f"contacts/{contact_id}").get("contact") or {}
+    except Exception:
+        return []
+    name = (c.get("contact_name") or "").strip().lower()
+    if not name:
+        return []
+    out = []
+    for x in (db.query(Invoice).filter(Invoice.kind == "tax", Invoice.status != "cancelled")
+                .filter((Invoice.zoho_status.is_(None)) | (Invoice.zoho_status != "sent"))
+                .order_by(Invoice.inv_date, Invoice.id).all()):
+        if (x.client or "").strip().lower() != name:
+            continue
+        out.append({"id": "", "portal_id": x.id, "number": x.number or "", "date": x.inv_date.isoformat() if x.inv_date else "",
+                    "balance": round(x.total or 0, 2), "total": round(x.total or 0, 2), "held": True})
+    return out
 
 
 def _contact_id(db, name, kind):

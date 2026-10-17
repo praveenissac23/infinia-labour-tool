@@ -16797,11 +16797,26 @@ function bkDocsDraw() {
   if (!BK.connected) { el.innerHTML = `<span class="sub">Connect Zoho (Send to Zoho tab) to pick the ${word} this pays. Until then it goes as a payment on account.</span>`; return; }
   if (!BK_PARTY_ID) { el.innerHTML = `<span class="sub">Pick the ${BK_KIND === "vendor" ? "supplier" : "client"} from the list to see the open ${word}.</span>`; return; }
   if (!BK_DOCS.length) { el.innerHTML = `<span class="sub">No open ${word} in Zoho - it goes as a payment on account.</span>`; return; }
+  const held = BK_DOCS.filter(d => d.held).length;
   const tot = Object.values(BK_PICK).reduce((a, b) => a + b, 0);
   const amt = parseFloat((document.getElementById("bk-amt").value || "0").replace(/,/g, "")) || 0;
   const left = Math.round((amt - tot) * 100) / 100;
-  el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- ${BK_KIND === "customer" ? "type how much of this payment goes to each invoice" : "against this payment"}: ${pcMoney(tot)}${amt && BK_KIND === "customer" ? ` of ${pcMoney(amt)}${left > 0.004 ? ` · ${pcMoney(left)} left on account` : left < -0.004 ? ` · <b style="color:#B03A2E;">${pcMoney(-left)} more than the payment</b>` : " ✓"}` : ""}</span><table>${BK_DOCS.map(d => `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
-    <td class="n">Balance ${pcMoney(d.balance)}</td><td style="width:130px;text-align:right;"><input type="text" value="${BK_PICK[d.id] ? BK_PICK[d.id].toFixed(2) : ""}" placeholder="0.00" onchange="bkPick('${d.id}', this.value)"></td></tr>`).join("")}</table>`;
+  el.innerHTML = `<b>Open ${word}</b> <span class="sub" style="display:inline;">- ${BK_KIND === "customer" ? "type how much of this payment goes to each invoice" : "against this payment"}: ${pcMoney(tot)}${amt && BK_KIND === "customer" ? ` of ${pcMoney(amt)}${left > 0.004 ? ` · ${pcMoney(left)} left on account` : left < -0.004 ? ` · <b style="color:#B03A2E;">${pcMoney(-left)} more than the payment</b>` : " ✓"}` : ""}</span><table>${BK_DOCS.map(d => d.held
+    ? `<tr class="bk-held"><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
+    <td class="n">${pcMoney(d.total)} <span class="zx-tag zx-wait" title="Made here, not released to Zoho yet - release it to apply this receipt">Held - not in Zoho</span></td><td style="width:130px;text-align:right;">${BK.may_send ? `<button type="button" class="btn btn-primary btn-sm" onclick="bkRelease(${d.portal_id}, this)">Release to Zoho</button>` : `<span class="sub">ask the chief accountant to release it</span>`}</td></tr>`
+    : `<tr><td style="width:150px;">${escapeHtml(d.number)}</td><td style="width:90px;">${pcDate(d.date)}</td>
+    <td class="n">Balance ${pcMoney(d.balance)}</td><td style="width:130px;text-align:right;"><input type="text" value="${BK_PICK[d.id] ? BK_PICK[d.id].toFixed(2) : ""}" placeholder="0.00" onchange="bkPick('${d.id}', this.value)"></td></tr>`).join("")}</table>${held ? `<div class="sub" style="margin-top:4px;">${held} invoice${held === 1 ? " is" : "s are"} made here but not released to Zoho yet. Press Release to Zoho on it, then type the amount against it.</div>` : ""}`;
+}
+// A held tax invoice released from the receipt form, so the money can go
+// against it straight away (the same Release as on Accounts > Invoices).
+async function bkRelease(iid, btn) {
+  if (!await hrAsk("Release this invoice to Zoho now? It goes into this VAT period and cannot be pulled back.", "Release")) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Releasing..."; }
+  try {
+    await apiCall(`/store/zoho/invoice/${iid}/release`, { method: "POST", body: JSON.stringify({ account: "Progressive Payments" }) });
+    BK_DOCS = (await apiCall(`/store/bank/open?kind=${BK_KIND}&contact_id=${encodeURIComponent(BK_PARTY_ID)}`)).docs;
+    bkDocsDraw(); showStatus("bk-status", "ok", "Released to Zoho - now type how much of this receipt goes against it.");
+  } catch (e) { showStatus("bk-status", "err", errText(e)); if (btn) { btn.disabled = false; btn.textContent = "Release to Zoho"; } }
 }
 // What goes on Project payments: the receipt net of VAT, as that tracker is kept.
 function bkNet() {
