@@ -1312,6 +1312,7 @@ class BankStmtLine(Base):
     ignored = Column(Boolean, default=False)
     ignore_reason = Column(String, default="")
     matched_by = Column(Integer, nullable=True)
+    note = Column(String, default="")            # the office's own wording for the line, when the bank's is cryptic
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

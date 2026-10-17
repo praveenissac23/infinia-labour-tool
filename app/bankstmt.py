@@ -193,13 +193,36 @@ def parse(name, data):
             "or an Amount column. Send the file to the admin if it is the normal ADCB download."))
     out = []
     g = lambda r, k: r[cols[k]] if k in cols and cols[k] < len(r) else None
+    # Every wordy column goes into the description, not just the one called
+    # "description": ADCB's download keeps the beneficiary, the narration and
+    # the remarks in separate columns, and a line that read "O/W TRF734975811"
+    # alone told the office nothing.
+    SKIP = re.compile(r"account|acc no|a/c|currency|branch|serial|^s\.? ?no|^sl|^sr|^no$|cheque|chq|instrument")
+    heads = [_norm(c) for c in rows[h]]
+    text_cols = [j for j, n in enumerate(heads) if n and j not in cols.values() and not SKIP.search(n)]
+    if "desc" in cols:
+        text_cols.insert(0, cols["desc"])
+    def words(r):
+        seen, parts = set(), []
+        for j in text_cols:
+            v = r[j] if j < len(r) else None
+            if v is None or isinstance(v, (int, float)) or isinstance(v, (date, datetime)):
+                continue
+            t = re.sub(r"\s+", " ", str(v)).strip()
+            if not t or _num(t) is not None or _date(t):
+                continue
+            k = t.upper()
+            if k in seen or any(k in q for q in seen):
+                continue
+            seen.add(k); parts.append(t)
+        return " · ".join(parts)
     for r in rows[h + 1:]:
         if not r or all(c in (None, "") for c in r):
             continue
         d = _date(g(r, "date"))
         if not d:
             continue
-        desc = str(g(r, "desc") or "").strip()
+        desc = words(r) or str(g(r, "desc") or "").strip()
         if re.match(r"^(opening|closing|brought|carried) (balance|forward)", desc.lower()):
             continue
         if "debit" in cols and "credit" in cols:
@@ -323,7 +346,8 @@ def match_all(db, lines=None):
 
 def _line(l, ents):
     e = ents.get(l.entry_id)
-    return {"id": l.id, "date": l.on_date.isoformat(), "description": l.description or "", "reference": l.reference or "",
+    return {"id": l.id, "date": l.on_date.isoformat(), "description": l.note or l.description or "", "bank_text": l.description or "",
+            "note": l.note or "", "reference": l.reference or "",
             "debit": l.debit or 0, "credit": l.credit or 0, "balance": l.balance, "entry_id": l.entry_id, "how": l.match_how or "",
             "entry": ({"party": e.party or "", "kind": e.kind, "date": e.on_date.isoformat(), "reference": e.reference or ""} if e else None),
             "ignored": bool(l.ignored), "ignore_reason": l.ignore_reason or ""}
@@ -454,6 +478,17 @@ def ignore(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), u
     db.commit()
     M.log_action(db, user.id, "bank_statement", f"bank line {l.on_date} {(l.debit or l.credit):,.2f} " + ("back on the list" if payload.get("undo") else f"set aside: {why}"))
     return {"ok": True}
+
+
+@router.post("/store/bank/stmt/{lid}/note")
+def note(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = BK):
+    """The office's own wording for a bank line (the bank's text is kept
+    underneath, so a re-uploaded statement still recognises the line)."""
+    l = _get(db, lid)
+    l.note = M.tidy_text(payload.get("note"))[:300]
+    db.commit()
+    M.log_action(db, user.id, "bank_statement", f"bank line {l.on_date} {(l.debit or l.credit):,.2f} described as: {l.note or '(bank text)'}")
+    return {"ok": True, "note": l.note}
 
 
 @router.delete("/store/bank/stmt/upload/{uid}")

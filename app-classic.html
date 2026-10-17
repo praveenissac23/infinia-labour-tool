@@ -1599,6 +1599,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dt-foot { display:flex; justify-content:space-between; gap:8px; margin-top:10px; }
   .dt-table td { vertical-align:top; } .dt-l { padding:2px 0; line-height:1.45; } .dt-l.miss { color:#B03A2E; } .dt-ok { color:#2E7D32; font-weight:700; }
   .dt-acts { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .bs-pen { border:0; background:none; color:#A5301F; cursor:pointer; font-size:13px; padding:0 4px; opacity:.55; } .bs-pen:hover { opacity:1; }
   .dt2 { table-layout:fixed; } .dt2 td { vertical-align:middle; } .dt2 th { white-space:nowrap; }
   .dt2 tr.dt2-r { cursor:pointer; } .dt2 tr.dt2-r:hover td { background:#FBF6F3; }
   .dt2 tr.dt2-r td { padding-top:11px; padding-bottom:11px; }
@@ -16948,7 +16949,8 @@ function bsDraw() {
     if (l.entry_id) st = `<span class="zx-tag zx-ok">Bank ✓</span> <span class="sub" style="display:inline;">${escapeHtml(l.entry.party || BK.kinds[l.entry.kind] || "")} · ${{ ref: "by reference", cheque: "by cheque no.", amount: "by amount and date", manual: "matched by hand" }[l.how] || ""}</span> <button type="button" class="bs-x" title="Not this one - unmatch" onclick="bsAct(${l.id},'unmatch')">×</button>`;
     else if (l.ignored) st = `<span class="zx-tag">No entry needed</span> <span class="sub" style="display:inline;">${escapeHtml(l.ignore_reason)}</span> <button type="button" class="bs-x" title="Put back on the list" onclick="bsAct(${l.id},'undo')">↺</button>`;
     else st = `<button type="button" class="btn btn-primary btn-sm" onclick="bsEnter(${l.id})">Enter</button> <button type="button" class="btn btn-gray btn-sm" onclick="bsMatch(${l.id})">Match...</button> <button type="button" class="btn btn-gray btn-sm" onclick="bsIgnore(${l.id})">No entry needed</button>`;
-    return `<tr class="${l.entry_id ? "ok" : l.ignored ? "ign" : "bad"}"><td style="width:78px;">${pcDate(l.date)}</td><td class="l">${escapeHtml(l.description)}${l.reference ? `<span class="sub">${escapeHtml(l.reference)}</span>` : ""}</td>${amt}<td class="act">${st}</td></tr>`; }).join("");
+    const desc = `<span class="bs-d" id="bs-d-${l.id}">${escapeHtml(l.description)}</span> <button type="button" class="bs-pen" title="Change the wording of this line" onclick="bsNote(${l.id})">✎</button>${l.note && l.bank_text && l.bank_text !== l.note ? `<span class="sub">bank: ${escapeHtml(l.bank_text)}</span>` : ""}`;
+    return `<tr class="${l.entry_id ? "ok" : l.ignored ? "ign" : "bad"}"><td style="width:78px;">${pcDate(l.date)}</td><td class="l">${desc}${l.reference ? `<span class="sub">${escapeHtml(l.reference)}</span>` : ""}</td>${amt}<td class="act">${st}</td></tr>`; }).join("");
   const miss = BS_F === "missing" || BS_F === "problems" ? BS.missing.map(m => `<tr class="warn"><td style="width:78px;">${pcDate(m.date)}</td><td class="l"><b>${escapeHtml(m.party || BK.kinds[m.kind] || "")}</b> <span class="zx-tag zx-wait">entered, not in the bank</span>${m.reference ? `<span class="sub">${escapeHtml(m.mode)} · ${escapeHtml(m.reference)}</span>` : ""}</td>
       <td class="n ${m.out ? "neg" : "pos"}">${m.out ? "-" : "+"}${pcMoney(m.amount)}</td><td class="act"><button type="button" class="btn btn-gray btn-sm" onclick="bkEdit(${m.id})">Check entry</button></td></tr>`).join("") : "";
   const body = rows + miss;
@@ -16970,6 +16972,25 @@ async function bsUpload(inp) {
 async function bsAct(id, what) {
   try { await apiCall(`/store/bank/stmt/${id}/${what === "undo" ? "ignore" : what}`, { method: "POST", body: JSON.stringify(what === "undo" ? { undo: 1 } : {}) }); await bkStatement(); }
   catch (e) { showStatus("bk-status", "err", errText(e)); }
+}
+// The office's own wording for a bank line - typed in place; the bank's
+// text stays underneath.
+function bsNote(id) {
+  const l = BS.lines.find(x => x.id === id); if (!l) return;
+  const el = document.getElementById(`bs-d-${id}`); if (!el || el.querySelector("input")) return;
+  const cur = l.note || l.description || "";
+  el.innerHTML = `<input type="text" value="${escapeAttr(cur)}" maxlength="300" style="width:100%;min-width:260px;height:30px;" data-spell="off"> <span class="sub" style="display:inline;">Enter saves · Esc cancels${l.bank_text ? " · empty = back to the bank's text" : ""}</span>`;
+  const inp = el.querySelector("input"); inp.focus(); inp.select();
+  inp.onkeydown = async e => {
+    if (e.key === "Escape") { bsDraw(); return; }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const v = inp.value.trim();
+    try { await apiCall(`/store/bank/stmt/${id}/note`, { method: "POST", body: JSON.stringify({ note: v }) });
+          l.note = v; l.description = v || l.bank_text; bsDraw(); }
+    catch (err) { showStatus("bk-status", "err", errText(err)); }
+  };
+  inp.onblur = () => setTimeout(() => { if (el.querySelector("input") === inp) bsDraw(); }, 150);
 }
 function bsEnter(id) {
   const l = BS.lines.find(x => x.id === id); if (!l) return;
