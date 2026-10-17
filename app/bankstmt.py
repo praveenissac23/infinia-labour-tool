@@ -139,7 +139,21 @@ def read_rows(name, data):
                 best = rows
         return best
     if head.startswith(b"\xd0\xcf\x11\xe0"):
-        raise HTTPException(status_code=400, detail="This is an old Excel file (.xls). Open it in Excel, Save As .xlsx or CSV, and upload that.")
+        # ADCB ProCash's "Listing Report" download is the old .xls format.
+        try:
+            import xlrd
+        except ImportError:
+            raise HTTPException(status_code=400, detail="This is an old Excel file (.xls) and the server cannot read it yet. Open it in Excel, Save As .xlsx or CSV, and upload that.")
+        try:
+            wb = xlrd.open_workbook(file_contents=data)
+        except Exception:
+            raise HTTPException(status_code=400, detail="This .xls file could not be read. Open it in Excel, Save As .xlsx or CSV, and upload that.")
+        best = []
+        for ws in wb.sheets():
+            rows = [[c.value for c in ws.row(i)] for i in range(ws.nrows)]
+            if len(rows) > len(best):
+                best = rows
+        return best
     if head.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="A PDF statement cannot be read. Download the statement from ADCB as Excel or CSV.")
     text = None
@@ -199,9 +213,11 @@ def parse(name, data):
     # alone told the office nothing.
     SKIP = re.compile(r"account|acc no|a/c|currency|branch|serial|^s\.? ?no|^sl|^sr|^no$|cheque|chq|instrument")
     heads = [_norm(c) for c in rows[h]]
-    text_cols = [j for j, n in enumerate(heads) if n and j not in cols.values() and not SKIP.search(n)]
-    if "desc" in cols:
-        text_cols.insert(0, cols["desc"])
+    # In the file's own column order: on ADCB's download the "Customer
+    # Reference" (what the office typed when paying) comes before the
+    # bank's own "Transaction Description" (O/W TRF...), which reads best.
+    text_cols = sorted([j for j, n in enumerate(heads) if n and j not in cols.values() and not SKIP.search(n)]
+                       + ([cols["desc"]] if "desc" in cols else []))
     def words(r):
         seen, parts = set(), []
         for j in text_cols:
@@ -209,8 +225,8 @@ def parse(name, data):
             if v is None or isinstance(v, (int, float)) or isinstance(v, (date, datetime)):
                 continue
             t = re.sub(r"\s+", " ", str(v)).strip()
-            if not t or _num(t) is not None or _date(t):
-                continue
+            if not t or not re.search(r"[A-Za-z]", t) or _num(t) is not None or _date(t):
+                continue      # "." and "-" mean nothing was typed
             k = t.upper()
             if k in seen or any(k in q for q in seen):
                 continue
@@ -364,12 +380,25 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db), us
                                date_to=max(l["date"] for l in lines), lines=len(lines), breaks=breaks,
                                opening=opening, closing=closing, uploaded_by=user.id)
     db.add(up); db.flush()
-    seen, have, new = {}, {f for (f,) in db.query(models.BankStmtLine.fp).all()}, []
+    seen, have, new, reworded = {}, {f for (f,) in db.query(models.BankStmtLine.fp).all()}, [], 0
+    # The same bank line, when its description was read differently last
+    # time (an earlier version kept only one column): recognised by date,
+    # amounts, balance and reference, and its text brought up to date.
+    loose = {}
+    for x in (db.query(models.BankStmtLine).filter(models.BankStmtLine.on_date >= up.date_from,
+                                                  models.BankStmtLine.on_date <= up.date_to).all()):
+        loose.setdefault((x.on_date, round(x.debit or 0, 2), round(x.credit or 0, 2), x.balance, _key(x.reference)), []).append(x)
     for l in lines:
         base = (l["date"], l["debit"], l["credit"], l["balance"], _key(l["reference"]), _key(l["description"])[:60])
         seen[base] = seen.get(base, 0) + 1
         fp = _fp(l, seen[base])
         if fp in have:
+            continue
+        twins = loose.get((l["date"], l["debit"], l["credit"], l["balance"], _key(l["reference"])), []) if l["reference"] else []
+        twin = next((x for x in twins if _key(x.description)[:60] and _key(x.description)[:60] in _key(l["description"])
+                     and _key(x.description) != _key(l["description"])), None)
+        if twin is not None:
+            twin.description, twin.fp = l["description"], fp; have.add(fp); twins.remove(twin); reworded += 1
             continue
         have.add(fp)
         x = models.BankStmtLine(on_date=l["date"], value_date=l["value_date"], description=l["description"], reference=l["reference"],
@@ -379,7 +408,7 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db), us
     db.commit()
     made = match_all(db, new)
     M.log_action(db, user.id, "bank_statement", f"ADCB statement {up.date_from} to {up.date_to}: {len(lines)} lines, {len(new)} new, {made} matched")
-    return {"ok": True, "lines": len(lines), "added": len(new), "duplicates": len(lines) - len(new), "matched": made,
+    return {"ok": True, "lines": len(lines), "added": len(new), "duplicates": len(lines) - len(new), "matched": made, "reworded": reworded,
             "from": up.date_from.isoformat(), "to": up.date_to.isoformat(), "breaks": breaks, "opening": opening, "closing": closing}
 
 

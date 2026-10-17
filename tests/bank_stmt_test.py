@@ -124,7 +124,7 @@ html = ("<html><table><tr><th>Date</th><th>Details</th><th>Withdrawals</th><th>D
         "<tr><td>15-Oct-2026</td><td>CASH DEPOSIT</td><td></td><td>5,000.00</td><td>505,000.00</td></tr></table></html>")
 r = up("Statement.xls", html.encode())
 ok(r["lines"] == 1, "a web-page '.xls' statement is read")
-ok("xlsx" in refused(lambda: up("old.xls", b"\xd0\xcf\x11\xe0" + b"0" * 100)).lower(), "a real old .xls asks to save as .xlsx or CSV")
+ok("xlsx" in refused(lambda: up("old.xls", b"\xd0\xcf\x11\xe0" + b"0" * 100)).lower(), "a broken old .xls asks to save as .xlsx or CSV")
 ok("pdf" in refused(lambda: up("s.pdf", b"%PDF-1.4 ...")).lower(), "a PDF statement is refused with what to do")
 ok("columns" in refused(lambda: up("x.csv", b"a,b,c\n1,2,3\n")).lower(), "a file without the columns says what is needed")
 

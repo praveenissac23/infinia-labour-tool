@@ -16933,7 +16933,7 @@ function bsDraw() {
   const upl = `<label class="btn btn-dark btn-sm bs-up">Upload ADCB statement<input type="file" accept=".xlsx,.xls,.csv,.htm,.html" style="display:none" onchange="bsUpload(this)"></label>`;
   if (!last) {
     el.innerHTML = `<div class="bs"><div class="bs-head"><div><b>ADCB statement check</b><span class="sub">Every debit and credit on the bank statement checked against what is entered here.</span></div>${upl}</div>
-      <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement as <b>Excel or CSV</b> (any period - a day, a week, a month).</li>
+      <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement as <b>Excel (.xls or .xlsx) or CSV</b> (any period - a day, a week, a month). The Customer Reference you typed when paying becomes the line's description.</li>
       <li>Press <b>Upload ADCB statement</b>. Lines already uploaded are skipped, so overlapping periods are fine.</li>
       <li>Each bank line is matched to its entry: <span class="zx-tag zx-ok">Bank ✓</span>. What is left shows in red: in the bank but not entered, or entered but not in the bank.</li></ol></div></div>`;
     return;
@@ -16964,7 +16964,7 @@ async function bsUpload(inp) {
   const fd = new FormData(); fd.append("file", f);
   showStatus("bk-status", "ok", "Reading the statement...");
   try { const d = await apiCall("/store/bank/stmt/upload", { method: "POST", body: fd });
-        showStatus("bk-status", d.breaks ? "err" : "ok", `Statement ${pcDate(d.from)} to ${pcDate(d.to)}: ${d.lines} lines, ${d.added} new${d.duplicates ? `, ${d.duplicates} already in` : ""}. ${d.matched} matched to entries.` + (d.breaks ? ` Warning: the running balance does not add up in ${d.breaks} place${d.breaks === 1 ? "" : "s"} - lines may be missing.` : ""));
+        showStatus("bk-status", d.breaks ? "err" : "ok", `Statement ${pcDate(d.from)} to ${pcDate(d.to)}: ${d.lines} lines, ${d.added} new${d.duplicates ? `, ${d.duplicates} already in` : ""}${d.reworded ? ` (${d.reworded} brought up to date with the full wording)` : ""}. ${d.matched} matched to entries.` + (d.breaks ? ` Warning: the running balance does not add up in ${d.breaks} place${d.breaks === 1 ? "" : "s"} - lines may be missing.` : ""));
         BS_F = "problems"; await bkStatement(); }
   catch (e) { showStatus("bk-status", "err", errText(e)); }
   inp.value = "";
