@@ -528,7 +528,8 @@ def notification(db, today):
     first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d %b}" for x in s["soon"][:3]) \
         or "Put the cheque dates in so the reminders can work"
     more = len(s["soon"]) - 3
-    lines = [f"{x.cheque_date:%d %b}  ·  AED {_money(x.amount)}  ·  {x.payee}" + ("  (overdue)" if x.cheque_date < today else "")
+    from push import short_name
+    lines = [f"{x.cheque_date:%d %b}  ·  AED {_money(x.amount)}  ·  {short_name(x.payee)}" + ("  (overdue)" if x.cheque_date < today else "")
              for x in s["soon"]]
     return {"id": f"pdc-{today}" if s["milestone"] else f"pdc-wk{today.isocalendar()[1]}", "kind": "pdc",
             "title": "PDCs due: " + " · ".join(b for b in bits if b),

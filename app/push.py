@@ -167,6 +167,16 @@ def message_for(n: dict) -> dict:
 SHOW = 5    # lines a phone shows before "+ more"
 
 
+def short_name(name: str, width: int = 20) -> str:
+    """A company name short enough to keep its line on one line of a phone:
+    no LLC / Co. / Trading tail, and cut with ... past the width."""
+    import re
+    n = str(name or "").strip()
+    for _ in range(3):
+        n = re.sub(r"[\s,.]+(L\.?\s?L\.?\s?C\.?|FZ-?LLC|FZE|Co\.?|Company|Trading|Est\.?|Establishment)\s*$", "", n, flags=re.I).strip()
+    return n if len(n) <= width else n[:width - 1].rstrip() + "…"
+
+
 def body_for(n: dict) -> str:
     """One item a line, in the same order on every line (date · amount ·
     name), so the lock screen reads as a list instead of one long run-on
