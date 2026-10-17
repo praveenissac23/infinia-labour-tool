@@ -10919,9 +10919,12 @@ async function submitMaterialRequest() {
   // One save per click, one click per save. The button locks while the
   // request is in flight and while confirms are pending is fine - the
   // lock releases in finally whatever happens.
+  // Its own flag, not the button's disabled state: the one-at-a-time
+  // guard greys the button before this runs, and reading that back as
+  // "already sending" made every click return without sending.
   const sendBtn = document.getElementById("mr-send-btn");
-  if (sendBtn && sendBtn.disabled) return;
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Sending..."; }
+  if (sendBtn && sendBtn.dataset.sending) return;
+  if (sendBtn) { sendBtn.dataset.sending = "1"; sendBtn.disabled = true; sendBtn.textContent = "Sending..."; }
   try {
     // A unit that disagrees with the catalogue is usually the catalogue
     // being wrong - rebar bought by the tonne sits in the list as "pcs".
@@ -10996,7 +10999,7 @@ async function submitMaterialRequest() {
   } catch (e) { mreqStatus("err", errText(e)); }
   finally {
     const b = document.getElementById("mr-send-btn");
-    if (b) { b.disabled = false; b.textContent = "Send Request to Office"; }
+    if (b) { delete b.dataset.sending; b.disabled = false; b.textContent = "Send Request to Office"; }
   }
 }
 
