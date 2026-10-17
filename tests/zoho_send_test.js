@@ -33,7 +33,7 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  ck('TRN remembered for the supplier', t==='100234567800003', t);
  // petty screen
  await a.evaluate(()=>pgTab('petty')); await a.waitForTimeout(1200); await a.evaluate(()=>pcBook('site')); await a.waitForTimeout(800);
- await a.evaluate(()=>{document.getElementById('pc-month').value='2026-10'; loadPettyCash();}); await a.waitForTimeout(1200);
+ await a.evaluate(()=>{document.getElementById('pc-from').value='2026-10-01'; document.getElementById('pc-to').value='2026-10-31'; loadPettyCash();}); await a.waitForTimeout(1200);
  ck('no Zoho column on the site book - a small mark beside the amount instead', !(await a.locator('#pc-head-row').textContent()).includes('Zoho') && (await a.locator('#pc-body .pz').count()) > 0);
  ck('waiting lines carry the waiting mark', (await a.locator('#pc-body .pz.wait').count()) > 0);
  await a.fill('#pc-desc','Tile adhesive & grout'); await a.fill('#pc-sup','Dani Building'); await a.fill('#pc-amt','189');
@@ -83,7 +83,7 @@ async function login(b,u,pw){ const ctx=await b.newContext({viewport:{width:1440
  await a.screenshot({path:SH+'z3-after.png',fullPage:true});
  // store keeper sees lock
  const k=await login(b,'amal','pass12345');
- await k.evaluate(()=>pgTab('petty')); await k.waitForTimeout(1200); await k.evaluate(()=>{document.getElementById('pc-month').value='2026-10'; loadPettyCash();}); await k.waitForTimeout(1500);
+ await k.evaluate(()=>pgTab('petty')); await k.waitForTimeout(1200); await k.evaluate(()=>{document.getElementById('pc-from').value='2026-10-01'; document.getElementById('pc-to').value='2026-10-31'; loadPettyCash();}); await k.waitForTimeout(1500);
  const body=await k.locator('#pc-body').textContent();
  ck('store keeper does not see the Zoho column', !(await k.locator('#pc-head-row').textContent()).includes('Zoho') && !body.includes('Approved'), body.slice(0,200));
  ck('store keeper sees approved lines locked', body.includes('Locked - checked by accounts'));

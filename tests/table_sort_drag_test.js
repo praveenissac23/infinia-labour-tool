@@ -11,7 +11,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500);
   const openPetty = async () => { await p.evaluate(() => { pgGo('accounts', 'petty:site'); pgTab('petty'); pgSub('site'); }); await p.waitForTimeout(1200);
-    await p.evaluate(() => { document.getElementById('pc-month').value = '2026-10'; return loadPettyCash(); }); await p.waitForTimeout(1200); };
+    await p.evaluate(() => { document.getElementById('pc-from').value = '2026-10-01'; document.getElementById('pc-to').value = '2026-10-31'; return loadPettyCash(); }); await p.waitForTimeout(1200); };
   await openPetty();
   const heads = () => p.evaluate(() => [...document.querySelectorAll('#pc-head-row th')].map(t => t.textContent.replace(/[▲▼]/g, '').trim()));
   const col = name => p.evaluate(n => { const hs = [...document.querySelectorAll('#pc-head-row th')].map(t => t.textContent.replace(/[▲▼]/g, '').trim()); const i = hs.indexOf(n);

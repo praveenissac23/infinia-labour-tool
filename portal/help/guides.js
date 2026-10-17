@@ -437,7 +437,7 @@ window.HELP_GUIDES = [
       { say: "Type the TRN, email and payment terms.", el: "#sup-trn" },
       { say: "Press Save supplier.", el: "button[onclick='saveSupplier()']" }] },
   { id: "petty", area: "Accounts", title: "How to enter petty cash (bill paid or cash received)",
-    words: "petty cash bill receipt expense cash paid received balance amal register pro office site",
+    words: "petty cash bill receipt expense cash paid received balance amal register pro office site date range from to report",
     go: { page: "accounts", tab: "petty" },
     steps: [
       { say: "Pick your cash box: Site, PRO or Office. You only see the boxes you are allowed.", el: ".pg-sub" },
@@ -445,7 +445,7 @@ window.HELP_GUIDES = [
       { say: "Put the date and what it was for.", el: "#pc-desc" },
       { say: "Type the shop / supplier and the site.", el: "#pc-sup" },
       { say: "Type the amount and press Add. The balance updates.", el: "#pc-save" },
-      { say: "Print the month: Preview, Export PDF or Export Excel.", el: "#screen-pettycash button[onclick=\"pcExport('pdf')\"]" }] },
+      { say: "Pick the From and To dates (or Full history), then Preview, Export PDF or Export Excel - the report covers exactly those dates.", el: "#pc-from" }] },
 
   // ---------------- Labour payroll ----------------
   { id: "check-pay", area: "Payroll", title: "How to check attendance before paying salaries",
@@ -1072,7 +1072,9 @@ window.HELP_TIPS = {
   "#inv-project": "Project name as it should print on the invoice.",
   "#inv-search": "Type an invoice number, client or project.",
   "#pc-range": "One month, or every entry from the start.",
-  "#pc-month": "The month shown in the register and on the Preview / PDF / Excel.",
+  "#pc-range": "Between dates (any two days), This month, or the Full history from the first entry.",
+  "#pc-from": "First day of the register - the balance brought forward is everything before it.",
+  "#pc-to": "Last day of the register. Preview, PDF and Excel follow these dates.",
   "#pc-sup": "Who was paid - pick from the list or type a new name.",
   "#pc-site": "The site the cost belongs to, or office / general.",
   "#pc-amt": "Amount paid in AED.",

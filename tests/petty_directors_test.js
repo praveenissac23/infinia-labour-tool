@@ -19,7 +19,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const clickSub = async (p, label) => { await p.locator('.pg-subtab', { hasText: new RegExp('^' + label + '$') }).first().click(); await p.waitForTimeout(1500); };
   const heads = p => p.evaluate(() => [...document.querySelectorAll('#pc-head-row th')].map(x => x.textContent.trim()));
   const stats = p => p.evaluate(() => [...document.querySelectorAll('#pc-stats .pc-stat')].map(x => x.querySelector('span').textContent + ': ' + x.querySelector('b').textContent));
-  const month = async (p, m) => { await p.fill('#pc-month', m); await p.dispatchEvent('#pc-month', 'change'); await p.waitForTimeout(1200); };
+  const month = async (p, m) => { const [y, mo] = m.split('-'); const last = new Date(+y, +mo, 0).getDate(); await p.fill('#pc-from', m + '-01'); await p.fill('#pc-to', m + '-' + String(last).padStart(2, '0')); await p.dispatchEvent('#pc-to', 'change'); await p.waitForTimeout(1200); };
   const api = (p, u) => p.evaluate(async u => { try { return { ok: 1, d: await apiCall(u) }; } catch (e) { return { ok: 0, status: e.status }; } }, u);
 
   // Chief accountant: Office, Naveen, Praveen - not the site's or PRO's box.

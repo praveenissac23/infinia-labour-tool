@@ -3537,14 +3537,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pc-head">
               <div class="pc-title">
                 <h2 style="margin:0;" id="pc-heading">Petty cash register</h2><script>/* the book in the address, from the first frame */try{var _b=(location.hash.match(/^#petty:(\w+)/)||[])[1],_n={site:"Site petty cash",pro:"PRO petty cash",office:"Office petty cash",naveen:"Naveen petty cash",praveen:"Praveen petty cash"};if(_n[_b]){document.getElementById("pc-heading").textContent=_n[_b];if(_b==="pro")document.getElementById("pc-protabs").style.display="";}}catch(e){}</script>
-                <label class="pc-f"><span>Show</span><select id="pc-range" onchange="loadPettyCash()"><option value="month">One month</option><option value="all">Full history</option></select></label>
-                <label class="pc-f" id="pc-month-f"><span>Month</span><input type="month" id="pc-month" onchange="loadPettyCash()"></label>
+                <label class="pc-f"><span>Show</span><select id="pc-range" onchange="pcRangeChanged()"><option value="dates">Between dates</option><option value="month">This month</option><option value="all">Full history</option></select></label>
+                <label class="pc-f" id="pc-from-f"><span>From</span><input type="date" id="pc-from" onchange="loadPettyCash()"></label>
+                <label class="pc-f" id="pc-to-f"><span>To</span><input type="date" id="pc-to" onchange="loadPettyCash()"></label>
               </div>
               <div class="pc-btns">
                 <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pcExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pcExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pcExport('excel')">Export Excel</button></div>
               </div>
             </div>
-            <div class="pc-stats" id="pc-stats"><div class="pc-stat "><span>Brought forward</span><b>&ndash;</b></div><div class="pc-stat "><span>Received this month</span><b>&ndash;</b></div><div class="pc-stat "><span>Paid this month</span><b>&ndash;</b></div><div class="pc-stat hand"><span>Balance in hand</span><b>&ndash;</b></div></div>
+            <div class="pc-stats" id="pc-stats"><div class="pc-stat "><span>Brought forward</span><b>&ndash;</b></div><div class="pc-stat "><span>Received in period</span><b>&ndash;</b></div><div class="pc-stat "><span>Paid in period</span><b>&ndash;</b></div><div class="pc-stat hand"><span>Balance in hand</span><b>&ndash;</b></div></div>
             <div class="status-msg" id="pc-status"></div>
             <div class="pc-form" id="pc-form">
               <div class="pc-kind" id="pc-kind">
@@ -18418,6 +18419,21 @@ function pcBook(b) {
   loadPettyCash();
 }
 
+// The run of dates the register shows: between dates (any two days), this
+// month, or the full history.
+function pcPeriodQuery() {
+  if (document.getElementById("pc-range").value === "all") return "month=all";
+  return `date_from=${document.getElementById("pc-from").value}&date_to=${document.getElementById("pc-to").value}`;
+}
+function pcRangeChanged() {
+  const v = document.getElementById("pc-range").value;
+  if (v === "month") {
+    document.getElementById("pc-from").value = pcToday().slice(0, 8) + "01";
+    document.getElementById("pc-to").value = pcToday();
+    document.getElementById("pc-range").value = "dates";   // "This month" just fills the dates in
+  }
+  loadPettyCash();
+}
 async function loadPettyCash() {
   // Opened on a book's tab: that book from the first frame (not Site first).
   if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
@@ -18430,15 +18446,17 @@ async function loadPettyCash() {
   const book = PC_BOOK;
   pcKind(PC_KIND);
   pcHead();
-  const m = document.getElementById("pc-month");
-  if (!m.value) m.value = pcToday().slice(0, 7);
+  const f = document.getElementById("pc-from"), t = document.getElementById("pc-to");
+  if (!f.value) f.value = pcToday().slice(0, 8) + "01";
+  if (!t.value) t.value = pcToday();
   if (!document.getElementById("pc-date").value) document.getElementById("pc-date").value = pcToday();
   document.getElementById("pc-date").max = pcToday();
   const all = document.getElementById("pc-range").value === "all";
-  document.getElementById("pc-month-f").style.visibility = all ? "hidden" : "";
-  const want = all ? "all" : m.value;
+  for (const id of ["pc-from-f", "pc-to-f"]) document.getElementById(id).style.visibility = all ? "hidden" : "";
+  if (!all && f.value > t.value) { showStatus("pc-status", "warn", "The From date is after the To date - swapped them round."); [f.value, t.value] = [t.value, f.value]; }
   // The book and the site list asked for together, not one after the other.
-  const bookP = apiCall(`/store/petty-cash?month=${encodeURIComponent(want)}&book=${book}`);
+  const want = pcPeriodQuery();
+  const bookP = apiCall(`/store/petty-cash?${want}&book=${book}`);
   bookP.catch(() => {});
   if (!PC_SITES) {
     try { PC_SITES = (await apiCall("/sites")).map(x => x.code).filter(Boolean); } catch (e) { PC_SITES = []; }
@@ -18448,7 +18466,7 @@ async function loadPettyCash() {
   let d;
   try { d = await bookP; }
   catch (e) { showStatus("pc-status", "err", errText(e)); return; }
-  if ((all ? "all" : m.value) !== want || book !== PC_BOOK) return;
+  if (pcPeriodQuery() !== want || book !== PC_BOOK) return;   // the dates or the book changed while loading
   PC = d; pcDraw();
 }
 
@@ -18472,7 +18490,7 @@ function pcDraw() {
   const hand = Math.round((d.closing - held) * 100) / 100;
   const t = pcTerms(d.book);
   const pair = (rec, paid) => t.director ? [paid, rec] : [rec, paid];
-  const when = d.all ? " in all" : " this month";
+  const when = d.all ? " in all" : /^\w+ \d{4}$/.test(d.label || "") ? " this month" : " in period";
   const stats = pair(`<div class="pc-stat"><span>${escapeHtml(t.in + when)}</span><b>${pcMoney(d.received)}</b></div>`,
                      `<div class="pc-stat"><span>${escapeHtml(t.out + when)}</span><b>${pcMoney(d.paid)}</b></div>`);
   document.getElementById("pc-stats").innerHTML = `
@@ -18718,7 +18736,11 @@ async function pcSave() {
     else await apiCall("/store/petty-cash", { method: "POST", body: JSON.stringify(body) });
     const was = PC_EDIT;
     // Show the month the line went into.
-    if (document.getElementById("pc-range").value !== "all") document.getElementById("pc-month").value = body.date.slice(0, 7);
+    if (document.getElementById("pc-range").value !== "all") {   // widen the dates so the new line is on the screen
+      const f = document.getElementById("pc-from"), t = document.getElementById("pc-to");
+      if (body.date < f.value) f.value = body.date;
+      if (body.date > t.value) t.value = body.date;
+    }
     pcReset();
     await loadPettyCash();
     showStatus("pc-status", "ok", was ? "Saved." : `Added - ${pcTerms(PC.book).balance}: ${pcMoney(PC.closing)}.`);
@@ -18735,11 +18757,11 @@ async function pcDelete(id) {
 }
 
 async function pcExport(kind) {
-  const m = document.getElementById("pc-range").value === "all" ? "all" : (document.getElementById("pc-month").value || pcToday().slice(0, 7));
+  const q = pcPeriodQuery();
   if (!cachedDownloadToken) await refreshDownloadToken();
   const t = encodeURIComponent(cachedDownloadToken || "");
-  const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?month=${m}&book=${PC_BOOK}&token=${t}`
-                                                : `${API}/export/store/petty-cash?month=${m}&book=${PC_BOOK}&format=${kind}&token=${t}`;
+  const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?${q}&book=${PC_BOOK}&token=${t}`
+                                                : `${API}/export/store/petty-cash?${q}&book=${PC_BOOK}&format=${kind}&token=${t}`;
   const w = window.open(u, "_blank");
   if (kind === "print" && w) w.addEventListener("load", () => w.print());
 }

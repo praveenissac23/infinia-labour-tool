@@ -88,11 +88,34 @@ def _money(v):
     return f"{v:,.2f}"
 
 
-def register(db, month, book="site"):
-    """One month's register - or, for month "all", every line from the
-    first entry (the full history, as the directors' sheets read)."""
-    whole = str(month or "").strip().lower() == "all"
-    a, b = (date(2000, 1, 1), date(2099, 12, 31)) if whole else _month_bounds(month)
+def _period(month, date_from, date_to):
+    """The days the register covers. From/to dates win; a month (old links,
+    the Zoho pages) still works; "all" is the full history."""
+    whole = str(month or "").strip().lower() == "all" and not (date_from or date_to)
+    if whole:
+        return date(2000, 1, 1), date(2099, 12, 31), True
+    if date_from or date_to:
+        today = M._dubai_today()
+        a = M._as_date(date_from) if date_from else None
+        b = M._as_date(date_to) if date_to else None
+        if a is None and b is None:
+            a, b = today.replace(day=1), today
+        elif a is None:
+            a = b.replace(day=1)
+        elif b is None:
+            b = max(a, today)
+        if b < a:
+            a, b = b, a
+        return a, b, False
+    a, b = _month_bounds(month)
+    return a, b, False
+
+
+def register(db, month, book="site", date_from="", date_to=""):
+    """The register for a run of dates (from / to) - a month is the usual
+    run; "all" is every line from the first entry, as the directors'
+    sheets read. Brought forward is everything before the first day."""
+    a, b, whole = _period(month, date_from, date_to)
     t = terms(book)
     sg = t["sign"]
     before = _of_book(db.query(models.PettyCash), book).filter(models.PettyCash.on_date < a).all()
@@ -123,7 +146,9 @@ def register(db, month, book="site"):
             k = r["site"] or "Office / general"
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
     first = rows[0].on_date if rows else a
-    label = (f"Full history - {first:%d %b %Y} to {M._dubai_today():%d %b %Y}" if whole else f"{a:%B %Y}")
+    one_month = a.day == 1 and b == date(a.year + (a.month == 12), a.month % 12 + 1, 1) - timedelta(days=1)
+    label = (f"Full history - {first:%d %b %Y} to {M._dubai_today():%d %b %Y}" if whole
+             else f"{a:%B %Y}" if one_month else f"{a:%d %b %Y} to {b:%d %b %Y}")
     held = 0.0
     if book == "pro":
         # Visa payments made but held until each visa is completed: the cash
@@ -131,7 +156,8 @@ def register(db, month, book="site"):
         ongoing = [v.id for v in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").all()]
         if ongoing:
             held = round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id.in_(ongoing))), 2)
-    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "visa_held": held, "month": "all" if whole else f"{a:%Y-%m}", "label": label,
+    return {"book": book, "book_label": BOOKS[book][0], "terms": t, "visa_held": held,
+            "month": "all" if whole else f"{a:%Y-%m}" if one_month else f"{a:%Y-%m-%d}_to_{b:%Y-%m-%d}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
             "opening": opening, "rows": out, "received": rec, "paid": paid,
             "zoho_start": M.get_setting(db, "zoho_start") or "2026-10-01",
@@ -140,8 +166,9 @@ def register(db, month, book="site"):
 
 
 @router.get("/store/petty-cash")
-def list_petty_cash(month: str = "", book: str = "site", db: Session = Depends(get_db), user: models.User = PC):
-    return register(db, month, _book(user, book))
+def list_petty_cash(month: str = "", book: str = "site", date_from: str = "", date_to: str = "",
+                    db: Session = Depends(get_db), user: models.User = PC):
+    return register(db, month, _book(user, book), date_from, date_to)
 
 
 def _clean(payload):
@@ -617,9 +644,10 @@ def _excel(r):
 
 
 @router.get("/export/store/petty-cash")
-def export_petty_cash(token: str, month: str = "", format: str = "pdf", book: str = "site", db: Session = Depends(get_db)):
+def export_petty_cash(token: str, month: str = "", format: str = "pdf", book: str = "site",
+                      date_from: str = "", date_to: str = "", db: Session = Depends(get_db)):
     book = _may(auth.get_download_user_from_token(token, db), book)
-    r = register(db, month, book)
+    r = register(db, month, book, date_from, date_to)
     name = f"{r['book_label'].replace(' ', '_')}_{r['month']}"
     if format == "excel":
         return StreamingResponse(_excel(r), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -629,10 +657,12 @@ def export_petty_cash(token: str, month: str = "", format: str = "pdf", book: st
 
 
 @router.get("/export/store/petty-cash/view", response_class=HTMLResponse)
-def view_petty_cash(token: str, month: str = "", book: str = "site", db: Session = Depends(get_db)):
+def view_petty_cash(token: str, month: str = "", book: str = "site", date_from: str = "", date_to: str = "",
+                    db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     book = _may(user, book)
-    r = register(db, month, book)
+    r = register(db, month, book, date_from, date_to)
     t = auth.create_view_token(user.username)
-    base = "/export/store/petty-cash?" + urlencode({"month": r["month"], "book": book, "token": t})
+    base = "/export/store/petty-cash?" + urlencode({"month": "all" if r["all"] else "", "date_from": "" if r["all"] else r["from"],
+                                                   "date_to": "" if r["all"] else r["to"], "book": book, "token": t})
     return HTMLResponse(_html(r, base + "&format=pdf", base + "&format=excel"))
