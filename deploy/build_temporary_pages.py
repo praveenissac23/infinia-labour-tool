@@ -383,6 +383,142 @@ CSS = """
 </style>
 """
 
+# Motion: rubber-band tabs, elastic page changes, springy cards and buttons,
+# a "Saved" pop-up and a loading shimmer. Look and feel only - colours,
+# data and what every button does are untouched. Off for anyone whose
+# device asks for less motion.
+MOTION = r"""
+<style>
+  :root { --mo-red: #C0392B; }
+  .pg-tabs { position: relative; gap: 4px !important; margin: 12px 24px 0; padding: 4px !important; background: #FDF6F5 !important; border: 1px solid #F0DEDA !important; border-radius: 14px; width: fit-content; max-width: calc(100% - 48px); box-sizing: border-box; }
+  .pg-tab { position: relative; z-index: 1; background: transparent !important; border: 0 !important; border-radius: 10px !important; color: #8A6560 !important; padding: 8px 16px !important; transition: color .25s; }
+  .pg-tab:hover { color: var(--mo-red) !important; }
+  .pg-tab.active { color: #fff !important; background: transparent !important; }
+  .mo-pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; border-radius: 10px; background: var(--mo-red); box-shadow: 0 4px 12px rgba(192,57,43,.28); pointer-events: none; }
+  .pg-sub { position: relative; background: transparent !important; border: 0 !important; gap: 22px !important; padding: 10px 24px 0 !important; }
+  .pg-sub.pg-sub-keep { height: 47px; }
+  .pg-subtab { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: 6px 2px 11px !important; margin-bottom: 0 !important; color: #7A7470 !important; }
+  .pg-subtab:hover { color: var(--mo-red) !important; }
+  .pg-subtab.active { color: var(--mo-red) !important; background: transparent !important; }
+  .mo-line { position: absolute; bottom: 4px; height: 3px; border-radius: 3px; background: var(--mo-red); pointer-events: none; }
+  .pg-side .pg-item { margin: 2px 12px; border-radius: 10px; transition: background .25s, color .2s; }
+  .pg-side .pg-item.active { box-shadow: 0 6px 16px rgba(192,57,43,.32); }
+  .card { border-radius: 16px !important; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(30,20,10,.05) !important; animation: moUp .7s cubic-bezier(.25,.8,.25,1) both; }
+  .screen .card:nth-of-type(2) { animation-delay: .04s } .screen .card:nth-of-type(3) { animation-delay: .08s }
+  @keyframes moUp { 0% { opacity: 0; transform: translateY(16px) scale(.98); } 60% { opacity: 1; transform: translateY(-3px); } 82% { transform: translateY(1px); } 100% { opacity: 1; transform: none; } }
+  .btn { border-radius: 10px; transition: transform .45s cubic-bezier(.34,1.8,.5,1), background .2s, box-shadow .2s; }
+  .btn:active:not(:disabled) { transform: scale(.93); transition: transform .08s; }
+  .mo-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px)); padding: 11px 20px 11px 12px; border-radius: 999px; background: #2C2F33; color: #fff; font-size: 14px; font-weight: 600; line-height: 1.35; box-shadow: 0 12px 32px rgba(0,0,0,.25); z-index: 99990; animation: moToast .7s cubic-bezier(.34,1.7,.5,1) both; cursor: pointer; }
+  .mo-toast i { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #2EAD5B; display: flex; align-items: center; justify-content: center; font-style: normal; font-size: 14px; }
+  .mo-toast.out { animation: moToastOut .3s ease-in both; }
+  @keyframes moToast { from { opacity: 0; transform: translate(-50%, 40px) scale(.85); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+  @keyframes moToastOut { to { opacity: 0; transform: translate(-50%, 20px) scale(.95); } }
+  .mo-skel { display: block; height: 13px; margin: 6px 0; border-radius: 7px; background: linear-gradient(90deg, #EFEBE7 0%, #F8F6F4 40%, #EFEBE7 80%); background-size: 200% 100%; animation: moShim 1.2s linear infinite; }
+  @keyframes moShim { to { background-position: -200% 0; } }
+  @media (max-width: 700px) { .pg-tabs { margin: 10px 12px 0; max-width: calc(100% - 24px); } .pg-sub { padding: 8px 12px 0 !important; gap: 16px !important; } }
+  @media (prefers-reduced-motion: reduce) { .card, .mo-toast { animation: none !important; } .btn { transition: none !important; } }
+</style>
+<script>
+(function () {
+  var calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // ---- rubber band: the pill/line stretches across to the new tab, snaps back, settles
+  var at = {};
+  function band(el, from, to) {
+    if (calm || !el.animate) return;
+    var right = to.l > from.l, over = right ? 6 : -6;
+    var span = right ? (to.l + to.w - from.l) : (from.l + from.w - to.l);
+    el.animate([
+      { left: from.l + "px", width: from.w + "px" },
+      { left: (right ? from.l : to.l) + "px", width: span * 0.9 + "px", offset: 0.32 },
+      { left: (to.l + over) + "px", width: to.w * 0.92 + "px", offset: 0.62 },
+      { left: (to.l - over * 0.35) + "px", width: to.w * 1.03 + "px", offset: 0.82 },
+      { left: to.l + "px", width: to.w + "px" }
+    ], { duration: 620, easing: "cubic-bezier(.3,.7,.2,1)" });
+  }
+  function track(id, sel, cls) {
+    var box = document.getElementById(id); if (!box) return;
+    var a = box.querySelector(sel), el = box.querySelector("." + cls);
+    if (!a || !a.offsetWidth) { if (el) el.style.display = "none"; return; }
+    if (!el) { el = document.createElement("div"); el.className = cls; box.insertBefore(el, box.firstChild); }
+    el.style.display = "";
+    var to = { l: a.offsetLeft, w: a.offsetWidth, t: a.offsetTop }, last = at[cls];
+    if (cls === "mo-line") el.style.top = (a.offsetTop + a.offsetHeight - 3) + "px";
+    el.style.left = to.l + "px"; el.style.width = to.w + "px";
+    if (last && last.t === to.t && (last.l !== to.l || last.w !== to.w)) band(el, last, to);
+    at[cls] = to;
+  }
+  var queued = false;
+  function place() { if (queued) return; queued = true; requestAnimationFrame(function () { queued = false; track("pg-tabs", ".pg-tab.active", "mo-pill"); track("pg-sub", ".pg-subtab.active", "mo-line"); }); }
+  function watch() {
+    ["pg-tabs", "pg-sub"].forEach(function (id) { var b = document.getElementById(id); if (b) new MutationObserver(function (m) {
+      if (m.some(function (x) { return !(x.target.classList && (x.target.classList.contains("mo-pill") || x.target.classList.contains("mo-line"))); })) place(); }).observe(b, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] }); });
+    window.addEventListener("resize", function () { at = {}; place(); });
+    place();
+  }
+  // ---- elastic page change: the new page swings in from the side it lies on
+  function pos() {
+    try {
+      var side = [].slice.call(document.querySelectorAll(".pg-side .pg-item[data-page]")).map(function (x) { return x.dataset.page; });
+      var p = side.indexOf(PAGE.key), t = PG_TAB ? PAGE.tabs.indexOf(PG_TAB) : 0, s = (PG_TAB && PG_SUB) ? PG_TAB.subs.indexOf(PG_SUB) : 0;
+      return [p, t, s];
+    } catch (e) { return null; }
+  }
+  var lastAt = 0;
+  function swing(before) {
+    var after = pos(); if (calm || !before || !after || String(before) === String(after)) return;
+    if (Date.now() - lastAt < 250) return; lastAt = Date.now();
+    var dir = 1; for (var i = 0; i < 3; i++) { if (after[i] !== before[i]) { dir = after[i] > before[i] ? 1 : -1; break; } }
+    var el = document.querySelector(".content"); if (!el || !el.animate) return;
+    el.animate([
+      { opacity: 0, transform: "translateX(" + 56 * dir + "px)" },
+      { opacity: 1, transform: "translateX(" + -9 * dir + "px)", offset: 0.55 },
+      { transform: "translateX(" + 3.5 * dir + "px)", offset: 0.78 },
+      { transform: "translateX(" + -1 * dir + "px)", offset: 0.92 },
+      { opacity: 1, transform: "none" }
+    ], { duration: 700, easing: "cubic-bezier(.25,.8,.25,1)" });
+  }
+  function hook(name) {
+    var f = window[name]; if (typeof f !== "function" || f.__mo) return;
+    var g = function () { var b = pos(); var r = f.apply(this, arguments); swing(b); return r; };
+    g.__mo = true; window[name] = g;
+  }
+  // ---- "Saved" pop-up for a done message; warnings and errors stay where they are
+  var toastEl = null, toastT = null;
+  function toast(text) {
+    if (!text) return;
+    if (toastEl) toastEl.remove();
+    toastEl = document.createElement("div"); toastEl.className = "mo-toast"; toastEl.setAttribute("role", "status");
+    toastEl.innerHTML = "<i>✓</i><span></span>"; toastEl.lastChild.textContent = text;
+    toastEl.onclick = function () { hide(); };
+    document.body.appendChild(toastEl);
+    clearTimeout(toastT); toastT = setTimeout(hide, Math.min(8000, 2600 + text.length * 35));
+  }
+  function hide() { var t = toastEl; if (!t) return; toastEl = null; t.classList.add("out"); setTimeout(function () { t.remove(); }, 320); }
+  function hookStatus() {
+    var f = window.showStatus; if (typeof f !== "function" || f.__mo) return;
+    var g = function (id, kind, text) { var r = f.apply(this, arguments); if (kind === "ok") { var el = document.getElementById(id); if (el && el.offsetParent !== null) { toast(text); el.classList.add("mo-quiet"); } } return r; };
+    g.__mo = true; window.showStatus = g;
+  }
+  // ---- shimmer rows instead of the word "Loading..."
+  function skel(root) {
+    var cells = (root.querySelectorAll ? root.querySelectorAll("td") : []);
+    for (var i = 0; i < cells.length; i++) { var c = cells[i];
+      if (c.childElementCount === 0 && /^Loading\.{0,3}$/.test((c.textContent || "").trim())) {
+        c.innerHTML = '<span class="mo-skel" style="width:70%"></span><span class="mo-skel" style="width:45%"></span><span class="mo-skel" style="width:60%"></span>'; } }
+  }
+  function start() {
+    watch(); ["pgGo", "pgTab", "pgSub"].forEach(hook); hookStatus();
+    new MutationObserver(function (m) { m.forEach(function (x) { if (x.type === "childList") x.addedNodes.forEach(function (n) { if (n.nodeType === 1) skel(n.tagName === "TR" || n.tagName === "TBODY" ? n.parentNode || n : n); }); }); })
+      .observe(document.body, { childList: true, subtree: true });
+    skel(document.body);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+  window.moToast = toast;
+})();
+</script>
+<style>.status-msg.ok.mo-quiet { display: none !important; }</style>
+"""
+
 # Shown before the app's own script runs: a page that is resuming a
 # sign-in never flashes the sign-in box, and the screen it will land on
 # is the only one drawn from the first paint.
@@ -1018,7 +1154,7 @@ def build():
                        "all_pages_json": json.dumps(ALL_CFG),
                        "all_tabs_json": json.dumps({k: [{"id": t["id"], "label": t["label"], "right": t["right"], "hidden": t["hidden"], "leaf": t.get("leaf", ""),
                                                  "subs": [{"id": sb["id"], "label": sb["label"], "right": sb["right"], "leaf": sb.get("leaf", "")} for sb in t["subs"]]} for t in tb] for k, (_, tb) in PAGES.items()})}
-    page = page.replace("</body>", script + "</body>", 1)
+    page = page.replace("</body>", script + MOTION + "</body>", 1)
     # In-app help (portal/help): the guides, the list of step pictures and
     # the code, each tagged with its own content hash so a changed guide
     # reaches the browser straight away.
