@@ -481,6 +481,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-kind { display: inline-flex; border: 1px solid #D5D9DE; border-radius: 7px; overflow: hidden; height: 36px; }
   .pc-kind button { border: 0; background: #fff; padding: 0 12px; font: 600 12.5px inherit; color: #555; cursor: pointer; white-space: nowrap; }
   .pc-kind button.on { background: #B7322A; color: #fff; }
+  .pc-kind { min-width: max-content; }
+  @media (max-width: 1500px) { .pc-form:not(.vat) .pc-kind { grid-column: 1 / -1; justify-self: start; } }
   .pc-go { flex-direction: row; gap: 6px; }
   .pc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .pc-table th { text-align: center; white-space: normal; line-height: 1.25; } .pc-table th.l, .pc-table td.l { text-align: left; } .pc-table th.n, .pc-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
