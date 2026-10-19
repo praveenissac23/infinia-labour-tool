@@ -216,6 +216,7 @@ def seed_on_startup():
         _grant_bank_to_chief_accountant(db)
         _tick_new_accounts_tabs(db)
         _grant_projects_to_chief_accountant(db)
+        _grant_est_projects(db)
         _grant_camp(db)
         _grant_ppe(db)
         _grant_admin_forms(db)
@@ -415,6 +416,10 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Estimation > Trello: the company's own boards and cards
                # (no seat limits) - everyone in the estimation team.
                "estimation_boards",
+               # Estimation > Dashboard, Projects and Tenders: each project's
+               # BOQ, client certificates, variations, subcontracts, invoices,
+               # payment certificates and site registers.
+               "estimation_projects",
                # Settings, tab by tab. "settings" itself (own password,
                # take a backup) is on every login. These were admin only;
                # now each can be given to whoever should have it. Nobody
@@ -938,6 +943,24 @@ def _grant_projects_to_chief_accountant(db):
     db.commit()
     if n:
         print("Project payment tracker given to: " + ", ".join(n))
+
+
+def _grant_est_projects(db):
+    """Estimation > Dashboard / Projects / Tenders: given once to every login
+    (and role) that already has Estimation > Trello - the estimation team."""
+    if db.query(models.Setting).filter(models.Setting.key == "est_projects_granted").first():
+        return
+    n = []
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        perms = [x for x in (getattr(obj, field) or "").split(",") if x]
+        if "estimation_boards" in perms and "estimation_projects" not in perms:
+            setattr(obj, field, ",".join(perms + ["estimation_projects"]))
+            n.append(getattr(obj, "username", None) or getattr(obj, "name", "role"))
+    db.add(models.Setting(key="est_projects_granted", value="1"))
+    db.commit()
+    if n:
+        print("Estimation projects given to: " + ", ".join(n))
 
 
 def _grant_petty_site_to_existing(db):
@@ -13324,6 +13347,14 @@ try:
     boards.create_tables(engine)
 except Exception as _e:
     print("boards tables:", _e)
+
+
+import estimation  # noqa: E402  - Estimation > Dashboard / Projects / Tenders
+app.include_router(estimation.router)
+try:
+    estimation.create_tables(engine)
+except Exception as _e:
+    print("estimation tables:", _e)
 
 
 @app.on_event("startup")

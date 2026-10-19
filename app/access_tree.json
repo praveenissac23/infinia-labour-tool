@@ -705,6 +705,26 @@
   "label": "Estimation",
   "children": [
    {
+    "id": "estimation.estdash",
+    "label": "Dashboard",
+    "right": [
+     "estimation_projects"
+    ],
+    "grant": [
+     "estimation_projects"
+    ]
+   },
+   {
+    "id": "estimation.estproj",
+    "label": "Projects",
+    "right": [
+     "estimation_projects"
+    ],
+    "grant": [
+     "estimation_projects"
+    ]
+   },
+   {
     "id": "estimation.boards",
     "label": "Trello",
     "right": [
@@ -712,6 +732,16 @@
     ],
     "grant": [
      "estimation_boards"
+    ]
+   },
+   {
+    "id": "estimation.esttend",
+    "label": "Tenders",
+    "right": [
+     "estimation_projects"
+    ],
+    "grant": [
+     "estimation_projects"
     ]
    }
   ]
