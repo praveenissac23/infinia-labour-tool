@@ -451,5 +451,50 @@ ck("QS checklist progress shows on Anoop's card", mf["check"] == [0, 2], mf["che
 patch(f"/store/kb/cards/{v1}", {"due_complete": True})
 ck("completed on the main board -> moved to DONE on Anoop's board", [c for c in get(f"/store/kb/boards/{AN}").json()["cards"] if c.get("mirror_of") == v1][0]["list_id"] == AL["DONE"])
 
+
+# ---- mirrors are windows on their source (edits on either board update both) -------------------------
+p2 = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "911 - Claims Sept"}).json()["id"]
+an = get(f"/store/kb/boards/{AN}").json()
+m2 = [c for c in an["cards"] if c.get("mirror_of") == p2]
+ck("plural title ('Claims') matches the 'Claim' rule", len(m2) == 1 and m2[0]["list_id"] == AL["VARIATIONS & CLAIMS"], [c["title"] for c in an["cards"]][:5])
+m2 = m2[0]["id"]
+v_an = an["version"]
+patch(f"/store/kb/cards/{p2}", {"title": "911 - Claims September"})
+an2 = get(f"/store/kb/boards/{AN}").json()
+ck("renaming the source refreshes Anoop's board (version up)", an2["version"] > v_an)
+ck("...and the mirror shows the new title", [c for c in an2["cards"] if c["id"] == m2][0]["title"] == "911 - Claims September")
+patch(f"/store/kb/cards/{m2}", {"title": "911 - Claims Sep (from Anoop)", "desc": "checked"})
+src = get(f"/store/kb/cards/{p2}").json()
+ck("editing the mirror edits the source", src["title"] == "911 - Claims Sep (from Anoop)" and src["desc"] == "checked", src["title"])
+post(f"/store/kb/cards/{m2}/comments", {"text": "Anoop: please send"})
+ck("a comment on the mirror lands on the source", any(x["text"] == "Anoop: please send" for x in get(f"/store/kb/cards/{p2}").json()["comments"]))
+mc = get(f"/store/kb/cards/{m2}").json()
+ck("opening the mirror shows the source's comments, but where the mirror sits", mc["id"] == m2 and mc["board_id"] == AN and any(x["text"] == "Anoop: please send" for x in mc["comments"]))
+patch(f"/store/kb/cards/{m2}", {"members": [U["kb_hiba"]]})
+ck("assigning on the mirror assigns the source", U["kb_hiba"] in get(f"/store/kb/cards/{p2}").json()["members"])
+srcl = get(f"/store/kb/cards/{p2}").json()["list_id"]
+patch(f"/store/kb/cards/{m2}", {"list_id": AL["DONE"]})
+ck("moving the mirror moves only the mirror", get(f"/store/kb/cards/{p2}").json()["list_id"] == srcl and get(f"/store/kb/cards/{m2}").json()["list_id"] == AL["DONE"])
+lab = get(f"/store/kb/boards/{AN}").json()["labels"][0]
+patch(f"/store/kb/cards/{m2}", {"labels": [lab["id"]]})
+sl = get(f"/store/kb/cards/{p2}").json()["labels"]
+mb = {l["id"]: (l["name"], l["color"]) for l in get(f"/store/kb/boards/{MAIN}").json()["labels"]}
+ck("a label put on the mirror is the same label (name and colour) on the source", [mb.get(x) for x in sl] == [(lab["name"], lab["color"])], (sl, lab))
+ck("...and shows on the mirror when opened", get(f"/store/kb/cards/{m2}").json()["labels"] == [lab["id"]])
+patch(f"/store/kb/cards/{m2}", {"due_complete": True})
+ck("completing on the mirror completes the source", get(f"/store/kb/cards/{p2}").json()["due_complete"] is True)
+patch(f"/store/kb/cards/{p2}", {"closed": True})
+ck("archiving the source hides its mirror", not any(c["id"] == m2 for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
+patch(f"/store/kb/cards/{p2}", {"closed": False})
+ck("restoring brings it back", any(c["id"] == m2 for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
+dele(f"/store/kb/cards/{p2}")
+ck("deleting the source removes its mirror", get(f"/store/kb/cards/{m2}").status_code == 404)
+# moving a card into a list fires 'when a card is added to' (Trello counts moves)
+mv = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "Villa Al Barsha RFQ"}).json()["id"]
+patch(f"/store/kb/cards/{mv}", {"list_id": ML["TENDERS / PROPOSALS"]})
+ck("moved into TENDERS -> mirrored", any(c.get("mirror_of") == mv for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
+# copying a card runs the rules
+cp = post(f"/store/kb/cards/{tn}/copy", {"list_id": ML["911 WS46"], "title": "911 - Variation copy"}).json()["id"]
+ck("a copied card runs the rules", any(c.get("mirror_of") == cp for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
 print(f"\n{len(fails)} failed" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)

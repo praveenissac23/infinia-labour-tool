@@ -392,6 +392,14 @@ def _ensure_member(db, board, user, role="member"):
 def _touch(db, board):
     board.version = (board.version or 0) + 1
     board.updated_at = _now()
+    # Boards that show mirrors of this board's cards see the change too.
+    try:
+        src_ids = db.query(KCard.id).filter(KCard.board_id == board.id)
+        other = {x[0] for x in db.query(KCard.board_id).filter(KCard.mirror_of.in_(src_ids), KCard.board_id != board.id).distinct()}
+        if other:
+            db.query(KBoard).filter(KBoard.id.in_(other)).update({KBoard.version: KBoard.version + 1}, synchronize_session=False)
+    except Exception as e:      # never let a refresh stop the change itself
+        print("touch mirrors:", e)
 
 
 def _act(db, board, user, kind, card=None, **data):
@@ -399,10 +407,23 @@ def _act(db, board, user, kind, card=None, **data):
                      kind=kind, data=json.dumps(data, default=str)))
 
 
-def _card(db, user, cid, need="view"):
+def _source_of(db, c):
+    """A mirror card is a window on its source: the source, if it is still there."""
+    if c is not None and c.mirror_of:
+        return db.query(KCard).filter(KCard.id == c.mirror_of).first()
+    return None
+
+
+def _card(db, user, cid, need="view", follow=True):
+    """The card - and for a mirror, its source (as Trello's mirror cards do,
+    whatever is done on a mirror is done on the card it shows)."""
     c = db.query(KCard).filter(KCard.id == cid).first()
     if not c:
         raise HTTPException(status_code=404, detail="That card is not there any more.")
+    if follow:
+        s = _source_of(db, c)
+        if s is not None:
+            c = s
     b, role = _board(db, user, c.board_id, need)
     return c, b, role
 
@@ -549,14 +570,20 @@ def _mirror_fill(db, fronts):
     atts = _cover_atts(db, list(src.values()))
     labels = {l.id: {"name": l.name, "color": l.color} for l in db.query(KLabel).filter(KLabel.board_id.in_([c.board_id for c in src.values()] or [0])).all()}
     boards = {b.id: b.title for b in db.query(KBoard).filter(KBoard.id.in_([c.board_id for c in src.values()] or [0])).all()}
+    list_titles = {l.id: l.title or "" for l in db.query(KList).filter(KList.id.in_([c.list_id for c in src.values()] or [0])).all()}
     for f in fronts:
         c = src.get(f.get("mirror_of"))
         if not c:
             f["mirror"] = {"gone": True}
             continue
         sf = _front(c, counts, atts, f.get("_me"))
-        f["mirror"] = {"board": boards.get(c.board_id, ""), "board_id": c.board_id, "card_id": c.id,
+        f["mirror"] = {"board": boards.get(c.board_id, ""), "board_id": c.board_id, "card_id": c.id, "closed": bool(c.closed),
                        "labels": [labels[x] for x in sf["labels"] if x in labels]}
+        # A card named only by what it is ("Permits & NOCs") in a list named after its project
+        # ("906 Jamal Khan Villa") shows on the other board with the project number in front.
+        lt = list_titles.get(c.list_id, "")
+        if not NUMBERED.match(sf["title"] or "") and NUMBERED.match(lt):
+            sf["title"] = f'{NUMBERED.match(lt).group(0).strip()} - {sf["title"]}'
         for k in ("title", "due", "start", "due_complete", "cover", "comments", "attachments", "check", "desc", "members", "no"):
             f[k] = sf[k]
 
@@ -602,7 +629,8 @@ def _fronts_with_mirrors(db, cards, counts, atts, me):
     _mirror_fill(db, fr)
     for f in fr:
         f.pop("_me", None)
-    return fr
+    # A mirror whose card was archived leaves the board with it (it comes back when the card is restored).
+    return [f for f in fr if not (f.get("mirror") or {}).get("closed")]
 
 
 def _is_inbox(b):
@@ -657,18 +685,26 @@ def _run_rules(db, board, card, user, event, depth=0, **ctx):
             continue
         if t.get("user_id") and int(t["user_id"]) != int(ctx.get("user_id") or 0):
             continue
-        if t.get("type") == "card_titled" and not _title_matches(t, card.title):
-            continue
+        if t.get("type") == "card_titled":
+            lst = db.query(KList).filter(KList.id == card.list_id).first()
+            if not _title_matches(t, card.title, lst.title if lst else ""):
+                continue
         _fire(db, r, board, card, user, depth)
 
 
-def _title_matches(t, title):
-    """'When a card's title has any of these words' - optionally only titles that start with a project number (911 - ...)."""
+NUMBERED = re.compile(r"^\s*(ic\s*/\s*)?\d{3}(?!\d)", re.I)
+
+
+def _title_matches(t, title, list_title=""):
+    """'When a card's title has any of these words' (plurals count: Bill matches Bills) - optionally only
+    cards of a project: the title starts with its number (911 - ..., IC/911 ...)."""
     ttl = (title or "").lower()
-    if t.get("numbered") and not re.match(r"^\s*\d{3}\b", ttl):
+    # (Only the title counts: the standard cards in a project's list - "Variations", "Permits & NOCs" -
+    # are headings there, not items for Anoop's board.)
+    if t.get("numbered") and not NUMBERED.match(ttl):
         return False
     words = [w.strip().lower() for w in (t.get("words") or []) if str(w).strip()]
-    return any(re.search(r"(^|[^a-z])" + re.escape(w) + r"($|[^a-z])", ttl) for w in words)
+    return any(re.search(r"(^|[^a-z0-9])" + re.escape(w), ttl) for w in words)
 
 
 def _fire(db, r, board, card, user, depth=0):
@@ -787,6 +823,7 @@ def _do_action(db, board, card, user, a, depth, rule=None):
             card.list_id = lst.id
             card.pos = _top_pos(db, KCard, list_id=lst.id) if (k == "move_top" or a.get("where") == "top") else _end_pos(db, KCard, list_id=lst.id)
             _run_rules(db, board, card, user, "card_moved", depth + 1, list_id=lst.id, from_list=old)
+            _run_rules(db, board, card, user, "card_added", depth + 1, list_id=lst.id)
     elif k == "complete":
         if not card.due_complete:
             card.due_complete = True
@@ -1005,6 +1042,12 @@ def delete_board(bid: int, db: Session = Depends(get_db), user: models.User = VI
 def _delete_cards(db, cids):
     if not cids:
         return
+    # A deleted card's mirrors on other boards go with it (their boards refresh).
+    mirrors = db.query(KCard).filter(KCard.mirror_of.in_(cids), ~KCard.id.in_(cids)).all()
+    if mirrors:
+        bids = {m.board_id for m in mirrors}
+        cids = list(cids) + [m.id for m in mirrors]
+        db.query(KBoard).filter(KBoard.id.in_(bids)).update({KBoard.version: KBoard.version + 1}, synchronize_session=False)
     cl = [x.id for x in db.query(KChecklist.id).filter(KChecklist.card_id.in_(cids)).all()]
     if cl:
         db.query(KItem).filter(KItem.checklist_id.in_(cl)).delete(synchronize_session=False)
@@ -1369,7 +1412,8 @@ def move_all_cards(lid: int, payload: dict = Body(...), db: Session = Depends(ge
         c.list_id = to.id
         c.board_id = to.board_id
         c.pos = base + i * 65536
-        _run_rules(db, b, c, user, "card_moved", list_id=to.id)
+        _run_rules(db, _b2, c, user, "card_moved", list_id=to.id)
+        _run_rules(db, _b2, c, user, "card_added", list_id=to.id)
     _act(db, b, user, "list_moved_all", frm=l.title, to=to.title)
     _touch(db, b)
     if _b2.id != b.id:
@@ -1507,13 +1551,70 @@ def _act_out(a, users):
 
 @router.get("/store/kb/cards/{cid}")
 def get_card(cid: int, db: Session = Depends(get_db), user: models.User = VIEW):
-    c, b, role = _card(db, user, cid)
-    return _card_full(db, c, b, user, role)
+    raw, rb, rrole = _card(db, user, cid, follow=False)
+    src = _source_of(db, raw)
+    if src is None:
+        return _card_full(db, raw, rb, user, rrole)
+    # A mirror opens as its source - its details, comments and checklists - but sits
+    # where the mirror sits, so moving or archiving it moves the mirror, as in Trello.
+    sb, srole = _board(db, user, src.board_id)
+    out = _card_full(db, src, sb, user, srole if rrole != "observer" else rrole)
+    out["labels"] = _map_labels(db, out.get("labels") or [], src.board_id, raw.board_id)
+    db.commit()
+    out.update({"id": raw.id, "board_id": raw.board_id, "list_id": raw.list_id, "closed": bool(raw.closed), "pos": raw.pos,
+                "mirror_of": src.id, "mirror": {"board": sb.title, "board_id": sb.id, "card_id": src.id, "closed": bool(src.closed)}})
+    return out
+
+
+def _map_labels(db, ids, from_bid, to_bid):
+    """Labels are a board's own: the same label on another board is the one with the
+    same name and colour (made there if it is missing)."""
+    if from_bid == to_bid:
+        return [int(x) for x in ids]
+    src = {l.id: l for l in db.query(KLabel).filter(KLabel.board_id == from_bid).all()}
+    dst = {((l.name or ""), (l.color or "")): l.id for l in db.query(KLabel).filter(KLabel.board_id == to_bid).all()}
+    out = []
+    for x in ids:
+        l = src.get(int(x))
+        if not l:
+            continue
+        k = ((l.name or ""), (l.color or ""))
+        if k not in dst:
+            nl = KLabel(board_id=to_bid, name=l.name or "", color=l.color or "green", pos=_end_pos(db, KLabel, board_id=to_bid))
+            db.add(nl)
+            db.flush()
+            dst[k] = nl.id
+        out.append(dst[k])
+    return out
+
+
+MIRROR_OWN = ("list_id", "pos", "closed", "board_id")     # where a mirror sits is its own; the rest is the source's
 
 
 @router.patch("/store/kb/cards/{cid}")
 def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
-    c, b, role = _card(db, user, cid, "edit")
+    raw, rb, _r = _card(db, user, cid, "edit", follow=False)
+    src = _source_of(db, raw)
+    out = {}
+    if src is not None:
+        own = {k: payload[k] for k in MIRROR_OWN if k in payload}
+        rest = {k: v for k, v in payload.items() if k not in MIRROR_OWN}
+        if rest:
+            sb, _sr = _board(db, user, src.board_id, "edit")
+            if "labels" in rest:
+                rest["labels"] = _map_labels(db, rest["labels"] or [], raw.board_id, src.board_id)
+            _edit_card(db, user, src, sb, rest)
+        if own:
+            out = _edit_card(db, user, raw, rb, own)
+        _touch(db, rb)
+        db.commit()
+        return {"ok": True, "pos": raw.pos, "list_id": raw.list_id, **({k: v for k, v in out.items() if k != "ok"})}
+    out = _edit_card(db, user, raw, rb, payload)
+    db.commit()
+    return out
+
+
+def _edit_card(db, user, c, b, payload):
     events = []
     if "title" in payload:
         t = (payload["title"] or "").strip()[:2000]
@@ -1554,6 +1655,7 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         c.list_id = nl.id
         _act(db, target_board, user, "card_moved", c, frm=ol.title if ol else "", to=nl.title, title=c.title)
         events.append(("card_moved", {"list_id": nl.id}))
+        events.append(("card_added", {"list_id": nl.id}))
         if "pos" not in payload:
             c.pos = _end_pos(db, KCard, list_id=nl.id)
     if "pos" in payload:
@@ -1661,7 +1763,6 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     _touch(db, b)
     if target_board.id != b.id:
         _touch(db, target_board)
-    db.commit()
     return {"ok": True, "pos": c.pos, "list_id": c.list_id}
 
 
@@ -1691,6 +1792,8 @@ def copy_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     nc.created_by = user.id
     db.flush()
     _act(db, tb, user, "card_copied", nc, source=c.title)
+    for ev in ("card_created", "card_added", "card_titled"):
+        _run_rules(db, tb, nc, user, ev, list_id=lid)
     _renumber_if_tight(db, KCard, list_id=lid)
     _touch(db, tb)
     db.commit()
@@ -1699,7 +1802,7 @@ def copy_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
 
 @router.delete("/store/kb/cards/{cid}")
 def delete_card(cid: int, db: Session = Depends(get_db), user: models.User = VIEW):
-    c, b, _ = _card(db, user, cid, "edit")
+    c, b, _ = _card(db, user, cid, "edit", follow=False)
     _act(db, b, user, "card_deleted", None, title=c.title, no=c.no)
     db.query(KActivity).filter(KActivity.card_id == c.id).delete(synchronize_session=False)
     _delete_cards(db, [c.id])
@@ -2169,7 +2272,7 @@ def _clean_rule(payload, db=None, user=None):
     if not acts:
         raise HTTPException(status_code=400, detail="Add at least one thing for the rule to do.")
     for a in acts:
-        if a["type"] in ("move_board", "copy_board", "mirror_board"):
+        if a["type"] in ("move_board", "copy_board", "mirror_board", "move_mirror"):
             if not a.get("board_id") or not a.get("list_id"):
                 raise HTTPException(status_code=400, detail="Pick the board and list for the card.")
             if db is not None:
@@ -2466,7 +2569,7 @@ def run_rule_now(rid: int, db: Session = Depends(get_db), user: models.User = VI
     b, _ = _board(db, user, r.board_id, "edit")
     t = _j(r.trigger, {})
     if t.get("type") != "schedule":
-        raise HTTPException(status_code=400, detail="Only scheduled rules can be run by hand.")
+        return _apply_rule_existing(db, r, b, t, user)
     q = db.query(KCard).filter(KCard.board_id == b.id, KCard.closed == False)  # noqa: E712
     if t.get("list_id"):
         q = q.filter(KCard.list_id == int(t["list_id"]))
@@ -2486,6 +2589,38 @@ def run_rule_now(rid: int, db: Session = Depends(get_db), user: models.User = VI
     n = 0
     if any(a.get("type") != "sort_list" for a in _j(r.actions, [])):
         for c in cards:
+            _fire(db, r, b, c, user)
+            n += 1
+    _touch(db, b)
+    db.commit()
+    return {"cards": n}
+
+
+def _apply_rule_existing(db, r, b, t, user):
+    """An event rule run by hand: every open card that already fits the rule
+    (title words, the list it is in, complete, labels, members, due date)."""
+    lists = {l.id: l for l in db.query(KList).filter(KList.board_id == b.id, KList.closed == False).all()}  # noqa: E712
+    n = 0
+    for c in db.query(KCard).filter(KCard.board_id == b.id, KCard.closed == False).order_by(KCard.pos).all():  # noqa: E712
+        if c.list_id not in lists or c.is_template:
+            continue
+        ty = t.get("type")
+        if t.get("list_id") and int(t["list_id"]) != c.list_id:
+            continue
+        ok = True
+        if ty == "card_titled":
+            ok = _title_matches(t, c.title, lists[c.list_id].title)
+        elif ty == "card_complete":
+            ok = bool(c.due_complete)
+        elif ty == "label_added":
+            ok = (not t.get("label_id")) or int(t["label_id"]) in _j(c.labels, [])
+        elif ty == "member_added":
+            ok = (not t.get("user_id")) or int(t["user_id"]) in _j(c.members, [])
+        elif ty == "due_set":
+            ok = bool(c.due)
+        elif ty in ("comment_added", "item_done", "checklist_done", "card_archived"):
+            ok = False
+        if ok:
             _fire(db, r, b, c, user)
             n += 1
     _touch(db, b)
