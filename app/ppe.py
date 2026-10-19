@@ -35,6 +35,8 @@ SIZES = {"Coverall": ["S", "M", "L", "XL", "XXL", "XXXL"], "Coverall-Brown": ["S
          "Helmet": ["Blue", "White", "Yellow", "Red", "Green"], "Safety Vest": ["M", "L", "XL", "XXL"],
          "Jacket": ["M", "L", "XL", "XXL"], "Driver T-Shirt": ["S", "M", "L", "XL", "XXL"], "Engineer Vest": ["M", "L", "XL", "XXL"]}
 NOT_GIVEN = ("Eligible",)
+# Kept in stock but not followed worker by worker (no column in the By worker grid / report).
+NO_WORKER_COL = ("Safety Vest", "Jacket")
 # Kept size by size: safety shoes and the uniforms (the helmet goes by colour, not size).
 SIZED = ["Safety Shoes", "Coverall", "Coverall-Brown", "Safety Vest", "Jacket", "Driver T-Shirt", "Engineer Vest"]
 
@@ -576,9 +578,12 @@ def export(token: str, format: str = "excel", view: str = "grid", db: Session = 
     else:
         title = "PPE by Worker"
         rows = []
+        # Same columns as the screen: no Safety Vest / Jacket, other extras only once someone has had one.
+        cols = [it for it in d["items"] if it not in NO_WORKER_COL
+                and (it in ("Coverall", "Safety Shoes", "Helmet") or any(w["cells"][it]["last"] for w in d["workers"]))]
         for w in d["workers"]:
             row = {"Employee ID": w["no"], "Name": w["name"]}
-            for it in d["items"]:
+            for it in cols:
                 c = w["cells"][it]
                 row[it] = f"{_fmt(c['last'])} ({_ago(c['days_since'])})" if c["last"] else "-"
             row["Total given"] = w["total_all"]

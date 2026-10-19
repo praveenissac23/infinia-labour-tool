@@ -18054,7 +18054,9 @@ function ppeAgo(days, long) {
   if (m < 12) return long ? `${m} months ago` : `${m} mo ago`;
   const y = Math.floor(m / 12), r = m % 12; return `${y} yr${r ? " " + r + " mo" : ""} ago`;
 }
-function ppeCols() { return PE.items.filter(it => PE.workers.some(w => w.cells[it].last) || ["Coverall", "Safety Shoes", "Helmet", "Safety Vest"].includes(it)); }
+// Safety Vest and Jacket are not followed per worker (Praveen, Oct 2026) - still kept in stock.
+const PPE_NO_COL = ["Safety Vest", "Jacket"];
+function ppeCols() { return PE.items.filter(it => !PPE_NO_COL.includes(it) && (PE.workers.some(w => w.cells[it].last) || ["Coverall", "Safety Shoes", "Helmet"].includes(it))); }
 function ppeFilter(f) { PE_F = PE_F === f ? "all" : f; ppeDraw(); }
 function ppeDraw() {
   if (!PE) return;
