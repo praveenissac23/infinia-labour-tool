@@ -13384,6 +13384,7 @@ import estimation  # noqa: E402  - Estimation > Dashboard / Projects / Tenders
 app.include_router(estimation.router)
 try:
     estimation.create_tables(engine)
+    estimation.seed_projects(SessionLocal)
 except Exception as _e:
     print("estimation tables:", _e)
 

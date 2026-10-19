@@ -313,6 +313,60 @@ def create_tables(engine):
                     cx.execute(text(f'ALTER TABLE {t.__tablename__} ADD COLUMN "{col.name}" {typ}'))
 
 
+# ---- projects 901 to 927, put in once -----------------------------------------------------
+
+# Names the project tracker uses where Settings has none.
+TRACKER_NAMES = {"916": "VL-88 Keturah Reserve", "918": "VL-44 Keturah Reserve", "920": "VE-261 Sobha Hartland",
+                 "925": "VE-225 Sobha Hartland", "926": "VE-226 Sobha Hartland", "927": "WS-41"}
+
+
+def seed_projects(SessionLocal, first=901, last=927):
+    """Every project from 901 to 927 made once, filled from what the app
+    already knows: the site (Settings > Companies & sites), the contract from
+    Accounts > Project payments, the client and location from Accounts >
+    Invoices. Never again after that, and never over a project already there."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_projects_seeded").first():
+            return
+        try:
+            import accounts, projectpay
+        except Exception:
+            accounts = projectpay = None
+        made = []
+        for n in range(first, last + 1):
+            code = str(n)
+            if db.query(EstProject).filter(EstProject.code == code).first():
+                continue
+            site = db.query(models.Site).filter(models.Site.code == code).first()
+            inv = None
+            if accounts:
+                inv = (db.query(accounts.Invoice).filter(accounts.Invoice.project_no == code)
+                       .order_by(accounts.Invoice.inv_date.desc()).first())
+            contract = 0.0
+            if projectpay:
+                contract = sum(x.contract or 0 for x in db.query(projectpay.ProjectScope).filter(projectpay.ProjectScope.project == code))
+            name = (site.project_name if site else "") or TRACKER_NAMES.get(code, "")
+            if not name and inv and inv.project and not inv.project.lower().startswith("swimming pool"):
+                name = re.sub(r"^%s\s*-\s*" % code, "", inv.project).strip()
+            plot = (site.plot_no if site else "") or ""
+            if not name:
+                name = f"Plot {plot}" if plot else ""
+            db.add(EstProject(code=code, name=name[:200], client=(inv.client if inv else "") or "",
+                              location=((inv.location if inv else "") or (f"Plot {plot}" if plot else ""))[:200],
+                              contract_value=r2(contract), status="Running"))
+            made.append(code)
+        db.add(models.Setting(key="est_projects_seeded", value="1"))
+        db.commit()
+        if made:
+            print("Estimation projects made: " + ", ".join(made))
+    except Exception as e:          # never stops the app
+        db.rollback()
+        print(f"Estimation projects seed skipped: {e}")
+    finally:
+        db.close()
+
+
 # ---- the lists people pick from (so nothing is typed that can be picked) ---------------
 
 TRADES = ["Civil", "MEP", "Finishes", "Joinery", "Aluminium & Glazing", "Steel", "External", "Manpower", "Supply", "Other"]
