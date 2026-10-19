@@ -53,6 +53,7 @@ function renderHeader() {
     <button class="hbtn ${filterActive() ? "on" : ""}" id="bh-filter" title="Filter cards (f)">${ic("filter")}${filterActive() ? ` <span class="filt-n">${filterCount()}</span>` : ""}</button>
     ${filterActive() ? `<button class="hbtn filt-clear" id="bh-fclear">Clear all</button>` : ""}
     <button class="hbtn share" id="bh-share">${ic("share")} <span class="hide-sm">Share</span></button>
+    ${window.PG_EMBED ? `<button class="hbtn ic hide-sm" id="bh-full" title="${document.body.classList.contains("kb-full") ? "Exit full screen (Esc)" : "Full screen - hide the app's menu and header"}">${ic(document.body.classList.contains("kb-full") ? "collapse" : "expand")}</button>` : ""}
     <button class="hbtn ic" id="bh-menu" title="Menu (w)">${ic("more")}</button>`;
   const nm = $("#bh-name");
   nm.onclick = () => {
@@ -72,6 +73,7 @@ function renderHeader() {
   const fc = $("#bh-fclear"); if (fc) fc.onclick = () => clearFilter();
   $("#bh-share").onclick = () => shareDlg();
   $("#bh-menu").onclick = () => boardMenu();
+  const fs = $("#bh-full"); if (fs) fs.onclick = () => { try { parent.postMessage({ kb: "fullscreen" }, location.origin); } catch (e) {} };
   $$("[data-mem]", hd).forEach(a => a.onclick = e => a.dataset.mem === "more" ? shareDlg() : memberCardPop(e.currentTarget, +a.dataset.mem));
   $$("[data-bbtn]", hd).forEach(x => x.onclick = async () => { try { const r = await POST(`/store/kb/boards/${b.id}/button`, { index: +x.dataset.bbtn }); toast(`Ran on ${r.cards} card${r.cards === 1 ? "" : "s"}`); reloadBoard(true); } catch (e) { fail(e); } });
 }

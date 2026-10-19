@@ -705,6 +705,16 @@
   "label": "Estimation",
   "children": [
    {
+    "id": "estimation.home",
+    "label": "Overview",
+    "right": [
+     "estimation_boards"
+    ],
+    "grant": [
+     "estimation_boards"
+    ]
+   },
+   {
     "id": "estimation.boards",
     "label": "Trello",
     "right": [

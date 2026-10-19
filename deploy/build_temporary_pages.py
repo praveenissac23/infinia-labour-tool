@@ -112,7 +112,8 @@ PAGES = {
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     # Estimation: the company's own Trello (boards, lists, cards, power-ups,
     # automation) - its own page, held in a frame (portal/boards.html).
-    "estimation": ("Estimation", [tab("boards", "pgboards", "Trello", "estimation_boards")]),
+    "estimation": ("Estimation", [tab("home", "estoverview", "Overview", "estimation_boards"),
+                                  tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -306,7 +307,27 @@ CSS = """
   /* ---- temporary pages: one menu, tabs in place of pages ---- */
   #legacy-sidebar { display: none !important; }
   .pg-hide { display: none !important; }
-  .pg-side { width: 220px; background: var(--black); flex-shrink: 0; padding: 0 0 20px; }
+  .pg-side { width: 220px; background: var(--black); flex-shrink: 0; padding: 0 0 20px; position: relative; transition: width .18s ease, padding .18s ease; }
+  /* The menu can be put away to give the page the whole width (the arrow at its top), and brought back. */
+  .pg-side-x { position: absolute; top: 8px; right: 6px; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: #8E939A; font-size: 16px; line-height: 1; cursor: pointer; z-index: 3; }
+  .pg-side-x:hover { background: var(--darkgray); color: #fff; }
+  #pg-side-open { position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 900; display: none; width: 18px; height: 64px; border: 0; border-radius: 0 8px 8px 0; background: var(--black); color: #fff; font-size: 14px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.25); padding: 0; }
+  #pg-side-open:hover { width: 24px; background: var(--red); }
+  body.pg-noside .pg-side { width: 0 !important; padding: 0 !important; overflow: hidden; }
+  body.pg-noside #pg-side-open { display: block; }
+  /* Full screen (Trello's button): nothing but the page. */
+  body.pg-full .pg-side, body.pg-full .topbar, body.pg-full #pg-tabs, body.pg-full #pg-sub, body.pg-full #pg-side-open { display: none !important; }
+  body.pg-full #screen-pgboards.active { margin: 0; } body.pg-full .content { padding: 0 !important; }
+  /* Estimation > Overview */
+  .est-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
+  .est-tile { border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #E9EBEE; cursor: pointer; transition: box-shadow .15s; }
+  .est-tile:hover { box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+  .est-tile .eb { height: 64px; padding: 12px 14px; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: flex-end; }
+  .est-tile .ec { display: flex; gap: 14px; padding: 10px 14px; font-size: 12.5px; color: #555; flex-wrap: wrap; }
+  .est-tile .ec b { display: block; font-size: 17px; color: var(--black); }
+  .est-tile .ec .r b { color: var(--red); }
+  .est-sec { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .est-app { display: flex; gap: 12px; align-items: center; padding: 14px; border: 1px dashed #D9D2C9; border-radius: 10px; color: #8A8178; font-size: 13px; }
   .pg-side .brand { padding: 14px 16px 18px; border-bottom: 1px solid var(--darkgray); margin-bottom: 10px; text-align: center; }
   .pg-side .brand img { max-width: 100%; height: auto; background: white; border-radius: 6px; padding: 8px 10px; }
   .pg-side .pg-item { color: var(--silver); padding: 11px 20px; font-size: 13.5px; font-weight: bold; cursor: pointer; }
@@ -371,7 +392,8 @@ CSS = """
     .shell { flex-direction: column; }
     .pg-side { width: 100%; display: flex; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; padding: 6px 8px; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
     .pg-side .pg-item { flex-shrink: 0; padding: 9px 12px; border-radius: 6px; }
-    .pg-side .pg-group, .pg-side .brand, .pg-side .pg-small { display: none; }
+    .pg-side .pg-group, .pg-side .brand, .pg-side .pg-small, .pg-side-x, #pg-side-open { display: none !important; }
+    body.pg-noside .pg-side { width: 100% !important; padding: 6px 8px !important; }
     .main { width: 100%; }
     .pg-tabs, .pg-sub { padding-left: 12px; padding-right: 12px; overflow-x: auto; flex-wrap: nowrap; }
     .pg-tab, .pg-subtab { flex-shrink: 0; }
@@ -635,6 +657,12 @@ FRAMES_HTML = """
         <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="/portal/people.html?embed=1" title="Staff"></iframe></div>
         <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="/portal/access.html?embed=1&view=roles" title="Access"></iframe></div>
         <div class="screen" id="screen-pglogins"><iframe class="pg-embed" id="pg-logins-frame" data-src="/portal/access.html?embed=1&view=users" title="Logins"></iframe></div>
+        <div class="screen" id="screen-estoverview">
+          <div class="card"><h2 style="margin:0 0 4px">Estimation</h2><div class="muted" style="font-size:12.5px">The estimation team's work in one place. Trello holds the boards; more estimation tools will be added here as tabs.</div></div>
+          <div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">Trello boards</h3><button class="btn btn-primary" onclick="estOpenBoard(0)">Open Trello</button></div>
+            <div id="est-boards" class="est-tiles"><div class="muted">Loading...</div></div></div>
+          <div class="card"><h3 style="margin:0 0 10px">My cards due soon</h3><div id="est-due" class="muted">Loading...</div></div>
+        </div>
         <div class="screen" id="screen-pgboards"><iframe class="pg-embed" id="pg-boards-frame" data-src="/portal/boards.html?embed=1" title="Trello" allow="clipboard-write"></iframe></div>
 """
 
@@ -666,6 +694,7 @@ const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
 SCREEN_TITLES.pgboards = "Trello";
+SCREEN_TITLES.estoverview = "Estimation";
 SCREEN_TITLES.pgaccess = "Access";
 SCREEN_TITLES.pglogins = "Logins";
 // Staff and Access are their own pages, shown in a frame so going to them
@@ -678,13 +707,42 @@ function pgFrame(id, refresh) {
   else if (refresh) { try { f.contentWindow.pgRefresh && f.contentWindow.pgRefresh(); } catch (e) {} }
   requestAnimationFrame(fit);
 }
+// ---- the menu put away / brought back, and full screen -------------------
+function pgSide(hide) {
+  document.body.classList.toggle("pg-noside", hide);
+  try { localStorage.setItem("pg_noside", hide ? "1" : ""); } catch (e) {}
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 220);
+}
+function pgFull(on) {
+  document.body.classList.toggle("pg-full", on);
+  const f = document.getElementById("pg-boards-frame"); if (f && f.contentWindow) { try { f.contentWindow.postMessage({ kb: "full", on: on }, location.origin); } catch (e) {} }
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 60);
+}
+try { if (localStorage.getItem("pg_noside")) document.body.classList.add("pg-noside"); } catch (e) {}
+window.addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.kb === "fullscreen") pgFull(!document.body.classList.contains("pg-full")); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && document.body.classList.contains("pg-full")) pgFull(false); });
+// ---- Estimation > Overview: every board at a glance -----------------------
+const EST_BG = { blue: "#0079BF", orange: "#D29034", green: "#519839", red: "#B04632", purple: "#89609E", pink: "#CD5A91", lime: "#4BBF6B", sky: "#00AEFF", grey: "#838C91" };
+async function estOverview() {
+  const box = document.getElementById("est-boards"), due = document.getElementById("est-due"); if (!box) return;
+  try {
+    const d = await apiCall("/store/kb/summary");
+    box.innerHTML = d.boards.map(b => `<div class="est-tile" onclick="estOpenBoard(${b.id})"><div class="eb" style="background:${EST_BG[b.bg] || (b.bg || "").startsWith("c:") && b.bg.slice(2) || "linear-gradient(135deg,#0C66E4,#37B4C3)"}">${escapeHtml(b.title)}</div>
+        <div class="ec"><span><b>${b.lists}</b>lists</span><span><b>${b.open}</b>open cards</span><span class="${b.overdue ? "r" : ""}"><b>${b.overdue}</b>overdue</span><span><b>${b.week}</b>due this week</span><span><b>${b.done}</b>complete</span></div></div>`).join("")
+      || '<div class="muted">No boards yet. Open Trello and press Create.</div>';
+    due.innerHTML = d.due.length ? `<table><thead><tr><th>Card</th><th>Board</th><th>List</th><th>Due</th></tr></thead><tbody>${d.due.map(c => `<tr style="cursor:pointer" onclick="estOpenBoard(${c.board_id},${c.id})"><td>${escapeHtml(c.title)}</td><td>${escapeHtml(c.board)}</td><td>${escapeHtml(c.list)}</td><td style="${c.overdue ? "color:var(--red);font-weight:700" : ""}">${escapeHtml(c.due_text)}${c.overdue ? " (overdue)" : ""}</td></tr>`).join("")}</tbody></table>`
+      : "Nothing due in the next 7 days on cards you are on.";
+  } catch (e) { box.innerHTML = '<div class="muted">Could not load the boards.</div>'; }
+}
+function estOpenBoard(bid, cid) { pgTab("boards"); setTimeout(() => pgBoardsFrame(bid ? "b" + bid + (cid ? "c" + cid : "") : ""), 30); }
 // Trello: open on the board / card in the address (?p=estimation#boards:b12c40).
 function pgBoardsFrame(target) {
   const f = document.getElementById("pg-boards-frame"); if (!f) return;
   const m = String(target || (location.hash.match(/boards:(b\d+(?:c\d+)?)/) || [])[1] || "").match(/b(\d+)(?:c(\d+))?/);
   const h = m ? `#/b/${m[1]}${m[2] ? "/c/" + m[2] : ""}` : "";
-  if (!f.getAttribute("src")) { f.dataset.src = "/portal/boards.html?embed=1" + h; pgFrame("pg-boards-frame"); }
-  else { if (m) { try { f.contentWindow.postMessage({ kb: "go", target: m[0] }, location.origin); } catch (e) {} } pgFrame("pg-boards-frame"); }
+  if (!f.getAttribute("src")) { f.dataset.src = "/portal/boards.html?embed=1" + h; f.addEventListener("load", () => { f.dataset.ready = "1"; if (f.dataset.pending) { try { f.contentWindow.postMessage({ kb: "go", target: f.dataset.pending }, location.origin); } catch (e) {} f.dataset.pending = ""; } }); pgFrame("pg-boards-frame"); }
+  else if (m) { if (f.dataset.ready === "1") { try { f.contentWindow.postMessage({ kb: "go", target: m[0] }, location.origin); } catch (e) {} } else f.dataset.pending = m[0]; pgFrame("pg-boards-frame"); }
+  else pgFrame("pg-boards-frame");
 }
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
@@ -767,6 +825,7 @@ switchScreen = function (name) {
   if (name === "pgaccess") pgFrame("pg-access-frame", true);
   if (name === "pglogins") pgFrame("pg-logins-frame", true);
   else if (name === "pgboards") pgBoardsFrame();
+  else if (name === "estoverview") estOverview();
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
 };
@@ -1152,18 +1211,19 @@ def build():
             for sb in t["subs"]:
                 tm[t["id"] + ":" + sb["id"]] = sb["screen"] or "pgreports"
         tabmaps[key], firsts[key] = tm, tabs[0]["id"]
-    side = ['<div class="pg-side">', brand]
+    side = ['<div class="pg-side">', '<button class="pg-side-x" title="Hide the menu - more room for the page" onclick="pgSide(true)">&laquo;</button>', brand]
     for pg in ORDER:
         label = LABELS.get(pg) or STANDALONE[pg][0]
         side.append(f'<div class="pg-item" data-page="{pg}" onclick="pgGo(\'{pg}\')">{html.escape(label)}</div>')
     # The page in the address lit from the first frame (not Dashboard first, then the right one).
     side.append('<script>(function(){var e=document.querySelector(\'.pg-side .pg-item[data-page="\'+(window.PG_KEY||"dashboard")+\'"]\');if(e)e.classList.add("active")})()</script>')
     side.append("</div>")
+    side.append('<button id="pg-side-open" title="Show the menu" onclick="pgSide(false)">&raquo;</button>')
     page = src.replace('<div class="sidebar" id="legacy-sidebar">', "\n".join(side) + '\n    <div class="sidebar" id="legacy-sidebar">', 1)
     page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
     _titles = dict(re.findall(r'(\w+):\s*"([^"]*)"', re.search(r'const SCREEN_TITLES = \{(.*?)\};', src, re.S).group(1)))
     # The embedded pages' names too, so their first frame is not titled "Dashboard".
-    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports", "pgboards": "Trello"})
+    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports", "pgboards": "Trello", "estoverview": "Estimation"})
     early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts), "titles": json.dumps(_titles)}
     # The page name and who is signed in, right from the first frame.
     page = page.replace('<h1 id="screen-title">Dashboard</h1>', '<h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>', 1)

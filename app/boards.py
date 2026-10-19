@@ -852,6 +852,26 @@ def list_boards(db: Session = Depends(get_db), user: models.User = VIEW):
             "can_admin": _is_app_admin(user)}
 
 
+@router.get("/store/kb/summary")
+def summary(db: Session = Depends(get_db), user: models.User = VIEW):
+    """Estimation > Overview: every open board with its counts, and my cards due in the next week."""
+    now = datetime.utcnow() + timedelta(hours=4)
+    today, week = now.strftime("%Y-%m-%dT%H:%M"), (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M")
+    out, due = [], []
+    for b in sorted([b for b in _visible_boards(db, user) if not b.closed and not b.is_template], key=lambda b: (b.title or "").lower()):
+        lists = {l.id: l.title for l in db.query(KList).filter(KList.board_id == b.id, KList.closed == False).all()}  # noqa: E712
+        cards = [c for c in db.query(KCard).filter(KCard.board_id == b.id, KCard.closed == False).all() if c.list_id in lists]  # noqa: E712
+        out.append({"id": b.id, "title": b.title, "bg": b.bg or "blue", "lists": len(lists), "open": sum(1 for c in cards if not c.due_complete),
+                    "overdue": sum(1 for c in cards if c.due and not c.due_complete and c.due[:16] < today),
+                    "week": sum(1 for c in cards if c.due and not c.due_complete and today <= c.due[:16] <= week),
+                    "done": sum(1 for c in cards if c.due_complete)})
+        for c in cards:
+            if c.due and not c.due_complete and c.due[:16] <= week and user.id in _j(c.members, []):
+                due.append({"id": c.id, "board_id": b.id, "board": b.title, "list": lists.get(c.list_id, ""), "title": c.title,
+                            "due": c.due, "due_text": _fmt_due(c.due), "overdue": c.due[:16] < today})
+    return {"boards": out, "due": sorted(due, key=lambda x: x["due"])[:40]}
+
+
 @router.post("/store/kb/boards")
 def create_board(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
     title = (payload.get("title") or "").strip()[:200]

@@ -143,6 +143,7 @@ function go(hash) { if (location.hash !== hash) location.hash = hash; else route
 window.addEventListener("hashchange", route);
 // The app (parent frame) can send us somewhere: "b12c40" from a bell click.
 window.addEventListener("message", e => {
+  if (e.origin === location.origin && e.data && e.data.kb === "full") { document.body.classList.toggle("kb-full", !!e.data.on); if (S.board) renderHeader(); return; }
   if (e.origin !== location.origin || typeof e.data !== "object" || !e.data || e.data.kb !== "go") return;
   const m = String(e.data.target || "").match(/b(\d+)(?:c(\d+))?/);
   if (m) go(`#/b/${m[1]}${m[2] ? "/c/" + m[2] : ""}`);
@@ -294,6 +295,7 @@ function keys(e) {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
+  if (k === "Escape" && document.body.classList.contains("kb-full") && !$(".dlg") && !$(".pop") && !$("#qe") && !S.openCard && !$("#bmenu")) { try { parent.postMessage({ kb: "fullscreen" }, location.origin); } catch (er) {} return; }
   if (k === "Escape") { if ($(".dlg")) { $$(".dlg").forEach(d => d.remove()); return; } if ($(".pop")) closePops(); else if ($("#qe")) $("#qe").remove(); else if (S.openCard) go(`#/b/${S.board.id}`); else if ($("#bmenu")) $("#bmenu").remove(); else if (S.side) sidePanel(null); return; }
   if (k === "?") { shortcutsDlg(); return; }
   if (k === "/") { e.preventDefault(); $("#q").focus(); return; }
