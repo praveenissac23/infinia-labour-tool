@@ -76,7 +76,10 @@ function wireEditor(root, id) {
 }
 function mentionPop(ta) {
   const v = ta.value.slice(0, ta.selectionStart), q = (v.match(/@([\w.\-]*)$/) || [, ""])[1].toLowerCase();
-  const ppl = S.board.people.filter(p => !q || p.username.toLowerCase().startsWith(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
+  // Everyone with a login, board members first - not just the first few.
+  const onBoard = new Set(S.board.members.map(m => m.id));
+  const ppl = S.board.people.filter(p => !q || p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+    .sort((a, b) => (onBoard.has(b.id) - onBoard.has(a.id)) || a.name.localeCompare(b.name));
   if (!ppl.length) return;
   const p = pop(ta, "Mention", ppl.map(x => `<div class="memrow" data-u="${esc(x.username)}">${av(x)}<div class="nm">${esc(x.name)}<small>@${esc(x.username)}</small></div></div>`).join(""), { nofocus: true, above: true, cls: "mention" });
   p.setAttribute("data-keep-pop", "1");

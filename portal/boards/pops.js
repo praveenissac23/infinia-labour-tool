@@ -110,13 +110,13 @@ function membersPop(anchor, cid, opt = {}) {
   const draw = (q = "") => {
     const ql = q.toLowerCase();
     const bm = S.board.members.filter(m => !q || m.name.toLowerCase().includes(ql) || m.username.toLowerCase().includes(ql));
-    const others = S.board.people.filter(p => !S.board.members.some(m => m.id === p.id) && q && (p.name.toLowerCase().includes(ql) || p.username.toLowerCase().includes(ql)));
+    const others = S.board.people.filter(p => !S.board.members.some(m => m.id === p.id) && (!q || p.name.toLowerCase().includes(ql) || p.username.toLowerCase().includes(ql))).sort((a, b) => a.name.localeCompare(b.name));
     const row = m => `<div class="memrow" data-u="${m.id}">${av(m, "lg")}<div class="nm">${esc(m.name)}<small>@${esc(m.username)}</small></div>${c.members.includes(m.id) ? `<span class="ck">${ic("check")}</span>` : ""}</div>`;
     const on = bm.filter(m => c.members.includes(m.id)), off = bm.filter(m => !c.members.includes(m.id));
     return `<input class="t" placeholder="Search members" data-q value="${esc(q)}">
       ${on.length ? `<h5>Card members</h5>${on.map(row).join("")}` : ""}
       <h5>Board members</h5>${off.map(row).join("") || '<div class="muted">Everyone on the board is on this card.</div>'}
-      ${others.length ? `<h5>Other people (will be added to the board)</h5>${others.map(row).join("")}` : (q ? "" : '<div class="muted" style="margin-top:8px">Type a name to find anyone with a login.</div>')}`;
+      ${others.length ? `<h5>Everyone else (added to the board when picked)</h5>${others.map(row).join("")}` : ""}`;
   };
   const p = pop(anchor, "Members", draw(), opt);
   const wire = () => {
