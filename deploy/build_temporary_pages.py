@@ -112,8 +112,7 @@ PAGES = {
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
     # Estimation: the company's own Trello (boards, lists, cards, power-ups,
     # automation) - its own page, held in a frame (portal/boards.html).
-    "estimation": ("Estimation", [tab("home", "estoverview", "Overview", "estimation_boards"),
-                                  tab("boards", "pgboards", "Trello", "estimation_boards")]),
+    "estimation": ("Estimation", [tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -309,11 +308,12 @@ CSS = """
   .pg-hide { display: none !important; }
   .pg-side { width: 220px; background: var(--black); flex-shrink: 0; padding: 0 0 20px; position: relative; transition: width .18s ease, padding .18s ease; }
   /* The menu can be put away to give the page the whole width (the arrow at its top), and brought back. */
-  .pg-side-x { position: absolute; top: 8px; right: 6px; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: #8E939A; font-size: 16px; line-height: 1; cursor: pointer; z-index: 3; }
-  .pg-side-x:hover { background: var(--darkgray); color: #fff; }
-  #pg-side-open { position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 900; display: none; width: 18px; height: 64px; border: 0; border-radius: 0 8px 8px 0; background: var(--black); color: #fff; font-size: 14px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.25); padding: 0; }
+  .pg-side-x { position: absolute; top: 86px; right: -12px; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: var(--red); color: #fff; font-size: 13px; font-weight: 700; line-height: 18px; padding: 0; cursor: pointer; z-index: 60; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+  .pg-side-x:hover { transform: scale(1.12); }
+  #pg-side-open { position: fixed; left: 0; top: 86px; z-index: 900; display: none; width: 22px; height: 48px; border: 0; border-radius: 0 10px 10px 0; background: var(--red); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.3); padding: 0; }
   #pg-side-open:hover { width: 24px; background: var(--red); }
   body.pg-noside .pg-side { width: 0 !important; padding: 0 !important; overflow: hidden; }
+  body.pg-noside .pg-side-x { display: none; }
   body.pg-noside #pg-side-open { display: block; }
   /* Full screen (Trello's button): nothing but the page. */
   body.pg-full .pg-side, body.pg-full .topbar, body.pg-full #pg-tabs, body.pg-full #pg-sub, body.pg-full #pg-side-open { display: none !important; }
