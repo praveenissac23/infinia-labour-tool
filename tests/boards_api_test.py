@@ -279,6 +279,9 @@ ck("imported: number, label, member matched, due in Dubai time, cover, checklist
    card["no"] == 5 and len(card["labels"]) == 1 and card["members"] == [U["kb_hiba"]] and card["due"] == "2025-06-23T12:00"
    and card["cover"]["color"] == "green" and card["check"] == [1, 2] and full["comments"][0]["who"] == "Hiba"
    and full["attachments"][0]["link"], (card, full["comments"]))
+import gzip as _gz
+r = c.post("/store/kb/import", files={"file": ("board.json.gz", io.BytesIO(_gz.compress(json.dumps(tj).encode())), "application/gzip")}, headers=A)
+ck("compressed Trello JSON imported", r.status_code == 200 and r.json()["cards"] == 2, r.text)
 ck("bad JSON refused politely", c.post("/store/kb/import", files={"file": ("x.json", io.BytesIO(b"{}"), "application/json")}, headers=A).status_code == 400)
 
 # ---- close and delete a board -----------------------------------------------------------------------------------

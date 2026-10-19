@@ -2728,6 +2728,12 @@ def import_trello(db, data, user, title=None):
 async def import_board(file: UploadFile = File(...), title: str = Form(""), db: Session = Depends(get_db),
                        user: models.User = VIEW):
     raw = await file.read()
+    if raw[:2] == b"\x1f\x8b":            # sent compressed (a big Trello board is 10 MB as text)
+        import gzip
+        try:
+            raw = gzip.decompress(raw)
+        except OSError:
+            raise HTTPException(status_code=400, detail="That file could not be opened.")
     try:
         data = json.loads(raw.decode("utf-8-sig"))
     except (ValueError, UnicodeDecodeError):

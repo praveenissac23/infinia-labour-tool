@@ -2,6 +2,7 @@
 "use strict";
 const S = { me: null, boards: [], board: null, cards: {}, lists: [], filter: null, view: "board", poll: null,
             labelColors: [], canAdmin: false, openCard: null, side: null };
+try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infinia_keep")) sessionStorage.setItem("infinia_token", localStorage.getItem("infinia_keep")); } catch (e) {}   // "Keep me signed in"
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
 
 // ---------- tiny helpers ----------

@@ -514,7 +514,10 @@ function importDlg() {
   const f = d.querySelector("[data-f]"); d.querySelector("[data-pick]").onclick = () => f.click();
   const send = async file => {
     d.querySelector("[data-msg]").textContent = "Importing...";
-    const fd = new FormData(); fd.append("file", file); fd.append("title", d.querySelector("[data-t]").value.trim());
+    const fd = new FormData(); fd.append("title", d.querySelector("[data-t]").value.trim());
+    // Trello boards can be many MB as text; send them compressed so they fit the server's upload limit.
+    if (window.CompressionStream && file.size > 200 * 1024) { const gz = await new Response(file.stream().pipeThrough(new CompressionStream("gzip"))).blob(); fd.append("file", gz, file.name + ".gz"); }
+    else fd.append("file", file);
     try { const r = await api("/store/kb/import", { method: "POST", body: fd }); d.remove(); toast(`Imported: ${r.lists} lists, ${r.cards} cards, ${r.checklists} checklists, ${r.comments} comments`, { ms: 6000 }); go("#/b/" + r.id); }
     catch (e) { d.querySelector("[data-msg]").textContent = e.message; }
   };
