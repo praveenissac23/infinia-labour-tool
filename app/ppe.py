@@ -28,15 +28,15 @@ router = APIRouter()
 RIGHT = "ppe"
 VIEW = Depends(M.require_any_screen("reports", RIGHT))
 
-ITEMS = ["Coverall", "Safety Shoes", "Safety Vest", "Helmet", "Jacket", "Driver T-Shirt", "Engineer Vest"]
+ITEMS = ["Coverall", "Coverall-Brown", "Safety Shoes", "Safety Vest", "Helmet", "Jacket", "Driver T-Shirt", "Engineer Vest"]
 RECENT_DAYS = 30
 PLACES = ("Store", "Office")       # two stocks: the site store and the office
-SIZES = {"Coverall": ["S", "M", "L", "XL", "XXL", "XXXL"], "Safety Shoes": [str(n) for n in range(38, 47)],
+SIZES = {"Coverall": ["S", "M", "L", "XL", "XXL", "XXXL"], "Coverall-Brown": ["S", "M", "L", "XL", "XXL", "XXXL"], "Safety Shoes": [str(n) for n in range(38, 47)],
          "Helmet": ["Blue", "White", "Yellow", "Red", "Green"], "Safety Vest": ["M", "L", "XL", "XXL"],
          "Jacket": ["M", "L", "XL", "XXL"], "Driver T-Shirt": ["S", "M", "L", "XL", "XXL"], "Engineer Vest": ["M", "L", "XL", "XXL"]}
 NOT_GIVEN = ("Eligible",)
 # Kept size by size: safety shoes and the uniforms (the helmet goes by colour, not size).
-SIZED = ["Safety Shoes", "Coverall", "Safety Vest", "Jacket", "Driver T-Shirt", "Engineer Vest"]
+SIZED = ["Safety Shoes", "Coverall", "Coverall-Brown", "Safety Vest", "Jacket", "Driver T-Shirt", "Engineer Vest"]
 
 
 def _sz(item, v):
