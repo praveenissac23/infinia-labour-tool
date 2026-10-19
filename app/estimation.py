@@ -1230,18 +1230,15 @@ def _export_rows(db, what, p, q, status, sub_id):
         if status and (st or "") != status:
             return False
         return not ql or ql in " ".join(str(v) for v in row.values()).lower()
-    rows, money, title = [], [], ""
+    rows, money, title, totals = [], [], "", None
     if what == "subs":
         title = "Subcontractors - summary"
-        money = ["Initial", "Variation", "Cancelled", "Revised", "Adv. paid", "Adv. recovered", "Retention held", "Ret. released",
-                 "Other ded.", "Certified", "Paid", "To pay", "Balance work"]
+        money = ["Initial", "Variation", "Cancelled", "Revised", "Certified", "Paid", "To pay", "Retention held", "Advance left", "Balance work"]
         for i, s in enumerate(b["subs"], 1):
-            r = {"Sl.": i, "Subcontractor": s["name"], "Work": s["scope"], "Trade": s["trade"], "Type": s["kind"],
-                 "Agreement / LPO": " / ".join(x for x in (s["agreement"], s["lpo"]) if x), "PCs": s["pc_count"],
-                 "Initial": s["value"], "Variation": s["vo_total"], "Cancelled": s["cancelled"], "Revised": s["revised"],
-                 "Adv. paid": s["adv_paid"], "Adv. recovered": s["adv_rec"], "Retention held": s["ret_held"],
-                 "Ret. released": s["ret_released"], "Other ded.": s["other"], "Certified": s["certified"], "Paid": s["paid"],
-                 "To pay": s["to_pay"], "Balance work": s["balance"], "Done %": s["done_pct"], "Status": s["status"]}
+            r = {"Sl.": i, "Subcontractor": s["name"], "Work": s["scope"], "Agreement / LPO": " / ".join(x for x in (s["agreement"], s["lpo"]) if x),
+                 "PCs": s["pc_count"], "Initial": s["value"], "Variation": s["vo_total"], "Cancelled": s["cancelled"], "Revised": s["revised"],
+                 "Certified": s["certified"], "Paid": s["paid"], "To pay": s["to_pay"], "Retention held": s["ret_left"],
+                 "Advance left": s["adv_left"], "Balance work": s["balance"], "Done %": s["done_pct"], "Status": s["status"]}
             if keep(r, s["status"]):
                 rows.append(r)
     elif what == "subpcs":
@@ -1249,13 +1246,14 @@ def _export_rows(db, what, p, q, status, sub_id):
         if not s:
             raise HTTPException(404, "That subcontract is not there any more.")
         title = f"{s['name']} - payment certificates"
+        totals = ["This certificate", "VAT", "Payable", "Paid"]      # the rest are to-date figures: never added up
         money = ["Invoice amount", "Work done to date", "Material on site", "Advance paid", "Adv. recovery", "Retention",
                  "Other ded.", "Ret. released", "Net to date", "This certificate", "VAT", "Payable", "Paid"]
         for pc in s["pcs"]:
             r = {"PC No.": f"PC No. {pc['seq']:02d}" + (f" ({pc['pc_type']})" if pc["pc_type"] != "Interim" else ""),
                  "Invoice": pc["inv_ref"], "Inv. date": _d(pc["inv_date"]), "Invoice amount": pc["inv_amount"],
                  "Work done to date": pc["work_cum"], "Material on site": pc["mos_cum"], "Advance paid": pc["adv_paid_cum"],
-                 "Adv. recovery": -pc["adv_rec_cum"], "Retention": -pc["ret_cum"], "Other ded.": -pc["other_cum"],
+                 "Adv. recovery": r2(-pc["adv_rec_cum"]), "Retention": r2(-pc["ret_cum"]), "Other ded.": r2(-pc["other_cum"]),
                  "Ret. released": pc["ret_rel_cum"], "Net to date": pc["net_cum"], "This certificate": pc["this"],
                  "VAT": pc["vat"], "Payable": pc["payable"], "Paid": pc["paid_amount"], "Status": pc["status"],
                  "Remarks": " ".join(x for x in (pc["other_note"], pc["remarks"]) if x)}
@@ -1263,12 +1261,12 @@ def _export_rows(db, what, p, q, status, sub_id):
                 rows.append(r)
     elif what == "invoices":
         title = "Subcontractor invoice tracker"
+        totals = ["This certificate", "Payable"]
         money = ["Invoice amount", "This certificate", "Payable"]
         for s in b["subs"]:
             for pc in s["pcs"]:
-                r = {"Subcontractor": s["name"], "Scope": s["scope"], "PC No.": pc["seq"], "Invoice ref.": pc["inv_ref"],
-                     "Invoice amount": pc["inv_amount"], "Received": _d(pc["received"]), "Sent to site": _d(pc["to_site"]),
-                     "Site return due": _d(pc["site_due"]), "Back from site": _d(pc["site_back"]),
+                r = {"Subcontractor": s["name"], "PC No.": pc["seq"], "Invoice ref.": pc["inv_ref"],
+                     "Invoice amount": pc["inv_amount"], "Received": _d(pc["received"]), "Back from site": _d(pc["site_back"]),
                      "Site delay": f"{pc['site_delay']} days" if pc["site_delay"] else "Nil", "PC due": _d(pc["pc_due"]),
                      "PC issued": _d(pc["issued"]), "PC delay": f"{pc['pc_delay']} days" if pc["pc_delay"] else "Nil",
                      "This certificate": pc["this"], "Payable": pc["payable"], "Status": pc["status"]}
@@ -1276,13 +1274,14 @@ def _export_rows(db, what, p, q, status, sub_id):
                     rows.append(r)
     elif what == "clientpcs":
         title = "Payment certificates to the consultant"
+        totals = ["This certificate", "VAT", "Total"]
         money = ["Claimed to date", "Certified to date", "Material on site", "Advance", "Adv. recovery", "Retention",
                  "Ret. released", "Other ded.", "Net to date", "This certificate", "VAT", "Total"]
         for c in b["clientpcs"]:
             r = {"PC No.": c["seq"], "Type": c["pc_type"], "Period to": _d(c["period_to"]), "Submitted": _d(c["submitted"]),
                  "Claimed to date": c["claimed_cum"], "Certified to date": c["certified_cum"], "Material on site": c["mos_cum"],
-                 "Advance": c["adv_paid_cum"], "Adv. recovery": -c["adv_rec_cum"], "Retention": -c["ret_cum"],
-                 "Ret. released": c["ret_rel_cum"], "Other ded.": -c["other_cum"], "Net to date": c["net_cum"],
+                 "Advance": c["adv_paid_cum"], "Adv. recovery": r2(-c["adv_rec_cum"]), "Retention": r2(-c["ret_cum"]),
+                 "Ret. released": c["ret_rel_cum"], "Other ded.": r2(-c["other_cum"]), "Net to date": c["net_cum"],
                  "This certificate": c["this"], "VAT": c["vat"], "Total": c["payable"], "Certified on": _d(c["certified_on"]),
                  "Invoice": c["invoice_no"], "Status": c["status"]}
             if keep(r, c["status"]):
@@ -1299,6 +1298,7 @@ def _export_rows(db, what, p, q, status, sub_id):
                 rows.append(r)
     elif what == "boq":
         title = "BOQ & budget"
+        totals = ["Amount", "Budget cost", "Margin"]
         money = ["Rate", "Amount", "Cost rate", "Budget cost", "Margin"]
         for x in b["boq"]:
             r = {"Section": x["section"], "Item": x["code"], "Description": x["description"], "Unit": x["unit"], "Qty": x["qty"],
@@ -1350,7 +1350,7 @@ def _export_rows(db, what, p, q, status, sub_id):
                 rows.append(r)
     else:
         raise HTTPException(404, "Unknown report.")
-    return title, rows, money
+    return title, rows, money, (money if totals is None else totals)
 
 
 @router.get("/export/est/{what}")
@@ -1364,7 +1364,16 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
     p = _project(db, pid) if pid else None
     if what not in ("tenders", "dash") and not p:
         raise HTTPException(400, "Pick a project first.")
-    title, rows, money = _export_rows(db, what, p, q, status, sub_id)
+    title, rows, money, totals = _export_rows(db, what, p, q, status, sub_id)
+    # A column that is empty or nought on every line only takes room from the others.
+    if len(rows) > 0:
+        def blank(v):
+            return v in (None, "", "-", 0, 0.0, "Nil")
+        keep = [k for k in rows[0] if not all(blank(r.get(k)) for r in rows)]
+        if keep and len(keep) < len(rows[0]):
+            rows = [{k: r[k] for k in keep} for r in rows]
+            money = [m for m in money if m in keep]
+            totals = [m for m in totals if m in keep]
     full = f"{p.code} {p.name} - {title}".strip() if p else title
     bits = [f"{len(rows)} lines", f"As at {today():%d %b %Y}"]
     if status:
@@ -1376,12 +1385,12 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
         rows = [{"": "Nothing to show for these filters"}]
     if format == "preview":
         url = f"/export/est/{what}?" + urlencode({"token": token, "pid": pid, "q": q, "status": status, "sub_id": sub_id})
-        return M._preview_page(full, sub, rows, url + "&format=pdf", url + "&format=excel", money_cols=money)
+        return M._preview_page(full, sub, rows, url + "&format=pdf", url + "&format=excel", money_cols=money, total_cols=totals)
     safe = re.sub(r"[^\w]+", "_", full)[:60] or "estimation"
     if format == "pdf":
-        return StreamingResponse(export_web.build_store_report_pdf(full, rows, sub, money_cols=money, orientation="landscape"),
+        return StreamingResponse(export_web.build_store_report_pdf(full, rows, sub, money_cols=money, orientation="landscape", total_cols=totals),
                                  media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={safe}.pdf"})
-    return StreamingResponse(export_web.build_store_report_excel(full, rows, sub, money_cols=money),
+    return StreamingResponse(export_web.build_store_report_excel(full, rows, sub, money_cols=money, total_cols=totals),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={safe}.xlsx"})
 
@@ -1484,7 +1493,8 @@ h1{{text-align:center;font-size:19px;margin:10px 0 16px}} .hd th{{text-align:lef
 .sig{{display:flex;gap:30px;margin-top:60px}} .sig div{{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;color:#555}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none}}}}
 @media (max-width:600px){{.pg{{padding:16px}} .m{{font-size:11.5px}}}}
-</style></head><body><div class="bar"><b>{escape(title)}</b><button onclick="print()">Print</button><a href="{pdf}">PDF</a></div>
+</style></head><body><div class="bar"><b>{escape(title)}</b><button onclick="print()">Print</button><a href="{pdf}">PDF</a><button onclick="shr()">Share</button></div>
+<script>async function shr(){{try{{const r=await fetch("{pdf}");const b=await r.blob();const f=new File([b],"{escape(re.sub(r'[^A-Za-z0-9]+', '_', title))}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{escape(title)}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
 <div class="pg"><img src="{logo}" style="height:54px"><h1>{escape(title)}</h1><table class="hd">{hd}</table>
 <table class="m"><tr><th></th><th>Previous (AED)</th><th>This certificate (AED)</th><th>To date (AED)</th></tr>{rows}
 <tr><td>VAT {s.vat_pct or 0:g}%</td><td></td><td>{c['vat']:,.2f}</td><td></td></tr>

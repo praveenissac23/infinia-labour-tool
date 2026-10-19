@@ -218,7 +218,8 @@ async function start() {
     if (s[1]) { ST.group = s[1]; ST.sec = s[2]; }
     else { try { const k = localStorage.getItem("est_sec"); if (k) [ST.group, ST.sec] = k.split("."); } catch (e) {} }
     renderProjectShell();
-    if (pid && ST.meta.projects.some(p => p.id === pid)) openProject(pid);
+    if (!(pid && ST.meta.projects.some(p => p.id === pid))) pid = (ST.meta.projects.find(p => p.status === "Running") || ST.meta.projects[0] || {}).id;
+    if (pid) openProject(pid);   // the first project opens by itself
   } else if (VIEW === "tenders") loadTenders();
   else loadDash();
 }
