@@ -1270,6 +1270,37 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
     return {"ok": True, "detail": f"{username} removed."}
 
 
+@app.post("/users/{user_id}/name")
+def rename_user(user_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                user: models.User = Depends(require_screen("settings_logins"))):
+    """Correct a login's username and / or full name. Everything else hangs
+    on the login's id, so its rights, history and records stay with it.
+    The same rules as making a login: lower case, no spaces, not taken;
+    an admin's only by an admin."""
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id != user.id:
+        guard_target(user, target, "rename")
+    old = target.username
+    if "username" in payload:
+        username = str(payload.get("username") or "").strip().lower()
+        if not username:
+            raise HTTPException(status_code=400, detail="Enter a username.")
+        if " " in username:
+            raise HTTPException(status_code=400, detail="A username cannot contain spaces.")
+        clash = db.query(models.User).filter(func.lower(models.User.username) == username, models.User.id != target.id).first()
+        if clash:
+            raise HTTPException(status_code=400, detail="That username is already taken.")
+        target.username = username
+    if "full_name" in payload:
+        target.full_name = str(payload.get("full_name") or "").strip()[:120] or target.username
+    db.commit()
+    log_action(db, user.id, "rename_user", f"{old} -> {target.username} ({target.full_name})")
+    return {"ok": True, "username": target.username, "full_name": target.full_name,
+            "signin_again": target.id == user.id and old != target.username}
+
+
 @app.post("/users/{user_id}/reset-password")
 def reset_user_password(user_id: int, payload: schemas.ResetPasswordRequest,
                          db: Session = Depends(get_db),

@@ -784,6 +784,12 @@ window.HELP_GUIDES = [
     steps: [
       { say: "Open the person's role here. Under Petty cash, tick only the boxes he may see: Site, PRO or Office.", el: "#screen-pgaccess" },
       { say: "Save. He sees only those boxes; the others are hidden and locked." }] },
+  { id: "login-rename", area: "Settings", title: "How to change a login's name or username",
+    words: "edit name rename login change username full name wrong name spelling login name user name",
+    go: { page: "settings", tab: "logins" },
+    steps: [{ say: "Settings > Logins: press Edit name on the login." },
+            { say: "Correct the username (used to sign in) and / or the full name, then Save." }],
+    tip: "Rights, password and history stay with the login. A new username works from the next sign-in." },
   { id: "password", area: "Settings", title: "How to change my password",
     words: "change password forgot reset my password",
     go: { page: "settings", tab: "general" },

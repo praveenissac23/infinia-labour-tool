@@ -237,6 +237,16 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
   </div>
 </div>
 
+<div class="dlg" id="dlg-name" onclick="if (event.target === this) closeDlg('dlg-name')">
+  <div class="dlg-box" style="max-width:460px;">
+    <h3 id="nm-title">Edit name</h3>
+    <div class="row"><label class="fld"><span>Username (to sign in) *</span><input id="nm-user" style="width:260px;" autocomplete="off"></label></div>
+    <div class="row"><label class="fld"><span>Full name</span><input id="nm-full" style="width:260px;" autocomplete="off" placeholder="Shown on screens and reports"></label></div>
+    <div class="muted" id="nm-note" style="font-size:12px;margin-top:4px">Rights, history and records stay with the login. A new username is used from the next sign-in.</div>
+    <div class="row" style="margin-top:12px;"><button class="btn btn-primary" onclick="saveName()">Save</button><button class="btn btn-gray" onclick="closeDlg('dlg-name')">Cancel</button><span class="muted" id="nm-msg"></span></div>
+  </div>
+</div>
+
 <div class="dlg" id="dlg-assign" onclick="if (event.target === this) closeDlg('dlg-assign')">
   <div class="dlg-box" style="max-width:600px;">
     <h3 id="assign-title">Role</h3>
@@ -460,11 +470,24 @@ function renderUsers() {
     <td>${u.role === "admin" ? '<span class="muted">Not needed</span>' : u.access_role ? `<span class="pill b">${esc(u.access_role)}</span>` : '<span class="muted">Custom rights</span>'}</td>
     <td class="scr" title="${esc(c.full)}">${c.text}</td>
     <td>${u.active ? '<span class="pill g">Active</span>' : '<span class="pill gr">Off</span>'}</td>
-    <td class="act">${!mayTouch(u) ? '<span class="muted">Admin only</span>' : `${u.username === (ME && ME.username) && u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}`}</td></tr>`; }).join("");
+    <td class="act">${!mayTouch(u) ? '<span class="muted">Admin only</span>' : `${u.username === (ME && ME.username) && u.role === "admin" ? "" : `<button class="btn btn-gray btn-sm" onclick="openAssign(${u.id})">Change role</button>`}<button class="btn btn-gray btn-sm" onclick="openName(${u.id})">Edit name</button><button class="btn btn-gray btn-sm" onclick="openPw(${u.id})">Reset password</button>${u.username === (ME && ME.username) ? "" : `<button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})">Delete</button>`}`}</td></tr>`; }).join("");
 }
 // A login that is not an admin acts only on logins that open no more than it does.
 function mayTouch(u) { if (ME.isAdmin) return true; if (u.role === "admin") return false;
   const mine = new Set([...(ME.screens || []), ...(ME.tabs || [])]); return [...u.screens, ...(u.tabs || [])].every(x => x === "settings" || mine.has(x)); }
+let NM_USER = null;
+function openName(uid) { const u = USERS.find(x => x.id === uid); NM_USER = uid; document.getElementById("nm-title").textContent = `Edit name - ${u.username}`;
+  document.getElementById("nm-user").value = u.username; document.getElementById("nm-full").value = u.full_name || ""; document.getElementById("nm-msg").textContent = "";
+  openDlg("dlg-name"); setTimeout(() => { const f = document.getElementById("nm-full"); f.focus(); f.select(); }, 50); }
+async function saveName() {
+  try {
+    const r = await apiCall(`/users/${NM_USER}/name`, { method: "POST", body: JSON.stringify({ username: document.getElementById("nm-user").value, full_name: document.getElementById("nm-full").value }) });
+    closeDlg("dlg-name");
+    if (r && r.signin_again) { status("ok", "Your username is changed - sign in again with " + r.username + "."); setTimeout(() => { try { sessionStorage.removeItem("infinia_token"); localStorage.removeItem("infinia_keep"); } catch (e) {} if (window.PG_EMBED) parent.postMessage("pg-signin", location.origin); else location.reload(); }, 1800); return; }
+    status("ok", "Name saved."); await loadAll();
+  } catch (e) { document.getElementById("nm-msg").textContent = errText(e); }
+}
+["nm-user", "nm-full"].forEach(id => document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === id) saveName(); }));
 let PW_USER = null;
 function openPw(uid) { const u = USERS.find(x => x.id === uid); PW_USER = uid; document.getElementById("pw-title").textContent = `New password for ${u.username}`; document.getElementById("pw-new").value = ""; document.getElementById("pw-msg").textContent = ""; openDlg("dlg-pw"); setTimeout(() => document.getElementById("pw-new").focus(), 50); }
 async function savePw() {
@@ -568,6 +591,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 window.pgRefresh = async () => { if (!ME) return start(); await loadAll(); };
 if (TOKEN) start(); else signInBox();
 </script>
-<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=c59af62991"><script src="/portal/help/guides.js?v=a1e6c1ede6"></script><script src="/portal/help/tips.js?v=305729e445"></script><script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v=ff86ea776f";</script><script src="/portal/help/spell.js?v=4775d9f55b" defer></script><!--/help-tips-->
+<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=c59af62991"><script src="/portal/help/guides.js?v=17780c64df"></script><script src="/portal/help/tips.js?v=305729e445"></script><script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v=ff86ea776f";</script><script src="/portal/help/spell.js?v=4775d9f55b" defer></script><!--/help-tips-->
 </body>
 </html>
