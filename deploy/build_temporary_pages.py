@@ -1249,6 +1249,7 @@ def brand_hand_written(menu_rights=None):
     for name in ("people.html", "access.html", "boards.html"):
         path = os.path.join(OUT, name)
         page = open(path, encoding="utf-8").read()
+        orig = page
         if name == "boards.html":
             # Trello's own scripts and styles, versioned so a new build is picked up at once.
             import hashlib as _hb
@@ -1281,7 +1282,7 @@ def brand_hand_written(menu_rights=None):
         else:
             head, sep, tail = new.rpartition("</body>")
             new = head + block + "\n" + sep + tail
-        if new != page:
+        if new != orig:
             open(path, "w", encoding="utf-8").write(new)
 
 
