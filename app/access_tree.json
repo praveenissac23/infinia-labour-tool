@@ -701,6 +701,22 @@
   ]
  },
  {
+  "id": "estimation",
+  "label": "Estimation",
+  "children": [
+   {
+    "id": "estimation.boards",
+    "label": "Trello",
+    "right": [
+     "estimation_boards"
+    ],
+    "grant": [
+     "estimation_boards"
+    ]
+   }
+  ]
+ },
+ {
   "id": "admin",
   "label": "Admin",
   "children": [

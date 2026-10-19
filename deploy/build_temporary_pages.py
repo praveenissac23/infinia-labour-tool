@@ -110,6 +110,9 @@ PAGES = {
         tab("credentials", "credentials", "Credentials", "accounts_credentials"),
         # Not shown: three clicks on the Tax Invoices heading bring it up.
         tab("register", "cashreg", "Register", "accounts_register", hidden=True)]),
+    # Estimation: the company's own Trello (boards, lists, cards, power-ups,
+    # automation) - its own page, held in a frame (portal/boards.html).
+    "estimation": ("Estimation", [tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -165,7 +168,7 @@ PAGES = {
 EXTRA = {"monthly": "reports"}
 # Pages held in a frame inside the app rather than written from app.html.
 VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
-ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "admin", "reports", "settings"]
+ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "estimation", "admin", "reports", "settings"]
 # The file each page is served as. nginx sends any address containing
 # "reports" to the API (its rule is not anchored), so that page cannot be
 # called reports.html.
@@ -175,7 +178,7 @@ STANDALONE = {"people": ("Staff", ["people_labour", "people_office", "people_loc
               "access": ("Access", "access")}
 LABELS = {"dashboard": "Dashboard", "attendance": "Attendance", "payroll": "Payroll", "store": "Store & Purchasing",
           "reports": "Reports", "settings": "Settings", "activity": "Activity Monitor", "expiry": "Expiry Reminder",
-          "accounts": "Accounts", "admin": "Admin"}
+          "accounts": "Accounts", "estimation": "Estimation", "admin": "Admin"}
 
 # ---- Settings > Access: every page, tab and tab inside a tab -------------
 # Each tab a login can be given is a "leaf" with its own id
@@ -334,7 +337,7 @@ CSS = """
   #hr-doc-mode { display: none !important; }
   #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
-  #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active { margin: -20px -24px -20px; }
+  #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
   #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
@@ -632,6 +635,7 @@ FRAMES_HTML = """
         <div class="screen" id="screen-pgstaff"><iframe class="pg-embed" id="pg-staff-frame" data-src="/portal/people.html?embed=1" title="Staff"></iframe></div>
         <div class="screen" id="screen-pgaccess"><iframe class="pg-embed" id="pg-access-frame" data-src="/portal/access.html?embed=1&view=roles" title="Access"></iframe></div>
         <div class="screen" id="screen-pglogins"><iframe class="pg-embed" id="pg-logins-frame" data-src="/portal/access.html?embed=1&view=users" title="Logins"></iframe></div>
+        <div class="screen" id="screen-pgboards"><iframe class="pg-embed" id="pg-boards-frame" data-src="/portal/boards.html?embed=1" title="Trello" allow="clipboard-write"></iframe></div>
 """
 
 ROLES_CARD = """
@@ -661,6 +665,7 @@ const PAGE_OF = %(page_of_json)s;
 const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
+SCREEN_TITLES.pgboards = "Trello";
 SCREEN_TITLES.pgaccess = "Access";
 SCREEN_TITLES.pglogins = "Logins";
 // Staff and Access are their own pages, shown in a frame so going to them
@@ -673,9 +678,17 @@ function pgFrame(id, refresh) {
   else if (refresh) { try { f.contentWindow.pgRefresh && f.contentWindow.pgRefresh(); } catch (e) {} }
   requestAnimationFrame(fit);
 }
+// Trello: open on the board / card in the address (?p=estimation#boards:b12c40).
+function pgBoardsFrame(target) {
+  const f = document.getElementById("pg-boards-frame"); if (!f) return;
+  const m = String(target || (location.hash.match(/boards:(b\d+(?:c\d+)?)/) || [])[1] || "").match(/b(\d+)(?:c(\d+))?/);
+  const h = m ? `#/b/${m[1]}${m[2] ? "/c/" + m[2] : ""}` : "";
+  if (!f.getAttribute("src")) { f.dataset.src = "/portal/boards.html?embed=1" + h; pgFrame("pg-boards-frame"); }
+  else { if (m) { try { f.contentWindow.postMessage({ kb: "go", target: m[0] }, location.origin); } catch (e) {} } pgFrame("pg-boards-frame"); }
+}
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
-window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
+window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame", "pg-boards-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
@@ -753,6 +766,7 @@ switchScreen = function (name) {
   if (name === "pgstaff") pgFrame("pg-staff-frame", true);
   if (name === "pgaccess") pgFrame("pg-access-frame", true);
   if (name === "pglogins") pgFrame("pg-logins-frame", true);
+  else if (name === "pgboards") pgBoardsFrame();
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
 };
@@ -1149,7 +1163,7 @@ def build():
     page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
     _titles = dict(re.findall(r'(\w+):\s*"([^"]*)"', re.search(r'const SCREEN_TITLES = \{(.*?)\};', src, re.S).group(1)))
     # The embedded pages' names too, so their first frame is not titled "Dashboard".
-    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports"})
+    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports", "pgboards": "Trello"})
     early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts), "titles": json.dumps(_titles)}
     # The page name and who is signed in, right from the first frame.
     page = page.replace('<h1 id="screen-title">Dashboard</h1>', '<h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>', 1)
@@ -1232,9 +1246,14 @@ def brand_hand_written(menu_rights=None):
     if not m:
         return
     img = m.group(1)
-    for name in ("people.html", "access.html"):
+    for name in ("people.html", "access.html", "boards.html"):
         path = os.path.join(OUT, name)
         page = open(path, encoding="utf-8").read()
+        if name == "boards.html":
+            # Trello's own scripts and styles, versioned so a new build is picked up at once.
+            import hashlib as _hb
+            page = re.sub(r'(/portal/boards/[\w.]+\.(?:js|css))\?v=\w+',
+                          lambda mm: mm.group(1) + "?v=" + _hb.sha1(open(os.path.join(ROOT, mm.group(1).lstrip("/")), "rb").read()).hexdigest()[:10], page)
         new = re.sub(r'<div class="logo" id="pg-brand">.*?</div>', lambda _: f'<div class="logo" id="pg-brand">{img}</div>', page, count=1, flags=re.S)
         if menu_rights is not None:
             tag = f'<script id="pg-menu-rights">const PG_MENU_RIGHTS = {json.dumps(menu_rights)};</script>'
