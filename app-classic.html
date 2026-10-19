@@ -7956,6 +7956,8 @@ function openNotification(id, screen, target, extra) {
   const n = Object.assign({}, extra || {}, (notifications || []).find(x => x.id === id) || {});
   // A material request, whatever happened to it: the request itself,
   // opened, with what has arrived against it.
+  // A Trello note: the board, and the card on it.
+  if (screen === "pgboards") { if (typeof pgGo === "function") pgGo("estimation"); if (typeof pgBoardsFrame === "function") setTimeout(() => pgBoardsFrame(target), 50); return; }
   if (target && ["approvals", "followup", "requests"].includes(screen)) { openRequestRef(target, n.status); return; }
   if (screen === "store" && target) {
     if (n.kind === "rental" && typeof xlGo === "function") {

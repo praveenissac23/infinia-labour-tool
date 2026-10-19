@@ -412,6 +412,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Credentials: the company's website and app logins -
                # admin, the PRO and the chief accountant.
                "accounts_credentials",
+               # Estimation > Trello: the company's own boards and cards
+               # (no seat limits) - everyone in the estimation team.
+               "estimation_boards",
                # Settings, tab by tab. "settings" itself (own password,
                # take a backup) is on every login. These were admin only;
                # now each can be given to whoever should have it. Nobody
@@ -13109,6 +13112,12 @@ def get_notifications(db: Session = Depends(get_db),
     out.sort(key=lambda n: n["when"], reverse=True)
     out.sort(key=lambda n: order.get(n["level"], 3))
     out = notif_filter(db, user, out)
+    if "estimation_boards" in allowed:
+        try:
+            import boards as _kb
+            out = _kb.bell_items(db, user) + out
+        except Exception as _e:
+            print("boards bell:", _e)
     return {"notifications": out[:60], "count": len(out)}
 
 
@@ -13307,6 +13316,20 @@ try:   # a column added after the table was first made
             _cx.execute(_text("ALTER TABLE credentials ADD COLUMN admin_only BOOLEAN DEFAULT FALSE"))
 except Exception as _e:
     print("credentials column:", _e)
+
+
+import boards  # noqa: E402  - Estimation > Trello: boards, lists and cards
+app.include_router(boards.router)
+try:
+    boards.create_tables(engine)
+except Exception as _e:
+    print("boards tables:", _e)
+
+
+@app.on_event("startup")
+def _boards_rules_start():
+    if not os.environ.get("INFINIA_NO_SCHED"):      # tests switch it off
+        boards.start_scheduler()
 
 
 @app.on_event("startup")
