@@ -413,5 +413,43 @@ rid = [x for x in get(f"/store/kb/boards/{PR}/rules").json()["rules"] if x["trig
 ck("Run now works", post(f"/store/kb/rules/{rid}/run").status_code == 200)
 ck("rule words readable", "every day at 08:00" in [x for x in get(f"/store/kb/boards/{PR}/rules").json()["rules"] if x["id"] == rid][0]["words"])
 
+# ---- Anoop's set-up: QS update the main board, his board follows ----------------------------------------
+MAIN = post("/store/kb/boards", {"title": "Estimation main", "lists": ["911 WS46", "913 WS25", "TENDERS / PROPOSALS"]}).json()["id"]
+ML = {l["title"]: l["id"] for l in get(f"/store/kb/boards/{MAIN}").json()["lists"]}
+AN = post("/store/kb/boards", {"title": "Anoop", "lists": ["VARIATIONS & CLAIMS", "SUBCONTRACT PAYMENTS", "TENDERS / PROPOSALS", "DONE"]}).json()["id"]
+AL = {l["title"]: l["id"] for l in get(f"/store/kb/boards/{AN}").json()["lists"]}
+old_copy = post(f"/store/kb/lists/{ML['913 WS25']}/cards", {"title": "913 - Lift Finalization - KONE / OTIS"}).json()["id"]
+post(f"/store/kb/lists/{AL['SUBCONTRACT PAYMENTS']}/cards", {"title": "913 - Lift  Finalization - kone / otis"})
+r = post(f"/store/kb/boards/{AN}/link-mirrors", {"source_board_id": MAIN})
+ck("existing copy on Anoop's board linked as a mirror", r.json()["linked"] == ["913 - Lift  Finalization - kone / otis"], r.text)
+patch(f"/store/kb/cards/{old_copy}", {"title": "913 - Lift Finalization - KONE chosen"})
+ck("...and now follows the main card", any(c["title"] == "913 - Lift Finalization - KONE chosen" for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
+for words, lst in ((["Variation", "Claim"], "VARIATIONS & CLAIMS"), (["Tilling PC", "Tiling PC"], "SUBCONTRACT PAYMENTS")):
+    r = post(f"/store/kb/boards/{MAIN}/rules", {"trigger": {"type": "card_titled", "words": words, "numbered": True},
+                                                "actions": [{"type": "mirror_board", "board_id": AN, "list_id": AL[lst]}]})
+    ck(f"title rule saved ({lst})", r.status_code == 200, r.text)
+post(f"/store/kb/boards/{MAIN}/rules", {"trigger": {"type": "card_added", "list_id": ML["TENDERS / PROPOSALS"]}, "actions": [{"type": "mirror_board", "board_id": AN, "list_id": AL["TENDERS / PROPOSALS"]}]})
+post(f"/store/kb/boards/{MAIN}/rules", {"trigger": {"type": "card_complete"}, "actions": [{"type": "move_mirror", "board_id": AN, "list_id": AL["DONE"]}]})
+v1 = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "911 - Variation for False ceiling"}).json()["id"]
+p1 = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "911 - Tilling PC"}).json()["id"]
+std = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "Variations"}).json()["id"]
+tn = post(f"/store/kb/lists/{ML['TENDERS / PROPOSALS']}/cards", {"title": "EMKAAN RFQ Landscape"}).json()["id"]
+an = get(f"/store/kb/boards/{AN}").json()
+where = {c["mirror_of"]: c["list_id"] for c in an["cards"] if c.get("mirror_of")}
+ck("QS card '911 - Variation…' appears in VARIATIONS & CLAIMS", where.get(v1) == AL["VARIATIONS & CLAIMS"], where)
+ck("'911 - Tilling PC' appears in SUBCONTRACT PAYMENTS", where.get(p1) == AL["SUBCONTRACT PAYMENTS"])
+ck("a plain 'Variations' card (no project number) is not sent", std not in where)
+ck("a new tender appears in TENDERS / PROPOSALS", where.get(tn) == AL["TENDERS / PROPOSALS"])
+r9 = post(f"/store/kb/lists/{ML['911 WS46']}/cards", {"title": "Snag list"}).json()["id"]
+patch(f"/store/kb/cards/{r9}", {"title": "911 - Claim for delay"})
+ck("renaming a card to match sends it too", {c["mirror_of"]: c["list_id"] for c in get(f"/store/kb/boards/{AN}").json()["cards"] if c.get("mirror_of")}.get(r9) == AL["VARIATIONS & CLAIMS"])
+patch(f"/store/kb/cards/{v1}", {"title": "911 - Variation for False ceiling (rev 2)"})
+ck("renaming again does not make a second mirror", len([c for c in get(f"/store/kb/boards/{AN}").json()["cards"] if c.get("mirror_of") == v1]) == 1)
+cl = post(f"/store/kb/cards/{v1}/checklists", {"title": "Steps", "items": ["Estimation", "Submission"]}).json()["id"]
+mf = [c for c in get(f"/store/kb/boards/{AN}").json()["cards"] if c.get("mirror_of") == v1][0]
+ck("QS checklist progress shows on Anoop's card", mf["check"] == [0, 2], mf["check"])
+patch(f"/store/kb/cards/{v1}", {"due_complete": True})
+ck("completed on the main board -> moved to DONE on Anoop's board", [c for c in get(f"/store/kb/boards/{AN}").json()["cards"] if c.get("mirror_of") == v1][0]["list_id"] == AL["DONE"])
+
 print(f"\n{len(fails)} failed" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)

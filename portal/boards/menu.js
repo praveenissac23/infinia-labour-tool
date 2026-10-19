@@ -275,6 +275,7 @@ const TRIG = {
   card_complete: "When a card is marked complete", card_archived: "When a card is archived", due_set: "When a due date is set on a card",
   checklist_done: "When all checklist items on a card are done", item_done: "When a checklist item is checked",
   label_added: "When a label is added to a card…", member_added: "When a member is added to a card…", comment_added: "When a comment is posted to a card",
+  card_titled: "When a card's title has the words…",
   schedule: "On a schedule (every day / week / month)", due_in: "When a card is due in … days",
 };
 const ACT = {
@@ -283,6 +284,7 @@ const ACT = {
   set_due: "Set due date … days from now", clear_due: "Remove the due date", archive: "Archive the card", comment: "Post a comment…",
   add_checklist: "Add a checklist with items…", set_cover: "Set the cover colour…", remove_cover: "Remove the cover", watch: "Watch the card",
   notify: "Notify the card's members…", sort_list: "Sort a list…",
+  move_mirror: "Move its mirror on another board to list…",
   move_board: "Move the card to another board…", copy_board: "Copy the card to another board…", mirror_board: "Mirror the card on another board (stays in sync)…",
 };
 async function automationPanel(m, show, preset) {
@@ -322,6 +324,7 @@ function actWords(a) {
     case "notify": return `notify members "${a.text}"`; case "sort_list": return `sort "${L(a.list_id)}" by ${a.by}`;
     case "move_board": return `move the card to ${B(a.board_id)} / list ${a.list_title || ""}`; case "copy_board": return `copy the card to ${B(a.board_id)} / ${a.list_title || ""}`;
     case "mirror_board": return `mirror the card on ${B(a.board_id)} / ${a.list_title || ""}`;
+    case "move_mirror": return `move its mirror on ${B(a.board_id)} to ${a.list_title || "the list"}`;
     default: return (ACT[a.type] || a.type).replace(/…$/, "").toLowerCase();
   }
 }
@@ -337,12 +340,13 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
   const boardsOpts = v => S.boards.filter(x => !x.closed).map(x => `<option value="${x.id}" ${+v === x.id ? "selected" : ""}>${esc(x.title)}${x.id === b.id ? " (this board)" : ""}</option>`).join("");
   const otherLists = {};
   const draw = async () => {
-    for (const a of acts) if (["move_board", "copy_board", "mirror_board"].includes(a.type) && a.board_id && !otherLists[a.board_id]) otherLists[a.board_id] = (await boardListsFor(+a.board_id)).lists;
+    for (const a of acts) if (["move_board", "copy_board", "mirror_board", "move_mirror"].includes(a.type) && a.board_id && !otherLists[a.board_id]) otherLists[a.board_id] = (await boardListsFor(+a.board_id)).lists;
     const trigHtml = isBtn ? `<label class="fl">Button name ${tip("Shown on the button. Card buttons appear on every card; board buttons in the board header.")}</label><input class="t" data-name value="${esc(name)}" placeholder="e.g. Start work">
         ${tab === "board_buttons" ? `<label class="fl">Run on cards in ${tip("The button runs its actions on every card in this list (or the whole board).")}</label><select class="t" data-blist><option value="">every list</option>${listOpts(blist)}</select>` : ""}`
       : `<div class="rb-step"><b>When… ${tip("What starts the rule. Scheduled rules run at a set time; due-date rules run a set number of days before cards are due.")}</b><select class="t" data-tt>${Object.entries(TRIG).filter(([k]) => tab === "schedule" ? k === "schedule" : tab === "due" ? k === "due_in" : !["schedule", "due_in"].includes(k)).map(([k, v]) => `<option value="${k}" ${trig.type === k ? "selected" : ""}>${v}</option>`).join("")}</select>
         ${["card_added", "card_moved"].includes(trig.type) ? `<select class="t" data-tl>${listOpts(trig.list_id)}</select>` : ""}
         ${trig.type === "label_added" ? `<select class="t" data-tlab><option value="">any label</option>${labelOpts(trig.label_id)}</select>` : ""}
+        ${trig.type === "card_titled" ? `<input class="t" data-tw value="${esc((trig.words || []).join(", "))}" placeholder="e.g. Variation, Claim (comma between words)"><label class="chk" style="margin-top:6px"><input type="checkbox" data-tn ${trig.numbered ? "checked" : ""}> Only titles that start with a project number (911 - …)</label>` : ""}
         ${trig.type === "member_added" ? `<select class="t" data-tmem><option value="">anyone</option>${memberOpts(trig.user_id)}</select>` : ""}
         ${trig.type === "schedule" ? `<div style="display:flex;gap:6px"><select class="t" data-ev>${[["day", "Every day"], ["weekday", "Every working day (Mon-Fri)"], ["week", "Every week on"], ["month", "Every month on day"]].map(([k, v]) => `<option value="${k}" ${trig.every === k ? "selected" : ""}>${v}</option>`).join("")}</select>
             ${trig.every === "week" ? `<select class="t" data-wd>${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((d, i) => `<option value="${i}" ${+(trig.weekday || 0) === i ? "selected" : ""}>${d}</option>`).join("")}</select>` : ""}
@@ -360,7 +364,7 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
         ${["comment", "notify"].includes(a.type) ? `<input class="t" data-af="text" data-ai="${i}" value="${esc(a.text || "")}" placeholder="${a.type === "notify" ? "Message" : "Comment"}">` : ""}
         ${a.type === "set_cover" ? `<select class="t" data-af="color" data-ai="${i}">${COVER_COLORS.map(c => `<option ${a.color === c ? "selected" : ""}>${c}</option>`).join("")}</select>` : ""}
         ${a.type === "add_checklist" ? `<input class="t" data-af="title" data-ai="${i}" value="${esc(a.title || "Checklist")}"><textarea class="t" data-af="items" data-ai="${i}" rows="3" placeholder="One item per line">${esc((a.items || []).join("\n"))}</textarea>` : ""}
-        ${["move_board", "copy_board", "mirror_board"].includes(a.type) ? `<select class="t" data-af="board_id" data-ai="${i}"><option value="">Choose a board…</option>${boardsOpts(a.board_id)}</select>${a.board_id ? `<select class="t" data-af="list_id" data-ai="${i}"><option value="">Choose a list…</option>${(otherLists[a.board_id] || []).map(l => `<option value="${l.id}" ${+a.list_id === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("")}</select><select class="t" data-af="where" data-ai="${i}"><option value="bottom">at the bottom</option><option value="top" ${a.where === "top" ? "selected" : ""}>at the top</option></select>` : ""}
+        ${["move_board", "copy_board", "mirror_board", "move_mirror"].includes(a.type) ? `<select class="t" data-af="board_id" data-ai="${i}"><option value="">Choose a board…</option>${boardsOpts(a.board_id)}</select>${a.board_id ? `<select class="t" data-af="list_id" data-ai="${i}"><option value="">Choose a list…</option>${(otherLists[a.board_id] || []).map(l => `<option value="${l.id}" ${+a.list_id === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("")}</select><select class="t" data-af="where" data-ai="${i}"><option value="bottom">at the bottom</option><option value="top" ${a.where === "top" ? "selected" : ""}>at the top</option></select>` : ""}
           ${a.type === "mirror_board" ? '<p class="muted" style="margin:6px 0 0">The mirror is the same card: edit it on either board and both update.</p>' : ""}` : ""}</div>`).join("");
     const body = show(isBtn ? "Create button" : "Create rule", `${trigHtml}${actHtml}
       <div class="rb-step"><b>${acts.length ? "Add another action" : "Then…"}</b><select class="t" data-add><option value="">Choose an action…</option>${Object.entries(ACT).filter(([k]) => tab !== "card_buttons" || !["sort_list"].includes(k)).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
@@ -368,7 +372,9 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
     m.querySelector("[data-back]").onclick = back;
     const sel = (s, fn) => { const e = body.querySelector(s); if (e) e.onchange = ev => { fn(ev.target.value); draw(); }; };
     sel("[data-tt]", v => { trig = { type: v }; if (v === "schedule") Object.assign(trig, { every: "day", time: "09:00", cards: "all" }); if (v === "due_in") trig.days = 1; if (["card_added", "card_moved"].includes(v)) trig.list_id = b.lists[0] && b.lists[0].id; });
-    sel("[data-tl]", v => trig.list_id = +v); sel("[data-tlab]", v => trig.label_id = v ? +v : undefined); sel("[data-tmem]", v => trig.user_id = v ? +v : undefined);
+    sel("[data-tl]", v => trig.list_id = +v);
+    const tw = body.querySelector("[data-tw]"); if (tw) tw.onchange = () => { trig.words = tw.value.split(",").map(x => x.trim()).filter(Boolean); };
+    const tn = body.querySelector("[data-tn]"); if (tn) tn.onchange = () => { trig.numbered = tn.checked; }; sel("[data-tlab]", v => trig.label_id = v ? +v : undefined); sel("[data-tmem]", v => trig.user_id = v ? +v : undefined);
     sel("[data-ev]", v => trig.every = v); sel("[data-wd]", v => trig.weekday = +v); sel("[data-md]", v => trig.day = +v); sel("[data-tm]", v => trig.time = v);
     sel("[data-scl]", v => trig.list_id = v ? +v : undefined); sel("[data-sc]", v => trig.cards = v); sel("[data-dd]", v => trig.days = +v);
     const nm = body.querySelector("[data-name]"); if (nm) nm.oninput = () => name = nm.value;
@@ -377,7 +383,7 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
       const a = acts[+e.dataset.ai], f = e.dataset.af;
       a[f] = f === "items" ? e.value.split("\n").map(x => x.trim()).filter(Boolean) : ["list_id", "label_id", "user_id", "board_id", "days"].includes(f) ? (e.value === "" ? "" : +e.value) : e.value;
       if (f === "board_id") { a.list_id = ""; }
-      if (f === "list_id" && ["move_board", "copy_board", "mirror_board"].includes(a.type)) a.list_title = (e.options[e.selectedIndex] || {}).text || "";
+      if (f === "list_id" && ["move_board", "copy_board", "mirror_board", "move_mirror"].includes(a.type)) a.list_title = (e.options[e.selectedIndex] || {}).text || "";
       draw();
     });
     $$("[data-arm]", body).forEach(e => e.onclick = () => { acts.splice(+e.dataset.arm, 1); draw(); });

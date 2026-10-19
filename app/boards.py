@@ -637,10 +637,10 @@ def _mentions(db, text):
 # ---- automation (Butler) --------------------------------------------------------------------------
 
 TRIGGERS = ("card_added", "card_moved", "card_complete", "checklist_done", "label_added", "member_added", "card_created",
-            "card_archived", "due_set", "comment_added", "item_done", "schedule", "due_in")
+            "card_archived", "due_set", "comment_added", "item_done", "schedule", "due_in", "card_titled")
 ACTIONS = ("move", "complete", "incomplete", "add_label", "remove_label", "add_member", "remove_member",
            "set_due", "clear_due", "archive", "comment", "add_checklist", "join", "move_top", "set_cover",
-           "move_board", "copy_board", "mirror_board", "notify", "sort_list", "remove_cover", "watch")
+           "move_board", "copy_board", "mirror_board", "notify", "sort_list", "remove_cover", "watch", "move_mirror")
 EVENT_TRIGGERS = set(TRIGGERS) - {"schedule", "due_in"}
 
 
@@ -657,7 +657,18 @@ def _run_rules(db, board, card, user, event, depth=0, **ctx):
             continue
         if t.get("user_id") and int(t["user_id"]) != int(ctx.get("user_id") or 0):
             continue
+        if t.get("type") == "card_titled" and not _title_matches(t, card.title):
+            continue
         _fire(db, r, board, card, user, depth)
+
+
+def _title_matches(t, title):
+    """'When a card's title has any of these words' - optionally only titles that start with a project number (911 - ...)."""
+    ttl = (title or "").lower()
+    if t.get("numbered") and not re.match(r"^\s*\d{3}\b", ttl):
+        return False
+    words = [w.strip().lower() for w in (t.get("words") or []) if str(w).strip()]
+    return any(re.search(r"(^|[^a-z])" + re.escape(w) + r"($|[^a-z])", ttl) for w in words)
 
 
 def _fire(db, r, board, card, user, depth=0):
@@ -702,6 +713,10 @@ def _do_action(db, board, card, user, a, depth, rule=None):
         key = f"{k}:{card.id}:{tl.id}"
         if k != "move_board" and st.get(key) and db.query(KCard).filter(KCard.id == st[key], KCard.closed == False).first():  # noqa: E712
             return f"already on {tb.title}"
+        if k == "mirror_board":
+            src_id = card.mirror_of or card.id
+            if db.query(KCard).filter(KCard.mirror_of == src_id, KCard.board_id == tb.id, KCard.closed == False).first():  # noqa: E712
+                return f"already mirrored on {tb.title}"
         pos = _top_pos(db, KCard, list_id=tl.id) if a.get("where") == "top" else _end_pos(db, KCard, list_id=tl.id)
         if k == "move_board":
             if tb.id == board.id:
@@ -736,6 +751,21 @@ def _do_action(db, board, card, user, a, depth, rule=None):
             rule.state = json.dumps(st)
         _touch(db, tb)
         return f"{'mirrored' if k == 'mirror_board' else 'copied'} to {tb.title} / {tl.title}"
+    if k == "move_mirror":
+        tb = db.query(KBoard).filter(KBoard.id == int(a.get("board_id") or 0)).first()
+        tl = tb and db.query(KList).filter(KList.id == int(a.get("list_id") or 0), KList.board_id == tb.id).first()
+        if not tl:
+            return "skipped: the other board or list is gone"
+        src_id = card.mirror_of or card.id
+        n = 0
+        for m in db.query(KCard).filter(KCard.mirror_of == src_id, KCard.board_id == tb.id, KCard.closed == False).all():  # noqa: E712
+            if m.list_id != tl.id:
+                m.list_id = tl.id
+                m.pos = _top_pos(db, KCard, list_id=tl.id) if a.get("where") == "top" else _end_pos(db, KCard, list_id=tl.id)
+                n += 1
+        if n:
+            _touch(db, tb)
+        return f"moved {n} mirror(s) on {tb.title} to {tl.title}"
     if k == "notify":
         txt = (a.get("text") or "needs attention").strip()[:300]
         for uid in set(_j(card.members, [])) | set(_j(card.watchers, [])):
@@ -813,7 +843,8 @@ def _rule_words(db, r):
          "label_added": "when a label is added", "member_added": "when a member is added",
          "card_created": "when a card is created", "card_archived": "when a card is archived",
          "due_set": "when a due date is set on a card", "comment_added": "when a comment is posted to a card",
-         "item_done": "when a checklist item is checked"}.get(t.get("type"), "when")
+         "item_done": "when a checklist item is checked",
+         "card_titled": "when a card's title has " + " / ".join(f'"{w}"' for w in (t.get("words") or [])[:6]) + (" (titles starting with a project number)" if t.get("numbered") else "")}.get(t.get("type"), "when")
     if t.get("type") == "schedule":
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         w = {"day": "every day", "weekday": "every working day", "week": f"every {days[int(t.get('weekday') or 0) % 7]}",
@@ -1408,6 +1439,7 @@ def add_card(lid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         _act(db, b, user, "card_added", c, list=l.title, title=t)
         _run_rules(db, b, c, user, "card_created", list_id=l.id)
         _run_rules(db, b, c, user, "card_added", list_id=l.id)
+        _run_rules(db, b, c, user, "card_titled", list_id=l.id)
         out.append(c.id)
     _renumber_if_tight(db, KCard, list_id=l.id)
     _ensure_member(db, b, user)
@@ -1488,6 +1520,7 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         if t and t != c.title:
             _act(db, b, user, "card_renamed", c, old=c.title, new=t)
             c.title = t
+            events.append(("card_titled", {}))
     if "desc" in payload:
         if (payload["desc"] or "") != (c.desc or ""):
             _act(db, b, user, "card_desc", c)
@@ -2125,6 +2158,8 @@ def _clean_rule(payload, db=None, user=None):
         if t.get("every") not in ("day", "weekday", "week", "month"):
             raise HTTPException(status_code=400, detail="Every day, week or month?")
         t["time"] = (t.get("time") or "09:00")[:5]
+    if t["type"] == "card_titled" and not [w for w in (t.get("words") or []) if str(w).strip()]:
+        raise HTTPException(status_code=400, detail="Type the words to look for in the card title.")
     if t["type"] == "due_in":
         try:
             t["days"] = int(t.get("days"))
@@ -2551,6 +2586,34 @@ def mirror_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_d
     _touch(db, tb)
     db.commit()
     return {"id": m.id}
+
+
+@router.post("/store/kb/boards/{bid}/link-mirrors")
+def link_mirrors(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Cards on this board that are copies of cards on the main board (same title) become mirrors of them,
+    so from now on they show the main card - updated wherever it is changed. Each stays in its own list."""
+    b, _ = _board(db, user, bid, "edit")
+    src, _r = _board(db, user, int(payload.get("source_board_id") or 0))
+    norm = lambda x: re.sub(r"\s+", " ", (x or "").strip().lower())
+    by_title = {}
+    for c in db.query(KCard).filter(KCard.board_id == src.id, KCard.mirror_of == None).order_by(KCard.closed, KCard.id).all():  # noqa: E711
+        by_title.setdefault(norm(c.title), c)
+    linked, missing = [], []
+    for c in db.query(KCard).filter(KCard.board_id == b.id, KCard.closed == False, KCard.mirror_of == None).all():  # noqa: E711,E712
+        s = by_title.get(norm(c.title))
+        if not s:
+            missing.append(c.title)
+            continue
+        if payload.get("dry_run"):
+            linked.append(c.title)
+            continue
+        c.mirror_of = s.id
+        linked.append(c.title)
+        _act(db, b, user, "card_mirrored", c, source=s.title, frm=src.title)
+    if not payload.get("dry_run"):
+        _touch(db, b)
+        db.commit()
+    return {"linked": linked, "not_found": missing}
 
 
 @router.get("/store/kb/inbox")
