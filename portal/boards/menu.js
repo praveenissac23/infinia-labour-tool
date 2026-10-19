@@ -4,6 +4,7 @@ function boardMenu(section, preset) {
   let m = $("#bmenu");
   if (m && !section) { m.remove(); return; }
   if (!m) { m = h(`<aside id="bmenu"><div class="bm-h"><span data-back></span><h2></h2><button class="x" data-x>${ic("x")}</button></div><div class="bm-b"></div></aside>`); $("#board").appendChild(m); m.querySelector("[data-x]").onclick = () => m.remove(); }
+  { const bh = $("#bhead"); if (bh) m.style.top = (bh.offsetTop + bh.offsetHeight) + "px"; }    // the board header stays usable
   const show = (title, html, back = true) => {
     m.querySelector("h2").textContent = title;
     m.querySelector("[data-back]").outerHTML = back ? `<button class="x" data-back>${ic("left")}</button>` : "<span data-back></span>";
@@ -32,7 +33,7 @@ function boardMenu(section, preset) {
       <hr>
       <button class="mi" data-s="copy">${ic("copy", "s20")} Copy board</button>
       ${admin ? `<button class="mi" data-s="template">${ic("tpl", "s20")} ${b.is_template ? "Stop being a template" : "Make template"}</button>` : ""}
-      <button class="mi" data-s="leave">${ic("leave", "s20")} Leave board</button>
+      ${b.members.some(x => x.id === S.me.id) && !(b.members.filter(x => x.board_role === "admin").length === 1 && (b.members.find(x => x.id === S.me.id) || {}).board_role === "admin") ? `<button class="mi" data-s="leave">${ic("leave", "s20")} Leave board</button>` : ""}
       ${admin ? `<button class="mi" data-s="close" style="color:var(--danger)">${ic("archive", "s20")} Close board</button>` : ""}`, false);
     $$("[data-s]", body).forEach(x => x.onclick = () => boardMenu(x.dataset.s));
     return;
@@ -213,17 +214,19 @@ function boardMenu(section, preset) {
         if (k === "link") return copyText(cardUrl(b.id), "Link copied");
         if (k === "print") return window.print();
         if (k === "json") { const d = await GET(`/store/kb/boards/${b.id}/json`); const blob = new Blob([JSON.stringify(d, null, 1)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = b.title.replace(/[^\w]+/g, "_") + ".json"; a.click(); return; }
+        // The new tab is opened on the tap itself (Safari on a phone blocks one opened later).
+        const w = k !== "share" ? window.open("about:blank", "_blank") : null;
         const t = await POST("/auth/download-token").catch(() => null);
         const tok = t && (t.token || t.download_token);
-        if (!tok) throw new Error("Could not make the download link.");
+        if (!tok) { if (w) w.close(); throw new Error("Could not make the download link."); }
         const url = `/export/kb/${b.id}?token=${encodeURIComponent(tok)}&${q}&format=${k === "share" ? "pdf" : k}`;
         if (k === "share") {
           const r = await fetch(url); const blob = await r.blob(); const file = new File([blob], b.title.replace(/[^\w]+/g, "_") + ".pdf", { type: "application/pdf" });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: b.title });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: b.title }); } catch (er) { if (er.name !== "AbortError") { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); } } }
           else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast("Sharing isn't available here - the PDF was downloaded"); }
           return;
         }
-        window.open(url, "_blank");
+        if (w) w.location = url; else window.open(url, "_blank");
       } catch (e) { fail(e); }
     });
     return;
@@ -299,18 +302,19 @@ async function automationPanel(m, show, preset) {
       ${btns ? btns.map((x, i) => `<div class="rule"><div class="rh">${ic("btn")}<div class="rt"><b>${esc(x.name)}</b><div class="rr">${(x.actions || []).map(a => esc(actWords(a))).join(" · ")}${x.list_id ? ` · on cards in "${esc(lists[x.list_id] || "?")}"` : ""}</div></div><button class="x" data-bdel="${i}">${ic("trash", "s14")}</button></div></div>`).join("") || `<p class="muted">${tab === "card_buttons" ? "Card buttons show on the back of every card. One click runs their actions on that card." : "Board buttons show in the board header. One click runs their actions on every card in a list."}</p>`
       : rules.map(r => `<div class="rule"><div class="rh"><button class="tgl ${r.enabled ? "on" : ""}" data-en="${r.id}" title="On / off"></button><div class="rt"><b>${esc(r.words)}</b>, ${r.actions.map(a => esc(actWords(a))).join(", then ")}
           <div class="rr">Ran ${r.runs} time${r.runs === 1 ? "" : "s"}${r.log && r.log[0] ? " · last " + ago(r.log[0].at) : ""} ${r.log && r.log.length ? `· <a data-log="${r.id}" style="cursor:pointer;text-decoration:underline">log</a>` : ""}</div></div>
-          ${r.trigger.type === "schedule" ? `<button class="x" data-run="${r.id}" title="Run now">${ic("bolt", "s14")}</button>` : ""}<button class="x" data-rdel="${r.id}" title="Delete">${ic("trash", "s14")}</button></div><div data-logbox="${r.id}" class="hide" style="margin-top:6px;font-size:12px">${(r.log || []).map(l => `<div class="muted">${ago(l.at)} · ${esc(l.card || "board")} · ${esc((l.did || []).join(", "))}</div>`).join("")}</div></div>`).join("") || `<p class="muted">${tab === "rules" ? "Rules run when something happens on a card - including moving, copying or mirroring it to another board." : tab === "schedule" ? "Scheduled commands run every day, week or month at a set time." : "Due date commands run a set number of days before or after cards are due."}</p>`}
+          <button class="x" data-run="${r.id}" title="${r.trigger.type === "schedule" || r.trigger.type === "due_in" ? "Run now" : "Run now on the cards already on the board"}">${ic("bolt", "s14")}</button><button class="x" data-redit="${r.id}" title="Edit">${ic("edit", "s14")}</button><button class="x" data-rdel="${r.id}" title="Delete">${ic("trash", "s14")}</button></div><div data-logbox="${r.id}" class="hide" style="margin-top:6px;font-size:12px">${(r.log || []).map(l => `<div class="muted">${ago(l.at)} · ${esc(l.card || "board")} · ${esc((l.did || []).join(", "))}</div>`).join("")}</div></div>`).join("") || `<p class="muted">${tab === "rules" ? "Rules run when something happens on a card - including moving, copying or mirroring it to another board." : tab === "schedule" ? "Scheduled commands run every day, week or month at a set time." : "Due date commands run a set number of days before or after cards are due."}</p>`}
       <button class="b pri" style="width:100%;margin-top:8px" data-new>${ic("plus", "s14")} ${btns ? "Create button" : "Create rule"}</button>`);
     $$("[data-tab]", body).forEach(x => x.onclick = () => { tab = x.dataset.tab; draw(); });
     $$("[data-en]", body).forEach(x => x.onclick = async () => { const r = d.rules.find(y => y.id === +x.dataset.en); await PATCH(`/store/kb/rules/${r.id}`, { enabled: !r.enabled }); draw(); });
     $$("[data-rdel]", body).forEach(x => x.onclick = () => confirmPop(x, "Delete rule?", "The rule will stop running. There is no undo.", "Delete", async () => { await DEL(`/store/kb/rules/${x.dataset.rdel}`); await reloadBoard(true); draw(); }));
-    $$("[data-run]", body).forEach(x => x.onclick = async () => { try { const r = await POST(`/store/kb/rules/${x.dataset.run}/run`); toast(`Ran on ${r.cards} card${r.cards === 1 ? "" : "s"}`); await reloadBoard(true); draw(); } catch (e) { fail(e); } });
+    $$("[data-run]", body).forEach(x => x.onclick = async () => { if (x.disabled) return; x.disabled = true; try { const r = await POST(`/store/kb/rules/${x.dataset.run}/run`); toast(`Ran on ${r.cards} card${r.cards === 1 ? "" : "s"}`); await reloadBoard(true); draw(); } catch (e) { fail(e); x.disabled = false; } });
+    $$("[data-redit]", body).forEach(x => x.onclick = () => { const r = d.rules.find(y => y.id === +x.dataset.redit); ruleBuilder(m, show, ["schedule", "due_in"].includes(r.trigger.type) ? (r.trigger.type === "schedule" ? "schedule" : "due") : "rules", r.trigger, () => draw(), r); });
     $$("[data-log]", body).forEach(x => x.onclick = () => body.querySelector(`[data-logbox="${x.dataset.log}"]`).classList.toggle("hide"));
     $$("[data-bdel]", body).forEach(x => x.onclick = async () => { const key = tab; const arr = [...(b.prefs[key] || [])]; arr.splice(+x.dataset.bdel, 1); await PATCH(`/store/kb/boards/${b.id}`, { prefs: { [key]: arr } }); await reloadBoard(true); draw(); });
     body.querySelector("[data-new]").onclick = () => ruleBuilder(m, show, tab, preset && preset.trigger, () => { preset = null; draw(); });
   };
   await draw();
-  if (preset && preset.trigger) ruleBuilder(m, show, "rules", preset.trigger, () => { preset = null; draw(); });
+  if (preset && preset.trigger) ruleBuilder(m, show, preset.tab || "rules", preset.trigger, () => { preset = null; draw(); }, preset.actions ? { actions: preset.actions } : null);
 }
 function actWords(a) {
   const b = S.board; const L = id => (b.lists.find(l => l.id === +id) || {}).title || "?"; const LB = id => { const l = b.labels.find(x => x.id === +id); return l ? (l.name || l.color) : "?"; };
@@ -328,15 +332,17 @@ function actWords(a) {
     default: return (ACT[a.type] || a.type).replace(/…$/, "").toLowerCase();
   }
 }
-async function ruleBuilder(m, show, tab, presetTrigger, back) {
+async function ruleBuilder(m, show, tab, presetTrigger, back, editing) {
   const b = S.board;
   await refreshBoards();
   const isBtn = tab === "card_buttons" || tab === "board_buttons";
   let trig = presetTrigger ? { ...presetTrigger } : tab === "schedule" ? { type: "schedule", every: "day", time: "09:00", cards: "all" } : tab === "due" ? { type: "due_in", days: 1 } : { type: "card_moved" };
-  let acts = [], name = "", blist = "";
+  let acts = editing && editing.actions ? JSON.parse(JSON.stringify(editing.actions)) : [], name = "", blist = "";
+  const editId = editing && editing.id;
   const listOpts = (v) => b.lists.map(l => `<option value="${l.id}" ${+v === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("");
   const labelOpts = v => b.labels.map(l => `<option value="${l.id}" ${+v === l.id ? "selected" : ""}>${esc(l.name || l.color)}</option>`).join("");
-  const memberOpts = v => b.members.map(p => `<option value="${p.id}" ${+v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  // Everyone who can work on the board (a Workspace board's people, not only its listed members).
+  const memberOpts = v => [...b.people].sort((x, y) => x.name.localeCompare(y.name)).map(p => `<option value="${p.id}" ${+v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
   const boardsOpts = v => S.boards.filter(x => !x.closed).map(x => `<option value="${x.id}" ${+v === x.id ? "selected" : ""}>${esc(x.title)}${x.id === b.id ? " (this board)" : ""}</option>`).join("");
   const otherLists = {};
   const draw = async () => {
@@ -366,14 +372,14 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
         ${a.type === "add_checklist" ? `<input class="t" data-af="title" data-ai="${i}" value="${esc(a.title || "Checklist")}"><textarea class="t" data-af="items" data-ai="${i}" rows="3" placeholder="One item per line">${esc((a.items || []).join("\n"))}</textarea>` : ""}
         ${["move_board", "copy_board", "mirror_board", "move_mirror"].includes(a.type) ? `<select class="t" data-af="board_id" data-ai="${i}"><option value="">Choose a board…</option>${boardsOpts(a.board_id)}</select>${a.board_id ? `<select class="t" data-af="list_id" data-ai="${i}"><option value="">Choose a list…</option>${(otherLists[a.board_id] || []).map(l => `<option value="${l.id}" ${+a.list_id === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("")}</select><select class="t" data-af="where" data-ai="${i}"><option value="bottom">at the bottom</option><option value="top" ${a.where === "top" ? "selected" : ""}>at the top</option></select>` : ""}
           ${a.type === "mirror_board" ? '<p class="muted" style="margin:6px 0 0">The mirror is the same card: edit it on either board and both update.</p>' : ""}` : ""}</div>`).join("");
-    const body = show(isBtn ? "Create button" : "Create rule", `${trigHtml}${actHtml}
+    const body = show(isBtn ? "Create button" : editId ? "Edit rule" : "Create rule", `${trigHtml}${actHtml}
       <div class="rb-step"><b>${acts.length ? "Add another action" : "Then…"}</b><select class="t" data-add><option value="">Choose an action…</option>${Object.entries(ACT).filter(([k]) => tab !== "card_buttons" || !["sort_list"].includes(k)).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="b pri" data-save>Save</button><button class="b sub" data-cancel>Cancel</button></div>`);
     m.querySelector("[data-back]").onclick = back;
     const sel = (s, fn) => { const e = body.querySelector(s); if (e) e.onchange = ev => { fn(ev.target.value); draw(); }; };
     sel("[data-tt]", v => { trig = { type: v }; if (v === "schedule") Object.assign(trig, { every: "day", time: "09:00", cards: "all" }); if (v === "due_in") trig.days = 1; if (["card_added", "card_moved"].includes(v)) trig.list_id = b.lists[0] && b.lists[0].id; });
     sel("[data-tl]", v => trig.list_id = +v);
-    const tw = body.querySelector("[data-tw]"); if (tw) tw.onchange = () => { trig.words = tw.value.split(",").map(x => x.trim()).filter(Boolean); };
+    const tw = body.querySelector("[data-tw]"); if (tw) tw.oninput = () => { trig.words = tw.value.split(",").map(x => x.trim()).filter(Boolean); };
     const tn = body.querySelector("[data-tn]"); if (tn) tn.onchange = () => { trig.numbered = tn.checked; }; sel("[data-tlab]", v => trig.label_id = v ? +v : undefined); sel("[data-tmem]", v => trig.user_id = v ? +v : undefined);
     sel("[data-ev]", v => trig.every = v); sel("[data-wd]", v => trig.weekday = +v); sel("[data-md]", v => trig.day = +v); sel("[data-tm]", v => trig.time = v);
     sel("[data-scl]", v => trig.list_id = v ? +v : undefined); sel("[data-sc]", v => trig.cards = v); sel("[data-dd]", v => trig.days = +v);
@@ -393,7 +399,7 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
       if (["move", "move_top", "sort_list"].includes(t)) a.list_id = b.lists[0] && b.lists[0].id;
       if (t === "sort_list") a.by = "due";
       if (["add_label", "remove_label"].includes(t)) a.label_id = b.labels[0] && b.labels[0].id;
-      if (["add_member", "remove_member"].includes(t)) a.user_id = b.members[0] && b.members[0].id;
+      if (["add_member", "remove_member"].includes(t)) a.user_id = b.people[0] && b.people[0].id;
       if (t === "set_due") { a.days = 1; a.time = "17:00"; } if (t === "set_cover") a.color = "green"; if (t === "add_checklist") { a.title = "Checklist"; a.items = []; }
       acts.push(a); draw();
     };
@@ -405,8 +411,9 @@ async function ruleBuilder(m, show, tab, presetTrigger, back) {
           if (!name.trim()) { toast("Give the button a name", { err: true }); return; }
           const arr = [...(b.prefs[tab] || []), { name: name.trim(), actions: acts, ...(blist ? { list_id: +blist } : {}) }];
           await PATCH(`/store/kb/boards/${b.id}`, { prefs: { [tab]: arr } });
-        } else await POST(`/store/kb/boards/${b.id}/rules`, { trigger: trig, actions: acts });
-        await reloadBoard(true); toast(isBtn ? "Button saved" : "Rule saved - it is on"); back();
+        } else if (editId) await PATCH(`/store/kb/rules/${editId}`, { trigger: trig, actions: acts });
+        else await POST(`/store/kb/boards/${b.id}/rules`, { trigger: trig, actions: acts });
+        await reloadBoard(true); toast(isBtn ? "Button saved" : editId ? "Rule saved" : "Rule saved - it is on"); back();
       } catch (e) { fail(e); }
     };
   };

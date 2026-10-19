@@ -560,7 +560,7 @@ def _cover_atts(db, cards):
     return {a.id: _att_out(a) for a in db.query(KAttachment).filter(KAttachment.id.in_(ids)).all()}
 
 
-def _mirror_fill(db, fronts):
+def _mirror_fill(db, fronts, here=None):
     """A mirror card shows its source: title, dates, badges and the source's labels by name and colour."""
     src_ids = [f["mirror_of"] for f in fronts if f.get("mirror_of")]
     if not src_ids:
@@ -571,6 +571,7 @@ def _mirror_fill(db, fronts):
     labels = {l.id: {"name": l.name, "color": l.color} for l in db.query(KLabel).filter(KLabel.board_id.in_([c.board_id for c in src.values()] or [0])).all()}
     boards = {b.id: b.title for b in db.query(KBoard).filter(KBoard.id.in_([c.board_id for c in src.values()] or [0])).all()}
     list_titles = {l.id: l.title or "" for l in db.query(KList).filter(KList.id.in_([c.list_id for c in src.values()] or [0])).all()}
+    here_labels = {((l.name or ""), (l.color or "")): l.id for l in db.query(KLabel).filter(KLabel.board_id == here).all()} if here else {}
     for f in fronts:
         c = src.get(f.get("mirror_of"))
         if not c:
@@ -586,6 +587,9 @@ def _mirror_fill(db, fronts):
             sf["title"] = f'{NUMBERED.match(lt).group(0).strip()} - {sf["title"]}'
         for k in ("title", "due", "start", "due_complete", "cover", "comments", "attachments", "check", "desc", "members", "no"):
             f[k] = sf[k]
+        if here:    # the source's labels, as this board's labels of the same name and colour (for the filter)
+            f["labels"] = [here_labels[(labels[x]["name"] or "", labels[x]["color"] or "")] for x in sf["labels"]
+                           if x in labels and (labels[x]["name"] or "", labels[x]["color"] or "") in here_labels]
 
 
 def _board_out(db, b, user, role, include_closed=False):
@@ -626,7 +630,7 @@ def _fronts_with_mirrors(db, cards, counts, atts, me):
     fr = [_front(c, counts, atts, me) for c in cards]
     for f in fr:
         f["_me"] = me
-    _mirror_fill(db, fr)
+    _mirror_fill(db, fr, cards[0].board_id if cards else None)
     for f in fr:
         f.pop("_me", None)
     # A mirror whose card was archived leaves the board with it (it comes back when the card is restored).
@@ -725,10 +729,22 @@ def _fire(db, r, board, card, user, depth=0):
     r.log = json.dumps(lg[:30])
 
 
+MIRROR_PLACE_ACTIONS = ("move", "move_top", "archive", "move_board", "copy_board", "mirror_board", "move_mirror", "sort_list")
+
+
 def _do_action(db, board, card, user, a, depth, rule=None):
     k = a.get("type")
     if card is None and k != "sort_list":
         return None
+    src = _source_of(db, card) if k not in MIRROR_PLACE_ACTIONS else None
+    if src is not None:     # a rule changing a mirror's content changes the card it shows
+        sb = db.query(KBoard).filter(KBoard.id == src.board_id).first()
+        if sb is not None:
+            if k in ("add_label", "remove_label") and a.get("label_id"):
+                m = _map_labels(db, [int(a["label_id"])], board.id, sb.id)
+                a = {**a, "label_id": m[0] if m else 0}
+            card, board = src, sb
+            _touch(db, sb)
     if k == "sort_list":
         lst = db.query(KList).filter(KList.id == int(a.get("list_id") or 0), KList.board_id == board.id).first()
         if lst:
@@ -1171,6 +1187,8 @@ def copy_board(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
 @router.post("/store/kb/boards/{bid}/members")
 def add_member(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
     b, role = _board(db, user, bid)
+    if role == "observer":
+        raise HTTPException(status_code=403, detail="Observers cannot add people to the board.")
     if role != "admin" and b.visibility == "private":
         raise HTTPException(status_code=403, detail="Only an admin of this private board can add people.")
     ids = payload.get("user_ids") or ([payload["user_id"]] if payload.get("user_id") else [])
@@ -1505,7 +1523,8 @@ def _card_full(db, c, b, user, role):
                     "items": [{"id": i.id, "text": i.text, "done": bool(i.done), "pos": i.pos, "due": i.due or "",
                                "member": i.member} for i in items]})
     comments = db.query(KComment).filter(KComment.card_id == c.id).order_by(KComment.created_at.desc()).all()
-    acts = db.query(KActivity).filter(KActivity.card_id == c.id).order_by(KActivity.created_at.desc()).limit(200).all()
+    acts = (db.query(KActivity).filter(KActivity.card_id == c.id, KActivity.kind != "comment")    # comments show as comments
+            .order_by(KActivity.created_at.desc()).limit(200).all())
     lst = db.query(KList).filter(KList.id == c.list_id).first()
     return {**front, "desc": c.desc or "", "list_title": lst.title if lst else "", "board_id": b.id, "board_title": b.title,
             "role": role, "watchers": _j(c.watchers, []),
@@ -1601,8 +1620,9 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         rest = {k: v for k, v in payload.items() if k not in MIRROR_OWN}
         if rest:
             sb, _sr = _board(db, user, src.board_id, "edit")
-            if "labels" in rest:
-                rest["labels"] = _map_labels(db, rest["labels"] or [], raw.board_id, src.board_id)
+            for lk in ("labels", "add_labels", "remove_labels"):
+                if lk in rest:
+                    rest[lk] = _map_labels(db, rest[lk] or [], raw.board_id, src.board_id)
             _edit_card(db, user, src, sb, rest)
         if own:
             out = _edit_card(db, user, raw, rb, own)
@@ -1616,6 +1636,15 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
 
 def _edit_card(db, user, c, b, payload):
     events = []
+    for k in ("labels", "members"):
+        add, rem = payload.pop("add_" + k, None), payload.pop("remove_" + k, None)
+        if add is not None or rem is not None:
+            cur = [int(x) for x in _j(getattr(c, k), [])]
+            for x in add or []:
+                if int(x) not in cur:
+                    cur.append(int(x))
+            cur = [x for x in cur if x not in {int(y) for y in rem or []}]
+            payload[k] = cur
     if "title" in payload:
         t = (payload["title"] or "").strip()[:2000]
         if t and t != c.title:
@@ -1983,6 +2012,7 @@ def add_comment(cid: int, payload: dict = Body(...), db: Session = Depends(get_d
         if uid not in told:
             _note(db, uid, user, b, c, "comment", f"commented on {c.title}: {t[:160]}")
     c.updated_at = _now()
+    _act(db, b, user, "comment", c, title=c.title, text=t[:200])
     db.flush()
     _run_rules(db, b, c, user, "comment_added")
     _touch(db, b)

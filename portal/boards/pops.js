@@ -36,27 +36,55 @@ window.addEventListener("resize", () => $$(".pop").forEach(p => placePop(p, p._a
 
 // ---------- the card being worked on ----------
 function cardOf(cid) { return S.cards[cid] || (S.full && S.full.id === cid ? S.full : null); }
-async function saveCard(cid, patch, opt = {}) {
+// What a change does to a card, shown at once (add_/remove_ labels and members included).
+function applyPatch(o, patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    const m = k.match(/^(add|remove)_(labels|members)$/);
+    if (m) { const cur = (o[m[2]] || []).slice(); if (m[1] === "add") v.forEach(x => { if (!cur.includes(x)) cur.push(x); }); o[m[2]] = m[1] === "add" ? cur : cur.filter(x => !v.includes(x)); }
+    else o[k] = v;
+  }
+}
+// Saves for one card go one after another, so quick clicks never undo each other.
+const SAVE_Q = {}, SAVE_N = {};
+function saveCard(cid, patch, opt = {}) {
   const c = S.cards[cid];
   const before = c ? JSON.parse(JSON.stringify(c)) : null;
-  if (c) { Object.assign(c, patch); if (!opt.noRender) renderCardEl(cid); }
-  if (S.full && S.full.id === cid) { Object.assign(S.full, patch); if (!opt.noRender) renderCardModal(); }
-  try {
-    const r = await PATCH(`/store/kb/cards/${cid}`, patch);
-    if (r && c) { if (r.pos !== undefined) c.pos = r.pos; if (r.list_id) c.list_id = r.list_id; }
-    if (opt.reload !== false) await reloadBoard(true);
-    if (S.openCard === cid && opt.reloadCard !== false) await loadFullCard(cid, true);
-    return r;
-  } catch (e) {
-    if (before) { S.cards[cid] = before; renderCardEl(cid); }
-    fail(e); throw e;
-  }
+  if (c) { applyPatch(c, patch); if (!opt.noRender) renderCardEl(cid); }
+  if (S.full && S.full.id === cid) { applyPatch(S.full, patch); if (!opt.noRender && (opt.force || !cardBusy())) renderCardModal(); }
+  SAVE_N[cid] = (SAVE_N[cid] || 0) + 1;
+  const run = async () => {
+    try {
+      const r = await PATCH(`/store/kb/cards/${cid}`, patch);
+      const cc = S.cards[cid];
+      if (r && cc) { if (r.pos !== undefined) cc.pos = r.pos; if (r.list_id) cc.list_id = r.list_id; }
+      if (--SAVE_N[cid] === 0) {       // the last of a run of quick changes brings the board up to date
+        if (opt.reload !== false) await reloadBoard(true);
+        if (S.openCard === cid && opt.reloadCard !== false) await loadFullCard(cid, true);
+      }
+      return r;
+    } catch (e) {
+      SAVE_N[cid]--;
+      if (before && S.cards[cid]) { S.cards[cid] = before; renderCardEl(cid); }
+      fail(e); throw e;
+    }
+  };
+  const p = (SAVE_Q[cid] || Promise.resolve()).catch(() => {}).then(run);
+  SAVE_Q[cid] = p;
+  return p;
+}
+// Someone is typing on the open card: it is not redrawn under them.
+function cardBusy() {
+  const ov = document.getElementById("cm-ov"); if (!ov) return false;
+  const a = document.activeElement;
+  if (a && ov.contains(a) && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && a.type !== "checkbox"))) return true;
+  return [...ov.querySelectorAll("#cmt-ed, #desc-ed, [data-ebox] textarea")].some(t => t.value.trim());
 }
 
 // ---------- labels ----------
 function labelsPop(anchor, cid, opt = {}) {
-  const c = cardOf(cid); if (!c) return;
+  if (!cardOf(cid)) return;
   const draw = (q = "") => {
+    const c = cardOf(cid) || { labels: [] };
     const ls = S.board.labels.filter(l => !q || (l.name || l.color).toLowerCase().includes(q.toLowerCase()));
     return `<input class="t" placeholder="Search labels..." data-q value="${esc(q)}"><h5>Labels</h5>
       ${ls.map(l => `<div class="lrow"><input type="checkbox" data-l="${l.id}" ${c.labels.includes(l.id) ? "checked" : ""}>${labHtml(l).replace('class="lab', `data-l="${l.id}" class="lab`)}<button class="x" data-e="${l.id}" title="Edit">${ic("edit", "s14")}</button></div>`).join("") || '<div class="muted">No labels match.</div>'}
@@ -67,9 +95,9 @@ function labelsPop(anchor, cid, opt = {}) {
   const wire = () => {
     const q = p.querySelector("[data-q]"); q.oninput = () => { const v = q.value, pos = q.selectionStart; p.querySelector(".pb").innerHTML = draw(v); wire(); const n = p.querySelector("[data-q]"); n.focus(); n.setSelectionRange(pos, pos); };
     $$("[data-l]", p).forEach(el => el.onclick = e => {
-      const id = +el.dataset.l; const has = c.labels.includes(id);
-      const labels = has ? c.labels.filter(x => x !== id) : [...c.labels, id];
-      saveCard(cid, { labels }); p.querySelector(".pb").innerHTML = draw(q.value); wire();
+      const id = +el.dataset.l; const has = (cardOf(cid) || { labels: [] }).labels.includes(id);
+      saveCard(cid, has ? { remove_labels: [id] } : { add_labels: [id] }).catch(() => {});
+      p.querySelector(".pb").innerHTML = draw(q.value); wire();
     });
     $$("[data-e]", p).forEach(b => b.onclick = () => labelEditPop(p, cid, S.board.labels.find(l => l.id === +b.dataset.e), () => labelsPop(anchor, cid, opt)));
     p.querySelector("[data-new]").onclick = () => labelEditPop(p, cid, null, () => labelsPop(anchor, cid, opt));
@@ -95,7 +123,7 @@ function labelEditPop(p, cid, l, back) {
     const name = q.querySelector("[data-n]").value.trim();
     try {
       if (l) await PATCH(`/store/kb/labels/${l.id}`, { name, color });
-      else { const r = await POST(`/store/kb/boards/${S.board.id}/labels`, { name, color }); if (cid && cardOf(cid)) await PATCH(`/store/kb/cards/${cid}`, { labels: [...cardOf(cid).labels, r.id] }); }
+      else { const r = await POST(`/store/kb/boards/${S.board.id}/labels`, { name, color }); if (cid && cardOf(cid)) await PATCH(`/store/kb/cards/${cid}`, { add_labels: [r.id] }); }
       await reloadBoard(true); if (S.openCard) await loadFullCard(S.openCard, true); back();
     } catch (e) { fail(e); }
   };
@@ -106,8 +134,9 @@ function labelEditPop(p, cid, l, back) {
 
 // ---------- members ----------
 function membersPop(anchor, cid, opt = {}) {
-  const c = cardOf(cid); if (!c) return;
+  if (!cardOf(cid)) return;
   const draw = (q = "") => {
+    const c = cardOf(cid) || { members: [] };
     const ql = q.toLowerCase();
     const bm = S.board.members.filter(m => !q || m.name.toLowerCase().includes(ql) || m.username.toLowerCase().includes(ql));
     const others = S.board.people.filter(p => !S.board.members.some(m => m.id === p.id) && (!q || p.name.toLowerCase().includes(ql) || p.username.toLowerCase().includes(ql))).sort((a, b) => a.name.localeCompare(b.name));
@@ -125,13 +154,14 @@ function membersPop(anchor, cid, opt = {}) {
     $$("[data-u]", p).forEach(r => r.onclick = async () => {
       const id = +r.dataset.u;
       if (!S.board.members.some(m => m.id === id)) { try { await POST(`/store/kb/boards/${S.board.id}/members`, { user_id: id }); await reloadBoard(true); } catch (e) { fail(e); return; } }
-      const members = c.members.includes(id) ? c.members.filter(x => x !== id) : [...c.members, id];
-      await saveCard(cid, { members }).catch(() => {}); p.querySelector(".pb").innerHTML = draw(q.value); wire();
+      const has = (cardOf(cid) || { members: [] }).members.includes(id);
+      const sv = saveCard(cid, has ? { remove_members: [id] } : { add_members: [id] }).catch(() => {});
+      p.querySelector(".pb").innerHTML = draw(q.value); wire(); await sv;
     });
   };
   wire();
 }
-function toggleJoin(cid) { const c = cardOf(cid); if (!c) return; const me = S.me.id; saveCard(cid, { members: c.members.includes(me) ? c.members.filter(x => x !== me) : [...c.members, me] }); }
+function toggleJoin(cid) { const c = cardOf(cid); if (!c) return; const me = S.me.id; saveCard(cid, c.members.includes(me) ? { remove_members: [me] } : { add_members: [me] }).catch(() => {}); }
 
 // ---------- dates ----------
 function datesPop(anchor, cid, opt = {}) {

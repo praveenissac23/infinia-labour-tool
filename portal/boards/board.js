@@ -18,10 +18,33 @@ async function openBoard(bid, cid) {
 async function reloadBoard(soft, bid) {
   const id = bid || (S.board && S.board.id); if (!id) return;
   const d = await GET(`/store/kb/boards/${id}`);
-  if (soft && S.board && d.version === S.board.version && !d._force) { /* nothing new */ }
+  const old = S.board, oldCards = S.cards;
+  if (soft && old && old.id === d.id && d.version === old.version) return;      // nothing new: nothing redrawn
   S.board = d; S.cards = {}; d.cards.forEach(c => S.cards[c.id] = c); S.lists = d.lists;
-  if (!soft || !$("#lists")) renderBoard(); else { renderHeader(); renderLists(); }
+  if (!soft || !$("#lists") || !old || old.id !== d.id) renderBoard();
+  else patchBoard(old, oldCards);
   if (S.view !== "board") renderView();
+}
+// Only what changed is redrawn: no flash, no scroll jump, the card under the mouse stays put.
+function patchBoard(old, oldCards) {
+  const d = S.board, J = JSON.stringify;
+  const head = o => J([o.title, o.desc, o.bg, o.bg_url, o.visibility, o.starred, o.role, o.prefs, o.members, o.rules, o.closed]);
+  if (head(old) !== head(d)) renderHeader();
+  const frame = o => J([o.lists, o.labels, o.members, o.people.map(p => [p.id, p.name, p.initials]), o.fields, o.role, o.prefs]);
+  if (frame(old) !== frame(d) || $(".composer textarea", $("#lists")) || $(".lhd textarea")) { renderLists(); return; }
+  for (const l of d.lists) {
+    const w = document.querySelector(`.lw[data-l="${l.id}"]`); if (!w) { renderLists(); return; }
+    const box = w.querySelector("[data-cards]"); if (!box) continue;
+    const ids = cardsOf(l.id).map(c => c.id), shown = [...box.querySelectorAll(":scope > .card")].map(e => +e.dataset.c);
+    if (J(ids) !== J(shown)) {
+      const st = box.scrollTop;
+      box.innerHTML = ids.map(i => cardHtml(S.cards[i])).join("") + '<div class="pad"></div>';
+      $$(".card", box).forEach(wireCard); box.scrollTop = st;
+    } else {
+      for (const i of ids) if (J(oldCards[i]) !== J(S.cards[i])) renderCardEl(i);
+    }
+  }
+  updateListCounts(); applyFilter();
 }
 
 // ---------- header ----------
@@ -223,7 +246,7 @@ function listMenu(anchor, lid) {
     $$("[data-s]", q).forEach(b => b.onclick = async () => { closePops(); try { await POST(`/store/kb/lists/${lid}/sort`, { by: b.dataset.s }); reloadBoard(true); } catch (e) { fail(e); } }); };
   $$("[data-col]", p).forEach(b => b.onclick = () => { closePops(); listPatch(lid, { color: b.dataset.col }); });
   const wip = k("wip"); if (wip) wip.onclick = () => { closePops(); listPatch(lid, { wip: +p.querySelector("[data-wip]").value || 0 }); };
-  const ra = k("rule-add"); if (ra) ra.onclick = () => { closePops(); boardMenu("automation", { trigger: { type: "card_added", list_id: lid } }); };
+  const ra = k("rule-add"); if (ra) ra.onclick = () => { closePops(); boardMenu("automation", { tab: "schedule", trigger: { type: "schedule", every: "day", time: "09:00", cards: "none" }, actions: [{ type: "sort_list", list_id: lid, by: "due" }] }); };
   const rs = k("rule-sort"); if (rs) rs.onclick = () => { closePops(); boardMenu("automation", { trigger: { type: "card_added", list_id: lid } }); };
   k("archive").onclick = async () => { closePops(); try { await PATCH(`/store/kb/lists/${lid}`, { closed: true }); toast("List archived", { undo: async () => { await PATCH(`/store/kb/lists/${lid}`, { closed: false }); reloadBoard(true); } }); reloadBoard(true); } catch (e) { fail(e); } };
   k("archiveall").onclick = () => { const q = subPop(p, "Archive all cards in this list?", `<p style="margin:0 0 12px">This will remove all the cards in this list from the board. To view archived cards and bring them back to the board, click “Menu” &gt; “Archived items.”</p><button class="b dng" style="width:100%">Archive all</button>`, () => listMenu(anchor, lid));
@@ -327,9 +350,7 @@ function wireCard(el) {
     if (e.target.closest("[data-done]")) { e.stopPropagation(); const c = S.cards[cid]; saveCard(cid, { due_complete: !c.due_complete }); return; }
     if (e.target.closest(".labels .lab")) { e.stopPropagation(); document.body.classList.toggle("lab-open"); try { localStorage.setItem("kb_lab_open", document.body.classList.contains("lab-open") ? "1" : ""); } catch (er) {} return; }
     if (e.target.closest("[data-due]") && S.board.role !== "observer") { e.stopPropagation(); const c = S.cards[cid]; if (c.due) saveCard(cid, { due_complete: !c.due_complete }); return; }
-    const c = S.cards[cid];
-    if (c && c.mirror && c.mirror.card_id) { go(`#/b/${c.mirror.board_id}/c/${c.mirror.card_id}`); return; }
-    go(`#/b/${S.board.id}/c/${cid}`);
+    go(`#/b/${S.board.id}/c/${cid}`);      // a mirror opens here too, showing the card it mirrors
   });
   el.addEventListener("contextmenu", e => { if (S.board.role === "observer") return; e.preventDefault(); quickEdit(cid); });
   el.addEventListener("pointerdown", e => { if (e.button !== 0 || e.target.closest("button")) return; startDrag(e, "card", cid, el); });
@@ -380,9 +401,16 @@ function startDrag(e, kind, id, el) {
     D.ghost.remove();
     if (kind === "card") await dropCard(D); else await dropList(D);
   };
-  const cleanup = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up); };
-  document.addEventListener("pointermove", move, { passive: false }); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
-  if (touch) timer = setTimeout(() => { if (!cancelled) { begin(); if (navigator.vibrate) navigator.vibrate(15); } }, 260);
+  const cancel = ev => { if (touch && started) return; up(ev); };       // on a phone the browser cancels pointers once it scrolls; a picked-up card is not dropped for that
+  const tmove = ev => { if (started) { ev.preventDefault(); const t = ev.touches[0]; if (t) move({ clientX: t.clientX, clientY: t.clientY, preventDefault() {} }); } };
+  const tend = ev => { if (started) up(ev); };
+  const cleanup = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", cancel);
+    document.removeEventListener("touchmove", tmove); document.removeEventListener("touchend", tend); document.removeEventListener("touchcancel", tend); };
+  document.addEventListener("pointermove", move, { passive: false }); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", cancel);
+  if (touch) {
+    document.addEventListener("touchmove", tmove, { passive: false }); document.addEventListener("touchend", tend); document.addEventListener("touchcancel", tend);
+    timer = setTimeout(() => { if (!cancelled) { begin(); if (navigator.vibrate) navigator.vibrate(15); } }, 260);
+  }
 }
 function placeHolder(x, y) {
   const D = window.DRAG;

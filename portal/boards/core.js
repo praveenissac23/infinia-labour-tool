@@ -129,13 +129,14 @@ function route() {
   if (m) {
     const bid = +m[1];
     const v = m[3] || (m[2] ? S.view : "board");
-    if (!S.board || S.board.id !== bid) { S.view = v; openBoard(bid, m[2] ? +m[2] : null); }
+    if (!S.board || S.board.id !== bid) { closeCardModal(true); S.view = v; openBoard(bid, m[2] ? +m[2] : null); }
     else {
       if (m[2]) openCardModal(+m[2]); else closeCardModal(true);
       if (v !== S.view) { S.view = v; renderHeader(); renderView(); }
     }
   } else {
     const t = (location.hash.match(/^#\/(templates|home)/) || [])[1] || "boards";
+    closeCardModal(true);
     showHome(t);
   }
 }
@@ -276,12 +277,23 @@ const TEMPLATES = [
 function startPoll() {
   stopPoll();
   S.poll = setInterval(async () => {
-    if (!S.board || document.hidden || window.DRAG || $(".composer textarea:focus, .lhd textarea, #qe")) return;
+    if (!S.board || document.hidden || window.DRAG || pageBusy()) return;
     try {
       const v = await GET(`/store/kb/boards/${S.board.id}/version`);
-      if (v.version !== S.board.version) await reloadBoard(true);
+      if (v.version !== S.board.version) {
+        await reloadBoard(true);
+        if (S.openCard) await loadFullCard(S.openCard, true);    // the open card follows too (not while typing on it)
+      }
     } catch (e) {}
   }, 4000);
+}
+// Someone is typing or has a menu open: the board is not redrawn under them (Trello never does).
+function pageBusy() {
+  const a = document.activeElement;
+  if (a && a !== document.body && (a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable || (a.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(a.type)))) {
+    if (!(a.closest && a.closest("#cm-ov"))) return true;      // typing on the open card is handled by the card itself
+  }
+  return !!$(".pop, .composer textarea, .lhd textarea, #qe, .bname-in");
 }
 function stopPoll() { if (S.poll) clearInterval(S.poll); S.poll = null; }
 

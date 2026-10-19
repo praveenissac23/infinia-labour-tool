@@ -369,7 +369,7 @@ body.dragging .card:hover { outline-color: transparent; }
 .toast.err { background: #AE2E24; }
 
 /* ---------- board menu (right panel) ---------- */
-#bmenu { position: absolute; top: 0; right: 0; bottom: 0; width: 340px; z-index: 40; background: #fff; box-shadow: var(--pop-shadow); display: flex; flex-direction: column; color: var(--text); animation: slidein .15s ease-out; }
+#bmenu { position: absolute; top: var(--bmenu-top, 0); right: 0; bottom: 0; width: 340px; z-index: 40; background: #fff; box-shadow: var(--pop-shadow); display: flex; flex-direction: column; color: var(--text); animation: slidein .15s ease-out; }
 @keyframes slidein { from { transform: translateX(40px); opacity: 0; } }
 #bmenu .bm-h { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; height: 48px; padding: 0 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 #bmenu .bm-h h2 { margin: 0; text-align: center; font-size: 14px; font-weight: 600; color: var(--text-subtle); }

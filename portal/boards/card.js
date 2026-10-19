@@ -24,9 +24,10 @@ async function loadFullCard(cid, keep, quiet) {
   try {
     const c = await GET(`/store/kb/cards/${cid}`);
     if (c.board_id !== (S.board && S.board.id)) { if (!quiet) { go(`#/b/${c.board_id}/c/${cid}`); } return; }
+    const same = S.full && S.full.id === c.id && JSON.stringify(S.full) === JSON.stringify(c);
     S.full = c;
     if (S.cards[cid]) Object.assign(S.cards[cid], { labels: c.labels, members: c.members, due: c.due, start: c.start, due_complete: c.due_complete, title: c.title });
-    if (!quiet && S.openCard === cid) renderCardModal();
+    if (!quiet && S.openCard === cid && !same && !(keep && cardBusy())) renderCardModal();
   } catch (e) { fail(e); if (!quiet) go(`#/b/${S.board.id}`); }
 }
 
@@ -212,9 +213,9 @@ function wireCardModal(m, c) {
     const box = m.querySelector("[data-desc]");
     box.innerHTML = editorHtml("desc-ed", c.desc, "Add a more detailed description… Use @ to mention someone.") + `<div style="display:flex;gap:8px;margin-top:8px"><button class="b pri" data-dsave>Save</button><button class="b sub" data-dcancel>Cancel</button><span class="muted" style="margin-left:auto;align-self:center">Formatting help: **bold**, *italic*, - list, # heading</span></div>`;
     wireEditor(box, "desc-ed"); const t = box.querySelector("#desc-ed"); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
-    box.querySelector("[data-dsave]").onclick = () => saveCard(cid, { desc: t.value });
+    box.querySelector("[data-dsave]").onclick = () => saveCard(cid, { desc: t.value }, { force: true }).catch(() => {});
     box.querySelector("[data-dcancel]").onclick = () => renderCardModal();
-    t.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") saveCard(cid, { desc: t.value }); if (e.key === "Escape") renderCardModal(); };
+    t.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") saveCard(cid, { desc: t.value }, { force: true }).catch(() => {}); if (e.key === "Escape") renderCardModal(); };
   };
   if (c.role !== "observer") { $$("[data-dedit]", m).forEach(b => b.onclick = editDesc); const dv = m.querySelector(".desc-view"); if (dv) dv.onclick = e => { if (!e.target.closest("a")) editDesc(); }; }
   // checklists
@@ -232,7 +233,8 @@ function wireCardModal(m, c) {
         it.done = e.target.checked; row.classList.toggle("done", it.done);
         const n = cl.items.filter(x => x.done).length, pc = Math.round(n * 100 / cl.items.length);
         sec.querySelector(".prog .bar i").style.width = pc + "%"; sec.querySelector(".prog .pc").textContent = pc + "%"; sec.querySelector(".prog").classList.toggle("full", pc === 100);
-        try { await PATCH(`/store/kb/items/${iid}`, { done: it.done }); await reloadBoard(true); loadFullCard(cid, true, true).then(() => renderCardModal()); } catch (er) { fail(er); }
+        const fc = S.cards[cid]; if (fc && fc.check) { fc.check = [fc.check[0] + (it.done ? 1 : -1), fc.check[1]]; renderCardEl(cid); }
+        try { await PATCH(`/store/kb/items/${iid}`, { done: it.done }); loadFullCard(cid, true, true); reloadBoard(true); } catch (er) { fail(er); e.target.checked = !it.done; it.done = !it.done; row.classList.toggle("done", it.done); }
       };
       const tx = row.querySelector("[data-it]");
       if (c.role !== "observer") tx.onclick = e => { if (e.target.closest("a")) return; editItem(row, cid, it); };
@@ -278,7 +280,13 @@ function wireCardModal(m, c) {
     const box = m.querySelector("[data-cbox]");
     box.innerHTML = editorHtml("cmt-ed", "", "Write a comment… use @ to mention someone") + `<div style="display:flex;gap:8px;margin-top:8px"><button class="b pri" data-csave>Save</button><button class="b sub" data-ccancel>Cancel</button></div>`;
     wireEditor(box, "cmt-ed"); const t = box.querySelector("#cmt-ed"); t.focus();
-    const send = async () => { const v = t.value.trim(); if (!v) return; try { await POST(`/store/kb/cards/${cid}/comments`, { text: v }); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } };
+    const btn = box.querySelector("[data-csave]");
+    const send = async () => {     // once only, however fast Save or Ctrl+Enter is pressed again
+      const v = t.value.trim(); if (!v || t.dataset.busy) return;
+      t.dataset.busy = "1"; btn.disabled = true;
+      try { await POST(`/store/kb/cards/${cid}/comments`, { text: v }); t.value = ""; await loadFullCard(cid, false, true); renderCardModal(); reloadBoard(true); }
+      catch (e) { fail(e); t.dataset.busy = ""; btn.disabled = false; }
+    };
     box.querySelector("[data-csave]").onclick = send; box.querySelector("[data-ccancel]").onclick = () => renderCardModal();
     t.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") send(); if (e.key === "Escape") renderCardModal(); };
   };
@@ -287,7 +295,7 @@ function wireCardModal(m, c) {
     const ed = fe.querySelector("[data-cedit]"); if (ed) ed.onclick = () => {
       const bub = fe.querySelector(".bubble"); bub.outerHTML = `<div data-ebox>${editorHtml("ce-" + mid, cm.text)}<div style="display:flex;gap:8px;margin-top:8px"><button class="b pri" data-s>Save</button><button class="b sub" data-x>Discard changes</button></div></div>`;
       wireEditor(fe, "ce-" + mid); const t = fe.querySelector("#ce-" + mid); t.focus();
-      fe.querySelector("[data-s]").onclick = async () => { try { await PATCH(`/store/kb/comments/${mid}`, { text: t.value }); loadFullCard(cid, true); } catch (e) { fail(e); } };
+      fe.querySelector("[data-s]").onclick = async () => { try { await PATCH(`/store/kb/comments/${mid}`, { text: t.value }); await loadFullCard(cid, true, true); renderCardModal(); } catch (e) { fail(e); } };
       fe.querySelector("[data-x]").onclick = () => renderCardModal();
     };
     const dl = fe.querySelector("[data-cdel]"); if (dl) dl.onclick = () => confirmPop(dl, "Delete comment?", "Deleting a comment is forever. There is no undo.", "Delete comment", async () => { try { await DEL(`/store/kb/comments/${mid}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } });
