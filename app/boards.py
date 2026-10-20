@@ -788,13 +788,13 @@ def _sync_main(db, mb, card, user, event, ctx, conf):
         if not mirrors and fits:
             lid = done if card.due_complete and _list_ok(db, done, fb.id) else _sync_route(conf, card, lt)
             if _list_ok(db, lid, fb.id):
-                _mirror_into(db, card, fb, lid, user)
+                _mirror_into(db, card, fb, lid, user, top=True)
         elif mirrors and event == "card_titled" and not card.due_complete:
             # renamed: a mirror still waiting in the fallback list goes to the list its new words point to
             lid = _sync_route(conf, card, lt)
             for m in mirrors:
                 if m.list_id == int(conf.get("fallback_list") or 0) and lid != m.list_id and _list_ok(db, lid, fb.id):
-                    m.list_id, m.pos = lid, _end_pos(db, KCard, list_id=lid)
+                    m.list_id, m.pos = lid, _top_pos(db, KCard, list_id=lid)
                     _touch(db, fb)
     elif event == "card_complete" and _list_ok(db, done, fb.id):
         if not mirrors and (NUMBERED.match(card.title or "") or NUMBERED.match(lt) or routed_list):
@@ -811,7 +811,7 @@ def _sync_main(db, mb, card, user, event, ctx, conf):
         lid = _sync_route(conf, card, lt)
         for m in mirrors:
             if m.list_id == done and _list_ok(db, lid, fb.id):
-                m.list_id, m.pos = lid, _end_pos(db, KCard, list_id=lid)
+                m.list_id, m.pos = lid, _top_pos(db, KCard, list_id=lid)
                 _touch(db, fb)
 
 
@@ -825,7 +825,7 @@ def _sync_follow(db, mb, fb, card, user, event, conf):
             lists = db.query(KList).filter(KList.board_id == mb.id, KList.closed == False).order_by(KList.pos).all()  # noqa: E712
             target = next((l for l in lists if _project_no("", l.title) == no), None)
             if target:
-                _mirror_into(db, card, mb, target.id, user)
+                _mirror_into(db, card, mb, target.id, user, top=True)
     elif event == "card_complete" and _list_ok(db, done, fb.id) and card.list_id != done:
         card.list_id, card.pos = done, _top_pos(db, KCard, list_id=done)
 

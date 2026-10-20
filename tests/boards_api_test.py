@@ -514,6 +514,10 @@ def fwhere(cid):
     return {x["mirror_of"]: x["list_id"] for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of")}.get(cid)
 q1 = post(f"/store/kb/lists/{SML['914VE207']}/cards", {"title": "914 - Home Automation"}, H).json()["id"]
 ck("QS's new task (no keyword) appears on Anoop's board in OTHER TASKS", fwhere(q1) == SFL["OTHER TASKS"], fwhere(q1))
+post(f"/store/kb/lists/{SFL['OTHER TASKS']}/cards", {"title": "older own task"})
+q1b = post(f"/store/kb/lists/{SML['914VE207']}/cards", {"title": "914 - Newest task"}, H).json()["id"]
+tops = sorted([x for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x["list_id"] == SFL["OTHER TASKS"]], key=lambda x: x["pos"])
+ck("a new task comes in at the very top of the list", tops[0].get("mirror_of") == q1b, [x["title"] for x in tops])
 q2 = post(f"/store/kb/lists/{SML['919VE205']}/cards", {"title": "Pending Payments"}, H).json()["id"]
 ck("a new card in a project list (no number) still goes across, by its words", fwhere(q2) == SFL["SUBCONTRACT PAYMENTS"], fwhere(q2))
 mf = [x for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of") == q2][0]
