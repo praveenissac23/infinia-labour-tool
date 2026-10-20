@@ -496,5 +496,65 @@ ck("moved into TENDERS -> mirrored", any(c.get("mirror_of") == mv for c in get(f
 # copying a card runs the rules
 cp = post(f"/store/kb/cards/{tn}/copy", {"list_id": ML["911 WS46"], "title": "911 - Variation copy"}).json()["id"]
 ck("a copied card runs the rules", any(c.get("mirror_of") == cp for c in get(f"/store/kb/boards/{AN}").json()["cards"]))
+
+# ---- board sync: Estimation <-> Anoop's board, as the QS and Anoop actually work -------------------------
+for r in get(f"/store/kb/boards/{MAIN}/rules").json()["rules"]:
+    patch(f"/store/kb/rules/{r['id']}", {"enabled": False})        # the sync replaces them
+SM = post("/store/kb/boards", {"title": "Sync Estimation", "lists": ["914VE207", "919VE205", "909 Shihab Villa", "TENDERS / PROPOSALS", "Daily Task 2026"]}).json()["id"]
+SF = post("/store/kb/boards", {"title": "Sync Anoop", "lists": ["BILLS", "VARIATIONS & CLAIMS", "QUANTITY TAKE-OFF", "TENDERS / PROPOSALS", "SUBCONTRACT PAYMENTS", "OTHER TASKS", "DONE"]}).json()["id"]
+SML = {l["title"]: l["id"] for l in get(f"/store/kb/boards/{SM}").json()["lists"]}
+SFL = {l["title"]: l["id"] for l in get(f"/store/kb/boards/{SF}").json()["lists"]}
+r = c.put(f"/store/kb/boards/{SM}/sync", json={"board_id": SF, "routes": [
+    {"words": ["IPA", "Bill"], "list_id": SFL["BILLS"]}, {"words": ["Variation", "Claim"], "list_id": SFL["VARIATIONS & CLAIMS"]},
+    {"words": ["Take-off", "Quantity"], "list_id": SFL["QUANTITY TAKE-OFF"]}, {"words": ["Payment", "PC"], "list_id": SFL["SUBCONTRACT PAYMENTS"]},
+    {"from_list": SML["TENDERS / PROPOSALS"], "list_id": SFL["TENDERS / PROPOSALS"]}],
+    "fallback_list": SFL["OTHER TASKS"], "done_list": SFL["DONE"]}, headers=A)
+ck("sync saved", r.status_code == 200 and r.json()["conf"]["board_id"] == SF, r.text)
+def fwhere(cid):
+    return {x["mirror_of"]: x["list_id"] for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of")}.get(cid)
+q1 = post(f"/store/kb/lists/{SML['914VE207']}/cards", {"title": "914 - Home Automation"}, H).json()["id"]
+ck("QS's new task (no keyword) appears on Anoop's board in OTHER TASKS", fwhere(q1) == SFL["OTHER TASKS"], fwhere(q1))
+q2 = post(f"/store/kb/lists/{SML['919VE205']}/cards", {"title": "Pending Payments"}, H).json()["id"]
+ck("a new card in a project list (no number) still goes across, by its words", fwhere(q2) == SFL["SUBCONTRACT PAYMENTS"], fwhere(q2))
+mf = [x for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of") == q2][0]
+ck("...shown with the project number in front", mf["title"].startswith("919 - "), mf["title"])
+q3 = post(f"/store/kb/lists/{SML['Daily Task 2026']}/cards", {"title": "20.10.2026"}, H).json()["id"]
+ck("a daily-log card does not go across", fwhere(q3) is None)
+patch(f"/store/kb/cards/{q1}", {"title": "914 - Home Automation Variation"}, H)
+ck("renamed with a keyword: moves from OTHER TASKS to its list", fwhere(q1) == SFL["VARIATIONS & CLAIMS"], fwhere(q1))
+patch(f"/store/kb/cards/{q1}", {"desc": "- point 1\n- point 2"}, H)
+post(f"/store/kb/cards/{q1}/checklists", {"title": "Points", "items": ["BOQ", "Rates"]}, H)
+mid = [x for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of") == q1][0]
+md = get(f"/store/kb/cards/{mid['id']}").json()
+ck("QS's points (description, checklist) show on Anoop's card", md["desc"].startswith("- point 1") and md["checklists"] and mid["check"] == [0, 2], (md["desc"], mid["check"]))
+patch(f"/store/kb/cards/{mid['id']}", {"desc": "Anoop: ok"})
+ck("...and Anoop's change shows on the QS card", get(f"/store/kb/cards/{q1}").json()["desc"] == "Anoop: ok")
+ql = get(f"/store/kb/cards/{q1}").json()["list_id"]
+patch(f"/store/kb/cards/{q1}", {"due_complete": True}, H)
+ck("QS completes -> on Anoop's board it goes to DONE", fwhere(q1) == SFL["DONE"])
+ck("...and stays where it was on the QS board, marked complete", get(f"/store/kb/cards/{q1}").json()["list_id"] == ql and get(f"/store/kb/cards/{q1}").json()["due_complete"])
+patch(f"/store/kb/cards/{q1}", {"due_complete": False}, H)
+ck("not complete again -> back to its list", fwhere(q1) == SFL["VARIATIONS & CLAIMS"])
+patch(f"/store/kb/cards/{mid['id']}", {"due_complete": True})
+ck("Anoop completes his copy -> QS card complete, his copy in DONE", get(f"/store/kb/cards/{q1}").json()["due_complete"] and fwhere(q1) == SFL["DONE"])
+q4 = post(f"/store/kb/lists/{SML['914VE207']}/cards", {"title": "914 - Old task"}, H).json()["id"]
+patch(f"/store/kb/cards/{q4}", {"due_complete": True}, H)
+ck("a task completed before ever going across lands in DONE", fwhere(q4) == SFL["DONE"])
+q5 = post(f"/store/kb/lists/{SML['TENDERS / PROPOSALS']}/cards", {"title": "EMKAAN RFQ pool"}, H).json()["id"]
+ck("a tender goes to TENDERS", fwhere(q5) == SFL["TENDERS / PROPOSALS"])
+# Anoop adds a task on his board
+a1 = post(f"/store/kb/lists/{SFL['QUANTITY TAKE-OFF']}/cards", {"title": "999"}).json()["id"]
+patch(f"/store/kb/cards/{a1}", {"title": "909 - Floor & Wall Tile Quantity Take-off"})
+back = {x["mirror_of"]: x["list_id"] for x in get(f"/store/kb/boards/{SM}").json()["cards"] if x.get("mirror_of")}
+ck("Anoop's numbered task appears under project 909 on the Estimation board", back.get(a1) == SML["909 Shihab Villa"], back)
+mb = [x for x in get(f"/store/kb/boards/{SM}").json()["cards"] if x.get("mirror_of") == a1][0]
+post(f"/store/kb/cards/{mb['id']}/comments", {"text": "QS: started"}, H)
+ck("QS comment on it reaches Anoop's card", any(x["text"] == "QS: started" for x in get(f"/store/kb/cards/{a1}").json()["comments"]))
+patch(f"/store/kb/cards/{mb['id']}", {"due_complete": True}, H)
+ck("QS completes Anoop's task -> it goes to DONE on his board, stays in 909 for the QS",
+   get(f"/store/kb/cards/{a1}").json()["list_id"] == SFL["DONE"] and get(f"/store/kb/cards/{mb['id']}").json()["list_id"] == SML["909 Shihab Villa"])
+ck("nothing was mirrored twice", len([x for x in get(f"/store/kb/boards/{SF}").json()["cards"] if x.get("mirror_of") == q1]) == 1)
+r = post(f"/store/kb/boards/{SM}/sync/run")
+ck("bring existing across: nothing new, nothing doubled", r.status_code == 200 and r.json() == {"main": 0, "back": 0}, r.text)
 print(f"\n{len(fails)} failed" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)

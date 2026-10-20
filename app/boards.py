@@ -679,6 +679,13 @@ EVENT_TRIGGERS = set(TRIGGERS) - {"schedule", "due_in"}
 def _run_rules(db, board, card, user, event, depth=0, **ctx):
     if depth > 3 or card is None:
         return
+    if depth <= 1:
+        try:
+            _sync_event(db, board, card, user, event, ctx)
+        except HTTPException:
+            raise
+        except Exception as e:          # the sync never stops the change itself
+            print("board sync:", e)
     for r in db.query(KRule).filter(KRule.board_id == board.id, KRule.enabled == True).all():  # noqa: E712
         t = _j(r.trigger, {})
         if t.get("type") != event:
@@ -697,6 +704,130 @@ def _run_rules(db, board, card, user, event, depth=0, **ctx):
 
 
 NUMBERED = re.compile(r"^\s*(ic\s*/\s*)?\d{3}(?!\d)", re.I)
+
+
+# ---- board sync: the main board (Estimation) and a follow board (Anoop's) kept together ---------------
+#
+# prefs["sync"] on the main board = {"board_id": follow board, "routes": [{"words": [...], "list_id": n} |
+#   {"from_list": main list id, "list_id": n}], "fallback_list": n, "done_list": n, "back": true}
+#  * a task a QS adds on the main board (a new card in a project list, or a numbered title, or a card
+#    in a routed list) appears on the follow board - in the list its words point to, else the fallback;
+#  * completed (on either board) -> its card on the follow board goes to Done; the main card stays put;
+#    not complete again -> back to its list;
+#  * a numbered task added on the follow board ("909 - Take-off") appears in that project's list on the
+#    main board.
+# Both are the same card (a mirror): what is written on either shows on both.
+
+def _sync_conf(db, board):
+    conf = _j(board.prefs, {}).get("sync") or {}
+    return conf if conf.get("board_id") else None
+
+
+def _project_no(title, list_title=""):
+    m = NUMBERED.match(title or "") or NUMBERED.match(list_title or "")
+    return re.sub(r"\D", "", m.group(0)) if m else ""
+
+
+def _sync_route(conf, card, list_title):
+    ttl = (card.title or "").lower()
+    for r in conf.get("routes") or []:
+        if r.get("from_list") and int(r["from_list"]) == card.list_id:
+            return int(r["list_id"])
+    for r in conf.get("routes") or []:
+        words = [w.strip().lower() for w in (r.get("words") or []) if str(w).strip()]
+        if words and any(re.search(r"(^|[^a-z0-9])" + re.escape(w), ttl) for w in words):
+            return int(r["list_id"])
+    return int(conf.get("fallback_list") or 0)
+
+
+def _list_ok(db, lid, bid):
+    return lid and db.query(KList).filter(KList.id == lid, KList.board_id == bid, KList.closed == False).first()  # noqa: E712
+
+
+def _mirror_into(db, src, tb, lid, user, top=False):
+    pos = _top_pos(db, KCard, list_id=lid) if top else _end_pos(db, KCard, list_id=lid)
+    m = KCard(board_id=tb.id, list_id=lid, title=src.title, pos=pos, mirror_of=src.id, created_by=user.id if user else None,
+              no=tb.next_no or 1)
+    tb.next_no = (tb.next_no or 1) + 1
+    db.add(m)
+    db.flush()
+    sb = db.query(KBoard).filter(KBoard.id == src.board_id).first()
+    _act(db, tb, user, "card_mirrored", m, source=src.title, frm=sb.title if sb else "")
+    _touch(db, tb)
+    return m
+
+
+def _sync_event(db, board, card, user, event, ctx):
+    if card.is_template:
+        return
+    conf = _sync_conf(db, board)
+    if conf:
+        return _sync_main(db, board, card, user, event, ctx, conf)
+    # Is this board the follow board of a main board?
+    for mb in db.query(KBoard).filter(KBoard.closed == False).all():  # noqa: E712
+        c2 = _sync_conf(db, mb)
+        if c2 and int(c2["board_id"]) == board.id and mb.id != board.id:
+            return _sync_follow(db, mb, board, card, user, event, c2)
+
+
+def _sync_main(db, mb, card, user, event, ctx, conf):
+    if card.mirror_of:            # a follow-board card shown here: its own board looks after it
+        return
+    fb = db.query(KBoard).filter(KBoard.id == int(conf["board_id"]), KBoard.closed == False).first()  # noqa: E712
+    if not fb:
+        return
+    lst = db.query(KList).filter(KList.id == card.list_id).first()
+    lt = lst.title if lst else ""
+    mirrors = db.query(KCard).filter(KCard.mirror_of == card.id, KCard.board_id == fb.id, KCard.closed == False).all()  # noqa: E712
+    done = int(conf.get("done_list") or 0)
+    routed_list = any(r.get("from_list") and int(r["from_list"]) == card.list_id for r in conf.get("routes") or [])
+    if event in ("card_created", "card_added", "card_titled", "card_moved"):
+        numbered = bool(NUMBERED.match(card.title or ""))
+        in_project = bool(NUMBERED.match(lt))
+        fits = numbered or routed_list or (event in ("card_created", "card_added") and ctx.get("new") and in_project)
+        if not mirrors and fits:
+            lid = done if card.due_complete and _list_ok(db, done, fb.id) else _sync_route(conf, card, lt)
+            if _list_ok(db, lid, fb.id):
+                _mirror_into(db, card, fb, lid, user)
+        elif mirrors and event == "card_titled" and not card.due_complete:
+            # renamed: a mirror still waiting in the fallback list goes to the list its new words point to
+            lid = _sync_route(conf, card, lt)
+            for m in mirrors:
+                if m.list_id == int(conf.get("fallback_list") or 0) and lid != m.list_id and _list_ok(db, lid, fb.id):
+                    m.list_id, m.pos = lid, _end_pos(db, KCard, list_id=lid)
+                    _touch(db, fb)
+    elif event == "card_complete" and _list_ok(db, done, fb.id):
+        if not mirrors and (NUMBERED.match(card.title or "") or NUMBERED.match(lt) or routed_list):
+            _mirror_into(db, card, fb, done, user, top=True)
+        for i, m in enumerate(mirrors):
+            if i > 0:                 # two copies of one task on the other board: one is enough
+                m.closed = True
+                _touch(db, fb)
+                continue
+            if m.list_id != done:
+                m.list_id, m.pos = done, _top_pos(db, KCard, list_id=done)
+                _touch(db, fb)
+    elif event == "card_incomplete":
+        lid = _sync_route(conf, card, lt)
+        for m in mirrors:
+            if m.list_id == done and _list_ok(db, lid, fb.id):
+                m.list_id, m.pos = lid, _end_pos(db, KCard, list_id=lid)
+                _touch(db, fb)
+
+
+def _sync_follow(db, mb, fb, card, user, event, conf):
+    if card.mirror_of:            # a main-board card shown here: edits already go to it
+        return
+    done = int(conf.get("done_list") or 0)
+    if event in ("card_created", "card_added", "card_titled") and conf.get("back", True) is not False:
+        no = _project_no(card.title)
+        if no and not db.query(KCard).filter(KCard.mirror_of == card.id, KCard.board_id == mb.id, KCard.closed == False).first():  # noqa: E712
+            lists = db.query(KList).filter(KList.board_id == mb.id, KList.closed == False).order_by(KList.pos).all()  # noqa: E712
+            target = next((l for l in lists if _project_no("", l.title) == no), None)
+            if target:
+                _mirror_into(db, card, mb, target.id, user)
+    elif event == "card_complete" and _list_ok(db, done, fb.id) and card.list_id != done:
+        card.list_id, card.pos = done, _top_pos(db, KCard, list_id=done)
 
 
 def _title_matches(t, title, list_title=""):
@@ -1499,8 +1630,8 @@ def add_card(lid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         b.next_no = c.no + 1
         db.flush()
         _act(db, b, user, "card_added", c, list=l.title, title=t)
-        _run_rules(db, b, c, user, "card_created", list_id=l.id)
-        _run_rules(db, b, c, user, "card_added", list_id=l.id)
+        _run_rules(db, b, c, user, "card_created", list_id=l.id, new=True)
+        _run_rules(db, b, c, user, "card_added", list_id=l.id, new=True)
         _run_rules(db, b, c, user, "card_titled", list_id=l.id)
         out.append(c.id)
     _renumber_if_tight(db, KCard, list_id=l.id)
@@ -1704,8 +1835,7 @@ def _edit_card(db, user, c, b, payload):
         v = bool(payload["due_complete"])
         if v != bool(c.due_complete):
             _act(db, target_board, user, "card_complete" if v else "card_incomplete", c)
-            if v:
-                events.append(("card_complete", {}))
+            events.append(("card_complete", {}) if v else ("card_incomplete", {}))
         c.due_complete = v
     if "labels" in payload:
         old = set(_j(c.labels, []))
@@ -2598,6 +2728,165 @@ def _sched_loop():
 def start_scheduler():
     import threading
     threading.Thread(target=_sched_loop, daemon=True, name="boards-rules").start()
+
+
+# ---- board sync: settings, bring existing cards across, the one-time set-up of the live boards -------------
+
+def _sync_out(db, b):
+    conf = _sync_conf(db, b) or {}
+    return {"conf": conf, "boards": [{"id": x.id, "title": x.title, "lists": [{"id": l.id, "title": l.title} for l in
+             db.query(KList).filter(KList.board_id == x.id, KList.closed == False).order_by(KList.pos).all()]}  # noqa: E712
+             for x in db.query(KBoard).filter(KBoard.closed == False, KBoard.id != b.id).order_by(KBoard.title).all()  # noqa: E712
+             if not _is_inbox(x)],
+            "lists": [{"id": l.id, "title": l.title} for l in db.query(KList).filter(KList.board_id == b.id, KList.closed == False).order_by(KList.pos).all()]}  # noqa: E712
+
+
+@router.get("/store/kb/boards/{bid}/sync")
+def get_sync(bid: int, db: Session = Depends(get_db), user: models.User = VIEW):
+    b, _ = _board(db, user, bid)
+    return _sync_out(db, b)
+
+
+@router.put("/store/kb/boards/{bid}/sync")
+def set_sync(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    b, _ = _board(db, user, bid, "edit")
+    prefs = _j(b.prefs, {})
+    if not payload.get("board_id"):
+        prefs.pop("sync", None)
+    else:
+        fb, _r = _board(db, user, int(payload["board_id"]), "edit")
+        if fb.id == b.id:
+            raise HTTPException(status_code=400, detail="Pick the other board.")
+        ok = {l.id for l in db.query(KList).filter(KList.board_id == fb.id).all()}
+        mine = {l.id for l in db.query(KList).filter(KList.board_id == b.id).all()}
+        routes = []
+        for r in payload.get("routes") or []:
+            lid = int(r.get("list_id") or 0)
+            if lid not in ok:
+                continue
+            if r.get("from_list"):
+                if int(r["from_list"]) in mine:
+                    routes.append({"from_list": int(r["from_list"]), "list_id": lid})
+            else:
+                words = [str(w).strip() for w in (r.get("words") or []) if str(w).strip()][:30]
+                if words:
+                    routes.append({"words": words, "list_id": lid})
+        fl, dl = int(payload.get("fallback_list") or 0), int(payload.get("done_list") or 0)
+        if fl not in ok or dl not in ok:
+            raise HTTPException(status_code=400, detail="Pick the list for other tasks and the Done list on that board.")
+        prefs["sync"] = {"board_id": fb.id, "routes": routes, "fallback_list": fl, "done_list": dl, "back": bool(payload.get("back", True))}
+        _touch(db, fb)
+    b.prefs = json.dumps(prefs)
+    _touch(db, b)
+    db.commit()
+    return _sync_out(db, b)
+
+
+def sync_existing(db, b, user, since=None):
+    """Bring the main board's tasks across (open cards in project lists with a numbered title, cards in routed lists,
+    completed ones straight to Done), and the follow board's numbered tasks back. Never twice."""
+    conf = _sync_conf(db, b)
+    if not conf:
+        return {"main": 0, "back": 0}
+    fb = db.query(KBoard).filter(KBoard.id == int(conf["board_id"])).first()
+    lists = {l.id: l.title for l in db.query(KList).filter(KList.board_id == b.id, KList.closed == False).all()}  # noqa: E712
+    n1 = n2 = 0
+    q = db.query(KCard).filter(KCard.board_id == b.id, KCard.closed == False, KCard.mirror_of == None)  # noqa: E711,E712
+    if since:
+        q = q.filter(KCard.created_at >= since)
+    for c in q.order_by(KCard.pos).all():
+        if c.list_id not in lists or c.is_template:
+            continue
+        before = db.query(KCard).filter(KCard.mirror_of == c.id, KCard.board_id == fb.id).count()
+        _sync_main(db, b, c, user, "card_created", {"new": bool(since)}, conf)
+        if c.due_complete:
+            _sync_main(db, b, c, user, "card_complete", {}, conf)
+        if db.query(KCard).filter(KCard.mirror_of == c.id, KCard.board_id == fb.id).count() > before:
+            n1 += 1
+    q = db.query(KCard).filter(KCard.board_id == fb.id, KCard.closed == False, KCard.mirror_of == None)  # noqa: E711,E712
+    if since:
+        q = q.filter(KCard.created_at >= since)
+    for c in q.all():
+        before = db.query(KCard).filter(KCard.mirror_of == c.id, KCard.board_id == b.id).count()
+        _sync_follow(db, b, fb, c, user, "card_created", conf)
+        if db.query(KCard).filter(KCard.mirror_of == c.id, KCard.board_id == b.id).count() > before:
+            n2 += 1
+    _touch(db, b)
+    _touch(db, fb)
+    return {"main": n1, "back": n2}
+
+
+@router.post("/store/kb/boards/{bid}/sync/run")
+def run_sync(bid: int, db: Session = Depends(get_db), user: models.User = VIEW):
+    b, _ = _board(db, user, bid, "edit")
+    if not _sync_conf(db, b):
+        raise HTTPException(status_code=400, detail="Set up the sync first.")
+    out = sync_existing(db, b, user)
+    db.commit()
+    return out
+
+
+def setup_live_sync(SessionLocal):
+    """Once: the Estimation board follows into Anoop's "My Trello board" by this sync instead of the seven
+    separate rules (they are switched off, kept for reference). Lists for Quantity take-off and other tasks
+    are made if missing, and the tasks QS added since the import are brought across."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "kb_sync_v1").first():
+            return
+        main = db.query(KBoard).filter(KBoard.title == "Estimation", KBoard.closed == False).first()  # noqa: E712
+        fol = db.query(KBoard).filter(KBoard.title == "My Trello board", KBoard.closed == False).first()  # noqa: E712
+        if main and fol and not _sync_conf(db, main):
+            fl = {(l.title or "").strip().upper(): l for l in db.query(KList).filter(KList.board_id == fol.id, KList.closed == False).all()}  # noqa: E712
+            done = fl.get("DONE")
+            routes = []
+            rules = db.query(KRule).filter(KRule.board_id == main.id).all()
+            for r in rules:
+                t, acts = _j(r.trigger, {}), _j(r.actions, [])
+                for a in acts:
+                    if a.get("type") == "mirror_board" and int(a.get("board_id") or 0) == fol.id:
+                        if t.get("type") == "card_titled":
+                            routes.append({"words": t.get("words") or [], "list_id": int(a["list_id"])})
+                        elif t.get("type") == "card_added" and t.get("list_id"):
+                            routes.append({"from_list": int(t["list_id"]), "list_id": int(a["list_id"])})
+                    if a.get("type") == "move_mirror" and int(a.get("board_id") or 0) == fol.id and not done:
+                        done = db.query(KList).filter(KList.id == int(a["list_id"])).first()
+            pay = fl.get("SUBCONTRACT PAYMENTS")
+            if pay:
+                for r in routes:
+                    if r.get("list_id") == pay.id and r.get("words"):
+                        r["words"] = list(dict.fromkeys(r["words"] + ["Payment", "Payments", "PC"]))
+            var = fl.get("VARIATIONS & CLAIMS")
+            if var:     # variation numbers as the QS write them: "914 - V05 - Grade Slab Rework"
+                for r in routes:
+                    if r.get("list_id") == var.id and r.get("words"):
+                        r["words"] = list(dict.fromkeys(r["words"] + ["V0", "V1", "V2", "V3", "VO-", "VO "]))
+            qto = fl.get("QUANTITY TAKE-OFF")
+            if qto:
+                routes.insert(0, {"words": ["Take-off", "Take off", "Takeoff", "Quantity", "QTO", "BOQ"], "list_id": qto.id})
+            other = fl.get("OTHER TASKS")
+            if not other:
+                pos = (done.pos - 1) if done else _end_pos(db, KList, board_id=fol.id)
+                other = KList(board_id=fol.id, title="OTHER TASKS", pos=pos)
+                db.add(other)
+                db.flush()
+            if done:
+                prefs = _j(main.prefs, {})
+                prefs["sync"] = {"board_id": fol.id, "routes": routes, "fallback_list": other.id, "done_list": done.id, "back": True}
+                main.prefs = json.dumps(prefs)
+                for r in rules:          # the sync does their work now - two engines would make cards twice
+                    r.enabled = False
+                db.flush()
+                admin = db.query(models.User).filter(models.User.role == "admin").order_by(models.User.id).first()
+                res = sync_existing(db, main, admin)         # the numbered tasks already on the board come across once
+                print(f"Board sync set up: Estimation -> {fol.title}, {res}")
+        db.add(models.Setting(key="kb_sync_v1", value="1"))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("board sync set-up skipped:", e)
+    finally:
+        db.close()
 
 
 @router.post("/store/kb/rules/{rid}/run")

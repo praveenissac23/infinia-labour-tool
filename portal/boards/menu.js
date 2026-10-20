@@ -297,13 +297,14 @@ const ACT = {
 };
 async function automationPanel(m, show, preset) {
   const b = S.board;
-  let tab = preset && preset.tab || "rules";
+  let tab = preset && preset.tab || (b.prefs && b.prefs.sync && b.prefs.sync.board_id ? "sync" : "rules");     // a synced board opens on its sync
   const draw = async () => {
+    if (tab === "sync") return syncPanel(m, show, () => { tab = "rules"; draw(); }, t => { tab = t; draw(); });
     const d = await GET(`/store/kb/boards/${b.id}/rules`);
     const lists = Object.fromEntries(b.lists.map(l => [l.id, l.title]));
     const rules = d.rules.filter(r => tab === "rules" ? !["schedule", "due_in"].includes(r.trigger.type) : tab === "schedule" ? r.trigger.type === "schedule" : r.trigger.type === "due_in");
     const btns = tab === "card_buttons" ? (b.prefs.card_buttons || []) : tab === "board_buttons" ? (b.prefs.board_buttons || []) : null;
-    const body = show("Automation", `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${[["rules", "Rules"], ["schedule", "Scheduled"], ["due", "Due date"], ["card_buttons", "Card buttons"], ["board_buttons", "Board buttons"]].map(([k, l]) => `<button class="b sm ${tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>
+    const body = show("Automation", `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${[["sync", "Board sync"], ["rules", "Rules"], ["schedule", "Scheduled"], ["due", "Due date"], ["card_buttons", "Card buttons"], ["board_buttons", "Board buttons"]].map(([k, l]) => `<button class="b sm ${tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>
       ${btns ? btns.map((x, i) => `<div class="rule"><div class="rh">${ic("btn")}<div class="rt"><b>${esc(x.name)}</b><div class="rr">${(x.actions || []).map(a => esc(actWords(a))).join(" · ")}${x.list_id ? ` · on cards in "${esc(lists[x.list_id] || "?")}"` : ""}</div></div><button class="x" data-bdel="${i}">${ic("trash", "s14")}</button></div></div>`).join("") || `<p class="muted">${tab === "card_buttons" ? "Card buttons show on the back of every card. One click runs their actions on that card." : "Board buttons show in the board header. One click runs their actions on every card in a list."}</p>`
       : rules.map(r => `<div class="rule"><div class="rh"><button class="tgl ${r.enabled ? "on" : ""}" data-en="${r.id}" title="On / off"></button><div class="rt"><b>${esc(r.words)}</b>, ${r.actions.map(a => esc(actWords(a))).join(", then ")}
           <div class="rr">Ran ${r.runs} time${r.runs === 1 ? "" : "s"}${r.log && r.log[0] ? " · last " + ago(r.log[0].at) : ""} ${r.log && r.log.length ? `· <a data-log="${r.id}" style="cursor:pointer;text-decoration:underline">log</a>` : ""}</div></div>
@@ -320,6 +321,45 @@ async function automationPanel(m, show, preset) {
   };
   await draw();
   if (preset && preset.trigger) ruleBuilder(m, show, preset.tab || "rules", preset.trigger, () => { preset = null; draw(); }, preset.actions ? { actions: preset.actions } : null);
+}
+// Board sync: this board's tasks follow onto another board (Estimation -> Anoop's), both ways, one card shown on both.
+async function syncPanel(m, show, back, setTab) {
+  const b = S.board;
+  let d; try { d = await GET(`/store/kb/boards/${b.id}/sync`); } catch (e) { fail(e); return; }
+  let conf = JSON.parse(JSON.stringify(d.conf || {}));
+  const tabs = `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${[["sync", "Board sync"], ["rules", "Rules"], ["schedule", "Scheduled"], ["due", "Due date"], ["card_buttons", "Card buttons"], ["board_buttons", "Board buttons"]].map(([k, l]) => `<button class="b sm ${k === "sync" ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>`;
+  const draw = () => {
+    const fb = d.boards.find(x => x.id === +conf.board_id);
+    const lopt = (v, empty) => (empty ? `<option value="">${empty}</option>` : "") + (fb ? fb.lists.map(l => `<option value="${l.id}" ${+v === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("") : "");
+    const mopt = v => d.lists.map(l => `<option value="${l.id}" ${+v === l.id ? "selected" : ""}>${esc(l.title)}</option>`).join("");
+    const routes = conf.routes || [];
+    const body = show("Automation", `${tabs}
+      <p class="muted" style="margin-top:0">Every task added on this board - a new card in a project's list, or a title starting with the project number - shows on the other board too, in the list its words point to. It is the same card on both: comments, description, checklists, members and dates show on both. Completed on either board, it goes to Done there and stays where it is here. A numbered task added on the other board ("909 - Take-off") shows here under that project.</p>
+      <label class="fl">Follow on board</label><select class="t" data-fb><option value="">(off)</option>${d.boards.map(x => `<option value="${x.id}" ${+conf.board_id === x.id ? "selected" : ""}>${esc(x.title)}</option>`).join("")}</select>
+      ${fb ? `<h5 style="margin:14px 0 6px">Which list a task goes to ${tip("The first line whose words are in the card title wins. Words match the start of a word, so Bill also catches Bills.")}</h5>
+        ${routes.map((r, i) => `<div class="rb-step" style="padding:8px"><div style="display:flex;gap:6px;align-items:center">${r.from_list !== undefined ? `<span style="white-space:nowrap">Cards in</span><select class="t" data-rf="${i}">${mopt(r.from_list)}</select>` : `<input class="t" data-rw="${i}" value="${esc((r.words || []).join(", "))}" placeholder="words, comma between">`}<button class="x" data-rx="${i}" title="Remove">${ic("x", "s14")}</button></div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:6px"><span>go to</span><select class="t" data-rl="${i}">${lopt(r.list_id)}</select></div></div>`).join("")}
+        <div style="display:flex;gap:6px"><button class="b sm" data-add-w>+ Words → list</button><button class="b sm" data-add-l>+ A list here → list</button></div>
+        <label class="fl">Any other task goes to</label><select class="t" data-fl>${lopt(conf.fallback_list, "Choose…")}</select>
+        <label class="fl">Completed tasks go to</label><select class="t" data-dl>${lopt(conf.done_list, "Choose…")}</select>
+        <label class="chk" style="margin-top:8px"><input type="checkbox" data-back ${conf.back !== false ? "checked" : ""}> Numbered tasks added on ${esc(fb.title)} show here under their project</label>` : ""}
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="b pri" data-save>Save</button>${d.conf && d.conf.board_id ? `<button class="b" data-run>Bring the existing numbered tasks across</button>` : ""}</div>`);
+    $$("[data-tab]", body).forEach(x => x.onclick = () => setTab(x.dataset.tab));
+    body.querySelector("[data-fb]").onchange = e => { conf.board_id = e.target.value ? +e.target.value : null; if (conf.board_id) conf.routes = conf.routes || []; draw(); };
+    $$("[data-rw]", body).forEach(e => e.oninput = () => { routes[+e.dataset.rw].words = e.value.split(",").map(x => x.trim()).filter(Boolean); });
+    $$("[data-rf]", body).forEach(e => e.onchange = () => { routes[+e.dataset.rf].from_list = +e.value; });
+    $$("[data-rl]", body).forEach(e => e.onchange = () => { routes[+e.dataset.rl].list_id = +e.value; });
+    $$("[data-rx]", body).forEach(e => e.onclick = () => { routes.splice(+e.dataset.rx, 1); draw(); });
+    const aw = body.querySelector("[data-add-w]"); if (aw) aw.onclick = () => { conf.routes = routes; routes.push({ words: [], list_id: fb.lists[0] && fb.lists[0].id }); draw(); };
+    const al = body.querySelector("[data-add-l]"); if (al) al.onclick = () => { conf.routes = routes; routes.push({ from_list: d.lists[0] && d.lists[0].id, list_id: fb.lists[0] && fb.lists[0].id }); draw(); };
+    const sel = (q, k) => { const e = body.querySelector(q); if (e) e.onchange = () => conf[k] = e.type === "checkbox" ? e.checked : +e.value; };
+    sel("[data-fl]", "fallback_list"); sel("[data-dl]", "done_list"); sel("[data-back]", "back");
+    body.querySelector("[data-save]").onclick = async () => {
+      try { d = await PUT(`/store/kb/boards/${b.id}/sync`, conf.board_id ? { ...conf, routes } : {}); conf = JSON.parse(JSON.stringify(d.conf || {})); toast(conf.board_id ? "Sync saved - new tasks follow from now on" : "Sync off"); draw(); } catch (e) { fail(e); }
+    };
+    const rn = body.querySelector("[data-run]"); if (rn) rn.onclick = async () => { rn.disabled = true; try { const r = await POST(`/store/kb/boards/${b.id}/sync/run`); toast(`${r.main} task${r.main === 1 ? "" : "s"} brought across, ${r.back} back`); await reloadBoard(true); } catch (e) { fail(e); } rn.disabled = false; };
+  };
+  draw();
 }
 function actWords(a) {
   const b = S.board; const L = id => (b.lists.find(l => l.id === +id) || {}).title || "?"; const LB = id => { const l = b.labels.find(x => x.id === +id); return l ? (l.name || l.color) : "?"; };

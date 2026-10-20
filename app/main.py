@@ -13396,6 +13396,7 @@ import boards  # noqa: E402  - Estimation > Trello: boards, lists and cards
 app.include_router(boards.router)
 try:
     boards.create_tables(engine)
+    boards.setup_live_sync(SessionLocal)
 except Exception as _e:
     print("boards tables:", _e)
 
