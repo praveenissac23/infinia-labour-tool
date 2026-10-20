@@ -183,11 +183,11 @@ function combo(el, items, onPick, placeholder) {
     if (e.key === "ArrowDown") { cur = Math.min(shown.length - 1, cur + 1); draw(); e.preventDefault(); }
     else if (e.key === "ArrowUp") { cur = Math.max(0, cur - 1); draw(); e.preventDefault(); }
     else if (e.key === "Enter" && shown[Math.max(cur, 0)]) { pick(shown[Math.max(cur, 0)]); }
-    else if (e.key === "Escape") { list.classList.add("hide"); inp.blur(); }
+    else if (e.key === "Escape") { list.classList.add("hide"); if (inp.dataset.picked) inp.value = inp.dataset.picked; inp.blur(); }
   };
   const pick = x => { inp.value = x.code + "  " + (x.name || ""); inp.dataset.picked = inp.value; list.classList.add("hide"); inp.blur(); onPick(x); };
   list.onmousedown = e => { const o = e.target.closest(".opt"); if (o) { e.preventDefault(); pick(shown[+o.dataset.i]); } };
-  inp.onblur = () => setTimeout(() => list.classList.add("hide"), 120);
+  inp.onblur = () => setTimeout(() => { list.classList.add("hide"); if (inp.dataset.picked && !items.some(x => (x.code + "  " + (x.name || "")) === inp.value)) inp.value = inp.dataset.picked; }, 150);
   return { set(x) { if (x) { inp.value = x.code + "  " + (x.name || ""); inp.dataset.picked = inp.value; } } };
 }
 
@@ -209,6 +209,7 @@ function chainCalc(pcs, advPct, retPct, vatPct, workKey = "work_cum") {
 // =====================================================================
 async function start() {
   if (!TOKEN) { signIn(); return; }
+  if (VIEW === "pay") { $("#app").classList.remove("hide"); return loadPay(); }      // Accounts: needs only the Bank right
   // The page's own data is asked for at the same time as the lists, not after them.
   let early = null;
   if (VIEW === "dash") early = GET("/store/est/dash").catch(() => null);
@@ -227,6 +228,7 @@ async function start() {
     if (s[1]) { ST.group = s[1]; ST.sec = s[2]; }
     else { try { const k = localStorage.getItem("est_sec"); if (k) [ST.group, ST.sec] = k.split("."); } catch (e) {} }
     renderProjectShell();
+    if (ST.pendingOpen) { const d = ST.pendingOpen; ST.pendingOpen = null; ST.early = null; ST.earlyPid = null; return openFromMessage(d); }
     if (!(pid && ST.meta.projects.some(p => p.id === pid))) pid = (ST.meta.projects.find(p => p.status === "Running") || ST.meta.projects[0] || {}).id;
     if (pid) openProject(pid);   // the first project opens by itself
   } else if (VIEW === "tenders") loadTenders();
@@ -235,12 +237,19 @@ async function start() {
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data) return;
   if (e.data.est === "open" && VIEW === "projects") {
-    if (e.data.group) { ST.group = e.data.group; ST.sec = e.data.sec; }
-    if (e.data.pid) openProject(+e.data.pid, true); else if (ST.pid) openProject(ST.pid, true);
+    if (!ST.meta || !ST.combo) { ST.pendingOpen = e.data; return; }      // the page is still starting: it opens this when ready
+    openFromMessage(e.data);
   }
-  if (e.data.est === "refresh") { if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); }
+  if (e.data.est === "refresh") { if (VIEW === "pay") loadPay(); else if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); }
 });
-window.pgRefresh = () => { if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); };
+async function openFromMessage(d) {
+  if (d.group) { ST.group = d.group; ST.sec = d.sec; }
+  if (d.pid && !ST.meta.projects.some(p => p.id === +d.pid)) {         // made a moment ago (a won tender): fetch the list again
+    try { ST.meta = await GET("/store/est/meta"); renderProjectShell(); } catch (e) {}
+  }
+  if (d.pid) openProject(+d.pid, true); else if (ST.pid) openProject(ST.pid, true);
+}
+window.pgRefresh = () => { if (VIEW === "pay") loadPay(); else if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); };
 function goProject(pid, group, sec) {
   if (window.PG_EMBED) { try { parent.postMessage({ est: "go", view: "projects", pid, group, sec }, location.origin); return; } catch (e) {} }
   location.href = `/portal/est-app.html?view=projects#p${pid}` + (group ? `&s=${group}.${sec}` : "");
@@ -298,7 +307,12 @@ async function loadDash() {
     <div class="card"><h3>Finalization - all projects ${tip("The final status of each trade on each project, from each project's finalization log. ✔ finalized, X not yet, C main contractor's scope, E employer's, PS provisional sum. Click a project's column heading to open its log.")}</h3>${finalMatrix(d)}</div>
   </div>`;
   $$("[data-pid]", app).forEach(r => r.onclick = () => { const s = (r.dataset.sec || "").split("."); goProject(+r.dataset.pid, s[0], s[1]); });
-  $$("[data-go]", app).forEach(f => f.onclick = () => { const s = f.dataset.go.split("."); const first = rows[0]; if (first) goProject(first.id, s[0], s[1]); });
+  $$("[data-go]", app).forEach(f => f.onclick = () => {
+    const s = f.dataset.go.split("."), want = s[1] === "pcs" ? ["With Accounts", "PC issued"] : ["At site", "Received", "Back from site", "Certified"];
+    const n = {}; d.queue.filter(x => want.includes(x.status)).forEach(x => n[x.project_id] = (n[x.project_id] || 0) + 1);
+    const best = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
+    if (best) goProject(+best[0], s[0], s[1]); else toast("Nothing waiting there just now");
+  });
 }
 function finalMatrix(d) {
   if (!d.matrix.length) return '<div class="empty">No projects yet.</div>';
@@ -387,7 +401,7 @@ function editProject() {
     { k: "qs", label: "QS in charge", type: "combo", options: ST.meta.users.map(u => u.name), value: p.qs },
     { k: "notes", label: "Notes", type: "area", value: p.notes },
   ], async v => { await PATCH(`/store/est/projects/${p.id}`, v); ST.meta = await GET("/store/est/meta"); reload(); toast("Saved"); },
-  { del: ST.meta.me.admin ? async () => { await DEL(`/store/est/projects/${p.id}`); ST.meta = await GET("/store/est/meta"); ST.pid = null; try { localStorage.removeItem("est_pid"); } catch (e) {} renderProjectShell(); } : null });
+  { del: ST.meta.me.admin ? async () => { await DEL(`/store/est/projects/${p.id}`); ST.meta = await GET("/store/est/meta"); ST.pid = null; try { localStorage.removeItem("est_pid"); } catch (e) {} renderProjectShell(); const nx = ST.meta.projects.find(x => x.status === "Running") || ST.meta.projects[0]; if (nx) openProject(nx.id); } : null });
 }
 function renderProject() {
   const b = ST.b, s = b.summary;
@@ -482,7 +496,7 @@ function openSub(sid) {
     const s = ST.b.subs.find(x => x.id === sid); if (!s) { closeDrawer(); return; }
     const fig = (l, v, cls = "") => `<div class="fig ${cls}"><div class="l">${l}</div><div class="v">${v}</div></div>`;
     drawer(`${esc(s.name)} <span class="muted small">${esc(s.scope)}</span>`, `
-      <div class="tools"><button class="btn btn-primary" id="s-inv">+ Invoice received</button><button class="btn btn-ghost" id="s-adv" ${s.adv_pct ? "" : "disabled"} title="${s.adv_pct ? "" : "No advance % on this subcontract"}">+ Advance PC</button><button class="btn btn-plain" id="s-vo">+ Variation</button><button class="btn btn-plain" id="s-edit">Edit subcontract</button><span class="spacer"></span>${xpButtons("subpcs", { pid: ST.pid, sub_id: s.id, name: s.name })}</div>
+      <div class="tools"><button class="btn btn-primary" id="s-inv">+ Invoice received</button>${s.pcs.some(p => p.pc_type === "Advance") ? "" : `<button class="btn btn-ghost" id="s-adv">+ Advance PC</button>`}<button class="btn btn-plain" id="s-vo">+ Variation</button><button class="btn btn-plain" id="s-edit">Edit subcontract</button><span class="spacer"></span>${xpButtons("subpcs", { pid: ST.pid, sub_id: s.id, name: s.name })}</div>
       <div class="strip">
         ${fig("Value", money(s.value, false))}${fig("Variations", money(s.vo_total, false))}${fig("Revised", money(s.revised, false))}
         ${fig("Work done", money(s.work_done, false) + `<div class="s">${s.done_pct}%</div>`)}${fig("Certified", money(s.certified, false))}${fig("Paid", money(s.paid, false), "green")}
@@ -499,7 +513,12 @@ function openSub(sid) {
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
       <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}% · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
     $("#s-inv").onclick = () => invoiceForm(s.id);
-    $("#s-adv").onclick = async () => { try { await POST("/store/est/subpcs", { sub_id: s.id, pc_type: "Advance", inv_ref: "Advance" }); await reload(); toast("Advance PC made - " + s.adv_pct + "% of the value"); } catch (e) { fail(e); } };
+    const sa = $("#s-adv"); if (sa) sa.onclick = () => modal("Advance payment certificate", [
+      { k: "adv_amount", label: "Advance amount (AED)", type: "money", value: s.adv_pct ? r2(s.value * s.adv_pct / 100) : "", focus: true,
+        hint: s.adv_pct ? `${s.adv_pct}% of ${money(s.value, false)} - change it if the agreement says another figure` : "No advance % on the subcontract: type the amount",
+        quick: [[`${s.adv_pct || 10}%`, el => el.value = r2(s.value * (s.adv_pct || 10) / 100)]] },
+      { k: "inv_ref", label: "Invoice / request ref.", value: "Advance" }],
+      async v => { await POST("/store/est/subpcs", { sub_id: s.id, pc_type: "Advance", adv_amount: v.adv_amount, inv_ref: v.inv_ref }); await reload(); toast("Advance certificate made - recovered from the next certificates"); });
     $("#s-vo").onclick = () => voSubForm(s);
     $("#s-edit").onclick = () => subForm(s);
     $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print]")) return; certifyForm(s.id, +r.dataset.pc); });
@@ -537,7 +556,7 @@ function invoiceForm(sid) {
 function certifyForm(sid, pcid) {
   const s = ST.b.subs.find(x => x.id === sid), p = s.pcs.find(x => x.id === pcid);
   const idx = s.pcs.indexOf(p), prev = s.pcs[idx - 1] || null;
-  const locked = p.status === "Paid" && !ST.meta.me.admin;
+  const locked = (p.status === "Paid" || s.pcs.some(x => x.seq > p.seq && x.status === "Paid")) && !ST.meta.me.admin;     // paid, or history of a paid one
   const fields = [
     { k: "work_cum", label: "Value of work done to date (AED)", type: "money", value: p.work_cum, focus: true, tip: "Everything done up to now, not just this month. The earlier PCs are taken off automatically.",
       quick: [["Same as last", el => el.value = prev ? prev.work_cum : 0], ...[25, 50, 75, 90, 100].map(n => [n + "%", el => el.value = r2(s.revised * n / 100)])],
@@ -578,7 +597,7 @@ function certifyForm(sid, pcid) {
     await PATCH(`/store/est/subpcs/${p.id}`, v);
     if (["Received", "At site", "Back from site"].includes(p.status) && Number(v.work_cum || 0) > 0) await POST(`/store/est/subpcs/${p.id}/step`, { step: "Certified" });
     await reload(); toast("Certificate saved");
-  }, { wide: true, live, top: '<div class="calc" id="calc" style="margin:0 0 12px"></div>', save: locked ? "Locked (paid)" : "Save certificate",
+  }, { wide: true, live, top: '<div class="calc" id="calc" style="margin:0 0 12px"></div>', save: locked ? "Locked - paid" : "Save certificate",
        extra: `<button class="btn btn-plain" id="m-print">Print PC</button>`,
        del: p.status !== "Paid" ? async () => { await DEL(`/store/est/subpcs/${p.id}`); reload(); toast("Removed"); } : null,
        after: () => { $("#m-print").onclick = () => exportGo("preview", "pc", { id: p.id }); if (locked) $("#m-save").disabled = true; } });
@@ -678,6 +697,11 @@ SECTIONS["subs.final"] = el => {
     const [id, k] = td.dataset.fc.split(":"); const col = FCOLS.find(c => c[0] === k)[2]; const row = b.finals.find(x => x.id === +id);
     const nv = col[(col.indexOf(row[k] || "") + 1) % col.length];
     row[k] = nv; td.textContent = nv; td.className = "cell " + cls(nv);
+    // the counts on the chips and the tab follow at once
+    const pend = b.finals.filter(x => x.st !== "✔" && x.sc !== "N/A").length, done = b.finals.filter(x => x.st === "✔").length, tot = b.finals.filter(x => x.sc !== "N/A").length;
+    const setN = (sel, v) => { const n = document.querySelector(sel); if (n) n.textContent = v; };
+    setN('.chip[data-f="Pending"] .n', pend); setN('.chip[data-f="✔"] .n', done); setN('.tab[data-s="final"] .n', `${done}/${tot}`);
+    b.summary.finals_done = done; b.summary.finals_total = tot;
     try { await PATCH(`/store/est/finals/${id}`, { [k]: nv }); } catch (e) { fail(e); }
   });
   $$("[data-fsub]", el).forEach(s => s.onchange = async () => { try { await PATCH(`/store/est/finals/${s.dataset.fsub}`, { sub_id: s.value || null }); b.finals.find(x => x.id === +s.dataset.fsub).sub_id = +s.value || null; toast("Saved"); } catch (e) { fail(e); } });
@@ -848,7 +872,7 @@ function logSection(kind) {
       ${list.map(l => { const od = l.due && l.due < t && !l.replied && !["Closed", "Approved", "Answered", "Rejected"].includes(l.status);
         return `<tr class="rowc" data-log="${l.id}"><td class="nowrap"><b>${kind === "rfi" ? "RFI" : "SUB"}-${pad(l.seq)}</b></td><td>${esc(l.title)}${l.note ? `<div class="small muted">${esc(l.note.slice(0, 120))}</div>` : ""}</td><td>${esc(l.party)}</td><td class="small">${esc(l.discipline)}</td><td class="small">${esc(l.ref)}</td>${kind === "submittal" ? `<td>${esc(l.rev)}</td>` : ""}
         <td class="nowrap">${dt(l.sent)}</td><td class="nowrap ${od ? "late" : ""}">${dt(l.due)}${od ? " !" : ""}</td><td class="nowrap">${dt(l.replied)}</td><td>${st(l.status)}</td>
-        <td class="nowrap">${!l.replied ? `<button class="btn btn-ghost btn-sm" data-reply="${l.id}">${cfg.btn}</button>` : kind === "rfi" && l.status !== "Closed" ? `<button class="btn btn-plain btn-sm" data-close="${l.id}">Close</button>` : ""}</td></tr>`; }).join("")}
+        <td class="nowrap">${!l.replied ? `<button class="btn btn-ghost btn-sm" data-reply="${l.id}">${cfg.btn}</button>` : kind === "rfi" && l.status !== "Closed" ? `<button class="btn btn-plain btn-sm" data-close="${l.id}">Close</button>` : l.status === "Revise & resubmit" ? `<button class="btn btn-ghost btn-sm" data-resub="${l.id}">Resubmit (rev ${(+l.rev || 0) + 1})</button>` : ""}</td></tr>`; }).join("")}
       </tbody></table></div>` : `<div class="empty">No ${cfg.name}s${f ? " here" : " yet"}.</div>`);
     bindTools(el, () => logSection(kind)(el));
     $("#add-log", el).onclick = () => logForm(kind);
@@ -861,6 +885,8 @@ function logSection(kind) {
         async v => { await PATCH(`/store/est/logs/${l.id}`, v); await reload(); toast("Saved"); });
     });
     $$("[data-close]", el).forEach(x => x.onclick = () => quickLog(+x.dataset.close, { status: "Closed" }, "Closed"));
+    $$("[data-resub]", el).forEach(x => x.onclick = () => { const l = all.find(y => y.id === +x.dataset.resub);
+      quickLog(l.id, { rev: String((+l.rev || 0) + 1), status: "Submitted", sent: t, replied: "", due: addDays(b.rules.submittal_days) }, "Resubmitted - rev " + ((+l.rev || 0) + 1)); });
   };
 }
 async function quickLog(id, d, msg) { try { await PATCH(`/store/est/logs/${id}`, d); await reload(); toast(msg); } catch (e) { fail(e); } }
@@ -938,7 +964,7 @@ SECTIONS["site.doc"] = el => {
   d.ondragover = e => { e.preventDefault(); d.classList.add("over"); }; d.ondragleave = () => d.classList.remove("over");
   d.ondrop = e => { e.preventDefault(); d.classList.remove("over"); up([...e.dataTransfer.files]); };
   $$("[data-fdel]", el).forEach(x => x.onclick = async () => { if (!confirmInline(x)) return; try { await DEL(`/store/est/files/${x.dataset.fdel}`); reload(); } catch (e) { fail(e); } });
-  $$("[data-fcat]", el).forEach(s => s.onchange = async () => { try { await PATCH(`/store/est/files/${s.dataset.fcat}`, { category: s.value }); toast("Saved"); } catch (e) { fail(e); } });
+  $$("[data-fcat]", el).forEach(s => s.onchange = async () => { try { await PATCH(`/store/est/files/${s.dataset.fcat}`, { category: s.value }); await reload(); toast("Saved"); } catch (e) { fail(e); } });
 };
 
 // =====================================================================
@@ -993,6 +1019,40 @@ function tenderForm(x) {
     { k: "note", label: "Notes", type: "area", value: x.note || "" },
   ], async v => { if (x.id) await PATCH(`/store/est/tenders/${x.id}`, v); else await POST("/store/est/tenders", v); await loadTenders(); toast("Saved"); },
   { wide: true, del: x.id ? async () => { await DEL(`/store/est/tenders/${x.id}`); loadTenders(); } : null });
+}
+// =====================================================================
+// ACCOUNTS > SUBCONTRACTOR PAYMENTS (the certificates Estimation sends for payment)
+// =====================================================================
+async function loadPay() {
+  let d; try { d = await GET("/store/est/payqueue"); } catch (e) { $("#app").innerHTML = `<div class="wrap"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  ST.pay = d; ST.meta = ST.meta || { today: d.today };
+  drawPay();
+}
+function drawPay() {
+  const d = ST.pay, f = ST.filt.pay ?? "With Accounts", q = (ST.q.pay || "").toLowerCase();
+  const rows = d.rows.filter(r => (!f || r.status === f) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  const n = s => d.rows.filter(r => r.status === s).length;
+  const due = d.rows.filter(r => r.status === "With Accounts").reduce((a, r) => a + r.payable, 0);
+  $("#app").innerHTML = `<div class="wrap">
+    <div class="strip"><div class="fig amber"><div class="l">To pay now</div><div class="v">${aed(due)}</div><div class="s">${n("With Accounts")} certificates with Accounts</div></div>
+      <div class="fig"><div class="l">Issued, not yet sent</div><div class="v">${n("PC issued")}</div></div><div class="fig green"><div class="l">Paid (last 60 days)</div><div class="v">${aed(d.rows.filter(r => r.status === "Paid").reduce((a, r) => a + r.paid_amount, 0))}</div></div></div>
+    <div class="tools"><input class="q" placeholder="Search" value="${esc(ST.q.pay || "")}" id="pq"><div class="chips">${[["With Accounts", n("With Accounts")], ["PC issued", n("PC issued")], ["Paid", n("Paid")], ["", d.rows.length]].map(([v, c]) => `<span class="chip ${f === v ? "on" : ""}" data-pf="${v}">${v || "All"}<span class="n">${c}</span></span>`).join("")}</div>
+      <span class="spacer"></span><span class="small muted">Sent by Estimation once certified ${tip("Print the certificate, pay it, then press Mark paid. The QS sees it paid at once.")}</span></div>
+    ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th class="r">This PC</th><th class="r">VAT</th><th class="r">Payable</th><th>Sent</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td><b>${esc(r.project)}</b><div class="small muted">${esc(r.project_name)}</div></td><td><b>${esc(r.sub)}</b><div class="small muted">${esc(r.scope)}${r.inv_ref ? " · " + esc(r.inv_ref) : ""}</div></td><td class="nowrap">PC ${pad(r.seq, 2)}${r.pc_type !== "Interim" ? ` <span class="small muted">${esc(r.pc_type)}</span>` : ""}</td>
+      <td class="r">${money(r.this, false)}</td><td class="r">${money(r.vat)}</td><td class="r"><b>${money(r.payable, false)}</b></td><td class="nowrap">${dt(r.to_accounts || r.issued)}</td><td class="nowrap">${dt(r.paid_on)}${r.paid_ref ? `<div class="small muted">${esc(r.paid_ref)}</div>` : ""}</td><td>${st(r.status)}</td>
+      <td class="nowrap"><button class="btn btn-plain btn-sm" data-pp="${r.pc_id}">Print</button> ${r.status === "Paid" ? `<button class="btn btn-plain btn-sm" data-pundo="${r.pc_id}" title="Not paid after all">&#8630;</button>` : `<button class="btn btn-ok btn-sm" data-ppay="${r.pc_id}">Mark paid</button>`}</td></tr>`).join("")}
+    <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(rows.reduce((a, r) => a + r.this, 0))}</td><td class="r">${money(rows.reduce((a, r) => a + r.vat, 0))}</td><td class="r">${money(rows.reduce((a, r) => a + r.payable, 0))}</td><td></td><td></td><td></td><td></td></tr></tbody></table></div>`
+    : `<div class="card empty">Nothing ${f ? (f === "Paid" ? "paid in the last 60 days" : "here") : "yet"}.</div>`}</div>`;
+  $("#pq").oninput = debounce(() => { ST.q.pay = $("#pq").value; drawPay(); const n2 = $("#pq"); n2.focus(); n2.setSelectionRange(n2.value.length, n2.value.length); }, 250);
+  $$("[data-pf]").forEach(c => c.onclick = () => { ST.filt.pay = c.dataset.pf; drawPay(); });
+  $$("[data-pp]").forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.pp }));
+  $$("[data-ppay]").forEach(b => b.onclick = () => { const r = d.rows.find(x => x.pc_id === +b.dataset.ppay);
+    modal(`Paid - ${r.sub}, PC ${pad(r.seq, 2)}`, [
+      { k: "amount", label: "Amount paid (AED)", type: "money", value: r.payable, tip: "Filled in with the amount payable (incl. VAT)." },
+      { k: "date", label: "Paid on", type: "date", value: d.today }, { k: "ref", label: "Cheque / transfer ref.", focus: true }],
+      async v => { await POST(`/store/est/subpcs/${r.pc_id}/step`, Object.assign({ step: "Paid" }, v)); await loadPay(); toast("Marked paid"); }); });
+  $$("[data-pundo]").forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.pundo}/step`, { step: "Paid", undo: true }); await loadPay(); toast("Back with Accounts"); } catch (e) { fail(e); } });
 }
 function addDays(n) { const d = new Date(today() + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 

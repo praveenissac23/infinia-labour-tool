@@ -484,6 +484,12 @@ def _coerce(t, v, field):
             raise HTTPException(400, f"{field.replace('_', ' ')}: that is not a number.")
         if abs(x) > MONEY_LIMIT:
             raise HTTPException(400, f"{field.replace('_', ' ')}: that number is too big.")
+        if x < 0 and field in ("value", "contract_value", "inv_amount", "paid_amount", "qty", "rate", "cost_rate", "work_cum", "mos_cum", "adv_amount"):
+            raise HTTPException(400, f"{field.replace('_', ' ').capitalize()} cannot be below zero.")
+        if field.endswith("_pct"):
+            if x < 0 or x > 100:
+                raise HTTPException(400, f"{field.replace('_pct', '').replace('_', ' ').title()} % must be between 0 and 100.")
+            return round(x, 4)
         return round(x, 2)
     if t == I:
         if v in (None, ""):
@@ -508,6 +514,10 @@ def _apply(row, fields, data):
     for k, v in (data or {}).items():
         if k in fields:
             setattr(row, k, _coerce(fields[k], v, k))
+    if isinstance(row, EstVariation):      # an omission takes money off: always kept as a minus figure
+        sign = -1 if (row.kind or "") == "Omission" else 1
+        row.submitted_amount = sign * abs(row.submitted_amount or 0)
+        row.approved_amount = sign * abs(row.approved_amount or 0)
 
 
 def _iso(d):
@@ -518,7 +528,7 @@ def _plain(row, fields):
     out = {"id": row.id}
     for k, t in fields.items():
         v = getattr(row, k)
-        out[k] = _iso(v) if t == D else (r2(v) if t == F else v)
+        out[k] = _iso(v) if t == D else ((round(float(v or 0), 4) if k.endswith("_pct") else r2(v)) if t == F else v)
     return out
 
 
@@ -535,10 +545,15 @@ def sub_revised(s, vos):
     return r2((s.value or 0) + sum(v.amount or 0 for v in vos) - (s.cancelled or 0))
 
 
+LOCKED_STATUS = ("Paid", "Invoiced")
+
+
 def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0):
     """Advance recovery and retention to date, from the percentages - unless typed.
     With no advance % set, an advance that was paid is recovered pro rata to the
     value (advance / value of the work done), so it is all back at 100%."""
+    if (pc.status or "") in LOCKED_STATUS:      # a paid certificate's figures never move again
+        return
     work = getattr(pc, work_key) or 0
     adv_paid = prev_adv_paid + (pc.adv_amount or 0)
     if pc.adv_auto:
@@ -553,8 +568,11 @@ def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=
     what each one certifies. With fill=True the automatic figures are set
     on the rows themselves (before saving)."""
     out, prev_net, adv_paid = [], 0.0, 0.0
-    for pc in sorted(pcs, key=lambda p: (p.seq or 0, p.id or 0)):
-        if fill:
+    rows = sorted(pcs, key=lambda p: (p.seq or 0, p.id or 0))
+    # Certificates up to the last paid one are history: a paid PC's amount depends on them all.
+    last_locked = max([i for i, p in enumerate(rows) if (p.status or "") in LOCKED_STATUS] or [-1])
+    for i, pc in enumerate(rows):
+        if fill and i > last_locked:
             _auto_fill(pc, adv_paid, adv_pct, ret_pct, work_key, base)
         adv_paid = r2(adv_paid + (pc.adv_amount or 0))
         work = r2(getattr(pc, work_key))
@@ -676,7 +694,8 @@ def _preload(db, projects, with_files=True):
         d["boq"][x.project_id].append(x)
     for x in db.query(EstLog).filter(EstLog.project_id.in_(pids)).order_by(EstLog.kind, EstLog.sort, EstLog.seq):
         d["logs"][x.project_id].append(x)
-    for x in db.query(EstFinal).filter(EstFinal.project_id.in_(pids)).order_by(EstFinal.sort, EstFinal.id):
+    secs = {k: i for i, k in enumerate(list(FINAL_ITEMS) + ["OTHER"])}
+    for x in sorted(db.query(EstFinal).filter(EstFinal.project_id.in_(pids)), key=lambda f: (secs.get(f.section, 9), f.sort or 0, f.id)):
         d["finals"][x.project_id].append(x)
     if with_files:
         for x in db.query(EstFile).filter(EstFile.project_id.in_(pids)).order_by(EstFile.id.desc()):
@@ -727,9 +746,13 @@ def project_bundle(db, p, rules=None, pre=None):
     sub_paid = r2(sum(s["paid"] for s in sub_out))
     # Only what the consultant has certified counts as certified; an advance counts once it is past draft.
     cert = [c for c in client if c["status"] in ("Certified", "Invoiced", "Paid") or (c["pc_type"] == "Advance" and c["status"] != "Draft")]
+    draft_adv = 0.0
+    if cert:     # an advance still in draft before the last certified one is not certified money
+        last_seq = cert[-1]["seq"]
+        draft_adv = r2(sum(c["adv_amount"] for c in client if c["pc_type"] == "Advance" and c["status"] == "Draft" and c["seq"] <= last_seq))
     summary = {
         "contract": r2(contract), "approved_vo": approved_vo, "revised": r2(contract + approved_vo),
-        "client_certified": cert[-1]["net_cum"] if cert else 0.0,
+        "client_certified": r2(cert[-1]["net_cum"] - draft_adv) if cert else 0.0,
         "client_work": cert[-1]["work"] if cert else 0.0,
         "client_claimed": client[-1]["net_cum"] if client else 0.0,
         "received": received, "invoiced": r2(sum(i["total"] for i in invoices if i["kind"] == "tax" and i["status"] != "cancelled")),
@@ -822,9 +845,9 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
                 st = pc["status"]
                 if st == "At site":
                     kpi["at_site"] += 1
-                if pc["site_delay"]:
+                if pc["site_delay"] and st == "At site":           # late now, not late once
                     kpi["site_delays"] += 1
-                if pc["pc_delay"]:
+                if pc["pc_delay"] and st in ("Received", "At site", "Back from site", "Certified"):
                     kpi["pc_delays"] += 1
                 if st in ("Received", "Back from site", "Certified"):
                     kpi["preparing"] += 1
@@ -1008,9 +1031,19 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
             row.received = t
         if not row.status:
             row.status = "Received"
-        if row.pc_type == "Advance" and not row.adv_amount:
+        if row.pc_type == "Advance":
+            if db.query(EstSubPC).filter(EstSubPC.sub_id == row.sub_id, EstSubPC.pc_type == "Advance").first():
+                raise HTTPException(400, "This subcontract already has its advance payment certificate.")
             s = _sub_of(db, row.sub_id)
-            row.adv_amount = r2((s.value or 0) * (s.adv_pct or 0) / 100.0)
+            if not row.adv_amount:
+                row.adv_amount = r2((s.value or 0) * (s.adv_pct or 0) / 100.0)
+            if not row.adv_amount:
+                raise HTTPException(400, "Enter the advance amount (or set the advance % on the subcontract).")
+            # An advance is not an invoice to check at site: it is certified when made.
+            if "received" not in data:
+                row.received = None
+            if "status" not in data:
+                row.status, row.certified_on = "Certified", t
         _check_pc(db, row)
     elif kind == "clientpcs":
         prev = db.query(EstClientPC).filter(EstClientPC.project_id == row.project_id).order_by(EstClientPC.seq.desc()).first()
@@ -1074,6 +1107,15 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
     row = db.query(model).get(rid)
     if not row:
         raise HTTPException(404, "That line is not there any more.")
+    if kind == "subs" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
+            and db.query(EstSubPC).filter(EstSubPC.sub_id == row.id, EstSubPC.status == "Paid").first():
+        raise HTTPException(400, "This subcontract has paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
+    if kind == "projects" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
+            and db.query(EstClientPC).filter(EstClientPC.project_id == row.id, EstClientPC.status.in_(LOCKED_STATUS)).first():
+        raise HTTPException(400, "This project has invoiced or paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
+    if kind == "subpcs" and user.role != "admin" and row.status != "Paid" and any(k in data for k in ("work_cum", "mos_cum", "adv_amount", "adv_rec_cum", "ret_cum", "ret_rel_cum", "other_cum")) \
+            and db.query(EstSubPC).filter(EstSubPC.sub_id == row.sub_id, EstSubPC.status == "Paid", EstSubPC.seq > (row.seq or 0)).first():
+        raise HTTPException(400, "A later certificate is already paid - this one's figures are locked. Ask an admin if it must change.")
     if kind == "subpcs" and row.status == "Paid" and any(k in data for k in ("work_cum", "mos_cum", "adv_amount", "adv_rec_cum", "ret_cum", "ret_rel_cum", "other_cum")) and user.role != "admin":
         raise HTTPException(400, "This certificate is paid - its figures are locked. Ask an admin if it must change.")
     # A typed advance recovery / retention switches its automatic figure off.
@@ -1182,6 +1224,31 @@ def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), use
     return {"ok": True, "status": pc.status}
 
 
+# ---- Accounts: the subcontractor certificates sent for payment ----------------------------
+
+@router.get("/store/est/payqueue")
+def payqueue(db: Session = Depends(get_db), user: models.User = PAYER):
+    """Accounts > Subcontractor payments: every certificate issued or sent to Accounts, and the last 60 days paid."""
+    rules = _rules(db)
+    projects = db.query(EstProject).order_by(EstProject.code).all()
+    pre = _preload(db, projects, with_files=False)
+    since = (today() - timedelta(days=60)).isoformat()
+    rows = []
+    for p in projects:
+        for s_ in pre["subs"].get(p.id, []):
+            sb = _sub_bundle(db, s_, pre["vos"].get(s_.id, []), pre["pcs"].get(s_.id, []), rules)
+            for pc in sb["pcs"]:
+                if pc["status"] in ("PC issued", "With Accounts") or (pc["status"] == "Paid" and (pc["paid_on"] or "") >= since):
+                    rows.append({"pc_id": pc["id"], "project": p.code, "project_name": p.name, "sub": sb["name"], "scope": sb["scope"],
+                                 "seq": pc["seq"], "pc_type": pc["pc_type"], "inv_ref": pc["inv_ref"], "this": pc["this"], "vat": pc["vat"],
+                                 "payable": pc["payable"], "issued": pc["issued"], "to_accounts": pc["to_accounts"], "paid_on": pc["paid_on"],
+                                 "paid_amount": pc["paid_amount"], "paid_ref": pc["paid_ref"], "status": pc["status"]})
+    order = {"With Accounts": 0, "PC issued": 1, "Paid": 2}
+    rows.sort(key=lambda r: (order.get(r["status"], 3), r["to_accounts"] or r["issued"] or "", r["project"]))
+    perms = M.effective_permissions(user)
+    return {"rows": rows, "today": today().isoformat(), "estimation": RIGHT in perms}
+
+
 # ---- BOQ pasted from Excel --------------------------------------------------------------
 
 @router.post("/store/est/projects/{pid}/boq-paste")
@@ -1215,7 +1282,10 @@ def boq_paste(pid: int, data: dict = Body(...), db: Session = Depends(get_db), u
         unit = next((cells[i] for i in range(di + 1, len(cells)) if cells[i] and nums[i] is None and len(cells[i]) <= 8), "")
         code = cells[0] if di > 0 else ""
         if not after:
-            section = cells[di][:200]
+            txt = cells[di].strip()
+            # A heading is a line in capitals (SUBSTRUCTURE) or a BILL / SECTION / PART line - not a note.
+            if txt and (txt.upper() == txt or re.match(r"^(bill|section|part|division|elemental)\b", txt, re.I)):
+                section = txt[:200]
             continue
         qty = after[0] if len(after) >= 1 else 0
         rate = after[1] if len(after) >= 2 else 0
@@ -1245,7 +1315,11 @@ def tender_won(tid: int, data: dict = Body(...), db: Session = Depends(get_db), 
     code = str(data.get("code") or "").strip()
     if not code:
         raise HTTPException(400, "Pick the project code it becomes.")
+    if not re.match(r"^\d{3,4}$", code) and not db.query(models.Site).filter(models.Site.code == code).first():
+        raise HTTPException(400, "A project code is its number, e.g. 928.")
     p = db.query(EstProject).filter(EstProject.code == code).first()
+    if p and data.get("new_only"):
+        raise HTTPException(400, f"Project {code} is already there - pick a new number.")
     if not p:
         p = EstProject(code=code, name=t.name, client=t.client, consultant=t.consultant, location=t.location,
                        contract_value=t.value or 0, created_by=user.id, start_date=today())

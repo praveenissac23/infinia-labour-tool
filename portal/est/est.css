@@ -176,3 +176,4 @@ table.t td.neg { color: var(--red); }
 
 /* Cards further down the page are laid out only when scrolled to (fast first paint on a phone). */
 .wrap > .card, .grid2 > .card { content-visibility: auto; contain-intrinsic-size: auto 420px; }
+.grid2 > *, .card { min-width: 0; }      /* wide tables scroll inside their card, the page never sideways */

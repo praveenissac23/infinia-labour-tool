@@ -105,6 +105,8 @@ PAGES = {
         # Petty cash typed once here, approved by the chief accountant into Zoho Books.
         # Every ADCB payment and receipt, entered once and sent to Zoho.
         tab("bank", "bank", "Bank", "accounts_bank"),
+        # Subcontractor payment certificates sent by Estimation: print, mark paid.
+        tab("subpay", "pgsubpay", "Subcontractor payments", "accounts_bank"),
         tab("zoho", "zoho", "Send to Zoho", "accounts_zoho"),
         # Website and app logins: admin, the PRO and the chief accountant.
         tab("credentials", "credentials", "Credentials", "accounts_credentials"),
@@ -364,7 +366,7 @@ CSS = """
   #hr-doc-mode { display: none !important; }
   #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
-  #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active, #screen-pgestdash.active, #screen-pgestproj.active, #screen-pgesttend.active { margin: -20px -24px -20px; }
+  #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active, #screen-pgestdash.active, #screen-pgestproj.active, #screen-pgesttend.active, #screen-pgsubpay.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
   #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
   /* Nothing typed or chosen is cut off: these boxes get the room their words need. */
@@ -671,6 +673,7 @@ FRAMES_HTML = """
         </div>
         <div class="screen" id="screen-pgestdash"><iframe class="pg-embed" id="pg-estdash-frame" data-src="/portal/est-app.html?embed=1&view=dash" title="Estimation dashboard"></iframe></div>
         <div class="screen" id="screen-pgestproj"><iframe class="pg-embed" id="pg-estproj-frame" data-src="/portal/est-app.html?embed=1&view=projects" title="Projects"></iframe></div>
+        <div class="screen" id="screen-pgsubpay"><iframe class="pg-embed" id="pg-subpay-frame" data-src="/portal/est-app.html?embed=1&view=pay" title="Subcontractor payments"></iframe></div>
         <div class="screen" id="screen-pgesttend"><iframe class="pg-embed" id="pg-esttend-frame" data-src="/portal/est-app.html?embed=1&view=tenders" title="Tenders"></iframe></div>
         <div class="screen" id="screen-pgboards"><iframe class="pg-embed" id="pg-boards-frame" data-src="/portal/boards.html?embed=1" title="Trello" allow="clipboard-write"></iframe></div>
 """
@@ -703,7 +706,7 @@ const RIGHT_OF = %(right_of_json)s;
 SCREEN_TITLES.pgreports = "Reports";
 SCREEN_TITLES.pgstaff = "Staff";
 SCREEN_TITLES.pgboards = "Trello";
-SCREEN_TITLES.pgestdash = "Estimation"; SCREEN_TITLES.pgestproj = "Projects"; SCREEN_TITLES.pgesttend = "Tenders";
+SCREEN_TITLES.pgestdash = "Estimation"; SCREEN_TITLES.pgsubpay = "Subcontractor payments"; SCREEN_TITLES.pgestproj = "Projects"; SCREEN_TITLES.pgesttend = "Tenders";
 SCREEN_TITLES.estoverview = "Estimation";
 SCREEN_TITLES.pgaccess = "Access";
 SCREEN_TITLES.pglogins = "Logins";
@@ -765,12 +768,17 @@ function pgEstFrame(id, msg) {
 }
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data || !e.data.est) return;
-  if (e.data.est === "go") { const m = { est: "open", pid: e.data.pid, group: e.data.group, sec: e.data.sec }; pgTab("estproj"); setTimeout(() => pgEstFrame("pg-estproj-frame", m), 30); }
+  if (e.data.est === "go") {
+    const m = { est: "open", pid: e.data.pid, group: e.data.group, sec: e.data.sec }, f = document.getElementById("pg-estproj-frame");
+    if (f && !f.getAttribute("src")) { if (m.pid) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + m.pid + (m.group ? "&s=" + m.group + "." + m.sec : ""); pgTab("estproj"); }   // its first load lands on it
+    else { pgTab("estproj"); if (f && f.contentWindow) { try { f.contentWindow.postMessage(m, location.origin); } catch (er) {} } }
+  }
+
   if (e.data.est === "app" && typeof pgGo === "function") pgGo(e.data.page, e.data.tab);
 });
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
-window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame", "pg-boards-frame", "pg-estdash-frame", "pg-estproj-frame", "pg-esttend-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
+window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame", "pg-boards-frame", "pg-estdash-frame", "pg-estproj-frame", "pg-esttend-frame", "pg-subpay-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));
 SCREEN_TITLES.lporegister = SCREEN_TITLES.lporegister || "LPO Register";
 SCREEN_TITLES.followup = SCREEN_TITLES.followup || "Order Follow-up";
 SCREEN_TITLES.suppliers = SCREEN_TITLES.suppliers || "Suppliers";
@@ -849,7 +857,7 @@ switchScreen = function (name) {
   if (name === "pgaccess") pgFrame("pg-access-frame", true);
   if (name === "pglogins") pgFrame("pg-logins-frame", true);
   else if (name === "pgboards") pgBoardsFrame();
-  else if (name === "pgestdash" || name === "pgestproj" || name === "pgesttend") pgEstFrame("pg-" + name.slice(2) + "-frame");
+  else if (name === "pgestdash" || name === "pgestproj" || name === "pgesttend" || name === "pgsubpay") pgEstFrame("pg-" + name.slice(2) + "-frame");
   else if (name === "estoverview") estOverview();
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
@@ -1248,7 +1256,7 @@ def build():
     page = page.replace("<!DOCTYPE html>", "<!DOCTYPE html>\n<!-- GENERATED from app-classic.html by deploy/build_temporary_pages.py - do not edit by hand -->", 1)
     _titles = dict(re.findall(r'(\w+):\s*"([^"]*)"', re.search(r'const SCREEN_TITLES = \{(.*?)\};', src, re.S).group(1)))
     # The embedded pages' names too, so their first frame is not titled "Dashboard".
-    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports", "pgboards": "Trello", "estoverview": "Estimation", "pgestdash": "Estimation", "pgestproj": "Projects", "pgesttend": "Tenders"})
+    _titles.update({"pgstaff": "Staff", "pgaccess": "Access", "pglogins": "Logins", "pgreports": "Reports", "pgboards": "Trello", "estoverview": "Estimation", "pgestdash": "Estimation", "pgestproj": "Projects", "pgesttend": "Tenders", "pgsubpay": "Subcontractor payments"})
     early = EARLY % {"keys": json.dumps(list(ALL_CFG)), "tabmaps": json.dumps(tabmaps), "firsts": json.dumps(firsts), "titles": json.dumps(_titles)}
     # The page name and who is signed in, right from the first frame.
     page = page.replace('<h1 id="screen-title">Dashboard</h1>', '<h1 id="screen-title">Dashboard</h1><script>try{var _t=window.PG_TITLES&&window.PG_TITLES[window.PG_EARLY_SCREEN];if(_t)document.getElementById("screen-title").textContent=_t;}catch(e){}</script>', 1)

@@ -32,7 +32,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.click('#m-save'); await sleep(1200);
   ck('subcontract opened after saving', await p.isVisible('#drawer') && (await p.textContent('#d-title')).includes('UI TEST'));
   // advance PC, one click
-  await p.click('#s-adv'); await sleep(900);
+  await p.click('#s-adv'); await sleep(300); await p.click('#m-save'); await sleep(900);
   let sub = (await api(`/store/est/projects/${pid}`)).subs[0];
   ck('advance PC = 10% of 200,000', sub.pcs[0].adv_amount === 20000 && sub.pcs[0].this === 20000, sub.pcs[0]);
   // invoice received + sent to site

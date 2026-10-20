@@ -217,6 +217,7 @@ def seed_on_startup():
         _tick_new_accounts_tabs(db)
         _grant_projects_to_chief_accountant(db)
         _grant_est_projects(db)
+        _tick_est_tabs(db)
         _grant_camp(db)
         _grant_ppe(db)
         _grant_admin_forms(db)
@@ -961,6 +962,25 @@ def _grant_est_projects(db):
     db.commit()
     if n:
         print("Estimation projects given to: " + ", ".join(n))
+
+
+def _tick_est_tabs(db):
+    """Logins ticked tab by tab: Accounts > Subcontractor payments for whoever has the Bank,
+    and Estimation's Dashboard / Projects / Tenders for whoever has their right. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "est_tabs_ticked").first():
+        return
+    pairs = (("accounts_bank", ["accounts.subpay"]),
+             ("estimation_projects", ["estimation.estdash", "estimation.estproj", "estimation.esttend"]))
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if not any("." in k for k in keys):
+            continue
+        add = [leaf for right, leaves in pairs if right in keys for leaf in leaves if leaf not in keys]
+        if add:
+            setattr(obj, field, ",".join(keys + add))
+    db.add(models.Setting(key="est_tabs_ticked", value="1"))
+    db.commit()
 
 
 def _grant_petty_site_to_existing(db):

@@ -211,7 +211,7 @@ ck("a forged link is refused", c.get(url.replace(url.split("/")[-2], "0" * 24)).
 # ---- dashboard and exports --------------------------------------------------------------------
 d = get("/store/est/dash").json()
 ck("dashboard: both projects", len(d["projects"]) == 2)
-ck("dashboard KPI: with accounts", d["kpi"]["with_accounts"] == 1 and d["kpi"]["pc_delays"] >= 1, d["kpi"])
+ck("dashboard KPI: with accounts", d["kpi"]["with_accounts"] == 1 and d["kpi"]["pc_delays"] == 0, d["kpi"])
 ck("dashboard queue lists unpaid invoices", any(x["pc_id"] == PC3 for x in d["queue"]))
 t = c.post("/auth/download-token", headers=A).json()["token"]
 for what in ["subs", "invoices", "clientpcs", "variations", "boq", "rfi", "approval", "submittal", "doc", "finals"]:
@@ -233,6 +233,41 @@ ck("payment certificate PDF", r.status_code == 200 and r.content.startswith(b"%P
 t2 = c.post("/auth/download-token", headers=ACC).json()["token"]
 ck("accounts can print the PC", c.get(f"/export/est/pc/{PC3}?token={t2}").status_code == 200)
 ck("accounts cannot open the registers", c.get(f"/export/est/subs?token={t2}&pid={P}").status_code == 403)
+
+# ---- money rules found in the full check ------------------------------------------------
+ck("a second advance on the same subcontract is refused", post("/store/est/subpcs", {"sub_id": SB, "pc_type": "Advance"}).status_code == 400)
+s0 = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == SB)
+paid_pc = next(x for x in s0["pcs"] if x["id"] == PC3)
+post(f"/store/est/subpcs/{PC3}/step", {"step": "Paid"}, ACC)
+before = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == SB)["pcs"]
+ck("QS cannot change retention % once a PC is paid", patch(f"/store/est/subs/{SB}", {"ret_pct": 5}).status_code == 400)
+tA = c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]
+c.patch(f"/store/est/subs/{SB}", json={"ret_pct": 5}, headers={"Authorization": "Bearer " + tA})
+after = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == SB)["pcs"]
+pb, pa = next(x for x in before if x["id"] == PC3), next(x for x in after if x["id"] == PC3)
+ck("a paid PC's figures never move, even when an admin changes the %", pb["ret_cum"] == pa["ret_cum"] and pb["payable"] == pa["payable"], (pb["ret_cum"], pa["ret_cum"]))
+ck("percent above 100 refused", patch(f"/store/est/subs/{SB}", {"adv_pct": 150}).status_code == 400)
+c.patch(f"/store/est/subs/{SB}", json={"ret_pct": 10}, headers={"Authorization": "Bearer " + tA})
+r = post("/store/est/subs", {"project_id": P, "name": "ADV TEST", "scope": "Shoring", "value": 211400, "adv_pct": 24.6452})
+ck("percent keeps 4 decimals", next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == r.json()["id"])["adv_pct"] == 24.6452)
+sa = r.json()["id"]
+post("/store/est/subpcs", {"sub_id": sa, "pc_type": "Advance", "adv_amount": 52100})
+ap = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == sa)["pcs"][0]
+ck("advance PC: typed amount kept, certified at once (not an invoice at site)", ap["adv_amount"] == 52100 and ap["status"] == "Certified" and not ap["received"], ap)
+dele(f"/store/est/subs/{sa}")
+b0 = get(f"/store/est/projects/{P}").json()["summary"]["approved_vo"]
+vo = post("/store/est/variations", {"project_id": P, "title": "Omit cladding", "kind": "Omission", "submitted_amount": 20000}).json()["id"]
+patch(f"/store/est/variations/{vo}", {"status": "Approved", "approved_amount": 20000})
+ck("an approved omission takes money off the contract", get(f"/store/est/projects/{P}").json()["summary"]["approved_vo"] == b0 - 20000)
+ck("negative tender value refused", post("/store/est/tenders", {"name": "x", "value": -5}).status_code == 400)
+tw = post("/store/est/tenders", {"name": "Bad code"}).json()["id"]
+ck("won needs a project number", post(f"/store/est/tenders/{tw}/won", {"code": "abc"}).status_code == 400)
+pq = c.get("/store/est/payqueue", headers=ACC)
+ck("Accounts sees the payment list", pq.status_code == 200 and any(x["pc_id"] == PC3 for x in pq.json()["rows"]), pq.text[:200])
+ck("site login cannot", c.get("/store/est/payqueue", headers=S).status_code == 403)
+r = post(f"/store/est/projects/{P}/boq-paste", {"text": "BILL 3 - EXTERNAL\n3.1\tPaving\tm2\t100\t50\nNote: rates exclude VAT\n3.2\tKerbs\tm\t40\t30"})
+bq = [x for x in get(f"/store/est/projects/{P}").json()["boq"] if x["description"] in ("Paving", "Kerbs")]
+ck("a note line is not taken as a BOQ heading", all(x["section"] == "BILL 3 - EXTERNAL" for x in bq) and len(bq) == 2, [(x["description"], x["section"]) for x in bq])
 
 # ---- removing -------------------------------------------------------------------------------
 ck("non-admin cannot remove a project", dele(f"/store/est/projects/{pid2}").status_code == 403)
