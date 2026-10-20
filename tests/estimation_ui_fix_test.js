@@ -19,7 +19,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ---- dashboard figure card -> the project that has the invoices
   await p.goto(B + '/?p=estimation#estdash'); await sleep(3000);
   const fr = n => p.frames().find(f => f.url().includes(n));
-  let d = fr('view=dash'); await d.waitForSelector('.strip');
+  let d = fr('view=dash'); await d.waitForSelector('.kpis');
   await d.click('[data-go="subs.pcs"]'); await sleep(3000);
   let pf = fr('view=projects');
   ck('"Waiting payment" opens project 912 (first time Projects is opened)', pf && await pf.evaluate(() => typeof ST !== 'undefined' && ST.b && ST.b.project.code) === '912');
@@ -41,7 +41,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ---- phone: dashboard never scrolls sideways
   const ph = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); const q = await ph.newPage();
   const tok = await p.evaluate(() => sessionStorage.getItem('infinia_token'));
-  await q.goto(B + '/portal/est-app.html?view=dash'); await q.evaluate(t => sessionStorage.setItem('infinia_token', t), tok); await q.reload(); await q.waitForSelector('.strip'); await sleep(500);
+  await q.goto(B + '/portal/est-app.html?view=dash'); await q.evaluate(t => sessionStorage.setItem('infinia_token', t), tok); await q.reload(); await q.waitForSelector('.kpis'); await sleep(500);
   ck('phone dashboard: no sideways scroll', await q.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
   ck('no page errors', errs.length === 0, errs);
   console.log(bad ? `\n${bad} FAILED: ${fails.join(' | ')}` : '\nALL PASS');

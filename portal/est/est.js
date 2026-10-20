@@ -6,7 +6,7 @@
 try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infinia_keep")) sessionStorage.setItem("infinia_token", localStorage.getItem("infinia_keep")); } catch (e) {}
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
 const VIEW = (location.search.match(/[?&]view=(\w+)/) || [])[1] || "dash";
-const ST = { meta: null, pid: null, b: null, group: "subs", sec: "reg", q: {}, filt: {}, dash: null, tenders: null };
+const ST = { meta: null, pid: null, b: null, group: "home", sec: "dash", q: {}, filt: {}, dash: null, tenders: null };
 if (window.PG_EMBED) document.body.classList.add("embed");
 
 // ---------- small helpers ----------
@@ -16,7 +16,7 @@ function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&
 function tip(t) { return `<span class="help-i in-label" tabindex="0" data-tip="${esc(t)}">i</span>`; }
 function money(v, dash = true) { const n = Number(v || 0); if (!n && dash) return '<span class="muted">-</span>'; return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function m0(v) { const n = Number(v || 0); return n.toLocaleString("en-US", { maximumFractionDigits: 0 }); }
-function aed(v) { const n = Number(v || 0); const a = Math.abs(n); return (n < 0 ? "-" : "") + (a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e4 ? (a / 1e3).toFixed(0) + "K" : a.toLocaleString("en-US", { maximumFractionDigits: 0 })); }
+function aed(v) { return money(v, false); }      // full figures, as everywhere else in the app
 function r2(x) { return Math.round((Number(x || 0) + Number.EPSILON) * 100) / 100; }
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dt(s) { if (!s) return ""; const [y, m, d] = s.slice(0, 10).split("-"); return `${+d}-${MON[+m - 1]}-${y.slice(2)}`; }
@@ -144,7 +144,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("#m
 // ---------- Preview / PDF / Excel / Share ----------
 function xpButtons(what, extra = {}) {
   const k = JSON.stringify({ what, extra }).replace(/"/g, "&quot;");
-  return `<span class="xp"><button class="btn btn-plain btn-sm" data-xp="preview" data-k="${k}">Preview</button><button class="btn btn-plain btn-sm" data-xp="pdf" data-k="${k}">PDF</button><button class="btn btn-plain btn-sm" data-xp="excel" data-k="${k}">Excel</button><button class="btn btn-plain btn-sm" data-xp="share" data-k="${k}">Share</button></span>`;
+  return `<span class="xp"><button class="btn btn-ghost" data-xp="preview" data-k="${k}">Preview</button><button class="btn btn-ghost" data-xp="pdf" data-k="${k}">Export PDF</button><button class="btn btn-ghost" data-xp="excel" data-k="${k}">Export Excel</button><button class="btn btn-ghost" data-xp="share" data-k="${k}">Share</button></span>`;
 }
 async function exportGo(fmt, what, extra) {
   try {
@@ -237,7 +237,7 @@ async function start() {
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data) return;
   if (e.data.est === "open" && VIEW === "projects") {
-    if (!ST.meta || !ST.combo) { ST.pendingOpen = e.data; return; }      // the page is still starting: it opens this when ready
+    if (!ST.meta || !ST.picker) { ST.pendingOpen = e.data; return; }      // the page is still starting: it opens this when ready
     openFromMessage(e.data);
   }
   if (e.data.est === "refresh") { if (VIEW === "pay") loadPay(); else if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); }
@@ -263,45 +263,33 @@ async function loadDash() {
   if (!ST.dash) app.innerHTML = '<div class="wrap"><div class="empty">Loading...</div></div>';
   const early = ST.early; ST.early = null;
   try { ST.dash = (early && await early) || await GET("/store/est/dash"); } catch (e) { return fail(e); }
-  const d = ST.dash, t = d.totals, k = d.kpi;
-  const fig = (l, v, s, cls = "", click = "") => `<div class="fig ${cls} ${click ? "click" : ""}" ${click ? `data-go="${click}"` : ""}><div class="l">${l}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
+  const d = ST.dash, t = d.totals, k = d.kpi, A = v => "AED " + money(v, false);
   const rows = d.projects;
+  const coll = t.revised ? Math.round(100 * t.received / t.revised) : 0;
   app.innerHTML = `<div class="wrap">
-    <div class="tools"><b style="font-size:16px">All projects at a glance</b> ${tip("Every figure here is worked out from the projects - nothing is typed on this page. Click a project to open it.")}<span class="spacer"></span>${xpButtons("dash")}</div>
-    <div class="strip">
-      ${fig("Projects", rows.length, rows.filter(r => r.status === "Running").length + " running")}
-      ${fig("Contract value", aed(t.revised), "with approved variations")}
-      ${fig("Certified by client", aed(t.client_certified), t.revised ? Math.round(100 * t.client_certified / t.revised) + "% of contract" : "")}
-      ${fig("Received", aed(t.received), "from Accounts > Project payments", "green")}
-      ${fig("Subcontracts", aed(t.committed), "committed")}
-      ${fig("Sub certified", aed(t.sub_certified), aed(t.sub_paid) + " paid")}
-      ${fig("Waiting payment", k.with_accounts, aed(k.with_accounts_amount) + " with Accounts", k.with_accounts ? "amber" : "", "subs.pcs")}
-      ${fig("Invoices at site", k.at_site, k.site_delays + " late back", k.site_delays ? "red" : "", "subs.inv")}
-      ${fig("PCs being prepared", k.preparing, k.pc_delays + " past PC due date", k.pc_delays ? "red" : "", "subs.inv")}
-      ${fig("Overdue RFIs / submittals", d.late.length, "", d.late.length ? "red" : "")}
-    </div>
-    <div class="card"><h3>Projects ${tip("Progress = work certified by the client against the revised contract. Margin = revised contract less subcontracts committed.")}</h3>
-      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub certified</th><th class="r">Sub to pay</th><th class="r">Margin</th><th class="c">RFIs</th><th class="c">Approvals</th><th class="c">Overdue</th></tr></thead><tbody>
-      ${rows.map(r => `<tr class="rowc" data-pid="${r.id}"><td class="nowrap"><b>${esc(r.code)}</b> <span class="muted">${esc(r.name)}</span></td><td>${esc(r.client)}</td><td>${st(r.status)}</td>
+    <div class="card"><h3>All projects ${tip("Every figure is worked out from the projects - nothing is typed here. Click a project to open its dashboard.")}<span class="spacer"></span>${xpButtons("dash")}</h3>
+      <div class="kpis">
+        ${kpi("Contract value", A(t.revised), rows.length + " projects · " + rows.filter(r => r.status === "Running").length + " running")}
+        ${kpi("Certified by client", A(t.client_certified), t.revised ? Math.round(100 * t.client_certified / t.revised) + "% of contract" : "")}
+        ${kpi("Received", A(t.received), `<div class="bar"><i style="width:${Math.min(100, coll)}%"></i></div>${coll}% collected`, "green")}
+        ${kpi("Subcontracts", A(t.committed), A(t.sub_certified) + " certified")}
+        ${kpi("Waiting payment", A(k.with_accounts_amount), k.with_accounts + " PCs with Accounts", k.with_accounts ? "amber click" : "", 'data-go="subs.pcs"')}
+        ${kpi("Invoices at site", k.at_site, k.site_delays ? k.site_delays + " late back" : "none late", k.site_delays ? "red click" : "click", 'data-go="subs.inv"')}
+        ${kpi("PCs being prepared", k.preparing, k.pc_delays ? k.pc_delays + " past due date" : "none late", k.pc_delays ? "red click" : "click", 'data-go="subs.inv"')}
+      </div></div>
+    <div class="card"><h3>Projects</h3>
+      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub to pay</th><th class="r">Margin</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="rowc" data-pid="${r.id}" data-sec="home.dash"><td class="nowrap"><b>${esc(r.code)}</b></td><td>${esc(r.client)}</td><td>${st(r.status)}</td>
         <td class="r">${money(r.revised)}</td><td class="r">${money(r.client_certified)}</td><td><div class="bar"><i style="width:${Math.min(100, r.progress)}%"></i></div><span class="small muted">${r.progress}%</span></td>
-        <td class="r">${money(r.received)}</td><td class="r">${money(r.committed)}</td><td class="r">${money(r.sub_certified)}</td><td class="r">${money(r.sub_to_pay)}</td><td class="r ${r.margin < 0 ? "neg" : ""}">${money(r.margin)}</td>
-        <td class="c">${r.open_rfi || ""}</td><td class="c small">${r.approvals_total ? r.approvals_done + "/" + r.approvals_total : ""}</td><td class="c ${r.overdue ? "late" : ""}">${r.overdue || ""}</td></tr>`).join("")}
-      <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_certified)}</td><td class="r">${money(t.sub_to_pay)}</td><td></td><td></td><td></td><td></td></tr>
+        <td class="r">${money(r.received)}</td><td class="r">${money(r.committed)}</td><td class="r">${money(r.sub_to_pay)}</td><td class="r ${r.margin < 0 ? "neg" : ""}">${money(r.margin)}</td></tr>`).join("")}
+      <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_to_pay)}</td><td></td></tr>
       </tbody></table></div>` : `<div class="empty">No projects yet.<br><button class="btn btn-primary" onclick="goProject(0)">Add the first project</button></div>`}
     </div>
-    <div class="grid2">
-      <div class="card"><h3>Subcontractor invoices in hand ${tip("Every invoice not yet paid, oldest PC due date first. Site return is due " + d.rules.site_days + " days after it goes to site; the PC is due " + d.rules.pc_days + " days after the invoice arrives.")}<span class="spacer"></span><span class="small muted">${d.queue.length}</span></h3>
-        ${d.queue.length ? `<div class="tw" style="max-height:380px"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th>Status</th><th>PC due</th><th class="r">Payable</th></tr></thead><tbody>
-        ${d.queue.map(x => `<tr class="rowc" data-pid="${x.project_id}" data-sec="subs.inv"><td><b>${esc(x.code)}</b></td><td>${esc(x.sub)}<div class="small muted">${esc(x.scope)}${x.inv_ref ? " · " + esc(x.inv_ref) : ""}</div></td><td>${pad(x.seq, 2)}</td><td>${st(x.status)}${x.site_delay ? `<div class="small late">site ${x.site_delay}d late</div>` : ""}</td><td class="nowrap ${x.pc_delay ? "late" : ""}">${dt(x.pc_due)}${x.pc_delay ? ` (+${x.pc_delay}d)` : ""}</td><td class="r">${money(x.payable)}</td></tr>`).join("")}
-        </tbody></table></div>` : '<div class="empty">Nothing in hand.</div>'}
-      </div>
-      <div class="card"><h3>Overdue RFIs & submittals</h3>
-        ${d.late.length ? `<div class="tw" style="max-height:180px"><table class="t"><thead><tr><th>Project</th><th>No.</th><th>Subject</th><th>With</th><th>Due</th></tr></thead><tbody>
-        ${d.late.map(x => `<tr class="rowc" data-pid="${x.project_id}" data-sec="site.${x.kind === "rfi" ? "rfi" : "submittal"}"><td><b>${esc(x.code)}</b></td><td class="nowrap">${esc(x.no)}</td><td>${esc(x.title)}</td><td>${esc(x.party)}</td><td class="late nowrap">${dt(x.due)}</td></tr>`).join("")}
-        </tbody></table></div>` : '<div class="empty" style="padding:14px">Nothing overdue.</div>'}
-      </div>
+    <div class="card"><h3>Subcontractor invoices in hand ${tip("Every invoice not yet paid, oldest PC due date first. Site return is due " + d.rules.site_days + " days after it goes to site; the PC is due " + d.rules.pc_days + " days after the invoice arrives.")}<span class="spacer"></span><span class="small muted">${d.queue.length}</span></h3>
+      ${d.queue.length ? `<div class="tw" style="max-height:420px"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th>Status</th><th>PC due</th><th class="r">Payable</th></tr></thead><tbody>
+      ${d.queue.map(x => `<tr class="rowc" data-pid="${x.project_id}" data-sec="subs.inv"><td><b>${esc(x.code)}</b></td><td>${esc(x.sub)}<div class="small muted">${esc(x.scope)}${x.inv_ref ? " · " + esc(x.inv_ref) : ""}</div></td><td>${pad(x.seq, 2)}</td><td>${st(x.status)}${x.site_delay ? `<div class="small late">site ${x.site_delay}d late</div>` : ""}</td><td class="nowrap ${x.pc_delay ? "late" : ""}">${dt(x.pc_due)}${x.pc_delay ? ` (+${x.pc_delay}d)` : ""}</td><td class="r">${money(x.payable)}</td></tr>`).join("")}
+      </tbody></table></div>` : '<div class="empty">Nothing in hand.</div>'}
     </div>
-    <div class="card"><h3>Finalization - all projects ${tip("The final status of each trade on each project, from each project's finalization log. ✔ finalized, X not yet, C main contractor's scope, E employer's, PS provisional sum. Click a project's column heading to open its log.")}</h3>${finalMatrix(d)}</div>
   </div>`;
   $$("[data-pid]", app).forEach(r => r.onclick = () => { const s = (r.dataset.sec || "").split("."); goProject(+r.dataset.pid, s[0], s[1]); });
   $$("[data-go]", app).forEach(f => f.onclick = () => {
@@ -326,25 +314,33 @@ function finalMatrix(d) {
 // PROJECTS
 // =====================================================================
 const GROUPS = {
+  home: { label: "", secs: [["dash", "Dashboard"]] },
   client: { label: "Client side", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["doc", "Documents"]] },
 };
 function renderProjectShell() {
-  $("#app").innerHTML = `<div class="wrap"><div class="pbar"><div id="pick"></div><div class="ptabs" id="ptabs"></div><span class="spacer"></span><button class="btn btn-plain btn-sm hide" id="p-edit" title="Contract, received, subcontracts, margin and the project's details">Details</button><button class="btn btn-ghost btn-sm" id="p-new" title="New project">+ New</button></div><div id="pbody"></div></div>`;
-  const items = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true })).map(p => ({ ...p, label: String(p.code) }));
-  ST.combo = combo($("#pick"), items, x => openProject(x.id), "Project no.");
+  const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));
+  $("#app").innerHTML = `<div class="wrap"><div class="plyt">
+    <aside class="pside">
+      <div class="pk"><label for="pick">Project</label><select class="pick" id="pick">${list.map(p => `<option value="${p.id}">${esc(p.code)}</option>`).join("")}</select><div class="nm" id="pname"></div></div>
+      <select class="pick psel" id="psec"></select>
+      <nav id="pnav"></nav>
+      <button class="btn btn-ghost new" id="p-new">+ New project</button>
+    </aside>
+    <section class="pmain"><div class="phead" id="phead"></div><div id="pbody"></div></section>
+  </div></div>`;
+  ST.picker = true;
+  $("#pick").onchange = () => openProject(+$("#pick").value);
+  $("#psec").onchange = () => { [ST.group, ST.sec] = $("#psec").value.split("."); saveSec(); renderProject(); };
   $("#p-new").onclick = newProject;
-  $("#p-edit").onclick = projectInfo;
-  if (!ST.meta.projects.length) $("#pbody").innerHTML = `<div class="card empty">No projects yet. Press <b>+ New project</b> and pick the site - the rest is filled in for you.</div>`;
-  else $("#pbody").innerHTML = `<div class="card empty">Pick a project above.<br><span class="small">Type the project number, e.g. 911.</span></div>`;
+  if (!list.length) $("#pbody").innerHTML = `<div class="card empty">No projects yet. Press <b>+ New project</b> and pick the site - the rest is filled in for you.</div>`;
 }
 async function openProject(pid, keep) {
   ST.pid = pid;
   try { localStorage.setItem("est_pid", pid); } catch (e) {}
   const p = ST.meta.projects.find(x => x.id === pid);
-  if (p && ST.combo) ST.combo.set(p);
-  $("#p-edit").classList.remove("hide");
+  if (p && $("#pick")) { $("#pick").value = String(pid); $("#pname").textContent = [p.name, p.client].filter(Boolean).join(" · "); }
   // A project opened before shows at once from memory, then catches up.
   ST.cache = ST.cache || {};
   if (ST.early) { const e = ST.early; ST.early = null; await e; }       // the first project was already on its way
@@ -425,27 +421,75 @@ function editProject() {
 }
 function renderProject() {
   const b = ST.b, s = b.summary;
-  const fig = (l, v, sub, cls = "") => `<div class="fig ${cls}"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
                   "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status === "With Accounts").length, 0),
                   "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals, "site.doc": b.files.length,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
-  if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "subs"; ST.sec = "reg"; }
-  // One slim bar: project no. | Client side · Subcontractors · Site & technical | the tabs of that group. The rest of the screen is the work.
-  $("#ptabs").innerHTML = `<div class="seg">${Object.entries(GROUPS).map(([k, g]) => `<button class="${k === ST.group ? "on" : ""}" data-g="${k}">${g.label}</button>`).join("")}</div>
-    <div class="subtabs">${GROUPS[ST.group].secs.map(([k, l]) => { const n = count[ST.group + "." + k]; return `<div class="tab ${k === ST.sec ? "on" : ""}" data-s="${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</div>`; }).join("")}</div>`;
-  $("#pbody").innerHTML = `<div class="panel" id="sec"></div>`;
-  $$("[data-g]").forEach(x => x.onclick = () => { ST.group = x.dataset.g; ST.sec = GROUPS[ST.group].secs[0][0]; saveSec(); renderProject(); });
-  $$("[data-s]").forEach(x => x.onclick = () => { ST.sec = x.dataset.s; saveSec(); renderProject(); });
+  if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "home"; ST.sec = "dash"; }
+  // The side menu: every page of the project, under its heading.
+  $("#pnav").innerHTML = Object.entries(GROUPS).map(([g, grp]) => (grp.label ? `<div class="ph">${grp.label}</div>` : "") +
+    grp.secs.map(([k, l]) => { const n = count[g + "." + k]; return `<div class="it ${g === ST.group && k === ST.sec ? "on" : ""}" data-gs="${g}.${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</div>`; }).join("")).join("");
+  $("#psec").innerHTML = Object.entries(GROUPS).map(([g, grp]) => `<optgroup label="${grp.label || "Project"}">${grp.secs.map(([k, l]) => `<option value="${g}.${k}" ${g === ST.group && k === ST.sec ? "selected" : ""}>${l}</option>`).join("")}</optgroup>`).join("");
+  const title = GROUPS[ST.group].secs.find(x => x[0] === ST.sec)[1];
+  $("#phead").innerHTML = `<h2>${esc(title)}</h2><span class="sub">${esc(b.project.code)}${GROUPS[ST.group].label ? " · " + GROUPS[ST.group].label : ""}</span>`;
+  $("#pbody").innerHTML = `<div class="panel ${ST.group === "home" ? "bare" : ""}" id="sec"></div>`;
+  $$("[data-gs]").forEach(x => x.onclick = () => { [ST.group, ST.sec] = x.dataset.gs.split("."); saveSec(); renderProject(); window.scrollTo(0, 0); });
   const fn = SECTIONS[ST.group + "." + ST.sec];
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+// ---------------- the project's own dashboard ----------------
+function kpi(l, v, sub, cls = "", extra = "") { return `<div class="kpi ${cls}" ${extra}><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`; }
+function go(gs) { [ST.group, ST.sec] = gs.split("."); saveSec(); renderProject(); window.scrollTo(0, 0); }
+function homeDash(el) {
+  const b = ST.b, s = b.summary, p = b.project, A = v => "AED " + money(v, false);
+  const coll = s.revised ? Math.min(100, Math.round(100 * s.received / s.revised)) : 0;
+  const vs = st_ => b.variations.filter(v => v.status === st_);
+  const sum = (arr, k) => r2(arr.reduce((a, v) => a + (v[k] || 0), 0));
+  const waiting = b.subs.flatMap(x => x.pcs.filter(q => q.status !== "Paid").map(q => Object.assign({ sub: x }, q)));
+  const row = (l, v) => v ? `<tr><th>${l}</th><td>${v}</td></tr>` : "";
+  el.innerHTML = `
+    <div class="card"><div class="kpis">
+      ${kpi("Contract value", A(s.revised), s.approved_vo ? `original ${money(s.contract, false)} + VOs ${money(s.approved_vo, false)}` : "original contract")}
+      ${kpi("Certified by client", A(s.client_certified), s.revised ? Math.round(100 * s.client_work / s.revised) + "% of the work" : "")}
+      ${kpi("Received", A(s.received), `<div class="bar"><i style="width:${coll}%"></i></div>${coll}% collected`, "green")}
+      ${kpi("To receive", A(r2(s.revised - s.received)), "contract less received", s.revised - s.received > 0 ? "red" : "")}
+      ${kpi("Subcontracts", A(s.committed), b.subs.length + " subcontractors")}
+      ${kpi("Sub certified", A(s.sub_certified), money(s.sub_paid, false) + " paid")}
+      ${kpi("Sub to pay", A(s.sub_to_pay), "certified, not paid", s.sub_to_pay > 0 ? "amber" : "")}
+      ${kpi("Margin", A(s.margin), "contract less subcontracts", s.margin < 0 ? "red" : "")}
+    </div></div>
+    <div class="dgrid">
+      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
+      <div class="card"><h3>Variations<span class="go" data-go="client.vo">Open</span></h3>
+        <div class="vs"><div><span>Approved</span><b class="ok">${money(sum(vs("Approved"), "approved_amount"), false)}</b><small class="muted">${vs("Approved").length} lines</small></div>
+          <div><span>Waiting</span><b>${money(sum(vs("Submitted"), "submitted_amount"), false)}</b><small class="muted">${vs("Submitted").length} submitted</small></div>
+          <div><span>Absorbed</span><b>${money(sum(b.variations, "absorbed_amount"), false)}</b><small class="muted">${vs("Absorbed").length} lines</small></div>
+          <div><span>To price</span><b>${vs("Identified").length}</b><small class="muted">identified</small></div></div>
+        <h3 style="margin-top:16px">Client payment certificates<span class="go" data-go="client.cpc">Open</span></h3>
+        ${b.clientpcs.length ? `<div class="tw"><table class="t"><thead><tr><th>IPA</th><th>Period to</th><th class="r">Certified</th><th>Status</th></tr></thead><tbody>${b.clientpcs.slice(-4).reverse().map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="muted small">None yet.</div>'}
+      </div>
+      <div class="card full"><h3>Subcontractors<span class="go" data-go="subs.reg">Open register</span></h3>
+        ${b.subs.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>Work</th><th class="r">Revised value</th><th>Done</th><th class="r">Certified</th><th class="r">Paid</th><th class="r">To pay</th><th>Status</th></tr></thead><tbody>
+        ${b.subs.map(x => `<tr class="rowc" data-sub="${x.id}"><td><b>${esc(x.name)}</b></td><td>${esc(x.scope)}</td><td class="r">${money(x.revised)}</td><td><div class="bar"><i style="width:${Math.min(100, x.done_pct)}%"></i></div><span class="small muted">${x.done_pct}%</span></td><td class="r">${money(x.certified)}</td><td class="r">${money(x.paid)}</td><td class="r">${money(x.to_pay)}</td><td>${st(x.status)}</td></tr>`).join("")}
+        </tbody></table></div>` : '<div class="muted small">No subcontracts yet.</div>'}
+      </div>
+      <div class="card full"><h3>Invoices in hand<span class="go" data-go="subs.inv">Open tracker</span></h3>
+        ${waiting.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>PC</th><th>Invoice</th><th>Status</th><th>PC due</th><th class="r">Payable</th></tr></thead><tbody>
+        ${waiting.map(q => `<tr><td>${esc(q.sub.name)}</td><td>PC ${pad(q.seq, 2)}</td><td>${esc(q.inv_ref)}</td><td>${st(q.status)}</td><td class="${q.pc_delay ? "late" : ""}">${dt(q.pc_due)}${q.pc_delay ? ` (+${q.pc_delay}d)` : ""}</td><td class="r">${q.work_cum || q.adv_amount ? money(q.payable) : ""}</td></tr>`).join("")}
+        </tbody></table></div>` : '<div class="muted small">Nothing waiting.</div>'}
+      </div>
+    </div>`;
+  $("#pd-edit", el).onclick = editProject;
+  $$("[data-go]", el).forEach(x => x.onclick = () => go(x.dataset.go));
+  $$("[data-sub]", el).forEach(r => r.onclick = () => openSub(+r.dataset.sub));
 }
 function saveSec() { try { localStorage.setItem("est_sec", ST.group + "." + ST.sec); } catch (e) {} }
 function key() { return ST.group + "." + ST.sec; }
 function tools(what, opts = {}) {
   const k = key(), q = ST.q[k] || "", f = ST.filt[k] || "";
-  return `<div class="tools">${opts.add || ""}<input class="q" placeholder="Search" value="${esc(q)}" data-q>${opts.chips ? `<div class="chips">${opts.chips.map(([v, n]) => `<span class="chip ${f === v ? "on" : ""}" data-f="${esc(v)}">${esc(v || "All")}${n !== undefined ? `<span class="n">${n}</span>` : ""}</span>`).join("")}</div>` : ""}<span class="spacer"></span>${opts.right || ""}${what ? xpButtons(what, Object.assign({ pid: ST.pid, q, status: f }, opts.xp || {})) : ""}</div>`;
+  return `<div class="tools">${opts.add || ""}<input class="q" placeholder="Search" value="${esc(q)}" data-q><span class="spacer"></span>${opts.right || ""}${what ? xpButtons(what, Object.assign({ pid: ST.pid, q, status: f }, opts.xp || {})) : ""}</div>` +
+    (opts.chips ? `<div class="chips crow">${opts.chips.map(([v, n]) => `<span class="chip ${f === v ? "on" : ""}" data-f="${esc(v)}">${esc(v || "All")}${n !== undefined ? `<span class="n">${n}</span>` : ""}</span>`).join("")}</div>` : "");
 }
 function bindTools(el, redraw) {
   const k = key();
@@ -456,6 +500,7 @@ function match(row) { const q = (ST.q[key()] || "").toLowerCase(); return !q || 
 function filt() { return ST.filt[key()] || ""; }
 
 const SECTIONS = {};
+SECTIONS["home.dash"] = homeDash;
 
 // ---------------- Subcontractors > register ----------------
 SECTIONS["subs.reg"] = el => {
@@ -474,8 +519,8 @@ SECTIONS["subs.reg"] = el => {
   const a = $("#add-sub", el); if (a) a.onclick = () => subForm();
   $$("[data-sub]", el).forEach(r => r.onclick = () => openSub(+r.dataset.sub));
 };
-function subForm(s) {
-  const m = ST.meta, edit = !!s; s = s || {};
+function subForm(s, pre) {
+  const m = ST.meta, edit = !!s; s = s || Object.assign({}, pre || {});
   const names = [...new Set([...m.suppliers.map(x => x.name), ...m.sub_names])];
   modal(edit ? "Subcontract - " + s.name : "New subcontract / LPO", [
     { k: "name", label: "Subcontractor", type: "combo", options: names, value: s.name || "", full: true, focus: !edit, ph: "Start typing - suppliers from Store & Purchasing", tip: "The list is every supplier in Store & Purchasing. A new name can be typed." },
@@ -495,7 +540,12 @@ function subForm(s) {
   ], async v => {
     const sup = m.suppliers.find(x => x.name.toLowerCase() === v.name.toLowerCase());
     if (sup) v.supplier_id = sup.id;
-    if (edit) await PATCH(`/store/est/subs/${s.id}`, v); else { v.project_id = ST.pid; const r = await POST("/store/est/subs", v); ST.openAfter = r.id; }
+    if (edit) await PATCH(`/store/est/subs/${s.id}`, v);
+    else {
+      v.project_id = ST.pid; const r = await POST("/store/est/subs", v);
+      if (pre && pre.final_id) await PATCH(`/store/est/finals/${pre.final_id}`, { sub_id: r.id });      // made from the finalization log: linked to its line
+      else ST.openAfter = r.id;
+    }
     await reload(); toast(edit ? "Saved" : "Subcontract added");
     if (ST.openAfter) { openSub(ST.openAfter); ST.openAfter = null; }
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true });
@@ -695,11 +745,11 @@ SECTIONS["subs.final"] = el => {
   const cls = v => v === "✔" ? "ok" : v === "X" ? "no" : v === "N/A" ? "na" : ["C", "E", "PS"].includes(v) ? "sc" : "";
   let html = tools("finals", { add: `<button class="btn btn-ghost" id="add-final">+ Item</button>`, chips: [["", b.finals.length], ["Pending", b.finals.filter(x => x.st !== "✔" && x.sc !== "N/A").length], ["✔", b.finals.filter(x => x.st === "✔").length]],
       right: `<span class="small muted">Click a box to change it ${tip("Scope: C main contractor · E employer · PS provisional sum. Other boxes: ✔ done · X not yet · N/A. Each click moves to the next.")}</span>` });
-  html += `<div class="tw"><table class="t fg"><thead><tr><th>Item</th>${FCOLS.map(c => `<th class="c">${c[1]}</th>`).join("")}<th>Subcontractor</th></tr></thead><tbody>`;
+  html += `<div class="tw"><table class="t fg"><thead><tr><th>Item</th><th>Subcontractor</th>${FCOLS.map(c => `<th class="c">${c[1]}</th>`).join("")}</tr></thead><tbody>`;
   let sec = "";
   for (const x of rows) {
     if (x.section !== sec) { sec = x.section; html += `<tr class="sec"><td colspan="${FCOLS.length + 2}">${esc(sec)}</td></tr>`; }
-    html += `<tr><td>${esc(x.item)}</td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}<td><select data-fsub="${x.id}" style="max-width:220px;border:1px solid #E0DCD6;border-radius:6px;height:28px"><option value="">-</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></td></tr>`;
+    html += `<tr><td>${esc(x.item)}</td><td><select class="fsub" data-fsub="${x.id}"><option value="">-</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}${s.scope ? " - " + esc(s.scope) : ""}</option>`).join("")}<option value="new">+ New subcontract...</option></select></td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}</tr>`;
   }
   el.innerHTML = html + "</tbody></table></div>";
   bindTools(el, () => SECTIONS["subs.final"](el));
@@ -710,11 +760,14 @@ SECTIONS["subs.final"] = el => {
     // the counts on the chips and the tab follow at once
     const pend = b.finals.filter(x => x.st !== "✔" && x.sc !== "N/A").length, done = b.finals.filter(x => x.st === "✔").length, tot = b.finals.filter(x => x.sc !== "N/A").length;
     const setN = (sel, v) => { const n = document.querySelector(sel); if (n) n.textContent = v; };
-    setN('.chip[data-f="Pending"] .n', pend); setN('.chip[data-f="✔"] .n', done); setN('.tab[data-s="final"] .n', `${done}/${tot}`);
+    setN('.chip[data-f="Pending"] .n', pend); setN('.chip[data-f="✔"] .n', done); setN('.it[data-gs="subs.final"] .n', `${done}/${tot}`);
     b.summary.finals_done = done; b.summary.finals_total = tot;
     try { await PATCH(`/store/est/finals/${id}`, { [k]: nv }); } catch (e) { fail(e); }
   });
-  $$("[data-fsub]", el).forEach(s => s.onchange = async () => { try { await PATCH(`/store/est/finals/${s.dataset.fsub}`, { sub_id: s.value || null }); b.finals.find(x => x.id === +s.dataset.fsub).sub_id = +s.value || null; toast("Saved"); } catch (e) { fail(e); } });
+  $$("[data-fsub]", el).forEach(s => s.onchange = async () => {
+    const row = b.finals.find(x => x.id === +s.dataset.fsub);
+    if (s.value === "new") { s.value = row.sub_id || ""; subForm(null, { scope: row.item, final_id: row.id }); return; }
+    try { await PATCH(`/store/est/finals/${s.dataset.fsub}`, { sub_id: s.value || null }); b.finals.find(x => x.id === +s.dataset.fsub).sub_id = +s.value || null; toast("Saved"); } catch (e) { fail(e); } });
   $("#add-final", el).onclick = () => modal("Finalization item", [
     { k: "section", label: "Section", type: "select", options: ["CIVIL", "MEP", "EXTERNAL", "OTHER"] }, { k: "item", label: "Item", focus: true }],
     async v => { await POST("/store/est/finals", Object.assign(v, { project_id: ST.pid })); reload(); });
