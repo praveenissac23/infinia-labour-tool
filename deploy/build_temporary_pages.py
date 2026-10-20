@@ -115,12 +115,11 @@ PAGES = {
     # Estimation: the company's own Trello (boards, lists, cards, power-ups,
     # automation) - its own page, held in a frame (portal/boards.html).
     # Dashboard (every project at a glance), Projects (one project at a time:
-    # client side, subcontractors, site & technical) and Tenders - one page,
+    # client side, subcontractors, site & technical) - one page,
     # portal/estimation.html, in a frame per tab.
     "estimation": ("Estimation", [tab("estdash", "pgestdash", "Dashboard", "estimation_projects"),
                                   tab("estproj", "pgestproj", "Projects", "estimation_projects"),
-                                  tab("boards", "pgboards", "Trello", "estimation_boards"),
-                                  tab("esttend", "pgesttend", "Tenders", "estimation_projects")]),
+                                  tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
@@ -674,7 +673,6 @@ FRAMES_HTML = """
         <div class="screen" id="screen-pgestdash"><iframe class="pg-embed" id="pg-estdash-frame" data-src="/portal/est-app.html?embed=1&view=dash" title="Estimation dashboard"></iframe></div>
         <div class="screen" id="screen-pgestproj"><iframe class="pg-embed" id="pg-estproj-frame" data-src="/portal/est-app.html?embed=1&view=projects" title="Projects"></iframe></div>
         <div class="screen" id="screen-pgsubpay"><iframe class="pg-embed" id="pg-subpay-frame" data-src="/portal/est-app.html?embed=1&view=pay" title="Subcontractor payments"></iframe></div>
-        <div class="screen" id="screen-pgesttend"><iframe class="pg-embed" id="pg-esttend-frame" data-src="/portal/est-app.html?embed=1&view=tenders" title="Tenders"></iframe></div>
         <div class="screen" id="screen-pgboards"><iframe class="pg-embed" id="pg-boards-frame" data-src="/portal/boards.html?embed=1" title="Trello" allow="clipboard-write"></iframe></div>
 """
 

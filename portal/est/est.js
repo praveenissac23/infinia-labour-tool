@@ -1,4 +1,4 @@
-/* Estimation > Dashboard / Projects / Tenders.
+/* Estimation > Dashboard / Projects.
    One page, three views (?view=dash | projects | tenders), held in a frame by the app.
    Typing is kept to the numbers that cannot be picked: everything else is a pick,
    a click, or filled in from what is already known. */
@@ -172,9 +172,9 @@ function combo(el, items, onPick, placeholder) {
   let cur = -1, shown = [];
   const draw = () => {
     const q = inp.value.trim().toLowerCase();
-    shown = items.filter(x => !q || (x.label + " " + (x.sub || "")).toLowerCase().includes(q) || inp.dataset.picked === inp.value);
+    shown = items.filter(x => !q || x.label.toLowerCase().includes(q) || inp.dataset.picked === inp.value);
     if (inp.dataset.picked === inp.value) shown = items;
-    list.innerHTML = shown.length ? shown.map((x, i) => `<div class="opt ${i === cur ? "on" : ""}" data-i="${i}"><b>${esc(x.code)}</b><span>${esc(x.name || "")}</span><small>${esc(x.sub || "")}</small></div>`).join("") : '<div class="none">No project matches</div>';
+    list.innerHTML = shown.length ? shown.map((x, i) => `<div class="opt ${i === cur ? "on" : ""}" data-i="${i}"><b>${esc(x.code)}</b></div>`).join("") : '<div class="none">No project matches</div>';
     list.classList.remove("hide");
   };
   inp.onfocus = () => { inp.select(); cur = -1; draw(); };
@@ -185,10 +185,10 @@ function combo(el, items, onPick, placeholder) {
     else if (e.key === "Enter" && shown[Math.max(cur, 0)]) { pick(shown[Math.max(cur, 0)]); }
     else if (e.key === "Escape") { list.classList.add("hide"); if (inp.dataset.picked) inp.value = inp.dataset.picked; inp.blur(); }
   };
-  const pick = x => { inp.value = x.code + "  " + (x.name || ""); inp.dataset.picked = inp.value; list.classList.add("hide"); inp.blur(); onPick(x); };
+  const pick = x => { inp.value = String(x.code); inp.dataset.picked = inp.value; list.classList.add("hide"); inp.blur(); onPick(x); };
   list.onmousedown = e => { const o = e.target.closest(".opt"); if (o) { e.preventDefault(); pick(shown[+o.dataset.i]); } };
-  inp.onblur = () => setTimeout(() => { list.classList.add("hide"); if (inp.dataset.picked && !items.some(x => (x.code + "  " + (x.name || "")) === inp.value)) inp.value = inp.dataset.picked; }, 150);
-  return { set(x) { if (x) { inp.value = x.code + "  " + (x.name || ""); inp.dataset.picked = inp.value; } } };
+  inp.onblur = () => setTimeout(() => { list.classList.add("hide"); if (inp.dataset.picked && !items.some(x => String(x.code) === inp.value)) inp.value = inp.dataset.picked; }, 150);
+  return { set(x) { if (x) { inp.value = String(x.code); inp.dataset.picked = inp.value; } } };
 }
 
 // ---------- the same money as the server, for the live figures in a form ----------
@@ -299,9 +299,6 @@ async function loadDash() {
         ${d.late.length ? `<div class="tw" style="max-height:180px"><table class="t"><thead><tr><th>Project</th><th>No.</th><th>Subject</th><th>With</th><th>Due</th></tr></thead><tbody>
         ${d.late.map(x => `<tr class="rowc" data-pid="${x.project_id}" data-sec="site.${x.kind === "rfi" ? "rfi" : "submittal"}"><td><b>${esc(x.code)}</b></td><td class="nowrap">${esc(x.no)}</td><td>${esc(x.title)}</td><td>${esc(x.party)}</td><td class="late nowrap">${dt(x.due)}</td></tr>`).join("")}
         </tbody></table></div>` : '<div class="empty" style="padding:14px">Nothing overdue.</div>'}
-        <h3 style="margin-top:14px">Tenders being priced</h3>
-        ${d.tenders.length ? `<div class="tw" style="max-height:170px"><table class="t"><thead><tr><th>Tender</th><th>Client</th><th>Due</th><th>Status</th></tr></thead><tbody>
-        ${d.tenders.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.client)}</td><td class="nowrap ${x.due && x.due < d.today ? "late" : ""}">${dt(x.due)}</td><td>${st(x.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty" style="padding:14px">No open tenders.</div>'}
       </div>
     </div>
     <div class="card"><h3>Finalization - all projects ${tip("The final status of each trade on each project, from each project's finalization log. ✔ finalized, X not yet, C main contractor's scope, E employer's, PS provisional sum. Click a project's column heading to open its log.")}</h3>${finalMatrix(d)}</div>
@@ -335,12 +332,12 @@ const GROUPS = {
 };
 function renderProjectShell() {
   $("#app").innerHTML = `<div class="wrap"><div class="pbar"><div id="pick"></div><button class="btn btn-ghost" id="p-new">+ New project</button><button class="btn btn-plain hide" id="p-edit">Project details</button><span class="spacer"></span></div><div id="pbody"></div></div>`;
-  const items = ST.meta.projects.map(p => ({ ...p, label: p.code + " " + p.name, sub: [p.client, p.status].filter(Boolean).join(" · ") }));
-  ST.combo = combo($("#pick"), items, x => openProject(x.id), "Search a project - code, name or client");
+  const items = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true })).map(p => ({ ...p, label: String(p.code) }));
+  ST.combo = combo($("#pick"), items, x => openProject(x.id), "Project no.");
   $("#p-new").onclick = newProject;
   $("#p-edit").onclick = editProject;
   if (!ST.meta.projects.length) $("#pbody").innerHTML = `<div class="card empty">No projects yet. Press <b>+ New project</b> and pick the site - the rest is filled in for you.</div>`;
-  else $("#pbody").innerHTML = `<div class="card empty">Pick a project above.<br><span class="small">Type a few letters of the code, name or client.</span></div>`;
+  else $("#pbody").innerHTML = `<div class="card empty">Pick a project above.<br><span class="small">Type the project number, e.g. 911.</span></div>`;
 }
 async function openProject(pid, keep) {
   ST.pid = pid;
