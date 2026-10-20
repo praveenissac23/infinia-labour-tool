@@ -4,6 +4,8 @@ const { chromium } = require('playwright');
 const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/pcui_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`#pnav [data-g="${g}"]`); await new Promise(r => setTimeout(r, 300)); if (g !== 'home') await pg.click(`#psub [data-s="${s}"]`); };
+
 (async () => {
   const br = await chromium.launch(); const p = await (await br.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
@@ -25,7 +27,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('3 lines pasted, 257,820.00', it.items.length === 3 && Math.abs(it.total - 257820) < .01, it.total);
   // invoice in -> Certify opens the sheet
   await p.click('#s-inv'); await sleep(300); await p.fill('#f-inv_ref', '1GB/585/04/2025'); await p.fill('#f-inv_amount', '35912'); await p.click('#m-save'); await sleep(1200);
-  await p.click('#d-x'); await sleep(200); await p.click('[data-gs="subs.inv"]'); await sleep(500);
+  await p.click('#d-x'); await sleep(200); await goSec(p, 'subs.inv'); await sleep(500);
   const pc = (await api(`/store/est/projects/${P}`)).subs.find(x => x.id === sid).pcs.at(-1);
   await p.click(`[data-next="${pc.id}"]`); await sleep(800);          // Back from site
   await p.click(`[data-next="${pc.id}"]`); await sleep(1200);         // Certify -> the sheet

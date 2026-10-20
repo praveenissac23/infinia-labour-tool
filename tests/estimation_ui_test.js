@@ -5,6 +5,8 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/estui_';
 let bad = 0; const fails = [];
 const ck = (name, ok, info) => { if (!ok) { bad++; fails.push(name); } console.log((ok ? 'PASS ' : 'FAIL ') + name + (ok ? '' : '  ' + JSON.stringify(info === undefined ? '' : info).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`#pnav [data-g="${g}"]`); await new Promise(r => setTimeout(r, 300)); if (g !== 'home') await pg.click(`#psub [data-s="${s}"]`); };
+
 (async () => {
   const br = await chromium.launch();
   const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage();
@@ -26,7 +28,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('project made and opened', pname.startsWith(site.code), pname);
   const pid = await p.evaluate(() => ST.pid);
   // ---- subcontract ----
-  await p.click('[data-gs="subs.reg"]'); await sleep(300);
+  await goSec(p, 'subs.reg'); await sleep(300);
   await p.click('#add-sub'); await sleep(300);
   await p.fill('#f-name', 'UI TEST CONTRACTING LLC'); await p.fill('#f-scope', 'Blockwork');
   await p.fill('#f-value', '200000'); await p.click('[data-q="adv_pct:1"]'); await p.click('[data-q="ret_pct:2"]');
@@ -44,7 +46,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('invoice logged and at site', sub.pcs[1].status === 'At site' && sub.pcs[1].to_site, sub.pcs[1].status);
   await p.click('#d-x'); await sleep(200);
   // invoice tracker: next-step buttons
-  await p.click('[data-gs="subs.inv"]'); await sleep(400);
+  await goSec(p, 'subs.inv'); await sleep(400);
   await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(900);
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
   ck('one click: back from site', sub.pcs[1].status === 'Back from site', sub.pcs[1].status);
@@ -77,24 +79,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.click('[data-f="With Accounts"]'); await sleep(300);
   ck('status chip filters the list', (await p.$$('[data-next]')).length === 1);
   // ---- finalization: click to cycle ----
-  await p.click('[data-gs="subs.final"]'); await sleep(400);
+  await goSec(p, 'subs.final'); await sleep(400);
   const cell = await p.$('[data-fc$=":st"]');
   await cell.click(); await sleep(400); await cell.click(); await sleep(600);
   const fin = (await api(`/store/est/projects/${pid}`)).finals[0];
   ck('finalization cell cycles ✔ then X and saves', fin.st === 'X', fin.st);
   // ---- approvals: one click stamps the date ----
-  await p.click('[data-gs="site.approval"]'); await sleep(400);
+  await goSec(p, 'site.approval'); await sleep(400);
   const ab = await p.$('[data-aq$=":Submitted"]'); await ab.click(); await sleep(800);
   const apr = (await api(`/store/est/projects/${pid}`)).logs.find(l => l.kind === 'approval' && l.status === 'Submitted');
   ck('approval submitted today', apr && apr.sent === meta.today, apr);
   // ---- RFI ----
-  await p.click('[data-gs="site.rfi"]'); await sleep(300);
+  await goSec(p, 'site.rfi'); await sleep(300);
   await p.click('#add-log'); await sleep(300); await p.fill('#f-title', 'Lintel detail'); await p.click('#m-save'); await sleep(900);
   ck('RFI listed as RFI-001', (await p.textContent('#sec')).includes('RFI-001'));
   await p.click('[data-reply]'); await sleep(800);
   ck('answer received in one click', (await api(`/store/est/projects/${pid}`)).logs.find(l => l.kind === 'rfi').status === 'Answered');
   // ---- BOQ paste ----
-  await p.click('[data-gs="client.boq"]'); await sleep(300);
+  await goSec(p, 'client.boq'); await sleep(300);
   await p.click('#boq-paste'); await sleep(300);
   await p.fill('#f-text', 'WORKS\n1\tBlockwork\tm2\t100\t70\n2\tPlaster\tm2\t200\t30');
   await p.click('#m-save'); await sleep(1000);

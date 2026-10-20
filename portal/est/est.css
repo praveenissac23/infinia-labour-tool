@@ -304,3 +304,27 @@ details.inv { margin-top: 12px; } details.inv summary { cursor: pointer; font-si
 .il input:first-child { flex: 1; } .il input.money { width: 130px; text-align: right; }
 @media (max-width: 1100px) { .sheet { grid-template-columns: 1fr; } .sh-side { position: static; } .frm.f4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .frm.f4 { grid-template-columns: 1fr; } .bbody { padding: 10px; } }
+
+/* ===== Projects: the app's tabs - main tabs in a pill group, sub-tabs underlined, the page at full width ===== */
+.ptop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.ptop select.pick { width: 92px; flex: 0 0 auto; }
+.pills { display: inline-flex; gap: 4px; background: #fff; border: 1px solid #ECE4DE; border-radius: 14px; padding: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.pills button { border: 0; background: transparent; padding: 7px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; color: #7A3B33; cursor: pointer; white-space: nowrap; }
+.pills button:hover { background: #FDF6F5; }
+.pills button.on { background: var(--red); color: #fff; box-shadow: 0 2px 8px rgba(192,57,43,.25); }
+.pname { color: #8A8178; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+.utabs { display: flex; gap: 22px; padding: 2px 4px 0; margin: 4px 0 12px; border-bottom: 1px solid #E7E1DA; overflow-x: auto; scrollbar-width: none; }
+.utabs::-webkit-scrollbar { display: none; }
+.utabs button { border: 0; background: none; padding: 8px 0 9px; font-size: 13px; font-weight: 600; color: #6B7075; cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.utabs button:hover { color: var(--red); }
+.utabs button.on { color: var(--red); border-bottom-color: var(--red); }
+.utabs .n { background: #EFEBE6; color: #6A5C55; border-radius: 999px; padding: 0 7px; font-size: 11px; margin-left: 6px; font-weight: 700; }
+.utabs button.on .n { background: var(--red); color: #fff; }
+#pbody .panel { border: 1px solid #E9EBEE; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(30,20,10,.05); }
+#pbody .panel.bare { background: none; border: 0; box-shadow: none; padding: 0; }
+@media (max-width: 800px) {
+  .ptop { gap: 8px; } .pname { display: none; } #p-new { padding: 7px 10px; }
+  .pills { order: 5; width: 100%; overflow-x: auto; scrollbar-width: none; } .pills button { padding: 7px 12px; }
+}
+.kpis.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .kpis.k4 { grid-template-columns: 1fr 1fr; } }

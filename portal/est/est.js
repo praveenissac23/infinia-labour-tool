@@ -321,18 +321,14 @@ const GROUPS = {
 };
 function renderProjectShell() {
   const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));
-  $("#app").innerHTML = `<div class="wrap"><div class="plyt">
-    <aside class="pside">
-      <div class="pk"><label for="pick">Project</label><select class="pick" id="pick">${list.map(p => `<option value="${p.id}">${esc(p.code)}</option>`).join("")}</select><div class="nm" id="pname"></div></div>
-      <select class="pick psel" id="psec"></select>
-      <nav id="pnav"></nav>
-      <button class="btn btn-ghost new" id="p-new">+ New project</button>
-    </aside>
-    <section class="pmain"><div class="phead" id="phead"></div><div id="pbody"></div></section>
-  </div></div>`;
+  // The app's own pattern: one row of main tabs (pill group), the sub-tabs under it (underlined), the page below at full width.
+  $("#app").innerHTML = `<div class="wrap">
+    <div class="ptop"><select class="pick" id="pick" title="Project">${list.map(p => `<option value="${p.id}">${esc(p.code)}</option>`).join("")}</select>
+      <div class="pills" id="pnav"></div><span class="pname" id="pname"></span><span class="spacer"></span><button class="btn btn-ghost" id="p-new">+ New project</button></div>
+    <div class="utabs" id="psub"></div>
+    <div id="pbody"></div></div>`;
   ST.picker = true;
   $("#pick").onchange = () => openProject(+$("#pick").value);
-  $("#psec").onchange = () => { [ST.group, ST.sec] = $("#psec").value.split("."); saveSec(); renderProject(); };
   $("#p-new").onclick = newProject;
   if (!list.length) $("#pbody").innerHTML = `<div class="card empty">No projects yet. Press <b>+ New project</b> and pick the site - the rest is filled in for you.</div>`;
 }
@@ -427,14 +423,13 @@ function renderProject() {
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
   if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "home"; ST.sec = "dash"; }
-  // The side menu: every page of the project, under its heading.
-  $("#pnav").innerHTML = Object.entries(GROUPS).map(([g, grp]) => (grp.label ? `<div class="ph">${grp.label}</div>` : "") +
-    grp.secs.map(([k, l]) => { const n = count[g + "." + k]; return `<div class="it ${g === ST.group && k === ST.sec ? "on" : ""}" data-gs="${g}.${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</div>`; }).join("")).join("");
-  $("#psec").innerHTML = Object.entries(GROUPS).map(([g, grp]) => `<optgroup label="${grp.label || "Project"}">${grp.secs.map(([k, l]) => `<option value="${g}.${k}" ${g === ST.group && k === ST.sec ? "selected" : ""}>${l}</option>`).join("")}</optgroup>`).join("");
-  const title = GROUPS[ST.group].secs.find(x => x[0] === ST.sec)[1];
-  $("#phead").innerHTML = `<h2>${esc(title)}</h2><span class="sub">${esc(b.project.code)}${GROUPS[ST.group].label ? " · " + GROUPS[ST.group].label : ""}</span>`;
+  const lbl = g => g === "home" ? "Dashboard" : GROUPS[g].label;
+  $("#pnav").innerHTML = Object.keys(GROUPS).map(g => `<button class="${g === ST.group ? "on" : ""}" data-g="${g}">${lbl(g)}</button>`).join("");
+  $("#psub").innerHTML = ST.group === "home" ? "" : GROUPS[ST.group].secs.map(([k, l]) => { const n = count[ST.group + "." + k]; return `<button class="${k === ST.sec ? "on" : ""}" data-s="${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</button>`; }).join("");
+  $("#psub").classList.toggle("hide", ST.group === "home");
   $("#pbody").innerHTML = `<div class="panel ${ST.group === "home" ? "bare" : ""}" id="sec"></div>`;
-  $$("[data-gs]").forEach(x => x.onclick = () => { [ST.group, ST.sec] = x.dataset.gs.split("."); saveSec(); renderProject(); window.scrollTo(0, 0); });
+  $$("#pnav [data-g]").forEach(x => x.onclick = () => { ST.group = x.dataset.g; ST.sec = GROUPS[ST.group].secs[0][0]; saveSec(); renderProject(); });
+  $$("#psub [data-s]").forEach(x => x.onclick = () => { ST.sec = x.dataset.s; saveSec(); renderProject(); });
   const fn = SECTIONS[ST.group + "." + ST.sec];
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
@@ -449,7 +444,7 @@ function homeDash(el) {
   const waiting = b.subs.flatMap(x => x.pcs.filter(q => q.status !== "Paid").map(q => Object.assign({ sub: x }, q)));
   const row = (l, v) => v ? `<tr><th>${l}</th><td>${v}</td></tr>` : "";
   el.innerHTML = `
-    <div class="card"><div class="kpis">
+    <div class="card"><div class="kpis k4">
       ${kpi("Contract value", A(s.revised), s.approved_vo ? `original ${money(s.contract, false)} + VOs ${money(s.approved_vo, false)}` : "original contract")}
       ${kpi("Certified by client", A(s.client_certified), s.revised ? Math.round(100 * s.client_work / s.revised) + "% of the work" : "")}
       ${kpi("Received", A(s.received), `<div class="bar"><i style="width:${coll}%"></i></div>${coll}% collected`, "green")}
@@ -767,7 +762,7 @@ SECTIONS["subs.final"] = el => {
     // the counts on the chips and the tab follow at once
     const pend = b.finals.filter(x => x.st !== "✔" && x.sc !== "N/A").length, done = b.finals.filter(x => x.st === "✔").length, tot = b.finals.filter(x => x.sc !== "N/A").length;
     const setN = (sel, v) => { const n = document.querySelector(sel); if (n) n.textContent = v; };
-    setN('.chip[data-f="Pending"] .n', pend); setN('.chip[data-f="✔"] .n', done); setN('.it[data-gs="subs.final"] .n', `${done}/${tot}`);
+    setN('.chip[data-f="Pending"] .n', pend); setN('.chip[data-f="✔"] .n', done); setN('#psub [data-s="final"] .n', `${done}/${tot}`);
     b.summary.finals_done = done; b.summary.finals_total = tot;
     try { await PATCH(`/store/est/finals/${id}`, { [k]: nv }); } catch (e) { fail(e); }
   });
