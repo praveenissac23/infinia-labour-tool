@@ -196,7 +196,7 @@ function chainCalc(pcs, advPct, retPct, vatPct, workKey = "work_cum") {
   let prev = 0, advPaid = 0; const out = [];
   for (const p of pcs) {
     advPaid = r2(advPaid + Number(p.adv_amount || 0));
-    const work = r2(p[workKey]), gross = r2(work + Number(p.mos_cum || 0));
+    const work = r2(p[workKey]), gross = r2(work + Number(p.var_cum || 0) + Number(p.mos_cum || 0));
     const net = r2(gross + advPaid - (p.adv_rec_cum || 0) - (p.ret_cum || 0) + Number(p.ret_rel_cum || 0) - (p.other_cum || 0));
     const th = r2(net - prev), vat = r2(th * (vatPct || 0) / 100);
     out.push({ net, this: th, vat, payable: r2(th + vat), advPaid }); prev = net;
@@ -535,7 +535,10 @@ function subForm(s, pre) {
     { k: "adv_pct", label: "Advance %", type: "pct", value: s.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]], tip: "Recovered from each certificate by the same % of the work done, until it is all back." },
     { k: "ret_pct", label: "Retention %", type: "pct", value: s.ret_pct ?? 0, quick: [["0", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]] },
     { k: "vat_pct", label: "VAT %", type: "pct", value: s.vat_pct ?? 5, quick: [["5%", el => el.value = 5], ["0", el => el.value = 0]] },
-    { k: "start_date", label: "Start date", type: "date", value: s.start_date || today() },
+    { k: "start_date", label: "Commencement date", type: "date", value: s.start_date || today() },
+    { k: "agreement_date", label: "Agreement date", type: "date", value: s.agreement_date || "" },
+    { k: "contract_type", label: "Contract type", type: "combo", options: ["Lump sum contract", "Contract progressive payment", "Unit rate re-measurement contract", "Manpower rates"], value: s.contract_type || "" },
+    { k: "pay_terms", label: "Payment terms (printed on the certificate)", type: "area", full: true, value: s.pay_terms || "", ph: "10% advance against security cheque\n100% progressive payment after certification\n10% retention" },
     { k: "notes", label: "Notes", type: "area", value: s.notes || "" },
   ], async v => {
     const sup = m.suppliers.find(x => x.name.toLowerCase() === v.name.toLowerCase());
@@ -569,6 +572,8 @@ function openSub(sid) {
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
         <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
+      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
+        <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Paste the agreement's BOQ to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
       <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}% · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
@@ -581,7 +586,9 @@ function openSub(sid) {
       async v => { await POST("/store/est/subpcs", { sub_id: s.id, pc_type: "Advance", adv_amount: v.adv_amount, inv_ref: v.inv_ref }); await reload(); toast("Advance certificate made - recovered from the next certificates"); });
     $("#s-vo").onclick = () => voSubForm(s);
     $("#s-edit").onclick = () => subForm(s);
-    $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print]")) return; certifyForm(s.id, +r.dataset.pc); });
+    $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print]")) return; openCert(s.id, +r.dataset.pc); });
+    $("#s-items").onclick = () => scheduleEditor(s.id);
+    $("#s-paste").onclick = () => pasteItems(s.id, s, () => reload());
     $$("[data-print]").forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.print }));
     $$("[data-vo]").forEach(r => r.onclick = () => voSubForm(s, s.vos.find(v => v.id === +r.dataset.vo)));
   };
@@ -639,7 +646,7 @@ function certifyForm(sid, pcid) {
     const n = x => Number(String(x || 0).replace(/,/g, "")) || 0;
     const advPaidBefore = prev ? prev.adv_paid_cum : 0, advPaid = advPaidBefore + n(v.adv_amount), work = n(v.work_cum);
     if (v.adv_auto) { const pct = s.adv_pct || (s.revised ? 100 * advPaid / s.revised : 0); const a = pct ? Math.min(advPaid, work * pct / 100) : Math.min(advPaid, n(v.adv_rec_cum)); $("#f-adv_rec_cum").value = r2(a); }
-    if (v.ret_auto) $("#f-ret_cum").value = r2(work * s.ret_pct / 100);
+    if (v.ret_auto) $("#f-ret_cum").value = r2((work + Number(p.var_cum || 0)) * s.ret_pct / 100);
     $("#f-adv_rec_cum").disabled = v.adv_auto; $("#f-ret_cum").disabled = v.ret_auto;
     const now = { work_cum: work, mos_cum: n(v.mos_cum), adv_amount: n(v.adv_amount), adv_rec_cum: n($("#f-adv_rec_cum").value), ret_cum: n($("#f-ret_cum").value), ret_rel_cum: n(v.ret_rel_cum), other_cum: n(v.other_cum) };
     const list = s.pcs.map(x => x.id === p.id ? Object.assign({}, x, now) : x);
@@ -658,9 +665,9 @@ function certifyForm(sid, pcid) {
     if (["Received", "At site", "Back from site"].includes(p.status) && Number(v.work_cum || 0) > 0) await POST(`/store/est/subpcs/${p.id}/step`, { step: "Certified" });
     await reload(); toast("Certificate saved");
   }, { wide: true, live, top: '<div class="calc" id="calc" style="margin:0 0 12px"></div>', save: locked ? "Locked - paid" : "Save certificate",
-       extra: `<button class="btn btn-plain" id="m-print">Print PC</button>`,
+       extra: `<button class="btn btn-plain" id="m-sheet" title="Line by line from the item schedule, deductions with their details, the subcontractor's bill and the sign-off">Full sheet</button><button class="btn btn-plain" id="m-print">Print PC</button>`,
        del: p.status !== "Paid" ? async () => { await DEL(`/store/est/subpcs/${p.id}`); reload(); toast("Removed"); } : null,
-       after: () => { $("#m-print").onclick = () => exportGo("preview", "pc", { id: p.id }); if (locked) $("#m-save").disabled = true; } });
+       after: () => { $("#m-print").onclick = () => exportGo("preview", "pc", { id: p.id }); $("#m-sheet").onclick = () => { closeModal(); pcSheet(p.id); }; if (locked) $("#m-save").disabled = true; } });
 }
 
 // ---------------- Subcontractors > invoice tracker ----------------
@@ -689,10 +696,10 @@ SECTIONS["subs.inv"] = el => {
   $("#rules", el).onclick = rulesForm;
   $$("[data-next]", el).forEach(b => b.onclick = () => step(+b.dataset.next, b.dataset.to, +b.dataset.sub));
   $$("[data-undo]", el).forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.undo}/step`, { step: b.dataset.st, undo: true }); await reload(); toast("Moved back one step"); } catch (e) { fail(e); } });
-  $$("[data-open]", el).forEach(b => b.onclick = () => certifyForm(+b.dataset.sub, +b.dataset.open));
+  $$("[data-open]", el).forEach(b => b.onclick = () => openCert(+b.dataset.sub, +b.dataset.open));
 };
 async function step(pcid, to, sid) {
-  if (to === "Certified") { certifyForm(sid, pcid); return; }
+  if (to === "Certified") { openCert(sid, pcid); return; }
   if (to === "Paid") { payForm(sid, pcid); return; }
   try {
     await POST(`/store/est/subpcs/${pcid}/step`, { step: to }); await reload();

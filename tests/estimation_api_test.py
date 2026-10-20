@@ -227,7 +227,7 @@ ck("one subcontract's PC sheet", r.status_code == 200)
 r = c.get(f"/export/est/subs?token={t}&pid={P}&format=preview&q=nothingmatches")
 ck("filters carried into the export", r.status_code == 200 and "Nothing to show" in r.text)
 r = c.get(f"/export/est/pc/{PC3}?token={t}")
-ck("payment certificate page", r.status_code == 200 and "Payment Certificate No. 03" in r.text and "Amount payable" in r.text, r.text[:300])
+ck("payment certificate page", r.status_code == 200 and "Payment Certificate No.: 03" in r.text and "Total Amount Due for Payment" in r.text, r.text[:300])
 r = c.get(f"/export/est/pc/{PC3}?token={t}&format=pdf")
 ck("payment certificate PDF", r.status_code == 200 and r.content.startswith(b"%PDF"))
 t2 = c.post("/auth/download-token", headers=ACC).json()["token"]

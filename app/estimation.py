@@ -57,7 +57,11 @@ def today():
 
 
 def r2(x):
-    return round(float(x or 0) + 0.0, 2)
+    """Money to the fils, rounded half up as Excel does (2,617.725 -> 2,617.73; 5% of 33,053.90 -> 1,652.70),
+    not Python's float rounding, which can land a fils low."""
+    from decimal import Decimal, ROUND_HALF_UP
+    v = float(x or 0)
+    return float(Decimal(repr(round(v, 9))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) + 0.0
 
 
 # ---- tables -----------------------------------------------------------------------------
@@ -107,7 +111,10 @@ class EstSub(Base):
     vat_pct = Column(Float, default=5.0)
     pay_days = Column(Integer, default=0)
     status = Column(String, default="Active")   # Active | Completed | Closed | Cancelled
-    start_date = Column(Date, nullable=True)
+    start_date = Column(Date, nullable=True)        # commencement date
+    agreement_date = Column(Date, nullable=True)
+    contract_type = Column(String, default="")      # Lump sum | Re-measurable (unit rates) | Manpower rates
+    pay_terms = Column(Text, default="")            # as printed on the certificate
     notes = Column(Text, default="")
     sort = Column(Integer, default=0)
     locals().update(_audit())
@@ -157,6 +164,19 @@ class EstSubPC(Base):
     other_cum = Column(Float, default=0.0)      # other deductions to date (back-charges, manpower ...)
     other_note = Column(String, default="")
     remarks = Column(Text, default="")
+    var_cum = Column(Float, default=0.0)        # value of variations executed to date (kept apart from the work)
+    measured_on = Column(Date, nullable=True)   # measurement date printed on the certificate
+    inv_lines = Column(Text, default="")        # the subcontractor's bill lines, JSON [{d, a}]
+    verified_by = Column(String, default="")    # "Verified at site" - a click, no scan
+    verified_on = Column(Date, nullable=True)
+    prep_by = Column(String, default="")        # sign-off: prepared (QS), checked, reviewed (Accounts), approved
+    prep_on = Column(Date, nullable=True)
+    chk_by = Column(String, default="")
+    chk_on = Column(Date, nullable=True)
+    rev_by = Column(String, default="")
+    rev_on = Column(Date, nullable=True)
+    app_by = Column(String, default="")
+    app_on = Column(Date, nullable=True)
     locals().update(_audit())
 
 
@@ -448,13 +468,16 @@ KINDS = {
                                     "qs": S, "notes": S}),
     "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
                                     "value": F, "cancelled": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "pay_days": I,
-                                    "status": S, "start_date": D, "notes": S, "sort": I}),
+                                    "status": S, "start_date": D, "agreement_date": D, "contract_type": S, "pay_terms": S,
+                                    "notes": S, "sort": I}),
     "subvos": (EstSubVO, "sub_id", {"on_date": D, "ref": S, "title": S, "amount": F}),
     "subpcs": (EstSubPC, "sub_id", {"seq": I, "pc_type": S, "inv_ref": S, "inv_date": D, "inv_amount": F, "received": D,
                                     "to_site": D, "site_back": D, "certified_on": D, "issued": D, "to_accounts": D, "paid_on": D,
                                     "paid_amount": F, "paid_ref": S, "status": S, "work_cum": F, "mos_cum": F, "adv_amount": F,
                                     "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F, "other_cum": F,
-                                    "other_note": S, "remarks": S}),
+                                    "other_note": S, "remarks": S, "var_cum": F, "measured_on": D, "inv_lines": S,
+                                    "verified_by": S, "verified_on": D, "prep_by": S, "prep_on": D, "chk_by": S, "chk_on": D,
+                                    "rev_by": S, "rev_on": D, "app_by": S, "app_on": D}),
     "clientpcs": (EstClientPC, "project_id", {"seq": I, "pc_type": S, "period_to": D, "submitted": D, "claimed_cum": F,
                                               "certified_cum": F, "certified_on": D, "mos_cum": F, "adv_amount": F,
                                               "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F,
@@ -558,12 +581,13 @@ def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0):
     if (pc.status or "") in LOCKED_STATUS:      # a paid certificate's figures never move again
         return
     work = getattr(pc, work_key) or 0
+    var = getattr(pc, "var_cum", 0) or 0         # advance is recovered on the contract work; retention is held on work + variations
     adv_paid = prev_adv_paid + (pc.adv_amount or 0)
     if pc.adv_auto:
         pct = adv_pct or (100.0 * adv_paid / base if base else 0)
         pc.adv_rec_cum = r2(min(adv_paid, work * pct / 100.0)) if pct else r2(min(adv_paid, pc.adv_rec_cum or 0))
     if pc.ret_auto:
-        pc.ret_cum = r2(work * (ret_pct or 0) / 100.0)
+        pc.ret_cum = r2((work + var) * (ret_pct or 0) / 100.0)
 
 
 def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=0.0):
@@ -579,11 +603,12 @@ def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=
             _auto_fill(pc, adv_paid, adv_pct, ret_pct, work_key, base)
         adv_paid = r2(adv_paid + (pc.adv_amount or 0))
         work = r2(getattr(pc, work_key))
-        gross = r2(work + (pc.mos_cum or 0))
+        var = r2(getattr(pc, "var_cum", 0) or 0)
+        gross = r2(work + var + (pc.mos_cum or 0))
         net = r2(gross + adv_paid - (pc.adv_rec_cum or 0) - (pc.ret_cum or 0) + (pc.ret_rel_cum or 0) - (pc.other_cum or 0))
         this = r2(net - prev_net)
         vat = r2(this * (vat_pct or 0) / 100.0)
-        out.append({"id": pc.id, "work": work, "gross": gross, "adv_paid_cum": adv_paid, "net_cum": net, "prev_net": r2(prev_net),
+        out.append({"id": pc.id, "work": work, "var": var, "gross": gross, "adv_paid_cum": adv_paid, "net_cum": net, "prev_net": r2(prev_net),
                     "this": this, "vat": vat, "payable": r2(this + vat)})
         prev_net = net
     return out
@@ -606,7 +631,7 @@ def _sub_bundle(db, s, vos, pcs, rules):
         d["sub_id"] = s.id
         pc_list.append(d)
     certified = pc_list[-1]["net_cum"] if pc_list else 0.0
-    last_work = pc_list[-1]["work"] if pc_list else 0.0
+    last_work = r2(pc_list[-1]["work"] + pc_list[-1]["var"]) if pc_list else 0.0
     paid = r2(sum(p.paid_amount or 0 for p in pcs))
     vat_certified = r2(sum(x["vat"] for x in pc_list))
     adv_paid = pc_list[-1]["adv_paid_cum"] if pc_list else 0.0
@@ -726,6 +751,12 @@ def project_bundle(db, p, rules=None, pre=None):
     pre = pre or _preload(db, [p])
     subs = pre["subs"].get(p.id, [])
     sub_out = [_sub_bundle(db, s, pre["vos"].get(s.id, []), pre["pcs"].get(s.id, []), rules) for s in subs]
+    if sub_out:                                    # how many schedule lines each subcontract has (its PC is then made on the sheet)
+        import est_pcsheet
+        n = dict(db.query(est_pcsheet.EstSubItem.sub_id, func.count(est_pcsheet.EstSubItem.id))
+                 .filter(est_pcsheet.EstSubItem.sub_id.in_([x["id"] for x in sub_out])).group_by(est_pcsheet.EstSubItem.sub_id).all())
+        for x in sub_out:
+            x["items"] = n.get(x["id"], 0)
     cpcs = pre["cpcs"].get(p.id, [])
     vars_ = pre["vars"].get(p.id, [])
     boq = pre["boq"].get(p.id, [])
@@ -977,13 +1008,14 @@ def _refill_client(db, pid):
 
 
 def _check_pc(db, pc):
-    if pc.work_cum < 0 or pc.mos_cum < 0:
+    if (pc.work_cum or 0) < 0 or (pc.mos_cum or 0) < 0:
         raise HTTPException(400, "Work done and material on site cannot be below zero.")
     s = _sub_of(db, pc.sub_id)
     vos = db.query(EstSubVO).filter(EstSubVO.sub_id == s.id).all()
     rev = sub_revised(s, vos)
-    if rev and pc.work_cum > rev * 1.5 + 1:
-        raise HTTPException(400, f"Work done to date ({pc.work_cum:,.2f}) is far above the revised subcontract value ({rev:,.2f}). Check the figure.")
+    done = (pc.work_cum or 0) + (pc.var_cum or 0)
+    if rev and done > rev * 1.5 + 1:
+        raise HTTPException(400, f"Work done to date ({done:,.2f}) is far above the revised subcontract value ({rev:,.2f}). Check the figure.")
 
 
 @router.post("/store/est/{kind}")
@@ -1019,7 +1051,7 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         if not data.get("seq"):
             row.seq = (prev.seq if prev else 0) + 1
         if prev:   # to-date figures carry on from the last certificate until changed
-            for k in ("work_cum", "mos_cum", "ret_rel_cum", "other_cum"):
+            for k in ("work_cum", "var_cum", "mos_cum", "ret_rel_cum", "other_cum"):
                 if k not in data:
                     setattr(row, k, getattr(prev, k) or 0)
             if "other_note" not in data:
@@ -1094,6 +1126,9 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         row.sort = (db.query(func.max(EstBoq.sort)).filter(EstBoq.project_id == row.project_id).scalar() or 0) + 1
     db.add(row)
     db.flush()
+    if kind == "subpcs":
+        import est_pcsheet
+        est_pcsheet.carry_over(db, row)
     if kind in ("subpcs", "subvos"):
         _refill_sub(db, row.sub_id)
     if kind == "clientpcs":
@@ -1162,6 +1197,8 @@ def del_row(kind: str, rid: int, db: Session = Depends(get_db), user: models.Use
     if kind == "subs":
         if db.query(EstSubPC).filter(EstSubPC.sub_id == rid, EstSubPC.status == "Paid").first() and user.role != "admin":
             raise HTTPException(400, "This subcontract has paid certificates - only an admin can remove it.")
+        import est_pcsheet
+        est_pcsheet.drop_sub(db, rid)
         db.query(EstSubPC).filter(EstSubPC.sub_id == rid).delete(synchronize_session=False)
         db.query(EstSubVO).filter(EstSubVO.sub_id == rid).delete(synchronize_session=False)
     if kind == "files":
@@ -1171,10 +1208,14 @@ def del_row(kind: str, rid: int, db: Session = Depends(get_db), user: models.Use
             pass
     sid = getattr(row, "sub_id", None) if kind == "subpcs" else None
     pid = row.project_id if kind == "clientpcs" else None
+    if kind == "subpcs":
+        import est_pcsheet
+        est_pcsheet.drop_pc(db, row.id)
     db.delete(row)
     db.flush()
     if sid:
-        _refill_sub(db, sid)
+        import est_pcsheet
+        est_pcsheet.refresh_sub(db, sid)
     if kind == "subvos":
         _refill_sub(db, row.sub_id)
     if pid:
@@ -1670,106 +1711,7 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
 
 # ---- the payment certificate itself, printed ----------------------------------------------
 
-def _pc_lines(db, pc_id):
-    pc = db.query(EstSubPC).get(pc_id)
-    if not pc:
-        raise HTTPException(404, "That certificate is not there any more.")
-    s = _sub_of(db, pc.sub_id)
-    p = _project(db, s.project_id)
-    vos = db.query(EstSubVO).filter(EstSubVO.sub_id == s.id).all()
-    pcs = db.query(EstSubPC).filter(EstSubPC.sub_id == s.id).all()
-    calc = {c["id"]: c for c in chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct)}
-    c = calc[pc.id]
-    prev = [x for x in sorted(pcs, key=lambda x: (x.seq or 0, x.id)) if (x.seq or 0, x.id) < (pc.seq or 0, pc.id)]
-    pv = prev[-1] if prev else None
-    pvc = calc[pv.id] if pv else {"gross": 0, "adv_paid_cum": 0, "net_cum": 0}
-
-    def trio(label, now, before):
-        return (label, r2(before), r2(now - before), r2(now))
-    lines = [
-        trio("Value of work done", pc.work_cum or 0, pv.work_cum if pv else 0),
-        trio("Material on site", pc.mos_cum or 0, pv.mos_cum if pv else 0),
-        trio("Advance payment", c["adv_paid_cum"], pvc["adv_paid_cum"]),
-        trio("Less advance recovery", -(pc.adv_rec_cum or 0), -(pv.adv_rec_cum if pv else 0)),
-        trio("Less retention", -(pc.ret_cum or 0), -(pv.ret_cum if pv else 0)),
-        trio("Add release of retention", pc.ret_rel_cum or 0, pv.ret_rel_cum if pv else 0),
-        trio("Less other deductions" + (f" ({pc.other_note})" if pc.other_note else ""), -(pc.other_cum or 0), -(pv.other_cum if pv else 0)),
-    ]
-    lines.append(("Net amount", r2(pvc["net_cum"]), c["this"], c["net_cum"]))
-    return pc, s, p, sub_revised(s, vos), lines, c
+# The subcontractor certificate print lives in est_pcsheet.py (certificate page and appendices).
 
 
-@router.get("/export/est/pc/{pc_id}")
-def pc_print(pc_id: int, token: str, format: str = "preview", db: Session = Depends(get_db)):
-    import export_web
-    u = auth.get_download_user_from_token(token, db)
-    if not ({RIGHT, "accounts_bank"} & set(M.effective_permissions(u))):
-        raise HTTPException(status_code=403, detail="Estimation only.")
-    pc, s, p, revised, lines, c = _pc_lines(db, pc_id)
-    title = f"Payment Certificate No. {pc.seq:02d}" + (f" ({pc.pc_type})" if pc.pc_type != "Interim" else "")
-    head = [("Project", f"{p.code} {p.name}".strip()), ("Subcontractor", s.name), ("Scope of work", s.scope),
-            ("Agreement / LPO", " / ".join(x for x in (s.agreement, s.lpo) if x) or "-"),
-            ("Subcontract value", f"AED {r2(s.value):,.2f}"), ("Revised value", f"AED {revised:,.2f}"),
-            ("Invoice", f"{pc.inv_ref or '-'}" + (f" dated {pc.inv_date:%d-%b-%Y}" if pc.inv_date else "")),
-            ("Date", f"{(pc.issued or today()):%d-%b-%Y}")]
-    if format == "pdf":
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm)
-        st = getSampleStyleSheet()
-        el = []
-        try:
-            el.append(export_web._logo_image(width_mm=60))
-        except Exception:
-            pass
-        el += [Spacer(1, 4 * mm), Paragraph(f"<b>{title}</b>", st["Title"]), Spacer(1, 2 * mm)]
-        t = Table([[a, b] for a, b in head], colWidths=[45 * mm, 133 * mm])
-        t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6B7178")),
-                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-        el += [t, Spacer(1, 5 * mm)]
-        data = [["", "Previous (AED)", "This certificate (AED)", "To date (AED)"]] + [[a, f"{b:,.2f}", f"{cc:,.2f}", f"{d:,.2f}"] for a, b, cc, d in lines]
-        data += [["VAT %g%%" % (s.vat_pct or 0), "", f"{c['vat']:,.2f}", ""], ["Amount payable", "", f"{c['payable']:,.2f}", ""]]
-        t = Table(data, colWidths=[70 * mm, 36 * mm, 36 * mm, 36 * mm])
-        t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#B7322A")),
-                               ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-                               ("GRID", (0, 0), (-1, -1), .4, colors.HexColor("#D5D9DE")),
-                               ("FONTNAME", (0, -3), (-1, -3), "Helvetica-Bold"), ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                               ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#FDF0EE"))]))
-        el += [t, Spacer(1, 18 * mm)]
-        sig = Table([["Prepared by (QS)", "Checked by", "Approved by"], ["", "", ""]], colWidths=[59 * mm] * 3, rowHeights=[6 * mm, 16 * mm])
-        sig.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("LINEBELOW", (0, 1), (-1, 1), .6, colors.black)]))
-        el.append(sig)
-        doc.build(el)
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="application/pdf",
-                                 headers={"Content-Disposition": f"inline; filename=PC_{pc.seq:02d}_{re.sub(r'[^A-Za-z0-9]+', '_', s.name)[:30]}.pdf"})
-    from html import escape
-    logo = export_web.logo_data_uri()
-    rows = "".join(f"<tr{' class=t' if a == 'Net amount' else ''}><td>{escape(a)}</td><td>{b:,.2f}</td><td>{cc:,.2f}</td><td>{d:,.2f}</td></tr>" for a, b, cc, d in lines)
-    hd = "".join(f"<tr><th>{escape(a)}</th><td>{escape(str(b))}</td></tr>" for a, b in head)
-    pdf = f"/export/est/pc/{pc_id}?token={token}&format=pdf"
-    return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{escape(title)}</title><style>
-body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F1EFEA;margin:0;color:#22262A}}
-.bar{{position:sticky;top:0;background:#22262A;color:#fff;padding:10px 16px;display:flex;gap:8px;align-items:center}}
-.bar b{{flex:1}} .bar a,.bar button{{background:#C0392B;color:#fff;border:0;border-radius:6px;padding:7px 12px;font-weight:600;text-decoration:none;font-size:13px;cursor:pointer}}
-.pg{{background:#fff;max-width:780px;margin:18px auto;padding:28px 34px;box-shadow:0 2px 12px rgba(0,0,0,.08)}}
-h1{{text-align:center;font-size:19px;margin:10px 0 16px}} .hd th{{text-align:left;color:#6B7178;font-weight:500;padding:3px 14px 3px 0;width:170px}}
-.hd td{{padding:3px 0}} table{{border-collapse:collapse;width:100%;font-size:13px}}
-.m{{margin-top:18px}} .m th{{background:#B7322A;color:#fff;padding:7px;text-align:right}} .m th:first-child{{text-align:left}}
-.m td{{border:1px solid #E1E4E8;padding:6px 8px;text-align:right}} .m td:first-child{{text-align:left}}
-.m tr.t td,.m tr.p td{{font-weight:700}} .m tr.p td{{background:#FDF0EE}}
-.sig{{display:flex;gap:30px;margin-top:60px}} .sig div{{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;color:#555}}
-@media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none}}}}
-@media (max-width:600px){{.pg{{padding:16px}} .m{{font-size:11.5px}}}}
-</style></head><body><div class="bar"><b>{escape(title)}</b><button onclick="print()">Print</button><a href="{pdf}">PDF</a><button onclick="shr()">Share</button></div>
-<script>async function shr(){{try{{const r=await fetch("{pdf}");const b=await r.blob();const f=new File([b],"{escape(re.sub(r'[^A-Za-z0-9]+', '_', title))}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{escape(title)}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
-<div class="pg"><img src="{logo}" style="height:54px"><h1>{escape(title)}</h1><table class="hd">{hd}</table>
-<table class="m"><tr><th></th><th>Previous (AED)</th><th>This certificate (AED)</th><th>To date (AED)</th></tr>{rows}
-<tr><td>VAT {s.vat_pct or 0:g}%</td><td></td><td>{c['vat']:,.2f}</td><td></td></tr>
-<tr class="p"><td>Amount payable</td><td></td><td>{c['payable']:,.2f}</td><td></td></tr></table>
-<div class="sig"><div>Prepared by (QS)</div><div>Checked by</div><div>Approved by</div></div></div></body></html>""")
+import est_pcsheet  # noqa: E402,F401  - the item schedule, the monthly sheet and the certificate print
