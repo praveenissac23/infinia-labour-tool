@@ -13406,6 +13406,7 @@ app.include_router(estimation.router)
 try:
     estimation.create_tables(engine)
     estimation.seed_projects(SessionLocal)
+    estimation.seed_variations(SessionLocal)
 except Exception as _e:
     print("estimation tables:", _e)
 

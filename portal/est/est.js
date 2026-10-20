@@ -24,10 +24,10 @@ function today() { return (ST.meta && ST.meta.today) || new Date().toISOString()
 function pad(n, w = 3) { return String(n).padStart(w, "0"); }
 function h(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 function st(s) {
-  const g = ["Paid", "Approved", "Closed", "Answered", "Won", "Completed", "Current", "Certified", "Approved as noted", "✔"];
+  const g = ["Paid", "Approved", "Claimed", "Closed", "Answered", "Won", "Completed", "Current", "Certified", "Approved as noted", "✔"];
   const a = ["Submitted", "At site", "Back from site", "With Accounts", "PC issued", "Pricing", "Invoiced", "Preparing", "Running"];
   const r = ["Rejected", "Lost", "Revise & resubmit", "Cancelled", "Overdue"];
-  const b = ["Received", "Open", "Draft", "Identified", "Not started"];
+  const b = ["Received", "Open", "Draft", "Identified", "Not started", "Absorbed"];
   const k = g.includes(s) ? "g" : a.includes(s) ? "a" : r.includes(s) ? "r" : b.includes(s) ? "b" : "";
   return `<span class="st ${k}">${esc(s || "-")}</span>`;
 }
@@ -809,38 +809,66 @@ function cpcForm(c) {
 }
 
 // ---------------- Client side > variations ----------------
+const VO_ST = ["Identified", "Submitted", "Approved", "Rejected", "Absorbed", "Claimed"];
 SECTIONS["client.vo"] = el => {
   const b = ST.b, f = filt();
   const list = b.variations.filter(v => (!f || v.status === f) && match(v));
   const n = s => b.variations.filter(v => v.status === s).length;
-  const sum = (k, s) => r2(b.variations.filter(v => !s || v.status === s).reduce((a, v) => a + (v[k] || 0), 0));
-  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button>`, chips: [["", b.variations.length], ...["Identified", "Submitted", "Approved", "Rejected"].map(s => [s, n(s)])] }) +
-    `<div class="strip"><div class="fig"><div class="l">Submitted</div><div class="v">${aed(sum("submitted_amount"))}</div></div><div class="fig green"><div class="l">Approved</div><div class="v">${aed(sum("approved_amount", "Approved"))}</div></div><div class="fig amber"><div class="l">Waiting approval</div><div class="v">${aed(sum("submitted_amount", "Submitted"))}</div></div></div>` +
-    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>VO</th><th>Description</th><th>Source</th><th>Date</th><th class="r">Submitted</th><th class="r">Approved</th><th>Status</th><th></th></tr></thead><tbody>
-    ${list.map(v => `<tr class="rowc" data-vo="${v.id}"><td class="nowrap"><b>VO-${pad(v.seq)}</b></td><td>${esc(v.title)}<div class="small muted">${esc(v.kind)}${v.ref ? " · " + esc(v.ref) : ""}</div></td><td class="small">${esc(v.source)}</td><td class="nowrap">${dt(v.on_date)}</td><td class="r">${money(v.submitted_amount)}</td><td class="r">${money(v.approved_amount)}</td><td>${st(v.status)}</td>
+  const sum = (k, s) => r2(b.variations.filter(v => (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
+  const absorbed = sum("absorbed_amount");
+  const fig = (l, v, c, tip) => `<div class="fig ${c || ""}" ${tip ? `title="${esc(tip)}"` : ""}><div class="l">${l}</div><div class="v">${aed(v)}</div></div>`;
+  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import Excel</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm" hidden>`,
+      chips: [["", b.variations.length], ...VO_ST.filter(s => n(s) || ["Identified", "Submitted", "Approved", "Rejected"].includes(s)).map(s => [s, n(s)])] }) +
+    `<div class="strip">${fig("Submitted", sum("submitted_amount"), "", "Every variation sent to the client (coordination lines left out)")}${fig("Approved", sum("approved_amount", "Approved"), "green", "Added to the contract value")}${fig("Waiting approval", sum("submitted_amount", "Submitted"), "amber", "Submitted, not yet accepted or rejected")}${absorbed ? fig("Absorbed", absorbed, "", "Cost Infinia carries itself - not added to the contract") : ""}</div>` +
+    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Ref.</th><th>Description</th><th>Submitted on</th><th class="r">Submitted</th><th class="r">Revised</th><th class="r">Approved</th><th class="r">Absorbed</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.map(v => `<tr class="rowc" data-vo="${v.id}"><td class="nowrap"><b>${esc(v.ref || "VO-" + pad(v.seq))}</b></td><td>${esc(v.title)}<div class="small muted">${esc(v.kind)}${v.kind === "Coordination" ? "" : " · " + esc(v.source)}${v.notes ? " · " + esc(v.notes.split("\n")[0].slice(0, 90)) : ""}</div></td><td class="nowrap">${dt(v.submitted || v.on_date)}</td><td class="r">${v.submitted_amount ? money(v.submitted_amount) : ""}</td><td class="r">${v.revised_amount ? money(v.revised_amount) : ""}</td><td class="r">${v.approved_amount ? money(v.approved_amount) : ""}</td><td class="r">${v.absorbed_amount ? money(v.absorbed_amount) : ""}</td><td class="nowrap">${st(v.status)}${v.pc_ref ? `<div class="small muted">PC: ${esc(v.pc_ref)}</div>` : ""}</td>
       <td class="nowrap">${v.status === "Identified" ? `<button class="btn btn-ghost btn-sm" data-vst="${v.id}:Submitted">Submitted</button>` : v.status === "Submitted" ? `<button class="btn btn-ok btn-sm" data-vapp="${v.id}">Approved</button> <button class="btn btn-plain btn-sm" data-vst="${v.id}:Rejected">Rejected</button>` : ""}</td></tr>`).join("")}
-    </tbody></table></div>` : '<div class="empty">No variations yet.</div>');
+    <tr class="tot"><td></td><td>Total</td><td></td><td class="r">${money(r2(list.filter(v => v.kind !== "Coordination").reduce((a, v) => a + (v.submitted_amount || 0), 0)))}</td><td></td><td class="r">${money(r2(list.filter(v => v.status === "Approved").reduce((a, v) => a + (v.approved_amount || 0), 0)))}</td><td class="r">${money(r2(list.reduce((a, v) => a + (v.absorbed_amount || 0), 0)))}</td><td></td><td></td></tr>
+    </tbody></table></div>` : '<div class="empty">No variations yet. Press + Variation, or Import Excel to bring in the QS variation log.</div>');
   bindTools(el, () => SECTIONS["client.vo"](el));
   $("#add-vo", el).onclick = () => voForm();
+  const fi = $("#imp-vo-f", el);
+  $("#imp-vo", el).onclick = () => fi.click();
+  fi.onchange = () => { if (fi.files[0]) voImport(fi.files[0]); fi.value = ""; };
   $$("[data-vo]", el).forEach(r => r.onclick = e => { if (e.target.closest("button")) return; voForm(b.variations.find(v => v.id === +r.dataset.vo)); });
   $$("[data-vst]", el).forEach(x => x.onclick = async () => { const [id, s] = x.dataset.vst.split(":"); const d = { status: s }; if (s === "Submitted") d.submitted = today(); try { await PATCH(`/store/est/variations/${id}`, d); await reload(); toast(s); } catch (e) { fail(e); } });
   $$("[data-vapp]", el).forEach(x => x.onclick = () => { const v = b.variations.find(y => y.id === +x.dataset.vapp);
-    modal(`VO-${pad(v.seq)} approved`, [{ k: "approved_amount", label: "Approved amount (AED)", type: "money", value: v.submitted_amount, quick: [["As submitted", el2 => el2.value = v.submitted_amount]], focus: true }, { k: "approved_on", label: "Approved on", type: "date", value: today() }],
+    const base = v.revised_amount || v.submitted_amount;
+    modal(`${v.ref || "VO-" + pad(v.seq)} approved`, [{ k: "approved_amount", label: "Approved amount (AED)", type: "money", value: base, quick: [["As submitted", el2 => el2.value = v.submitted_amount], ...(v.revised_amount ? [["As revised", el2 => el2.value = v.revised_amount]] : [])], focus: true }, { k: "approved_on", label: "Approved on", type: "date", value: today() }, { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" }],
       async d => { await PATCH(`/store/est/variations/${v.id}`, Object.assign(d, { status: "Approved" })); await reload(); toast("Approved - added to the contract"); }); });
 };
+// The QS variation log Excel: shows what will come in, then puts it in.
+async function voImport(file) {
+  const send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
+  let r; try { r = await send(false); } catch (e) { return fail(e); }
+  const by = Object.entries(r.by_status).map(([k, n]) => `${st(k)} ${n}`).join(" ");
+  const orig = r2(r.contract - r.approved);
+  modal(`Import ${file.name}`, [], async () => { const off = $("#vo-off") && $("#vo-off").checked; const x = await send(true, off); await reload(); toast(`${x.rows} variations added${off ? " - contract set to " + money(x.contract, false) : ""}`); }, {
+    wide: true, save: `Add ${r.rows} variations`,
+    top: `${r.have ? `<div class="warn">This project already has ${r.have} variation(s). These are added after them - nothing is replaced.</div>` : ""}
+      <div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.rows}</div></div><div class="fig green"><div class="l">Approved</div><div class="v">${money(r.approved, false)}</div></div><div class="fig"><div class="l">Submitted</div><div class="v">${money(r.submitted, false)}</div></div>${r.absorbed ? `<div class="fig"><div class="l">Absorbed</div><div class="v">${money(r.absorbed, false)}</div></div>` : ""}</div>
+      <div class="small" style="margin:6px 0">${by}</div>
+      ${r.approved ? `<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0"><input type="checkbox" id="vo-off"><span>The contract value (${money(r.contract, false)}) already includes these approved variations - set it to the original ${money(orig, false)} so they aren't counted twice.</span></label>` : ""}
+      <div class="tw" style="max-height:340px;overflow:auto"><table class="t"><thead><tr><th>Ref.</th><th>Description</th><th class="r">Submitted</th><th class="r">Approved</th><th class="r">Absorbed</th><th>Status</th></tr></thead><tbody>${r.lines.map(x => `<tr><td class="nowrap">${esc(x.ref)}</td><td>${esc(x.title)}</td><td class="r">${x.submitted_amount ? money(x.submitted_amount) : ""}</td><td class="r">${x.approved_amount ? money(x.approved_amount) : ""}</td><td class="r">${x.absorbed_amount ? money(x.absorbed_amount) : ""}</td><td>${st(x.status)}</td></tr>`).join("")}</tbody></table></div>` });
+}
 function voForm(v) {
   v = v || {};
-  modal(v.id ? `VO-${pad(v.seq)}` : "New variation", [
+  modal(v.id ? (v.ref || `VO-${pad(v.seq)}`) : "New variation", [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
-    { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission"], value: v.kind || "Addition" },
-    { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement"], value: v.source || "Client instruction" },
-    { k: "ref", label: "Instruction ref.", value: v.ref || "" }, { k: "on_date", label: "Date", type: "date", value: v.on_date || today() },
+    { k: "ref", label: "Ref. (V01, CP02 ...)", value: v.ref || "" },
+    { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission", "Coordination"], value: v.kind || "Addition" },
+    { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement", "Coordination & attendance"], value: v.source || "Client instruction" },
+    { k: "submitted", label: "Submitted on", type: "date", value: v.submitted || "" },
     { k: "submitted_amount", label: "Submitted amount (AED)", type: "money", value: v.submitted_amount ?? "" },
+    { k: "revised_amount", label: "Revised amount (AED)", type: "money", value: v.revised_amount || "" },
+    { k: "approved_on", label: "Approved on", type: "date", value: v.approved_on || "" },
     { k: "approved_amount", label: "Approved amount (AED)", type: "money", value: v.approved_amount || "" },
-    { k: "status", label: "Status", type: "select", options: ["Identified", "Submitted", "Approved", "Rejected"], value: v.status || "Identified" },
+    { k: "absorbed_amount", label: "Absorbed amount (AED)", type: "money", value: v.absorbed_amount || "" },
+    { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" },
+    { k: "status", label: "Status", type: "select", options: VO_ST, value: v.status || "Identified" },
     { k: "sub_id", label: "Passed to subcontractor", type: "select", options: [["", "-"], ...ST.b.subs.map(s => [s.id, s.name])], value: v.sub_id || "" },
-    { k: "notes", label: "Notes", type: "area", value: v.notes || "" },
-  ], async d => { if (v.id) await PATCH(`/store/est/variations/${v.id}`, d); else await POST("/store/est/variations", Object.assign(d, { project_id: ST.pid })); await reload(); toast("Saved"); },
+    { k: "notes", label: "Remarks", type: "area", value: v.notes || "" },
+  ], async d => { if (!d.submitted) d.submitted = null; if (!d.approved_on) d.approved_on = null; d.on_date = d.submitted || v.on_date || today(); if (v.id) await PATCH(`/store/est/variations/${v.id}`, d); else await POST("/store/est/variations", Object.assign(d, { project_id: ST.pid })); await reload(); toast("Saved"); },
   { wide: true, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null });
 }
 

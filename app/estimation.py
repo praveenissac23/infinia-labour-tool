@@ -200,7 +200,10 @@ class EstVariation(Base):
     submitted_amount = Column(Float, default=0.0)
     approved_on = Column(Date, nullable=True)
     approved_amount = Column(Float, default=0.0)
-    status = Column(String, default="Identified")   # Identified | Submitted | Approved | Rejected
+    revised_amount = Column(Float, default=0.0)     # what it came down to after the talks (before acceptance)
+    absorbed_amount = Column(Float, default=0.0)    # cost Infinia carries itself - never added to the contract
+    pc_ref = Column(String, default="")             # where it was claimed (e.g. "Item VII", "V06")
+    status = Column(String, default="Identified")   # Identified | Submitted | Approved | Rejected | Absorbed | Claimed
     sub_id = Column(Integer, nullable=True)
     notes = Column(Text, default="")
     locals().update(_audit())
@@ -458,6 +461,7 @@ KINDS = {
                                               "other_cum": F, "status": S, "invoice_no": S, "remarks": S}),
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
+                                                "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
                                                 "status": S, "sub_id": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
                                    "done_pct": F, "sort": I}),
@@ -514,10 +518,9 @@ def _apply(row, fields, data):
     for k, v in (data or {}).items():
         if k in fields:
             setattr(row, k, _coerce(fields[k], v, k))
-    if isinstance(row, EstVariation):      # an omission takes money off: always kept as a minus figure
-        sign = -1 if (row.kind or "") == "Omission" else 1
-        row.submitted_amount = sign * abs(row.submitted_amount or 0)
-        row.approved_amount = sign * abs(row.approved_amount or 0)
+    if isinstance(row, EstVariation) and (row.kind or "") == "Omission":   # an omission takes money off: kept as a minus figure
+        for k in ("submitted_amount", "approved_amount", "revised_amount"):
+            setattr(row, k, -abs(getattr(row, k) or 0))
 
 
 def _iso(d):
@@ -1299,6 +1302,102 @@ def boq_paste(pid: int, data: dict = Body(...), db: Session = Depends(get_db), u
     return {"added": added}
 
 
+# ---- variation log brought in from the QS Excel file ---------------------------------------
+
+def _vo_rows_in(db, p, rows, user_id):
+    """Puts parsed variation rows on the project, numbered after what is there."""
+    seq = _next_seq(db, EstVariation, project_id=p.id) - 1
+    for x in rows:
+        seq += 1
+        v = EstVariation(project_id=p.id, seq=seq, created_by=user_id)
+        for k in ("title", "kind", "source", "ref", "pc_ref", "status", "notes"):
+            setattr(v, k, x.get(k) or "")
+        for k in ("submitted_amount", "revised_amount", "approved_amount", "absorbed_amount"):
+            setattr(v, k, r2(x.get(k)))
+        for k in ("submitted", "approved_on"):
+            d = x.get(k)
+            setattr(v, k, date.fromisoformat(d) if isinstance(d, str) and d else (d or None))
+        v.on_date = v.submitted or v.approved_on
+        db.add(v)
+    return seq
+
+
+def _vo_summary(rows):
+    by = {}
+    for x in rows:
+        by[x["status"]] = by.get(x["status"], 0) + 1
+    return {"rows": len(rows), "by_status": by,
+            "approved": r2(sum(x["approved_amount"] for x in rows if x["status"] == "Approved")),
+            "submitted": r2(sum(x["submitted_amount"] for x in rows if x["kind"] != "Coordination")),
+            "absorbed": r2(sum(x["absorbed_amount"] for x in rows)),
+            "lines": [{"ref": x["ref"], "title": x["title"][:120], "status": x["status"], "submitted_amount": r2(x["submitted_amount"]),
+                       "approved_amount": r2(x["approved_amount"]), "absorbed_amount": r2(x["absorbed_amount"])} for x in rows]}
+
+
+@router.post("/store/est/projects/{pid}/variations/import")
+async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0), take_off_contract: int = Form(0),
+                    db: Session = Depends(get_db), user: models.User = VIEW):
+    """The variation log Excel (Ref.No, Description, Submitted / Revised / Accepted /
+    Absorbed amount, dates, Claimed in PC, Remarks; the OHP sheet too). First call
+    shows what will come in; save=1 puts it in. take_off_contract=1 when the
+    contract value already includes the accepted variations, so they are not
+    counted twice."""
+    import est_voimport
+    p = _project(db, pid)
+    data = await file.read()
+    if len(data) > MAX_FILE:
+        raise HTTPException(413, "That file is over 25 MB.")
+    try:
+        rows = est_voimport.read_log(data)
+    except Exception as e:
+        raise HTTPException(400, f"Couldn't read that file as a variation log: {e}")
+    out = _vo_summary(rows)
+    out["contract"] = r2(p.contract_value)
+    out["have"] = db.query(EstVariation).filter(EstVariation.project_id == pid).count()
+    if not save:
+        return out
+    _vo_rows_in(db, p, rows, user.id)
+    if take_off_contract and out["approved"]:
+        p.contract_value = r2((p.contract_value or 0) - out["approved"])
+    db.commit()
+    out["saved"] = True
+    out["contract"] = r2(p.contract_value)
+    return out
+
+
+VO_SEED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "est_vo_seed.json")
+
+
+def seed_variations(SessionLocal):
+    """The variation logs the QS team sent (908, 909, 911, 912, 913, 919), put in
+    once. Only on a project with no variations yet; the contract goes back to the
+    original only when it still equals the figure that already had the accepted
+    variations in it (so Original + approved VOs = the contract as it stood)."""
+    import json
+    if not os.path.exists(VO_SEED_FILE):
+        return
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_vo_seed_v1").first():
+            return
+        seed = json.load(open(VO_SEED_FILE))
+        for code, x in seed.items():
+            p = db.query(EstProject).filter(EstProject.code == code).first()
+            if not p or db.query(EstVariation).filter(EstVariation.project_id == p.id).first():
+                continue
+            _vo_rows_in(db, p, x["rows"], None)
+            if x.get("approved") and abs((p.contract_value or 0) - x["contract_with_vos"]) < 0.01:
+                p.contract_value = r2(x["contract_with_vos"] - x["approved"])
+        db.add(models.Setting(key="est_vo_seed_v1", value="1"))
+        db.commit()
+    except Exception:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
 # ---- tenders -------------------------------------------------------------------------------
 
 @router.get("/store/est/tenders")
@@ -1461,12 +1560,13 @@ def _export_rows(db, what, p, q, status, sub_id):
                 rows.append(r)
     elif what == "variations":
         title = "Variation log"
-        money = ["Submitted amount", "Approved amount"]
+        money = ["Submitted amount", "Revised amount", "Approved amount", "Absorbed amount"]
         for v in b["variations"]:
             sub = next((s["name"] for s in b["subs"] if s["id"] == v["sub_id"]), "")
-            r = {"VO No.": f"VO-{v['seq']:03d}", "Description": v["title"], "Type": v["kind"], "Source": v["source"], "Ref.": v["ref"],
-                 "Date": _d(v["on_date"]), "Submitted": _d(v["submitted"]), "Submitted amount": v["submitted_amount"],
-                 "Approved on": _d(v["approved_on"]), "Approved amount": v["approved_amount"], "Subcontractor": sub, "Status": v["status"]}
+            r = {"Ref.": v["ref"] or f"VO-{v['seq']:03d}", "Description": v["title"], "Type": v["kind"], "Source": v["source"],
+                 "Submitted": _d(v["submitted"]), "Submitted amount": v["submitted_amount"], "Revised amount": v["revised_amount"],
+                 "Approved on": _d(v["approved_on"]), "Approved amount": v["approved_amount"], "Absorbed amount": v["absorbed_amount"],
+                 "Claimed in PC": v["pc_ref"] or "", "Subcontractor": sub, "Status": v["status"], "Remarks": v["notes"] or ""}
             if keep(r, v["status"]):
                 rows.append(r)
     elif what == "boq":
