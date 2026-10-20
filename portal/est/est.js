@@ -885,11 +885,7 @@ SECTIONS["client.vo"] = el => {
   el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import Excel</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm" hidden>`,
       chips: [["", b.variations.length], ...VO_ST.filter(s => n(s) || ["Identified", "Submitted", "Approved", "Rejected"].includes(s)).map(s => [s, n(s)])] }) +
     `<div class="strip">${fig("Submitted", sum("submitted_amount"), "", "Every variation sent to the client (coordination lines left out)")}${fig("Approved", sum("approved_amount", "Approved"), "green", "Added to the contract value")}${fig("Waiting approval", sum("submitted_amount", "Submitted"), "amber", "Submitted, not yet accepted or rejected")}${absorbed ? fig("Absorbed", absorbed, "", "Cost Infinia carries itself - not added to the contract") : ""}</div>` +
-    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Ref.</th><th>Description</th><th>Submitted on</th><th class="r">Submitted</th><th class="r">Revised</th><th class="r">Approved</th><th class="r">Absorbed</th><th>Status</th><th></th></tr></thead><tbody>
-    ${list.map(v => `<tr class="rowc" data-vo="${v.id}"><td class="nowrap"><b>${esc(v.ref || "VO-" + pad(v.seq))}</b></td><td>${esc(v.title)}<div class="small muted">${esc(v.kind)}${v.kind === "Coordination" ? "" : " · " + esc(v.source)}${v.notes ? " · " + esc(v.notes.split("\n")[0].slice(0, 90)) : ""}</div></td><td class="nowrap">${dt(v.submitted || v.on_date)}</td><td class="r">${v.submitted_amount ? money(v.submitted_amount) : ""}</td><td class="r">${v.revised_amount ? money(v.revised_amount) : ""}</td><td class="r">${v.approved_amount ? money(v.approved_amount) : ""}</td><td class="r">${v.absorbed_amount ? money(v.absorbed_amount) : ""}</td><td class="nowrap">${st(v.status)}${v.pc_ref ? `<div class="small muted">PC: ${esc(v.pc_ref)}</div>` : ""}</td>
-      <td class="nowrap">${v.status === "Identified" ? `<button class="btn btn-ghost btn-sm" data-vst="${v.id}:Submitted">Submitted</button>` : v.status === "Submitted" ? `<button class="btn btn-ok btn-sm" data-vapp="${v.id}">Approved</button> <button class="btn btn-plain btn-sm" data-vst="${v.id}:Rejected">Rejected</button>` : ""}</td></tr>`).join("")}
-    <tr class="tot"><td></td><td>Total</td><td></td><td class="r">${money(r2(list.filter(v => v.kind !== "Coordination").reduce((a, v) => a + (v.submitted_amount || 0), 0)))}</td><td></td><td class="r">${money(r2(list.filter(v => v.status === "Approved").reduce((a, v) => a + (v.approved_amount || 0), 0)))}</td><td class="r">${money(r2(list.reduce((a, v) => a + (v.absorbed_amount || 0), 0)))}</td><td></td><td></td></tr>
-    </tbody></table></div>` : '<div class="empty">No variations yet. Press + Variation, or Import Excel to bring in the QS variation log.</div>');
+    (list.length ? voTable(list) : '<div class="empty">No variations yet. Press + Variation, or Import Excel to bring in the QS variation log.</div>');
   bindTools(el, () => SECTIONS["client.vo"](el));
   $("#add-vo", el).onclick = () => voForm();
   const fi = $("#imp-vo-f", el);
@@ -902,6 +898,32 @@ SECTIONS["client.vo"] = el => {
     modal(`${v.ref || "VO-" + pad(v.seq)} approved`, [{ k: "approved_amount", label: "Approved amount (AED)", type: "money", value: base, quick: [["As submitted", el2 => el2.value = v.submitted_amount], ...(v.revised_amount ? [["As revised", el2 => el2.value = v.revised_amount]] : [])], focus: true }, { k: "approved_on", label: "Approved on", type: "date", value: today() }, { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" }],
       async d => { await PATCH(`/store/est/variations/${v.id}`, Object.assign(d, { status: "Approved" })); await reload(); toast("Approved - added to the contract"); }); });
 };
+// The variation log as the QS keeps it: grouped (variations & cost proposals / absorbed / coordination),
+// fixed columns, every figure lined up, a subtotal per group and the grand total.
+function voTable(list) {
+  const m = v => v ? money(v, false) : '<span class="dash">-</span>';
+  const groups = [["Variations & cost proposals", list.filter(v => v.kind !== "Coordination" && v.status !== "Absorbed")],
+                  ["Absorbed by Infinia - not added to the contract", list.filter(v => v.kind !== "Coordination" && v.status === "Absorbed")],
+                  ["Coordination, builders' work & attendance (OHP)", list.filter(v => v.kind === "Coordination")]].filter(g => g[1].length);
+  const tot = rows => ({ sub: r2(rows.reduce((a, v) => a + (v.submitted_amount || 0), 0)), rev: r2(rows.reduce((a, v) => a + (v.revised_amount || 0), 0)),
+                         app: r2(rows.filter(v => v.status === "Approved").reduce((a, v) => a + (v.approved_amount || 0), 0)), abs: r2(rows.reduce((a, v) => a + (v.absorbed_amount || 0), 0)) });
+  const cols = 8;
+  const row = v => { const rem = (v.notes || "").split("\n").filter(Boolean)[0] || "";
+    return `<tr class="rowc" data-vo="${v.id}"><td class="ref">${v.ref ? esc(v.ref) : '<span class="dash">-</span>'}</td>
+      <td class="desc"><div class="t1">${esc(v.title)}${v.kind === "Omission" ? ' <span class="om">omission</span>' : ""}</div>${rem ? `<div class="t2" title="${esc(v.notes)}">${esc(rem)}</div>` : ""}</td>
+      <td class="r">${m(v.submitted_amount)}${v.submitted ? `<div class="dd">${dt(v.submitted)}</div>` : ""}</td><td class="r">${m(v.revised_amount)}</td>
+      <td class="r ${v.status === "Approved" ? "ok" : ""}">${m(v.approved_amount)}${v.approved_on ? `<div class="dd">${dt(v.approved_on)}</div>` : ""}</td><td class="r">${m(v.absorbed_amount)}</td>
+      <td class="c small">${v.pc_ref ? esc(v.pc_ref) : '<span class="dash">-</span>'}</td>
+      <td>${st(v.status)}${v.status === "Identified" ? `<div class="va"><button class="btn btn-ghost btn-sm" data-vst="${v.id}:Submitted" title="Sent to the client today">Mark submitted</button></div>` : v.status === "Submitted" ? `<div class="va"><button class="btn btn-ok btn-sm" data-vapp="${v.id}">Approved</button><button class="btn btn-plain btn-sm" data-vst="${v.id}:Rejected">Rejected</button></div>` : ""}</td></tr>`; };
+  const z = v => v ? money(v, false) : "";
+  const sumRow = (label, t, cls) => `<tr class="${cls}"><td></td><td>${label}</td><td class="r">${z(t.sub)}</td><td class="r">${z(t.rev)}</td><td class="r">${z(t.app)}</td><td class="r">${z(t.abs)}</td><td></td><td></td></tr>`;
+  const all = tot(list.filter(v => v.kind !== "Coordination"));
+  return `<div class="tw"><table class="t vlog"><colgroup><col style="width:74px"><col><col style="width:120px"><col style="width:112px"><col style="width:120px"><col style="width:104px"><col style="width:84px"><col style="width:178px"></colgroup>
+    <thead><tr><th>Ref.</th><th>Description</th><th class="r">Submitted</th><th class="r">Revised</th><th class="r">Approved</th><th class="r">Absorbed</th><th class="c">PC ref.</th><th>Status</th></tr></thead><tbody>
+    ${groups.map(([title, rows]) => `<tr class="grp"><td colspan="${cols}">${esc(title)} <span>${rows.length}</span></td></tr>${rows.map(row).join("")}${groups.length > 1 ? sumRow("Subtotal", tot(rows), "sub") : ""}`).join("")}
+    ${sumRow("Total" + (groups.some(g => g[0].startsWith("Coord")) ? " (coordination left out)" : ""), all, "tot")}
+    </tbody></table></div>`;
+}
 // The QS variation log Excel: shows what will come in, then puts it in.
 async function voImport(file) {
   const send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
