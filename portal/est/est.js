@@ -315,7 +315,7 @@ function finalMatrix(d) {
 // =====================================================================
 const GROUPS = {
   home: { label: "", secs: [["dash", "Dashboard"]] },
-  client: { label: "Client side", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
+  client: { label: "Overview", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"]] },
 };
@@ -775,7 +775,7 @@ SECTIONS["subs.final"] = el => {
     async v => { await POST("/store/est/finals", Object.assign(v, { project_id: ST.pid })); reload(); });
 };
 
-// ---------------- Client side > BOQ & budget ----------------
+// ---------------- Overview > BOQ & budget ----------------
 SECTIONS["client.boq"] = el => {
   const b = ST.b, rows = b.boq.filter(match);
   const tot = rows.reduce((a, x) => a + x.amount, 0), cost = rows.reduce((a, x) => a + x.cost, 0);
@@ -832,7 +832,7 @@ function inlineEdit(td, kind) {
   inp.onblur = () => save(true);
 }
 
-// ---------------- Client side > payment certificates ----------------
+// ---------------- Overview > payment certificates ----------------
 SECTIONS["client.cpc"] = el => {
   const b = ST.b, p = b.project, f = filt();
   const list = b.clientpcs.filter(c => (!f || c.status === f) && match(c));
@@ -873,7 +873,7 @@ function cpcForm(c) {
   { wide: true, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
 }
 
-// ---------------- Client side > variations ----------------
+// ---------------- Overview > variations ----------------
 const VO_ST = ["Identified", "Submitted", "Approved", "Rejected", "Absorbed", "Claimed"];
 SECTIONS["client.vo"] = el => {
   const b = ST.b, f = filt();
@@ -959,7 +959,7 @@ function voForm(v) {
   { wide: true, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null });
 }
 
-// ---------------- Client side > invoices (from Accounts) ----------------
+// ---------------- Overview > invoices (from Accounts) ----------------
 SECTIONS["client.inv"] = el => {
   const b = ST.b, list = b.invoices.filter(match);
   const tax = list.filter(i => i.kind === "tax" && i.status !== "cancelled");
