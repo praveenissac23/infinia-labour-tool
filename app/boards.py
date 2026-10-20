@@ -2209,6 +2209,16 @@ async def board_background(bid: int, file: UploadFile = File(...), db: Session =
 
 # ---- archive, activity, search ------------------------------------------------------------------------
 
+@router.get("/store/kb/boards/{bid}/checklists")
+def board_checklists(bid: int, db: Session = Depends(get_db), user: models.User = VIEW):
+    """The checklists on the board's open cards - for "Copy items from" (no card details, no items)."""
+    b, _ = _board(db, user, bid)
+    rows = (db.query(KChecklist.id, KChecklist.title, KCard.title)
+            .join(KCard, KCard.id == KChecklist.card_id)
+            .filter(KCard.board_id == b.id, KCard.closed == False).order_by(KCard.title, KChecklist.pos).limit(500).all())  # noqa: E712
+    return {"checklists": [{"id": i, "title": t, "card": ct} for i, t, ct in rows]}
+
+
 @router.get("/store/kb/boards/{bid}/archived")
 def archived(bid: int, db: Session = Depends(get_db), user: models.User = VIEW):
     b, role = _board(db, user, bid)

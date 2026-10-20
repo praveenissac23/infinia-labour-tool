@@ -125,7 +125,7 @@ async function doLogin() {
 // ---------- routing ----------
 function route() {
   const m = location.hash.match(/^#\/b\/(\d+)(?:\/c\/(\d+))?(?:\?view=(\w+))?/);
-  closePops();
+  closePops(); { const qe = $("#qe"); if (qe) qe.remove(); }
   if (m) {
     const bid = +m[1];
     const v = m[3] || (m[2] ? S.view : "board");

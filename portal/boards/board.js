@@ -419,6 +419,11 @@ function startDrag(e, kind, id, el) {
 function placeHolder(x, y) {
   const D = window.DRAG;
   if (D.kind === "card") {
+    // Over a collapsed list: it lights up and takes the card at its top (as in Trello).
+    const col = $$(".lw.collapsed[data-l]").find(w => { const r = w.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
+    $$(".lw.collapsed.drop-on").forEach(w => { if (w !== col) w.classList.remove("drop-on"); });
+    if (col) { col.classList.add("drop-on"); D.toCollapsed = +col.dataset.l; D.ph.style.display = "none"; return; }
+    D.toCollapsed = null; D.ph.style.display = "";
     const lws = $$(".lw[data-l]:not(.collapsed)");
     let lw = lws.find(w => { const r = w.getBoundingClientRect(); return x >= r.left && x <= r.right; });
     if (!lw) { lw = lws.reduce((best, w) => { const r = w.getBoundingClientRect(); const d = Math.min(Math.abs(x - r.left), Math.abs(x - r.right)); return !best || d < best.d ? { w, d } : best; }, null); lw = lw && lw.w; }
@@ -454,6 +459,13 @@ function autoScroll(x, y) {
   if (!SCROLL_RAF) SCROLL_RAF = requestAnimationFrame(step);
 }
 async function dropCard(D) {
+  $$(".lw.collapsed.drop-on").forEach(w => w.classList.remove("drop-on"));
+  if (D.toCollapsed) {
+    D.ph.replaceWith(D.el); D.el.style.display = "";
+    const c0 = S.cards[D.id]; if (c0.list_id === D.toCollapsed) return;
+    try { await saveCard(D.id, { list_id: D.toCollapsed, pos: "top" }); } catch (e) { reloadBoard(true); }
+    return;
+  }
   const lw = D.ph.closest(".lw"); const lid = +lw.dataset.l;
   const c = S.cards[D.id];
   const siblings = []; let n = D.ph.previousElementSibling, m = D.ph.nextElementSibling;

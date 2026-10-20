@@ -172,12 +172,15 @@ function boardMenu(section, preset) {
   }
   if (sec === "archived") {
     const body = show("Archived items", `<div style="display:flex;gap:8px;margin-bottom:12px"><input class="t" data-q placeholder="Search archive…"><button class="b" data-sw>Switch to lists</button></div><div data-l><div class="spin dk" style="margin:24px auto"></div></div>`);
-    let mode = "cards", data = null;
+    let mode = "cards", data = null, shown = 50;
     const draw = () => {
       const q = body.querySelector("[data-q]").value.toLowerCase(); const box = body.querySelector("[data-l]");
       if (mode === "cards") {
-        const cs = data.cards.filter(c => !q || c.title.toLowerCase().includes(q));
-        box.innerHTML = cs.map(c => `<div style="margin-bottom:12px"><div class="card" data-c="${c.id}" style="cursor:pointer">${cardHtml(c).replace(/^<div class="card[^"]*"[^>]*>/, "").replace(/<\/div>$/, "")}</div><div style="font-size:12px;margin-top:4px"><a data-re="${c.id}" style="cursor:pointer;text-decoration:underline;color:var(--text-subtle)">Restore</a> · <a data-del="${c.id}" style="cursor:pointer;text-decoration:underline;color:var(--danger)">Delete</a> · <span class="muted">${esc(c.list_title)}</span></div></div>`).join("") || '<p class="muted">No archived cards.</p>';
+        const all = data.cards.filter(c => !q || c.title.toLowerCase().includes(q)), cs = all.slice(0, shown);
+        // Plain rows, 50 at a time: a board with hundreds archived opens at once.
+        box.innerHTML = cs.map(c => `<div class="arch-row"><div class="card" data-c="${c.id}" style="cursor:pointer;padding:8px 10px;margin-bottom:4px"><div class="tx">${esc(c.title)}</div></div><div style="font-size:12px;margin:0 0 10px"><a data-re="${c.id}" style="cursor:pointer;text-decoration:underline;color:var(--text-subtle)">Restore</a> · <a data-del="${c.id}" style="cursor:pointer;text-decoration:underline;color:var(--danger)">Delete</a> · <span class="muted">${esc(c.list_title)}</span></div></div>`).join("")
+          + (all.length > shown ? `<button class="b" style="width:100%" data-more>Show more (${all.length - shown} left)</button>` : "") || '<p class="muted">No archived cards.</p>';
+        const mo = box.querySelector("[data-more]"); if (mo) mo.onclick = () => { shown += 50; draw(); };
       } else {
         const ls = data.lists.filter(l => !q || l.title.toLowerCase().includes(q));
         box.innerHTML = ls.map(l => `<div class="share-row"><div class="nm"><b>${esc(l.title)}</b></div><button class="b" data-rl="${l.id}">Restore</button></div>`).join("") || '<p class="muted">No archived lists.</p>';
@@ -188,7 +191,7 @@ function boardMenu(section, preset) {
       $$(".card[data-c]", box).forEach(x => x.onclick = () => go(`#/b/${b.id}/c/${x.dataset.c}`));
     };
     const load = async () => { data = await GET(`/store/kb/boards/${b.id}/archived`); draw(); };
-    body.querySelector("[data-q]").oninput = draw;
+    body.querySelector("[data-q]").oninput = () => { shown = 50; draw(); };
     body.querySelector("[data-sw]").onclick = e => { mode = mode === "cards" ? "lists" : "cards"; e.target.textContent = mode === "cards" ? "Switch to lists" : "Switch to cards"; draw(); };
     load();
     return;
@@ -215,7 +218,7 @@ function boardMenu(section, preset) {
         if (k === "print") return window.print();
         if (k === "json") { const d = await GET(`/store/kb/boards/${b.id}/json`); const blob = new Blob([JSON.stringify(d, null, 1)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = b.title.replace(/[^\w]+/g, "_") + ".json"; a.click(); return; }
         // The new tab is opened on the tap itself (Safari on a phone blocks one opened later).
-        const w = k !== "share" ? window.open("about:blank", "_blank") : null;
+        const w = k === "preview" || k === "pdf" ? window.open("about:blank", "_blank") : null;
         const t = await POST("/auth/download-token").catch(() => null);
         const tok = t && (t.token || t.download_token);
         if (!tok) { if (w) w.close(); throw new Error("Could not make the download link."); }
@@ -226,7 +229,9 @@ function boardMenu(section, preset) {
           else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast("Sharing isn't available here - the PDF was downloaded"); }
           return;
         }
-        if (w) w.location = url; else window.open(url, "_blank");
+        if (w) w.location = url;
+        else if (k === "excel") { const a = document.createElement("a"); a.href = url; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }     // a download: no empty tab left behind
+        else window.open(url, "_blank");
       } catch (e) { fail(e); }
     });
     return;

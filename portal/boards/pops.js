@@ -210,11 +210,11 @@ function datesPop(anchor, cid, opt = {}) {
 
 // ---------- checklist ----------
 async function checklistPop(anchor, cid) {
-  let others = [];
-  try { const d = await GET(`/store/kb/boards/${S.board.id}/json`).catch(() => null); if (d) others = d.cards.flatMap(c => (c.checklists || []).map(cl => ({ id: cl.id, title: cl.title, card: c.title }))); } catch (e) {}
+  // Opens at once; the checklists to copy from fill in a moment later.
   const p = pop(anchor, "Add checklist", `<label class="fl" style="margin-top:0">Title</label><input class="t" data-t value="Checklist">
-    <label class="fl">Copy items from... ${tip("Start this checklist with the items of a checklist already on another card.")}</label><select class="t" data-c><option value="">(none)</option>${others.map(o => `<option value="${o.id}">${esc(o.card)} - ${esc(o.title)}</option>`).join("")}</select>
+    <label class="fl">Copy items from... ${tip("Start this checklist with the items of a checklist already on another card.")}</label><select class="t" data-c><option value="">(none)</option></select>
     <button class="b pri" style="margin-top:12px" data-add>Add</button>`);
+  GET(`/store/kb/boards/${S.board.id}/checklists`).then(d => { const sel = p.querySelector("[data-c]"); if (sel && d) sel.insertAdjacentHTML("beforeend", d.checklists.map(o => `<option value="${o.id}">${esc(o.card)} - ${esc(o.title)}</option>`).join("")); }).catch(() => {});
   const t = p.querySelector("[data-t]"); t.select();
   const add = async () => { try { await POST(`/store/kb/cards/${cid}/checklists`, { title: t.value.trim() || "Checklist", copy_from: p.querySelector("[data-c]").value || null }); closePops(); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } };
   p.querySelector("[data-add]").onclick = add; t.onkeydown = e => { if (e.key === "Enter") add(); };
@@ -321,6 +321,7 @@ async function moveCopyPop(anchor, cid, mode, opt = {}) {
   };
   wire();
   p.querySelector("[data-go]").onclick = async () => {
+    const qe = $("#qe"); if (qe) qe.remove();       // quick edit closes with it
     const others = data.cards.filter(x => x.list_id === lid && x.id !== cid).sort((a, b) => a.pos - b.pos);
     const before = others[pos - 2], after = others[pos - 1];
     const np = !before && !after ? 65536 : !before ? after.pos / 2 : !after ? before.pos + 65536 : (before.pos + after.pos) / 2;

@@ -6,7 +6,7 @@ let SHOW_DETAILS = false;
 try { SHOW_DETAILS = localStorage.getItem("kb_details") === "1"; } catch (e) {}
 
 async function openCardModal(cid) {
-  S.openCard = cid;
+  S.openCard = cid; S.full = null;
   let ov = $("#cm-ov");
   if (!ov) {
     ov = h(`<div class="ov" id="cm-ov"><div class="cm"><div class="empty"><div class="spin dk" style="margin:40px auto"></div></div></div></div>`);
@@ -23,6 +23,7 @@ function closeCardModal(fromRoute) {
 async function loadFullCard(cid, keep, quiet) {
   try {
     const c = await GET(`/store/kb/cards/${cid}`);
+    if (S.openCard !== cid) return;          // closed (or another card opened) while this was on its way
     if (c.board_id !== (S.board && S.board.id)) { if (!quiet) { go(`#/b/${c.board_id}/c/${cid}`); } return; }
     const same = S.full && S.full.id === c.id && JSON.stringify(S.full) === JSON.stringify(c);
     S.full = c;

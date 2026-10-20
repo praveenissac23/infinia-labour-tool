@@ -486,7 +486,9 @@ body.with-side #board, body.with-side #home { margin-left: 360px; width: calc(10
 @keyframes sp { to { transform: rotate(360deg); } }
 
 /* ---------- phone ---------- */
+.lw.collapsed.drop-on .lst { outline: 2px solid var(--brand, #0C66E4); outline-offset: -2px; background: #E9F2FF; }
 @media (max-width: 760px) {
+  #bhead { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } #bhead::-webkit-scrollbar { display: none; }
   #hdr .srch { display: none; } #hdr .hide-sm { display: none; }
   .home-wrap { flex-direction: column; margin-top: 16px; gap: 12px; } .home-nav { width: auto; }
   .home-nav .sub, .home-nav hr, .home-nav .ws { display: none; } .home-nav { display: flex; gap: 4px; overflow-x: auto; } .home-nav .ni { flex-shrink: 0; }
