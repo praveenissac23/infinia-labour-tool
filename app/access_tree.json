@@ -743,16 +743,6 @@
     "grant": [
      "estimation_boards"
     ]
-   },
-   {
-    "id": "estimation.esttend",
-    "label": "Tenders",
-    "right": [
-     "estimation_projects"
-    ],
-    "grant": [
-     "estimation_projects"
-    ]
    }
   ]
  },
