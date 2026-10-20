@@ -139,6 +139,9 @@ body.on-board #hdr .create { background: rgba(255,255,255,.2); } body.on-board #
 #lists { position: absolute; inset: 0; display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; padding: 12px 6px 72px; user-select: none; }
 #lists::-webkit-scrollbar { height: 12px; } #lists::-webkit-scrollbar-thumb { background: rgba(255,255,255,.4); border-radius: 6px; } #lists::-webkit-scrollbar-track { background: rgba(0,0,0,.15); border-radius: 6px; margin: 0 8px; }
 .lw { flex-shrink: 0; width: 284px; padding: 0 6px; height: 100%; }
+/* Lists and cards off screen are not laid out until they scroll into view: a big board opens fast, even on a phone. */
+.lw[data-l] { content-visibility: auto; }
+.lcards > .card { content-visibility: auto; contain-intrinsic-size: auto 60px; }
 .lst { width: 272px; max-height: 100%; display: flex; flex-direction: column; background: var(--list); border-radius: 12px; box-shadow: var(--card-shadow); padding-bottom: 4px; color: #44546F; position: relative; }
 .lst.over { background: #FFECEB; } .lst.over .lhd .cnt { color: var(--danger); font-weight: 700; }
 .lst.collapsed { width: 40px; min-height: 120px; cursor: pointer; padding: 8px 0; align-items: center; }

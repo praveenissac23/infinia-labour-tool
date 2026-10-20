@@ -10,17 +10,21 @@ async function openBoard(bid, cid) {
   S.board = null; S.view = (location.hash.match(/view=(\w+)/) || [])[1] || "board"; S.filter = emptyFilter();
   document.body.classList.add("on-board");
   $("#home").classList.add("hide"); const el = $("#board"); el.classList.remove("hide");
-  el.innerHTML = `<div class="loading"><div class="spin"></div></div>`;
-  try { await reloadBoard(false, bid); } catch (e) { el.innerHTML = `<div class="empty" style="color:#fff;margin-top:80px"><b style="color:#fff">${esc(e.message)}</b><br><button class="b" onclick="go('#/')">Go to boards</button></div>`; return; }
+  // A board seen before shows at once from memory, then catches up (only what changed is redrawn).
+  const cached = BOARD_CACHE[bid];
+  if (cached) { S.board = cached; S.cards = {}; cached.cards.forEach(c => S.cards[c.id] = c); S.lists = cached.lists; renderBoard(); if (S.view !== "board") renderView(); }
+  else el.innerHTML = `<div class="loading"><div class="spin"></div></div>`;
+  try { await reloadBoard(!!cached, bid); } catch (e) { el.innerHTML = `<div class="empty" style="color:#fff;margin-top:80px"><b style="color:#fff">${esc(e.message)}</b><br><button class="b" onclick="go('#/')">Go to boards</button></div>`; return; }
   startPoll();
   if (cid) openCardModal(cid);
 }
+const BOARD_CACHE = {};
 async function reloadBoard(soft, bid) {
   const id = bid || (S.board && S.board.id); if (!id) return;
   const d = await GET(`/store/kb/boards/${id}`);
   const old = S.board, oldCards = S.cards;
   if (soft && old && old.id === d.id && d.version === old.version) return;      // nothing new: nothing redrawn
-  S.board = d; S.cards = {}; d.cards.forEach(c => S.cards[c.id] = c); S.lists = d.lists;
+  S.board = d; S.cards = {}; d.cards.forEach(c => S.cards[c.id] = c); S.lists = d.lists; BOARD_CACHE[d.id] = d;
   if (!soft || !$("#lists") || !old || old.id !== d.id) renderBoard();
   else patchBoard(old, oldCards);
   if (S.view !== "board") renderView();

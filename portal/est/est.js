@@ -209,6 +209,15 @@ function chainCalc(pcs, advPct, retPct, vatPct, workKey = "work_cum") {
 // =====================================================================
 async function start() {
   if (!TOKEN) { signIn(); return; }
+  // The page's own data is asked for at the same time as the lists, not after them.
+  let early = null;
+  if (VIEW === "dash") early = GET("/store/est/dash").catch(() => null);
+  else if (VIEW === "projects") {
+    let ep = +((location.hash.match(/p(\d+)/) || [])[1] || 0);
+    try { ep = ep || +(localStorage.getItem("est_pid") || 0); } catch (e) {}
+    if (ep) early = GET(`/store/est/projects/${ep}`).then(d => { (ST.cache = ST.cache || {})[ep] = d; ST.earlyPid = ep; return d; }).catch(() => null);
+  } else if (VIEW === "tenders") early = GET("/store/est/tenders").catch(() => null);
+  ST.early = early;
   try { ST.meta = await GET("/store/est/meta"); } catch (e) { $("#app").innerHTML = `<div class="wrap"><div class="empty">${esc(e.message)}</div></div>`; $("#app").classList.remove("hide"); return; }
   $("#app").classList.remove("hide");
   if (VIEW === "projects") {
@@ -243,7 +252,8 @@ function goProject(pid, group, sec) {
 async function loadDash() {
   const app = $("#app");
   if (!ST.dash) app.innerHTML = '<div class="wrap"><div class="empty">Loading...</div></div>';
-  try { ST.dash = await GET("/store/est/dash"); } catch (e) { return fail(e); }
+  const early = ST.early; ST.early = null;
+  try { ST.dash = (early && await early) || await GET("/store/est/dash"); } catch (e) { return fail(e); }
   const d = ST.dash, t = d.totals, k = d.kpi;
   const fig = (l, v, s, cls = "", click = "") => `<div class="fig ${cls} ${click ? "click" : ""}" ${click ? `data-go="${click}"` : ""}><div class="l">${l}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
   const rows = d.projects;
@@ -324,11 +334,21 @@ async function openProject(pid, keep) {
   const p = ST.meta.projects.find(x => x.id === pid);
   if (p && ST.combo) ST.combo.set(p);
   $("#p-edit").classList.remove("hide");
-  try { ST.b = await GET(`/store/est/projects/${pid}`); } catch (e) { return fail(e); }
-  renderProject();
+  // A project opened before shows at once from memory, then catches up.
+  ST.cache = ST.cache || {};
+  if (ST.early) { const e = ST.early; ST.early = null; await e; }       // the first project was already on its way
+  if (ST.earlyPid === pid && ST.cache[pid]) { ST.earlyPid = null; ST.b = ST.cache[pid]; renderProject(); if (ST.drawer) ST.drawer(); return; }
+  ST.earlyPid = null;
+  if (ST.cache[pid] && !keep) { ST.b = ST.cache[pid]; renderProject(); }
+  let fresh;
+  try { fresh = await GET(`/store/est/projects/${pid}`); } catch (e) { return fail(e); }
+  if (ST.pid !== pid) return;                       // another project was picked meanwhile
+  const changed = !ST.b || JSON.stringify(ST.b) !== JSON.stringify(fresh) || ST.b.project.id !== pid;
+  ST.b = fresh; ST.cache[pid] = fresh;
+  if (changed || keep) renderProject();
   if (ST.drawer) ST.drawer();
 }
-async function reload() { try { ST.b = await GET(`/store/est/projects/${ST.pid}`); renderProject(); if (ST.drawer) ST.drawer(); } catch (e) { fail(e); } }
+async function reload() { try { ST.b = await GET(`/store/est/projects/${ST.pid}`); (ST.cache = ST.cache || {})[ST.pid] = ST.b; renderProject(); if (ST.drawer) ST.drawer(); } catch (e) { fail(e); } }
 function newProject() {
   const used = new Set(ST.meta.projects.map(p => p.code));
   const sites = ST.meta.sites.filter(s => !used.has(s.code));
@@ -925,7 +945,8 @@ SECTIONS["site.doc"] = el => {
 // TENDERS
 // =====================================================================
 async function loadTenders() {
-  try { ST.tenders = await GET("/store/est/tenders"); } catch (e) { return fail(e); }
+  const early = ST.early; ST.early = null;
+  try { ST.tenders = (early && await early) || await GET("/store/est/tenders"); } catch (e) { return fail(e); }
   drawTenders();
 }
 function drawTenders() {

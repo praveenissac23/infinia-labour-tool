@@ -654,23 +654,66 @@ def _received_for(db, code):
         return 0.0, 0.0
 
 
-def project_bundle(db, p, rules=None):
+def _preload(db, projects, with_files=True):
+    """Everything the projects need, in one query per table (the dashboard reads every project at once)."""
+    from collections import defaultdict
+    pids = [p.id for p in projects] or [-1]
+    codes = [p.code for p in projects] or ["-"]
+    g = lambda: defaultdict(list)
+    d = {k: g() for k in ("subs", "vos", "pcs", "cpcs", "vars", "boq", "logs", "finals", "files", "invoices")}
+    for x in db.query(EstSub).filter(EstSub.project_id.in_(pids)).order_by(EstSub.sort, EstSub.id):
+        d["subs"][x.project_id].append(x)
+    sids = [x.id for v in d["subs"].values() for x in v] or [-1]
+    for x in db.query(EstSubVO).filter(EstSubVO.sub_id.in_(sids)):
+        d["vos"][x.sub_id].append(x)
+    for x in db.query(EstSubPC).filter(EstSubPC.sub_id.in_(sids)):
+        d["pcs"][x.sub_id].append(x)
+    for x in db.query(EstClientPC).filter(EstClientPC.project_id.in_(pids)):
+        d["cpcs"][x.project_id].append(x)
+    for x in db.query(EstVariation).filter(EstVariation.project_id.in_(pids)).order_by(EstVariation.seq):
+        d["vars"][x.project_id].append(x)
+    for x in db.query(EstBoq).filter(EstBoq.project_id.in_(pids)).order_by(EstBoq.sort, EstBoq.id):
+        d["boq"][x.project_id].append(x)
+    for x in db.query(EstLog).filter(EstLog.project_id.in_(pids)).order_by(EstLog.kind, EstLog.sort, EstLog.seq):
+        d["logs"][x.project_id].append(x)
+    for x in db.query(EstFinal).filter(EstFinal.project_id.in_(pids)).order_by(EstFinal.sort, EstFinal.id):
+        d["finals"][x.project_id].append(x)
+    if with_files:
+        for x in db.query(EstFile).filter(EstFile.project_id.in_(pids)).order_by(EstFile.id.desc()):
+            d["files"][x.project_id].append(x)
+    d["received"], d["pp_contract"] = {}, {}
+    try:
+        import projectpay
+        for sc in db.query(projectpay.ProjectScope).filter(projectpay.ProjectScope.project.in_(codes)):
+            d["received"][sc.project] = r2(d["received"].get(sc.project, 0) + sum(x.amount or 0 for x in sc.payments))
+            d["pp_contract"][sc.project] = r2(d["pp_contract"].get(sc.project, 0) + (sc.contract or 0))
+    except Exception:
+        pass
+    try:
+        import accounts
+        for i in db.query(accounts.Invoice).filter(accounts.Invoice.project_no.in_(codes)).order_by(accounts.Invoice.inv_date):
+            d["invoices"][i.project_no].append({"id": i.id, "kind": i.kind, "number": i.number, "date": _iso(i.inv_date), "client": i.client,
+                                                "work": i.work, "subtotal": r2(i.subtotal), "vat": r2(i.vat), "total": r2(i.total), "status": i.status})
+    except Exception:
+        pass
+    return d
+
+
+def project_bundle(db, p, rules=None, pre=None):
     rules = rules or _rules(db)
-    subs = db.query(EstSub).filter(EstSub.project_id == p.id).order_by(EstSub.sort, EstSub.id).all()
-    sids = [s.id for s in subs] or [-1]
-    vos = db.query(EstSubVO).filter(EstSubVO.sub_id.in_(sids)).all()
-    pcs = db.query(EstSubPC).filter(EstSubPC.sub_id.in_(sids)).all()
-    sub_out = [_sub_bundle(db, s, [v for v in vos if v.sub_id == s.id], [c for c in pcs if c.sub_id == s.id], rules) for s in subs]
-    cpcs = db.query(EstClientPC).filter(EstClientPC.project_id == p.id).all()
-    vars_ = db.query(EstVariation).filter(EstVariation.project_id == p.id).order_by(EstVariation.seq).all()
-    boq = db.query(EstBoq).filter(EstBoq.project_id == p.id).order_by(EstBoq.sort, EstBoq.id).all()
-    logs = db.query(EstLog).filter(EstLog.project_id == p.id).order_by(EstLog.kind, EstLog.sort, EstLog.seq).all()
-    finals = db.query(EstFinal).filter(EstFinal.project_id == p.id).order_by(EstFinal.sort, EstFinal.id).all()
-    files = db.query(EstFile).filter(EstFile.project_id == p.id).order_by(EstFile.id.desc()).all()
-    names = _uname(db, [f.created_by for f in files])
+    pre = pre or _preload(db, [p])
+    subs = pre["subs"].get(p.id, [])
+    sub_out = [_sub_bundle(db, s, pre["vos"].get(s.id, []), pre["pcs"].get(s.id, []), rules) for s in subs]
+    cpcs = pre["cpcs"].get(p.id, [])
+    vars_ = pre["vars"].get(p.id, [])
+    boq = pre["boq"].get(p.id, [])
+    logs = pre["logs"].get(p.id, [])
+    finals = pre["finals"].get(p.id, [])
+    files = pre["files"].get(p.id, [])
+    names = _uname(db, [f.created_by for f in files]) if files else {}
     client = _client_bundle(p, cpcs)
-    received, pp_contract = _received_for(db, p.code)
-    invoices = _invoices_for(db, p.code)
+    received, pp_contract = pre["received"].get(p.code, 0.0), pre["pp_contract"].get(p.code, 0.0)
+    invoices = pre["invoices"].get(p.code, [])
     approved_vo = r2(sum(v.approved_amount or 0 for v in vars_ if v.status == "Approved"))
     boq_value = r2(sum((b.qty or 0) * (b.rate or 0) for b in boq))
     boq_cost = r2(sum((b.qty or 0) * (b.cost_rate or 0) for b in boq))
@@ -764,8 +807,10 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
                      "with_accounts": 0, "with_accounts_amount": 0.0, "paid": 0}
     queue, late, matrix = [], [], []
     t = today()
-    for p in db.query(EstProject).order_by(EstProject.code).all():
-        b = project_bundle(db, p, rules)
+    projects = db.query(EstProject).order_by(EstProject.code).all()
+    pre = _preload(db, projects, with_files=False)
+    for p in projects:
+        b = project_bundle(db, p, rules, pre)
         s = b["summary"]
         rows.append({"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client, **s,
                      "subs": len(b["subs"]), "progress": round(100.0 * s["client_work"] / s["revised"], 1) if s["revised"] else 0.0})
@@ -800,7 +845,7 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
             if l["status"] in ("Open", "Submitted", "Preparing", "Revise & resubmit") and l["due"] and l["due"] < t.isoformat() and l["kind"] != "approval":
                 late.append({"project_id": p.id, "code": p.code, "kind": l["kind"], "id": l["id"], "no": f'{LOG_PREFIX.get(l["kind"], "")}-{l["seq"]:03d}',
                              "title": l["title"], "party": l["party"], "due": l["due"]})
-        matrix.append({"id": p.id, "code": p.code, "finals": {f["item"]: f for f in b["finals"]}})
+        matrix.append({"id": p.id, "code": p.code, "finals": {f["item"]: {"sc": f["sc"], "st": f["st"]} for f in b["finals"]}})
     tenders = db.query(EstTender).filter(EstTender.status.in_(["Received", "Pricing"])).order_by(EstTender.due).all()
     tot = {k: r2(sum(r[k] for r in rows)) for k in ("contract", "revised", "client_certified", "received", "invoiced", "committed",
                                                      "sub_certified", "sub_paid", "sub_to_pay")}

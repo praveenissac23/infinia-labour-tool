@@ -173,3 +173,6 @@ table.t td.neg { color: var(--red); }
   #modal { padding: 0; } .mbox { border-radius: 0; min-height: 100%; }
 }
 @media print { .tools, .pbar, .groups, .subtabs { display: none; } }
+
+/* Cards further down the page are laid out only when scrolled to (fast first paint on a phone). */
+.wrap > .card, .grid2 > .card { content-visibility: auto; contain-intrinsic-size: auto 420px; }
