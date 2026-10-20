@@ -317,7 +317,7 @@ const GROUPS = {
   home: { label: "", secs: [["dash", "Dashboard"]] },
   client: { label: "Client side", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
-  site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["doc", "Documents"]] },
+  site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"]] },
 };
 function renderProjectShell() {
   const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));
@@ -424,7 +424,7 @@ function renderProject() {
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
                   "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status === "With Accounts").length, 0),
                   "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
-                  "site.rfi": s.open_rfi, "site.submittal": s.open_submittals, "site.doc": b.files.length,
+                  "site.rfi": s.open_rfi, "site.submittal": s.open_submittals,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
   if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "home"; ST.sec = "dash"; }
   // The side menu: every page of the project, under its heading.
@@ -1039,31 +1039,6 @@ function apForm(l) {
   ], async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else await POST("/store/est/logs", Object.assign(v, { kind: "approval", project_id: ST.pid })); await reload(); toast("Saved"); },
   { del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
-
-// ---------------- Site & technical > documents ----------------
-SECTIONS["site.doc"] = el => {
-  const b = ST.b, f = filt();
-  const files = b.files.filter(x => (!f || x.category === f) && match(x));
-  const cats = ST.meta.doc_categories;
-  el.innerHTML = tools("", { chips: [["", b.files.length], ...cats.filter(c => b.files.some(x => x.category === c)).map(c => [c, b.files.filter(x => x.category === c).length])] }) +
-    `<div class="drop" id="drop"><b>Drop files here</b> or <label style="color:var(--red);cursor:pointer;font-weight:700">choose files<input type="file" multiple id="up" class="hide"></label> &nbsp;·&nbsp; filed under <select id="up-cat" style="height:28px;border:1px solid #D9DCE0;border-radius:6px">${cats.map(c => `<option>${esc(c)}</option>`).join("")}</select><div class="small" style="margin-top:4px">Up to 25 MB each. Drawings, letters, permits, photos ...</div></div>` +
-    (files.length ? `<div class="tw" style="margin-top:12px"><table class="t"><thead><tr><th>File</th><th>Filed under</th><th>Added by</th><th>When</th><th class="r">Size</th><th></th></tr></thead><tbody>${files.map(x => `<tr><td><a href="${x.url}" target="_blank" rel="noopener"><b>${esc(x.name)}</b></a></td><td><select data-fcat="${x.id}" style="height:26px;border:1px solid #E0DCD6;border-radius:6px">${cats.map(c => `<option ${c === x.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td><td>${esc(x.by)}</td><td class="nowrap">${dt(x.at)}</td><td class="r small">${(x.size / 1024 / 1024).toFixed(2)} MB</td><td><button class="btn btn-plain btn-sm" data-fdel="${x.id}">Remove</button></td></tr>`).join("")}</tbody></table></div>` : "");
-  bindTools(el, () => SECTIONS["site.doc"](el));
-  const up = async list => {
-    let n = 0;
-    for (const file of list) {
-      const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("kind", "doc"); fd.append("category", $("#up-cat").value); fd.append("file", file);
-      try { await api("/store/est/files/upload", { method: "POST", body: fd }); n++; } catch (e) { fail(e); }
-    }
-    if (n) { await reload(); toast(n + " file" + (n > 1 ? "s" : "") + " added"); }
-  };
-  $("#up", el).onchange = e => up([...e.target.files]);
-  const d = $("#drop", el);
-  d.ondragover = e => { e.preventDefault(); d.classList.add("over"); }; d.ondragleave = () => d.classList.remove("over");
-  d.ondrop = e => { e.preventDefault(); d.classList.remove("over"); up([...e.dataTransfer.files]); };
-  $$("[data-fdel]", el).forEach(x => x.onclick = async () => { if (!confirmInline(x)) return; try { await DEL(`/store/est/files/${x.dataset.fdel}`); reload(); } catch (e) { fail(e); } });
-  $$("[data-fcat]", el).forEach(s => s.onchange = async () => { try { await PATCH(`/store/est/files/${s.dataset.fcat}`, { category: s.value }); await reload(); toast("Saved"); } catch (e) { fail(e); } });
-};
 
 // =====================================================================
 // TENDERS

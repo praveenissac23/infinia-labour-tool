@@ -203,10 +203,7 @@ ck("tender marked won", get("/store/est/tenders").json()["tenders"][0]["status"]
 # ---- files ------------------------------------------------------------------------------------
 r = c.post("/store/est/files/upload", headers=A, data={"project_id": str(P), "kind": "doc", "category": "Drawings"},
            files={"file": ("plan.pdf", io.BytesIO(b"%PDF-1.4 test"), "application/pdf")})
-ck("file uploaded", r.status_code == 200, r.text)
-url = r.json()["url"]
-ck("signed link opens without a login", c.get(url).status_code == 200 and c.get(url).content.startswith(b"%PDF"))
-ck("a forged link is refused", c.get(url.replace(url.split("/")[-2], "0" * 24)).status_code == 403)
+ck("no files kept in the app any more", r.status_code == 410, r.status_code)
 
 # ---- dashboard and exports --------------------------------------------------------------------
 d = get("/store/est/dash").json()
@@ -214,7 +211,7 @@ ck("dashboard: both projects", len(d["projects"]) == 2)
 ck("dashboard KPI: with accounts", d["kpi"]["with_accounts"] == 1 and d["kpi"]["pc_delays"] == 0, d["kpi"])
 ck("dashboard queue lists unpaid invoices", any(x["pc_id"] == PC3 for x in d["queue"]))
 t = c.post("/auth/download-token", headers=A).json()["token"]
-for what in ["subs", "invoices", "clientpcs", "variations", "boq", "rfi", "approval", "submittal", "doc", "finals"]:
+for what in ["subs", "invoices", "clientpcs", "variations", "boq", "rfi", "approval", "submittal", "finals"]:
     for f in ["preview", "pdf", "excel"]:
         r = c.get(f"/export/est/{what}?token={t}&pid={P}&format={f}")
         ck(f"export {what} {f}", r.status_code == 200 and len(r.content) > 300, r.text[:200])

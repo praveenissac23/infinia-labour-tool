@@ -1487,6 +1487,8 @@ def _file_url(f):
 @router.post("/store/est/files/upload")
 async def upload(project_id: int = Form(0), kind: str = Form("doc"), row_id: int = Form(0), category: str = Form(""),
                  file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    # No documents are kept in the app any more (it stays light): figures and references only.
+    raise HTTPException(410, "Files are not kept in the app - type the reference instead.")
     if project_id:
         _project(db, project_id)
     data = await file.read()
