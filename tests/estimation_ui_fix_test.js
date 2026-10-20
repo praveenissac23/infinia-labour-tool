@@ -24,15 +24,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   let pf = fr('view=projects');
   ck('"Waiting payment" opens project 912 (first time Projects is opened)', pf && await pf.evaluate(() => typeof ST !== 'undefined' && ST.b && ST.b.project.code) === '912');
   ck('...at Payment certificates', pf && await pf.evaluate(() => ST.group + '.' + ST.sec) === 'subs.pcs');
-  // ---- won tender -> its new project
-  await p.evaluate(() => pgTab('esttend')); await sleep(2000);
-  const tf = fr('view=tenders');
-  const tid = (await api('/store/est/tenders', { method: 'POST', body: { name: 'Fix villa', client: 'Mr Fix', value: 1500000, status: 'Submitted' } })).id;
-  await tf.evaluate(() => loadTenders()); await sleep(600);
-  await tf.click(`[data-won="${tid}"]`); await sleep(300); await tf.fill('#f-code', '991'); await tf.click('#m-save'); await sleep(3500);
-  pf = fr('view=projects');
-  ck('won tender jumps to the new project 991', await pf.evaluate(() => ST.b && ST.b.project.code) === '991');
-  ck('...and it is in the picker list', await pf.evaluate(() => ST.meta.projects.some(x => x.code === '991')));
+  ck('no Tenders tab any more', !(await p.$('[data-tab="esttend"]')) && !fr('view=tenders'));
   // ---- Accounts > Subcontractor payments with an Accounts-only login
   const r = await api('/users', { method: 'POST', body: { username: 'fx_acc', password: 'pass12345', role: 'office' } });
   if (r.id) await api(`/users/${r.id}/permissions`, { method: 'POST', body: { permissions: 'settings,accounts_bank' } });

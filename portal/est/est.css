@@ -28,8 +28,23 @@ body.embed .wrap { padding-top: 10px; }
 .login-box .err { color: var(--red); font-size: 12.5px; min-height: 18px; }
 
 /* the project bar */
-.pbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.pbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .combo { position: relative; min-width: 280px; flex: 0 1 420px; }
+#pick { flex: 0 0 92px; }
+.pbar .combo { min-width: 0; width: 100%; flex: none; }
+.pbar .combo input { height: 32px; padding: 0 22px 0 10px; font-size: 14px; }
+.pbar .combo .caret { right: 8px; top: 8px; }
+.pbar .combo .list { min-width: 120px; top: 36px; max-height: 60vh; }
+.ptabs { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.ptabs::-webkit-scrollbar { display: none; }
+.seg { display: inline-flex; background: #EFEBE6; border-radius: 8px; padding: 2px; flex-shrink: 0; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; font-size: 12.5px; font-weight: 700; color: #6A5C55; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.seg button.on { background: var(--red); color: #fff; }
+.pbar .subtabs { display: flex; gap: 2px; flex-wrap: nowrap; padding: 0; background: none; border: 0; border-radius: 0; }
+.pbar .tab { margin: 0; padding: 5px 10px; border: 0; background: none; border-radius: 6px; white-space: nowrap; }
+.pbar .tab.on { background: var(--red-soft); color: var(--red); }
+.kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 14px 3px 0; width: 170px; vertical-align: top; font-size: 13px; }
+.kv td { padding: 3px 0; font-size: 13px; }
 .combo input { width: 100%; height: 38px; border: 1.5px solid #D5D9DE; border-radius: 9px; padding: 0 34px 0 12px; font-weight: 600; background: #fff; }
 .combo input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(192,57,43,.12); }
 .combo .caret { position: absolute; right: 12px; top: 11px; color: var(--muted); pointer-events: none; font-size: 12px; }
@@ -62,7 +77,10 @@ body.embed .wrap { padding-top: 10px; }
 .tab:hover { border-color: #D9B8B3; color: var(--red); } .tab.on { background: var(--red-soft); color: var(--red); border-color: var(--red); font-weight: 700; }
 .tab .n { background: #EFEBE6; color: #6A5C55; border-radius: 999px; padding: 0 7px; font-size: 11px; margin-left: 5px; }
 .tab.on .n { background: var(--red); color: #fff; }
-.panel { background: #fff; border: 1px solid var(--line); border-top: none; border-radius: 0 0 10px 10px; padding: 12px; min-height: 300px; }
+.panel .strip { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; margin-bottom: 10px; }
+.panel .fig { padding: 6px 10px; border-radius: 8px; }
+.panel .fig .v { font-size: 15px; }
+.panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 300px; }
 .card { background: #fff; border: 1px solid var(--line2); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
 .card h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 .card h3 .spacer { flex: 1; }
@@ -167,6 +185,9 @@ table.t td.neg { color: var(--red); }
   .grid2 { grid-template-columns: 1fr; }
   .frm { grid-template-columns: 1fr; }
   .combo { min-width: 0; flex: 1 1 100%; }
+  #pick { flex: 0 0 84px; }
+  .ptabs { order: 5; flex: 1 1 100%; flex-wrap: wrap; overflow: visible; gap: 6px; }
+  .pbar .subtabs { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   .fig .v { font-size: 15px; }
   .strip { grid-template-columns: repeat(2, 1fr); }
   .group { padding: 7px 11px; font-size: 12px; }

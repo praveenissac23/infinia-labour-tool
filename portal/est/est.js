@@ -331,11 +331,11 @@ const GROUPS = {
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["doc", "Documents"]] },
 };
 function renderProjectShell() {
-  $("#app").innerHTML = `<div class="wrap"><div class="pbar"><div id="pick"></div><button class="btn btn-ghost" id="p-new">+ New project</button><button class="btn btn-plain hide" id="p-edit">Project details</button><span class="spacer"></span></div><div id="pbody"></div></div>`;
+  $("#app").innerHTML = `<div class="wrap"><div class="pbar"><div id="pick"></div><div class="ptabs" id="ptabs"></div><span class="spacer"></span><button class="btn btn-plain btn-sm hide" id="p-edit" title="Contract, received, subcontracts, margin and the project's details">Details</button><button class="btn btn-ghost btn-sm" id="p-new" title="New project">+ New</button></div><div id="pbody"></div></div>`;
   const items = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true })).map(p => ({ ...p, label: String(p.code) }));
   ST.combo = combo($("#pick"), items, x => openProject(x.id), "Project no.");
   $("#p-new").onclick = newProject;
-  $("#p-edit").onclick = editProject;
+  $("#p-edit").onclick = projectInfo;
   if (!ST.meta.projects.length) $("#pbody").innerHTML = `<div class="card empty">No projects yet. Press <b>+ New project</b> and pick the site - the rest is filled in for you.</div>`;
   else $("#pbody").innerHTML = `<div class="card empty">Pick a project above.<br><span class="small">Type the project number, e.g. 911.</span></div>`;
 }
@@ -384,6 +384,29 @@ function newProject() {
     }
   });
 }
+// Details: every figure of the project in one place (they used to fill the top of the screen), and its details.
+function projectInfo() {
+  const b = ST.b, s = b.summary, p = b.project;
+  const fig = (l, v, sub, cls = "") => `<div class="fig ${cls}"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
+  const row = (l, v) => v ? `<tr><th>${l}</th><td>${v}</td></tr>` : "";
+  ST.drawer = null;
+  drawer(`Project ${esc(p.code)} <span class="muted small">${esc(p.name || "")}</span>`, `
+    <div class="strip">
+      ${fig("Contract", money(s.revised, false), s.approved_vo ? `original ${money(s.contract, false)} + VOs ${money(s.approved_vo, false)}` : "revised")}
+      ${fig("Certified by client", money(s.client_certified, false), s.revised ? Math.round(100 * s.client_work / s.revised) + "% done" : "")}
+      ${fig("Received", money(s.received, false), "Accounts", "green")}
+      ${fig("Subcontracts", money(s.committed, false), b.subs.length + " subcontractors")}
+      ${fig("Sub certified", money(s.sub_certified, false), money(s.sub_paid, false) + " paid")}
+      ${fig("Sub to pay", money(s.sub_to_pay, false), "certified, not paid", s.sub_to_pay > 0 ? "amber" : "")}
+      ${fig("Margin", money(s.margin, false), "contract - subcontracts", s.margin < 0 ? "red" : "")}
+      ${fig("Overdue", s.overdue, "RFIs / submittals", s.overdue ? "red" : "")}
+    </div>
+    <div class="card"><h3>Details</h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}
+      ${row("Status", esc(p.status))}${row("QS", esc(p.qs))}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Retention held by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("VAT", p.vat_pct + "%")}
+      ${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}${row("Notes", esc(p.notes))}</table>
+      <div style="margin-top:10px"><button class="btn btn-primary btn-sm" id="pi-edit">Edit details</button></div></div>`);
+  $("#pi-edit").onclick = editProject;
+}
 function editProject() {
   const p = ST.b.project;
   modal(`Project ${p.code} - details`, [
@@ -409,20 +432,10 @@ function renderProject() {
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals, "site.doc": b.files.length,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
   if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "subs"; ST.sec = "reg"; }
-  $("#pbody").innerHTML = `
-    <div class="strip">
-      ${fig("Contract", aed(s.revised), s.approved_vo ? `incl. VOs ${aed(s.approved_vo)}` : "revised")}
-      ${fig("Certified by client", aed(s.client_certified), s.revised ? Math.round(100 * s.client_work / s.revised) + "% done" : "")}
-      ${fig("Received", aed(s.received), "Accounts", "green")}
-      ${fig("Subcontracts", aed(s.committed), b.subs.length + " subcontractors")}
-      ${fig("Sub certified", aed(s.sub_certified), aed(s.sub_paid) + " paid")}
-      ${fig("Sub to pay", aed(s.sub_to_pay), "certified, not paid", s.sub_to_pay > 0 ? "amber" : "")}
-      ${fig("Margin", aed(s.margin), "contract - subcontracts", s.margin < 0 ? "red" : "")}
-      ${fig("Overdue", s.overdue, "RFIs / submittals", s.overdue ? "red" : "")}
-    </div>
-    <div class="groups">${Object.entries(GROUPS).map(([k, g]) => `<div class="group ${k === ST.group ? "on" : ""}" data-g="${k}">${g.label}</div>`).join("")}</div>
-    <div class="subtabs">${GROUPS[ST.group].secs.map(([k, l]) => { const n = count[ST.group + "." + k]; return `<div class="tab ${k === ST.sec ? "on" : ""}" data-s="${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</div>`; }).join("")}</div>
-    <div class="panel" id="sec"></div>`;
+  // One slim bar: project no. | Client side · Subcontractors · Site & technical | the tabs of that group. The rest of the screen is the work.
+  $("#ptabs").innerHTML = `<div class="seg">${Object.entries(GROUPS).map(([k, g]) => `<button class="${k === ST.group ? "on" : ""}" data-g="${k}">${g.label}</button>`).join("")}</div>
+    <div class="subtabs">${GROUPS[ST.group].secs.map(([k, l]) => { const n = count[ST.group + "." + k]; return `<div class="tab ${k === ST.sec ? "on" : ""}" data-s="${k}">${l}${n ? `<span class="n">${n}</span>` : ""}</div>`; }).join("")}</div>`;
+  $("#pbody").innerHTML = `<div class="panel" id="sec"></div>`;
   $$("[data-g]").forEach(x => x.onclick = () => { ST.group = x.dataset.g; ST.sec = GROUPS[ST.group].secs[0][0]; saveSec(); renderProject(); });
   $$("[data-s]").forEach(x => x.onclick = () => { ST.sec = x.dataset.s; saveSec(); renderProject(); });
   const fn = SECTIONS[ST.group + "." + ST.sec];
