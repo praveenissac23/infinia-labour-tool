@@ -6258,22 +6258,23 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return {"title": "Returnable items still out", "rows": sorted(rows, key=lambda r: r["site"])}
 
     if kind == "rentals":
-        # Hired-in equipment: where it is, what it costs, and whether it
-        # is overdue back to the supplier.
+        # Hired-in equipment: where it is, what it costs, and whether it is overdue back - from the
+        # rental ledger, so hired quantities of ordinary materials are counted too.
         today = _dubai_today()
         rows = []
-        for i in items.values():
-            if not i.active or i.item_type != "rental": continue
-            at = _at(i.id)
-            where = ", ".join(f"{loc or 'store'}: {q:g}" for loc, q in sorted(at.items())) or "-"
-            days = (today - i.rental_start).days if i.rental_start else None
-            est = round(days * (i.rental_rate or 0), 2) if (days is not None and i.rental_period == "day") else None
-            rows.append({"code": i.code, "name": i.name, "supplier": i.rental_supplier,
-                          "rate": i.rental_rate, "period": i.rental_period,
-                          "start": i.rental_start.isoformat() if i.rental_start else "",
-                          "due": i.rental_due.isoformat() if i.rental_due else "",
-                          "days_on_hire": days, "est_cost": est, "where": where,
-                          "overdue": bool(i.rental_due and i.rental_due < today)})
+        for r in _on_rent(db):
+            i = items.get(r["item_id"])
+            start = (i.rental_start if (i and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None)
+            days = (today - start).days if start else None
+            rate = (i.rental_rate if i else 0) or 0
+            est = round(days * rate, 2) if (days is not None and i and i.rental_period == "day" and rate) else None
+            where = ", ".join(f"{loc or 'store'}: {q:g}" for loc, q in sorted(r["by_location"].items())) or "-"
+            rows.append({"code": r["code"], "name": r["name"], "supplier": r["supplier"],
+                          "rate": rate or None, "period": (i.rental_period if i else "") or "",
+                          "start": start.isoformat() if start else "",
+                          "due": i.rental_due.isoformat() if (i and i.rental_due) else "",
+                          "days_on_hire": days, "est_cost": est, "where": where, "qty": r["qty"],
+                          "overdue": bool(i and i.rental_due and i.rental_due < today)})
         return {"title": "Rented equipment", "rows": sorted(rows, key=lambda r: (not r["overdue"], r["due"] or ""))}
 
 
@@ -6281,9 +6282,13 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # Owned only - hired equipment has its own register, so the two
         # never get added together and mistaken for company property.
         rows = []
+        owned = {}
+        for (i2, loc, owner), q in _stock_map(db, by_owner=True).items():
+            if owner is None and q:
+                owned.setdefault(i2, {})[loc] = owned.setdefault(i2, {}).get(loc, 0) + q
         for i in items.values():
             if not i.active or i.item_type not in ("asset", "returnable"): continue
-            at = _at(i.id)
+            at = {loc: q for loc, q in owned.get(i.id, {}).items() if abs(q) > 1e-9}    # hired-in quantities left out
             lost = _lost_by_item(i.id)
             # A machine the company owns but has none of - never bought,
             # or all written off - is not a line on an asset register.
@@ -6302,37 +6307,30 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return {"title": "Owned assets and equipment", "rows": sorted(rows, key=lambda r: r["code"])}
 
     if kind == "hired":
-        # Everything currently on hire: what, from whom, where it is, and
-        # anything already lost or damaged that the supplier will charge
-        # for. Who it came from and when are read from the deliveries
-        # themselves - the item's own rental fields are only filled in if
-        # someone typed them, so relying on them left the columns empty
-        # even though the store knew the answer.
-        arrivals = (db.query(models.StoreMovement)
-                      .filter(models.StoreMovement.kind == "in")
-                      .order_by(models.StoreMovement.moved_on.asc()).all())
-        first_in, last_supplier = {}, {}
-        for m in arrivals:
-            if m.item_id not in first_in and m.moved_on:
-                first_in[m.item_id] = m.moved_on
-            if (m.supplier or "").strip():
-                last_supplier[m.item_id] = m.supplier.strip()
+        # Everything on hire right now: what, from whom, where it stands, since when, and anything
+        # already lost or damaged that the trader will charge for. Read from the same rental
+        # ledger as Store > On rent - a material typed as Rental AND a quantity of anything that came
+        # in hired from a trader (scaffolding delivered "hired from Desarch") - so the two always agree.
+        lost_by = {}
+        for item_id, owner, q in (db.query(models.StoreMovement.item_id, models.StoreMovement.owner_id, func.sum(models.StoreMovement.qty))
+                                  .filter(models.StoreMovement.kind == "lost").group_by(models.StoreMovement.item_id, models.StoreMovement.owner_id).all()):
+            lost_by[(item_id, owner)] = float(q or 0)
+        rentals = _rental_supplier_map(db)
         rows = []
-        for i in items.values():
-            if not i.active or i.item_type != "rental": continue
-            at = _at(i.id)
-            lost = _lost_by_item(i.id)
-            on_hire = round(sum(at.values()), 2)
-            if on_hire <= 0 and not lost: continue
-            since = i.rental_start or first_in.get(i.id)
-            rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                          "hired_from": i.rental_supplier or last_supplier.get(i.id) or "not recorded",
-                          "on_hire": on_hire,
-                          "in_store": round(at.get("", 0), 2),
-                          "by_site": {loc: round(q, 2) for loc, q in at.items() if loc},
+        for r in _on_rent(db):
+            i = items.get(r["item_id"])
+            whose = r["supplier_id"]
+            lost = lost_by.get((r["item_id"], whose), 0) + (lost_by.get((r["item_id"], None), 0) if r["item_id"] in rentals else 0)
+            since = (i.rental_start if (i and i.item_type == "rental" and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None)
+            at = r["by_location"]
+            rows.append({"code": r["code"], "name": r["name"], "unit": r["unit"],
+                          "hired_from": r["supplier"] if whose else ((i.rental_supplier if i else "") or "not recorded"),
+                          "on_hire": r["qty"],
+                          "in_store": round(at.get(CENTRAL_LABEL, 0) + at.get(CENTRAL, 0), 2),
+                          "by_site": {loc: q for loc, q in at.items() if loc not in (CENTRAL, CENTRAL_LABEL)},
                           "lost_damaged": round(lost, 2) if lost else 0,
                           "since": since.isoformat() if since else "-",
-                          "due_back": i.rental_due.isoformat() if i.rental_due else "no date set",
+                          "due_back": i.rental_due.isoformat() if (i and i.rental_due) else "no date set",
                           "days_out": (_dubai_today() - since).days if since else ""})
         return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
 
