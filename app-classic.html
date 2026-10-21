@@ -18689,7 +18689,7 @@ function vhDraw() {
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
       <td>${v.payments.length}</td><td class="n"><b>${pcMoney(v.total)}</b></td>
       <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Close" : "Edit / note"}</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
-    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500" data-tip="A note for this visa, e.g. an amount to deduct from his salary - it prints on the visa sheet.">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${vhPays(v)}</td></tr>` : "";
+    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="width:260px;"><span>Whose visa (name)</span><input type="text" id="vh-name-${v.id}" value="${escapeAttr(v.person)}" maxlength="80" data-tip="Correct the name here. Typing the name of someone who already has a visa in progress puts the two together."></label><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500" data-tip="A note for this visa, e.g. an amount to deduct from his salary - it prints on the visa sheet.">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save</button>${v.payments.length ? "" : `<button class="btn btn-gray btn-sm" onclick="vhDropFile(${v.id})">Remove visa</button>`}<button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${vhPays(v)}</td></tr>` : "";
     return row + det;
   }).join("") || `<tr><td colspan="5" class="sub" style="padding:16px;">No visa in progress. Type a name under Whose visa to start one.</td></tr>`;
   document.getElementById("vh-foot").innerHTML = VH.ongoing.length ? `<tr><td colspan="3" class="l">TOTAL HELD</td><td class="n">${pcMoney(VH.held)}</td><td></td></tr>` : "";
@@ -18709,8 +18709,16 @@ async function vhPreview(id) {
   window.open(`${API}/export/visa/file/${id}?format=view&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function vhNote(id) {
-  const t = document.getElementById(`vh-note-${id}`).value;
-  try { await apiCall(`/store/visa/files/${id}`, { method: "PUT", body: JSON.stringify({ note: t }) }); await vhLoad(); showStatus("vh-status", "ok", "Note saved - it prints on the sheet."); }
+  const t = document.getElementById(`vh-note-${id}`).value, n = (document.getElementById(`vh-name-${id}`) || {}).value;
+  try { const r = await apiCall(`/store/visa/files/${id}`, { method: "PUT", body: JSON.stringify(n !== undefined ? { note: t, person: n } : { note: t }) });
+        if (r && r.merged_into) VH_OPEN = r.merged_into;
+        VH_DIRTY = true; await vhLoad(); showStatus("vh-status", "ok", r && r.merged_into ? `Put together with ${r.person}'s visa.` : "Saved."); }
+  catch (e) { showStatus("vh-status", "err", errText(e)); }
+}
+async function vhDropFile(id) {
+  const v = VH.ongoing.find(x => x.id === id); if (!v) return;
+  if (!await hrAsk(`Remove the visa "${v.person}"? It has no payments.`, "Remove", true)) return;
+  try { await apiCall(`/store/visa/files/${id}`, { method: "DELETE" }); VH_OPEN = null; await vhLoad(); showStatus("vh-status", "ok", "Removed."); }
   catch (e) { showStatus("vh-status", "err", errText(e)); }
 }
 function vhPick(name) { vhReset(); document.getElementById("vh-person").value = name; vhWhoNote(); document.getElementById("vh-step").focus(); }
@@ -18723,7 +18731,7 @@ function vhReset() {
 function vhEdit(fid, pid) {
   const v = VH.ongoing.concat(VH.completed || []).find(x => x.id === fid), p = v && v.payments.find(x => x.id === pid); if (!p) return;
   VH_EDIT = pid;
-  document.getElementById("vh-person").value = v.person; document.getElementById("vh-person").disabled = true;
+  document.getElementById("vh-person").value = v.person; document.getElementById("vh-person").disabled = v.status !== "ongoing";   // retype the name to move the payment to another visa
   document.getElementById("vh-date").value = p.date; document.getElementById("vh-step").value = p.step; document.getElementById("vh-amt").value = p.amount;
   document.getElementById("vh-sup").value = p.supplier; document.getElementById("vh-desc").value = p.description; document.getElementById("vh-rcpt").value = p.receipt_no;
   document.getElementById("vh-save").textContent = "Save changes"; document.getElementById("vh-cancel").style.display = "";

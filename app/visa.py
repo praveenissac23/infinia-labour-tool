@@ -255,6 +255,26 @@ def _out(db, v):
 @router.put("/store/visa/files/{vid}")
 def edit(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = EDIT):
     v = _get(db, vid)
+    if "person" in payload:
+        new = " ".join(str(payload.get("person") or "").split())[:80]
+        if not new:
+            raise HTTPException(status_code=400, detail="Type whose visa it is.")
+        if new != v.person:
+            # Renamed to someone who already has a visa in progress: the two become one.
+            other = next((o for o in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing", models.VisaFile.id != v.id).all()
+                          if o.person.strip().lower() == new.lower()), None) if v.status == "ongoing" else None
+            if other:
+                merge_into(db, v, other, user.id)
+                db.commit()
+                return dict(_out(db, other), merged_into=other.id)
+            old = v.person
+            v.person = new
+            e = next((e for e in db.query(models.Employee).all() if (e.name or "").strip().lower() == new.lower()), None)
+            v.employee_id, v.emp_no = (e.id, e.emp_no or "") if e else (None, "")
+            for x in db.query(models.PettyCash).filter(models.PettyCash.visa_file_id == v.id).all():
+                if v.posted_id == x.id and (x.description or "").startswith(f"{old} - visa expenses"):
+                    x.description = new + x.description[len(old):]
+            M.log_action(db, user.id, "visa_rename", f"Visa renamed: {old} -> {new}")
     if "note" in payload:
         v.note = "\n".join(" ".join(l.split()) for l in str(payload.get("note") or "").strip().splitlines())[:1500]
     if payload.get("started"):
@@ -264,6 +284,28 @@ def edit(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
         v.started_on = d
     db.commit()
     return _out(db, v)
+
+
+def merge_into(db, v, other, user_id):
+    """Everything on visa v moves onto other (same person typed twice), and v goes."""
+    for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == v.id).all():
+        p.visa_file_id = other.id
+        if p.step:
+            tick(other, p.step)
+    for x in db.query(models.PettyCash).filter(models.PettyCash.visa_file_id == v.id).all():
+        x.visa_file_id = other.id
+    if v.note and not (other.note or "").strip():
+        other.note = v.note
+    M.log_action(db, user_id, "visa_merge", f"Visa {v.person} merged into {other.person}")
+    db.delete(v)
+
+
+def drop_if_empty(db, v):
+    """A visa left with nothing on it (its only payment moved away) is taken off the list."""
+    if v and v.status == "ongoing" and not v.posted_id \
+            and not db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == v.id).count() \
+            and not db.query(models.PettyCash).filter(models.PettyCash.visa_file_id == v.id).count() and not (v.note or "").strip():
+        db.delete(v)
 
 
 def tick(v, stage, on=True):
@@ -476,6 +518,14 @@ def edit_payment(pid: int, payload: dict = Body(...), db: Session = Depends(get_
     p, v = _held_pay(db, pid)
     for k, val in _clean_pay(db, payload).items():
         setattr(p, k, val)
+    who = " ".join(str(payload.get("person") or "").split())[:80]
+    if who and who.lower() != v.person.strip().lower() and v.status == "ongoing":
+        # Whose visa changed: the payment moves to that person's visa (opened if new).
+        nv = file_for(db, who, user.id, p.on_date)
+        p.visa_file_id = nv.id
+        db.flush()
+        drop_if_empty(db, v)
+        v = nv
     if p.step:
         tick(v, p.step)
     resync_total(db, v)
@@ -510,6 +560,8 @@ def remove(vid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     v = _get(db, vid)
     if db.query(models.PettyCash).filter(models.PettyCash.visa_file_id == vid).count():
         raise HTTPException(status_code=400, detail="Payments are tied to this file - untie them first, or mark it completed.")
+    if db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == vid).count():
+        raise HTTPException(status_code=400, detail="This visa still has payments - remove them, or move them to the right name, first.")
     M.log_action(db, user.id, "visa_file_delete", f"Visa file deleted: {v.person} - {kind_label(v.kind)}")
     db.delete(v); db.commit()
     return {"ok": True}
