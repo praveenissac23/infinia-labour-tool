@@ -274,7 +274,7 @@ select.fsub { height: 32px; width: 210px; border: 1px solid #D5D9DE; border-radi
 select.fsub { width: 190px; }
 
 /* ===== payment certificate sheet / item schedule (full screen) ===== */
-#big { position: fixed; inset: 0; z-index: 95; background: rgba(20,22,25,.45); }
+#big { position: fixed; inset: 0; z-index: 105; background: rgba(20,22,25,.45); }
 #big .bbox { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; }
 #big .mhead { background: #fff; gap: 8px; flex-wrap: wrap; }
 #big .mhead b { flex: 0 1 auto; }

@@ -536,11 +536,10 @@ def _m(v, dash=True):
 
 
 def _pc_ref(p, s, pc):
-    tag = (s.scope or s.trade or "Works").strip()
-    if len(tag) > 22:
-        tag = (s.trade or tag.split()[0]).strip()
+    words = re.findall(r"[A-Za-z]+", s.scope or "") or re.findall(r"[A-Za-z]+", s.trade or "") or ["Works"]
+    tag = words[0]                          # IC/910-PC05-Aluminium/26
     yy = (pc.issued or pc.certified_on or E.today()).strftime("%y")
-    return f"IC/{p.code}-PC{(pc.seq or 0):02d}-{re.sub(r'[^A-Za-z0-9&]+', '', tag.title()) or 'Works'}/{yy}"
+    return f"IC/{p.code}-PC{(pc.seq or 0):02d}-{tag.title() if tag.islower() else tag}/{yy}"
 
 
 def build_doc(db, pc):
@@ -594,8 +593,8 @@ def build_doc(db, pc):
         cx = calc[x.id]
         idx = pcs.index(x)
         before_ret = (pcs[idx - 1].ret_cum or 0) if idx else 0
-        hist.append({"name": f"PC {(x.seq or 0):02d}" + (" - Advance" if x.pc_type == "Advance" else ""), "period": _dt(x.measured_on or x.inv_date or x.received),
-                     "cert": _dt(x.issued or x.certified_on), "amount": cx["this"], "paid": r2(x.paid_amount), "vat": cx["vat"],
+        hist.append({"name": f"PC {(x.seq or 0):02d}" + (" - Advance" if x.pc_type == "Advance" else ""), "period": _dt(x.measured_on or x.inv_date or x.received) or "-",
+                     "cert": _dt(x.issued or x.certified_on) or "-", "amount": cx["this"], "paid": r2(x.paid_amount), "vat": cx["vat"],
                      "ret": r2((x.ret_cum or 0) - before_ret)})
     sup = sh["sub"]["sup"]
     inv_lines = []
@@ -675,6 +674,8 @@ def render_pdf(doc):
     from xml.sax.saxutils import escape as X
     import export_web
     RED = colors.HexColor("#B7322A")
+    HEAD = colors.HexColor("#F3F0EC")
+    INK2 = colors.HexColor("#2E3238")
     LINE = colors.HexColor("#C9CDD2")
     TINT = colors.HexColor("#F7F2F1")
     MUT = colors.HexColor("#5F656B")
@@ -682,6 +683,7 @@ def render_pdf(doc):
     stb = ParagraphStyle("bb", parent=st, fontName="Helvetica-Bold")
     sts = ParagraphStyle("s", parent=st, fontSize=6.8, leading=8.2)
     str_ = ParagraphStyle("r", parent=st, alignment=TA_RIGHT)
+    cap_st = ParagraphStyle("cap", parent=stb, keepWithNext=1, fontSize=8.4, leading=10.5)
     P = lambda t, s=st: Paragraph(X(str(t or "")).replace("\n", "<br/>"), s)
     buf = io.BytesIO()
     W, H = A4
@@ -808,17 +810,17 @@ def render_pdf(doc):
             sm.append(["", "TOTAL", _m(tc), f"{100 * tp / tc if tc else 0:.2f}%", f"{100 * (tcum - tp) / tc if tc else 0:.2f}%",
                        f"{100 * tcum / tc if tc else 0:.2f}%", _m(tp), _m(tcum - tp), _m(tcum)])
             t = Table(sm, colWidths=[14 * mm, lw - 14 * mm - 7 * 30 * mm] + [30 * mm] * 7, repeatRows=1)
-            t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), RED), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
                                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-            el += [Paragraph("<b>Summary</b>", stb), Spacer(1, 1.5 * mm), t, Spacer(1, 4 * mm)]
+            el += [Paragraph("<b>Summary</b>", cap_st), t, Spacer(1, 4 * mm)]
         cols = ["No", "Description", "Type", "Qty", "Unit", "Rate", "Contract amt", "Measured", "Area/Qty", "Deduction", "% done",
                 "Previous", "This PC", "Certified to date", "Remarks"]
         cw = [9, 0, 16, 11, 10, 17, 21, 17, 17, 17, 12, 20, 19, 22, 30]
         cw[1] = lw / mm - sum(cw)
         for b in doc["bills"]:
             data = [cols]
-            sty = [("FONTSIZE", (0, 0), (-1, -1), 6.9), ("BACKGROUND", (0, 0), (-1, 0), RED), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            sty = [("FONTSIZE", (0, 0), (-1, -1), 6.9), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                    ("ALIGN", (3, 1), (13, -1), "RIGHT"), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5), ("TOPPADDING", (0, 0), (-1, -1), 1.5)]
             sec = None
@@ -838,27 +840,28 @@ def render_pdf(doc):
             t = Table(data, colWidths=[x * mm for x in cw], repeatRows=1)
             t.setStyle(TableStyle(sty))
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
-            el += [Paragraph(f"<b>{X(cap)}</b>", stb), Spacer(1, 1.2 * mm), t, Spacer(1, 4 * mm)]
+            el += [Paragraph(f"<b>{X(cap)}</b>", cap_st), t, Spacer(1, 4 * mm)]
         tot = sum(b["cum"] for b in doc["bills"])
         el.append(Paragraph(f"<b>Total to date carried over to the Certificate page: AED {_m(tot, False)}</b>", stb))
-        el += [NextPageTemplate("P"), PageBreak()]
+        el.append(Spacer(1, 6 * mm))
+        tw = lw                     # B, C and the invoice carry on on the same wide pages - no half-empty page
     else:
         el += [PageBreak()]
     # Appendix B
-    el.append(Paragraph("<b>Appendix - B &nbsp; Previous Payments</b>", ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4)))
+    el.append(Paragraph("<b>Appendix - B &nbsp; Previous Payments</b>", ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
     hb = [["Sr", "Payment Certificate No.", "Period ending", "Certified on", "Certified (AED)", "Paid (AED)", "VAT (AED)", "Retention (AED)"]]
     for i, h in enumerate(doc["hist"], 1):
         hb.append([str(i), h["name"], h["period"], h["cert"], _m(h["amount"]), _m(h["paid"]), _m(h["vat"]), _m(h["ret"])])
     ht = doc["hist_total"]
     hb.append(["", "Total carried to the Certificate page", "", "", _m(ht["amount"]), _m(ht["paid"]), _m(ht["vat"]), _m(ht["ret"])])
     t = Table(hb, colWidths=[8 * mm, tw - 8 * mm - 6 * 22 * mm] + [22 * mm] * 6, repeatRows=1)
-    t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), RED), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+    t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
                            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold")]))
     el += [t, Spacer(1, 6 * mm)]
     # Appendix C
     if doc["deds"]:
-        el.append(Paragraph("<b>Appendix - C &nbsp; Deductions</b>", ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4)))
+        el.append(Paragraph("<b>Appendix - C &nbsp; Deductions</b>", ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
         for cat in DED_CATS:
             ds = [x for x in doc["deds"] if x["cat"] == cat]
             if not ds:
@@ -880,11 +883,12 @@ def render_pdf(doc):
     inv = doc["inv"]
     vb, vo = doc["verified"]
     if inv["ref"] or inv["lines"] or vb:
-        el.append(Paragraph("<b>Subcontractor's Invoice</b>", ParagraphStyle("h4", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4)))
+        el.append(Paragraph("<b>Subcontractor's Invoice</b>", ParagraphStyle("h4", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
         data = [["Invoice no.", inv["ref"], "Invoice date", inv["date"], "Received", inv["received"], "Amount (AED)", _m(inv["amount"])]]
         for x in inv["lines"]:
             data.append([P(x.get("d", ""), sts), "", "", "", "", "", "", _m(x.get("a", 0))])
-        t = Table(data, colWidths=[20 * mm, 30 * mm, 20 * mm, 22 * mm, 16 * mm, 22 * mm, 22 * mm, tw - 152 * mm])
+        fr = [.11, .17, .11, .13, .09, .13, .12, .14]
+        t = Table(data, colWidths=[tw * f for f in fr])
         sty = [("FONTSIZE", (0, 0), (-1, -1), 7.4), ("GRID", (0, 0), (-1, -1), .3, LINE), ("BACKGROUND", (0, 0), (-1, 0), TINT), ("ALIGN", (-1, 0), (-1, -1), "RIGHT")]
         for i in range(1, len(data)):
             sty.append(("SPAN", (0, i), (-2, i)))
@@ -917,9 +921,9 @@ def render_html(doc, pdf_url):
     cert = (sec("A", "ADD: VALUE OF WORK EXECUTED", a_lines, doc["A_total"] + doc["mos"], "Total Value of Work Executed") +
             sec("B", "ADD: ADVANCE PAYMENT", doc["B"]) + sec("C", "LESS: DEDUCTIONS", doc["C"], doc["C_total"], "Total Deductions") +
             sec("D", "ADD: ADDITIONS", doc["D"]) + sec("E", "LESS: PREVIOUSLY CERTIFIED AMOUNT", doc["E"] or [("Previously certified", 0)], doc["E_total"], "Total Previously Certified Amounts") +
-            f"<tr class='b top'><td></td><td>Net Amount Due for Payment (A + B - C + D - E)</td><td></td><td class=r>{_m(doc['net'], False)}</td></tr>"
-            f"<tr class=b><td></td><td>VAT ({doc['vat_pct']:g}%)</td><td></td><td class=r>{_m(doc['vat'], False)}</td></tr>"
-            f"<tr class='b pay'><td></td><td>Total Amount Due for Payment</td><td></td><td class=r>AED {_m(doc['payable'], False)}</td></tr>")
+            f"<tr class='b netrow'><td></td><td colspan=2>Net Amount Due for Payment (A + B - C + D - E)</td><td class=r>{_m(doc['net'], False)}</td></tr>"
+            f"<tr class=b><td></td><td colspan=2>VAT ({doc['vat_pct']:g}%)</td><td class=r>{_m(doc['vat'], False)}</td></tr>"
+            f"<tr class='b pay'><td></td><td colspan=2>Total Amount Due for Payment</td><td class=r>AED {_m(doc['payable'], False)}</td></tr>")
     sig = "".join(f"<div><b>{e(a)}</b><br>Name: {e(n)}<br>Date: {_dt(o)}<br><span class=m>{'signed in the portal' if n else 'Sign:'}</span></div>" for a, n, o in doc["sign"])
     if doc["bills"]:
         ae = "<section class='pg wide'><h2>Appendix - A &nbsp; Value of Work done &amp; Variations</h2>"
@@ -946,7 +950,7 @@ def render_html(doc, pdf_url):
                        f"<td class=r>{_m(-ln['deduct']) if ln.get('deduct') else '-'}</td><td class=r>{_pct_txt(r)}</td><td class=r>{_m(r['prev'])}</td>"
                        f"<td class=r>{_m(r['amount'] - r['prev'])}</td><td class=r><b>{_m(r['amount'])}</b></td><td class=s>{e(ln.get('remark', ''))}</td></tr>")
             ae += f"<tr class=b><td></td><td>Total</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
-        ae += f"<p class=b>Total to date carried over to the Certificate page: AED {_m(sum(b['cum'] for b in doc['bills']), False)}</p></section>"
+        ae += f"<p class=b>Total to date carried over to the Certificate page: AED {_m(sum(b['cum'] for b in doc['bills']), False)}</p>"
     hb = "".join(f"<tr><td>{i}</td><td>{e(h['name'])}</td><td>{e(h['period'])}</td><td>{e(h['cert'])}</td><td class=r>{_m(h['amount'])}</td><td class=r>{_m(h['paid'])}</td><td class=r>{_m(h['vat'])}</td><td class=r>{_m(h['ret'])}</td></tr>" for i, h in enumerate(doc["hist"], 1))
     ht = doc["hist_total"]
     appb = (f"<h2>Appendix - B &nbsp; Previous Payments</h2><table class=t><tr><th>Sr</th><th>Payment Certificate No.</th><th>Period ending</th><th>Certified on</th><th>Certified</th><th>Paid</th><th>VAT</th><th>Retention</th></tr>{hb}"
@@ -970,7 +974,7 @@ def render_html(doc, pdf_url):
     appd = ""
     if inv["ref"] or inv["lines"] or vb:
         il = "".join(f"<tr><td colspan=7>{e(x.get('d'))}</td><td class=r>{_m(x.get('a', 0))}</td></tr>" for x in inv["lines"])
-        appd = (f"<h2>Subcontractor's Invoice</h2><table class=t><tr><th>Invoice no.</th><td>{e(inv['ref'])}</td><th>Invoice date</th><td>{e(inv['date'])}</td><th>Received</th><td>{e(inv['received'])}</td><th>Amount</th><td class=r>{_m(inv['amount'])}</td></tr>{il}</table>"
+        appd = (f"<h2>Subcontractor's Invoice</h2><table class=kvt><tr><th>Invoice no.</th><td>{e(inv['ref'])}</td><th>Invoice date</th><td>{e(inv['date'])}</td><th>Received</th><td>{e(inv['received'])}</td><th>Amount</th><td class=r>{_m(inv['amount'])}</td></tr>{il}</table>"
                 f"<p>Verified at site: {('<b>' + e(vb) + '</b> on ' + _dt(vo)) if vb else 'not yet'}</p>")
     logo = export_web.logo_data_uri()
     terms = (("Contract: " + doc["contract_type"] + "<br>") if doc["contract_type"] else "") + e(doc["pay_terms"]).replace("\n", "<br>")
@@ -981,7 +985,8 @@ def render_html(doc, pdf_url):
 body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#ECEAE6;margin:0;color:#22262A;font-size:12px}}
 .bar{{position:sticky;top:0;z-index:5;background:#22262A;color:#fff;padding:9px 14px;display:flex;gap:8px;align-items:center}}
 .bar b{{flex:1;font-size:13px}} .bar a,.bar button{{background:#C0392B;color:#fff;border:0;border-radius:6px;padding:7px 12px;font-weight:600;text-decoration:none;font-size:13px;cursor:pointer}}
-.pg{{background:#fff;max-width:800px;margin:14px auto;padding:22px 26px;box-shadow:0 2px 10px rgba(0,0,0,.08);border-top:4px solid #B7322A}}
+.pg{{background:#fff;max-width:800px;margin:14px auto;padding:22px 26px;box-shadow:0 2px 10px rgba(0,0,0,.08);border-top:3px solid #B7322A}}
+.kvt{{border:1px solid #DDE0E3;margin-bottom:6px}} .kvt th{{background:#F7F5F3;text-align:left;padding:5px 8px;font-size:11px;color:#3E434A;white-space:nowrap}} .kvt td{{padding:5px 8px;border-left:1px solid #EEE}}
 .pg.wide{{max-width:1180px}} .top{{display:flex;justify-content:space-between;align-items:flex-start}} .top img{{height:44px}}
 .ref{{text-align:right;font-weight:700}} .ref span{{display:block;color:#6B7178;font-weight:400;font-size:11px}}
 h1{{text-align:center;font-size:17px;margin:8px 0 10px;letter-spacing:.5px}} h2{{font-size:14px;margin:6px 0 8px}} h3{{font-size:12.5px;margin:12px 0 5px}}
@@ -989,11 +994,11 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .two{{display:grid;grid-template-columns:1fr 1fr;border:1px solid #C9CDD2;margin-bottom:8px}} .two>div{{padding:6px 8px}} .two>div+div{{border-left:1px solid #C9CDD2}} .two b{{display:block;background:#F7F2F1;margin:-6px -8px 4px;padding:4px 8px}}
 .ctr{{display:grid;grid-template-columns:300px 1fr;border:1px solid #C9CDD2;margin-bottom:8px}} .ctr>div{{padding:6px 8px}} .ctr>div+div{{border-left:1px solid #C9CDD2;font-size:11px}}
 .ctr th{{text-align:left;padding:2px 8px 2px 0;white-space:nowrap}} .ctr td{{padding:2px 0}}
-.ce{{border:1px solid #C9CDD2}} .ce td{{padding:3px 6px}} .ce .sh td{{background:#F7F2F1;font-weight:700}} .ce .b td{{font-weight:700}} .ce .top td{{border-top:1.5px solid #222}} .ce .pay td{{background:#FDF0EE;font-size:13px}}
+.ce{{border:1px solid #C9CDD2}} .ce td{{padding:3px 6px}} .ce .sh td{{background:#F7F2F1;font-weight:700}} .ce .b td{{font-weight:700}} .ce .netrow td{{border-top:1.5px solid #222}} .ce{{table-layout:fixed}} .ce .pay td{{background:#FDF0EE;font-size:13px}}
 .r{{text-align:right;white-space:nowrap}} .c{{text-align:center;white-space:nowrap}}
 .sig{{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #C9CDD2;margin-top:10px}} .sig div{{padding:6px;border-left:1px solid #C9CDD2;line-height:1.5}} .sig div:first-child{{border-left:0}}
 .m{{color:#6B7178;font-size:10.5px}} .tw{{overflow-x:auto}}
-.t{{font-size:11px;margin-bottom:6px}} .t th{{background:#B7322A;color:#fff;padding:4px 5px;font-weight:600;text-align:left;white-space:nowrap}} .t td{{border:1px solid #DDE0E3;padding:3px 5px;vertical-align:top}}
+.t{{font-size:11px;margin-bottom:6px}} .t th{{background:#F7F5F3;color:#3E434A;padding:5px 6px;font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase;text-align:left;white-space:nowrap;border-bottom:1.5px solid #B7322A}} .t td{{border:1px solid #DDE0E3;padding:3px 5px;vertical-align:top}}
 .t .sh td{{background:#F7F2F1;font-weight:700}} .t .b td,p.b{{font-weight:700}} .t td.d{{min-width:220px}} .t td.s{{font-size:10px;color:#555;min-width:90px}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
 @media (max-width:700px){{.pg{{padding:12px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}}}}
@@ -1004,8 +1009,8 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 <table class="hd"><tr><td style="width:62%;vertical-align:top;padding:0"><table>{rows(doc['head_l'])}</table></td><td style="vertical-align:top;padding:0"><table>{rows(doc['head_r'])}</table></td></tr></table>
 <div class="two"><div><b>Main Contractor Details</b>{'<br>'.join(e(x) for x in doc['main'])}</div><div><b>Subcontractor Details</b>{'<br>'.join(e(x) for x in doc['subc'])}</div></div>
 <div class="ctr"><div><table>{''.join(f'<tr><th>{e(k)}</th><td>{e(v)}</td></tr>' for k, v in doc['contract'] if k and v)}</table></div><div><b>Payment Terms</b><br>{terms}</div></div>
-<table class="ce"><colgroup><col style="width:26px"><col><col style="width:110px"><col style="width:140px"></colgroup>{cert}</table><div class="sig">{sig}</div></section>
-{ae}<section class="pg">{appb}{appc}{appd}</section></body></html>"""
+<table class="ce"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:140px"></colgroup>{cert}</table><div class="sig">{sig}</div></section>
+{(ae + '<div style="height:14px"></div>' + appb + appc + appd + '</section>') if ae else ('<section class="pg">' + appb + appc + appd + '</section>')}</body></html>"""
 
 
 @router.get("/export/est/pc/{pc_id}")
