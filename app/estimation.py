@@ -1733,7 +1733,7 @@ def _export_rows(db, what, p, q, status, sub_id):
         for x in b["boq"]:
             r = {"Bill": x.get("bill") or "", "Section": x["section"], "Item": x["code"], "Description": x["description"], "Unit": x["unit"], "Qty": x["qty"],
                  "Rate": x["rate"], "Amount": x["counted"], "Cost rate": x["cost_rate"], "Budget cost": x["cost"],
-                 "Margin": r2(x["counted"] - x["cost"]), "Done %": x["done_pct"],
+                 "Margin": r2(x["counted"] - x["cost"]) if x["cost_rate"] else "", "Done %": x["done_pct"],
                  "Remark": " - ".join(t for t in (x.get("scope") or "", x.get("remark") or "", f"not counted ({x['amount']:,.2f})" if x.get("scope") else "") if t)}
             if keep(r):
                 rows.append(r)

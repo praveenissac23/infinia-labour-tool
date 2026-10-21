@@ -8681,10 +8681,27 @@ _PREVIEW_JS = r"""
     body.sort((a, b) => { const x = val(a), y = val(b); if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1;
       const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true }); return sort.dir === "asc" ? c : -c; });
     body.forEach(r => tb.appendChild(r)); tot.forEach(r => tb.appendChild(r));
+    once();
     // A serial number counts the order on screen.
     const sr = order().findIndex(c => /^(sr|sr no|s no|sl|sl no|no|#)$/i.test(c.trim().replace(/\./g, "")));
     if (sr >= 0) body.forEach((r, i) => { r.cells[sr].textContent = i + 1; r.cells[sr].dataset.s = i + 1; });
   }
+  // Bill, Section, Site ...: written once at the top of its run, not on every line.
+  function once() {
+    const g = []; for (const [i, th] of ths().entries()) { if (th.dataset.grp) g.push(i); else break; }
+    let prev = null;
+    for (const r of table.tBodies[0].rows) {
+      if (r.classList.contains("tot")) continue;
+      let same = !!prev; r.classList.remove("gstart");
+      for (const td of r.cells) if (td.dataset.v !== undefined) { td.textContent = td.dataset.v; td.classList.remove("g"); }
+      g.forEach((i, n) => { const td = r.cells[i], v = td.dataset.v;
+        same = same && prev.cells[i].dataset.v === v;
+        if (same || v === "-" || v === "") td.textContent = ""; else td.classList.add("g");
+        if (n === 0 && prev && prev.cells[i].dataset.v !== v) r.classList.add("gstart"); });
+      prev = r;
+    }
+  }
+  once();
   let drag = null;
   ths().forEach(th => {
     th.addEventListener("click", () => { if (drag && drag.moved) return; sort = { col: th.dataset.col, dir: sort.col === th.dataset.col && sort.dir === "asc" ? "desc" : "asc" }; applySort(); links(); });
@@ -8692,14 +8709,14 @@ _PREVIEW_JS = r"""
     th.addEventListener("dragend", () => { th.classList.remove("dragging"); ths().forEach(t => t.classList.remove("drop-l", "drop-r")); setTimeout(() => { drag = null; }, 0); });
     th.addEventListener("dragover", e => { if (!drag) return; e.preventDefault(); const r = th.getBoundingClientRect(); const right = e.clientX > r.left + r.width / 2; ths().forEach(t => t.classList.remove("drop-l", "drop-r")); th.classList.add(right ? "drop-r" : "drop-l"); });
     th.addEventListener("drop", e => { if (!drag) return; e.preventDefault(); const r = th.getBoundingClientRect(); const right = e.clientX > r.left + r.width / 2;
-      let to = order().indexOf(th.dataset.col); if (right) to += 1; if (to > drag.from) to -= 1; moveCol(drag.from, to); drag.moved = true; links(); });
+      let to = order().indexOf(th.dataset.col); if (right) to += 1; if (to > drag.from) to -= 1; moveCol(drag.from, to); drag.moved = true; once(); links(); });
   });
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "null");
     if (saved && Array.isArray(saved.cols)) {
       saved.cols.forEach((c, i) => { const at = order().indexOf(c); if (at >= 0 && at !== i && i < order().length) moveCol(at, i); });
       if (saved.sort && saved.sort.col) { sort = saved.sort; applySort(); }
-      links();
+      once(); links();
     }
   } catch (e) {}
 })();
@@ -8734,7 +8751,9 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     # is not crushed beside an inch of white space under "Unit".
     fracs = export_web.col_fractions(rows, cols, money_cols, total_cols)
     cgroup = "".join(f'<col style="width:{f * 100:.2f}%">' for f in fracs)
-    head = "".join(f'<th class="{klass[aligns[c]]}" data-col="{escape(c)}" draggable="true" title="Click to sort, drag to move">'
+    gset = set(export_web.repeat_cols(rows, cols, money_cols))
+    grp_attr = ' data-grp="1"'
+    head = "".join(f'<th class="{klass[aligns[c]]}" data-col="{escape(c)}"{grp_attr if c in gset else ""} draggable="true" title="Click to sort, drag to move">'
                    f'<span class="lbl">{escape(export_web._store_label(c))}</span><span class="arr"></span></th>' for c in cols)
 
     def raw(v):
@@ -8763,7 +8782,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
 
     body = "".join(
         "<tr>" + "".join(
-            f'<td class="{klass[aligns[c]]}" data-s="{escape(raw(r.get(c)))}">'
+            f'<td class="{klass[aligns[c]]}" data-s="{escape(raw(r.get(c)))}"'
+            + (f' data-v="{escape(show(c, r.get(c)))}"' if c in gset else "") + '>'
             + escape(show(c, r.get(c))).replace("\n", "<br>")
             + "</td>" for c in cols) + "</tr>"
         for r in rows)
@@ -8843,6 +8863,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   th.r, td.r {{ text-align:right; }}
   tbody tr:nth-child(even) td {{ background:#F7F7F7; }}
   tr.tot td {{ background:#{export_web.GREEN_FILL} !important; font-weight:bold; }}
+  td.g {{ font-weight:bold; }}
+  tr.gstart td {{ border-top:1.2px solid #999999; }}
   .none {{ padding:26px; color:#777; font-size:13px; text-align:center; }}
   @media print {{
     body {{ background:white; }} .bar {{ display:none; }}

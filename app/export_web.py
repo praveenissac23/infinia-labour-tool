@@ -513,6 +513,9 @@ def col_fractions(rows, cols, money_cols=None, total_cols=None):
             totals_row[cols[0]] = "TOTAL"
     CELL, HEAD, PAD, CAP = 8.5, 8.0, 13.0, 230.0
     need, prose = [], []
+    # A group column (Bill, Section ...) is written once per group, so it may wrap: it gets
+    # a narrow column and the description beside it gets the room.
+    gcols = set(repeat_cols(rows, cols, money_cols)) if rows else set()
     for c in cols:
         cell_w = stringWidth(totals_row.get(c, ""), "Helvetica-Bold", CELL)
         for r in rows:
@@ -522,9 +525,9 @@ def col_fractions(rows, cols, money_cols=None, total_cols=None):
                     cell_w = max(cell_w, stringWidth(line, "Helvetica", CELL))
         # A heading wraps happily, so only its longest word must fit.
         head_w = max((stringWidth(w, "Helvetica-Bold", HEAD) for w in _store_label(c).split()), default=20)
-        p = _is_prose(c, rows)
+        p = _is_prose(c, rows) or c in gcols
         prose.append(p)
-        need.append(max(min(cell_w, CAP), head_w, 14.0) + PAD)
+        need.append(max(min(cell_w, 95.0 if c in gcols else CAP), head_w, 14.0) + PAD)
     # The page this report prints on, less margins.
     page = (281.0 if choose_orientation(rows, cols) == "landscape" else 194.0) * 72 / 25.4
     fixed = sum(n for n, p in zip(need, prose) if not p)
@@ -1630,6 +1633,44 @@ def _sort_key(v):
         return (0, 1, t.lower())
 
 
+def repeat_cols(rows, cols=None, money_cols=None):
+    """The leading columns that only group the lines (Bill, Section, Site ...): text that repeats
+    down the page. Each is printed once, at the top of its run, rather than on every line."""
+    if len(rows) < 4:
+        return []
+    cols = cols or list(rows[0].keys())
+    money = set(money_cols or [])
+    out = []
+    for c in cols[:3]:
+        vals = [r.get(c) for r in rows]
+        if c in money or any(isinstance(v, (int, float, bool, dict)) for v in vals if v not in (None, "")):
+            break
+        if any(isinstance(v, str) and (_looks_like_date(v) or "\n" in v) for v in vals):
+            break
+        same = sum(1 for a, b in zip(vals, vals[1:]) if b not in (None, "") and a == b)
+        if same < 0.3 * (len(vals) - 1):
+            break
+        out.append(c)
+    return out
+
+
+def shown_once(rows, gcols):
+    """For each line, the group columns to leave blank (same as the line above, under the same
+    parent) and whether a new group starts on it."""
+    hide, start = [], []
+    prev = None
+    for r in rows:
+        h, same_so_far = set(), prev is not None
+        for c in gcols:
+            same_so_far = same_so_far and r.get(c) == prev.get(c)
+            if same_so_far or r.get(c) in (None, "", "-"):
+                h.add(c)
+        hide.append(h)
+        start.append(prev is not None and bool(gcols) and r.get(gcols[0]) != prev.get(gcols[0]))
+        prev = r
+    return hide, start
+
+
 def apply_view_prefs(rows):
     """Rows re-arranged and sorted as the preview was, when the download
     link says so; untouched otherwise."""
@@ -1714,9 +1755,14 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
 
     numeric_totals = {k: 0 for k in cols
                       if (k in set(total_cols) if total_cols is not None else money_like(k))}
-    for row in rows:
+    gcols = repeat_cols(rows, cols, money_cols)
+    hide, starts = shown_once(rows, gcols)
+    grp_top = Border(left=thin, right=thin, bottom=thin, top=Side(style="thin", color="999999"))
+    for ri, row in enumerate(rows):
         for i, k in enumerate(cols, start=1):
             v = row.get(k, "")
+            if k in hide[ri]:
+                v = ""          # shown once, at the top of its group
             if isinstance(v, dict):
                 # Site breakdowns are counts: "704: 380", never "704: 380.0".
                 v = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items()) or "-"
@@ -1735,8 +1781,8 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             if as_text_amount:
                 v = float(v.replace(",", ""))
             c = ws.cell(row=r, column=i, value=v)
-            c.border = border
-            c.font = Font(size=10)
+            c.border = grp_top if starts[ri] else border
+            c.font = Font(size=10, bold=k in gcols)
             if is_date:
                 c.number_format = "dd mmm yyyy"
                 c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
@@ -1851,11 +1897,24 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
     # Which columns add up at the foot: the money ones unless the caller
     # says otherwise (a payroll report totals its days and hours too).
     totals = {k: 0 for k in cols if (k in set(total_cols) if total_cols is not None else money_like(k))}
-    for row in rows:
+    gcols = repeat_cols(rows, cols, money_cols)
+    hide, starts = shown_once(rows, gcols)
+    again = {}
+    for ri, row in enumerate(rows):
         line = []
         for k in cols:
             v = row.get(k, "")
             sty = pick[aligns[k]]
+            if k in hide[ri]:
+                line.append(Paragraph("", sty))      # shown once, at the top of its group
+                if isinstance(v, (int, float)) and k in totals:
+                    totals[k] += v
+                if v not in (None, "", "-"):        # ... and again at the top of a new page
+                    again.setdefault(ri, {})[len(line) - 1] = Paragraph(f"<b>{_esc(str(v))}</b>", sty)
+                continue
+            if k in gcols:
+                line.append(Paragraph(f"<b>{_esc(str(v))}</b>", sty))
+                continue
             if isinstance(v, dict):
                 # Site breakdowns are counts: "704: 380", never "704: 380.0".
                 v = ", ".join(f"{a}: {_clean_qty(b)}" for a, b in v.items()) or "-"
@@ -1880,7 +1939,21 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
                                pick[aligns[k]])
                      for i, k in enumerate(cols)])
 
-    tbl = Table(data, repeatRows=1,
+    by_cell = {id(data[ri + 1][0]): cells for ri, cells in again.items()}
+
+    class GroupTable(Table):
+        """A page that starts inside a group shows the group's name again on its first line."""
+        def split(self, availWidth, availHeight):
+            parts = Table.split(self, availWidth, availHeight)
+            for t in parts[1:]:
+                if len(t._cellvalues) > 1:
+                    row = t._cellvalues[1]
+                    first = row[0][0] if isinstance(row[0], tuple) and row[0] else row[0]
+                    for ci, para in by_cell.get(id(first), {}).items():
+                        row[ci] = type(row[ci])((para,)) if isinstance(row[ci], tuple) else para
+            return parts
+
+    tbl = (GroupTable if by_cell else Table)(data, repeatRows=1,
                 colWidths=[doc.width * f for f in col_fractions(rows, cols, money_cols, total_cols)])
     style = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BRAND_RED)),
              ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CCCCCC")),
@@ -1891,6 +1964,9 @@ def build_store_report_pdf(title, rows, subtitle="", orientation=None, money_col
               [colors.white, colors.HexColor("#F7F7F7")])]
     if totals:
         style.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#" + GREEN_FILL)))
+    for ri, st_ in enumerate(starts):        # a line between groups
+        if st_:
+            style.append(("LINEABOVE", (0, ri + 1), (-1, ri + 1), 0.9, colors.HexColor("#999999")))
     tbl.setStyle(TableStyle(style))
     el.append(tbl)
     doc.build(el, onFirstPage=_draw_logo_on_page, onLaterPages=_draw_logo_on_page); buf.seek(0); return buf
