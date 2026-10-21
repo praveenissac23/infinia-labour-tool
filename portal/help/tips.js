@@ -48,7 +48,7 @@
     if (!window.HEAD_TIPS) return;
     root.querySelectorAll("th").forEach(th => {
       if (th.dataset.helpI || th.querySelector(".help-i")) return;
-      const lbl = th.querySelector(".lbl") || th;
+      const lbl = th.querySelector(".lbl, .hw") || th;
       const t = headTip(th, lbl.textContent);
       th.dataset.helpI = "1";
       if (!t) return;
@@ -69,7 +69,6 @@
     });
   }
   function run(root) {
-    try { heads(root); } catch (e) {}
     const t = window.HELP_TIPS || {};
     for (const sel in t) { try { root.querySelectorAll(sel).forEach(el => put(el, t[sel])); } catch (e) {} }
     root.querySelectorAll("input[title], select[title], textarea[title], input[data-tip], select[data-tip], textarea[data-tip]").forEach(el => {
@@ -79,6 +78,7 @@
       el.removeAttribute("title");              // one explanation, not two
       put(el, text);
     });
+    try { heads(root); } catch (e) {}      // after the box notes, so a box never gets two
   }
   // One shared note box, placed under (or above) the (i) and kept inside
   // the window on every side.
