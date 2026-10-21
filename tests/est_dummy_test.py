@@ -23,7 +23,7 @@ D.clear(db)
 for m in reversed(E.TABLES):
     if m is not E.EstProject and m is not E.EstVariation:
         db.query(m).delete()
-db.query(models.Setting).filter(models.Setting.key == D.DONE_KEY).delete()
+db.query(models.Setting).filter(models.Setting.key.in_([D.DONE_KEY, D.V2_KEY])).delete(synchronize_session=False)
 db.commit()
 projects = db.query(E.EstProject).order_by(E.EstProject.code).all()
 ck("27 projects to work on", len(projects) == 27, len(projects))
@@ -35,6 +35,9 @@ db.add(real_sub); db.commit()
 before = {m.__tablename__: db.query(m).count() for m in E.TABLES}
 real_appr = db.query(E.EstLog).filter_by(project_id=P1.id, kind="approval").count()
 vars_before = db.query(E.EstVariation).count()
+with_log = {x[0] for x in db.query(E.EstVariation.project_id).distinct().all()}
+appr_before = sorted((a.id, a.status, a.sent) for a in db.query(E.EstLog).filter_by(project_id=P1.id, kind="approval"))
+fin_before = sorted((f.id, f.st, f.sc) for f in db.query(E.EstFinal).filter_by(project_id=P1.id))
 
 D.MODE = "on"
 D.run(SessionLocal)
@@ -42,10 +45,15 @@ db.expire_all()
 n = db.query(D.EstDummy).count()
 ck("dummy rows put in and every one written down", n > 1000 and db.query(models.Setting).filter_by(key=D.DONE_KEY).first() is not None, n)
 ck("nothing added to a project that already had subcontracts", db.query(E.EstSub).filter_by(project_id=P2.id).count() == 1)
-ck("the real approvals on project 1 untouched (no dummy approvals added there)", db.query(E.EstLog).filter_by(project_id=P1.id, kind="approval").count() == real_appr)
-ck("client variation logs untouched", db.query(E.EstVariation).count() == vars_before)
+ck("project 1's unfilled approvals list: no rows added, statuses filled", db.query(E.EstLog).filter_by(project_id=P1.id, kind="approval").count() == real_appr
+   and db.query(E.EstLog).filter(E.EstLog.project_id == P1.id, E.EstLog.kind == "approval", E.EstLog.status == "Approved").count() > 0)
+ck("project 1's empty finalization log filled", db.query(E.EstFinal).filter(E.EstFinal.project_id == P1.id, E.EstFinal.st == "✔").count() > 0)
+ck("real variation logs untouched; the other projects got one", all(db.query(E.EstVariation).filter_by(project_id=pid).count() == db.query(E.EstVariation).filter_by(project_id=pid).count() for pid in with_log)
+   and all(db.query(E.EstVariation).filter_by(project_id=p.id).count() == 9 for p in projects if p.id not in with_log))
 ck("every other project got 3 dummy subcontracts", all(db.query(E.EstSub).filter_by(project_id=p.id).count() == 3 for p in projects[2:]))
-ck("dummy subcontractors are marked (dummy)", all("(dummy)" in s.name for s in db.query(E.EstSub).filter(E.EstSub.id != real_sub.id).all()))
+ck("no 'dummy' written anywhere", not any("dummy" in (x.name or "").lower() for x in db.query(E.EstSub).all())
+   and not any("dummy" in str(v).lower() for p_ in db.query(E.EstSubPC).all() for v in (p_.prep_by, p_.remarks, p_.paid_ref, p_.verified_by))
+   and not any("dummy" in (b.description or "").lower() for b in db.query(E.EstBoq).all()))
 st = {x[0] for x in db.query(E.EstSubPC.status).distinct().all()}
 ck("certificates at every step (received, at site, certified, with Accounts, paid)", {"Received", "At site", "Certified", "With Accounts", "Paid"} <= st, st)
 ck("item schedules, sheet lines and deductions in", db.query(S.EstSubItem).count() and db.query(S.EstPCLine).count() and db.query(S.EstPCDeduct).count())
@@ -80,7 +88,10 @@ D.run(SessionLocal)
 db.expire_all()
 after = {m.__tablename__: db.query(m).count() for m in E.TABLES}
 ck("reverse: the register is empty and the switch reset", db.query(D.EstDummy).count() == 0 and db.query(models.Setting).filter_by(key=D.DONE_KEY).first() is None)
-ck("reverse: no dummy subcontract left", db.query(E.EstSub).filter(E.EstSub.name.like("%(dummy)%")).count() == 0)
+ck("reverse: no test subcontract left", db.query(E.EstSub).count() == 2)
+ck("reverse: project 1's approvals and finalization back exactly as they were",
+   sorted((a.id, a.status, a.sent) for a in db.query(E.EstLog).filter_by(project_id=P1.id, kind="approval")) == appr_before
+   and sorted((f.id, f.st, f.sc) for f in db.query(E.EstFinal).filter_by(project_id=P1.id)) == fin_before)
 ck("reverse: the certificate made on a dummy subcontract went with it", db.get(E.EstSubPC, user_pc) is None and db.query(S.EstPCLine).filter_by(pc_id=user_pc).count() == 0)
 ck("reverse: the real finalization line stays, just unlinked", db.get(E.EstFinal, fin.id) is not None and db.get(E.EstFinal, fin.id).sub_id is None)
 ck("reverse: the real subcontract and the one made while testing stay", db.query(E.EstSub).filter(E.EstSub.name.in_(["REAL SUB LLC", "USER TEST SUB"])).count() == 2)
@@ -92,6 +103,20 @@ D.MODE = "on"
 D.run(SessionLocal)
 db.expire_all()
 ck("it can be put in again afterwards", db.query(D.EstDummy).count() > 1000)
+
+# ---- the live case: the first round is in (with "(dummy)" in names), then this version starts ----
+D.MODE = "off"; D.run(SessionLocal); D.MODE = "on"; D.run(SessionLocal); db.expire_all()
+s0 = db.query(E.EstSub).filter(E.EstSub.name.like("Glassline%")).first(); s0.name = s0.name + " (dummy)"
+p0 = db.query(E.EstSubPC).filter(E.EstSubPC.prep_by == "Arathi.S").first(); p0.prep_by = "QS (dummy)"
+for v in db.query(E.EstVariation).filter(E.EstVariation.project_id.notin_(with_log)).all():
+    db.delete(v)
+db.query(D.EstDummy).filter_by(tbl="est_variations").delete()
+db.query(models.Setting).filter_by(key=D.V2_KEY).delete(); db.commit()
+D.run(SessionLocal); db.expire_all()
+ck("upgrade: '(dummy)' taken out of names, people on the sign-offs", "dummy" not in db.get(E.EstSub, s0.id).name and db.get(E.EstSubPC, p0.id).prep_by == "Arathi.S")
+ck("upgrade: the tabs still empty got filled (variation logs)", all(db.query(E.EstVariation).filter_by(project_id=p.id).count() == 9 for p in projects if p.id not in with_log))
+D.MODE = "off"; D.run(SessionLocal); db.expire_all()
+ck("and it all reverses", db.query(D.EstDummy).count() == 0 and db.query(E.EstVariation).count() == vars_before and db.query(E.EstSub).count() == 2)
 
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)
