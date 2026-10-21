@@ -19406,7 +19406,12 @@ async function rcOpen(then) {
   if (typeof then === "function") then();
 }
 async function rcLoad() {
-  try { RC = await apiCall("/employees/accounts/receipts"); } catch (e) { showStatus("rc-status", "err", errText(e)); return; }
+  try { RC = await apiCall("/employees/accounts/receipts"); }
+  catch (e) {
+    // A 404 here means the server is still running the version before Receipts: the page is new, the server is not.
+    showStatus("rc-status", "err", e && e.status === 404 ? "Receipts are not on the server yet - the app needs a restart after the update (sudo systemctl restart infinia). Nothing is lost." : errText(e));
+    return;
+  }
   const co = document.getElementById("rc-co"), was = co.value;
   co.innerHTML = RC.companies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
   const main = RC.companies.find(c => /INFINIA CONTRACTING/i.test(c.name) && !/PRIME/i.test(c.name));
