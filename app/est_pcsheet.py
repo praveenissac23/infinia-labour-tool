@@ -24,7 +24,7 @@ import json
 import re
 from datetime import date
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import Boolean, Column, Date, Float, Integer, String, Text
 from sqlalchemy.orm import Session
@@ -115,8 +115,9 @@ def line_amount(it, ln):
     if ln is None:
         return 0.0
     ded = ln.deduct or 0
-    if it.measure == "qty":
-        return r2((ln.qty or 0) * (it.rate or 0) - ded)
+    if it.measure == "qty":            # quantity x rate; a stage % (70% = first coat done) when given
+        stage = (ln.pct or 0) / 100.0 if (ln.pct or 0) else 1.0
+        return r2((ln.qty or 0) * (it.rate or 0) * stage - ded)
     return r2(((it.amount or 0) - ded) * (ln.pct or 0) / 100.0)
 
 
@@ -306,6 +307,57 @@ def paste_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db),
     refresh_sub(db, sid)
     db.commit()
     return {"added": len(rows), "total": r2(sum(x["amount"] for x in rows))}
+
+
+@router.post("/store/est/subs/{sid}/items/import")
+async def import_items(sid: int, file: UploadFile = File(...), save: int = Form(0), mode: str = Form("replace"),
+                       db: Session = Depends(get_db), user: models.User = VIEW):
+    """The item schedule out of an Excel workbook - the agreement BOQ or any payment certificate
+    (Appendix A / Bill sheets). Read in memory, never stored. The first call shows every line and
+    checks each sheet against its own total row; save=1 puts the lines in (mode replace | add)."""
+    import est_itemimport
+    s = E._sub_of(db, sid)
+    data = await file.read()
+    if len(data) > E.MAX_FILE:
+        raise HTTPException(413, "That file is over 25 MB.")
+    if data[:2] != b"PK":
+        raise HTTPException(400, "That is not an Excel workbook (.xlsx). Save it as .xlsx and upload it again.")
+    try:
+        r = est_itemimport.read_schedule(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        raise HTTPException(400, "That workbook could not be read. Upload the agreement BOQ or a payment certificate as .xlsx.")
+    have = db.query(EstSubItem).filter(EstSubItem.sub_id == sid).order_by(EstSubItem.sort, EstSubItem.id).all()
+    used = {x[0] for x in db.query(EstPCLine.item_id).filter(EstPCLine.item_id.in_([i.id for i in have] or [-1])).all()}
+    out = {k: r[k] for k in ("sheets", "notes", "contract", "certified", "all_checked")}
+    out.update({"lines": len(r["items"]), "existing": len(have), "used": len(used), "value": r2(s.value or 0), "file": file.filename or "",
+                "items": [{k: x[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "measure",
+                                            "words", "done_pct", "done_qty", "certified", "rate_missing")} for x in r["items"]]})
+    if not save:
+        return out
+    if mode not in ("replace", "add"):
+        raise HTTPException(400, "Replace or add?")
+    if mode == "replace" and have:
+        if used:
+            raise HTTPException(400, f"{len(used)} line(s) of the present schedule are already on certificates - they can't be replaced. "
+                                     "Add these lines instead, or change the schedule on Edit schedule.")
+        for i in have:
+            db.delete(i)
+        db.flush()
+        base = 0
+    else:
+        base = max([i.sort or 0 for i in have] or [0])
+    for n, x in enumerate(r["items"], 1):
+        it = EstSubItem(sub_id=sid, sort=base + n, bill=x["bill"][:20], bill_title=x["bill_title"][:120], section=x["section"][:200], no=x["no"][:20],
+                        description=x["description"], ref=x["words"][:120], qty=x["qty"], unit=x["unit"][:20], rate=x["rate"], amount=x["amount"],
+                        measure=x["measure"], is_var=False, created_by=user.id)
+        db.add(it)
+    db.flush()
+    refresh_sub(db, sid)
+    db.commit()
+    out.update({"saved": len(r["items"]), "mode": mode})
+    return out
 
 
 @router.put("/store/est/subs/{sid}/items")
@@ -657,7 +709,7 @@ def _cell_measure(r):
 def _pct_txt(r):
     it, ln = r["it"], r["ln"]
     if it["measure"] == "qty":
-        return ""
+        return f"{ln.get('pct'):g}%" if ln and ln.get("pct") else ""
     return f"{ln.get('pct', 0):g}%" if ln else "0%"
 
 

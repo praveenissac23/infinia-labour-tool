@@ -570,8 +570,8 @@ function openSub(sid) {
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
         <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
-      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
-        <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Paste the agreement's BOQ to certify line by line."}</div></div>
+      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload Excel</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
+        <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
       <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}% · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
@@ -587,6 +587,8 @@ function openSub(sid) {
     $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print]")) return; openCert(s.id, +r.dataset.pc); });
     $("#s-items").onclick = () => scheduleEditor(s.id);
     $("#s-paste").onclick = () => pasteItems(s.id, s, () => reload());
+    const sf = $("#s-up-f"); $("#s-up").onclick = () => sf.click();
+    sf.onchange = () => { const f = sf.files[0]; sf.value = ""; if (f) importItems(s.id, f, async () => { await reload(); scheduleEditor(s.id); }); };
     $$("[data-print]").forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.print }));
     $$("[data-vo]").forEach(r => r.onclick = () => voSubForm(s, s.vos.find(v => v.id === +r.dataset.vo)));
   };

@@ -356,3 +356,4 @@ table.t.boq tr.bill .caret { display: inline-block; width: 14px; color: var(--re
 table.t.boq tr.out td { color: #9A9188; }
 table.t.boq tr.out td.rowc { color: #8A8178; }
 table.t.boq .scopetag { cursor: pointer; margin-left: 6px; }
+tr.warnrow td { background: var(--amber-bg) !important; }

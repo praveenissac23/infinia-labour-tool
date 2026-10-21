@@ -28,7 +28,7 @@ async function scheduleEditor(sid) {
     const tot = r2(rows.filter(x => !x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     const vt = r2(rows.filter(x => x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     $("#b-body").innerHTML = `
-      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
+      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets) - every line comes in, checked against the sheet's own totals. The file is not stored.">Upload Excel</button><input type="file" id="it-up-f" accept=".xlsx,.xlsm" hidden><button class="btn btn-ghost" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
         <span class="spacer"></span><span class="muted">Contract lines <b>${money(tot, false)}</b>${d.sub.value ? ` of ${money(d.sub.value, false)}` : ""} · Variations <b>${money(vt, false)}</b></span></div>
         ${d.sub.value && Math.abs(tot - d.sub.value) > 0.5 && rows.some(x => !x.is_var) ? `<div class="warn" style="margin:0 0 10px">The contract lines add up to ${money(tot, false)}, the subcontract value is ${money(d.sub.value, false)}.</div>` : ""}
         ${rows.length ? `<div class="tw"><table class="t ed"><thead><tr><th>Bill</th><th>Bill name</th><th>Heading</th><th>No</th><th style="min-width:260px">Description</th><th>Type / mark</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th><th>Measured by</th><th>Variation</th><th></th></tr></thead><tbody>
@@ -50,6 +50,8 @@ async function scheduleEditor(sid) {
     const last = rows[rows.length - 1] || {};
     $("#it-add").onclick = () => { rows.push({ bill: last.bill || "", bill_title: last.bill_title || "", section: last.section || "", measure: last.measure || (d.sub.contract_type.match(/measur|rate/i) ? "qty" : "pct"), is_var: false }); draw(); };
     $("#it-addv").onclick = () => { rows.push({ measure: last.measure || "pct", is_var: true, var_ref: "" }); draw(); };
+    const fi = $("#it-up-f"); $("#it-up").onclick = () => fi.click();
+    fi.onchange = () => { const f = fi.files[0]; fi.value = ""; if (f) importItems(sid, f, async () => { const n = await GET(`/store/est/subs/${sid}/items`); d = n; rows = n.items.map(x => Object.assign({}, x)); draw(); }); };
     $("#it-paste").onclick = () => pasteItems(sid, d.sub, async () => { const n = await GET(`/store/est/subs/${sid}/items`); d = n; rows = n.items.map(x => Object.assign({}, x)); draw(); });
   };
   big(`Item schedule - ${esc(d.sub.name)} <span class="muted small">${esc(d.sub.scope)}</span>`, "", () => reload());
@@ -59,6 +61,32 @@ async function scheduleEditor(sid) {
     catch (e) { fail(e); }
   };
   draw();
+}
+// The schedule out of Excel (agreement BOQ or a payment certificate): every line shown, each sheet
+// checked against its own total row, then saved - and opened in the editor for any change.
+async function importItems(sid, file, after) {
+  const send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
+  let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
+  const ok = c => c ? (c.ok ? `<span class="st g">= sheet total</span>` : `<span class="st r">sheet says ${money(c.sheet, false)}</span>`) : `<span class="small muted">no total row</span>`;
+  const ML = { pct: "% done", size: "size", qty: "quantity" };
+  let bill = null;
+  const rowsHtml = r.items.map(x => { let h = ""; const b = (x.bill || "") + (x.bill_title ? " " + x.bill_title : "");
+    if (b !== bill) { bill = b; if (b.trim()) h += `<tr class="sec"><td colspan="8">${esc(b)}</td></tr>`; }
+    return h + `<tr class="${x.rate_missing ? "warnrow" : ""}"><td class="small">${esc(x.no)}</td><td>${x.section ? `<span class="small muted">${esc(x.section)} · </span>` : ""}${esc(x.description)}${x.words ? ` <span class="small muted">· ${esc(x.words)}</span>` : ""}</td><td class="r">${x.qty ? money(x.qty) : ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : (x.rate_missing ? '<span class="st r">no rate</span>' : "")}</td><td class="r">${money(x.amount)}</td><td class="small">${ML[x.measure]}</td><td class="r small muted">${x.certified !== null ? money(x.certified) : ""}</td></tr>`; }).join("");
+  modal(`Item schedule - ${file.name}`, [], async () => {
+    const mode = ($("input[name=itmode]:checked") || {}).value || "replace";
+    const x = await send(true, mode); toast(`${x.saved} lines ${mode === "replace" ? "in" : "added"} - ${money(r.contract, false)}`);
+    if (after) await after(); else scheduleEditor(sid);
+  }, {
+    wide: true, save: `Bring in ${r.lines} lines`,
+    top: `<div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.lines}</div></div><div class="fig green"><div class="l">Contract lines</div><div class="v">${money(r.contract, false)}</div>${r.value ? `<div class="s">${Math.abs(r.contract - r.value) < 0.01 ? '<span class="st g">= subcontract value</span>' : `subcontract value ${money(r.value, false)}`}</div>` : ""}</div>${r.certified ? `<div class="fig"><div class="l">Certified to date in this file ${tip("Read from the certificate's Certified Amount column - shown here to prove every line was read right. Only the schedule is brought in.")}</div><div class="v">${money(r.certified, false)}</div></div>` : ""}<div class="fig"><div class="l">Checked</div><div class="v">${r.all_checked ? '<span class="st g">every sheet = its total</span>' : '<span class="st a">see notes</span>'}</div></div></div>
+      <div class="tw" style="margin:8px 0"><table class="t"><thead><tr><th>Sheet</th><th>Bill</th><th class="r">Lines</th><th class="r">Contract</th><th></th><th class="r">Certified</th><th></th></tr></thead><tbody>${r.sheets.map(x => `<tr><td>${esc(x.sheet)}</td><td>${esc((x.bill + " " + x.title).trim())}</td><td class="r">${x.lines}</td><td class="r">${money(x.contract)}</td><td>${x.check.contract ? ok(x.check.contract) : ""}</td><td class="r">${x.certified ? money(x.certified) : ""}</td><td>${x.check.certified ? ok(x.check.certified) : (x.check.contract ? "" : ok(null))}</td></tr>`).join("")}</tbody></table></div>
+      ${r.notes.length ? `<div class="warn" style="margin:0 0 8px">${r.notes.map(esc).join("<br>")}</div>` : ""}
+      ${r.existing ? `<div class="warn" style="margin:0 0 8px">This subcontract already has ${r.existing} schedule line(s)${r.used ? `, ${r.used} of them on certificates` : ""}.
+        <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="radio" name="itmode" value="replace" ${r.used ? "disabled" : "checked"}><span><b>Replace them</b>${r.used ? " - not possible, lines are on certificates" : ""}</span></label>
+        <label class="chk" style="display:flex;gap:8px;margin-top:4px"><input type="radio" name="itmode" value="add" ${r.used ? "checked" : ""}><span><b>Add</b> these lines after them</span></label></div>` : ""}
+      <div class="tw" style="max-height:340px;overflow:auto"><table class="t"><thead><tr><th>No</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th><th>Measured by</th><th class="r">Certified</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+      <div class="small muted" style="margin-top:6px">After bringing them in, the schedule opens so any line can be changed. The Excel file is not stored.</div>` });
 }
 function pasteItems(sid, sub, after) {
   modal("Paste lines from Excel", [
@@ -83,7 +111,7 @@ async function pcSheet(pcid) {
             work_cum: p.work_cum || "", var_cum: p.var_cum || "", other_cum: p.other_cum || "", other_note: p.other_note || "", inv_lines: inv };
   };
   init();
-  const lineAmt = (it, l) => !l ? 0 : it.measure === "qty" ? r2(num(l.qty) * it.rate - num(l.deduct)) : r2((it.amount - num(l.deduct)) * num(l.pct) / 100);
+  const lineAmt = (it, l) => !l ? 0 : it.measure === "qty" ? r2(num(l.qty) * it.rate * (num(l.pct) ? num(l.pct) / 100 : 1) - num(l.deduct)) : r2((it.amount - num(l.deduct)) * num(l.pct) / 100);
   const s = d.sub, locked = d.locked && !(d.me && d.me.admin);
   // the money, as the server works it out
   const figures = () => {
@@ -126,7 +154,7 @@ async function pcSheet(pcid) {
       const inp = (k, w, ph = "") => `<input class="n" data-l="${it.id}" data-k="${k}" value="${l[k] || ""}" style="width:${w}px" placeholder="${ph}" ${locked ? "disabled" : ""}>`;
       return `<tr><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
         <td class="nowrap">${m === "size" ? inp("w", 54, "W") + " x " + inp("h", 54, "H") : m === "qty" ? `<span class="small muted">claimed</span> ${inp("claimed_qty", 64)}` : ""}</td>
-        <td class="nowrap">${m === "qty" ? inp("qty", 70, "qty") + ` <span class="small muted">${esc(it.unit)}</span>` : inp("pct", 58, "%") + " %"}</td>
+        <td class="nowrap">${m === "qty" ? inp("qty", 70, "qty") + ` <span class="small muted">${esc(it.unit)}</span> ` + `<span title="Optional: a stage % of the measured quantity (e.g. 70% = first coat done). Empty = 100%.">${inp("pct", 44, "100")}<span class="small muted">%</span></span>` : inp("pct", 58, "%") + " %"}</td>
         <td>${inp("deduct", 80, "0.00")}</td><td class="r muted">${money(pv)}</td><td class="r" data-this="${it.id}">${money(r2(a - pv))}</td><td class="r"><b data-amt="${it.id}">${money(a, false)}</b></td>
         <td><input data-l="${it.id}" data-k="remark" value="${esc(l.remark)}" style="width:150px" ${locked ? "disabled" : ""}></td></tr>`; };
     const sumBill = b => r2(b.items.reduce((x, it) => x + lineAmt(it, S.lines[it.id]), 0));
