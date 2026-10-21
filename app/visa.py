@@ -437,13 +437,38 @@ def add_payment(payload: dict = Body(...), db: Session = Depends(get_db), user: 
 
 
 def _held_pay(db, pid):
+    """A visa payment that may still be changed: on an ongoing visa, or on a completed one whose
+    petty cash total has not been approved by accounts yet (that line follows the change)."""
     p = db.get(models.VisaPayment, pid)
     if not p:
         raise HTTPException(status_code=404, detail="That payment is no longer there.")
     v = db.get(models.VisaFile, p.visa_file_id)
-    if not v or v.status != "ongoing":
-        raise HTTPException(status_code=400, detail="This visa is completed - reopen it first.")
+    if not v:
+        raise HTTPException(status_code=404, detail="That visa is no longer there.")
+    if v.status != "ongoing" and v.posted_id:
+        x = db.get(models.PettyCash, v.posted_id)
+        if x and (x.zoho_status or ""):
+            raise HTTPException(status_code=400, detail=f"{v.person}'s visa total is already approved by accounts - ask the chief accountant to change it.")
     return p, v
+
+
+def resync_total(db, v):
+    """A completed visa's line in General always equals its payments: amount, and the count in
+    the description while it is still the wording the app wrote."""
+    if v.status == "ongoing" or not v.posted_id:
+        return
+    x = db.get(models.PettyCash, v.posted_id)
+    if not x:
+        return
+    db.flush()
+    total = held_total(db, v.id)
+    if total <= 0:
+        db.delete(x); v.posted_id = None
+        return
+    n = db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id == v.id).count()
+    x.paid = total
+    if (x.description or "").startswith(f"{v.person} - visa expenses"):
+        x.description = f"{v.person} - visa expenses ({n} payment{'' if n == 1 else 's'})"
 
 
 @router.put("/store/visa/payments/{pid}")
@@ -453,6 +478,7 @@ def edit_payment(pid: int, payload: dict = Body(...), db: Session = Depends(get_
         setattr(p, k, val)
     if p.step:
         tick(v, p.step)
+    resync_total(db, v)
     db.commit()
     M.log_action(db, user.id, "visa_payment_edit", f"Visa {v.person}: payment #{pid} now {p.step or 'payment'} AED {p.amount:,.2f}")
     return {"ok": True}
@@ -462,7 +488,9 @@ def edit_payment(pid: int, payload: dict = Body(...), db: Session = Depends(get_
 def remove_payment(pid: int, db: Session = Depends(get_db), user: models.User = EDIT):
     p, v = _held_pay(db, pid)
     M.log_action(db, user.id, "visa_payment_delete", f"Visa {v.person}: payment {p.step or ''} AED {p.amount:,.2f} removed")
-    db.delete(p); db.commit()
+    db.delete(p)
+    resync_total(db, v)
+    db.commit()
     return {"ok": True}
 
 

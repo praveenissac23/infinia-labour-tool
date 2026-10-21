@@ -234,6 +234,15 @@ def supplier_trn(supplier: str = "", db: Session = Depends(get_db), user: models
     return {"trn": ""}
 
 
+def _visa_total_of(db, x):
+    """The visa whose completed total this line is, or None."""
+    if x.visa_file_id:
+        v = db.get(models.VisaFile, x.visa_file_id)
+        if v and v.posted_id == x.id:
+            return v
+    return None
+
+
 def _visa_total_guard(db, x, action):
     """A completed visa's total line is made on the Visa tab - changed there
     (reopen the visa), so it always equals its payments."""
@@ -300,7 +309,19 @@ def edit_petty_cash(pid: int, payload: dict = Body(...), db: Session = Depends(g
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
     _zoho_guard(user, x, "change")
-    _visa_total_guard(db, x, "change")
+    vt = _visa_total_of(db, x)
+    if vt:
+        # A completed visa's total: its wording and date can be changed here; the amount always
+        # equals the visa's payments (change those on the Visa tab).
+        import visa
+        new = _clean(payload)
+        x.description = new.get("description") or x.description
+        x.on_date = new.get("on_date") or x.on_date
+        x.paid = visa.held_total(db, vt.id)
+        x.updated_by = user.id
+        db.commit()
+        M.log_action(db, user.id, "petty_cash_edit", f"#{pid} visa total of {vt.person}: now '{x.description}' dated {x.on_date}")
+        return {"ok": True}
     was = (x.on_date, round(x.received or 0, 2), round(x.paid or 0, 2))
     new = _clean(payload)
     moved = any(getattr(x, k) != v for k, v in new.items())
@@ -328,7 +349,16 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     _book(user, x.book or "site")
     _zoho_guard(user, x, "remove")
-    _visa_total_guard(db, x, "remove")
+    vt = _visa_total_of(db, x)
+    if vt:
+        # Removing a visa's total puts the visa back to ongoing, its payments held again on the Visa tab.
+        if (x.zoho_status or ""):
+            raise HTTPException(status_code=400, detail="This visa total is already approved by accounts - ask the chief accountant first.")
+        vt.posted_id = None
+        vt.status, vt.completed_on, vt.completed_by = "ongoing", None, None
+        db.delete(x); db.commit()
+        M.log_action(db, user.id, "visa_reopen", f"Visa reopened from General: {vt.person} (its petty cash line taken out)")
+        return {"ok": True, "reopened": vt.person}
     if (x.zoho_status or "") in ("sent", "inzoho", "changed"):
         try:
             import watch

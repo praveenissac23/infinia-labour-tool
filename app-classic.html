@@ -1677,6 +1677,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .vf-opt { display:grid; grid-template-columns:18px 78px 1fr auto; gap:8px; align-items:center; padding:6px 8px; border:1px solid #EFE7E0; border-radius:8px; margin-bottom:5px; cursor:pointer; font-size:13px; }
   .vf-opt:hover { border-color:#C0392B66; } .vf-opt .d { color:#3A3330; } .vf-opt b { white-space:nowrap; }
   .vf-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .vf-link select { height:32px; max-width:420px; }
+  .vh-pays td:first-child, .vh-pays td:last-child { white-space:nowrap; }
   .pc-visa { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; border-top:1px dashed #E6DCD4; padding-top:10px; margin-top:2px; }
   /* PRO visa row: on the same columns as the form above it. */
   .pc-form.vat .pc-visa { display:grid; grid-template-columns:subgrid; gap:10px; align-items:start; }
@@ -18627,7 +18628,7 @@ function pcDraw() {
        ${sup ? `<td class="l">${escapeHtml(r.supplier)}</td>` : ""}${site ? `<td>${escapeHtml(r.site)}</td>` : ""}
        ${pair(r.received, r.paid).map(v => `<td class="n">${cell(v)}${v && zc ? pcZohoMark(r) : ""}</td>`).join("")}
        <td class="n bal${r.balance < 0 ? " neg" : ""}">${pcMoney(r.balance)}</td>
-       <td class="pc-act">${r.visa_total ? `<span class="sub" title="Made from the Visa tab - reopen the visa there to change it">Visa total - change on the Visa tab</span>` : pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+       <td class="pc-act">${r.visa_total && !pcLocked(r) ? `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})" title="Change the wording or date. The amount is the visa's payments - change those on the Visa tab.">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})" title="Takes the line out and puts the visa back to ongoing on the Visa tab">Remove</button>` : pcLocked(r) ? `<span class="sub" title="Checked by accounts - the chief accountant can change it">Locked - checked by accounts</span>` : `<button class="btn btn-gray btn-sm" onclick="pcEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="pcDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
      || `<tr><td colspan="${ncols}" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(d.label)} yet.</td></tr>`) + (d.rows.length ? `<tr class="bf"><td></td><td class="l">Balance brought forward</td>${sup ? "<td></td>" : ""}${site ? "<td></td>" : ""}<td></td><td></td>
        <td class="n bal${d.opening < 0 ? " neg" : ""}">${pcMoney(d.opening)}</td><td></td></tr>` : "");
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL</td>${pair(d.received, d.paid).map(v => `<td class="n">${pcMoney(v)}</td>`).join("")}
@@ -18688,14 +18689,18 @@ function vhDraw() {
       <td class="l"><div class="vh-steps">${v.steps.map(x => `<span>${escapeHtml(x)} ✓</span>`).join("") || `<span class="sub" style="background:none;color:#999;">-</span>`}</div></td>
       <td>${v.payments.length}</td><td class="n"><b>${pcMoney(v.total)}</b></td>
       <td><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Close" : "Edit / note"}</button><button class="btn btn-primary btn-sm" onclick="vhComplete(${v.id})">Mark completed</button></div></td></tr>`;
-    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500" data-tip="A note for this visa, e.g. an amount to deduct from his salary - it prints on the visa sheet.">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description)}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`}</td></tr>` : "";
+    const det = VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="5"><div class="vh-noteed"><label class="pc-f" style="flex:1;"><span>Note - prints on the sheet (e.g. deduct AED 126 ILOE from his salary, 10 months)</span><textarea id="vh-note-${v.id}" rows="2" maxlength="1500" data-tip="A note for this visa, e.g. an amount to deduct from his salary - it prints on the visa sheet.">${escapeHtml(v.note || "")}</textarea></label><button class="btn btn-gray btn-sm" onclick="vhNote(${v.id})">Save note</button><button class="btn btn-gray btn-sm" onclick="vhPick('${escapeAttr(v.person).replace(/'/g, "\\'")}')">+ Payment</button></div>${vhPays(v)}</td></tr>` : "";
     return row + det;
   }).join("") || `<tr><td colspan="5" class="sub" style="padding:16px;">No visa in progress. Type a name under Whose visa to start one.</td></tr>`;
   document.getElementById("vh-foot").innerHTML = VH.ongoing.length ? `<tr><td colspan="3" class="l">TOTAL HELD</td><td class="n">${pcMoney(VH.held)}</td><td></td></tr>` : "";
   document.getElementById("vh-done").innerHTML = VH.completed.length ? `<h3 style="margin:16px 0 8px;font-size:15px;">Completed - moved to General</h3>
     <table class="pc-table"><tbody>${VH.completed.map(v => `<tr><td class="l" style="width:220px;"><b>${escapeHtml(v.person)}</b></td><td class="l">Completed ${pcDate(v.completed)} · ${v.payments.length} payment${v.payments.length === 1 ? "" : "s"}</td><td class="n" style="width:130px;"><b>${pcMoney(v.total)}</b></td>
-      <td style="width:250px;"><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhReopen(${v.id})">Reopen</button></div></td></tr>`).join("")}</tbody></table>` : "";
+      <td style="width:330px;"><div class="vh-acts"><button class="btn btn-gray btn-sm" onclick="vhPreview(${v.id})">Preview</button><button class="btn btn-gray btn-sm" onclick="vhToggle(${v.id})">${VH_OPEN === v.id ? "Close" : "Payments"}</button><button class="btn btn-gray btn-sm" onclick="vhReopen(${v.id})">Reopen</button></div></td></tr>${VH_OPEN === v.id ? `<tr class="vh-detail"><td colspan="4"><div class="sub" style="margin:0 0 6px;">Change or remove a payment here - the total in General follows (until accounts approve it).</div>${vhPays(v)}</td></tr>` : ""}`).join("")}</tbody></table>` : "";
   vhWhoNote();
+}
+// A visa's payments, each with Edit and Remove (ongoing, or completed and not yet approved by accounts).
+function vhPays(v) {
+  return v.payments.length ? `<table class="vh-pays">${v.payments.map(p => `<tr><td style="width:84px;">${pcDate(p.date)}</td><td style="width:220px;"><b>${escapeHtml(p.step || "-")}</b></td><td>${escapeHtml(p.description) || '<span class="sub" style="display:inline;">no description</span>'}${p.supplier ? ` <span class="sub" style="display:inline;">· ${escapeHtml(p.supplier)}</span>` : ""}${p.receipt_no ? ` <span class="sub" style="display:inline;">· rcpt ${escapeHtml(p.receipt_no)}</span>` : ""}</td><td style="width:100px;text-align:right;">${pcMoney(p.amount)}</td><td style="width:140px;text-align:right;"><button class="btn btn-gray btn-sm" onclick="vhEdit(${v.id},${p.id})">Edit</button> <button class="btn btn-gray btn-sm" onclick="vhDel(${p.id})">Remove</button></td></tr>`).join("")}</table>` : `<span class="sub">No payments yet.</span>`;
 }
 function vhToggle(id) { VH_OPEN = VH_OPEN === id ? null : id; vhDraw(); }
 // The sheet the PRO hands to accounts: every step with its amount, the total, the note.
@@ -18716,7 +18721,7 @@ function vhReset() {
   document.getElementById("vh-save").textContent = "Add"; document.getElementById("vh-cancel").style.display = "none"; if (VH) vhWhoNote();
 }
 function vhEdit(fid, pid) {
-  const v = VH.ongoing.find(x => x.id === fid), p = v && v.payments.find(x => x.id === pid); if (!p) return;
+  const v = VH.ongoing.concat(VH.completed || []).find(x => x.id === fid), p = v && v.payments.find(x => x.id === pid); if (!p) return;
   VH_EDIT = pid;
   document.getElementById("vh-person").value = v.person; document.getElementById("vh-person").disabled = true;
   document.getElementById("vh-date").value = p.date; document.getElementById("vh-step").value = p.step; document.getElementById("vh-amt").value = p.amount;
@@ -18808,6 +18813,7 @@ function pcVisaYes(on) { PC_VSEL.yes = on; if (!on) { PC_VSEL.person = ""; PC_VS
 function pcVisaDone(on) { PC_VSEL.done = on; pcVisaDraw(); }
 function pcReset() {
   PC_EDIT = null;
+  document.getElementById("pc-amt").disabled = false; document.getElementById("pc-amt").title = "";
   ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
   ["pc-desc", "pc-sup", "pc-amt", "pc-rcpt"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("pc-site").value = "";
@@ -18835,6 +18841,9 @@ function pcEdit(id) {
   document.getElementById("pc-rcpt").value = r.receipt_no || "";
   PC_VSEL = { yes: !!r.visa_file_id, person: r.visa_person || "", stage: r.visa_stage || "", done: false };
   pcVisaShow();
+  // a visa's total: wording and date only - the amount is its payments on the Visa tab
+  const amtEl = document.getElementById("pc-amt"); amtEl.disabled = !!r.visa_total;
+  amtEl.title = r.visa_total ? "The visa's payments added up - change them on the Visa tab" : "";
   document.getElementById("pc-save").textContent = "Save changes";
   document.getElementById("pc-cancel").style.display = "";
   pcDraw();
@@ -18869,8 +18878,11 @@ async function pcSave() {
 
 async function pcDelete(id) {
   const r = PC.rows.find(x => x.id === id); if (!r) return;
-  if (!await hrAsk(`Remove "${r.description}" (${pcMoney(r.received || r.paid)}) from ${PC_BOOKS[PC_BOOK]}?`, "Remove", true)) return;
-  try { await apiCall(`/store/petty-cash/${id}`, { method: "DELETE" }); if (PC_EDIT === id) pcReset(); await loadPettyCash(); showStatus("pc-status", "ok", "Removed."); }
+  const q = r.visa_total ? `Remove "${r.description}" (${pcMoney(r.paid)})?\n\nThe visa goes back to ongoing on the Visa tab with all its payments, to change and complete again.`
+                         : `Remove "${r.description}" (${pcMoney(r.received || r.paid)}) from ${PC_BOOKS[PC_BOOK]}?`;
+  if (!await hrAsk(q, "Remove", true)) return;
+  try { const x = await apiCall(`/store/petty-cash/${id}`, { method: "DELETE" }); if (PC_EDIT === id) pcReset(); VH_DIRTY = true; await loadPettyCash();
+        showStatus("pc-status", "ok", x && x.reopened ? `Removed - ${x.reopened}'s visa is back to ongoing on the Visa tab.` : "Removed."); }
   catch (e) { showStatus("pc-status", "err", errText(e)); }
 }
 
