@@ -348,3 +348,11 @@ table.vlog tr.sub td { font-weight: 700; background: #FBF8F5; border-top: 1px so
 table.vlog tr.tot td { font-weight: 800; background: #FDF0EE; border-top: 1.5px solid var(--red); font-size: 13px; }
 table.vlog .dd { font-size: 11px; color: #8A8178; font-weight: 400; margin-top: 2px; }
 table.vlog .va { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+
+/* BOQ: one row per bill (trade), opened with a click; lines out of scope kept, not counted */
+table.t.boq tr.bill td { background: #F7F3EF; font-weight: 700; cursor: pointer; border-top: 1px solid var(--line); }
+table.t.boq tr.bill:hover td { background: #F2ECE6; }
+table.t.boq tr.bill .caret { display: inline-block; width: 14px; color: var(--red); }
+table.t.boq tr.out td { color: #9A9188; }
+table.t.boq tr.out td.rowc { color: #8A8178; }
+table.t.boq .scopetag { cursor: pointer; margin-left: 6px; }

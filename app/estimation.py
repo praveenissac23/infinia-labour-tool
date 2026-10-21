@@ -242,7 +242,33 @@ class EstBoq(Base):
     cost_rate = Column(Float, default=0.0)      # budget cost rate
     done_pct = Column(Float, default=0.0)
     sort = Column(Integer, default=0)
+    bill = Column(String, default="")           # 02. Substructure - the internal BOQ's trade sheet
+    amount = Column(Float, nullable=True)       # the amount as the internal BOQ gives it (lump sums, words); empty = qty x rate
+    remark = Column(String, default="")         # "Included above", "By Client" ...
+    scope = Column(String, default="")          # "" in the awarded scope; else why not (Excluded, Phase 02 ...) - not counted
     locals().update(_audit())
+
+
+def boq_amount(b):
+    """A BOQ line's amount: the figure the internal BOQ gave, else qty x rate."""
+    return r2(b.amount) if b.amount is not None else r2((b.qty or 0) * (b.rate or 0))
+
+
+def boq_counted(b):
+    return 0.0 if (b.scope or "") else boq_amount(b)
+
+
+def boq_cost(b):
+    return 0.0 if (b.scope or "") else r2((b.qty or 0) * (b.cost_rate or 0))
+
+
+def _boq_amount_in(row, data):
+    """A typed amount is kept as typed; a typed qty or rate works the amount out again."""
+    if "amount" in data:
+        v = data.get("amount")
+        row.amount = None if v in (None, "") else _coerce(F, v, "amount")
+    elif "qty" in data or "rate" in data:
+        row.amount = None
 
 
 class EstLog(Base):
@@ -487,7 +513,7 @@ KINDS = {
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
                                                 "status": S, "sub_id": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
-                                   "done_pct": F, "sort": I}),
+                                   "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
     "logs": (EstLog, "project_id", {"kind": S, "seq": I, "group": S, "title": S, "party": S, "discipline": S, "ref": S, "rev": S,
                                     "sent": D, "due": D, "replied": D, "status": S, "note": S, "sort": I}),
     "finals": (EstFinal, "project_id", {"section": S, "item": S, "sc": S, "rt": S, "sd": S, "ma": S, "aa": S, "st": S,
@@ -768,8 +794,8 @@ def project_bundle(db, p, rules=None, pre=None):
     received, pp_contract = pre["received"].get(p.code, 0.0), pre["pp_contract"].get(p.code, 0.0)
     invoices = pre["invoices"].get(p.code, [])
     approved_vo = r2(sum(v.approved_amount or 0 for v in vars_ if v.status == "Approved"))
-    boq_value = r2(sum((b.qty or 0) * (b.rate or 0) for b in boq))
-    boq_cost = r2(sum((b.qty or 0) * (b.cost_rate or 0) for b in boq))
+    boq_value = r2(sum(boq_counted(b) for b in boq))
+    boq_cost_ = r2(sum(boq_cost(b) for b in boq))
     t = today()
     open_logs = [l for l in logs if l.status in ("Open", "Submitted", "Preparing", "Not started", "Revise & resubmit")]
     overdue = [l for l in open_logs if l.due and l.due < t and l.kind != "approval"]
@@ -790,7 +816,7 @@ def project_bundle(db, p, rules=None, pre=None):
         "client_work": cert[-1]["work"] if cert else 0.0,
         "client_claimed": client[-1]["net_cum"] if client else 0.0,
         "received": received, "invoiced": r2(sum(i["total"] for i in invoices if i["kind"] == "tax" and i["status"] != "cancelled")),
-        "boq_value": boq_value, "boq_cost": boq_cost,
+        "boq_value": boq_value, "boq_cost": boq_cost_,
         "committed": committed, "sub_certified": sub_cert, "sub_paid": sub_paid,
         "sub_to_pay": r2(sum(s["to_pay"] for s in sub_out)),
         "margin": r2(contract + approved_vo - committed),
@@ -804,7 +830,7 @@ def project_bundle(db, p, rules=None, pre=None):
     return {
         "project": proj, "summary": summary, "subs": sub_out,
         "clientpcs": client, "variations": [_plain(v, KINDS["variations"][2]) for v in vars_],
-        "boq": [dict(_plain(b, KINDS["boq"][2]), amount=r2((b.qty or 0) * (b.rate or 0)), cost=r2((b.qty or 0) * (b.cost_rate or 0))) for b in boq],
+        "boq": [dict(_plain(b, KINDS["boq"][2]), amount=boq_amount(b), counted=boq_counted(b), cost=boq_cost(b), given=b.amount is not None) for b in boq],
         "logs": [_plain(l, KINDS["logs"][2]) for l in logs],
         "finals": [_plain(f, KINDS["finals"][2]) for f in finals],
         "files": [dict(_plain(f, KINDS["files"][2]), kind=f.kind, row_id=f.row_id, size=f.size, by=names.get(f.created_by, ""),
@@ -1042,6 +1068,8 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         _parent_ok(db, kind, pid)
         setattr(row, parent, pid)
     _apply(row, fields, data)
+    if kind == "boq":
+        _boq_amount_in(row, data)
     for k, ty in fields.items():      # the table's defaults, before anything is worked out
         if getattr(row, k) is None and ty in (F, B, S):
             col = model.__table__.columns[k]
@@ -1172,6 +1200,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
         if "ret_cum" in data and "ret_auto" not in data:
             data["ret_auto"] = False
     _apply(row, fields, data)
+    if kind == "boq":
+        _boq_amount_in(row, data)
     row.updated_by = user.id
     if kind == "subpcs":
         _check_pc(db, row)
@@ -1350,6 +1380,81 @@ def boq_paste(pid: int, data: dict = Body(...), db: Session = Depends(get_db), u
         raise HTTPException(400, "Nothing to add - copy the BOQ lines from Excel (description, unit, quantity, rate) and paste them here.")
     db.commit()
     return {"added": added}
+
+
+# ---- internal BOQ workbook: read in memory, lines saved, the file itself never kept ---------
+
+def _boq_key(code, desc):
+    return ((code or "").strip().lower(), re.sub(r"\s+", " ", (desc or "").strip().lower()))
+
+
+@router.post("/store/est/projects/{pid}/boq-import")
+async def boq_import(pid: int, file: UploadFile = File(...), save: int = Form(0), mode: str = Form("replace"),
+                     db: Session = Depends(get_db), user: models.User = VIEW):
+    """The estimation team's internal BOQ workbook (1.PRELIM ... 20. SPECIALIZED ITEMS). The first
+    call only reads it and shows what will come in; save=1 puts the lines on the project.
+    mode=replace takes the project's BOQ lines out first, keeping the cost rate and done % typed
+    on any line that comes back (same item no. and description); mode=add puts them after."""
+    import est_boqimport
+    p = _project(db, pid)
+    data = await file.read()
+    if len(data) > MAX_FILE:
+        raise HTTPException(413, "That file is over 25 MB.")
+    if not data[:2] == b"PK":
+        raise HTTPException(400, "That is not an Excel workbook (.xlsx). Save the internal BOQ as .xlsx and upload it again.")
+    try:
+        r = est_boqimport.read_internal_boq(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        raise HTTPException(400, "That workbook could not be read. Upload the internal BOQ as .xlsx (sheets 1.PRELIM, 2.SUBSTR ...).")
+    have = db.query(EstBoq).filter(EstBoq.project_id == pid).order_by(EstBoq.sort, EstBoq.id).all()
+    out = {k: r[k] for k in ("bills", "notes", "summary_sheet", "summary_total", "total", "left_out")}
+    out.update({"lines": len(r["lines"]), "existing": len(have), "file": file.filename or ""})
+    if not save:
+        return out
+    if mode not in ("replace", "add"):
+        raise HTTPException(400, "Replace or add?")
+    keep = {}
+    if mode == "replace":
+        for b in have:
+            if (b.cost_rate or 0) or (b.done_pct or 0):
+                keep.setdefault(_boq_key(b.code, b.description), (b.cost_rate or 0, b.done_pct or 0))
+            db.delete(b)
+        db.flush()
+        base = 0
+    else:
+        base = max([b.sort or 0 for b in have] or [0])
+    kept = 0
+    for i, x in enumerate(r["lines"], 1):
+        cr, dp = keep.pop(_boq_key(x["code"], x["description"]), (0.0, 0.0))
+        kept += 1 if (cr or dp) else 0
+        db.add(EstBoq(project_id=pid, bill=x["bill"][:120], section=x["section"][:200], code=x["code"][:40], description=x["description"][:1000],
+                      unit=x["unit"][:20], qty=x["qty"], rate=x["rate"], amount=r2(x["amount"]), remark=x["remark"][:200],
+                      scope=x["scope"][:60], cost_rate=cr, done_pct=dp, sort=base + i, created_by=user.id))
+    db.commit()
+    out.update({"saved": len(r["lines"]), "kept_budget": kept, "mode": mode, "project": p.code})
+    return out
+
+
+@router.post("/store/est/projects/{pid}/boq-scope")
+def boq_scope(pid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Brings a bill (or one section of it) into the awarded scope, or leaves it out again:
+    {bill, section?, scope: "" to count it, or the reason it is left out}."""
+    _project(db, pid)
+    bill = str(data.get("bill") or "")
+    q = db.query(EstBoq).filter(EstBoq.project_id == pid, EstBoq.bill == bill)
+    if data.get("section") is not None:
+        q = q.filter(EstBoq.section == str(data.get("section")))
+    rows = q.all()
+    if not rows:
+        raise HTTPException(404, "Those lines are not there any more.")
+    sc = str(data.get("scope") or "").strip()[:60]
+    for b in rows:
+        b.scope = sc
+        b.updated_by = user.id
+    db.commit()
+    return {"changed": len(rows)}
 
 
 # ---- variation log brought in from the QS Excel file ---------------------------------------
@@ -1626,9 +1731,10 @@ def _export_rows(db, what, p, q, status, sub_id):
         totals = ["Amount", "Budget cost", "Margin"]
         money = ["Rate", "Amount", "Cost rate", "Budget cost", "Margin"]
         for x in b["boq"]:
-            r = {"Section": x["section"], "Item": x["code"], "Description": x["description"], "Unit": x["unit"], "Qty": x["qty"],
-                 "Rate": x["rate"], "Amount": x["amount"], "Cost rate": x["cost_rate"], "Budget cost": x["cost"],
-                 "Margin": r2(x["amount"] - x["cost"]), "Done %": x["done_pct"]}
+            r = {"Bill": x.get("bill") or "", "Section": x["section"], "Item": x["code"], "Description": x["description"], "Unit": x["unit"], "Qty": x["qty"],
+                 "Rate": x["rate"], "Amount": x["counted"], "Cost rate": x["cost_rate"], "Budget cost": x["cost"],
+                 "Margin": r2(x["counted"] - x["cost"]), "Done %": x["done_pct"],
+                 "Remark": " - ".join(t for t in (x.get("scope") or "", x.get("remark") or "", f"not counted ({x['amount']:,.2f})" if x.get("scope") else "") if t)}
             if keep(r):
                 rows.append(r)
     elif what in LOG_STATUS:
