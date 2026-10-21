@@ -815,6 +815,14 @@ def project_bundle(db, p, rules=None, pre=None):
 
 # ---- endpoints: lists to pick from ------------------------------------------------------
 
+def _dummy_count(db):
+    try:
+        import est_dummy
+        return db.query(est_dummy.EstDummy).count()
+    except Exception:
+        return 0
+
+
 @router.get("/store/est/meta")
 def meta(db: Session = Depends(get_db), user: models.User = VIEW):
     perms = M.effective_permissions(user)
@@ -831,6 +839,7 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
         "users": [{"id": u.id, "name": u.full_name} for u in users],
         "trades": TRADES, "scopes": SCOPES, "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
         "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db),
+        "dummy": _dummy_count(db),
         "me": {"id": user.id, "name": user.full_name, "admin": user.role == "admin",
                "accounts": "accounts_invoices" in perms, "boards": "estimation_boards" in perms},
         "today": today().isoformat(),
@@ -1717,3 +1726,4 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
 
 
 import est_pcsheet  # noqa: E402,F401  - the item schedule, the monthly sheet and the certificate print
+import est_dummy  # noqa: E402,F401  - ESTIMATION DUMMY DATA (reversible test data)

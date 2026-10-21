@@ -13407,6 +13407,8 @@ try:
     estimation.create_tables(engine)
     estimation.seed_projects(SessionLocal)
     estimation.seed_variations(SessionLocal)
+    import est_dummy
+    est_dummy.run(SessionLocal)      # ESTIMATION DUMMY DATA - on / off in est_dummy.MODE
 except Exception as _e:
     print("estimation tables:", _e)
 

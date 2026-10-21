@@ -266,7 +266,7 @@ async function loadDash() {
   const d = ST.dash, t = d.totals, k = d.kpi, A = v => "AED " + money(v, false);
   const rows = d.projects;
   const coll = t.revised ? Math.round(100 * t.received / t.revised) : 0;
-  app.innerHTML = `<div class="wrap">
+  app.innerHTML = `<div class="wrap">${dummyNote()}
     <div class="card"><h3>All projects ${tip("Every figure is worked out from the projects - nothing is typed here. Click a project to open its dashboard.")}<span class="spacer"></span>${xpButtons("dash")}</h3>
       <div class="kpis">
         ${kpi("Contract value", A(t.revised), rows.length + " projects · " + rows.filter(r => r.status === "Running").length + " running")}
@@ -434,6 +434,7 @@ function renderProject() {
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
 // ---------------- the project's own dashboard ----------------
+function dummyNote() { return ST.meta && ST.meta.dummy ? `<div class="warn" style="margin:0 0 12px">Estimation dummy data is in - test figures (subcontractors marked "(dummy)", dummy BOQ, PCs, RFIs ...). It comes out in one go when you ask to reverse it; real data is not touched.</div>` : ""; }
 function kpi(l, v, sub, cls = "", extra = "") { return `<div class="kpi ${cls}" ${extra}><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`; }
 function go(gs) { [ST.group, ST.sec] = gs.split("."); saveSec(); renderProject(); window.scrollTo(0, 0); }
 function homeDash(el) {
@@ -443,7 +444,7 @@ function homeDash(el) {
   const sum = (arr, k) => r2(arr.reduce((a, v) => a + (v[k] || 0), 0));
   const waiting = b.subs.flatMap(x => x.pcs.filter(q => q.status !== "Paid").map(q => Object.assign({ sub: x }, q)));
   const row = (l, v) => v ? `<tr><th>${l}</th><td>${v}</td></tr>` : "";
-  el.innerHTML = `
+  el.innerHTML = `${dummyNote()}
     <div class="card"><div class="kpis k4">
       ${kpi("Contract value", A(s.revised), s.approved_vo ? `original ${money(s.contract, false)} + VOs ${money(s.approved_vo, false)}` : "original contract")}
       ${kpi("Certified by client", A(s.client_certified), s.revised ? Math.round(100 * s.client_work / s.revised) + "% of the work" : "")}
