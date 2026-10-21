@@ -90,7 +90,8 @@ PAGES = {
         # Invoices: tax and proforma, one tab with two sub-tabs.
         tab("invoices", "invoices", "Invoices", "accounts_invoices", subs=[
             sub("tax", "Tax Invoice", screen="invoices", right="accounts_invoices", go="invOpen('tax')"),
-            sub("proforma", "Proforma Invoice", screen="invoices", right="accounts_invoices", go="invOpen('proforma')")]),
+            sub("proforma", "Proforma Invoice", screen="invoices", right="accounts_invoices", go="invOpen('proforma')"),
+            sub("receipts", "Receipts", screen="receipts", right="accounts_invoices", go="rcOpen()")]),
         # Petty cash: one cash box per sub-tab, each behind its own right.
         tab("petty", "pettycash", "Petty cash", PETTY_RIGHTS, subs=[
             sub("site", "Site", screen="pettycash", right="petty_site", go="pcBook('site')"),

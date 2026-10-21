@@ -357,6 +357,9 @@ def build(inv, company=None, bank=None, signature=None):
                 pass
         c.setStrokeColor(CHAR); c.setLineWidth(0.6); c.line(sx, by - 7 * mm - sh, W - M, by - 7 * mm - sh)
         text(sx, by - 11.5 * mm - sh, "Authorised Signatory", 8, "Helvetica-Bold", INK)
+        if inv.get("paid_stamp") and not proforma and inv.get("status") != "cancelled":
+            # the PAID stamp, in the open space above the signature, like a rubber stamp
+            _paid_stamp(c, sx + 35 * mm, by + 24 * mm, inv.get("paid_text") or "")
 
     # Everything fits under the totals: terms and notes in the middle,
     # payment and signature at the foot. Otherwise payment and signature
@@ -376,3 +379,20 @@ def build(inv, company=None, bank=None, signature=None):
     c.save()
     buf.seek(0)
     return buf
+
+
+def _paid_stamp(c, cx, cy, date_text):
+    from reportlab.lib.colors import Color
+    red = Color(0.75, 0.13, 0.13, alpha=0.82)
+    c.saveState()
+    c.translate(cx, cy); c.rotate(14)
+    w, h = 62 * mm, 30 * mm
+    c.setStrokeColor(red); c.setFillColor(red)
+    c.setLineWidth(2.4); c.roundRect(-w / 2, -h / 2, w, h, 4 * mm, stroke=1, fill=0)
+    c.setLineWidth(0.9); c.roundRect(-w / 2 + 2 * mm, -h / 2 + 2 * mm, w - 4 * mm, h - 4 * mm, 3 * mm, stroke=1, fill=0)
+    c.setFont("Helvetica-Bold", 6.6); c.drawCentredString(0, h / 2 - 7 * mm, "INFINIA CONTRACTING LLC")
+    c.setFont("Helvetica-Bold", 30); c.drawCentredString(0, -4.2 * mm, "PAID")
+    c.setLineWidth(0.6); c.line(-w / 2 + 9 * mm, -h / 2 + 8.2 * mm, w / 2 - 9 * mm, -h / 2 + 8.2 * mm)
+    if date_text:
+        c.setFont("Helvetica-Bold", 8.5); c.drawCentredString(0, -h / 2 + 4.3 * mm, date_text.upper())
+    c.restoreState()

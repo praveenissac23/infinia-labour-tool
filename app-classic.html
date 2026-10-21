@@ -295,6 +295,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .inv-list tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
   .inv-list .acts { white-space: nowrap; text-align: right; } .inv-list .acts .btn { margin-left: 3px; padding: 5px 9px; font-size: 12px; }
   .inv-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; }
+  .inv-tag.paid { background:#FDECEA; color:#B3261E; border:1px solid #F1B9B4; }
+  .inv-tag.part { background:#FFF4E0; color:#9A5B00; } .inv-tag.full { background:#E3F4E5; color:#2E7D32; }
+  .rc-sec { font-size:12px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#8C2F26; margin:4px 0 6px; }
+  .rc-inv td.l { text-align:left; } .rc-inv tr.on td { background:#FFF8F0; } .rc-inv input[type=checkbox] { width:18px; height:18px; }
+  .rc-inv td.empty { text-align:left; color:#999; padding:12px 6px; }
+  .rc-modes { display:flex; flex-wrap:wrap; border:1px solid #D9DCE0; border-radius:8px; overflow:hidden; width:max-content; max-width:100%; background:#fff; }
+  .rc-modes button { border:0; border-right:1px solid #E6E8EB; background:#fff; padding:8px 13px; font:inherit; font-size:13px; font-weight:600; color:#444; cursor:pointer; }
+  .rc-modes button:last-child { border-right:0; } .rc-modes button.on { background:#B7322A; color:#fff; }
+  .rc-amt { width:150px; height:32px; text-align:right; font-weight:800; font-size:15px; }
+  .inv-paidf { display:inline-flex; align-items:center; gap:6px; margin-right:auto; font-size:13px; color:#8C2F26; cursor:pointer; }
+  .inv-paidf input[type=date] { height:30px; font-size:12.5px; }
   .inv-tag.cx { background: #EEE; color: #888; } .inv-tag.conv { background: #E3F4E5; color: #2E7D32; }
   a.inv-tag { text-decoration: none; cursor: pointer; } a.inv-tag:hover { filter: brightness(.94); } .inv-tag.from { background: #EEF2F6; color: #44546A; }
   @media (max-width: 900px) { .inv-form { grid-template-columns: 1fr 1fr; } }
@@ -3101,6 +3112,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </table>
             </div>
             <div class="inv-btns">
+              <label class="inv-paidf" id="inv-paid-f" title="Prints a red PAID stamp with the date on the tax invoice - for a client who has paid and wants a paid copy."><input type="checkbox" id="inv-paid" onchange="invPaidShow()"> <b>Add PAID stamp</b> <input type="date" id="inv-paid-on" style="display:none"></label>
               <button class="btn btn-primary" id="inv-save-pdf" onclick="invSave(true)">Save &amp; open PDF</button>
               <button class="btn btn-gray" id="inv-save" onclick="invSave(false)">Save</button>
               <button class="btn btn-gray" id="inv-clear" onclick="invReset()">Clear</button>
@@ -3134,6 +3146,67 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <th class="txt" style="width:21%;">Project</th><th style="width:9%; text-align:right;">Net</th><th style="width:7%; text-align:right;">VAT</th>
                 <th style="width:9%; text-align:right;">Total</th><th style="width:13%;"></th></tr></thead>
               <tbody id="inv-body"></tbody><tfoot id="inv-foot"></tfoot></table></div>
+          </div>
+        </div>
+
+        <!-- ============ ACCOUNTS: RECEIPTS (money received, tied to the tax invoices it pays) ============ -->
+        <div class="screen" id="screen-receipts">
+          <div class="status-msg" id="rc-status"></div>
+          <div class="card">
+            <div class="form-row" style="gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+              <h2 style="margin:0;" id="rc-form-title">New receipt</h2>
+              <span id="rc-note" style="font-size:12px; color:#888;"></span>
+            </div>
+            <div class="inv-form">
+              <label class="hr-field" id="rc-co-f"><span>Company</span><select id="rc-co" class="hr-dd"></select></label>
+              <label class="hr-field"><span>Receipt No. *</span><input type="text" id="rc-no" oninput="RC_AUTO = false" title="Numbered for you (RC/26/914/01 ...) after the last receipt of the project. Change it only if the receipt book says otherwise."></label>
+              <label class="hr-field"><span>Received on *</span><input type="date" id="rc-date"></label>
+              <label class="hr-field"><span>Project No.</span><input type="text" id="rc-pno" list="rc-pno-list" placeholder="e.g. 914" onchange="rcProjectPicked()" title="Pick the project: its client and open tax invoices come up."></label>
+              <datalist id="rc-pno-list"></datalist>
+              <label class="hr-field inv-w2"><span>Received from (client) *</span><input type="text" id="rc-client" list="rc-client-list" placeholder="Pick the client" onchange="rcClientPicked()" title="Pick the client: the address and TRN from the invoices fill in, and their open tax invoices are listed below."></label>
+              <datalist id="rc-client-list"></datalist>
+              <label class="hr-field"><span>Client TRN</span><input type="text" id="rc-trn"></label>
+              <label class="hr-field"><span>Client address</span><input type="text" id="rc-addr"></label>
+            </div>
+            <div class="rc-sec">Tax invoices this payment settles <span class="small muted" id="rc-inv-hint"></span></div>
+            <table class="inv-lines rc-inv"><thead><tr><th style="width:4%;"></th><th class="l">Tax invoice</th><th style="width:10%;">Date</th><th class="l" style="width:20%;">Project</th><th style="width:12%;">Invoice total</th><th style="width:11%;">Received</th><th style="width:11%;">Balance due</th><th style="width:15%;">Receive now</th></tr></thead>
+              <tbody id="rc-inv"></tbody></table>
+            <div class="rc-sec" style="margin-top:14px;">How it was paid</div>
+            <div class="inv-form">
+              <div class="hr-field inv-w2"><span>Payment mode</span><div class="rc-modes" id="rc-modes"></div><input type="hidden" id="rc-mode" value="Bank transfer"></div>
+              <label class="hr-field" id="rc-ref-f"><span id="rc-ref-l">Transfer reference</span><input type="text" id="rc-ref"></label>
+              <label class="hr-field" id="rc-bank-f"><span>Bank</span><input type="text" id="rc-bank" list="rc-bank-list" placeholder="e.g. Emirates NBD"></label>
+              <datalist id="rc-bank-list"><option value="Emirates NBD"><option value="ADCB"><option value="Mashreq"><option value="FAB"><option value="Dubai Islamic Bank"><option value="RAKBANK"><option value="CBD"><option value="ENBD"></datalist>
+              <label class="hr-field" id="rc-chq-f"><span>Cheque date</span><input type="date" id="rc-chq"></label>
+              <label class="hr-field inv-w2"><span>Note (printed)</span><input type="text" id="rc-notes" maxlength="300" placeholder="e.g. Payment for MEP and pool works"></label>
+            </div>
+            <div class="inv-foot">
+              <label class="inv-paidf" title="An invoice this receipt pays in full gets the PAID stamp, dated the day received."><input type="checkbox" id="rc-stamp" checked> <b>Stamp invoices paid in full as PAID</b></label>
+              <table class="inv-sum">
+                <tr><td>Against invoices</td><td id="rc-applied">0.00</td></tr>
+                <tr><td>Advance / not against an invoice</td><td id="rc-adv">0.00</td></tr>
+                <tr class="t"><td>Amount received</td><td><input type="text" id="rc-amt" class="rc-amt" placeholder="0.00" oninput="rcAmtTyped()" title="Fills in from the invoices ticked. Type another amount and it is set against the ticked invoices oldest first; anything over is an advance."></td></tr>
+              </table>
+            </div>
+            <div class="inv-btns">
+              <button class="btn btn-primary" id="rc-save-pdf" onclick="rcSave(true)">Save &amp; open receipt</button>
+              <button class="btn btn-gray" id="rc-save" onclick="rcSave(false)">Save</button>
+              <button class="btn btn-gray" id="rc-clear" onclick="rcReset()">Clear</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="form-row" style="gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <h2 style="margin:0; min-width:170px;">Receipts</h2>
+                <input type="text" id="rc-search" placeholder="Search number, client, project or invoice" style="width:280px;" oninput="rcDrawList()">
+                <span id="rc-count" style="font-size:12px; color:#888;"></span>
+              </div>
+            </div>
+            <div class="grid-wrap" style="max-height:62vh; margin-top:10px;"><table class="hr-grid inv-list">
+              <thead><tr><th style="width:12%;" class="txt">Number</th><th style="width:8%;">Date</th><th class="txt" style="width:20%;">Received from</th>
+                <th class="txt" style="width:9%;">Project</th><th class="txt" style="width:12%;">Mode</th><th class="txt" style="width:17%;">Against</th>
+                <th style="width:10%; text-align:right;">Amount</th><th style="width:12%;"></th></tr></thead>
+              <tbody id="rc-body"></tbody><tfoot id="rc-foot"></tfoot></table></div>
           </div>
         </div>
 
@@ -19182,13 +19255,15 @@ function invDrawList() {
     const ztag = !zmay ? "" : (r.zoho === "sent" ? (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Void in Zoho</span>` : `<span class="zx-tag zx-ok" title="Released to Zoho">In Zoho ✓</span>`)
       : (cx ? "" : (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Not released</span>` : `<span class="zx-tag zx-skip" title="Held - goes to Zoho when released">Held</span>`)));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
-      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}</td><td>${accDmy(r.date)}</td>
+      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}${r.paid_stamp && !cx ? ` <span class="inv-tag paid" title="Prints with the PAID stamp (${accDmy(r.paid_on)})">PAID</span>` : ""}${!pro && !cx && r.received ? (r.balance <= 0.005 ? ` <span class="inv-tag full" title="Received in full (Receipts)">Received</span>` : ` <span class="inv-tag part" title="Received AED ${accMoney(r.received)} - AED ${accMoney(r.balance)} still due">Part received</span>`) : ""}</td><td>${accDmy(r.date)}</td>
       <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${r.project_no ? xlink(r.project_no, `xlProjectPay(${jsq(r.project_no)})`, "projpay", "This project's payment tracker") + escapeHtml(r.project && !r.project.startsWith(r.project_no) ? " - " + r.project : (r.project || "").slice(r.project_no.length)) : escapeHtml(r.project || "")}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})" title="Opens it with PDF, Excel, Print and Share">Preview</button>${cx ? "" :
         `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
           ${zmay && r.zoho !== "sent" ? `<button type="button" onclick="hrMenuClose(); invRelease(${r.id})">Release to Zoho…</button>` : ""}
           ${r.zoho === "sent" ? "" : `<button type="button" onclick="hrMenuClose(); invEdit(${r.id})">Edit</button>`}
+          ${pro || !(r.balance > 0.005) ? "" : `<button type="button" onclick="hrMenuClose(); rcFromInvoice(${r.id})">Receive payment…</button>`}
+          ${pro ? "" : `<button type="button" onclick="hrMenuClose(); invPaidStamp(${r.id}, ${!r.paid_stamp})">${r.paid_stamp ? "Take off PAID stamp" : "Add PAID stamp"}</button>`}
           ${pro && !r.converted_to_id ? `<button type="button" onclick="hrMenuClose(); invConvert(${r.id})">Make tax invoice from this</button>` : ""}
           <button type="button" onclick="hrMenuClose(); invCopy(${r.id})">New one like this</button>
           <hr><button type="button" class="danger" onclick="hrMenuClose(); invCancel(${r.id})">Cancel ${pro ? "proforma" : "invoice"}</button></div></span>`}</td></tr>`;
@@ -19247,6 +19322,7 @@ function invFill(r, withNumber) {
   INV_LINES = (r.lines || []).map(l => ({ ...l }));
   if (!INV_LINES.length) INV_LINES = [{ description: "", amount: "", vat: 5 }];
   if (withNumber) { document.getElementById("inv-no").value = r.number; document.getElementById("inv-date").value = r.date; }
+  document.getElementById("inv-paid").checked = !!(withNumber && r.paid_stamp); document.getElementById("inv-paid-on").value = (withNumber && r.paid_on) || accToday(); invPaidShow();
   invDrawLines();
 }
 async function invNextNumber() {
@@ -19263,6 +19339,7 @@ function invReset() {
   INV_LINES = [{ description: "", amount: "", vat: 5 }];
   invDrawLines();
   const pro = INV_KIND === "proforma";
+  document.getElementById("inv-paid").checked = false; document.getElementById("inv-paid-on").value = accToday(); invPaidShow();
   document.getElementById("inv-form-title").textContent = pro ? "New proforma invoice" : "New tax invoice";
   document.getElementById("inv-from-note").textContent = "";
   document.getElementById("inv-clear").textContent = "Clear";
@@ -19319,11 +19396,195 @@ function invCopy(id) {
   document.getElementById("inv-from-note").textContent = `copied from ${r.number} - change what is different`;
   document.getElementById("screen-invoices").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+// ================= Receipts: money received, set against the client's tax invoices =================
+let RC = null, RC_EDIT = null, RC_AUTO = true, RC_PICK = {}, RC_AMT_TYPED = false;
+const RC_REF_L = { "Bank transfer": "Transfer reference", "Cheque": "Cheque no.", "PDC": "Cheque no.", "Card": "Card / approval ref.", "Cash": "Reference (optional)" };
+async function rcOpen(then) {
+  const t = document.getElementById("screen-title"); if (t) t.textContent = "Receipts";
+  if (!RC_EDIT) rcReset(true);
+  await rcLoad();
+  if (typeof then === "function") then();
+}
+async function rcLoad() {
+  try { RC = await apiCall("/employees/accounts/receipts"); } catch (e) { showStatus("rc-status", "err", errText(e)); return; }
+  const co = document.getElementById("rc-co"), was = co.value;
+  co.innerHTML = RC.companies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  const main = RC.companies.find(c => /INFINIA CONTRACTING/i.test(c.name) && !/PRIME/i.test(c.name));
+  co.value = was && RC.companies.some(c => String(c.id) === was) ? was : (main ? main.id : (RC.companies[0] || {}).id || "");
+  document.getElementById("rc-co-f").style.display = RC.companies.length > 1 ? "" : "none";
+  document.getElementById("rc-client-list").innerHTML = RC.clients.map(x => `<option value="${escapeAttr(x)}">`).join("");
+  document.getElementById("rc-pno-list").innerHTML = [...new Set(RC.invoices.map(i => i.project_no).filter(Boolean))].map(x => `<option value="${escapeAttr(x)}">`).join("");
+  if (RC_AUTO && !RC_EDIT) rcNextNumber();
+  rcDrawInv(); rcDrawList();
+}
+function rcModes() {
+  const cur = document.getElementById("rc-mode").value;
+  document.getElementById("rc-modes").innerHTML = (RC ? RC.modes : ["Bank transfer", "Cheque", "Cash", "Card", "PDC"]).map(m => `<button type="button" class="${m === cur ? "on" : ""}" onclick="rcMode('${m}')">${m}</button>`).join("");
+  document.getElementById("rc-ref-l").textContent = RC_REF_L[cur] || "Reference";
+  document.getElementById("rc-bank-f").style.display = cur === "Cash" ? "none" : "";
+  document.getElementById("rc-chq-f").style.display = ["Cheque", "PDC"].includes(cur) ? "" : "none";
+}
+function rcMode(m) { document.getElementById("rc-mode").value = m; rcModes(); }
+async function rcNextNumber() {
+  try { const r = await apiCall(`/employees/accounts/receipts/next?project_no=${encodeURIComponent(document.getElementById("rc-pno").value.trim())}`);
+        if (RC_AUTO && !RC_EDIT) document.getElementById("rc-no").value = r.number; } catch (e) {}
+}
+// The client's tax invoices with money still due (and, when editing, the ones this receipt pays).
+function rcOpenInvoices() {
+  if (!RC) return [];
+  const client = document.getElementById("rc-client").value.trim().toLowerCase(), pno = document.getElementById("rc-pno").value.trim();
+  const mine = RC_EDIT ? (RC.rows.find(r => r.id === RC_EDIT) || { allocations: [] }).allocations : [];
+  return RC.invoices.filter(i => (!client || i.client.toLowerCase() === client) && (!pno || i.project_no === pno) && (client || pno))
+    .map(i => { const m = mine.find(a => a.invoice_id === i.id); return m ? Object.assign({}, i, { received: i.received - m.amount, balance: i.balance + m.amount }) : i; })
+    .filter(i => i.balance > 0.005 || RC_PICK[i.id]);
+}
+function rcDrawInv() {
+  const list = rcOpenInvoices(), body = document.getElementById("rc-inv");
+  const c = document.getElementById("rc-client").value.trim(), p = document.getElementById("rc-pno").value.trim();
+  document.getElementById("rc-inv-hint").textContent = list.length ? `- ${list.length} with money due. Tick the ones paid.` : "";
+  body.innerHTML = list.length ? list.map(i => { const on = RC_PICK[i.id] !== undefined;
+    return `<tr class="${on ? "on" : ""}"><td><input type="checkbox" ${on ? "checked" : ""} onchange="rcTick(${i.id}, this.checked)"></td><td class="l"><b>${escapeHtml(i.number)}</b>${i.paid_stamp ? ' <span class="inv-tag paid">PAID</span>' : ""}</td><td>${accDmy(i.date)}</td><td class="l">${escapeHtml(i.project_no)}${i.project ? " - " + escapeHtml(i.project) : ""}</td>
+      <td>${accMoney(i.total)}</td><td>${accMoney(i.received)}</td><td><b>${accMoney(i.balance)}</b></td>
+      <td><input class="n" value="${on ? RC_PICK[i.id] : ""}" placeholder="${on ? "" : "-"}" ${on ? "" : "disabled"} oninput="rcPart(${i.id}, this.value)"></td></tr>`; }).join("")
+    : `<tr><td colspan="8" class="empty">${c || p ? "No tax invoice with money due for this client / project - the whole amount is kept as an advance." : "Pick the project or the client - their tax invoices with money due come up here."}</td></tr>`;
+  rcSum();
+}
+function rcTick(id, on) {
+  const i = rcOpenInvoices().find(x => x.id === id);
+  if (on) RC_PICK[id] = i ? i.balance.toFixed(2) : "0"; else delete RC_PICK[id];
+  RC_AMT_TYPED = false; rcDrawInv();
+}
+function rcPart(id, v) { RC_PICK[id] = v; RC_AMT_TYPED = false; rcSum(); }
+// The amount typed is set against the ticked invoices, oldest first; anything over is an advance.
+function rcAmtTyped() {
+  RC_AMT_TYPED = true;
+  let left = accNum(document.getElementById("rc-amt").value);
+  rcOpenInvoices().filter(i => RC_PICK[i.id] !== undefined).forEach(i => { const a = Math.min(left, i.balance); RC_PICK[i.id] = Math.max(0, a).toFixed(2); left -= Math.max(0, a); });
+  const inputs = document.querySelectorAll("#rc-inv input.n"); let k = 0;
+  rcOpenInvoices().forEach(i => { const el = inputs[k++]; if (el && RC_PICK[i.id] !== undefined) el.value = RC_PICK[i.id]; });
+  rcSum();
+}
+function rcSum() {
+  const applied = Object.values(RC_PICK).reduce((a, v) => a + accNum(v), 0);
+  const amtEl = document.getElementById("rc-amt");
+  if (!RC_AMT_TYPED) amtEl.value = applied ? accMoney(applied) : (RC_EDIT ? amtEl.value : "");
+  const amt = accNum(amtEl.value);
+  document.getElementById("rc-applied").textContent = accMoney(applied);
+  document.getElementById("rc-adv").textContent = accMoney(Math.max(0, amt - applied));
+}
+function rcClientPicked() {
+  const c = document.getElementById("rc-client").value.trim().toLowerCase();
+  const inv = RC && RC.invoices.slice().reverse().find(i => i.client.toLowerCase() === c);
+  if (inv) {
+    if (!document.getElementById("rc-trn").value) document.getElementById("rc-trn").value = inv.client_trn || "";
+    if (!document.getElementById("rc-addr").value) document.getElementById("rc-addr").value = inv.client_address || "";
+  }
+  RC_PICK = {}; rcDrawInv();
+}
+function rcProjectPicked() {
+  const p = document.getElementById("rc-pno").value.trim();
+  const inv = RC && RC.invoices.slice().reverse().find(i => i.project_no === p);
+  if (inv && !document.getElementById("rc-client").value) { document.getElementById("rc-client").value = inv.client; rcClientPicked(); }
+  RC_PICK = {}; rcNextNumber(); rcDrawInv();
+}
+function rcReset(keepList) {
+  RC_EDIT = null; RC_AUTO = true; RC_PICK = {}; RC_AMT_TYPED = false;
+  ["rc-pno", "rc-client", "rc-trn", "rc-addr", "rc-ref", "rc-bank", "rc-chq", "rc-notes", "rc-amt"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("rc-date").value = accToday(); document.getElementById("rc-mode").value = "Bank transfer"; document.getElementById("rc-stamp").checked = true;
+  document.getElementById("rc-form-title").textContent = "New receipt"; document.getElementById("rc-note").textContent = ""; document.getElementById("rc-clear").textContent = "Clear";
+  rcModes(); rcDrawInv(); if (RC) rcNextNumber(); if (!keepList && RC) rcDrawList();
+}
+function rcFill(r) {
+  const set = (id, v) => document.getElementById(id).value = v || "";
+  set("rc-no", r.number); set("rc-date", r.date); set("rc-pno", r.project_no); set("rc-client", r.client); set("rc-trn", r.client_trn); set("rc-addr", r.client_address);
+  set("rc-mode", r.mode || "Bank transfer"); set("rc-ref", r.reference); set("rc-bank", r.bank); set("rc-chq", r.cheque_date); set("rc-notes", r.notes);
+  if (r.company_id) document.getElementById("rc-co").value = r.company_id;
+  RC_PICK = {}; r.allocations.forEach(a => RC_PICK[a.invoice_id] = a.amount.toFixed(2));
+  document.getElementById("rc-amt").value = accMoney(r.amount); RC_AMT_TYPED = true;
+  rcModes(); rcDrawInv();
+}
+function rcEdit(id) {
+  const r = RC.rows.find(x => x.id === id); if (!r) return;
+  RC_EDIT = id; RC_AUTO = false; rcFill(r);
+  document.getElementById("rc-form-title").textContent = "Edit receipt " + r.number; document.getElementById("rc-clear").textContent = "Cancel edit";
+  rcDrawList(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+async function rcSave(open) {
+  const v = id => document.getElementById(id).value;
+  const body = { number: v("rc-no"), date: v("rc-date"), company_id: Number(v("rc-co")) || null, client: v("rc-client"), client_trn: v("rc-trn"), client_address: v("rc-addr"),
+                 project_no: v("rc-pno"), mode: v("rc-mode"), reference: v("rc-ref"), bank: v("rc-bank"), cheque_date: v("rc-chq"), notes: v("rc-notes"),
+                 amount: String(accNum(v("rc-amt"))), stamp_paid: document.getElementById("rc-stamp").checked,
+                 allocations: Object.entries(RC_PICK).map(([id, a]) => ({ invoice_id: +id, amount: String(accNum(a)) })).filter(a => +a.amount > 0) };
+  const inv = RC && RC.invoices.find(i => body.allocations.length && i.id === body.allocations[0].invoice_id);
+  if (inv) { body.project = inv.project; body.location = inv.location; if (!body.project_no) body.project_no = inv.project_no; }
+  const win = open ? window.open("", "_blank") : null;
+  const btns = ["rc-save", "rc-save-pdf"].map(id => document.getElementById(id)); btns.forEach(b => b.disabled = true);
+  try {
+    let id = RC_EDIT;
+    if (RC_EDIT) await apiCall(`/employees/accounts/receipts/${RC_EDIT}`, { method: "PUT", body: JSON.stringify(body) });
+    else id = (await apiCall("/employees/accounts/receipts", { method: "POST", body: JSON.stringify(body) })).id;
+    if (win) win.location = await rcViewUrl(id);
+    const msg = `${body.number} saved - AED ${accMoney(body.amount)} from ${body.client}.`;
+    RC_EDIT = null; await rcLoad(); rcReset(); showStatus("rc-status", "ok", msg); INV = null;
+  } catch (e) { if (win) win.close(); showStatus("rc-status", "err", errText(e)); }
+  finally { btns.forEach(b => b.disabled = false); }
+}
+async function rcViewUrl(id) { await refreshDownloadToken(); return `${API}/export/accounts/receipt/${id}/view?token=${encodeURIComponent(cachedDownloadToken || "")}`; }
+async function rcPdf(id) { const w = window.open("", "_blank"); const u = await rcViewUrl(id); if (w) w.location = u; else window.open(u, "_blank"); }
+async function rcCancel(id) {
+  const r = RC.rows.find(x => x.id === id); if (!r) return;
+  if (!await hrAsk(`Cancel receipt ${r.number} (${r.client}, AED ${accMoney(r.amount)})? It stays on the list marked CANCELLED, and the money comes off the invoices it was set against.`, "Cancel it", true)) return;
+  try { await apiCall(`/employees/accounts/receipts/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason: "" }) });
+        if (RC_EDIT === id) RC_EDIT = null; await rcLoad(); rcReset(); showStatus("rc-status", "ok", `${r.number} cancelled.`); INV = null; }
+  catch (e) { showStatus("rc-status", "err", errText(e)); }
+}
+function rcDrawList() {
+  if (!RC) { document.getElementById("rc-body").innerHTML = `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">Loading…</td></tr>`; return; }
+  const q = document.getElementById("rc-search").value.trim().toLowerCase();
+  const rows = RC.rows.filter(r => !q || `${r.number} ${r.client} ${r.project_no} ${r.reference} ${r.allocations.map(a => a.number).join(" ")}`.toLowerCase().includes(q));
+  const live = rows.filter(r => r.status !== "cancelled");
+  document.getElementById("rc-count").textContent = `${live.length} receipt${live.length === 1 ? "" : "s"}`;
+  document.getElementById("rc-body").innerHTML = rows.map(r => { const cx = r.status === "cancelled";
+    const against = r.allocations.map(a => escapeHtml(a.number)).join(", ") + (r.advance > 0.005 ? `${r.allocations.length ? " + " : ""}advance ${accMoney(r.advance)}` : "");
+    return `<tr class="${cx ? "cx" : ""}${RC_EDIT === r.id ? " edit" : ""}"><td class="txt num"><b>${xlink(r.number, `rcPdf(${r.id})`, null, "Open the receipt")}</b>${cx ? '<span class="inv-tag cx">Cancelled</span>' : ""}</td><td>${accDmy(r.date)}</td>
+      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no)}</td><td class="txt">${escapeHtml(r.mode)}${r.reference ? `<div style="font-size:11px;color:#888">${escapeHtml(r.reference)}</div>` : ""}</td>
+      <td class="txt" style="font-size:12px">${against || "-"}</td><td class="n"><b>${accMoney(r.amount)}</b></td>
+      <td class="acts"><button class="btn btn-gray btn-sm" onclick="rcPdf(${r.id})">Preview</button>${cx ? "" : `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
+        <button type="button" onclick="hrMenuClose(); rcEdit(${r.id})">Edit</button><hr><button type="button" class="danger" onclick="hrMenuClose(); rcCancel(${r.id})">Cancel receipt</button></div></span>`}</td></tr>`; }).join("")
+    || `<tr><td colspan="8" style="color:#999; padding:18px; text-align:left;">No receipts yet.</td></tr>`;
+  document.getElementById("rc-foot").innerHTML = live.length ? `<tr><td class="txt" colspan="6">TOTAL (not counting cancelled)</td><td class="n">${accMoney(live.reduce((a, r) => a + r.amount, 0))}</td><td></td></tr>` : "";
+}
+// From a tax invoice: Receipts opens with that invoice ticked for its balance.
+function rcFromInvoice(id) {
+  const inv = INV && INV.rows.find(r => r.id === id); if (!inv) return;
+  xlGo("accounts", "invoices", "receipts", () => document.getElementById("screen-receipts").classList.contains("active") && RC, () => {
+    rcReset(true);
+    document.getElementById("rc-pno").value = inv.project_no || ""; document.getElementById("rc-client").value = inv.client;
+    document.getElementById("rc-trn").value = inv.client_trn || ""; document.getElementById("rc-addr").value = inv.client_address || "";
+    rcNextNumber(); RC_PICK = {}; RC_PICK[id] = (inv.balance || 0).toFixed(2); rcDrawInv();
+    document.getElementById("rc-note").textContent = `For ${inv.number} - AED ${accMoney(inv.balance)} still due.`;
+  });
+}
+
+// The PAID stamp: a tick, and the date on the stamp (today unless changed). Tax invoices only.
+function invPaidShow() {
+  const f = document.getElementById("inv-paid-f"); if (!f) return;
+  f.style.display = INV_KIND === "tax" ? "" : "none";
+  document.getElementById("inv-paid-on").style.display = document.getElementById("inv-paid").checked ? "" : "none";
+  if (!document.getElementById("inv-paid-on").value) document.getElementById("inv-paid-on").value = accToday();
+}
+async function invPaidStamp(id, on) {
+  const r = INV.rows.find(x => x.id === id); if (!r) return;
+  try { await apiCall(`/employees/accounts/invoices/${id}/paid`, { method: "POST", body: JSON.stringify({ paid: on }) });
+        await invLoad(); showStatus("inv-status", "ok", on ? `${r.number} now prints with the PAID stamp.` : `PAID stamp taken off ${r.number}.`); if (on) invPdf(id); }
+  catch (e) { showStatus("inv-status", "err", errText(e)); }
+}
 async function invSave(openPdf) {
   const v = id => document.getElementById(id).value;
   const body = { kind: INV_KIND, number: v("inv-no"), date: v("inv-date"), company_id: Number(v("inv-co")) || null,
                  lines: INV_LINES.map(l => ({ description: l.description, amount: String(l.amount).replace(/,/g, ""), vat: l.vat })) };
   Object.entries(INV_FIELDS).forEach(([k, id]) => body[k] = v(id));
+  body.paid_stamp = INV_KIND === "tax" && document.getElementById("inv-paid").checked; body.paid_on = v("inv-paid-on");
   const win = openPdf ? window.open("", "_blank") : null;
   const btns = ["inv-save", "inv-save-pdf"].map(id => document.getElementById(id)); btns.forEach(b => b.disabled = true);
   try {

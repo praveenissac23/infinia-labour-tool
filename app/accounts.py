@@ -63,6 +63,8 @@ class Invoice(Base):
     total = Column(Float, default=0.0)
     status = Column(String, default="issued")  # issued | cancelled
     cancel_reason = Column(String, default="")
+    paid_stamp = Column(Boolean, default=False)   # a tax invoice printed with the PAID stamp
+    paid_on = Column(Date, nullable=True)         # the date on the stamp
     from_proforma_id = Column(Integer, nullable=True)
     converted_to_id = Column(Integer, nullable=True)
     # Zoho: a tax invoice goes to Zoho only when released (by admin or the
@@ -94,8 +96,17 @@ class CashEntry(Base):
 
 
 def create_tables(engine):
-    for t in (Invoice.__table__, CashEntry.__table__):
+    import receipts
+    for t in (Invoice.__table__, CashEntry.__table__, receipts.Receipt.__table__):
         t.create(bind=engine, checkfirst=True)
+    # columns added after the table was first made (the PAID stamp)
+    from sqlalchemy import inspect, text
+    for t in (Invoice.__table__, receipts.Receipt.__table__):
+        have = {c["name"] for c in inspect(engine).get_columns(t.name)}
+        for col in t.columns:
+            if col.name not in have:
+                with engine.begin() as cx:
+                    cx.execute(text(f'ALTER TABLE {t.name} ADD COLUMN "{col.name}" {col.type.compile(engine.dialect)}'))
 
 
 # ---- invoices ---------------------------------------------------------------
@@ -151,6 +162,7 @@ def _dict(x, users=None):
             "plot": x.plot or "", "location": x.location or "", "work": x.work or "",
             "lines": json.loads(x.lines or "[]"), "subtotal": x.subtotal, "vat": x.vat, "total": x.total,
             "status": x.status, "cancel_reason": x.cancel_reason or "",
+            "paid_stamp": bool(getattr(x, "paid_stamp", False)), "paid_on": x.paid_on.isoformat() if getattr(x, "paid_on", None) else "",
             "from_proforma_id": x.from_proforma_id, "converted_to_id": x.converted_to_id,
             "zoho": x.zoho_status or "", "zoho_err": x.zoho_err or "",
             "by": (users or {}).get(x.updated_by or x.created_by, "")}
@@ -216,7 +228,9 @@ def _clean(db, p, kind, keep_id=None):
             "client": client[:200], "client_trn": s("client_trn", 30), "client_address": s("client_address"),
             "project": s("project"), "project_no": s("project_no", 30), "plot": s("plot", 60),
             "location": s("location"), "work": s("work"), "lines": json.dumps(lines),
-            "subtotal": sub, "vat": vat, "total": total}
+            "subtotal": sub, "vat": vat, "total": total,
+            "paid_stamp": kind == "tax" and bool(p.get("paid_stamp")),
+            "paid_on": (M._as_date(p.get("paid_on")) or M._dubai_today()) if (kind == "tax" and p.get("paid_stamp")) else None}
 
 
 @router.get("/employees/accounts/invoices")
@@ -225,7 +239,16 @@ def list_invoices(kind: str = "tax", db: Session = Depends(get_db), user: models
     rows = db.query(Invoice).filter(Invoice.kind == kind).order_by(Invoice.inv_date.desc(), Invoice.id.desc()).all()
     live = [r for r in rows if r.status != "cancelled"]
     companies = [{"id": c.id, "name": c.name} for c in db.query(models.Company).filter(models.Company.active == True).all()]  # noqa: E712
-    return {"rows": [_dict(r, users) for r in rows], "companies": companies,
+    import receipts
+    got = receipts.received_map(db) if kind == "tax" else {}
+    out = []
+    for r in rows:
+        d = _dict(r, users)
+        if kind == "tax":
+            d["received"] = round(got.get(r.id, 0), 2)
+            d["balance"] = round((r.total or 0) - got.get(r.id, 0), 2)
+        out.append(d)
+    return {"rows": out, "companies": companies,
             "totals": {"count": len(live), "subtotal": round(sum(r.subtotal for r in live), 2),
                        "vat": round(sum(r.vat for r in live), 2), "total": round(sum(r.total for r in live), 2)},
             "clients": sorted({r.client for r in db.query(Invoice).all() if r.client}),
@@ -263,6 +286,26 @@ def edit_invoice(iid: int, payload: dict = Body(...), db: Session = Depends(get_
     db.commit()
     M.log_action(db, user.id, "invoice_edit", f"{x.kind} {x.number} {x.client}: AED {total_was:,.2f} -> {x.total or 0:,.2f}")
     return {"ok": True}
+
+
+@router.post("/employees/accounts/invoices/{iid}/paid")
+def stamp_invoice(iid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = INV):
+    """The PAID stamp on a tax invoice, on or off - only how it prints, so it is allowed on an
+    invoice already released to Zoho. {paid: true|false, paid_on: date (default today)}"""
+    x = db.get(Invoice, iid)
+    if not x:
+        raise HTTPException(status_code=404, detail="That invoice is not on file.")
+    if x.kind != "tax":
+        raise HTTPException(status_code=400, detail="Only a tax invoice carries the PAID stamp.")
+    if x.status == "cancelled":
+        raise HTTPException(status_code=400, detail="A cancelled invoice cannot be stamped paid.")
+    on = bool(payload.get("paid", True))
+    x.paid_stamp = on
+    x.paid_on = (M._as_date(payload.get("paid_on")) or x.paid_on or M._dubai_today()) if on else None
+    x.updated_by = user.id
+    db.commit()
+    M.log_action(db, user.id, "invoice_paid_stamp", f"{x.number} {x.client}: PAID stamp {'on ' + x.paid_on.isoformat() if on else 'off'}")
+    return {"ok": True, "paid_stamp": on, "paid_on": x.paid_on.isoformat() if x.paid_on else ""}
 
 
 @router.post("/employees/accounts/invoices/{iid}/cancel")
@@ -330,6 +373,8 @@ def set_terms(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
 def _pdf_response(db, x):
     d = _dict(x)
     d["date_text"] = f"{x.inv_date:%d %B %Y}"
+    if d.get("paid_stamp"):
+        d["paid_text"] = f"{(x.paid_on or x.inv_date):%d %b %Y}"
     d["terms"] = terms_for(db, x.kind)
     d["notes"] = M.get_setting(db, "invoice_note") or "Thank you for your business."
     buf = invoice_pdf.build(d, company=_company(db, x.company_id), signature=invoice_signature())
