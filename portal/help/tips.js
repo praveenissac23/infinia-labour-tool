@@ -23,7 +23,9 @@
   // window.HEAD_TIPS: "heading" -> note, or "<where>|heading" when the same word means something
   // else on one screen. <where> is the screen (screen-store -> "store"), or what the page says it
   // is showing (body data-ctx, set by the Estimation pages: "est.client.boq", "est.schedule" ...).
-  const norm = t => String(t || "").replace(/\s+/g, " ").replace(/[*:]+$/, "").trim().toLowerCase();
+  // Sort arrows and a figure in brackets ("Retention to date (5%)") are not part of the name.
+  const norm = t => String(t || "").replace(/[\u25B2\u25BC\u2191\u2193]/g, "").replace(/\([^)]*\d[^)]*\)/g, "")
+    .replace(/\s+/g, " ").trim().replace(/[*:]+$/, "").trim().toLowerCase();
   function whereOf(el) {
     const scr = el.closest && el.closest('[id^="screen-"]');
     if (scr) return scr.id.slice(7);
