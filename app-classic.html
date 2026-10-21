@@ -5017,6 +5017,9 @@ async function doLogin() {
     try { if (document.getElementById("login-keep").checked) localStorage.setItem("infinia_keep", TOKEN); else localStorage.removeItem("infinia_keep"); } catch (e) {}
     document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
     try { sessionStorage.setItem("infinia_who", `${data.full_name} (${data.role})`); } catch (e) {}
+    // A fresh sign-in starts on this login's own first page (Estimation for an estimation login,
+    // Dashboard for one that has it) - never on the page the last person was on (e.g. Settings).
+    if (!window.__ARRIVAL && (/[?&]p=/.test(location.search) || location.hash)) { location.replace(location.pathname); return; }
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-screen").style.display = "block";
     await initApp();
@@ -5028,7 +5031,7 @@ async function doLogin() {
 function doLogout() {
   try { sessionStorage.removeItem("infinia_user"); sessionStorage.removeItem("infinia_stock_home"); localStorage.removeItem("infinia_keep"); } catch (e) {}
   sessionStorage.removeItem("infinia_token");
-  location.reload();
+  location.replace(location.pathname);     // back to the sign-in without the page / tab of this login
 }
 
 const SCREEN_TITLES = {
