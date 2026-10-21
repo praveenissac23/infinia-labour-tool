@@ -857,7 +857,20 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
     sups = db.query(models.Supplier).filter(models.Supplier.active == True).order_by(models.Supplier.name).all()   # noqa: E712
     users = db.query(models.User).filter(models.User.active == True).order_by(models.User.full_name).all() if hasattr(models.User, "active") else db.query(models.User).order_by(models.User.full_name).all()  # noqa: E712
     names = {s.name for s in db.query(EstSub.name).distinct()}
+    # What a subcontractor was given last time, and the trade each kind of work usually is -
+    # so a new subcontract fills itself in from a click on the name / the work.
+    terms, by_scope = {}, {}
+    for x in db.query(EstSub).order_by(EstSub.id).all():
+        if x.name:
+            terms[x.name.strip().lower()] = {"trade": x.trade or "", "kind": x.kind or "", "adv_pct": x.adv_pct or 0, "ret_pct": x.ret_pct or 0,
+                                             "vat_pct": 5 if x.vat_pct is None else x.vat_pct, "contract_type": x.contract_type or "",
+                                             "pay_terms": x.pay_terms or "", "scope": x.scope or ""}
+        if x.scope and x.trade:
+            d = by_scope.setdefault(x.scope.strip().lower(), {})
+            d[x.trade] = d.get(x.trade, 0) + 1
+    scope_trade = {k: max(v.items(), key=lambda kv: kv[1])[0] for k, v in by_scope.items()}
     return {
+        "sub_terms": terms, "scope_trade": scope_trade,
         "projects": [{"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client} for p in projects],
         "sites": [{"code": s.code, "name": s.project_name or "", "plot": s.plot_no or ""} for s in sites],
         "suppliers": [{"id": s.id, "name": s.name} for s in sups],

@@ -84,7 +84,12 @@ function fieldHtml(f) {
   const v = f.value ?? "";
   const lab = `<label for="f-${f.k}">${esc(f.label)}${f.tip ? " " + tip(f.tip) : ""}</label>`;
   let inp;
-  if (f.type === "select") inp = `<select id="f-${f.k}">${(f.options || []).map(o => { const [val, txt] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(txt)}</option>`; }).join("")}</select>`;
+  const opts = (f.options || []).map(o => Array.isArray(o) ? o : [o, o]);
+  if ((f.type === "seg" || (f.type === "select" && !f.noseg && opts.length >= 2 && opts.length <= 6 && opts.every(o => String(o[1]).length <= 24 && String(o[0]) !== "")))) {
+    const cur = opts.some(o => String(o[0]) === String(v)) ? v : opts[0][0];
+    inp = `<input type="hidden" id="f-${f.k}" value="${esc(cur)}"><div class="seg" data-segfor="${f.k}">${opts.map(([val, txt]) => `<button type="button" data-v="${esc(val)}" class="${String(val) === String(cur) ? "on" : ""}">${esc(txt)}</button>`).join("")}</div>`;
+  }
+  else if (f.type === "select") inp = `<select id="f-${f.k}">${(f.options || []).map(o => { const [val, txt] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(txt)}</option>`; }).join("")}</select>`;
   else if (f.type === "combo") inp = `<input id="f-${f.k}" list="dl-${f.k}" value="${esc(v)}" autocomplete="off" placeholder="${esc(f.ph || "Pick or type")}"><datalist id="dl-${f.k}">${(f.options || []).map(o => `<option value="${esc(o)}">`).join("")}</datalist>`;
   else if (f.type === "area") inp = `<textarea id="f-${f.k}" placeholder="${esc(f.ph || "")}">${esc(v)}</textarea>`;
   else if (f.type === "check") inp = `<label class="chk"><input type="checkbox" id="f-${f.k}" ${v ? "checked" : ""}> ${esc(f.text || "")}</label>`;
@@ -93,6 +98,22 @@ function fieldHtml(f) {
   else inp = `<input id="f-${f.k}" value="${esc(v)}" placeholder="${esc(f.ph || "")}" autocomplete="off">`;
   const q = f.quick ? `<div class="quick">${f.quick.map((x, i) => `<button type="button" data-q="${f.k}:${i}">${esc(x[0])}</button>`).join("")}</div>` : "";
   return `<div class="f ${f.full || f.type === "area" ? "full" : ""}">${lab}${inp}${q}${f.hint ? `<div class="hint">${f.hint}</div>` : ""}</div>`;
+}
+// A click on a choice: it is the value; anything listening to the form hears it like typing.
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest(".seg button"); if (!b) return;
+  const box = b.parentElement, inp = document.getElementById("f-" + box.dataset.segfor); if (!inp) return;
+  e.preventDefault(); setField(box.dataset.segfor, b.dataset.v);
+});
+// Put a value in a form box - a text box, a list or a row of choices - and let the form know.
+function setField(k, v) {
+  const el = document.getElementById("f-" + k); if (!el) return;
+  if (el.type === "checkbox") el.checked = !!v;
+  else if (el.tagName === "SELECT" && v && ![...el.options].some(o => o.value === String(v))) { el.add(new Option(v, v)); el.value = v; }   // a value used before, not in the list
+  else el.value = v ?? "";
+  const box = document.querySelector(`.seg[data-segfor="${k}"]`);
+  if (box) box.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === String(v)));
+  el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 function readForm(fields) {
   const out = {};
@@ -528,7 +549,7 @@ function subForm(s, pre) {
     { k: "trade", label: "Trade", type: "select", options: m.trades, value: s.trade || "Civil" },
     { k: "kind", label: "Type", type: "select", options: ["Subcontract", "LPO", "Manpower"], value: s.kind || "Subcontract" },
     { k: "status", label: "Status", type: "select", options: ["Active", "Completed", "Closed", "Cancelled"], value: s.status || "Active" },
-    { k: "agreement", label: "Agreement no.", value: s.agreement || "", ph: `IC/${ST.b.project.code}/SCA/01/26` },
+    { k: "agreement", label: "Agreement no.", value: s.agreement || (edit ? "" : nextAgreement()), ph: `IC/${ST.b.project.code}/SCA/01/26`, tip: "Filled with the next number for this project (IC/project/SCA/serial/year). Change it if the agreement says otherwise." },
     { k: "lpo", label: "LPO no.", value: s.lpo || "" },
     { k: "value", label: "Subcontract / LPO amount (AED)", type: "money", value: s.value ?? "", tip: "Before VAT. Variations are added later on the subcontract." },
     { k: "cancelled", label: "LPO cancellation (AED)", type: "money", value: s.cancelled || "" },
@@ -538,10 +559,11 @@ function subForm(s, pre) {
     { k: "start_date", label: "Commencement date", type: "date", value: s.start_date || today() },
     { k: "agreement_date", label: "Agreement date", type: "date", value: s.agreement_date || "" },
     { k: "contract_type", label: "Contract type", type: "combo", options: ["Lump sum contract", "Contract progressive payment", "Unit rate re-measurement contract", "Manpower rates"], value: s.contract_type || "" },
-    { k: "pay_terms", label: "Payment terms (printed on the certificate)", type: "area", full: true, value: s.pay_terms || "", ph: "10% advance against security cheque\n100% progressive payment after certification\n10% retention" },
+    { k: "pay_terms", label: "Payment terms (printed on the certificate)", type: "area", full: true, value: s.pay_terms || "", tip: "Written for you from the advance and retention % while you leave it as it is. Type over it if the agreement words it differently.", ph: "10% advance against security cheque\n100% progressive payment after certification\n10% retention" },
     { k: "notes", label: "Notes", type: "area", value: s.notes || "" },
   ], async v => {
     const sup = m.suppliers.find(x => x.name.toLowerCase() === v.name.toLowerCase());
+    if (!v.contract_type && v.kind === "Manpower") v.contract_type = "Manpower rates";
     if (sup) v.supplier_id = sup.id;
     if (edit) await PATCH(`/store/est/subs/${s.id}`, v);
     else {
@@ -551,7 +573,58 @@ function subForm(s, pre) {
     }
     await reload(); toast(edit ? "Saved" : "Subcontract added");
     if (ST.openAfter) { openSub(ST.openAfter); ST.openAfter = null; }
-  }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true });
+  }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
+    after: () => subAutoFill(edit, s) });
+}
+// The next agreement number on this project: IC/912/SCA/03/26 after .../02/...
+function nextAgreement() {
+  const code = ST.b.project.code, yy = String(today()).slice(2, 4);
+  const n = Math.max(0, ...ST.b.subs.map(x => { const m = String(x.agreement || "").match(/SCA\/(\d+)\//i); return m ? +m[1] : 0; }));
+  return `IC/${code}/SCA/${pad(n + 1, 2)}/${yy}`;
+}
+// Payment terms in the words the certificates use, from the advance and retention %.
+function payTermsText(adv, ret, kind) {
+  const L = [];
+  if (+adv) L.push(`${+adv}% advance against security cheque`);
+  L.push(kind === "Manpower" ? "Monthly payment against certified timesheets" : "100% progressive payment after certification");
+  if (+ret) L.push(`${+ret}% retention`);
+  return L.join("\n");
+}
+function subAutoFill(edit, s) {
+  const m = ST.meta, g = k => ($("#f-" + k) || {}).value || "";
+  const typed = {};                                     // what the user typed himself is never overwritten
+  ["trade", "kind", "adv_pct", "ret_pct", "vat_pct", "contract_type", "pay_terms", "scope", "agreement"].forEach(k => {
+    const el = $("#f-" + k); if (el) el.addEventListener("keydown", () => { typed[k] = true; });
+  });
+  let autoTerms = !edit || !s.pay_terms || s.pay_terms === payTermsText(s.adv_pct, s.ret_pct, s.kind);
+  const pt = $("#f-pay_terms"); if (pt) pt.addEventListener("input", e => { if (e.isTrusted) autoTerms = false; });
+  const terms = () => { if (autoTerms && pt) pt.value = payTermsText(g("adv_pct"), g("ret_pct"), g("kind")); };
+  const set = (k, v) => { if (!typed[k] && v !== undefined && v !== null && v !== "") setField(k, v); };
+  const nm = $("#f-name");
+  const fromName = () => {
+    if (edit) return;
+    const t = m.sub_terms && m.sub_terms[g("name").trim().toLowerCase()]; if (!t) return;
+    set("kind", t.kind); set("trade", t.trade); set("adv_pct", t.adv_pct); set("ret_pct", t.ret_pct); set("vat_pct", t.vat_pct);
+    set("contract_type", t.contract_type); if (!g("scope")) set("scope", t.scope);
+    if (t.pay_terms && pt) { pt.value = t.pay_terms; autoTerms = false; } else terms();
+    toast("Filled in from the last subcontract with " + g("name") + " - check and change anything");
+  };
+  if (nm) { nm.addEventListener("change", fromName); }
+  const sc = $("#f-scope");
+  if (sc) sc.addEventListener("change", () => { const t = m.scope_trade && m.scope_trade[g("scope").trim().toLowerCase()]; if (t) set("trade", t); });
+  const kd = $("#f-kind");
+  if (kd) kd.addEventListener("input", () => {
+    const k = g("kind");
+    if (k === "Manpower") { if (g("trade") !== "Manpower") kd._trade = g("trade"); set("trade", "Manpower"); if (!g("contract_type")) setField("contract_type", "Manpower rates"); }
+    else if (g("trade") === "Manpower" && kd._trade) { set("trade", kd._trade); if (g("contract_type") === "Manpower rates") setField("contract_type", ""); }
+    if (k === "LPO" && !g("contract_type")) setField("contract_type", "Lump sum contract");
+    const ag = $("#f-agreement");
+    if (!edit && ag && !typed.agreement) ag.value = k === "LPO" ? "" : (ag.value || nextAgreement());
+    terms();
+  });
+  ["adv_pct", "ret_pct"].forEach(k => { const el = $("#f-" + k); if (el) el.addEventListener("input", terms); });
+  $$('[data-q^="adv_pct:"], [data-q^="ret_pct:"]').forEach(b => b.addEventListener("click", () => setTimeout(terms, 0)));
+  if (!edit && pt && !pt.value) terms();
 }
 // The subcontract's own page: its figures, variations and every certificate (the Excel sheet per subcontractor).
 function openSub(sid) {
@@ -600,9 +673,10 @@ function voSubForm(s, v) {
   v = v || {};
   modal(v.id ? "Variation" : "Variation to " + s.name, [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
-    { k: "amount", label: "Amount (AED)", type: "money", value: v.amount ?? "", tip: "Negative for an omission." },
-    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Ref.", value: v.ref || "" },
-  ], async x => { if (v.id) await PATCH(`/store/est/subvos/${v.id}`, x); else await POST("/store/est/subvos", Object.assign(x, { sub_id: s.id })); await reload(); toast("Saved"); },
+    { k: "sign", label: "Type", type: "seg", options: ["Addition", "Omission"], value: (v.amount || 0) < 0 ? "Omission" : "Addition", tip: "Omission takes the amount off the subcontract - type the amount without a minus." },
+    { k: "amount", label: "Amount (AED)", type: "money", value: v.amount ? Math.abs(v.amount) : "" },
+    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Ref.", value: v.ref || `VO-${pad((s.vos || []).length + 1, 2)}`, tip: "Numbered for you (VO-01, VO-02 ...) - change it to the subcontractor's own reference if there is one." },
+  ], async x => { const a = Math.abs(Number(String(x.amount || 0).replace(/,/g, "")) || 0); x.amount = x.sign === "Omission" ? -a : a; delete x.sign; if (v.id) await PATCH(`/store/est/subvos/${v.id}`, x); else await POST("/store/est/subvos", Object.assign(x, { sub_id: s.id })); await reload(); toast("Saved"); },
   { del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
 }
 // Invoice received: the first step. Only the reference and amount are typed.
@@ -937,7 +1011,7 @@ function cpcForm(c) {
     { k: "mos_cum", label: "Material on site to date", type: "money", value: c.mos_cum || "" }, { k: "other_cum", label: "Other deductions to date", type: "money", value: c.other_cum || "" },
     { k: "ret_rel_cum", label: "Retention released to date", type: "money", value: c.ret_rel_cum || "" },
     { k: "status", label: "Status", type: "select", options: ["Draft", "Submitted", "Certified", "Invoiced", "Paid"], value: c.status || "Draft" },
-    { k: "invoice_no", label: "Our invoice no.", value: c.invoice_no || "", tip: "The tax invoice from Accounts > Invoices for this certificate." },
+    { k: "invoice_no", label: "Our invoice no.", type: "combo", options: (b.invoices || []).filter(i => i.kind === "tax" && i.status !== "cancelled").map(i => i.number), value: c.invoice_no || "", ph: "Pick from Accounts > Invoices", tip: "The tax invoice from Accounts > Invoices for this certificate - pick it from the list." },
     { k: "remarks", label: "Remarks", type: "area", value: c.remarks || "" },
   ], async v => { if (edit) await PATCH(`/store/est/clientpcs/${c.id}`, v); else await POST("/store/est/clientpcs", Object.assign(v, { project_id: ST.pid })); await reload(); toast("Saved"); },
   { wide: true, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
@@ -1012,7 +1086,7 @@ function voForm(v) {
   v = v || {};
   modal(v.id ? (v.ref || `VO-${pad(v.seq)}`) : "New variation", [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
-    { k: "ref", label: "Ref. (V01, CP02 ...)", value: v.ref || "" },
+    { k: "ref", label: "Ref. (V01, CP02 ...)", value: v.ref || (v.id ? "" : nextVoRef()), tip: "Numbered for you after the last one in the log (V07 after V06). Change it for a cost proposal (CP...)." },
     { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission", "Coordination"], value: v.kind || "Addition" },
     { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement", "Coordination & attendance"], value: v.source || "Client instruction" },
     { k: "submitted", label: "Submitted on", type: "date", value: v.submitted || "" },
@@ -1021,12 +1095,22 @@ function voForm(v) {
     { k: "approved_on", label: "Approved on", type: "date", value: v.approved_on || "" },
     { k: "approved_amount", label: "Approved amount (AED)", type: "money", value: v.approved_amount || "" },
     { k: "absorbed_amount", label: "Absorbed amount (AED)", type: "money", value: v.absorbed_amount || "" },
-    { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" },
-    { k: "status", label: "Status", type: "select", options: VO_ST, value: v.status || "Identified" },
+    { k: "pc_ref", label: "Claimed in PC", type: "combo", options: [...new Set([...ST.b.clientpcs.map(c => `PC ${pad(c.seq, 2)}`), ...ST.b.variations.map(x => x.pc_ref).filter(Boolean)])], value: v.pc_ref || "", ph: "Pick the PC" },
+    { k: "status", label: "Status", type: "select", options: VO_ST, value: v.status || "Identified", tip: "Submitted / Approved fill today's date in their box when it is empty." },
     { k: "sub_id", label: "Passed to subcontractor", type: "select", options: [["", "-"], ...ST.b.subs.map(s => [s.id, s.name])], value: v.sub_id || "" },
     { k: "notes", label: "Remarks", type: "area", value: v.notes || "" },
   ], async d => { if (!d.submitted) d.submitted = null; if (!d.approved_on) d.approved_on = null; d.on_date = d.submitted || v.on_date || today(); if (v.id) await PATCH(`/store/est/variations/${v.id}`, d); else await POST("/store/est/variations", Object.assign(d, { project_id: ST.pid })); await reload(); toast("Saved"); },
-  { wide: true, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null });
+  { wide: true, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null,
+    after: () => { const st_ = $("#f-status"); if (st_) st_.addEventListener("input", () => {
+      if (st_.value === "Submitted" && !$("#f-submitted").value) $("#f-submitted").value = today();
+      if (st_.value === "Approved") { if (!$("#f-approved_on").value) $("#f-approved_on").value = today(); if (!$("#f-approved_amount").value) $("#f-approved_amount").value = $("#f-revised_amount").value || $("#f-submitted_amount").value; } }); } });
+}
+// The next variation ref after the last one in the log: V06 -> V07, VO-12 -> VO-13.
+function nextVoRef() {
+  const refs = ST.b.variations.map(x => String(x.ref || "").trim()).filter(r => /^[A-Za-z]{1,3}[-\s]?\d+$/.test(r) && !/^CP/i.test(r));
+  if (!refs.length) return "V01";
+  const best = refs.map(r => { const m = r.match(/^([A-Za-z]{1,3}[-\s]?)(\d+)$/); return { p: m[1], n: +m[2], w: m[2].length }; }).sort((a, b) => b.n - a.n)[0];
+  return best.p + String(best.n + 1).padStart(best.w, "0");
 }
 
 // ---------------- Overview > invoices (from Accounts) ----------------
@@ -1075,12 +1159,13 @@ function logSection(kind) {
   };
 }
 async function quickLog(id, d, msg) { try { await PATCH(`/store/est/logs/${id}`, d); await reload(); toast(msg); } catch (e) { fail(e); } }
+function lastLog(kind, k) { const L = ST.b.logs.filter(x => x.kind === kind && x[k]); return L.length ? L[L.length - 1][k] : ""; }
 function logForm(kind, l) {
   l = l || {}; const cfg = LOGCFG[kind], m = ST.meta;
   const fields = [
     { k: "title", label: cfg.title, value: l.title || "", full: true, focus: true },
-    { k: "party", label: cfg.party, type: "select", options: m.parties, value: l.party || "Consultant" },
-    { k: "discipline", label: "Discipline", type: "select", options: ["", ...m.disciplines], value: l.discipline || "" },
+    { k: "party", label: cfg.party, type: "select", options: m.parties, value: l.party || lastLog(kind, "party") || "Consultant" },
+    { k: "discipline", label: "Discipline", type: "select", options: ["", ...m.disciplines], value: l.discipline || (l.id ? "" : lastLog(kind, "discipline")) },
     { k: "ref", label: "Ref. / letter no.", value: l.ref || "" },
     { k: "sent", label: "Sent on", type: "date", value: l.sent || today() }, { k: "due", label: "Reply due", type: "date", value: l.due || "", hint: l.id ? "" : "Left empty, it is set from the days allowed." },
     { k: "replied", label: "Reply received", type: "date", value: l.replied || "" },

@@ -357,3 +357,10 @@ table.t.boq tr.out td { color: #9A9188; }
 table.t.boq tr.out td.rowc { color: #8A8178; }
 table.t.boq .scopetag { cursor: pointer; margin-left: 6px; }
 tr.warnrow td { background: var(--amber-bg) !important; }
+
+/* a short list of choices, clicked */
+.seg { display: inline-flex; flex-wrap: wrap; gap: 0; border: 1px solid #D9DCE0; border-radius: 8px; overflow: hidden; background: #fff; }
+.seg button { border: 0; border-right: 1px solid #E6E8EB; background: #fff; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink2); cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { color: var(--red); }
+.seg button.on { background: var(--red); color: #fff; }
