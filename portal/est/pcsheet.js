@@ -4,12 +4,13 @@
    Uses est.js (ST, api, modal, money, ...). */
 
 // ---------- a full-screen page over the project ----------
-function big(title, html, onClose) {
+function big(title, html, onClose, ctx) {
   let el = document.getElementById("big");
   if (!el) {
     el = h(`<div id="big" class="hide"><div class="bbox"><div class="mhead"><b id="b-title"></b><span class="spacer"></span><span id="b-tools"></span><button class="x" id="b-x" aria-label="Close">&times;</button></div><div class="bbody" id="b-body"></div></div></div>`);
     document.body.appendChild(el);
   }
+  el.dataset.ctx = ctx || "est.big";             // which (i) notes apply on this page (heads.js)
   $("#b-title").innerHTML = title; $("#b-body").innerHTML = html; $("#b-tools").innerHTML = "";
   el.classList.remove("hide"); document.body.style.overflow = "hidden";
   $("#b-x").onclick = () => closeBig(onClose);
@@ -54,7 +55,7 @@ async function scheduleEditor(sid) {
     fi.onchange = () => { const f = fi.files[0]; fi.value = ""; if (f) importItems(sid, f, async () => { const n = await GET(`/store/est/subs/${sid}/items`); d = n; rows = n.items.map(x => Object.assign({}, x)); draw(); }); };
     $("#it-paste").onclick = () => pasteItems(sid, d.sub, async () => { const n = await GET(`/store/est/subs/${sid}/items`); d = n; rows = n.items.map(x => Object.assign({}, x)); draw(); });
   };
-  big(`Item schedule - ${esc(d.sub.name)} <span class="muted small">${esc(d.sub.scope)}</span>`, "", () => reload());
+  big(`Item schedule - ${esc(d.sub.name)} <span class="muted small">${esc(d.sub.scope)}</span>`, "", () => reload(), "est.schedule");
   $("#b-tools").innerHTML = `<button class="btn btn-primary" id="it-save">Save schedule</button>`;
   $("#it-save").onclick = async () => {
     try { const r = await PUT(`/store/est/subs/${sid}/items`, { items: rows.map(x => { const y = Object.assign({}, x); delete y._amt_typed; return y; }) }); d = r; rows = r.items.map(x => Object.assign({}, x)); draw(); toast("Schedule saved"); }
@@ -248,7 +249,7 @@ async function pcSheet(pcid) {
     if (!undo && !locked && !(await save(false))) return;
     try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); toast(undo ? "Signature taken off" : "Signed"); } catch (e) { fail(e); }
   };
-  big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload());
+  big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload(), "est.sheet");
   $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>${locked ? "" : `<button class="btn btn-ghost" id="sh-save">Save</button>${["Received", "At site", "Back from site"].includes(d.pc.status) ? `<button class="btn btn-primary" id="sh-cert">Save & certify</button>` : `<button class="btn btn-primary" id="sh-cert2">Save</button>`}`}`;
   const sv = $("#sh-save"); if (sv) sv.onclick = () => save(false);
   const ce = $("#sh-cert"); if (ce) ce.onclick = () => save(true);

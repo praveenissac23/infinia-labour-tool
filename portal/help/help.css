@@ -99,3 +99,5 @@
 .field-x { position: fixed; z-index: 2800; display: none; align-items: center; justify-content: center; width: 18px; height: 18px;
   padding: 0; border: 0; border-radius: 50%; background: #E4E0DA; color: #5B6167; font: bold 13px/1 Arial, sans-serif; cursor: pointer; }
 .field-x:hover { background: #C0392B; color: #fff; }
+.help-tipbox { white-space: pre-line; }
+th .help-i.in-head { background: rgba(255,255,255,.85); color: #8C2F26; }

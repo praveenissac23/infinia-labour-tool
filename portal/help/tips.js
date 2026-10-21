@@ -19,7 +19,55 @@
     else if (flab) { i.classList.add("in-label"); flab.appendChild(i); }
     else el.insertAdjacentElement("afterend", i);
   }
+  // ---- An (i) on every column heading and form label that has a note in heads.js -------------
+  // window.HEAD_TIPS: "heading" -> note, or "<where>|heading" when the same word means something
+  // else on one screen. <where> is the screen (screen-store -> "store"), or what the page says it
+  // is showing (body data-ctx, set by the Estimation pages: "est.client.boq", "est.schedule" ...).
+  const norm = t => String(t || "").replace(/\s+/g, " ").replace(/[*:]+$/, "").trim().toLowerCase();
+  function whereOf(el) {
+    const scr = el.closest && el.closest('[id^="screen-"]');
+    if (scr) return scr.id.slice(7);
+    const big = el.closest && el.closest("[data-ctx]");
+    if (big) return big.dataset.ctx;
+    const pg = (location.pathname.split("/").pop() || "").replace(/\.html$/, "");
+    return document.body.dataset.ctx || (pg === "boards" ? "est.boards" : pg);
+  }
+  function headTip(el, words) {
+    const H = window.HEAD_TIPS; if (!H) return "";
+    const k = norm(words); if (!k || k === "#") return "";
+    const w = whereOf(el);
+    if (w) {
+      const parts = w.split(".");
+      for (let n = parts.length; n > 0; n--) { const t = H[parts.slice(0, n).join(".") + "|" + k]; if (t) return t; }
+    }
+    return H[k] || "";
+  }
+  function heads(root) {
+    if (!window.HEAD_TIPS) return;
+    root.querySelectorAll("th").forEach(th => {
+      if (th.dataset.helpI || th.querySelector(".help-i")) return;
+      const lbl = th.querySelector(".lbl") || th;
+      const t = headTip(th, lbl.textContent);
+      th.dataset.helpI = "1";
+      if (!t) return;
+      const i = document.createElement("span");
+      i.className = "help-i in-label in-head"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t;
+      lbl.appendChild(i);
+    });
+    root.querySelectorAll(".frm .f > label, .field > label, label > span:first-child").forEach(lab => {
+      if (lab.dataset.helpI || lab.querySelector(".help-i")) return;
+      const box = lab.parentElement;
+      if (box && box.querySelector(".help-i")) { lab.dataset.helpI = "1"; return; }
+      const t = headTip(lab, lab.textContent);
+      lab.dataset.helpI = "1";
+      if (!t) return;
+      const i = document.createElement("span");
+      i.className = "help-i in-label"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t;
+      lab.appendChild(i);
+    });
+  }
   function run(root) {
+    try { heads(root); } catch (e) {}
     const t = window.HELP_TIPS || {};
     for (const sel in t) { try { root.querySelectorAll(sel).forEach(el => put(el, t[sel])); } catch (e) {} }
     root.querySelectorAll("input[title], select[title], textarea[title], input[data-tip], select[data-tip], textarea[data-tip]").forEach(el => {

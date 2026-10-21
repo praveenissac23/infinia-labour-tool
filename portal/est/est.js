@@ -135,7 +135,7 @@ function confirmInline(btn) {
 function closeModal() { $("#modal").classList.add("hide"); }
 $("#m-x").onclick = closeModal;
 $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
-function drawer(title, html) { $("#d-title").innerHTML = title; $("#d-body").innerHTML = html; $("#drawer").classList.remove("hide"); }
+function drawer(title, html) { $("#drawer").dataset.ctx = "est.sub"; $("#d-title").innerHTML = title; $("#d-body").innerHTML = html; $("#drawer").classList.remove("hide"); }
 function closeDrawer() { $("#drawer").classList.add("hide"); ST.drawer = null; }
 $("#d-x").onclick = closeDrawer;
 $("#drawer").addEventListener("mousedown", e => { if (e.target.id === "drawer") closeDrawer(); });
@@ -209,6 +209,7 @@ function chainCalc(pcs, advPct, retPct, vatPct, workKey = "work_cum") {
 // =====================================================================
 async function start() {
   if (!TOKEN) { signIn(); return; }
+  document.body.dataset.ctx = "est." + VIEW;          // est.dash / est.projects / est.pay - for the (i) notes
   if (VIEW === "pay") { $("#app").classList.remove("hide"); return loadPay(); }      // Accounts: needs only the Bank right
   // The page's own data is asked for at the same time as the lists, not after them.
   let early = null;
@@ -420,6 +421,7 @@ function editProject() {
 }
 function renderProject() {
   const b = ST.b, s = b.summary;
+  document.body.dataset.ctx = "est." + key();          // which (i) notes apply (heads.js)
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
                   "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status === "With Accounts").length, 0),
                   "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
