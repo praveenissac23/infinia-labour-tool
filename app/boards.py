@@ -652,6 +652,14 @@ def _visible_boards(db, user, inbox=False):
 
 # ---- notes (what a person is told) ---------------------------------------------------------------
 
+def _due_words(v):
+    try:
+        d = datetime.fromisoformat(str(v)[:16])
+        return d.strftime("%d %b %Y") + ("" if len(str(v)) <= 10 else d.strftime(", %I:%M %p").replace(" 0", " "))
+    except ValueError:
+        return str(v)
+
+
 def _note(db, uid, actor, board, card, kind, text):
     if not uid or (actor and uid == actor.id):
         return
@@ -659,11 +667,26 @@ def _note(db, uid, actor, board, card, kind, text):
                  actor_id=actor.id if actor else None, kind=kind, text=text[:400]))
 
 
+def _tell_card(db, actor, board, card, kind, text, skip=()):
+    """Everyone on the card (members) and following it (watchers) - not the one who did it."""
+    for uid in set(_j(card.members, [])) | set(_j(card.watchers, [])):
+        if uid not in skip:
+            _note(db, uid, actor, board, card, kind, text)
+
+
 def _mentions(db, text):
-    names = set(m.lower() for m in re.findall(r"@([\w.\-]+)", text or ""))
+    """@names in a comment or description: the login name, or the first name (@Aarathi), or the
+    full name written together (@AarathiS)."""
+    names = set(m.lower().rstrip(".") for m in re.findall(r"@([\w.\-]+)", text or ""))
     if not names:
         return []
-    return [u for u in db.query(models.User).all() if (u.username or "").lower() in names]
+    out = []
+    for u in db.query(models.User).all():
+        full = (u.full_name or "").strip().lower()
+        keys = {(u.username or "").lower(), full.replace(" ", ""), (full.split() or [""])[0]}
+        if names & {k for k in keys if k}:
+            out.append(u)
+    return out
 
 
 # ---- automation (Butler) --------------------------------------------------------------------------
@@ -1785,9 +1808,11 @@ def _edit_card(db, user, c, b, payload):
     if "desc" in payload:
         if (payload["desc"] or "") != (c.desc or ""):
             _act(db, b, user, "card_desc", c)
+        before = {u.id for u in _mentions(db, c.desc or "")}
         c.desc = (payload["desc"] or "")[:50000]
-        for u in _mentions(db, c.desc):
-            _note(db, u.id, user, b, c, "mention", f"mentioned you on the card {c.title}")
+        for u in _mentions(db, c.desc):          # told once - not every time the description is saved
+            if u.id not in before:
+                _note(db, u.id, user, b, c, "mention", f"mentioned you in the description of {c.title}")
     target_board = b
     if "board_id" in payload and int(payload["board_id"]) != b.id:
         nb, _r = _board(db, user, int(payload["board_id"]), "edit")
@@ -1816,6 +1841,7 @@ def _edit_card(db, user, c, b, payload):
         _act(db, target_board, user, "card_moved", c, frm=ol.title if ol else "", to=nl.title, title=c.title)
         events.append(("card_moved", {"list_id": nl.id}))
         events.append(("card_added", {"list_id": nl.id}))
+        _tell_card(db, user, target_board, c, "moved", f"moved {c.title} to {nl.title}")
         if "pos" not in payload:
             c.pos = _end_pos(db, KCard, list_id=nl.id)
     if "pos" in payload:
@@ -1828,6 +1854,7 @@ def _edit_card(db, user, c, b, payload):
                 _act(db, target_board, user, "card_due", c, due=v)
                 if v:
                     events.append(("due_set", {}))
+                    _tell_card(db, user, target_board, c, "due", f"set the due date of {c.title} to {_due_words(v)}")
             setattr(c, k, v)
     if "reminder" in payload:
         c.reminder = int(payload["reminder"] if payload["reminder"] is not None else -1)
@@ -1836,6 +1863,8 @@ def _edit_card(db, user, c, b, payload):
         if v != bool(c.due_complete):
             _act(db, target_board, user, "card_complete" if v else "card_incomplete", c)
             events.append(("card_complete", {}) if v else ("card_incomplete", {}))
+            if v:
+                _tell_card(db, user, target_board, c, "done", f"marked {c.title} complete")
         c.due_complete = v
     if "labels" in payload:
         old = set(_j(c.labels, []))
@@ -2257,6 +2286,7 @@ async def add_attachment(cid: int, request: Request, file: UploadFile = File(Non
     if (cover == "1" or (_j(b.prefs, {}).get("auto_cover", True) and not cov)) and a.path and a.mime.startswith("image/"):
         c.cover = json.dumps({"att": a.id, "size": "normal"})
     _act(db, b, user, "attached", c, name=a.name)
+    _tell_card(db, user, b, c, "attach", f"attached {a.name} to {c.title}")
     c.updated_at = _now()
     _touch(db, b)
     db.commit()
@@ -2527,17 +2557,40 @@ def read_notes(payload: dict = Body(default={}), db: Session = Depends(get_db), 
 
 
 def bell_items(db, user):
-    """For the app's own bell: the unread board notes of this login."""
+    """For the app's own bell and its pop-up: the unread board notes of this login, with who did
+    what, on which card, on which board and list, and the words of the comment."""
     try:
         rows = db.query(KNote).filter(KNote.user_id == user.id, KNote.read == False).order_by(KNote.id.desc()).limit(10).all()  # noqa: E712
     except Exception:
         return []
     users = _users(db, [n.actor_id for n in rows])
     boards = {b.id: b.title for b in db.query(KBoard).filter(KBoard.id.in_([n.board_id for n in rows] or [0])).all()}
-    return [{"id": f"kb-{n.id}", "kind": "board", "title": f"{_uname(users.get(n.actor_id)) or 'Someone'} {n.text}"[:140],
-             "detail": f"Trello - {boards.get(n.board_id, '')}", "screen": "pgboards",
-             "target": f"b{n.board_id}" + (f"c{n.card_id}" if n.card_id else ""),
-             "when": (n.created_at + timedelta(hours=4)).date().isoformat(), "level": "info"} for n in rows]
+    cards = {c.id: c for c in db.query(KCard).filter(KCard.id.in_([n.card_id for n in rows if n.card_id] or [0])).all()}
+    lists = {l.id: l.title for l in db.query(KList).filter(KList.id.in_([c.list_id for c in cards.values()] or [0])).all()}
+    VERB = {"mention": "mentioned you", "comment": "commented", "added": "added you to a card", "item": "assigned you a checklist item",
+            "board": "added you to a board", "moved": "moved a card", "due": "set a due date", "done": "marked a card complete",
+            "attach": "attached a file"}
+    out = []
+    for n in rows:
+        who = _uname(users.get(n.actor_id)) or "Someone"
+        card = cards.get(n.card_id)
+        text = n.text or ""
+        # the words of the comment (or the checklist item / file / date) after "...: "
+        words = text.split(": ", 1)[1] if ": " in text and n.kind in ("mention", "comment") else ""
+        if n.kind == "item":
+            m = re.search(r'"(.+)"', text)
+            words = m.group(1) if m else ""
+        if n.kind in ("moved", "due", "attach", "done"):
+            words = text[0].upper() + text[1:]
+        out.append({"id": f"kb-{n.id}", "kind": "board", "bkind": n.kind, "title": f"{who} {text}"[:140],
+                    "detail": f"Trello - {boards.get(n.board_id, '')}", "screen": "pgboards",
+                    "target": f"b{n.board_id}" + (f"c{n.card_id}" if n.card_id else ""),
+                    "who": who, "initials": _initials(who), "verb": VERB.get(n.kind, "updated a card"),
+                    "card": card.title if card else "", "board": boards.get(n.board_id, ""),
+                    "list": lists.get(card.list_id, "") if card else "", "words": words[:300],
+                    "at": (n.created_at + timedelta(hours=4)).strftime("%d %b, %I:%M %p").replace(" 0", " ") if n.created_at else "",
+                    "when": (n.created_at + timedelta(hours=4)).date().isoformat(), "level": "info"})
+    return out
 
 
 # ---- power-ups: time tracking, repeater, buttons, mirror, inbox, planner -------------------------------

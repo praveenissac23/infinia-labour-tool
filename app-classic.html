@@ -1381,6 +1381,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .notif-title { font-weight: 700; font-size: 16px; color: #1F2429; }
   .notif-detail { font-size: 13.5px; color: #555; margin-top: 6px; line-height: 1.5; }
   .notif-rule { height: 4px; }
+  /* a Trello card notification */
+  .notif-rule.board { background: #C0392B; height: 3px; }
+  .nb-head { display: flex; gap: 12px; align-items: center; padding: 18px 20px 10px; }
+  .nb-av { width: 38px; height: 38px; border-radius: 50%; background: #2E3238; color: #fff; font-weight: 700; font-size: 13.5px;
+           display: flex; align-items: center; justify-content: center; flex-shrink: 0; letter-spacing: .02em; }
+  .nb-hl { min-width: 0; } .nb-line { font-size: 15px; color: #1F2429; line-height: 1.3; } .nb-line b { font-weight: 700; }
+  .nb-at { font-size: 12px; color: #8A8F95; margin-top: 2px; }
+  .nb-card { margin: 0 20px; border: 1px solid #E6E1DC; border-radius: 10px; padding: 12px 14px; background: #FBFAF9; }
+  .nb-ct { font-weight: 700; font-size: 14px; color: #1F2429; line-height: 1.35; word-break: break-word; }
+  .nb-where { font-size: 12px; color: #6B7178; margin-top: 3px; } .nb-where span { color: #B0B4B9; margin: 0 2px; }
+  .nb-words { margin-top: 10px; padding: 8px 10px; background: #fff; border: 1px solid #ECE7E2; border-radius: 8px; font-size: 13px;
+              color: #33383D; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 130px; overflow: auto; }
   .notif-rule.late { background: #C0392B; } .notif-rule.request { background: #1565C0; }
   .notif-rule.low, .notif-rule.rental { background: #B26A00; }
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
@@ -7867,7 +7879,21 @@ function showNextNotification() {
   const [label, screen] = NOTIF_ACTION[n.kind] || ["Open", n.screen || "dashboard"];
   const target = n.screen || screen;
   const left = notifQueue.length;
-  box.innerHTML = `
+  const esc_ = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  // A card on the Trello board: who did what, the card, where it is, and the words - laid out like Trello's own.
+  if (n.kind === "board" && n.who) box.innerHTML = `
+    <div class="notif-rule board"></div>
+    <div class="nb-head"><span class="nb-av">${esc_(n.initials || "?")}</span>
+      <div class="nb-hl"><div class="nb-line"><b>${esc_(n.who)}</b> ${esc_(n.verb)}</div><div class="nb-at">${esc_(n.at || "")}</div></div></div>
+    ${n.card ? `<div class="nb-card"><div class="nb-ct">${esc_(n.card)}</div>
+      <div class="nb-where">${esc_(n.board)}${n.list ? ` <span>&rsaquo;</span> ${esc_(n.list)}` : ""}</div>
+      ${n.words ? `<div class="nb-words">${esc_(n.words)}</div>` : ""}</div>` : `<div class="nb-card"><div class="nb-ct">${esc_(n.board)}</div></div>`}
+    <div class="notif-foot">
+      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
+      <button class="btn btn-gray" id="notif-close">Close</button>
+      <button class="btn btn-primary" id="notif-go">${n.card ? "Open card" : "Open board"}</button>
+    </div>`;
+  else box.innerHTML = `
     <div class="notif-rule ${n.kind || ""}"></div>
     <div class="notif-top">
       <span class="notif-icon">${NOTIF_ICON[n.kind] || "\u{1F514}"}</span>
@@ -7897,7 +7923,7 @@ function showNextNotification() {
     // approvals' and landing behind another notification made it look
     // as though the button had simply closed and done nothing.
     // ...and to the very request or material it is about, not just the screen.
-    if (CURRENT_ROLE === "admin" || MY_SCREENS.includes(target) || target === "dashboard") openNotification(n.id, target, n.target);
+    if (CURRENT_ROLE === "admin" || MY_SCREENS.includes(target) || target === "dashboard" || target === "pgboards") openNotification(n.id, target, n.target);
     closeNotifications();
   };
   document.getElementById("notif-go").focus();

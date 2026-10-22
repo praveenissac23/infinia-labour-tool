@@ -15,8 +15,8 @@ exactly as it would in production, before anyone notices it live.
 import http.server, socketserver, subprocess, sys, os, time, threading
 import urllib.request, urllib.error
 
-PORT = 8032
-API_PORT = 8033
+PORT = int(os.environ.get("SRV_PORT", 8032))
+API_PORT = int(os.environ.get("SRV_API_PORT", 8033))
 
 # The prefixes nginx forwards. Keep this in step with the server config -
 # a new endpoint outside these paths will not reach the application.
