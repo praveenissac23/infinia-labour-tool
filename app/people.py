@@ -643,7 +643,7 @@ def _save_home_phone(db, e, payload):
 @router.post("/employees/people/leave-register")
 def add_leave_record(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
     e = _by_code(db, payload.get("emp_no") or "")
-    _may(user, group_of(e, _profile(db, e, "leave")))
+    _may(user, group_of(e, _profile(db, e)))
     r = models.LeaveRecord(employee_id=e.id, created_by=user.id, leave_type="annual", status="pending")
     _leave_fields(r, payload)
     db.add(r)
@@ -661,7 +661,7 @@ def save_leave_record(rec_id: int, payload: dict = Body(...), db: Session = Depe
     if not r:
         raise HTTPException(status_code=404, detail="That leave is not on file.")
     e = r.employee
-    _may(user, group_of(e, _profile(db, e, "leave")))
+    _may(user, group_of(e, _profile(db, e)))
     _leave_fields(r, payload)
     _save_home_phone(db, e, payload)
     db.flush()
@@ -677,7 +677,12 @@ def delete_leave_record(rec_id: int, db: Session = Depends(get_db), user: models
     if not r:
         raise HTTPException(status_code=404, detail="That leave is not on file.")
     e = r.employee
-    _may(user, group_of(e, _profile(db, e, "leave")))
+    _may(user, group_of(e, _profile(db, e)))
+    # Days already paid in an approved salary month cannot vanish from under the statement - the same rule
+    # as deleting them on the absence register.
+    paid = [l.on_date for l in db.query(models.StaffLeave).filter(models.StaffLeave.batch == M._lr_batch(r.id)).all()]
+    if paid and e:
+        M._guard_months(db, e, paid)
     M.remove_spell_days(db, r)
     db.delete(r); db.commit()
     M.log_action(db, user.id, "leave_deleted", f"{e.emp_no}: {r.leave_on}")
@@ -1014,7 +1019,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
     person has attendance, a salary card, a cycle or a loan he is part of
     the books and is marked as left instead of removed."""
     e = _by_code(db, emp_no)
-    _may(user, group_of(e, _profile(db, e, "register")))
+    _may(user, group_of(e, _profile(db, e)))
     ties = []
     if db.query(models.DailyRow).filter(models.DailyRow.employee_id == e.id).first():
         ties.append("attendance")
@@ -1040,7 +1045,7 @@ def remove_person(emp_no: str, db: Session = Depends(get_db), user: models.User 
 def add_asset(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db),
               user: models.User = PEOPLE):
     e = _by_code(db, emp_no)
-    _may(user, group_of(e, _profile(db, e, "register")))
+    _may(user, group_of(e, _profile(db, e)))
     item = (payload.get("item") or "").strip()
     if not item:
         raise HTTPException(status_code=400, detail="What was issued?")

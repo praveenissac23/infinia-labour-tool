@@ -15,8 +15,10 @@ Four kinds of cost are gathered per project (the site code - 906, 915 ...):
                     back (transfers move the cost with the goods), valued at the
                     rate last paid for that item on an LPO. Tools are not a cost.
   Petty cash        any petty cash book line spent on a site: the site box filled
-                    in, or the site number written in the description. Salary
-                    and wage payments are left out - labour already counts them.
+                    in, or the site number written in the description - net of
+                    VAT when the bill shows VAT (it is claimed back, as on an LPO).
+                    Bank payments entered as an expense for a site count here too.
+                    Salary and wage payments are left out - labour already counts them.
 
 What cannot be tied to a project is reported as "not linked", so nothing
 spent disappears from view.
@@ -39,7 +41,7 @@ RIGHT = "accounts_expense"
 CATS = [("labour", "Labour"), ("lpo", "Materials - LPO"), ("store", "Materials - from store"), ("petty", "Petty cash")]
 CAT_LABEL = dict(CATS)
 SALARY_WORDS = re.compile(r"salar|wages|payable|advance|recovery", re.I)
-BOOK_LABEL = {"site": "Site", "pro": "PRO", "office": "Office", "naveen": "Naveen", "praveen": "Praveen"}
+BOOK_LABEL = {"site": "Site", "pro": "PRO", "office": "Office", "naveen": "Naveen", "praveen": "Praveen", "bank": "Bank"}
 
 
 def _d(v):
@@ -231,8 +233,28 @@ def _petty(db, match, d1, d2):
             sites = match(desc)
             how = "site number in the description"
         salary = bool(SALARY_WORDS.search(desc))
+        # a bill with VAT on it costs the project its amount without the VAT - the VAT is claimed back, the
+        # same as on an LPO (the box holds the receipt total, VAT included)
+        vat = round(paid * 5 / 105, 2) if getattr(p, "vat", False) else 0.0
         out.append({"sites": sites, "how": how, "salary": salary, "date": p.on_date, "book": p.book or "",
-                    "description": desc, "supplier": p.supplier or "", "amount": round(paid, 2), "id": p.id})
+                    "description": desc, "supplier": p.supplier or "", "amount": round(paid - vat, 2), "vat": vat, "id": p.id})
+    # A bank payment entered as an expense for a site (Bank > Paid - expense, site filled in) is a project cost
+    # too. Supplier payments are left out: what they pay for is already counted on its LPO.
+    for x in db.query(models.BankEntry).filter(models.BankEntry.kind == "expense").all():
+        amt = float(x.amount or 0)
+        if amt <= 0 or not _in(x.on_date, d1, d2):
+            continue
+        sites = match((x.site or "").strip())
+        how = "site box"
+        if not sites:
+            sites = match(x.notes or "")
+            how = "site number in the note"
+        if not sites:
+            continue                        # an office expense, not a project's
+        vat = round(amt * 5 / 105, 2) if (x.vat and (x.vat_claim or "claim") == "claim") else 0.0
+        out.append({"sites": sites, "how": how, "salary": bool(SALARY_WORDS.search(x.notes or "")), "date": x.on_date,
+                    "book": "bank", "description": f"Bank ({x.bank or 'ADCB'}): {x.account or ''} {x.notes or ''}".strip(),
+                    "supplier": x.party or "", "amount": round(amt - vat, 2), "vat": vat, "id": -x.id})
     return out
 
 

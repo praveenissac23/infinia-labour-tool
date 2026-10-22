@@ -128,7 +128,15 @@ def _pays(db, ids=None):
     return out
 
 
-def _dict(v, pays, users, emps=None):
+def _held_map(db):
+    """What is paid but held on each visa file (not yet in petty cash) - part of what the visa has cost."""
+    out = {}
+    for p in db.query(models.VisaPayment).all():
+        out[p.visa_file_id] = round(out.get(p.visa_file_id, 0) + (p.amount or 0), 2)
+    return out
+
+
+def _dict(v, pays, users, emps=None, held=None):
     stages, done = _j(v.stages), set(_j(v.done))
     nxt = next((s for s in stages if s not in done and "(if needed)" not in s), "") or next((s for s in stages if s not in done), "")
     e = (emps or {}).get(v.employee_id)
@@ -140,7 +148,11 @@ def _dict(v, pays, users, emps=None):
             "stages": stages, "done": [s for s in stages if s in done], "n_done": sum(1 for s in stages if s in done),
             "next": nxt, "started": v.started_on.isoformat(), "status": v.status,
             "completed": v.completed_on.isoformat() if v.completed_on else "", "completed_by": users.get(v.completed_by, ""),
-            "note": v.note or "", "payments": lines, "spent": round(sum(l["amount"] for l in lines), 2)}
+            "note": v.note or "", "payments": lines,
+            # an ongoing visa's cost so far: what went through petty cash plus what is paid and held for it
+            # (on completion the held total becomes one petty cash line, so it is not counted twice)
+            "held": round((held or {}).get(v.id, 0), 2) if v.status == "ongoing" else 0,
+            "spent": round(sum(l["amount"] for l in lines) + ((held or {}).get(v.id, 0) if v.status == "ongoing" else 0), 2)}
 
 
 def _users(db):
@@ -154,8 +166,8 @@ def _emps(db):
 def listing(db, status="ongoing"):
     q = db.query(models.VisaFile)
     allv = q.order_by(models.VisaFile.started_on.desc(), models.VisaFile.id.desc()).all()
-    pays, users, emps = _pays(db), _users(db), _emps(db)
-    rows = [_dict(v, pays.get(v.id, []), users, emps) for v in allv]
+    pays, users, emps, held = _pays(db), _users(db), _emps(db), _held_map(db)
+    rows = [_dict(v, pays.get(v.id, []), users, emps, held) for v in allv]
     y = M._dubai_today().year
     on = [r for r in rows if r["status"] == "ongoing"]
     comp_y = [r for r in rows if r["status"] == "completed" and r["completed"][:4] == str(y)]
@@ -197,7 +209,8 @@ def open_files(db: Session = Depends(get_db), user: models.User = LOOK):
     """The ongoing files, for the PRO petty cash form."""
     vs = db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").order_by(models.VisaFile.person).all()
     pays, users = _pays(db, [v.id for v in vs]), _users(db)
-    return {"files": [_dict(v, pays.get(v.id, []), users) for v in vs],
+    held = _held_map(db)
+    return {"files": [_dict(v, pays.get(v.id, []), users, None, held) for v in vs],
             "kinds": [{"id": k, "label": v[0], "stages": v[1]} for k, v in KINDS.items()], "supplier": SUPPLIER,
             "steps": steps_master(db)}
 
@@ -249,7 +262,7 @@ def _get(db, vid):
 
 
 def _out(db, v):
-    return _dict(v, _pays(db, [v.id]).get(v.id, []), _users(db), _emps(db))
+    return _dict(v, _pays(db, [v.id]).get(v.id, []), _users(db), _emps(db), _held_map(db))
 
 
 @router.put("/store/visa/files/{vid}")
@@ -914,7 +927,7 @@ def export_sheet(vid: int, token: str, format: str = "view", dl: int = 0, db: Se
         title = f"{v.person} Visa Expenses"
         return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{export_web.PREVIEW_BAR_CSS}
-body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
+body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
 .pg iframe{{width:100%;height:1180px;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(pays)} payment(s) &middot; AED {sum(p.amount or 0 for p in pays):,.2f}</span><span class="sp"></span>
 <a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{xl}">Excel</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>

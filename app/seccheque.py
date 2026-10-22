@@ -149,6 +149,10 @@ def mark_returned(cid: int, db: Session = Depends(get_db), user: models.User = S
     x = db.get(SecurityCheque, cid)
     if not x:
         raise HTTPException(status_code=404, detail="That cheque is no longer on file.")
+    if x.status in ("encashed", "cashed"):
+        raise HTTPException(status_code=400, detail="This cheque was encashed - it cannot be collected back.")
+    if x.status == "returned":
+        return _row(x, M._dubai_today())
     x.status, x.returned_on, x.updated_by = "returned", M._dubai_today(), user.id
     db.commit()
     M.log_action(db, user.id, "seccheque_returned", _what(x))

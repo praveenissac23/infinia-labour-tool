@@ -304,7 +304,7 @@ def reveal(cid: int, payload: dict = Body(default={}), db: Session = Depends(get
     return {"secret": unlock(c.secret), "notes": unlock(c.notes)}
 
 
-# ---- the list on paper: never the passwords ----------------------------------------
+# ---- the list on paper (PDF / Excel): printed with the passwords for whoever may reveal them - logged as such ----
 
 def _parts(db, cat="", user=None, q=""):
     rows = _visible(db, user).order_by(Credential.category, Credential.name).all()

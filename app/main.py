@@ -115,7 +115,7 @@ async def _friendly_report_error(request, exc):
             msg = "This link has expired. Go back to the app and press the button again."
         page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Nothing to show</title><style>
-body{{margin:0;background:#F4F2EF;font:15px/1.5 Arial,Helvetica,sans-serif;color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+body{{margin:0;background:#F4F2EF;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center}}
 .box{{background:#fff;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:30px 34px;max-width:460px;margin:16px;text-align:center;border-top:4px solid #C0392B}}
 h1{{font-size:18px;margin:0 0 8px}} p{{margin:0 0 18px;color:#555}}
 button{{font:600 14px Arial;padding:9px 18px;border-radius:7px;border:1px solid #2E3238;background:#2E3238;color:#fff;cursor:pointer}}
@@ -741,7 +741,9 @@ def _grant_docs_office(db):
         role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
         name = (role.name or "").strip().lower() if role is not None else ""
         if name in give and keys:
-            add = [k for k in give[name] + ["admin.docs"] if k not in keys]
+            # a tab tick only for a login already ticked tab by tab: on one that never was, a lone tick would
+            # take away every tab its broad rights give it
+            add = [k for k in give[name] + (["admin.docs"] if any("." in k for k in keys) else []) if k not in keys]
             if add:
                 setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="docs_office_granted", value="1"))
@@ -762,7 +764,7 @@ def _grant_ppe(db):
         role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
         add = []
         if role is not None and (role.name or "").strip().lower() in edit_roles and keys:
-            add += [k for k in ("ppe", "reports.labour.ppe_edit") if k not in keys]
+            add += [k for k in ("ppe",) + (("reports.labour.ppe_edit",) if any("." in k for k in keys) else ()) if k not in keys]
         if any(k.startswith("reports.labour") for k in keys) and "reports.labour.ppe" not in keys:
             add.append("reports.labour.ppe")
         if add:
@@ -799,7 +801,7 @@ def _docs_office_full_for_assistant(db):
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
         role = obj if not isinstance(obj, models.User) else roles.get(getattr(obj, "access_role_id", None))
         if role is not None and (role.name or "").strip().lower() == "assistant accountant" and keys:
-            add = [k for k in ("docs_send", "docs_verify", "admin.docs") if k not in keys]
+            add = [k for k in ("docs_send", "docs_verify") + (("admin.docs",) if any("." in k for k in keys) else ()) if k not in keys]
             if add:
                 setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="docs_office_assistant_send", value="1"))
@@ -831,8 +833,9 @@ def _docs_office_to_admin(db):
         field = "permissions" if isinstance(obj, models.User) else "screens"
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
         if any(k in keys for k in ("store.store.docs", "docs_send", "docs_verify")):
+            ticked = any("." in k for k in keys)
             keys = [k for k in keys if k != "store.store.docs"]
-            if "admin.docs" not in keys:
+            if ticked and "admin.docs" not in keys:
                 keys.append("admin.docs")
             setattr(obj, field, ",".join(keys))
     db.add(models.Setting(key="docs_office_admin_tab", value="1"))
@@ -2098,7 +2101,7 @@ def list_sites(db: Session = Depends(get_db), user: models.User = Depends(auth.g
 
 
 @app.post("/sites", response_model=schemas.SiteOut)
-def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Site).filter(models.Site.code == site.code).first()
     if existing:
         # Saving an existing site used to set nothing but active, so the
@@ -2123,7 +2126,7 @@ def add_site(site: schemas.SiteIn, db: Session = Depends(get_db), user: models.U
 
 @app.put("/sites/{site_id}", response_model=schemas.SiteOut)
 def rename_site(site_id: int, site: schemas.SiteIn, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.get_current_user)):
+                 user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Site).filter(models.Site.id == site_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -2135,7 +2138,7 @@ def rename_site(site_id: int, site: schemas.SiteIn, db: Session = Depends(get_db
 
 
 @app.delete("/sites/{site_id}")
-def remove_site(site_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def remove_site(site_id: int, db: Session = Depends(get_db), user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Site).filter(models.Site.id == site_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -2152,7 +2155,7 @@ def list_engineers(db: Session = Depends(get_db), user: models.User = Depends(au
 
 @app.post("/engineers", response_model=schemas.EngineerOut)
 def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
-                  user: models.User = Depends(auth.get_current_user)):
+                  user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Engineer).filter(models.Engineer.name == eng.name).first()
     if existing:
         # A number given now is kept; a blank one leaves what is on
@@ -2172,7 +2175,7 @@ def add_engineer(eng: schemas.EngineerIn, db: Session = Depends(get_db),
 
 @app.put("/engineers/{engineer_id}", response_model=schemas.EngineerOut)
 def rename_engineer(engineer_id: int, eng: schemas.EngineerIn, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.get_current_user)):
+                     user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Engineer not found")
@@ -2184,7 +2187,7 @@ def rename_engineer(engineer_id: int, eng: schemas.EngineerIn, db: Session = Dep
 
 
 @app.delete("/engineers/{engineer_id}")
-def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def remove_engineer(engineer_id: int, db: Session = Depends(get_db), user: models.User = Depends(require_any_screen("masterdata", "attendance"))):
     existing = db.query(models.Engineer).filter(models.Engineer.id == engineer_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Engineer not found")
@@ -2253,7 +2256,7 @@ def get_attendance_for_date(target_date: date, db: Session = Depends(get_db),
 
 @app.delete("/attendance/{target_date}")
 def clear_attendance_for_date(target_date: date, db: Session = Depends(get_db),
-                               user: models.User = Depends(auth.get_current_user)):
+                               user: models.User = Depends(require_screen("attendance"))):
     """
     Deletes every worker's attendance row for one specific date - the
     'Clear Day' button's confirmed action. Admin-only, since this wipes
@@ -2333,7 +2336,7 @@ def get_completion_status(month_year: str, mode: str = "cycle",
 
 @app.post("/attendance/save")
 def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.get_current_user)):
+                     user: models.User = Depends(require_screen("attendance"))):
     """
     Same validation and Holiday-previous-day rules as the desktop app's
     save_all(): every row is validated BEFORE anything is written, a
@@ -3352,7 +3355,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
-          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
+          font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
   .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
           padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:5; }}
   .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
@@ -4577,7 +4580,12 @@ def _tidy_supplier_name(name: str) -> str:
     for w in " ".join((name or "").split()).split(" "):
         if not w:
             continue
-        out.append(w.upper() if w.lower() in keep else w[0].upper() + w[1:].lower())
+        if w.lower() in keep:
+            out.append(w.upper())
+        elif w[1:] != w[1:].lower() and w[1:] != w[1:].upper():
+            out.append(w)                      # written in mixed case on purpose (SafeGuard, McLaren): kept as typed
+        else:
+            out.append(w[0].upper() + w[1:].lower())
     return " ".join(out)
 
 
@@ -4980,8 +4988,9 @@ def _proper_name(s: str) -> str:
     becomes "Cushions" while "cement OPC 42.5" keeps OPC as OPC. The
     server does this itself: names arrive from several paths and only
     some of them pass through the browser's tidying."""
-    return " ".join(w[0].upper() + w[1:] if w else w
-                    for w in " ".join((s or "").split()).split(" "))
+    small = {"of", "and", "for", "with", "in", "to", "on", "per", "x", "or", "the", "a"}
+    words = " ".join((s or "").split()).split(" ")
+    return " ".join(w if (not w or (i and w in small)) else w[0].upper() + w[1:] for i, w in enumerate(words))
 
 
 def _find_or_create_item(db, name, unit, item_type):
@@ -5119,7 +5128,7 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
 
 @app.delete("/store/items/{item_id}")
 def deactivate_store_item(item_id: int, db: Session = Depends(get_db),
-                           user: models.User = Depends(auth.get_current_user)):
+                           user: models.User = Depends(require_screen("store"))):
     it = db.query(models.StoreItem).filter(models.StoreItem.id == item_id).first()
     if not it:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -5831,6 +5840,26 @@ def _add_store_movement(payload, db, user):
                        f"{piles}. Say which it is coming out of - ours or the supplier's - "
                        "so the rented ones are not lost in the owned pile.")
 
+    # Written up late: the stock must also have been there on the day it went (a box first booked in on
+    # 22 October cannot be issued on 5 September - stock "as at" that day would read below zero).
+    if draws and payload.moved_on < _dubai_today():
+        then = _stock_map(db, upto=payload.moved_on, by_owner=True)
+        # opening stock is what was already held when it was counted - there from before, whatever day it was typed in
+        later_opening = {}
+        for om in db.query(models.StoreMovement).filter(models.StoreMovement.item_id == item.id, models.StoreMovement.kind == "in",
+                                                        models.StoreMovement.moved_on > payload.moved_on,
+                                                        or_(models.StoreMovement.reference.ilike("opening stock%"),
+                                                            models.StoreMovement.reference.ilike("added by hand%"))).all():
+            k = (om.location or "", om.owner_id)
+            later_opening[k] = later_opening.get(k, 0) + (om.qty or 0)
+        for owner, take in draws:
+            had = then.get((item.id, payload.from_location, owner), 0) + later_opening.get((payload.from_location or "", owner), 0)
+            if take > had + 1e-9:
+                raise HTTPException(status_code=400,
+                    detail=f"On {payload.moved_on:%d %b %Y} only {round(max(had, 0), 2)} {item.unit} of {item.name} "
+                           f"was at {payload.from_location or 'the central store'} - check the date, or book in "
+                           "the delivery with the day it really arrived first.")
+
     # One row per owner drawn from, so no name is driven negative to
     # make a total agree. The first is returned; the rest sit beside it
     # on the ledger with the same date and reference.
@@ -5915,7 +5944,10 @@ def _email_stock_writeoff(db, user, m, item):
 
 @app.delete("/store/movements/{movement_id}")
 def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
-                           user: models.User = Depends(auth.get_current_user)):
+                           user: models.User = Depends(require_screen("store"))):
+    # Only whoever records stock may take a record of it away (a site login could delete issues before).
+    if "storekeeper" not in effective_permissions(user):
+        raise HTTPException(status_code=403, detail="Only the store keeper can remove a stock record.")
     m = db.query(models.StoreMovement).filter(models.StoreMovement.id == movement_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Movement not found")
@@ -6010,6 +6042,9 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         for m in moves(["in"]):
             i = items.get(m.item_id)
             if not i: continue
+            # scaffolding hired in is still the hire company's - not bought
+            if m.owner_id:
+                continue
             a = agg.setdefault(i.id, {"code": i.code, "name": i.name, "unit": i.unit,
                                        "qty": 0, "deliveries": 0, "last_arrived": None,
                                        "suppliers": set()})
@@ -6018,6 +6053,8 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             if m.moved_on and (not a["last_arrived"] or m.moved_on > a["last_arrived"]):
                 a["last_arrived"] = m.moved_on
             if m.supplier: a["suppliers"].add(m.supplier)
+            elif (m.reference or "").strip().lower().startswith(("opening stock", "added by hand")):
+                a["suppliers"].add("Opening stock / counted")      # said plainly - a count, not a purchase
         rows = [{**v, "qty": round(v["qty"], 2),
                   "last_arrived": v["last_arrived"].isoformat() if v["last_arrived"] else "-",
                   "suppliers": ", ".join(sorted(v["suppliers"])) or "not recorded"}
@@ -6726,15 +6763,20 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
         raise HTTPException(status_code=400,
             detail="This line isn't linked to a store item, so it can't be received into stock. "
                    "Create the item first, then edit the request.")
+    if (line.status or "pending") == "rejected":
+        raise HTTPException(status_code=400, detail="The office rejected this material - it cannot be received.")
+    if (mr.status or "pending") in ("pending", "rejected", "cancelled"):
+        raise HTTPException(status_code=400, detail="This request is not approved yet - approve it before booking a delivery.")
 
     db.add(models.StoreMovement(item_id=line.item_id, kind="in", qty=qty, location="",
                                  supplier=supplier, unit_cost=unit_cost,
                                  reference=reference or mr.ref, moved_on=_dubai_today(),
                                  notes=f"Against {mr.ref}", created_by=user.id, request_id=mr.id))
     line.qty_received = (line.qty_received or 0) + qty
-    all_done = all((l.qty_received or 0) >= l.qty_requested - 1e-9 for l in mr.lines)
-    any_done = any((l.qty_received or 0) > 0 for l in mr.lines)
-    mr.status = "received" if all_done else ("partial" if any_done else mr.status)
+    live = [l for l in mr.lines if (l.status or "pending") != "rejected"]      # rejected lines are not owed
+    all_done = all((l.qty_received or 0) >= l.qty_requested - 1e-9 for l in live)
+    any_done = any((l.qty_received or 0) > 0 for l in live)
+    mr.status = "delivered" if all_done else ("partial" if any_done else mr.status)
     if all_done:
         mr.closed_on = _dubai_today()
     db.commit()
@@ -6788,7 +6830,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
         DONE = ("delivered", "received", "closed", "rejected")
         rows = []
         needle = (q or "").strip().lower()
-        live = lambda m: m.status not in ("delivered", "closed", "rejected")
+        live = lambda m: m.status not in DONE
         is_late = lambda m: bool(m.needed_by and m.needed_by < today and live(m))
         if status:
             # The Approvals screen's Show box (or the count tapped above
@@ -6829,7 +6871,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
               "needed_by": m.needed_by.isoformat() if m.needed_by else "",
               "urgency": m.urgency, "status": m.status, "items": len(m.lines),
               "requested_by": m.requested_by}
-            for m in reqs if m.status in ("pending", "approved", "partial")]
+            for m in reqs if m.status in ("pending", "approved", "ordered", "arranging", "lpo_sent", "partial")]
     return {"title": "Open material requests", "rows": rows}
 
 
@@ -7696,6 +7738,16 @@ def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
     return {"count": len(rows), "last": history[0] if history else None, "history": history}
 
 
+
+def _lpo_net_vat(o):
+    """An order's amount after discount, and its VAT: each line's own VAT rate on that line's discounted
+    amount - the one rule the register, the report, the printed order, the PDF, the Excel and Zoho all use
+    (a 0% line - authority fees - carries no VAT, discount or not)."""
+    keep = 1 - (o.discount_pct or 0) / 100.0
+    net = sum((l.qty or 0) * (l.rate or 0) for l in o.lines) * keep
+    vat = sum((l.qty or 0) * (l.rate or 0) * keep * (l.tax_pct or 0) / 100.0 for l in o.lines)
+    return net, vat
+
 @app.get("/store/purchase/orders")
 def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(get_db),
                           user: models.User = Depends(require_screen("approvals"))):
@@ -7705,8 +7757,7 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
     needle = q.strip().lower()
     out = []
     for o in rows:
-        total = sum((l.qty or 0) * (l.rate or 0) for l in o.lines)
-        net = total * (1 - (o.discount_pct or 0) / 100.0)
+        net, vat_amt = _lpo_net_vat(o)
         blob = " ".join([o.ref, o.supplier_name or "", o.project_location or "",
                          o.job_scope or "", o.supplier_ref or ""] +
                         [l.description or "" for l in o.lines]).lower()
@@ -7717,7 +7768,7 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
                     "supplier": o.supplier_name, "site": o.project_location,
                     "job_scope": o.job_scope, "status": o.status,
                     "lines": len(o.lines),
-                    "total": round(net * (1 + (o.tax_pct or 0) / 100.0), 2),
+                    "total": round(net + vat_amt, 2),
                     "request_id": o.request_id})
         if len(out) >= limit:
             break
@@ -7835,11 +7886,8 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
                 continue
         for l in lines:
             counted_orders.add(o.po_no)
-            amount = (l.qty or 0) * (l.rate or 0)
+            amount = (l.qty or 0) * (l.rate or 0) * (1 - (o.discount_pct or 0) / 100.0)
             vat = amount * (l.tax_pct or 0) / 100.0
-            if o.discount_pct:
-                amount *= (1 - o.discount_pct / 100.0)
-                vat = amount * (o.tax_pct or 5) / 100.0
             key = {
                 "order": o.ref,
                 "supplier": o.supplier_name or "(not named)",
@@ -8028,6 +8076,13 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     if payload.request_line_ids:
         lines = (db.query(models.MaterialRequestLine)
                    .filter(models.MaterialRequestLine.id.in_(payload.request_line_ids)).all())
+        refused = [l for l in lines if (l.status or "pending") == "rejected"
+                   or (l.request and (l.request.status or "") in ("rejected", "cancelled"))]
+        if refused:
+            db.rollback()
+            raise HTTPException(status_code=400,
+                detail="The office rejected " + ", ".join((l.item.name if l.item else l.description) for l in refused[:3])
+                       + " - take it off the order, or approve it again first.")
         for l in lines:
             l.supplier_id = supplier.id if supplier else None
             l.status = "approved"
@@ -8050,7 +8105,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             mr = models.MaterialRequest(
                 ref=_next_mr_ref(db), site="STORE",
                 requested_by=(user.full_name or user.username or "").strip(),
-                urgency="normal", status="ordered", requested_on=_dubai_today(),
+                urgency="normal", status="ordered", requested_on=o.order_date or _dubai_today(),
                 expected_on=payload.delivery_date,
                 supplier_id=supplier.id if supplier else None,
                 notes=f"Stock for the store, ordered on {o.ref}", created_by=user.id)
@@ -8158,12 +8213,61 @@ def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
     o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="Purchase order not found.")
+    if o.status == "cancelled":
+        return {"ok": True, "detail": f"{o.ref} was already cancelled."}
     o.status = "cancelled"
     if (o.zoho_status or "") in ("sent", "changed"):
         o.zoho_err = "Cancelled here - cancel the PO in Zoho too"
+    freed = _release_lpo_lines(db, o)
     db.commit()
-    log_action(db, user.id, "cancel_lpo", o.ref)
-    return {"ok": True, "detail": f"{o.ref} cancelled."}
+    log_action(db, user.id, "cancel_lpo", o.ref + (f" - {freed} request line(s) back to waiting for an order" if freed else ""))
+    return {"ok": True, "detail": f"{o.ref} cancelled." + (f" {freed} material(s) are back on the list waiting to be ordered." if freed else "")}
+
+
+def _release_lpo_lines(db, o):
+    """A cancelled order gives its request lines back: still approved, no supplier, waiting to be ordered again
+    (they were left 'ordered' from the cancelled supplier - off the to-order list, and a delivery could still be
+    booked against them). A line already part-received, or also on another live order from the same supplier,
+    is left as it is."""
+    if not o.supplier_id:
+        return 0
+    keys = {(l.item_id or 0, (l.description or "").strip().lower()) for l in o.lines}
+    items = {k[0] for k in keys if k[0]}
+    descs = {k[1] for k in keys if k[1]}
+    others = (db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id != o.id,
+                                                     models.PurchaseOrder.supplier_id == o.supplier_id,
+                                                     models.PurchaseOrder.status != "cancelled").all())
+    def covered(line):
+        """Another live order from this supplier that could be the one this line is waiting on: one for the
+        same request, or one not tied to any request (raised from several), with the same material."""
+        for x in others:
+            if x.request_id and x.request_id != line.request_id:
+                continue
+            for y in x.lines:
+                if (line.item_id and y.item_id == line.item_id) or \
+                   (not line.item_id and (y.description or "").strip().lower() == (line.description or "").strip().lower()):
+                    return True
+        return False
+    q = db.query(models.MaterialRequestLine).join(models.MaterialRequest).filter(
+        models.MaterialRequestLine.supplier_id == o.supplier_id,
+        models.MaterialRequest.status.in_(["ordered", "partial", "approved"]))
+    freed, touched = 0, set()
+    for l in q.all():
+        mine = (o.request_id and l.request_id == o.request_id) or (l.item_id and l.item_id in items) or \
+               (not l.item_id and (l.description or "").strip().lower() in descs)
+        if not mine or (l.qty_received or 0) > 0:
+            continue
+        if covered(l):
+            continue
+        l.supplier_id = None
+        freed += 1; touched.add(l.request)
+    for mr in touched:
+        live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
+        if mr.status == "ordered" and not any(x.supplier_id for x in live):
+            mr.status = "approved"
+        sup_ids = {x.supplier_id for x in live}
+        mr.supplier_id = next(iter(sup_ids)) if len(sup_ids) == 1 and None not in sup_ids else None
+    return freed
 
 
 def db_session_site(code):
@@ -8439,9 +8543,7 @@ def _lpo_html(o):
             f'<td class="r">{(l.tax_pct or 0):,.2f}</td><td class="r">{tax:,.2f}</td>'
             f'<td class="r">{amount:,.2f}</td></tr>')
     discount = sub * (o.discount_pct or 0) / 100.0
-    net = sub - discount
-    if o.discount_pct:
-        vat = net * (o.tax_pct or 5) / 100.0
+    net, vat = _lpo_net_vat(o)
     total = net + vat
 
     money = [f'<tr><td>Sub Total</td><td class="r">{sub:,.2f}</td></tr>']
@@ -8594,7 +8696,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
-          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
+          font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
   .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
           padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:2; }}
   .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
@@ -8866,7 +8968,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
-          font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif; }}
+          font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
   .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;
           padding:10px 16px; background:white; border-bottom:1px solid #E2E0DC; z-index:5; }}
   .bar h1 {{ font-size:16px; margin:0 6px 0 0; }}
@@ -8895,7 +8997,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   th .arr {{ font-size:7pt; margin-left:3px; opacity:.9; }}
   th.drop-l {{ box-shadow: inset 3px 0 0 #FFD54F; }} th.drop-r {{ box-shadow: inset -3px 0 0 #FFD54F; }}
   th.dragging {{ opacity:.55; }}
-  .hint {{ font-size:11.5px; color:#999; margin-right:6px; }}
+  .hint {{ font-size:11.5px; color:#999; margin-right:6px; flex:1 1 0; min-width:0; text-align:right;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
   @media (max-width:1180px) {{ .hint {{ display:none; }} }}
   @media print {{ .hint {{ display:none; }} th .arr {{ display:none; }} }}
   /* A word only breaks if it cannot fit its column at all - never a
@@ -8920,7 +9023,6 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   <div class="bar">
     <h1>{escape(title)}</h1>
     <span class="who">{subtitle}</span>
-    <span style="margin-left:auto;"></span>
     <span class="hint">Click a heading to sort, drag it to move a column - the PDF and Excel follow.</span>
     <a class="btn dark" id="dl-pdf" href="{pdf_url}&amp;format=pdf">Download PDF</a>
     <a class="btn" id="dl-xls" href="{excel_url}&amp;format=excel">Download Excel</a>
@@ -10273,13 +10375,17 @@ def _loan_outstanding(db, employee_id):
     return round(total, 2)
 
 
-def _loan_due(db, employee_id):
-    """What the run should propose deducting from this man this month."""
+def _loan_due(db, employee_id, month_end=None):
+    """What the run should propose deducting from this man this month - only loans taken by the end of the
+    month (a loan given on 5 October is never recovered in September's run)."""
     total = 0.0
-    for l in (db.query(models.StaffLoan)
-                .options(joinedload(models.StaffLoan.repayments))
-                .filter(models.StaffLoan.employee_id == employee_id,
-                         models.StaffLoan.closed == False).all()):  # noqa: E712
+    q = (db.query(models.StaffLoan)
+           .options(joinedload(models.StaffLoan.repayments))
+           .filter(models.StaffLoan.employee_id == employee_id,
+                   models.StaffLoan.closed == False))  # noqa: E712
+    if month_end is not None:
+        q = q.filter(models.StaffLoan.taken_on <= month_end)
+    for l in q.all():
         left = (l.amount or 0) - sum(r.amount or 0 for r in l.repayments)
         if left <= 0.005:
             continue
@@ -11187,7 +11293,7 @@ def _fill_line(db, l, e, month_year, a, b):
     l.statutory = round(sum(i.amount for i in items if i.direction == "deduct"), 2)
     l.pension = e.pension or 0
     if not l.loan_edited:
-        l.loan_deduction = _loan_due(db, e.id)
+        l.loan_deduction = _loan_due(db, e.id, b)
     if not l.remark_edited:
         owed = _loan_outstanding(db, e.id)
         l.remarks = _auto_remark(items, l.deduction_note, l.loan_deduction,
@@ -11503,7 +11609,7 @@ def list_payroll_runs(db: Session = Depends(get_db), user: models.User = HR):
     return {"rows": [{"id": r.id, "month_year": r.month_year, "group": r.group,
                        "company": r.company.short_name or r.company.name if r.company else "",
                        "status": r.status, "lines": len(r.lines),
-                       "net_pay": round(sum(l.net_pay or 0 for l in r.lines), 2),
+                       "net_pay": round(sum(l.net_pay or 0 for l in r.lines if not l.held), 2),
                        "approved_on": r.approved_on.isoformat() if r.approved_on else ""}
                       for r in rows]}
 
@@ -11671,7 +11777,8 @@ def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models
         for loan in (db.query(models.StaffLoan)
                        .options(joinedload(models.StaffLoan.repayments))
                        .filter(models.StaffLoan.employee_id == l.employee_id,
-                                models.StaffLoan.closed == False)  # noqa: E712
+                                models.StaffLoan.closed == False,  # noqa: E712
+                                models.StaffLoan.taken_on <= month_end)
                        .order_by(models.StaffLoan.taken_on).all()):
             if left <= 0.005:
                 break
@@ -11690,7 +11797,7 @@ def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models
     db.commit(); db.refresh(r)
     log_action(db, user.id, "payroll_approved",
                f"{r.company.short_name if r.company else ''} {r.month_year}: "
-               f"{sum(l.net_pay or 0 for l in r.lines):,.2f}")
+               f"{sum(l.net_pay or 0 for l in r.lines if not l.held):,.2f}")
     return _run_dict(r, db)
 
 
@@ -11753,6 +11860,14 @@ def consolidated_statement(month_year: str = "", group: str = "", db: Session = 
     if group in ("staff", "local"):
         # One statement across the companies: office staff or local staff.
         runs = [r for r in runs if (r.group or "staff") == group]
+    # A draft is filled again from the registers each time it is looked at (_refresh_run) - so the statement
+    # shows what the run shows, never what it showed when somebody last opened it.
+    if any(r.status != "approved" for r in runs):
+        for r in runs:
+            _refresh_run(db, r)
+        db.commit()
+        for r in runs:
+            db.refresh(r)
     emps = {e.id: e for e in db.query(models.Employee).all()}
     rows, drafts = [], []
     for r in runs:
@@ -13278,6 +13393,10 @@ def receive_request_bulk(req_id: int, payload: schemas.ReceiveRequestIn,
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
+    if (mr.status or "pending") in ("pending", "rejected", "cancelled"):
+        raise HTTPException(status_code=400,
+            detail=f"{mr.ref} is {'still waiting for the office' if (mr.status or 'pending') == 'pending' else 'rejected'} - "
+                   "a delivery can only be booked against an approved request.")
 
     # Where the load went. Every delivery used to be booked into the
     # central store, so material dropped straight at a site showed as

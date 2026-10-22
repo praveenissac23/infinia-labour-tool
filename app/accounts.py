@@ -315,6 +315,18 @@ def cancel_invoice(iid: int, payload: dict = Body(default={}), db: Session = Dep
     x = db.get(Invoice, iid)
     if not x:
         raise HTTPException(status_code=404, detail="That invoice is not on file.")
+    if x.status == "cancelled":
+        return {"ok": True}
+    if x.kind == "tax":
+        # Money already received against it would be left pointing at a cancelled invoice (and that receipt
+        # could never be edited again): the receipt is changed or cancelled first.
+        import receipts as RC
+        held = [r.number for r in db.query(RC.Receipt).filter(RC.Receipt.status != "cancelled").all()
+                if any(int(a["invoice_id"]) == x.id for a in RC._allocs(r))]
+        if held:
+            raise HTTPException(status_code=400,
+                detail=f"Receipt {', '.join(held[:3])} is set against {x.number}. Take the invoice off that receipt "
+                       "(or cancel the receipt) first, then cancel the invoice.")
     x.status = "cancelled"
     x.cancel_reason = str((payload or {}).get("reason") or "").strip()[:200]
     if (x.zoho_status or "") in ("sent", "sending") or (x.zoho_err or "").startswith(("No answer", "Could not check")):
@@ -336,7 +348,8 @@ def convert_proforma(iid: int, db: Session = Depends(get_db), user: models.User 
         raise HTTPException(status_code=400, detail="A cancelled proforma cannot be turned into a tax invoice.")
     if p.converted_to_id and db.get(Invoice, p.converted_to_id):
         t = db.get(Invoice, p.converted_to_id)
-        raise HTTPException(status_code=400, detail=f"Already turned into tax invoice {t.number}.")
+        if t.status != "cancelled":            # its tax invoice cancelled: the proforma can be turned again
+            raise HTTPException(status_code=400, detail=f"Already turned into tax invoice {t.number}.")
     t = Invoice(kind="tax", number=next_number(db, "tax", p.project_no or ""), inv_date=M._dubai_today(),
                 company_id=p.company_id, client=p.client, client_trn=p.client_trn, client_address=p.client_address,
                 project=p.project, project_no=p.project_no, plot=p.plot, location=p.location, work=p.work,

@@ -608,6 +608,11 @@ EARLY = """
     }
     var st = document.createElement("style"); st.id = "pg-early"; st.textContent = css;
     document.head.appendChild(st);
+    // the page is drawn out of sight and shown once, when it has settled - not header, tabs and menu
+    // each moving into place in front of the user (pgUnhold; never held more than 1.6 s)
+    var hold = document.createElement("style"); hold.id = "pg-hold"; hold.textContent = "#app-screen{visibility:hidden}";
+    document.head.appendChild(hold);
+    setTimeout(function () { var h = document.getElementById("pg-hold"); if (h) h.remove(); }, 1600);
     // The tab strip as this login last saw it on this page, drawn before
     // the app's script runs, so the strip never appears empty and fills.
     var tabs = null;
@@ -845,7 +850,7 @@ switchScreen = function (name) {
   if (MY_SCREENS.length && !pgAllowed(name)) return;
   if (PG_SHOWN.size && !PAGE.tabs.some(t => PG_SHOWN.has(t.id) && t.screen === name)) PG_SHOWN.clear();
   _switchScreen(name);
-  const early = document.getElementById("pg-early"); if (early) early.remove();
+  const early = document.getElementById("pg-early"); if (early) { early.remove(); pgUnhold(); }
   const inSubs = PG_TAB && PG_TAB.subs.some(sb => sb.screen === name);
   if (!inSubs && (!PG_TAB || PG_TAB.screen !== name))
     PG_TAB = PAGE.tabs.find(t => t.screen === name) || PAGE.tabs.find(t => t.subs.some(sb => sb.screen === name)) || null;
@@ -862,8 +867,56 @@ switchScreen = function (name) {
   else if (PG_SUB && (PG_SUB.screen || "") === name && PG_TAB && PG_TAB.subs.includes(PG_SUB)) pgSubGo();
   else document.body.classList.remove("pg-subview");
 };
+// A dialog left open belongs to the screen it was opened on: moving to another tab closes it (a "Count
+// stock" box stayed over the next report), and Esc closes the top one.
+function pgCloseDialogs() {
+  document.querySelectorAll(".zx-modal").forEach(m => m.remove());
+  document.querySelectorAll('[id$="-modal-overlay"], #order-modal-overlay, #import-modal-overlay').forEach(o => { if (o.style.display && o.style.display !== "none") o.style.display = "none"; });
+}
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || e.defaultPrevented) return;
+  const zx = [...document.querySelectorAll(".zx-modal")].pop();
+  if (zx) { zx.remove(); return; }
+  const ov = [...document.querySelectorAll('[id$="-modal-overlay"]')].find(o => o.style.display && o.style.display !== "none");
+  if (ov) ov.style.display = "none";
+});
+// No flicker: a screen (or a tab of it) is kept out of sight while its first reads come in and it draws
+// itself, then shown in one go - instead of rows, totals and boxes arriving one after another and
+// pushing everything down. Never held longer than 0.9 s.
+function pgSettle(el) {
+  if (!el) return;
+  clearTimeout(el.__pgst); if (el.__pgmo) el.__pgmo.disconnect();
+  el.style.visibility = "hidden";
+  const start = performance.now(); let last = start;
+  const mo = new MutationObserver(() => { last = performance.now(); });
+  mo.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
+  el.__pgmo = mo;
+  const tick = () => {
+    const now = performance.now();
+    if ((now - start > 80 && now - last > 100 && !window.__apiBusy) || now - start > 900) {
+      mo.disconnect(); el.__pgmo = null; el.style.visibility = ""; return;
+    }
+    el.__pgst = setTimeout(tick, 25);
+  };
+  el.__pgst = setTimeout(tick, 25);
+}
+function pgUnhold() {
+  const hold = document.getElementById("pg-hold"); if (!hold) return;
+  const app = document.getElementById("app-screen");
+  const start = performance.now(); let last = start;
+  const mo = new MutationObserver(() => { last = performance.now(); });
+  if (app) mo.observe(app, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
+  const tick = () => {
+    const now = performance.now();
+    if ((now - start > 120 && now - last > 120 && !window.__apiBusy) || now - start > 1200) { mo.disconnect(); hold.remove(); return; }
+    setTimeout(tick, 30);
+  };
+  setTimeout(tick, 30);
+}
+function pgSettleActive() { setTimeout(() => pgSettle(document.querySelector(".screen.active")), 0); }
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
+  pgCloseDialogs(); pgSettleActive();
   if (t.subs.length) { PG_TAB = t; const first = t.subs.find(pgSubOk); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");
   PG_TAB = t;
@@ -1023,6 +1076,7 @@ pgLazy("refreshSignatureState", ["settings"]);
 // ---- The reports page: tabs inside tabs, the working screen underneath ------
 function pgSub(id) {
   const t = PG_TAB; if (!t) return;
+  pgCloseDialogs(); pgSettleActive();
   const sb = t.subs.find(x => x.id === id); if (!sb || !pgSubOk(sb)) return;
   PG_SUB = sb;
   location.hash = t.id + ":" + sb.id;
@@ -1290,7 +1344,8 @@ def build():
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n'
                  f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>\n'
-                 f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>\n')
+                 f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>\n'
+)
     page = page.replace("</body>", help_tags + "</body>", 1)
     # The pages held in a frame (Estimation, Trello, Staff ...) are asked for by a version of what is in
     # them, so a deploy reaches the frame at once - not only after the browser drops its old copy.

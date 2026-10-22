@@ -69,10 +69,10 @@ LOGO_W_MM, LOGO_H_MM = 42, 7.1          # 995x168 px, scaled to a neat header
 # order and the same look on every preview in the app.
 PREVIEW_BAR_CSS = (
     ".pvbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;padding:10px 16px;"
-    "background:#fff;border-bottom:1px solid #E2E0DC;z-index:5;font-family:Arial,Helvetica,sans-serif}"
+    "background:#fff;border-bottom:1px solid #E2E0DC;z-index:5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}"
     ".pvbar h1{font-size:16px;margin:0 6px 0 0;color:#1d1d1d;letter-spacing:0;text-align:left;font-weight:700}"
     ".pvbar .who{font-size:12.5px;color:#666}.pvbar .sp{margin-left:auto}"
-    ".pvbar a.btn{display:inline-block;text-decoration:none;font:600 13px Arial,Helvetica,sans-serif;padding:7px 14px;"
+    ".pvbar a.btn{display:inline-block;text-decoration:none;font:600 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:7px 14px;"
     "border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26;cursor:pointer}"
     ".pvbar a.btn.dark{background:#2E3238;border-color:#2E3238;color:#fff}"
     ".pvbar a.btn.wa,.bar a.btn.wa{background:#25D366;border-color:#25D366;color:#fff}"
@@ -2222,10 +2222,9 @@ def build_lpo_pdf(po: dict):
     disc = float(po.get("discount_pct") or 0)
     discount = sub * disc / 100.0
     net = sub - discount
-    vat = sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) *
+    # each line's own VAT on its discounted amount (main._lpo_net_vat)
+    vat = sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) * (1 - disc / 100.0) *
               float(l.get("tax_pct") or 0) / 100.0 for l in po.get("lines", []))
-    if disc:
-        vat = net * (float(po.get("tax_pct") or 5)) / 100.0
     total = net + vat
 
     money = [[P("Sub Total", 8.5, align=TA_RIGHT), P(f"{sub:,.2f}", 8.5, align=TA_RIGHT)]]
@@ -2418,7 +2417,7 @@ def build_lpo_excel(po: dict):
         money(f"Discount({disc:g}%)", f"=-SUM(G{first_line}:G{last_line})*{disc}/100")
     money(f"Standard Rate ({po.get('tax_pct', 5):g}%)",
           f"=SUM(F{first_line}:F{last_line})" if not disc
-          else f"=(SUM(G{first_line}:G{last_line})*(1-{disc}/100))*{po.get('tax_pct',5)}/100")
+          else f"=SUM(F{first_line}:F{last_line})*(1-{disc}/100)")
     money("Total", f"=SUM(G{money_start}:G{r-1})", bold=True, size=11)
 
     nr = money_start

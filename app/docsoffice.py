@@ -364,7 +364,7 @@ def export_one(tid: int, token: str, format: str = "pdf", dl: int = 0, db: Sessi
         title = f"Document Transmittal {ref(x.no)}"
         return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{export_web.PREVIEW_BAR_CSS}
-body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
+body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
 .pg iframe{{width:100%;height:1180px;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(x.lines)} document(s) &middot; {escape(x.on_date.strftime('%d %b %Y'))}</span><span class="sp"></span>
 <a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{xl}">Excel</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>

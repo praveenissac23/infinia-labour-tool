@@ -68,14 +68,14 @@ def preview(d, pdf_url, excel_url):
     nb = d.get("nobed") or []
     nobed = (f'<div class="nobed"><b>No bed here ({len(nb)}):</b> ' + ", ".join(escape(f"{p['no']} {_title_case(p['name'])}") for p in nb) + "</div>") if nb else ""
     css = f"""
-  body{{margin:0;background:#F1EFEA;color:{INK};font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif}}
+  body{{margin:0;background:#F1EFEA;color:{INK};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}}
   .bar{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;padding:10px 16px;background:#fff;border-bottom:1px solid #E2E0DC;z-index:5}}
   .bar h1{{font-size:16px;margin:0 6px 0 0}}
   a.btn{{display:inline-block;text-decoration:none;font-size:13px;font-weight:600;padding:7px 14px;border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26}}
   a.btn.dark{{background:#2E3238;border-color:#2E3238;color:#fff}} a.btn.wa{{background:#25D366;border-color:#25D366;color:#fff}}
   .page{{width:210mm;max-width:calc(100% - 24px);margin:16px auto;background:#fff;padding:9mm 9mm 7mm;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.14)}}
   .lh{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid {RED};padding-bottom:4mm;margin-bottom:4mm}}
-  .lh img{{width:40mm}} .lh .r{{text-align:right}} .lh .co{{font-weight:700;font-size:12pt}} .lh .ti{{font-size:10pt;color:{RED};font-weight:700;margin-top:2px}} .lh .dt{{font-size:8.5pt;color:{MUTED};margin-top:2px}}
+  .lh img{{width:40mm}} .lh .r{{text-align:right}} .lh .co{{font-weight:700;font-size:12pt}} .lh .ti{{font-size:10pt;color:{INK};font-weight:700;margin-top:2px}} .lh .dt{{font-size:8.5pt;color:{MUTED};margin-top:2px}}
   .tiles{{display:grid;grid-template-columns:repeat(5,1fr);gap:2.5mm;margin-bottom:4mm}}
   .tile{{border:1px solid {LINE};border-radius:3mm;padding:2mm 3mm}} .tile span{{display:block;font-size:6.8pt;letter-spacing:.06em;text-transform:uppercase;color:{MUTED}}} .tile b{{font-size:15pt}}
   .tile.vac b{{color:#B26A00}} .tile.book b{{color:#1F5FA8}} .tile.free b{{color:#2E7D32}}

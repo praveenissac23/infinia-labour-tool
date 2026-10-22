@@ -333,7 +333,7 @@ def _html(s, pdf_url, excel_url):
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>Final Settlement - {escape(e['name'])}</title><style>
 :root{{--ink:#1d2433;--mute:#6b7280;--line:#dfe3ea;--head:#1f2d45;--soft:#f5f7fa;--bg:#e9ecf1}}
-*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);font:13px/1.45 Arial,Helvetica,sans-serif;color:var(--ink)}}
+*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);font:13px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:var(--ink)}}
 .bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;z-index:2}}
 .bar a,.bar button{{font:600 13px Arial;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;cursor:pointer}}
 .bar .p{{background:var(--head);color:#fff;border-color:var(--head)}}

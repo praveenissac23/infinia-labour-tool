@@ -124,7 +124,20 @@
     if (aligned.get(t) === sig || !rows.length || !head) return;      // a table with no heading row is a layout box, left as drawn
     aligned.set(t, sig);
     // each cell's column, counting the cells that span several
-    var cols = {}, grid = function (tr) { var out = [], c = 0; [].forEach.call(tr.cells, function (td) { out.push([td, c, td.colSpan || 1]); c += td.colSpan || 1; }); return out; };
+    // a cell spanning rows (a project code over its scopes) holds its column in the rows below, so the next
+    // row's first cell is not mistaken for column 0 (that shifted figures under the wrong heading)
+    var place = new Map(), taken = {};
+    rows.forEach(function (tr, ri) {
+      var c = 0;
+      [].forEach.call(tr.cells, function (td) {
+        while (taken[ri + ":" + c]) c++;
+        var cs = td.colSpan || 1, rs = Math.max(1, td.rowSpan || 1);
+        place.set(td, c);
+        for (var r = 1; r < rs; r++) for (var k = 0; k < cs; k++) taken[(ri + r) + ":" + (c + k)] = 1;
+        c += cs;
+      });
+    });
+    var cols = {}, grid = function (tr) { var out = [], c = 0; [].forEach.call(tr.cells, function (td) { var at = place.has(td) ? place.get(td) : c; out.push([td, at, td.colSpan || 1]); c = at + (td.colSpan || 1); }); return out; };
     rows.forEach(function (tr) { grid(tr).forEach(function (x) { if (x[2] !== 1) return; var v = x[0].textContent.replace(/\s+/g, " ").trim(); if (DASH.test(v)) return; (cols[x[1]] = cols[x[1]] || []).push(v); }); });
     var how = {}, names = {};
     if (head) grid(head).forEach(function (x) { if (x[2] === 1) names[x[1]] = x[0].textContent.replace(/\s+/g, " ").trim().toLowerCase(); });
@@ -167,9 +180,23 @@
       if (bg && sat(bg) > 0.12 && lum(bg) < 0.92 && lum(bg) > 0.6 && /^(TD|TR|TFOOT|TBODY)$/.test(el.tagName) && !el.closest("thead")) {
         el.style.setProperty("background-color", "#F4F2EF", "important");     // a green / blue band: grey
       }
+      var inHead = !!el.closest("thead") || el.tagName === "TH";
+      // a black heading bar in the company red, the same as every other report (the payment certificate)
+      if (inHead && bg && lum(bg) < 0.28 && sat(bg) < 0.25) el.style.setProperty("background-color", "#B7322A", "important");
+      // status chips (Partial / Completed / Paid ...) and progress bars: grey, black writing
+      var r = el.getBoundingClientRect();
+      if (!inHead && bg && sat(bg) > 0.12 && /^(SPAN|DIV|B|I|EM|SMALL)$/.test(el.tagName)) {
+        if (lum(bg) >= 0.6) el.style.setProperty("background-color", "#EFEDEA", "important");
+        else if (r.height <= 14) el.style.setProperty("background-color", "#5B6167", "important");
+      }
+      // a coloured progress bar (drawn as a gradient): dark grey
+      if (!inHead && r.height <= 14 && /gradient/.test(cs.backgroundImage) && /^(SPAN|DIV|I|B)$/.test(el.tagName))
+        el.style.setProperty("background", "#5B6167", "important");
       var fg = rgb(cs.color);
-      if (fg && sat(fg) > 0.45 && parseFloat(cs.fontSize) >= 14 && el.textContent.trim().length > 2 && /^(H1|H2|H3|H4|DIV|SPAN|P|B|STRONG|TD|TH)$/.test(el.tagName))
-        el.style.setProperty("color", "#1F2328", "important");        // a red title in black
+      // coloured writing (red remaining, green "free", amber "partial", a red title) in black - ink saving;
+      // white writing on the red heading bar is left as it is
+      if (fg && sat(fg) > 0.35 && !inHead && el.textContent.trim().length > 0 && /^(H1|H2|H3|H4|H5|DIV|SPAN|P|B|STRONG|TD|EM|I|SMALL|LABEL|LI)$/.test(el.tagName))
+        el.style.setProperty("color", "#1F2328", "important");
     });
   }
   try { inkSave(); } catch (e) {}

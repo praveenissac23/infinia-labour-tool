@@ -129,12 +129,14 @@ def items(emp_id, month_year):
     return add, ded
 
 
-def loan_state(emp_id, month_year=None):
+def loan_state(emp_id, month_year=None, month_end=None):
     """(instalment due this month, balance before it), from the loan book.
     For an approved month the payroll repayment of that month is put back
     so the figure is the one the sheet saw when it was approved."""
     due, balance = 0.0, 0.0
     for l in q("select * from staff_loans where employee_id=?", emp_id):
+        if month_end and str(l['taken_on']) > month_end.isoformat():
+            continue                          # a loan taken after the month is not recovered in it
         reps = q("select amount, month_year, source from loan_repayments where loan_id=?", l['id'])
         paid = sum(r['amount'] for r in reps
                    if not (month_year and r['source'] == 'payroll' and r['month_year'] == month_year))
@@ -198,7 +200,8 @@ for r in runs:
     label = f"{r['short_name']} {r['month_year']} ({r.get('group')})"
     days = (b - a).days + 1
     done = 0 if today < a else days if today > b else (today - a).days + 1
-    running = r['status'] != 'approved' and done < days
+    # a month the office switched to 'full month' is paid in full, not as earned so far
+    running = r['status'] != 'approved' and done < days and not ((api.get('progress') or {}).get('full_month'))
     mine = {}
     for l in api['lines']:
         e = q("select * from employees where id=?", l['employee_id'])[0]
@@ -206,7 +209,7 @@ for r in runs:
         gross = round(basic + allow, 2)
         absent = round(min(absence(e['id'], a, b, gross) + part_month(e, a, b, gross), gross), 2)
         add, ded = items(e['id'], r['month_year'])
-        due, bal = loan_state(e['id'], r['month_year'] if r['status'] == 'approved' else None)
+        due, bal = loan_state(e['id'], r['month_year'] if r['status'] == 'approved' else None, b)
         loan = l['loan_deduction'] if l['loan_edited'] else due
         net = round(gross - absent - ded - loan + add, 2)
         to_date = round(gross * done / days - absent + add - ded, 2) if running else net

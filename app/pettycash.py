@@ -153,9 +153,13 @@ def register(db, month, book="site", date_from="", date_to=""):
     if book == "pro":
         # Visa payments made but held until each visa is completed: the cash
         # has left the box, so Balance in hand takes them off.
-        ongoing = [v.id for v in db.query(models.VisaFile).filter(models.VisaFile.status == "ongoing").all()]
-        if ongoing:
-            held = round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.visa_file_id.in_(ongoing))), 2)
+        # Held as the period ended: paid on or before its last day, on a visa not yet completed by then
+        # (a payment made in October is not taken off August's cash in hand).
+        files = {v.id: v for v in db.query(models.VisaFile).all()}
+        end = M._dubai_today() if whole else b
+        held = round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.on_date <= end).all()
+                         if p.visa_file_id in files and (files[p.visa_file_id].status == "ongoing"
+                                                         or (files[p.visa_file_id].completed_on and files[p.visa_file_id].completed_on > end))), 2)
     return {"book": book, "book_label": BOOKS[book][0], "terms": t, "visa_held": held,
             "month": "all" if whole else f"{a:%Y-%m}" if one_month else f"{a:%Y-%m-%d}_to_{b:%Y-%m-%d}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
@@ -462,7 +466,7 @@ def _html(r, pdf_url, excel_url):
     head = "".join(f'<th class="{"n" if c["key"] in NUM else ("l" if c["key"] in ("desc", "sup") else "")}">{escape(c["label"])}</th>' for c in spec)
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
-*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
+*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1d1d1d}}
 .page{{max-width:1000px;margin:18px auto;background:#fff;padding:30px 36px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
 .top{{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid {RED};padding-bottom:10px}}
 .top img{{height:30px}} h1{{margin:0;font-size:18px;letter-spacing:.08em;color:{RED};text-align:right}}

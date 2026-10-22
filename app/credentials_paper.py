@@ -57,7 +57,7 @@ def html(entries, title, sub, pdf_url, excel_url, who=""):
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{escape(title)}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
- body{{margin:0;background:#F1EFEA;color:#1F2429;font-family:Helvetica,Arial,-apple-system,"Segoe UI",sans-serif}}
+ body{{margin:0;background:#F1EFEA;color:#1F2429;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}}
  .page{{width:210mm;max-width:calc(100% - 24px);margin:16px auto;background:#fff;padding:12mm 11mm 14mm;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.14)}}
  .top{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.2px solid {RED};padding-bottom:9px}}
  .top img{{width:42mm;display:block}}

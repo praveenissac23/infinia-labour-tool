@@ -22,7 +22,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     --silver: #C7CBD1; --lightgray: #F1EFEA;
   }
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--lightgray); margin: 0; color: var(--black); }
   /* One type everywhere: boxes, lists and buttons take the page's font and,
      unless a screen sets its own, the standard 13px - not the browser's own. */
   input, select, textarea, button { font-family: inherit; }
@@ -221,7 +221,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .act-items { margin-top: 8px; padding-top: 8px; border-top: 1px solid #EFE9E4; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 18px; font-size: 12px; color: #444; }
   .act-items[hidden] { display: none; }
   .act-items div { display: flex; gap: 8px; min-width: 0; }
-  .act-items code { flex: none; font: 600 11px/1.6 ui-monospace, monospace; color: #8a7f79; }
+  .act-items code { flex: none; font-family:inherit; font-weight:600; font-size:11px; line-height:1.6; font-variant-numeric:tabular-nums; color: #8a7f79; }
   @media (max-width: 700px) { .act-items { grid-template-columns: 1fr; } }
   .act-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
   .act-pill.g { background: #E6F4EA; color: #1E7A3A; } .act-pill.y { background: #FFF3D6; color: #8A6100; } .act-pill.r { background: #FBE4E1; color: #A5301F; }
@@ -374,7 +374,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   border: 1px solid #E4E0DB; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.14); padding: 5px; }
   .hr-menu.open .hr-menu-list { display: block; }
   .hr-menu-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 11px; border-radius: 6px;
-                         font: 500 13.5px inherit; color: #2a2a2a; cursor: pointer; white-space: nowrap; }
+                         font-family:inherit;font-weight:500;font-size:13.5px; color: #2a2a2a; cursor: pointer; white-space: nowrap; }
   .hr-menu-list button:hover { background: #F6F1EC; } .hr-menu-list button.danger { color: #C0392B; }
   .hr-menu-list hr { border: 0; border-top: 1px solid #EEE; margin: 4px 2px; }
   .hr-caret { font-size: 10px; margin-left: 2px; }
@@ -406,7 +406,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .px-stat.warn { background: #FFF7F5; border-color: #F1D5CF; } .px-stat.warn b { color: #B7322A; }
   .px-stat i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
   .px-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .px-table th { background: #22262A; color: #fff; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+  .px-table th { background: #FAF8F5; color: #666; border-bottom: 1px solid #E4E0DB; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
   .px-table th.l { text-align: left; } .px-table th.n { text-align: right; }
   .px-table td { padding: 8px; border-bottom: 1px solid #EEE; vertical-align: middle !important; }
   .px-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; } .px-table td.l { text-align: left; }
@@ -454,21 +454,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .rep-table tr.rep-group td { background: #F4F1EC; color: #5B6167; font-weight: 700; font-size: 11.5px; letter-spacing: .4px; padding: 6px 10px; text-align: left; }
   .rep-tag { display: inline-block; background: #FDF6F5; border: 1px solid #E7CEC9; color: #7A3B33; padding: 0 6px; border-radius: 4px; font-size: 11px; margin-left: 6px; font-weight: 600; white-space: nowrap; }
   .pp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .pp-table th { background: #22262A; color: #fff; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 8px; text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+  .pp-table th { background: #FAF8F5; color: #666; border-bottom: 1px solid #E4E0DB; font-size: 11px; letter-spacing: .03em; text-transform: uppercase; padding: 9px 6px; text-align: center; white-space: normal; position: sticky; top: 0; z-index: 1; }
   .pp-table th.l { text-align: left; } .pp-table th.n { text-align: right; }
-  .pp-table td { padding: 7px 8px; border-bottom: 1px solid #EEE; vertical-align: middle; }
+  .pp-table td { padding: 7px 6px; border-bottom: 1px solid #EEE; vertical-align: middle; }
   .pp-table td.l { text-align: left; } .pp-table td.c { text-align: center; white-space: nowrap; } .pp-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pp-table td.b { font-weight: 700; } .pp-table td.due { color: #B7322A; } .pp-table td small { display: block; font-size: 11px; color: #8A8178; }
   .pp-table td.proj { font-weight: 800; font-size: 15px; text-align: center; vertical-align: top; padding-top: 9px; background: #F7F4F1; border-right: 1px solid #E6E1DC; width: 64px; }
-  .pp-table tr.first td { border-top: 2px solid #D9D3CD; } .pp-table td.scope { font-weight: 600; white-space: nowrap; }
+  .pp-table tr.first td { border-top: 2px solid #D9D3CD; } .pp-table td.scope { font-weight: 600; min-width: 120px; }
   .pp-table tbody tr.row { cursor: pointer; } .pp-table tbody tr.row:hover td:not(.proj) { background: #FDF6F5; }
   .pp-table tr.edit td:not(.proj) { background: #FFF8E6 !important; }
   .pp-table tr.sub td { background: #F7F4F1; font-weight: 700; font-size: 12.5px; }
-  .pp-table tfoot td { background: #22262A; color: #fff; font-weight: 700; border: none; padding: 9px 8px; }
-  .pp-table td.rem { color: #555; font-size: 12px; max-width: 240px; }
+  .pp-table tfoot td { background: #F3EFEB; color: #1F2328; font-weight: 700; border: none; border-top: 2px solid #D9D3CD; padding: 9px 6px; }
+  .pp-table td.rem { color: #555; font-size: 12px; max-width: 220px; min-width: 130px; overflow-wrap: anywhere; }
   .ppbar { display: inline-block; width: 70px; height: 7px; border-radius: 4px; background: #EAE6E2; vertical-align: middle; overflow: hidden; }
   .ppbar i { display: block; height: 100%; background: linear-gradient(90deg, #2E8B57, #3DA86B); border-radius: 4px; }
-  .pp-table tfoot .ppbar { background: rgba(255,255,255,.25); }
+  .pp-table tfoot .ppbar { background: #E2DCD6; }
   .pppct { display: inline-block; width: 40px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; margin-left: 6px; }
   .pppill { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11.5px; font-weight: 700; }
   .pppill.Completed { background: #E7F4EA; color: #1E7B34; } .pppill.Partial { background: #FFF3DC; color: #9A5B00; } .pppill.Pending { background: #FDE8E7; color: #B42318; }
@@ -490,7 +490,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-form.nosup { grid-template-columns: auto 140px minmax(220px, 3fr) 160px 140px auto; }
   .pc-form input, .pc-form select { width: 100%; }
   .pc-kind { display: inline-flex; border: 1px solid #D5D9DE; border-radius: 7px; overflow: hidden; height: 36px; }
-  .pc-kind button { border: 0; background: #fff; padding: 0 12px; font: 600 12.5px inherit; color: #555; cursor: pointer; white-space: nowrap; }
+  .pc-kind button { border: 0; background: #fff; padding: 0 12px; font-family:inherit;font-weight:600;font-size:12.5px; color: #555; cursor: pointer; white-space: nowrap; }
   .pc-kind button.on { background: #B7322A; color: #fff; }
   .pc-kind { min-width: max-content; }
   @media (max-width: 1500px) { .pc-form:not(.vat) .pc-kind { grid-column: 1 / -1; justify-self: start; } }
@@ -509,13 +509,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-form.vat .pc-vat { grid-column: span 2; }
   .pc-form.vat .pc-kind { min-width: 0; }
   .pc-form.vat .pc-go { justify-self: end; }
-  .pc-vat .pc-vatbox { display: flex; align-items: center; gap: 6px; height: 36px; font: 600 13px inherit; color: #333; white-space: nowrap; }
+  .pc-vat .pc-vatbox { display: flex; align-items: center; gap: 6px; height: 36px; font-family:inherit;font-weight:600;font-size:13px; color: #333; white-space: nowrap; }
   .pc-vat input[type=checkbox] { width: 18px; height: 18px; margin: 0; }
   .pc-vat #pc-trn { width: 190px; height: 36px; font-size: 13px; letter-spacing: .02em; }
   .zx-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .zx-wait { background: #FFF4D6; color: #8A6200; } .zx-ok { background: #E7F4EA; color: #2E7D32; } .zx-app { background: #E8F0FB; color: #2456A6; }
   .zx-bad { background: #FDECEA; color: #B7322A; } .zx-skip { background: #EEE; color: #666; }
-  .zh-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; } .zh-table td:nth-child(3) { white-space: nowrap; } .zh-table td:nth-child(4) { min-width: 210px; }
+  .zh-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; } .zh-table td:nth-child(3) { white-space: nowrap; } .zh-table td:nth-child(4) { min-width: 170px; }
   .zh-table th.l, .zh-table td.l { text-align: left; }
   .zh-table select { height: 34px; font-size: 13px; border-radius: 7px; }
   .zh-table select.zh-site { width: 88px; } .zh-table select.zh-vat { width: 116px; min-width: 116px; }
@@ -815,21 +815,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-chip b{font-weight:600;opacity:.7;margin-left:3px}
 .cr-row{display:grid;grid-template-columns:40px minmax(0,1.5fr) minmax(0,1.35fr) minmax(0,1.25fr) 30px;gap:12px;align-items:center;padding:10px 6px;border-top:1px solid #F1ECE5}
 .cr-row:hover{background:#FCF9F4}
-.cr-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font:700 14px Arial;color:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.cr-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:inherit;font-weight:700;font-size:14px;color:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
 .cr-name{font-weight:600;font-size:14px;color:#1F2429;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cr-url{font-size:12px;color:#8A8178;margin-top:1px}
 .cr-url a{color:#8A8178;text-decoration:none}
 .cr-tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8A8178;background:#F4EFE8;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px}
-.cr-field{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;font-size:13px;color:#33383D;font-family:ui-monospace,Menlo,monospace}
-.cr-field .lab{font:600 10.5px Arial;letter-spacing:.4px;text-transform:uppercase;color:#A39A90;width:34px}
+.cr-field{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;font-size:13px;color:#33383D;font-family:inherit;font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.cr-field .lab{font-family:inherit;font-weight:600;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:#A39A90;width:34px}
 .cr-ic{width:26px;height:26px;border-radius:7px;border:0;background:transparent;color:#8A8178;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 .cr-ic:hover{background:#F1ECE5;color:#C0392B}
 .cr-dots{letter-spacing:2px}
-.cr-copied{font:600 11px Arial;color:#2E7D32;background:#E8F5E9;border-radius:5px;padding:2px 7px}
+.cr-copied{font-family:inherit;font-weight:600;font-size:11px;color:#2E7D32;background:#E8F5E9;border-radius:5px;padding:2px 7px}
 .cr-add h2{margin:0 0 4px;font-size:16px}
 .cr-add p{margin:0 0 14px;font-size:12px;color:#8A8178}
 .cr-f{display:block;margin-bottom:11px}
-.cr-f > span{display:block;font:600 11.5px Arial;color:#6B7075;margin-bottom:4px}
+.cr-f > span{display:block;font-family:inherit;font-weight:600;font-size:11.5px;color:#6B7075;margin-bottom:4px}
 .cr-f input,.cr-f select,.cr-f textarea{width:100%;box-sizing:border-box;height:36px;border:1px solid #D5D9DE;border-radius:8px;padding:0 10px;font-size:13.5px}
 .cr-f textarea{height:58px;padding:8px 10px;resize:vertical}
 .cr-preview{display:flex;gap:10px;align-items:center;background:#FCF9F4;border:1px dashed #E4DED6;border-radius:10px;padding:10px;margin:-2px 0 12px}
@@ -857,7 +857,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-row .cr-name .cr-tag{flex-shrink:0}
 .cr-hint{font-size:11.5px;color:#8A8178;margin:-6px 0 10px;min-height:14px}
 @media (max-width: 1000px){.cr-wrap{grid-template-columns:1fr}.cr-row{grid-template-columns:40px minmax(0,1fr) 30px}.cr-row .cr-field{grid-column:2 / 3}}
-  .hr-find { position: relative; }
+  .hr-find { position: relative; max-width: 100%; min-width: 0; }
+  @media (max-width: 600px) { .hr-find { width: 100% !important; flex: 1 1 100%; } }
   .hr-find input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
                    border-radius: 7px; font-size: 13.5px; }
   .hr-find input:focus { outline: none; border-color: var(--red); }
@@ -868,7 +869,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .hr-find-list > div.on, .hr-find-list > div:hover { background: #F7F1EA; }
   .hr-find-x { position: absolute; right: 8px; top: 50%; margin-top: -9px; width: 18px; height: 18px; display: none;
     align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: #E4E0DA;
-    color: #5B6167; font: bold 13px/1 Arial, sans-serif; cursor: pointer; }
+    color: #5B6167; font-family:inherit;font-weight:bold;font-size:13px;line-height:1; cursor: pointer; }
   .hr-find-x:hover { background: #C0392B; color: #fff; }
   .hr-find input { padding-right: 30px; }
   .hr-find-none { color: #999; cursor: default !important; }
@@ -950,8 +951,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .field > input, .field > select { width: 100% !important; }
   .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                 gap: 12px 14px; margin-bottom: 14px; max-width: 980px; }
-  input[type=date], select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
-                             border-radius: 7px; font-size: 13.5px; background: white; }
+  input[type=date], input[type=month], input[type=time], select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE;
+                             border-radius: 7px; font-size: 13.5px; background: white; box-sizing: border-box; }
   textarea { border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; padding: 9px 10px; }
   /* Inputs inside line tables (material pickers, quantities, notes)
      match the 36px standard everywhere else - the picker is the most
@@ -1153,7 +1154,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .btn { transition: background .15s ease, transform .06s ease; }
   .btn:active { transform: translateY(1px); }
   td { transition: background .12s ease; }
-  input[type=text]:focus, input[type=number]:focus, input[type=date]:focus,
+  input[type=text]:focus, input[type=number]:focus, input[type=date]:focus, input[type=month]:focus,
   input[type=password]:focus, select:focus, textarea:focus {
     outline: none; border-color: var(--red);
     box-shadow: 0 0 0 3px rgba(192,57,43,0.10);
@@ -1215,7 +1216,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     }
     .main { min-width: 0; }
 
-    .topbar { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+    .topbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
     .topbar h1 { font-size: 15px; }
     .content { padding: 12px; }
 
@@ -1249,6 +1250,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dash-top { display: flex; gap: 16px; align-items: stretch; margin-bottom: 16px; }
   .dash-top > .dash-clock-card { flex: 1 1 auto; margin-bottom: 0; display: flex; flex-direction: column; justify-content: center; padding: 22px; }
   .dash-top > .dash-cal-card { flex: 0 0 340px; margin-bottom: 0; padding: 14px 16px; }
+  @media (max-width: 600px) {
+    .topbar > div { display: contents !important; }
+    .topbar h1 { order: 0; flex: 1 1 0; }
+    .topbar #help-q, .topbar #bday-chip, .topbar #bell-wrap, .topbar > div > button { order: 1; }
+    .topbar #bell-wrap { margin-right: 0 !important; }
+    .topbar .help-wrap { order: 2; flex: 1 1 100%; }
+    .topbar .help-wrap input { width: 100%; box-sizing: border-box; }
+    .topbar #who-label { display: none; }
+    .topbar #bday-chip { margin-right: 0; white-space: nowrap; padding-left: 9px; padding-right: 9px; } .topbar #bday-chip .bd-long { display: none; }
+    /* a date never broken over three lines */
+    #pc-body td:first-child, .pc-table td.d, #zh-body td:nth-child(3) { white-space: nowrap; }
+  }
   @media (max-width: 760px) { .dash-top { flex-direction: column; } .dash-top > .dash-cal-card { flex-basis: auto; } }
   .dash-clock-card { background: white; border-radius: 10px; border: 1px solid #eee; padding: 34px; text-align: center; margin-bottom: 16px; }
   .dash-clock { font-size: 64px; font-weight: bold; color: var(--black); }
@@ -1367,8 +1380,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bday-name { font-weight: 700; font-size: 15.5px; color: #1F2429; } .bday-name a { color: inherit; text-decoration: none; border-bottom: 1px dashed #C9A9A4; }
   .bday-sub { font-size: 12px; color: #8A8178; margin-top: 2px; }
   .bday-foot { padding: 12px 20px 18px; }
+  #bday-chip .bd-n { display: none; } @media (max-width: 600px) { #bday-chip .bd-n { display: inline; } }
   #bday-chip { display: none; margin-right: 12px; border: 1px solid #F0D3CC; background: #FFF6F3; color: #B7322A; border-radius: 16px;
-               padding: 4px 10px; font: 600 12px inherit; cursor: pointer; white-space: nowrap; }
+               padding: 4px 10px; font-family:inherit;font-weight:600;font-size:12px; cursor: pointer; white-space: nowrap; }
   #notif-overlay { position: fixed; inset: 0; z-index: 6000; display: none;
                    align-items: center; justify-content: center; padding: 20px;
                    background: rgba(25, 22, 20, .42); }
@@ -1595,6 +1609,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
   .zh-site.zh-need { border-color:#C0392B; background:#FDF4F3; }
   .zh-poacc { margin-top:6px; } .zh-poacc .za-btn { max-width:420px; }
+  .zh-table .za-btn { min-width:140px; }
+  /* a material code is one word: CEM-OPC50 never split over two lines */
+  #home-stock-body td:first-child, #store-body td:first-child, #items-body td:first-child { white-space: nowrap; }
   /* Sent to Zoho */
   #zh-tabs .zh-tab-end { margin-left:auto; }
   .zs-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:10px 0 12px; }
@@ -3176,7 +3193,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="inv-form">
               <label class="hr-field" id="rc-co-f"><span>Company</span><select id="rc-co" class="hr-dd"></select></label>
               <label class="hr-field"><span>Receipt No. *</span><input type="text" id="rc-no" oninput="RC_AUTO = false" title="Numbered for you (RC/26/914/01 ...) after the last receipt of the project. Change it only if the receipt book says otherwise."></label>
-              <label class="hr-field"><span>Received on *</span><input type="date" id="rc-date"></label>
+              <label class="hr-field"><span>Received on *</span><input type="date" id="rc-date" title="The day the money reached us - the receipt is dated this day and the invoices ticked are paid on it."></label>
               <label class="hr-field"><span>Project No.</span><input type="text" id="rc-pno" list="rc-pno-list" placeholder="e.g. 914" onchange="rcProjectPicked()" title="Pick the project: its client and open tax invoices come up."></label>
               <datalist id="rc-pno-list"></datalist>
               <label class="hr-field inv-w2"><span>Received from (client) *</span><input type="text" id="rc-client" list="rc-client-list" placeholder="Pick the client" onchange="rcClientPicked()" title="Pick the client: the address and TRN from the invoices fill in, and their open tax invoices are listed below."></label>
@@ -3190,11 +3207,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="rc-sec" style="margin-top:14px;">How it was paid</div>
             <div class="inv-form">
               <div class="hr-field inv-w2"><span>Payment mode</span><div class="rc-modes" id="rc-modes"></div><input type="hidden" id="rc-mode" value="Bank transfer"></div>
-              <label class="hr-field" id="rc-ref-f"><span id="rc-ref-l">Transfer reference</span><input type="text" id="rc-ref"></label>
+              <label class="hr-field" id="rc-ref-f"><span id="rc-ref-l">Transfer reference</span><input type="text" id="rc-ref" title="The bank transfer or cheque number, as on the bank statement - it is how the receipt is matched to the bank line."></label>
               <label class="hr-field" id="rc-bank-f"><span>Bank</span><input type="text" id="rc-bank" list="rc-bank-list" placeholder="e.g. Emirates NBD"></label>
               <datalist id="rc-bank-list"><option value="Emirates NBD"><option value="ADCB"><option value="Mashreq"><option value="FAB"><option value="Dubai Islamic Bank"><option value="RAKBANK"><option value="CBD"><option value="ENBD"></datalist>
-              <label class="hr-field" id="rc-chq-f"><span>Cheque date</span><input type="date" id="rc-chq"></label>
-              <label class="hr-field inv-w2"><span>Note (printed)</span><input type="text" id="rc-notes" maxlength="300" placeholder="e.g. Payment for MEP and pool works"></label>
+              <label class="hr-field" id="rc-chq-f"><span>Cheque date</span><input type="date" id="rc-chq" title="The date written on the cheque. A post-dated cheque can be recorded now with its own date."></label>
+              <label class="hr-field inv-w2"><span>Note (printed)</span><input type="text" id="rc-notes" maxlength="300" title="Printed on the receipt under the amount - what the payment is for." placeholder="e.g. Payment for MEP and pool works"></label>
             </div>
             <div class="inv-foot">
               <label class="inv-paidf" title="An invoice this receipt pays in full gets the PAID stamp, dated the day received."><input type="checkbox" id="rc-stamp" checked> <b>Stamp invoices paid in full as PAID</b></label>
@@ -3561,8 +3578,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="grid-wrap" style="max-height:none;">
                 <table class="pc-table zh-table" data-nomove>
                   <thead><tr><th style="width:34px;"><input type="checkbox" id="zh-all" onchange="zhAll(this.checked)" title="Tick all that are ready"></th><th class="l" style="width:58px;">Book</th><th class="l" style="width:78px;">Date</th>
-                    <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:296px;">Zoho account</th>
-                    <th class="l" style="width:128px;">VAT</th><th class="n" style="width:96px;">Amount</th><th style="width:116px;"></th></tr></thead>
+                    <th class="l">Description · supplier</th><th class="l" style="width:96px;">Project</th><th class="l" style="width:220px;">Zoho account</th>
+                    <th class="l" style="width:120px;">VAT</th><th class="n" style="width:92px;">Amount</th><th style="width:112px;"></th></tr></thead>
                   <tbody id="zh-body"><tr><td colspan="9" style="color:#999; padding:18px;">Loading...</td></tr></tbody>
                 </table>
               </div>
@@ -4337,7 +4354,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Connect this app to Claude and ask it anything about the app's data - "LPOs sent in the last 50 days", "every increment, both companies, as Excel". It can only read, never change anything; every question is kept in the Activity monitor. Admin logins only.</p>
             <div id="agent-state" style="font-size:13px; margin-bottom:10px;"></div>
             <div class="form-row" id="agent-link-row" style="gap:8px; flex-wrap:wrap; display:none;">
-              <input type="text" id="agent-url" readonly style="flex:1; min-width:280px; font-family:monospace; font-size:12px;" onclick="this.select()">
+              <input type="text" id="agent-url" readonly style="flex:1; min-width:280px; font-size:12px;" onclick="this.select()">
               <button class="btn btn-primary" onclick="agentCopy()">Copy link</button>
             </div>
             <div class="form-row" style="gap:8px; flex-wrap:wrap;">
@@ -5077,7 +5094,10 @@ async function apiFetch(path, options = {}) {
   if (typeof options.body === "string" && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(API + path, { ...options, headers });
+  window.__apiBusy = (window.__apiBusy || 0) + 1;      // a screen is shown once its first reads are in (pgSettle)
+  let res;
+  try { res = await fetch(API + path, { ...options, headers }); }
+  finally { window.__apiBusy = Math.max(0, (window.__apiBusy || 1) - 1); }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw { status: res.status, body };
@@ -13552,7 +13572,9 @@ function dqCan(id) {
 }
 function dqGo(id) {
   const a = DASH_ACTIONS[id]; if (!a) return;
-  if (typeof pgGo === "function") pgGo(a[2], a[3]); else switchScreen(a[5]);
+  if (typeof pgGo === "function") { pgGo(a[2], a[3]); return; }
+  const sc = [String(a[3] || "").split(":")[0], a[5]].find(x => x && document.getElementById("screen-" + x));
+  if (sc) switchScreen(sc);
 }
 function dashQuick() {
   const box = document.getElementById("dash-quick"); if (!box) return;
@@ -20072,7 +20094,7 @@ async function bdayCheck() {
   const chip = document.getElementById("bday-chip");
   if (!BDAY || !BDAY.people.length) { chip.style.display = "none"; return; }
   const n = BDAY.people.length;
-  chip.textContent = n === 1 ? `\u{1F382} ${bdayFirst(BDAY.people[0].name)}'s birthday` : `\u{1F382} ${n} birthdays today`;
+  chip.innerHTML = `\u{1F382} <span class="bd-n">${n}</span><span class="bd-long">${n === 1 ? " " + escapeHtml(bdayFirst(BDAY.people[0].name)) + "'s birthday" : ` ${n} birthdays today`}</span>`;
   chip.style.display = "inline-block";
   const key = `infinia_bday:${BDAY.date}:${CURRENT_USERNAME || ""}`;
   let seen = false; try { seen = localStorage.getItem(key) === "1"; } catch (e) {}
@@ -20682,6 +20704,8 @@ async function dailyReportCopy() {
 
 <!-- Ask INFI: Infinia's AI agent lives in Claude; this opens it. Admin logins only. -->
 <style>
+  /* room under the last row so the INFI button never sits on top of a total or a row's buttons */
+  #app-screen .screen.active { padding-bottom: 84px; }
   #infi-btn { position: fixed; right: 18px; bottom: 18px; z-index: 2550; width: 64px; height: 64px; border-radius: 50%;
     border: 0; padding: 0; cursor: pointer; background: radial-gradient(circle at 50% 40%, #fff, #EDEAE6 70%);
     box-shadow: 0 6px 18px rgba(0,0,0,.22), 0 0 0 3px rgba(192,57,43,.18); display: none; overflow: hidden;
@@ -20922,6 +20946,12 @@ async function pushAfterLogin() {
     if (m && MON[m[2].toLowerCase()] !== undefined) { const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear(); return { n: new Date(y, MON[m[2].toLowerCase()], +m[1]).getTime() }; }
     m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return { n: new Date(+m[1], +m[2] - 1, +m[3]).getTime() };
     m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return { n: new Date(+m[3], +m[2] - 1, +m[1]).getTime() };
+    m = t.match(/^(?:(\d+)\s*y)?\s*(?:(\d+)\s*m)?$/i);                          // service "10 y 6 m", "10 m": in months
+    if (m && (m[1] || m[2])) return { n: (+(m[1] || 0)) * 12 + (+(m[2] || 0)) };
+    m = t.match(/^(\d{1,2})-\d{1,2} ([A-Za-z]{3})[a-z]* (\d{4})/);          // a date range "5-18 Oct 2026": by its first day
+    if (m && MON[m[2].toLowerCase()] !== undefined) return { n: new Date(+m[3], MON[m[2].toLowerCase()], +m[1]).getTime() };
+    m = t.match(/^(-?\d+(?:\.\d+)?)(?=\s*[^\d.\/:-]|$)/);                    // "1,500 pcs", "640 hrs", "903.00 ◷": by the number
+    if (m) return { n: parseFloat(m[1]) };
     return { s: t.toLowerCase() };
   }
   const cmp = (a, b) => a.n !== undefined && b.n !== undefined ? a.n - b.n : a.n !== undefined ? -1 : b.n !== undefined ? 1 : a.s.localeCompare(b.s, undefined, { numeric: true });
@@ -21001,9 +21031,20 @@ async function pushAfterLogin() {
     const st = t.__sort; if (!st) return;
     const h = headRow(t); const ci = [...h.cells].findIndex(c => label(c) === st.lab); if (ci < 0) return;
     t.__busy = true;
+    // A row's own detail line under it (a request's progress, a visa's payments - one wide cell, no group or
+    // total class) moves with its row; group headings and totals stay where they are.
+    const detail = (tr, prevData) => prevData && [...tr.cells].some(c => c.colSpan > 1) && (/(^|\s)[a-z]*-?detail(\s|$)/i.test(tr.className)
+      || (!tr.className.trim() && !/^(total|grand total|sub ?total|balance brought forward)/i.test((tr.cells[0] || {}).textContent.trim())));
     [...t.tBodies].forEach(b => { const rows = [...b.rows], out = []; let seg = [];
-      const flush = () => { seg.sort((r1, r2) => { const c = cmp(key(txt(r1.cells[ci])), key(txt(r2.cells[ci]))); return st.dir === "asc" ? c : -c; }); out.push(...seg); seg = []; };
-      rows.forEach(r => { if (fixed(r)) { flush(); out.push(r); } else seg.push(r); }); flush();
+      // an empty box ("", "-") goes to the bottom whichever way the list is sorted
+      const blank = v => /^[-–—]?$/.test(v.replace(/[◷✓✔⏱]/g, "").trim());
+      const flush = () => { seg.sort((u1, u2) => { const v1 = txt(u1[0].cells[ci]), v2 = txt(u2[0].cells[ci]);
+        if (blank(v1) !== blank(v2)) return blank(v1) ? 1 : -1;
+        const c = cmp(key(v1), key(v2)); return st.dir === "asc" ? c : -c; }); seg.forEach(u => out.push(...u)); seg = []; };
+      rows.forEach(r => {
+        if (detail(r, seg.length > 0)) { seg[seg.length - 1].push(r); return; }
+        if (fixed(r)) { flush(); out.push(r); } else seg.push([r]);
+      }); flush();
       out.forEach(r => b.appendChild(r)); });
     [...h.cells].forEach(c => { const a = c.querySelector(".tx-a"); if (a) a.textContent = label(c) === st.lab ? (st.dir === "asc" ? "▲" : "▼") : ""; });
     t.__busy = false;

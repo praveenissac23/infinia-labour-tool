@@ -139,6 +139,9 @@ def add_pdc(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
         x["cheque_date"] = _same_day(base["cheque_date"], i)
         if i and digits:
             x["cheque_no"] = no[:-digits] + str(int(no[-digits:]) + i).zfill(digits)
+        # "cleared" in a series applies only to cheques whose date has come - next month's cannot have cleared
+        if x["status"] == "cleared" and x["cheque_date"] and x["cheque_date"] > M._dubai_today():
+            x["status"] = "pending"
         if x["status"] == "cleared":
             x["cleared_on"] = M._dubai_today()
         r = models.Pdc(**x, created_by=user.id, updated_by=user.id)
@@ -294,7 +297,7 @@ def _html(t, pdf_url, excel_url):
             (([t["overdue"]] if t["overdue"] else []) + t["totals"] + [t["grand"]])) + "</tr>")
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>PDC Tracker - {escape(t['label'])}</title><style>
-*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
+*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1d1d1d}}
 .bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end}}
 .bar a,.bar button{{font:600 13px Arial;padding:8px 14px;border-radius:6px;border:1px solid #ddd;background:#fff;color:#222;text-decoration:none;cursor:pointer}}
 .bar .p{{background:{RED};border-color:{RED};color:#fff}}

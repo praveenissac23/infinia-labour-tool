@@ -60,8 +60,8 @@
 .help-dots i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ddd; margin: 0 3px; }
 .help-dots i.on { background: #C0392B; }
 
-.help-i { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; min-width: 16px; border-radius: 50%; background: #E8EEF6; color: #2F5D9A; font: bold 11px Georgia, serif; font-style: italic; cursor: help; margin: 0 4px; vertical-align: middle; }
-.help-i.css-tip:hover::after, .help-i.css-tip:focus::after { content: attr(data-tip); position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 240px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif; padding: 8px 10px; border-radius: 7px; z-index: 600; white-space: normal; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+.help-i { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; min-width: 16px; border-radius: 50%; background: #E8EEF6; color: #2F5D9A; font: bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-style: normal; cursor: help; margin: 0 4px; vertical-align: middle; }
+.help-i.css-tip:hover::after, .help-i.css-tip:focus::after { content: attr(data-tip); position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 240px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; padding: 8px 10px; border-radius: 7px; z-index: 600; white-space: normal; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
 
 @media (max-width: 760px) {
   .topbar > div:last-child { flex-wrap: wrap; width: 100%; row-gap: 8px; }
@@ -83,13 +83,13 @@
 
 /* The (i) note: one floating box placed by tips.js, always inside the
    window - never cut off at an edge or behind the menu. */
-.help-tipbox { position: fixed; z-index: 3000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 Arial, sans-serif;
+.help-tipbox { position: fixed; z-index: 3000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   padding: 8px 10px; border-radius: 7px; box-shadow: 0 6px 18px rgba(0,0,0,.2); pointer-events: none; display: none; }
 .help-tipbox.on { display: block; }
 
 /* Spelling hint: one quiet line under the box; never takes the cursor */
 .spell-hint { position: fixed; z-index: 2900; background: #FFFDF6; border: 1px solid #EADBB4; color: #5A4A20; border-radius: 8px;
-  padding: 5px 6px 5px 10px; font: 12.5px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  padding: 5px 6px 5px 10px; font: 12.5px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   box-shadow: 0 4px 14px rgba(0,0,0,.10); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .spell-hint b { color: #1F5E3B; }
 .spell-hint button { border: 1px solid #E2D6B8; background: #fff; border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; color: #5A4A20; }
@@ -97,7 +97,7 @@
 
 /* The clear x inside a filled text box */
 .field-x { position: fixed; z-index: 2800; display: none; align-items: center; justify-content: center; width: 18px; height: 18px;
-  padding: 0; border: 0; border-radius: 50%; background: #E4E0DA; color: #5B6167; font: bold 13px/1 Arial, sans-serif; cursor: pointer; }
+  padding: 0; border: 0; border-radius: 50%; background: #E4E0DA; color: #5B6167; font: bold 13px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; cursor: pointer; }
 .field-x:hover { background: #C0392B; color: #fff; }
 .help-tipbox { white-space: pre-line; }
 th .help-i.in-head { background: rgba(255,255,255,.85); color: #8C2F26; }

@@ -424,7 +424,7 @@ def _html(r, detail, pdf_url, excel_url):
         for lab, val, note, col, b in _kpis(r)) + "</div>"
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <title>Project Payment Tracker - {_title(detail)}</title><style>
-*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 Arial,Helvetica,sans-serif;color:#1d1d1d}}
+*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1d1d1d}}
 .page{{max-width:1280px;margin:18px auto;background:#fff;padding:28px 32px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
 .top{{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid {RED};padding-bottom:10px}}
 .top img{{height:32px}} h1{{margin:0;font-size:19px;letter-spacing:.08em;color:{RED};text-align:right}}

@@ -174,10 +174,16 @@ def _stamp_paid(db, x, on_date, want):
 
 
 def _unstamp_if_short(db, inv_ids, rc_date):
+    """An invoice no longer paid in full loses a PAID stamp that a receipt put on it - whichever receipt it was
+    (paid by two receipts, stamped on the second, the first cancelled: the stamp must go). A stamp put on by
+    hand on a day no receipt is dated is the office's own word and stays."""
     got = received_map(db)
     for iid in inv_ids:
         inv = db.get(A.Invoice, iid)
-        if inv and inv.paid_stamp and inv.paid_on == rc_date and r2((inv.total or 0) - got.get(iid, 0)) > 0.005:
+        if not (inv and inv.paid_stamp) or r2((inv.total or 0) - got.get(iid, 0)) <= 0.005:
+            continue
+        dates = {rc_date} | {r.rc_date for r in db.query(Receipt).all() if any(int(a["invoice_id"]) == iid for a in _allocs(r))}
+        if inv.paid_on in dates:
             inv.paid_stamp, inv.paid_on = False, None
 
 

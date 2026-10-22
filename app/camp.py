@@ -143,7 +143,8 @@ def _leave_map(db):
     away, soon = {}, {}
     for lr in db.query(models.LeaveRecord).filter(models.LeaveRecord.status.in_(["approved", "pending"]),
                                                    models.LeaveRecord.leave_on.isnot(None)).all():
-        if lr.leave_on <= today and (lr.return_on is None or lr.return_on > today) and lr.status == "approved":
+        # still away until he is marked back - one past his return date is overdue on the leave register, not in his bed
+        if lr.leave_on <= today and lr.status == "approved":
             away[lr.employee_id] = lr
         elif today < lr.leave_on <= today + timedelta(days=30):
             if lr.employee_id not in soon or lr.leave_on < soon[lr.employee_id].leave_on:

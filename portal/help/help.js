@@ -382,7 +382,7 @@
     const all = mine(), areas = [...new Set(all.map(g => g.area))];
     const w = window.open("", "_blank"); if (!w) return;
     w.document.write(`<!doctype html><title>Infinia app - how to</title><style>
-      body{font-family:Arial,sans-serif;color:#222;max-width:820px;margin:24px auto;padding:0 16px}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#222;max-width:820px;margin:24px auto;padding:0 16px}
       h1{color:#C0392B} h2{border-bottom:2px solid #C0392B;padding-bottom:4px;margin-top:34px}
       .g{page-break-inside:avoid;margin:18px 0 26px} h3{margin:0 0 8px} li{margin:0 0 10px}
       img{display:block;max-width:100%;border:1px solid #ddd;border-radius:6px;margin-top:6px}

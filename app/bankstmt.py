@@ -235,6 +235,8 @@ def parse_rows(rows):
                 continue
             seen.add(k); parts.append(t)
         return " · ".join(parts)
+    chq_col = next((j for j, n in enumerate(heads) if re.search(r"\b(cheque|chq|instrument)\b", n or "")
+                    and j != cols.get("ref")), None)
     for r in rows[h + 1:]:
         if not r or all(c in (None, "") for c in r):
             continue
@@ -263,6 +265,16 @@ def parse_rows(rows):
         ref = str(g(r, "ref") or "").strip()
         if ref.endswith(".0") and ref[:-2].isdigit():
             ref = ref[:-2]
+        # A separate cheque number column (ADCB keeps one beside "Customer Reference"): read it too - it is
+        # how a cheque payment is matched, and it belongs in the line's words.
+        if chq_col is not None and chq_col < len(r) and r[chq_col] not in (None, ""):
+            chq = str(r[chq_col]).strip()
+            if chq.endswith(".0") and chq[:-2].isdigit():
+                chq = chq[:-2]
+            if chq and chq != ref:
+                if _key(chq) not in _key(desc):
+                    desc = (desc + f" CHQ {chq}").strip()
+                ref = ref or chq
         if not ref:
             m = REF_RX.search(desc.upper())
             ref = m.group(1) if m else ""

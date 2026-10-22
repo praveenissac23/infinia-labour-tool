@@ -50,7 +50,7 @@ def form(key: str, token: str, format: str = "pdf", dl: int = 0, db: Session = D
         title = forms_pdf.title_of(key)
         return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{export_web.PREVIEW_BAR_CSS}
-body{{margin:0;background:#E9E6E2;font-family:Arial,Helvetica,sans-serif}}
+body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}}
 .pg{{max-width:860px;margin:18px auto 30px;padding:0 12px}} .pg img{{width:100%;display:block;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{escape(f['no'])} &middot; blank form, one A4 page</span><span class="sp"></span>
 <a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>
