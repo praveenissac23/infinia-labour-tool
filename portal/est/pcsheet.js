@@ -148,12 +148,16 @@ async function pcSheet(pcid) {
           ${F.th < 0 ? '<div class="warn">This certificate is negative - it takes money back.</div>' : ""}
           ${s.revised && F.work + F.vr > s.revised + 0.5 ? `<div class="warn">Work done is above the revised value (${money(s.revised, false)}).</div>` : ""}
         </div>`; };
+  // A line that moved since the last certificate (what the subcontractor claimed this time) - a pale shade.
+  const moved = it => { const a = S.lines[it.id] || {}, b = d.prev[it.id] || {}, g = (o, k) => num(o[k]) || 0;
+    return ["qty", "claimed_qty", "w", "h", "pct", "deduct"].some(k => Math.abs(g(a, k) - g(b, k)) > 1e-9) || String(a.remark || "").trim() !== String(b.remark || "").trim()
+      || Math.abs(lineAmt(it, S.lines[it.id]) - (b.amount || 0)) > 0.004; };
   const draw = () => {
     const F = figures(), p = d.pc;
     const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, title: it.is_var ? "Variations / additional scope" : ((it.bill ? it.bill + " - " : "") + (it.bill_title || "Contract works")), items: [] }); bills[bills.length - 1].items.push(it); });
     const lineRow = it => { const l = S.lines[it.id], pv = d.prev[it.id] ? d.prev[it.id].amount : 0, a = lineAmt(it, l), m = it.measure;
       const inp = (k, w, ph = "") => `<input class="n" data-l="${it.id}" data-k="${k}" value="${l[k] || ""}" style="width:${w}px" placeholder="${ph}" ${locked ? "disabled" : ""}>`;
-      return `<tr><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
+      return `<tr data-row="${it.id}" class="${moved(it) ? "mv" : ""}" title="${moved(it) ? "Changed since the last certificate - claimed this time" : ""}"><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
         <td class="nowrap">${m === "size" ? inp("w", 54, "W") + " x " + inp("h", 54, "H") : m === "qty" ? `<span class="small muted">claimed</span> ${inp("claimed_qty", 64)}` : ""}</td>
         <td class="nowrap">${m === "qty" ? inp("qty", 70, "qty") + ` <span class="small muted">${esc(it.unit)}</span> ` + `<span title="Optional: a stage % of the measured quantity (e.g. 70% = first coat done). Empty = 100%.">${inp("pct", 44, "100")}<span class="small muted">%</span></span>` : inp("pct", 58, "%") + " %"}</td>
         <td>${inp("deduct", 80, "0.00")}</td><td class="r muted">${money(pv)}</td><td class="r" data-this="${it.id}">${money(r2(a - pv))}</td><td class="r"><b data-amt="${it.id}">${money(a, false)}</b></td>
@@ -206,7 +210,8 @@ async function pcSheet(pcid) {
   const update = () => {
     const B = $("#b-body"), F = figures();
     d.items.forEach(it => { const a = lineAmt(it, S.lines[it.id]), pv = d.prev[it.id] ? d.prev[it.id].amount : 0;
-      const x = $(`[data-amt="${it.id}"]`, B); if (x) x.textContent = money(a, false); const t = $(`[data-this="${it.id}"]`, B); if (t) t.innerHTML = money(r2(a - pv)); });
+      const x = $(`[data-amt="${it.id}"]`, B); if (x) x.textContent = money(a, false);
+      const tr = $(`tr[data-row="${it.id}"]`, B); if (tr) { const m = moved(it); tr.classList.toggle("mv", m); tr.title = m ? "Changed since the last certificate - claimed this time" : ""; } const t = $(`[data-this="${it.id}"]`, B); if (t) t.innerHTML = money(r2(a - pv)); });
     const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, items: [] }); bills[bills.length - 1].items.push(it); });
     bills.forEach((b, bi) => { const x = $(`[data-bill="${bi}"]`, B); if (x) x.textContent = money(r2(b.items.reduce((q, it) => q + lineAmt(it, S.lines[it.id]), 0)), false); });
     S.deds.forEach((x, i) => { const auto = num(x.qty) && num(x.rate); const inp = $(`[data-d="${i}"][data-k="amount"]`, B); if (inp) { inp.disabled = !!auto; if (auto) inp.value = r2(num(x.qty) * num(x.rate)); } });

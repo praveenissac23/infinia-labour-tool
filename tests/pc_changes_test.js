@@ -1,0 +1,43 @@
+// A certificate shades, lightly, the lines that changed since the previous one - preview, PDF and the sheet.
+const { chromium } = require('playwright');
+const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/pcchg_';
+let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+(async () => {
+  const br = await chromium.launch(); const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto(B + '/portal/est-app.html?view=projects'); await p.fill('#lg-u', 'admin'); await p.fill('#lg-p', 'changeme123'); await p.click('#lg-go'); await sleep(1500);
+  const api = async (path, opt = {}) => p.evaluate(async ([path, opt]) => { const r = await fetch(path, { method: opt.method || 'GET', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token'), 'Content-Type': 'application/json' }, body: opt.body ? JSON.stringify(opt.body) : undefined }); return r.json(); }, [path, opt]);
+  const meta = await api('/store/est/meta'); const P = meta.projects.find(x => x.code === '913').id;
+  const sid = (await api('/store/est/subs', { method: 'POST', body: { project_id: P, name: 'CHANGE TEST ' + (Date.now() % 100000), scope: 'Paint', value: 60000 } })).id;
+  await api(`/store/est/subs/${sid}/items/paste`, { method: 'POST', body: { text: '1\tInternal walls\t1\tLS\t20000\t20000\n2\tExternal walls\t1\tLS\t30000\t30000\n3\tCeilings\t1\tLS\t10000\t10000', measure: 'pct' } });
+  const it = (await api(`/store/est/subs/${sid}/items`)).items;
+  const pc1 = (await api('/store/est/subpcs', { method: 'POST', body: { sub_id: sid, inv_ref: 'INV 1' } })).id;
+  await api(`/store/est/subpcs/${pc1}/sheet`, { method: 'PUT', body: { lines: [{ item_id: it[0].id, pct: 40 }, { item_id: it[1].id, pct: 20 }] } });
+  const pc2 = (await api('/store/est/subpcs', { method: 'POST', body: { sub_id: sid, inv_ref: 'INV 2' } })).id;
+  const sh2 = await api(`/store/est/subpcs/${pc2}/sheet`);
+  ck('PC 02 starts with PC 01 figures carried over', sh2.lines[it[0].id] && sh2.lines[it[0].id].pct === 40, sh2.lines);
+  await api(`/store/est/subpcs/${pc2}/sheet`, { method: 'PUT', body: { lines: [{ item_id: it[0].id, pct: 40 }, { item_id: it[1].id, pct: 55, remark: 'east side done' }, { item_id: it[2].id, pct: 0 }] } });
+  const t = (await api('/auth/download-token', { method: 'POST' })); const tok = t.token || t.download_token;
+  const q = await ctx.newPage(); await q.goto(`${B}/export/est/pc/${pc2}?format=preview&token=${encodeURIComponent(tok)}`); await sleep(1200);
+  const rows = await q.$$eval('table.t tr', trs => trs.filter(r => r.cells.length > 10).map(r => [r.cells[1].textContent.trim(), r.classList.contains('mv'), [...r.cells].filter(c => c.classList.contains('chg')).length]));
+  const R = Object.fromEntries(rows.map(r => [r[0], r]));
+  ck('only the changed line is shaded (External walls 20% -> 55%)', R['External walls'] && R['External walls'][1] && !R['Internal walls'][1] && !R['Ceilings'][1], rows);
+  ck('its moved figures (%, This PC, remark) a shade deeper', R['External walls'][2] === 3, R['External walls']);
+  ck('the note says what the shade means', (await q.textContent('.mvkey')).includes('changed since PC 01'), await q.textContent('.mvkey').catch(() => ''));
+  await q.evaluate(() => document.querySelector('.mvkey').scrollIntoView()); await q.screenshot({ path: SH + 'preview.png' });
+  const pdf = await q.evaluate(async u => (await fetch(u)).status, `/export/est/pc/${pc2}?format=pdf&token=${encodeURIComponent(tok)}`);
+  ck('PDF still builds', pdf === 200, pdf);
+  // the sheet: shaded too, and follows what is typed
+  await p.evaluate(([pid]) => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'subs.reg'); }, [P]); await p.reload(); await sleep(1500);
+  await p.evaluate(id => pcSheet(id), pc2);
+  await sleep(1200);
+  const mv = async () => p.$$eval('#b-body tr[data-row]', trs => trs.map(r => r.classList.contains('mv')));
+  ck('sheet: the changed line is shaded', JSON.stringify(await mv()) === '[false,true,false]', await mv());
+  await p.fill(`#b-body input[data-l="${it[2].id}"][data-k="pct"]`, '15'); await p.dispatchEvent(`#b-body input[data-l="${it[2].id}"][data-k="pct"]`, 'input'); await sleep(300);
+  ck('sheet: typing a new % shades that line at once', JSON.stringify(await mv()) === '[false,true,true]', await mv());
+  await p.screenshot({ path: SH + 'sheet.png' });
+  ck('no page errors', !errs.length, errs);
+  await api(`/store/est/subs/${sid}`, { method: 'DELETE' });
+  await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);
+})();

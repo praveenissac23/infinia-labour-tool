@@ -294,6 +294,8 @@ select.fsub { width: 190px; }
 .sg.on { background: #F2FAF4; border-color: #CDE8D4; }
 table.sl td, table.de td, table.ed td { padding: 5px 6px; vertical-align: middle; }
 table.sl td.d { min-width: 240px; max-width: 420px; }
+/* a line changed since the last certificate - what the subcontractor claimed this time */
+table.sl tr.mv td { background: #FFFBEB; } table.sl tr.mv td:first-child { box-shadow: inset 3px 0 0 #E0B84C; }
 table.sl input, table.de input, table.de select, table.ed input, table.ed select, table.ed textarea { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 7px; font-size: 12.5px; background: #fff; }
 table.ed textarea { width: 100%; min-width: 240px; padding: 6px 7px; resize: vertical; line-height: 1.3; font-family: inherit; }
 table.sl input.n, table.de input.n, table.ed input.n { text-align: right; font-variant-numeric: tabular-nums; }

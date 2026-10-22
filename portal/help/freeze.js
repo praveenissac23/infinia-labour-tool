@@ -109,7 +109,53 @@
       }
     p.clone.style.width = table.getBoundingClientRect().width + "px";
   }
+  /* Column alignment on report previews: amounts right, short values (No, Unit, Qty, %, dates, codes,
+     status) centred, words left - and each heading lined up the same way as what is under it. Worked
+     out from what the column holds, so every report gets it without being told. */
+  var AMT = /^\(?-?(AED\s*)?[\d,]*\d\.\d{2}\)?$/i, DASH = /^[-\u2013\u2014]?$/;
+  var aligned = new WeakMap();
+  function alignTable(t) {
+    var head = t.tHead ? t.tHead.rows[t.tHead.rows.length - 1] : null;
+    var rows = [].slice.call(t.tBodies.length ? t.tBodies[0].rows : []);
+    [].slice.call(t.tBodies, 1).forEach(function (b) { rows = rows.concat([].slice.call(b.rows)); });
+    if (t.tFoot) rows = rows.concat([].slice.call(t.tFoot.rows));
+    if (!head && rows.length && rows[0].querySelector("th") && !rows[0].querySelector("td")) head = rows.shift();
+    var sig = rows.length + ":" + (rows[0] ? rows[0].textContent.length : 0) + ":" + (head ? head.textContent : "");
+    if (aligned.get(t) === sig || !rows.length || !head) return;      // a table with no heading row is a layout box, left as drawn
+    aligned.set(t, sig);
+    // each cell's column, counting the cells that span several
+    var cols = {}, grid = function (tr) { var out = [], c = 0; [].forEach.call(tr.cells, function (td) { out.push([td, c, td.colSpan || 1]); c += td.colSpan || 1; }); return out; };
+    rows.forEach(function (tr) { grid(tr).forEach(function (x) { if (x[2] !== 1) return; var v = x[0].textContent.replace(/\s+/g, " ").trim(); if (DASH.test(v)) return; (cols[x[1]] = cols[x[1]] || []).push(v); }); });
+    var how = {}, names = {};
+    if (head) grid(head).forEach(function (x) { if (x[2] === 1) names[x[1]] = x[0].textContent.replace(/\s+/g, " ").trim().toLowerCase(); });
+    var WORDS = /descr|name|particular|item|remark|note|subcontractor|supplier|project|employee|title|scope|address|reason|purpose|narration|detail|payee|vendor|material|deduction for|certificate no|comment/;
+    var MONEY = /amount|amt|aed|total|rate|value|paid|balance|salary|price|cost|vat|retention|previous|this|to date|certified|contract|deduction|payable|net|gross|advance|cash/;
+    Object.keys(names).concat(Object.keys(cols)).forEach(function (k) {
+      if (how[k]) return;
+      var v = cols[k] || [], n = v.length, nm = names[k] || "";
+      if (!n) { how[k] = /%|date|on$| no\.?$|^no\.?$|^sr|^sl/.test(nm) ? "center" : MONEY.test(nm) ? "right" : WORDS.test(nm) ? "left" : "center"; return; }
+      var amt = v.filter(function (x) { return AMT.test(x); }).length;
+      var long = v.filter(function (x) { return x.length > 18; }).length;
+      how[k] = amt >= n * 0.6 ? "right" : (long > n * 0.25 || v.some(function (x) { return x.length > 34; }) || WORDS.test(nm)) ? "left" : "center";
+    });
+    rows.forEach(function (tr) { grid(tr).forEach(function (x) {
+      if (x[2] === 1 && how[x[1]] && !x[0].querySelector("input,select,textarea")) {
+        // a words column's own "Total" line keeps the word where the words are
+        x[0].style.textAlign = how[x[1]];
+      }
+    }); });
+    if (t.tHead) [].forEach.call(t.tHead.rows, function (tr) { grid(tr).forEach(function (x) {
+      x[0].style.textAlign = x[2] === 1 ? (how[x[1]] || "center") : "center";
+    }); });
+    else if (head) grid(head).forEach(function (x) { x[0].style.textAlign = x[2] === 1 ? (how[x[1]] || "center") : "center"; });
+  }
+  var PREVIEW = /^\/export\//.test(location.pathname);
+  function alignAll() {
+    var list = PREVIEW ? document.querySelectorAll("table") : document.querySelectorAll("#report-preview-card table, .pv-align table, table.pv-align");
+    [].forEach.call(list, function (t) { if (!t.closest(".freeze-head") && !t.closest(".hd, .kvt, .ctr, .two, .sig")) { try { alignTable(t); } catch (e) {} } });
+  }
   function place() {
+    alignAll();
     var seen = new Set();
     document.querySelectorAll("table").forEach(function (t) {
       if (!t.tHead || !t.tBodies.length || t.closest(".freeze-head") || !visible(t)) return;

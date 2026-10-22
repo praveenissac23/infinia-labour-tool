@@ -627,7 +627,8 @@ def build_doc(db, pc):
         out = []
         for it in group:
             ln, pv = lines.get(it["id"]), before.get(it["id"])
-            out.append({"it": it, "ln": ln or {}, "amount": (ln or {}).get("amount", 0.0), "prev": (pv or {}).get("amount", 0.0)})
+            out.append({"it": it, "ln": ln or {}, "amount": (ln or {}).get("amount", 0.0), "prev": (pv or {}).get("amount", 0.0),
+                        "chg": line_changes(ln, pv)})
         return out
     bills = []
     for it in items:
@@ -686,12 +687,35 @@ def build_doc(db, pc):
         "sign": [("Prepared By", pc.prep_by, pc.prep_on), ("Checked By", pc.chk_by, pc.chk_on), ("Reviewed By Accounts", pc.rev_by, pc.rev_on),
                  ("Approved By Manager", pc.app_by, pc.app_on), ("Subcontractor", "", None)],
         "verified": (pc.verified_by, pc.verified_on),
+        "changed": sum(1 for b in bills for r in b["rows"] if r["chg"]),
+        "changed_note": (lambda n: "" if not n else (f"Shaded: the {n} line{'s' if n > 1 else ''} claimed on this certificate (the first one)." if not prev else
+                         f"Shaded: the {n} line{'s' if n > 1 else ''} changed since PC {(prev[-1].seq or 0):02d} - claimed by the subcontractor this time. The figure that moved is a shade deeper."))(
+                         sum(1 for b in bills for r in b["rows"] if r["chg"])),
         "bills": bills, "multi_bill": len([b for b in bills if not b["var"]]) > 1,
         "hist": hist, "hist_total": {"amount": r2(sum(h["amount"] for h in hist)), "paid": r2(sum(h["paid"] for h in hist)),
                                      "vat": r2(sum(h["vat"] for h in hist)), "ret": r2(sum(h["ret"] for h in hist))},
         "deds": deds, "inv": {"ref": pc.inv_ref or "", "date": _dt(pc.inv_date), "amount": r2(pc.inv_amount), "received": _dt(pc.received), "lines": inv_lines},
         "sub_name": s.name, "pc_seq": pc.seq or 0, "date": _dt(pc.issued or pc.certified_on or E.today()),
     }
+
+
+def line_changes(ln, pv):
+    """What moved on a line since the previous certificate - what the subcontractor claimed this time.
+    Empty when the line stands as it did. ("measure", "pct", "deduct", "remark", "amount")"""
+    a, b = ln or {}, pv or {}
+    g = lambda d, k: float(d.get(k) or 0)
+    out = set()
+    if any(abs(g(a, k) - g(b, k)) > 1e-9 for k in ("qty", "claimed_qty", "w", "h")):
+        out.add("measure")
+    if abs(g(a, "pct") - g(b, "pct")) > 1e-9:
+        out.add("pct")
+    if abs(g(a, "deduct") - g(b, "deduct")) > 1e-9:
+        out.add("deduct")
+    if (a.get("remark") or "").strip() != (b.get("remark") or "").strip():
+        out.add("remark")
+    if abs(g(a, "amount") - g(b, "amount")) > 0.004:
+        out.add("amount")
+    return out
 
 
 def _cell_measure(r):
@@ -850,6 +874,9 @@ def render_pdf(doc):
         el += [NextPageTemplate("L"), PageBreak()]
         lw = LW - 2 * M
         el.append(Paragraph("<b>Appendix - A &nbsp; Value of Work done &amp; Variations</b>", ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4)))
+        if doc["changed_note"]:
+            el.append(Paragraph(f'<font backColor="#FDF1C7">&nbsp;&nbsp;&nbsp;</font>&nbsp; {X(doc["changed_note"])}',
+                                ParagraphStyle("mv", fontName="Helvetica", fontSize=7.5, textColor=colors.HexColor("#6B5A1E"), spaceAfter=4)))
         if doc["multi_bill"]:
             sm = [["Bill", "Description", "Contract (AED)", "Previous %", "This %", "To date %", "Previous (AED)", "This (AED)", "To date (AED)"]]
             for b in [b for b in doc["bills"] if not b["var"]]:
@@ -884,6 +911,14 @@ def render_pdf(doc):
                     sty.append(("BACKGROUND", (0, len(data)), (-1, len(data)), TINT))
                     data.append(["", P(sec, stb)] + [""] * 13)
                 meas, done = _cell_measure(r)
+                if r["chg"]:                      # changed since the last certificate: a pale shade, the moved figure a little deeper
+                    y = len(data)
+                    sty.append(("BACKGROUND", (0, y), (-1, y), colors.HexColor("#FFFBEB")))
+                    for f_, cs in (("measure", (7, 8)), ("deduct", (9,)), ("pct", (10,)), ("amount", (12,)), ("remark", (14,))):
+                        if f_ in r["chg"]:
+                            for c_ in cs:
+                                sty.append(("BACKGROUND", (c_, y), (c_, y), colors.HexColor("#FDF1C7")))
+                    sty.append(("LINEBEFORE", (0, y), (0, y), 2, colors.HexColor("#E0B84C")))
                 data.append([it["no"], P(it["description"], sts), P(it["ref"] or it["var_ref"], sts), f"{it['qty']:g}" if it["qty"] else "", it["unit"],
                              _m(it["rate"]) if it["rate"] else "", _m(it["amount"]), meas, done, _m(-ln["deduct"]) if ln.get("deduct") else "-",
                              _pct_txt(r), _m(r["prev"]), _m(r["amount"] - r["prev"]), _m(r["amount"]), P(ln.get("remark", ""), sts)])
@@ -979,6 +1014,8 @@ def render_html(doc, pdf_url):
     sig = "".join(f"<div><b>{e(a)}</b><br>Name: {e(n)}<br>Date: {_dt(o)}<br><span class=m>{'signed in the portal' if n else 'Sign:'}</span></div>" for a, n, o in doc["sign"])
     if doc["bills"]:
         ae = "<section class='pg wide'><h2>Appendix - A &nbsp; Value of Work done &amp; Variations</h2>"
+        if doc["changed_note"]:
+            ae += f"<div class=mvkey><i></i>{e(doc['changed_note'])}</div>"
         if doc["multi_bill"]:
             bb = [b for b in doc["bills"] if not b["var"]]
             pct = lambda v, c: f"{(100 * v / c) if c else 0:.2f}%"
@@ -997,10 +1034,12 @@ def render_html(doc, pdf_url):
                     sec_ = it["section"]
                     ae += f"<tr class=sh><td></td><td colspan=14>{e(sec_)}</td></tr>"
                 meas, done = _cell_measure(r)
-                ae += (f"<tr><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class=r>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
-                       f"<td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class=r>{_m(it['amount'])}</td><td class=c>{meas}</td><td class=r>{done}</td>"
-                       f"<td class=r>{_m(-ln['deduct']) if ln.get('deduct') else '-'}</td><td class=r>{_pct_txt(r)}</td><td class=r>{_m(r['prev'])}</td>"
-                       f"<td class=r>{_m(r['amount'] - r['prev'])}</td><td class=r><b>{_m(r['amount'])}</b></td><td class=s>{e(ln.get('remark', ''))}</td></tr>")
+                ch = r["chg"]
+                k = lambda *f: " chg" if ch & set(f) else ""          # the figure that moved, a shade deeper
+                ae += (f"<tr{' class=mv' if ch else ''}><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class=r>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
+                       f"<td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class=r>{_m(it['amount'])}</td><td class='c{k('measure')}'>{meas}</td><td class='r{k('measure')}'>{done}</td>"
+                       f"<td class='r{k('deduct')}'>{_m(-ln['deduct']) if ln.get('deduct') else '-'}</td><td class='r{k('pct')}'>{_pct_txt(r)}</td><td class=r>{_m(r['prev'])}</td>"
+                       f"<td class='r{k('amount')}'>{_m(r['amount'] - r['prev'])}</td><td class=r><b>{_m(r['amount'])}</b></td><td class='s{k('remark')}'>{e(ln.get('remark', ''))}</td></tr>")
             ae += f"<tr class=b><td></td><td>Total</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
         ae += f"<p class=b>Total to date carried over to the Certificate page: AED {_m(sum(b['cum'] for b in doc['bills']), False)}</p>"
     hb = "".join(f"<tr><td>{i}</td><td>{e(h['name'])}</td><td>{e(h['period'])}</td><td>{e(h['cert'])}</td><td class=r>{_m(h['amount'])}</td><td class=r>{_m(h['paid'])}</td><td class=r>{_m(h['vat'])}</td><td class=r>{_m(h['ret'])}</td></tr>" for i, h in enumerate(doc["hist"], 1))
@@ -1050,6 +1089,8 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .r{{text-align:right;white-space:nowrap}} .c{{text-align:center;white-space:nowrap}}
 .sig{{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #C9CDD2;margin-top:10px}} .sig div{{padding:6px;border-left:1px solid #C9CDD2;line-height:1.5}} .sig div:first-child{{border-left:0}}
 .m{{color:#6B7178;font-size:10.5px}} .tw{{overflow-x:auto}}
+.t tr.mv td{{background:#FFFBEB}} .t tr.mv td.chg{{background:#FDF1C7}} .t tr.mv td:first-child{{box-shadow:inset 3px 0 0 #E0B84C}} .mvkey{{font-size:10.5px;color:#6B5A1E;margin:-2px 0 6px}} .mvkey i{{display:inline-block;width:11px;height:11px;background:#FDF1C7;border:1px solid #E0B84C;vertical-align:-1px;margin-right:4px}}
+@media print{{.t tr.mv td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
 .t{{font-size:11px;margin-bottom:6px}} .t th{{background:#F7F5F3;color:#3E434A;padding:5px 6px;font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase;text-align:left;white-space:nowrap;border-bottom:1.5px solid #B7322A}} .t td{{border:1px solid #DDE0E3;padding:3px 5px;vertical-align:top}}
 .t .sh td{{background:#F7F2F1;font-weight:700}} .t .b td,p.b{{font-weight:700}} .t td.d{{min-width:220px}} .t td.s{{font-size:10px;color:#555;min-width:90px}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
