@@ -542,6 +542,7 @@ SECTIONS["subs.reg"] = el => {
 };
 function subForm(s, pre) {
   const m = ST.meta, edit = !!s; s = s || Object.assign({}, pre || {});
+  let ag = null;                 // what was read from the agreement file (nothing of the file is kept)
   const names = [...new Set([...m.suppliers.map(x => x.name), ...m.sub_names])];
   modal(edit ? "Subcontract - " + s.name : "New subcontract / LPO", [
     { k: "name", label: "Subcontractor", type: "combo", options: names, value: s.name || "", full: true, focus: !edit, ph: "Start typing - suppliers from Store & Purchasing", tip: "The list is every supplier in Store & Purchasing. A new name can be typed." },
@@ -565,16 +566,72 @@ function subForm(s, pre) {
     const sup = m.suppliers.find(x => x.name.toLowerCase() === v.name.toLowerCase());
     if (!v.contract_type && v.kind === "Manpower") v.contract_type = "Manpower rates";
     if (sup) v.supplier_id = sup.id;
+    let sid = edit ? s.id : null;
     if (edit) await PATCH(`/store/est/subs/${s.id}`, v);
     else {
-      v.project_id = ST.pid; const r = await POST("/store/est/subs", v);
+      v.project_id = ST.pid; const r = await POST("/store/est/subs", v); sid = r.id;
       if (pre && pre.final_id) await PATCH(`/store/est/finals/${pre.final_id}`, { sub_id: r.id });      // made from the finalization log: linked to its line
       else ST.openAfter = r.id;
     }
-    await reload(); toast(edit ? "Saved" : "Subcontract added");
+    // the priced schedule read from the agreement becomes the item schedule (certified line by line)
+    let n = 0;
+    if (ag && ag.items.length && $("#ag-items") && $("#ag-items").checked) {
+      const remeasure = /re-?measure|unit rate/i.test(v.contract_type || "");
+      await PUT(`/store/est/subs/${sid}/items`, { items: ag.items.map(x => ({ bill: x.bill, bill_title: x.bill_title, section: x.section || "", no: x.no, description: x.description,
+        qty: x.qty || "", unit: x.unit || "", rate: x.rate || "", amount: x.amount, measure: remeasure && x.qty && x.rate ? "qty" : "pct" })) });
+      n = ag.items.length;
+    }
+    await reload(); toast((edit ? "Saved" : "Subcontract added") + (n ? ` with its ${n}-line schedule` : ""));
     if (ST.openAfter) { openSub(ST.openAfter); ST.openAfter = null; }
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
-    after: () => subAutoFill(edit, s) });
+    after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); } });
+}
+// Read the agreement: the file is opened on this computer (portal/est/agreement.js); only its words go to
+// the server, which finds the details and the priced schedule. The form is filled to check, then Save.
+function agreementBar(edit, s, keep) {
+  const body = $("#m-body"); if (!body || !window.readAgreement) return;
+  const has = edit && (s.items || 0) > 0;
+  const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="ag-pick">Read from agreement</button>
+      <span class="small muted">PDF, Word or Excel - the details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
+      <input type="file" id="ag-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls" hidden></div><div id="ag-out"></div></div>`);
+  body.insertBefore(bar, body.firstChild);
+  $("#ag-pick").onclick = () => $("#ag-file").click();
+  $("#ag-file").onchange = async e => {
+    const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+    const out = $("#ag-out"); out.innerHTML = `<div class="agnote">Reading ${esc(file.name)} ...</div>`;
+    try {
+      const doc = await readAgreement(file);
+      const r = await POST("/store/est/subs/agreement/read", { lines: doc.lines, trades: ST.meta.trades });
+      keep(r); agreementFill(r, file.name, has, out);
+    } catch (er) { out.innerHTML = `<div class="agnote bad">${esc(er.message || String(er))}</div>`; }
+  };
+}
+function agreementFill(r, fname, has, out) {
+  const f = r.fields, set = (k, v) => { if (v !== undefined && v !== null && v !== "") setField(k, v); };
+  const pt = $("#f-pay_terms"); if (pt) pt.dataset.ag = "1";              // the agreement's own words - not rewritten from the %
+  const nm = $("#f-name"); if (nm) nm.dataset.ag = "1";
+  set("name", f.name); set("kind", f.kind || "Subcontract"); set("scope", f.scope); set("trade", f.trade);
+  set("agreement", f.agreement); set("lpo", f.lpo); set("value", f.value);
+  set("adv_pct", f.adv_pct ?? 0); set("ret_pct", f.ret_pct ?? 0); set("vat_pct", f.vat_pct);
+  set("agreement_date", f.agreement_date); set("start_date", f.start_date || f.agreement_date);
+  set("contract_type", f.contract_type); set("pay_terms", f.pay_terms);
+  const nt = $("#f-notes");
+  if (nt && !nt.value.trim()) nt.value = [f.works ? "Scope: " + f.works : "", f.quote ? "Quotation: " + f.quote : "", f.address ? "Address: " + f.address : "", f.trn ? "TRN: " + f.trn : ""].filter(Boolean).join("\n");
+  const want = [["Subcontractor", f.name], ["Agreement no.", f.agreement], ["Agreement date", f.agreement_date], ["Contract value", f.value], ["Contract type", f.contract_type],
+                ["Advance %", f.adv_pct], ["Retention %", f.ret_pct], ["Payment terms", f.pay_terms], ["Work", f.scope]];
+  const miss = want.filter(w => w[1] === undefined || w[1] === null || w[1] === "").map(w => w[0]);
+  const c = r.checks || {}, it = r.items || [];
+  const secs = (c.sections || []).map(x => `<span class="${x.ok ? "ok" : "bad"}">${esc(x.bill)} ${money(x.total)}${x.ok ? " &#10003;" : ` (agreement says ${money(x.in_doc)})`}</span>`).join(" ");
+  out.innerHTML = `<div class="agres">
+    <div><b>Read from ${esc(fname)}</b>${r.known ? ` <span class="small muted">- ${esc(f.name)} is already known (Store & Purchasing)</span>` : ""}</div>
+    <div class="small">Filled in: ${r.found.map(esc).join(", ") || "nothing"}${miss.length ? `<br><span class="warn-t">Not found - type it: ${miss.map(esc).join(", ")}</span>` : ""}</div>
+    ${it.length ? `<div class="agsched"><label class="chk"><input type="checkbox" id="ag-items" ${has ? "" : "checked"} ${has ? "disabled" : ""}> Save the ${it.length} priced line${it.length > 1 ? "s" : ""} as the item schedule</label>
+      <span class="${c.match ? "ok" : "bad"}">${money(c.items_total)} ${c.match ? "= contract value &#10003;" : c.contract_value != null ? `&ne; contract value ${money(c.contract_value)}` : ""}</span> ${secs}
+      ${has ? `<div class="small warn-t">This subcontract already has an item schedule - change it in Item schedule.</div>` : ""}
+      <details><summary>See the lines</summary><div class="tw"><table class="t"><thead><tr><th>Bill</th><th>No</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>
+      ${it.map(x => `<tr><td>${esc(x.bill)}</td><td>${esc(x.no)}</td><td class="d">${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`).join("")}
+      </tbody></table></div></details></div>` : ""}
+    ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}</div>`;
 }
 // The next agreement number on this project: IC/912/SCA/03/26 after .../02/...
 function nextAgreement() {
@@ -598,11 +655,11 @@ function subAutoFill(edit, s) {
   });
   let autoTerms = !edit || !s.pay_terms || s.pay_terms === payTermsText(s.adv_pct, s.ret_pct, s.kind);
   const pt = $("#f-pay_terms"); if (pt) pt.addEventListener("input", e => { if (e.isTrusted) autoTerms = false; });
-  const terms = () => { if (autoTerms && pt) pt.value = payTermsText(g("adv_pct"), g("ret_pct"), g("kind")); };
+  const terms = () => { if (autoTerms && pt && !pt.dataset.ag) pt.value = payTermsText(g("adv_pct"), g("ret_pct"), g("kind")); };
   const set = (k, v) => { if (!typed[k] && v !== undefined && v !== null && v !== "") setField(k, v); };
   const nm = $("#f-name");
   const fromName = () => {
-    if (edit) return;
+    if (edit || (nm && nm.dataset.ag)) return;           // filled from the agreement itself: its own terms stand
     const t = m.sub_terms && m.sub_terms[g("name").trim().toLowerCase()]; if (!t) return;
     set("kind", t.kind); set("trade", t.trade); set("adv_pct", t.adv_pct); set("ret_pct", t.ret_pct); set("vat_pct", t.vat_pct);
     set("contract_type", t.contract_type); if (!g("scope")) set("scope", t.scope);

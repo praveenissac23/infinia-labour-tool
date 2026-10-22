@@ -366,3 +366,14 @@ tr.warnrow td { background: var(--amber-bg) !important; }
 .seg button:last-child { border-right: 0; }
 .seg button:hover { color: var(--red); }
 .seg button.on { background: var(--red); color: #fff; }
+
+/* Read from agreement - on the subcontract form */
+.agbar { grid-column: 1 / -1; border: 1px dashed #D9CFC6; border-radius: 10px; padding: 10px 12px; background: #FBF9F7; margin-bottom: 4px; }
+.agrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.agnote { margin-top: 8px; font-size: 12.5px; color: #555; } .agnote.bad { color: #B03A2E; }
+.agres { margin-top: 10px; display: grid; gap: 6px; font-size: 13px; }
+.agres .ok { color: #2E7D32; font-weight: 600; font-size: 12.5px; } .agres .bad { color: #B03A2E; font-weight: 600; font-size: 12.5px; }
+.agres .warn-t { color: #8A5A00; }
+.agsched { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.agsched details { flex-basis: 100%; } .agsched summary { cursor: pointer; font-size: 12.5px; color: #555; }
+.agsched .tw { max-height: 320px; overflow: auto; margin-top: 6px; } .agsched td.d { min-width: 320px; }
