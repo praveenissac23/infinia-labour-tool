@@ -144,6 +144,7 @@ function modal(title, fields, onSave, opts = {}) {
   $("#m-cancel").onclick = closeModal;
   if (opts.del) $("#m-del").onclick = async () => { if (!confirmInline($("#m-del"))) return; try { await opts.del(); closeModal(); } catch (e) { fail(e); } };
   if (opts.after) opts.after();
+  if (opts.doc) docBar(opts.doc);
   $$("#m-body input").forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } }));
 }
 // A remove button asks once by changing its words, not with a browser box.
@@ -393,6 +394,7 @@ function newProject() {
     ST.meta = await GET("/store/est/meta"); renderProjectShell(); await openProject(r.id); toast("Project added");
     if (file) { go("client.boq"); setTimeout(() => boqImport(file, r.id), 60); }     // after this form has closed
   }, {
+    doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"]] },
     bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="np-boq">Internal BOQ (optional) ${tip("Pick the internal BOQ Excel and every line goes into Overview > BOQ & budget, grouped by trade, with excluded / phase 2 bills kept aside. Only the lines are kept - the file is not stored. It can also be uploaded later from Overview > BOQ & budget.")}</label><input type="file" id="np-boq" accept=".xlsx,.xlsm"></div></div>`,
     after: () => {
       const fill = () => { const s = ST.meta.sites.find(x => x.code === $("#f-code").value.trim()); if (s && !$("#f-name").value) $("#f-name").value = s.name; };
@@ -438,6 +440,7 @@ function editProject() {
     { k: "qs", label: "QS in charge", type: "combo", options: ST.meta.users.map(u => u.name), value: p.qs },
     { k: "notes", label: "Notes", type: "area", value: p.notes },
   ], async v => { await PATCH(`/store/est/projects/${p.id}`, v); ST.meta = await GET("/store/est/meta"); reload(); toast("Saved"); },
+  { doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"], ["start_date", "Start"], ["end_date", "Completion"]] } },
   { del: ST.meta.me.admin ? async () => { await DEL(`/store/est/projects/${p.id}`); ST.meta = await GET("/store/est/meta"); ST.pid = null; try { localStorage.removeItem("est_pid"); } catch (e) {} renderProjectShell(); const nx = ST.meta.projects.find(x => x.status === "Running") || ST.meta.projects[0]; if (nx) openProject(nx.id); } : null });
 }
 function renderProject() {
@@ -586,21 +589,61 @@ function subForm(s, pre) {
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
     after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); } });
 }
+// Read from a document - on any Estimation form. The file is opened on this computer (portal/est/agreement.js);
+// only its words go to /store/est/read/<kind>, which finds the form's details. Nothing is uploaded or kept.
+//   doc = { kind, what: "tender invitation", extra: () => ({...}), keep: r => {...} }
+function docBar(doc) {
+  const body = $("#m-body"); if (!body || !window.readAgreement) return;
+  const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="doc-pick">Read from document</button>
+      <span class="small muted">The ${esc(doc.what)} - PDF (also scanned), Word, Excel or a photo - fills this in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its words are read for the details of this form; check them, then Save.")}</span>
+      <input type="file" id="doc-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="doc-out"></div></div>`);
+  body.insertBefore(bar, body.firstChild);
+  $("#doc-pick").onclick = () => $("#doc-file").click();
+  $("#doc-file").onchange = async e => {
+    const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+    const out = $("#doc-out"); out.innerHTML = `<div class="agnote">Reading ${esc(file.name)} ...</div>`;
+    try {
+      const d = await readAgreement(file, m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; });
+      const r = await POST(`/store/est/read/${doc.kind}`, Object.assign({ lines: d.lines }, doc.extra ? doc.extra() : {}));
+      const filled = docFill(r.fields || {});
+      if (doc.keep) doc.keep(r);
+      const miss = (doc.want || []).filter(w => !filled.includes(w[0])).map(w => w[1]);
+      out.innerHTML = `<div class="agres"><div><b>Read from ${esc(file.name)}</b></div>
+        <div class="small">${r.found && r.found.length ? "Filled in: " + r.found.map(esc).join(", ") : "Nothing on this form could be found in the file - type it in."}${miss.length && r.found && r.found.length ? `<br><span class="warn-t">Not found - type it: ${miss.map(esc).join(", ")}</span>` : ""}</div>
+        ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}${doc.more ? doc.more(r) : ""}</div>`;
+    } catch (er) { out.innerHTML = `<div class="agnote bad">${esc(er.message || String(er))}</div>`; }
+  };
+}
+// Put what was read into the form's boxes; a list picks the choice that matches; notes are added to, not replaced.
+function docFill(f) {
+  const done = [];
+  Object.entries(f).forEach(([k, v]) => {
+    const el = document.getElementById("f-" + k); if (!el || v === null || v === undefined || v === "") return;
+    if (el.tagName === "SELECT") {
+      const t = String(v).toLowerCase(), opt = [...el.options].find(o => o.value.toLowerCase() === t || o.text.toLowerCase() === t)
+        || [...el.options].find(o => o.value && (o.text.toLowerCase().includes(t) || t.includes(o.text.toLowerCase().split(" (")[0])));
+      setField(k, opt ? opt.value : v);
+    } else if (el.tagName === "TEXTAREA" && el.value.trim() && !el.value.includes(String(v))) setField(k, el.value.trim() + "\n" + v);
+    else setField(k, v);
+    done.push(k);
+  });
+  return done;
+}
 // Read the agreement: the file is opened on this computer (portal/est/agreement.js); only its words go to
 // the server, which finds the details and the priced schedule. The form is filled to check, then Save.
 function agreementBar(edit, s, keep) {
   const body = $("#m-body"); if (!body || !window.readAgreement) return;
   const has = edit && (s.items || 0) > 0;
   const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="ag-pick">Read from agreement</button>
-      <span class="small muted">PDF, Word or Excel - the details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
-      <input type="file" id="ag-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls" hidden></div><div id="ag-out"></div></div>`);
+      <span class="small muted">PDF (also scanned), Word, Excel or a photo - the details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
+      <input type="file" id="ag-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="ag-out"></div></div>`);
   body.insertBefore(bar, body.firstChild);
   $("#ag-pick").onclick = () => $("#ag-file").click();
   $("#ag-file").onchange = async e => {
     const file = e.target.files[0]; e.target.value = ""; if (!file) return;
     const out = $("#ag-out"); out.innerHTML = `<div class="agnote">Reading ${esc(file.name)} ...</div>`;
     try {
-      const doc = await readAgreement(file);
+      const doc = await readAgreement(file, m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; });
       const r = await POST("/store/est/subs/agreement/read", { lines: doc.lines, trades: ST.meta.trades });
       keep(r); agreementFill(r, file.name, has, out);
     } catch (er) { out.innerHTML = `<div class="agnote bad">${esc(er.message || String(er))}</div>`; }
@@ -702,7 +745,7 @@ function openSub(sid) {
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
         <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
-      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload Excel</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
+      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload Excel / PDF / Word</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
@@ -734,11 +777,13 @@ function voSubForm(s, v) {
     { k: "amount", label: "Amount (AED)", type: "money", value: v.amount ? Math.abs(v.amount) : "" },
     { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Variation no.", value: v.ref || nextSubVoRef(s), ro: true, tip: "Numbered for you, in order: V01, V02, V03 ... The subcontractor's own reference can go in the description." },
   ], async x => { const a = Math.abs(Number(String(x.amount || 0).replace(/,/g, "")) || 0); x.amount = x.sign === "Omission" ? -a : a; delete x.sign; if (v.id) await PATCH(`/store/est/subvos/${v.id}`, x); else await POST("/store/est/subvos", Object.assign(x, { sub_id: s.id })); await reload(); toast("Saved"); },
-  { del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
+  { doc: { kind: "subvo", what: "variation letter or the subcontractor's quotation", want: [["title", "Description"], ["amount", "Amount"]] },
+    del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
 }
 // Invoice received: the first step. Only the reference and amount are typed.
 function invoiceForm(sid) {
   const subs = ST.b.subs.filter(x => x.status !== "Cancelled");
+  let read = null;
   if (!subs.length) { toast("Add the subcontract first", { err: true }); return; }
   modal("Invoice received", [
     { k: "sub_id", label: "Subcontractor", type: "select", options: subs.map(x => [x.id, `${x.name} - ${x.scope}`]), value: sid || subs[0].id, full: true },
@@ -747,10 +792,13 @@ function invoiceForm(sid) {
     { k: "to_site", label: "Sent to site for checking", type: "check", value: true, text: "Send to site today" },
   ], async v => {
     const send = v.to_site; delete v.to_site;
+    if (read && read.inv_lines) v.inv_lines = read.inv_lines;          // the bill's own lines, read from the invoice
     const r = await POST("/store/est/subpcs", v);
     if (send) await POST(`/store/est/subpcs/${r.id}/step`, { step: "At site" });
     await reload(); toast(send ? "Invoice logged and sent to site" : "Invoice logged");
-  });
+  }, { doc: { kind: "invoice", what: "subcontractor's invoice", want: [["sub_id", "Subcontractor"], ["inv_ref", "Invoice no."], ["inv_amount", "Invoice amount"]],
+    extra: () => ({ subs: subs.map(x => ({ id: x.id, name: x.name })) }), keep: r => { read = r.fields; },
+    more: r => r.fields.inv_lines ? `<div class="small muted">${JSON.parse(r.fields.inv_lines).length} line(s) of the bill kept with the invoice - they show on its payment certificate.</div>` : "" } });
 }
 // Certify: the one number to type is the work done to date.
 function certifyForm(sid, pcid) {
@@ -1071,7 +1119,7 @@ function cpcForm(c) {
     { k: "invoice_no", label: "Our invoice no.", type: "combo", options: (b.invoices || []).filter(i => i.kind === "tax" && i.status !== "cancelled").map(i => i.number), value: c.invoice_no || "", ph: "Pick from Accounts > Invoices", tip: "The tax invoice from Accounts > Invoices for this certificate - pick it from the list." },
     { k: "remarks", label: "Remarks", type: "area", value: c.remarks || "" },
   ], async v => { if (edit) await PATCH(`/store/est/clientpcs/${c.id}`, v); else await POST("/store/est/clientpcs", Object.assign(v, { project_id: ST.pid })); await reload(); toast("Saved"); },
-  { wide: true, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
+  { wide: true, doc: { kind: "clientpc", what: "payment certificate (ours or the consultant's)", want: [["claimed_cum", "Work done to date"], ["period_to", "Period up to"]] }, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
 }
 
 // ---------------- Overview > variations ----------------
@@ -1157,7 +1205,7 @@ function voForm(v) {
     { k: "sub_id", label: "Passed to subcontractor", type: "select", options: [["", "-"], ...ST.b.subs.map(s => [s.id, s.name])], value: v.sub_id || "" },
     { k: "notes", label: "Remarks", type: "area", value: v.notes || "" },
   ], async d => { if (!d.submitted) d.submitted = null; if (!d.approved_on) d.approved_on = null; d.on_date = d.submitted || v.on_date || today(); if (v.id) await PATCH(`/store/est/variations/${v.id}`, d); else await POST("/store/est/variations", Object.assign(d, { project_id: ST.pid })); await reload(); toast("Saved"); },
-  { wide: true, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null,
+  { wide: true, doc: { kind: "variation", what: "cost proposal or variation letter", want: [["title", "Description"], ["submitted_amount", "Submitted amount"]] }, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null,
     after: () => { const st_ = $("#f-status"); if (st_) st_.addEventListener("input", () => {
       if (st_.value === "Submitted" && !$("#f-submitted").value) $("#f-submitted").value = today();
       if (st_.value === "Approved") { if (!$("#f-approved_on").value) $("#f-approved_on").value = today(); if (!$("#f-approved_amount").value) $("#f-approved_amount").value = $("#f-revised_amount").value || $("#f-submitted_amount").value; } }); } });
@@ -1232,7 +1280,8 @@ function logForm(kind, l) {
   if (kind === "submittal") fields.splice(4, 0, { k: "rev", label: "Revision", type: "select", options: ["0", "1", "2", "3", "4", "5"], value: l.rev || "0" });
   modal(l.id ? `${kind === "rfi" ? "RFI" : "SUB"}-${pad(l.seq)}` : `New ${cfg.name}`, fields,
     async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else { v.kind = kind; v.project_id = ST.pid; await POST("/store/est/logs", v); } await reload(); toast("Saved"); },
-    { wide: true, del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
+    { wide: true, doc: { kind: "log", what: kind === "rfi" ? "RFI or its letter" : "submittal transmittal or its letter", want: [["title", "Subject"], ["ref", "Ref. / letter no."]] },
+      del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
 SECTIONS["site.rfi"] = logSection("rfi");
 SECTIONS["site.submittal"] = logSection("submittal");
@@ -1266,7 +1315,7 @@ function apForm(l) {
     { k: "status", label: "Status", type: "select", options: ST.meta.log_status.approval, value: l.status || "Not started" },
     { k: "ref", label: "Ref. / permit no.", value: l.ref || "" }, { k: "note", label: "Note", type: "area", value: l.note || "" },
   ], async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else await POST("/store/est/logs", Object.assign(v, { kind: "approval", project_id: ST.pid })); await reload(); toast("Saved"); },
-  { del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
+  { doc: { kind: "approval", what: "NOC, permit or authority letter", want: [["title", "Item"], ["ref", "Ref. / permit no."]] }, del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
 
 // =====================================================================
@@ -1320,7 +1369,7 @@ function tenderForm(x) {
     { k: "status", label: "Status", type: "select", options: ["Received", "Pricing", "Submitted", "Won", "Lost", "Dropped"], value: x.status || "Received" },
     { k: "note", label: "Notes", type: "area", value: x.note || "" },
   ], async v => { if (x.id) await PATCH(`/store/est/tenders/${x.id}`, v); else await POST("/store/est/tenders", v); await loadTenders(); toast("Saved"); },
-  { wide: true, del: x.id ? async () => { await DEL(`/store/est/tenders/${x.id}`); loadTenders(); } : null });
+  { wide: true, doc: { kind: "tender", what: "tender invitation or enquiry", want: [["name", "Tender / project"], ["client", "Client"], ["due", "Submission due"]] }, del: x.id ? async () => { await DEL(`/store/est/tenders/${x.id}`); loadTenders(); } : null });
 }
 // =====================================================================
 // ACCOUNTS > SUBCONTRACTOR PAYMENTS (the certificates Estimation sends for payment)

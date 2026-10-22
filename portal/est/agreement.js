@@ -95,19 +95,77 @@
     return out;
   }
 
-  async function readAgreement(file) {
+  // ---- scans and photos: the text recognised on this computer (Tesseract, in the browser) ----
+  var ocrWorker = null;
+  async function ocr() {
+    if (ocrWorker) return ocrWorker;
+    await load("tesseract/tesseract.min.js");
+    var base = location.origin + V + "tesseract/";
+    ocrWorker = await root.Tesseract.createWorker("eng", 1, { workerPath: base + "worker.min.js", corePath: base, langPath: base.replace(/\/$/, ""), gzip: true,
+                                                              workerBlobURL: false, cacheMethod: "readwrite" });
+    await ocrWorker.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "3" });   // the whole page, laid out (titles and tables too)
+    return ocrWorker;
+  }
+  // what the recogniser saw, as lines and cells (a wide gap between words starts a new cell)
+  function ocrLines(data, pn, scale) {
+    var out = [];
+    (data.lines || []).forEach(function (ln) {
+      var words = (ln.words || []).filter(function (w) { return w.text && w.text.trim() && w.confidence > 15; });
+      if (!words.length) return;
+      var h = (ln.bbox.y1 - ln.bbox.y0) / scale, cells = [], cur = null, end = -1;
+      words.forEach(function (w) {
+        var x0 = w.bbox.x0 / scale, x1 = w.bbox.x1 / scale;
+        if (cur && x0 - end < Math.max(6, h * 1.1)) cur.t += " " + w.text; else { cur = { t: w.text, x: Math.round(x0) }; cells.push(cur); }
+        end = x1;
+      });
+      out.push({ p: pn, y: Math.round(ln.bbox.y0 / scale), h: Math.round(Math.min(h, 14) * 10) / 10, c: cells.map(function (c) { return c.t.trim(); }),
+                 x: cells.map(function (c) { return c.x; }), t: cells.map(function (c) { return c.t.trim(); }).join("  "), ocr: 1 });
+    });
+    return out;
+  }
+  async function ocrImage(src, pn, scale, say) {
+    var w = await ocr();
+    var r = await w.recognize(src);
+    return ocrLines(r.data, pn, scale || 1);
+  }
+  async function readAgreement(file, say) {
+    say = say || function () {};
     var name = (file.name || "").toLowerCase(), data = new Uint8Array(await file.arrayBuffer());
+    if (/\.(jpe?g|png|webp|bmp|tiff?)$/.test(name) || /^image\//.test(file.type || "")) {
+      say("Recognising the text in the picture ... (the first time takes a little longer)");
+      var url = URL.createObjectURL(file);
+      try { var il = await ocrImage(url, 1, 2); } finally { URL.revokeObjectURL(url); }
+      if (!il.length) throw new Error("No text could be recognised in that picture - take it again, flat and in good light.");
+      return { kind: "image", lines: il, ocr: true };
+    }
     if (/\.pdf$/.test(name) || (data[0] === 0x25 && data[1] === 0x50)) {
       await load("pdf-3.11.174.min.js");
       root.pdfjsLib.GlobalWorkerOptions.workerSrc = V + "pdf.worker-3.11.174.min.js";
-      var lines = await pdfLines(root.pdfjsLib, data);
-      if (!lines.length) throw new Error("This PDF has no text to read - it looks like a scan. Use the Word or Excel copy, or a PDF saved from the original.");
-      return { kind: "pdf", lines: lines };
+      var lines = await pdfLines(root.pdfjsLib, data.slice(0));
+      // pages with (almost) no text are scans: recognise them
+      var doc = await root.pdfjsLib.getDocument({ data: data.slice(0), isEvalSupported: false }).promise, scanned = [];
+      for (var pn = 1; pn <= doc.numPages; pn++) {
+        var chars = lines.filter(function (l) { return l.p === pn; }).reduce(function (a, l) { return a + l.t.length; }, 0);
+        if (chars < 40) scanned.push(pn);
+      }
+      if (scanned.length) {
+        lines = lines.filter(function (l) { return scanned.indexOf(l.p) < 0; });
+        for (var k = 0; k < scanned.length; k++) {
+          say("Scanned page " + (k + 1) + " of " + scanned.length + " - recognising the text ... (the first time takes a little longer)");
+          var page = await doc.getPage(scanned[k]), sc = 2.4, vp = page.getViewport({ scale: sc });
+          var cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+          await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+          lines = lines.concat(await ocrImage(cv, scanned[k], sc));
+        }
+        lines.sort(function (a, b) { return a.p - b.p || a.y - b.y; });
+      }
+      if (!lines.length) throw new Error("No text could be read in this PDF, not even by recognising it - use a clearer scan.");
+      return { kind: "pdf", lines: lines, ocr: scanned.length > 0 };
     }
     if (/\.docx$/.test(name)) return { kind: "docx", lines: await docxLines(data) };
     if (/\.doc$/.test(name)) throw new Error("Old .doc files cannot be read - save it as .docx (Word: File > Save As) or PDF.");
     if (/\.(xlsx|xlsm|xls)$/.test(name)) return { kind: "xlsx", lines: await xlsxLines(data) };
-    throw new Error("Choose a PDF, Word (.docx) or Excel file.");
+    throw new Error("Choose a PDF, Word (.docx), Excel file or a photo.");
   }
   root.readAgreement = readAgreement;
   root.agreementPdfLines = pdfLines;     // for Node tests

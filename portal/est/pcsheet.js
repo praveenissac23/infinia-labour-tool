@@ -29,7 +29,7 @@ async function scheduleEditor(sid) {
     const tot = r2(rows.filter(x => !x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     const vt = r2(rows.filter(x => x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     $("#b-body").innerHTML = `
-      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets) - every line comes in, checked against the sheet's own totals. The file is not stored.">Upload Excel</button><input type="file" id="it-up-f" accept=".xlsx,.xlsm" hidden><button class="btn btn-ghost" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
+      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets) - every line comes in, checked against the sheet's own totals. The file is not stored.">Upload Excel / PDF / Word</button><input type="file" id="it-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
         <span class="spacer"></span><span class="muted">Contract lines <b>${money(tot, false)}</b>${d.sub.value ? ` of ${money(d.sub.value, false)}` : ""} · Variations <b>${money(vt, false)}</b></span></div>
         ${d.sub.value && Math.abs(tot - d.sub.value) > 0.5 && rows.some(x => !x.is_var) ? `<div class="warn" style="margin:0 0 10px">The contract lines add up to ${money(tot, false)}, the subcontract value is ${money(d.sub.value, false)}.</div>` : ""}
         ${rows.length ? `<div class="tw"><table class="t ed"><thead><tr><th>Bill</th><th>Bill name</th><th>Heading</th><th>No</th><th style="min-width:260px">Description</th><th>Type / mark</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th><th>Measured by</th><th>Variation</th><th></th></tr></thead><tbody>
@@ -66,6 +66,7 @@ async function scheduleEditor(sid) {
 // The schedule out of Excel (agreement BOQ or a payment certificate): every line shown, each sheet
 // checked against its own total row, then saved - and opened in the editor for any change.
 async function importItems(sid, file, after) {
+  if (/\.(pdf|docx|jpe?g|png)$/i.test(file.name)) return importItemsDoc(sid, file, after);
   const send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
   let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
   const ok = c => c ? (c.ok ? `<span class="st g">= sheet total</span>` : `<span class="st r">sheet says ${money(c.sheet, false)}</span>`) : `<span class="small muted">no total row</span>`;
@@ -270,3 +271,37 @@ function openCert(sid, pcid) {
   if (s && s.items) pcSheet(pcid); else certifyForm(sid, pcid);
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") { const el = document.getElementById("big"); if (el && !el.classList.contains("hide") && $("#modal").classList.contains("hide")) closeBig(() => reload()); } });
+
+// The schedule out of a PDF or Word agreement / quotation: read on this computer (nothing uploaded), every priced
+// line shown with its section totals, then put in - replacing the schedule, or after the lines already there.
+async function importItemsDoc(sid, file, after) {
+  let r, have;
+  try {
+    toast("Reading " + file.name + " ...");
+    const d = await readAgreement(file, m => toast(m));
+    [r, have] = await Promise.all([POST("/store/est/read/items", { lines: d.lines }), GET(`/store/est/subs/${sid}/items`)]);
+  } catch (e) { return fail(e); }
+  if (!r.items.length) { toast("No priced lines were found in " + file.name, { err: true }); return; }
+  const c = r.checks || {}, used = have.items.filter(x => x.used).length, total = r.items.reduce((a, x) => a + x.amount, 0);
+  let bill = null;
+  const rows = r.items.map(x => { let hh = ""; const b = (x.bill || "") + (x.bill_title ? " " + x.bill_title : "");
+    if (b !== bill) { bill = b; if (b.trim()) hh += `<tr class="sec"><td colspan="6">${esc(b)}</td></tr>`; }
+    return hh + `<tr><td class="small">${esc(x.no)}</td><td>${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`; }).join("");
+  const secs = (c.sections || []).map(x => `<span class="st ${x.ok ? "g" : "r"}">${esc(x.bill)} ${money(x.total, false)}${x.ok ? "" : " - agreement says " + money(x.in_doc, false)}</span>`).join(" ");
+  modal(`Item schedule - ${file.name}`, [], async () => {
+    const mode = ($("input[name=itmode]:checked") || {}).value || "replace";
+    const keep = mode === "add" ? have.items : [];
+    const add = r.items.map(x => ({ bill: x.bill, bill_title: x.bill_title, section: x.section || "", no: x.no, description: x.description, qty: x.qty || "", unit: x.unit || "", rate: x.rate || "", amount: x.amount, measure: "pct" }));
+    await PUT(`/store/est/subs/${sid}/items`, { items: keep.concat(add) });
+    toast(`${add.length} lines ${mode === "replace" ? "in" : "added"} - ${money(total, false)}`);
+    if (after) await after(); else scheduleEditor(sid);
+  }, { wide: true, save: `Bring in ${r.items.length} lines`,
+    top: `<div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.items.length}</div></div><div class="fig green"><div class="l">Total</div><div class="v">${money(total, false)}</div>
+      ${c.total_in_doc != null ? `<div class="s">${Math.abs(total - c.total_in_doc) < 0.01 ? '<span class="st g">= the document\'s total</span>' : `document total ${money(c.total_in_doc, false)}`}</div>` : ""}</div></div>
+      ${secs ? `<div style="margin:6px 0">${secs}</div>` : ""}${(r.notes || []).length ? `<div class="warn" style="margin:0 0 8px">${r.notes.map(esc).join("<br>")}</div>` : ""}
+      ${have.items.length ? `<div class="warn" style="margin:0 0 8px">This subcontract already has ${have.items.length} schedule line(s)${used ? `, ${used} of them on certificates` : ""}.
+        <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="radio" name="itmode" value="replace" ${used ? "disabled" : "checked"}><span><b>Replace them</b>${used ? " - not possible, lines are on certificates" : ""}</span></label>
+        <label class="chk" style="display:flex;gap:8px;margin-top:4px"><input type="radio" name="itmode" value="add" ${used ? "checked" : ""}><span><b>Add</b> these lines after them</span></label></div>` : ""}
+      <div class="tw" style="max-height:340px;overflow:auto"><table class="t"><thead><tr><th>No</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="small muted" style="margin-top:6px">The file was read on this computer - it is not uploaded or stored. After bringing the lines in, the schedule opens so any line can be changed.</div>` });
+}

@@ -1907,4 +1907,5 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
 
 import est_pcsheet  # noqa: E402,F401  - the item schedule, the monthly sheet and the certificate print
 import est_agreement  # noqa: E402,F401  - a subcontract agreement read into the subcontract form (nothing kept)
+import est_docread  # noqa: E402,F401  - any document read into an Estimation form (nothing kept)
 import est_dummy  # noqa: E402,F401  - ESTIMATION DUMMY DATA (reversible test data)

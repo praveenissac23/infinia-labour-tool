@@ -25,7 +25,7 @@ import estimation as E
 router = E.router
 
 MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
-MONEY = re.compile(r"^\(?-?(?:AED|Dhs?\.?|Dirhams?)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{2}|\d{4,}(?:\.\d{1,2})?)\s*(?:AED|/-)?\)?$", re.I)
+MONEY = re.compile(r"^\(?-?(?:AED|Dhs?\.?|Dirhams?)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?|\d+\.\d{2}|\d{4,}(?:\.\d{1,2})?)\s*(?:AED|/-)?\)?$", re.I)
 MONEY_IN = re.compile(r"(?:AED|Dhs?\.?)\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)|(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?)\s*(?:AED|Dirhams)", re.I)
 PCT = re.compile(r"^(\d{1,3}(?:\.\d+)?)\s*%$")
 CODE = re.compile(r"^(?:[A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3}){0,3}|\d{1,3}(?:\.\d{1,3}){0,3}\.?|\(?[a-z]\)|[ivx]{1,4}\))$")
@@ -47,7 +47,7 @@ def money(s):
     if not m:
         return None
     try:
-        v = float(m.group(1).replace(",", ""))
+        v = float(m.group(1).replace(",", "").rstrip("."))
     except ValueError:
         return None
     return -v if s.strip().startswith(("(", "-")) else v
@@ -115,6 +115,7 @@ def unspace(s):
 def clean_lines(lines):
     """Page headers and footers (the same words on most pages, 'Page 3 of 12') are not the agreement."""
     out = [dict(l, c=[str(c or "").strip() for c in (l.get("c") or [l.get("t", "")])]) for l in lines if l]
+    out = _merge_ocr_rows(out)
     pages = {l.get("p", 1) for l in out}
     if len(pages) >= 3:
         seen = {}
@@ -125,8 +126,71 @@ def clean_lines(lines):
         rep = {k for k, ps in seen.items() if len(ps) >= max(3, len(pages) * 0.5) and k}
         out = [l for l in out if re.sub(r"\d+", "", squash(" ".join(l["c"]))) not in rep]
     out = [l for l in out if not re.match(r"^page\s*\d+\s*(of\s*\d+)?$", " ".join(l["c"]).strip(), re.I)]
+    # the band at the top and the foot of each page: running heads and footers, wherever a scan put them
+    ys = [l["y"] for l in out if "y" in l]
+    if ys and len({l.get("p") for l in out}) >= 2:
+        bottom = max(ys)
+        for l in out:
+            if "y" in l and (l["y"] < 50 or l["y"] > bottom - 22) and len(" ".join(l["c"])) < 110:
+                l["edge"] = 1
     for l in out:
+        xs = l.get("x")
+        if xs and len(xs) == len(l["c"]):
+            nc, nx = [], []
+            for c, x in zip(l["c"], xs):
+                parts = _split_figures([c])
+                nc += parts
+                nx += [x] + [x + 40 * (k + 1) for k in range(len(parts) - 1)]      # the split-off figures sit to the right
+            l["c"], l["x"] = nc, nx
+        else:
+            l["c"] = _split_figures(l["c"])
+            l.pop("x", None) if xs else None
         l["t"] = "  ".join(c for c in l["c"] if c)
+    return out
+
+
+def _overlap(a, b):
+    """Two pieces side by side (not one above the other): their cells do not cover the same x."""
+    ax, bx = a.get("x") or [], b.get("x") or []
+    return any(abs(x - y) < 8 for x in ax for y in bx)
+
+
+def _merge_ocr_rows(out):
+    """A scan's text comes in pieces: one table row can arrive as three 'lines' (the item no., the words,
+    the amount) a pixel or two apart. Pieces at the same height on the same page are one line again."""
+    if not any(l.get("ocr") for l in out):
+        return out
+    res = []
+    for l in sorted(out, key=lambda l: (l.get("p", 1), l.get("y", 0))):
+        prev = res[-1] if res else None
+        if prev is not None and l.get("ocr") and prev.get("ocr") and prev.get("p") == l.get("p") and "x" in l and "x" in prev \
+                and abs(l["y"] - prev["y"]) <= max(5, 0.7 * max(l.get("h") or 8, prev.get("h") or 8)) and not _overlap(prev, l):
+            cells = sorted(list(zip(prev["x"], prev["c"])) + list(zip(l["x"], l["c"])))
+            prev["x"], prev["c"] = [c[0] for c in cells], [c[1] for c in cells]
+            prev["h"] = max(prev.get("h") or 0, l.get("h") or 0)
+            prev["y"] = min(prev["y"], l["y"])
+            continue
+        res.append(dict(l))
+    return res
+
+
+_TAILNUM = re.compile(r"^(.*\S)\s+(\(?-?(?:AED\s*)?\d[\d,]*\.\d{2}\)?|\d{1,3}(?:\.\d+)?\s*%)$")
+
+
+def _split_figures(cells):
+    """A scanned line can run two columns together ('25.00 16,000.00', 'Total 534,000.00'): the sums of
+    money at the end of a cell are put in cells of their own, so the amount column is found."""
+    out = []
+    for c in cells:
+        tail = []
+        while True:
+            m = _TAILNUM.match(c)
+            if not m or len(tail) >= 4:
+                break
+            tail.insert(0, m.group(2))
+            c = m.group(1)
+        out.append(c)
+        out.extend(tail)
     return out
 
 
@@ -189,7 +253,7 @@ LABELS_ALL = [k for v in LABELS.values() for k in v]
 
 
 def find_label(lines, field, exact_first=True):
-    keys = LABELS[field]
+    keys = LABELS[field] if isinstance(field, str) else list(field)
     hits = []
     for i, l in enumerate(lines):
         for j, c in enumerate(l["c"]):
@@ -209,14 +273,17 @@ def find_label(lines, field, exact_first=True):
 # ---- the whole reading ------------------------------------------------------------------------------
 
 def read(lines, trades=None, names=None):
+    raw = " ".join(" ".join(str(c) for c in (l.get("c") or [l.get("t", "")])) for l in lines if l)
     lines = clean_lines(lines)
     text = "\n".join(l["t"] for l in lines)
     flat = re.sub(r"\s+", " ", text)
+    pflat = re.sub(r"\b\d{1,2}\.\d{1,2}\.(?=\s*\d)", " ", flat)      # "8.1.30% Advance" -> " 30% Advance" (clause numbers off)
     f, found, notes = {}, [], []
 
     # agreement number - the label, else a reference that looks like one (IC/909/SCA/01/26)
     ref = ""
-    m = re.search(r"\b([A-Z]{2,5}/[\w&\- ]{1,20}/(?:SCA|SC|SUB|SCO|AGR|AGM|LPO|PO)[\w]*/[\w/\-]{1,20})", flat)
+    m = re.search(r"\b([A-Z]{2,5}/[\w&\- ]{1,20}/(?:SCA|SC|SUB|SCO|AGR|AGM|LPO|PO)[\w]*/[\w/\-]{1,20})", flat) or \
+        re.search(r"\b([A-Z]{2,5}/[\w&\- ]{1,20}/(?:SCA|SC|SUB|SCO|AGR|AGM|LPO|PO)[\w]*/[\w/\-]{1,20})", raw)
     if m:
         ref = m.group(1).strip()
     if not ref:
@@ -322,6 +389,8 @@ def read(lines, trades=None, names=None):
     if not works and desc:
         m = re.search(r"(?:of|for)\s+([A-Za-z&/ ]{3,40}?)\s+works", desc, re.I)
         works = m.group(1) if m else ""
+    if works and re.search(r"\bof\b", works, re.I):
+        works = re.split(r"\bof\b", works, flags=re.I)[-1].strip()       # "Maintenance of Elevator" -> "Elevator"
     if works:
         f["scope"] = works.strip().title() if works.isupper() else works.strip()[:1].upper() + works.strip()[1:]
         found.append("Work")
@@ -338,16 +407,18 @@ def read(lines, trades=None, names=None):
         f["works"] = full
     if trades:
         hay = (f.get("scope", "") + " " + f.get("works", "")).lower()
-        best = next((tr for tr in trades if tr and tr.lower() in hay), "")
-        if not best:
-            KEY = {"Joinery": ["joinery", "carpentry", "wood", "cabinet", "wardrobe"], "MEP": ["mep", "electrical", "plumbing", "hvac", "mechanical"],
-                   "Aluminium": ["aluminium", "glazing", "window"], "Civil": ["civil", "concrete", "blockwork", "shoring", "piling", "excavation"],
-                   "Finishes": ["paint", "tiling", "gypsum", "ceiling", "flooring", "marble"]}
-            for tr in trades:
-                for k, ws in KEY.items():
-                    if k.lower() in tr.lower() and any(w in hay for w in ws):
-                        best = tr
-                        break
+        KEY = [("Joinery", ["joinery", "carpentry", "wood", "cabinet", "wardrobe", "kitchen"]),
+               ("MEP", ["mep", "electrical", "plumbing", "hvac", "mechanical", "elevator", "lift", "fire fighting", "firefighting", "drainage"]),
+               ("Aluminium", ["aluminium", "aluminum", "glazing", "window", "curtain wall", "facade"]),
+               ("Steel", ["steel structure", "structural steel", "metal work", "metalwork", "steel works"]),
+               ("Finishes", ["paint", "tiling", "gypsum", "ceiling", "flooring", "marble", "plaster", "waterproof"]),
+               ("External", ["landscap", "pool", "external works", "paving", "boundary wall"]),
+               ("Manpower", ["manpower", "labour supply", "labor supply"]),
+               ("Civil", ["civil", "concrete", "blockwork", "shoring", "piling", "excavation", "structure", "foundation"])]
+        best = ""
+        for k, ws in KEY:                               # what the work is, not a word like "supply" in every agreement
+            if any(w in hay for w in ws):
+                best = next((tr for tr in trades if k.lower() in tr.lower()), "")
                 if best:
                     break
         if best:
@@ -389,6 +460,11 @@ def read(lines, trades=None, names=None):
             checks["sections"].append({"bill": b, "total": got, "in_doc": st, "ok": abs(got - st) < 1})
         if not checks["match"] and target is not None:
             notes.append(f"The schedule adds up to {t['sum']:,.2f}, not the contract value {target:,.2f} - check the lines before saving.")
+    elif f.get("value") and f.get("contract_type") == "Lump sum contract":
+        items = [{"bill": "", "bill_title": "", "section": "", "no": "1", "description": (f.get("works") or f.get("scope") or "Subcontract works")[:400].strip(),
+                  "qty": 1, "unit": "LS", "rate": f["value"], "amount": f["value"]}]
+        checks = {"items": 1, "items_total": f["value"], "total_in_doc": None, "contract_value": f["value"], "match": True, "sections": []}
+        notes.append("The agreement has no priced schedule - one lump-sum line is made from the contract amount, certified by % done.")
     else:
         notes.append("No priced schedule was found in the file - the item schedule can be pasted or imported afterwards.")
 
@@ -405,16 +481,21 @@ def read(lines, trades=None, names=None):
             stages.append({"pct": r["pct"], "text": words, "group": g, "amount": r["amount"]})
             if adv is None and re.search(r"advance", g + " " + words, re.I):
                 adv = r["pct"]
+    if not stages:
+        stages = _stages_in_text(lines)
+        for s_ in stages:
+            if adv is None and re.search(r"advance", s_["text"], re.I):
+                adv = s_["pct"]
     if adv is None:
-        m = re.search(r"(\d{1,2}(?:\.\d+)?)\s*%\s*(?:of the (?:sub-?)?contract (?:value|amount)\s*)?(?:as\s+)?(?:an?\s+)?advance", flat, re.I) or \
-            re.search(r"advance(?:\s+payment)?\s+(?:of\s+)?(\d{1,2}(?:\.\d+)?)\s*%", flat, re.I)
+        m = re.search(r"(?<![\d.])(\d{1,2}(?:\.\d+)?)\s*%\s*(?:of the (?:sub-?)?contract (?:value|amount)\s*)?(?:as\s+)?(?:an?\s+)?advance", pflat, re.I) or \
+            re.search(r"advance(?:\s+payment)?\s+(?:of\s+)?(\d{1,2}(?:\.\d+)?)\s*%", pflat, re.I)
         if m:
             adv = float(m.group(1))
     if adv is not None:
         f["adv_pct"] = adv
         found.append("Advance %")
-    m = re.search(r"retention\s+(?:money\s+)?(?:of\s+)?(\d{1,2}(?:\.\d+)?)\s*%", flat, re.I) or \
-        re.search(r"(\d{1,2}(?:\.\d+)?)\s*%\s*(?:of\s+[a-z ]{0,30})?retention", flat, re.I)
+    m = re.search(r"retention\s+(?:money\s+)?(?:of\s+)?(\d{1,2}(?:\.\d+)?)\s*%", pflat, re.I) or \
+        re.search(r"(?<![\d.])(\d{1,2}(?:\.\d+)?)\s*%\s*(?:of\s+[a-z ]{0,30})?retention", pflat, re.I)
     if m:
         f["ret_pct"] = float(m.group(1))
         found.append("Retention %")
@@ -424,8 +505,8 @@ def read(lines, trades=None, names=None):
         f["vat_pct"] = 0.0
     terms = []
     for s_ in stages:
-        g = s_["group"]
-        lead = "advance" if re.search(r"advance", g + s_["text"], re.I) else ""
+        g = s_.get("group") or ""
+        lead = "advance" if re.search(r"advance", g + s_["text"], re.I) and not re.match(r"advance", s_["text"], re.I) else ""
         txt = s_["text"].rstrip(".")
         terms.append(f"{s_['pct']:g}% {lead + ' - ' if lead else '- '}{txt[:1].lower() + txt[1:]}" +
                      (f" ({g.split('—', 1)[-1].split('-', 1)[-1].strip()})" if lead and ("—" in g or " - " in g) else ""))
@@ -446,6 +527,33 @@ def read(lines, trades=None, names=None):
     return {"fields": f, "items": items, "checks": checks, "stages": stages, "found": found, "notes": notes}
 
 
+def _stages_in_text(lines):
+    """Payment terms written as a numbered list, not a table: '8.1. 30% Advance payment / 8.2. 50% upon complete
+    material delivery to site ...' - each stage with its %, the words carried over the line ends."""
+    start = next((i for i, l in enumerate(lines) if re.search(r"terms\s+of\s+payment|payment\s+terms|payment\s+schedule|mode\s+of\s+payment", l["t"], re.I)), None)
+    if start is None:
+        return []
+    head = re.match(r"^\s*(\d{1,2})\.", lines[start]["t"])
+    out = []
+    for l in lines[start + 1:start + 40]:
+        t = l["t"].strip()
+        if re.match(r"^(note|remarks?)\b", t, re.I) or (head and re.match(r"^(\d{1,2})\.\s*[A-Z]", t) and re.match(r"^(\d{1,2})\.", t).group(1) != head.group(1)
+                                                        and not re.match(r"^\d{1,2}\.\d", t)):
+            break
+        t2 = re.sub(r"^\d{1,2}(?:\.\d{1,2})?\.?\s*(?=\d{1,3}(?:\.\d+)?\s*%)", "", t)       # "8.1.30% ..." -> "30% ..."
+        if t2 == t:
+            t2 = re.sub(r"^\d{1,2}(?:\.\d{1,2})*\.?\s+", "", t)
+        m = re.match(r"^(\d{1,3}(?:\.\d+)?)\s*%\s*(.+)$", t2)
+        bullet = re.match(r"^(?:[a-z][.)]|\([a-z]\)|[ivx]+[.)])\s*(.+)$", t)
+        if m and not bullet:
+            out.append({"pct": float(m.group(1)), "text": m.group(2).strip().rstrip("."), "group": "", "amount": None})
+        elif out and bullet:                     # the parts of a stage: "a. 10% of advance upon signing ..."
+            out[-1]["text"] += ("; " if ":" in out[-1]["text"] else ": ") + bullet.group(1).strip().rstrip(".")
+        elif out and len(t) < 160 and not re.match(r"^\d", t):
+            out[-1]["text"] += " " + t.rstrip(".")
+    return out if 0 < sum(s["pct"] for s in out) <= 100.01 and len(out) >= 2 else []
+
+
 def _cells_of(line):
     return [c for c in line["c"] if c]
 
@@ -462,6 +570,8 @@ def _tables(lines):
         cur = None
 
     for blk in blocks(lines):
+        if all(l.get("edge") for l in blk):
+            continue                      # a page head or foot - the table carries on across it
         mlines = [l for l in blk if _row_money(l) is not None]
         texts = [" ".join(_cells_of(l)) for l in blk]
         joined = " ".join(texts).strip()
@@ -518,7 +628,25 @@ def _tables(lines):
                 continue
             cur["rows"].append(row)
     close()
-    return tables
+    # a table that stopped without its total carries on in the next one (a page break, a scan's broken row)
+    out = []
+    for t in tables:
+        if out and out[-1]["total"] is None and out[-1]["rows"] and (t["pct_rows"] > 0) == (out[-1]["pct_rows"] > 0):
+            p = out[-1]
+            p["rows"] += t["rows"]; p["subtotals"] += t["subtotals"]; p["total"] = t["total"]; p["pct_rows"] += t["pct_rows"]
+        else:
+            out.append(t)
+    return out
+
+
+COLWORDS = {"no", "sno", "slno", "sl", "sr", "srno", "item", "itemno", "description", "particulars", "details", "qty", "quantity", "unit", "uom",
+            "rate", "unitrate", "price", "unitprice", "amount", "total", "value", "aed", "amountaed", "totalaed", "remarks", "ref", "code", "vat", "net"}
+
+
+def _col_titles(l):
+    """A row of column titles ('S.No  Description  Qty  Unit  Rate  Amount')."""
+    words = [A for c in _cells_of(l) for A in re.split(r"\s+", c) if A]
+    return len(words) >= 3 and sum(1 for w in words if squash(w) in COLWORDS or squash(w).startswith(("amount", "rate", "qty"))) >= 0.75 * len(words)
 
 
 def _heading_block(blk):
@@ -556,8 +684,18 @@ def _row_money(l):
     return v
 
 
+def _fix_code(c):
+    if re.fullmatch(r"[A-Z]{1,2}[lI|i!0-9OoSs]{1,3}", c or "") and not re.fullmatch(r"[A-Z]{1,2}", c):
+        head = re.match(r"[A-Z]{1,2}", c).group(0)
+        tail = c[len(head):].translate(str.maketrans({"l": "1", "I": "1", "|": "1", "i": "1", "!": "1", "O": "0", "o": "0", "S": "5", "s": "5"}))
+        return head + tail if tail.isdigit() else c
+    return c
+
+
 def _row(blk, ml, amt):
     cells = _cells_of(ml)
+    if cells and ml.get("ocr"):
+        cells = [_fix_code(cells[0])] + cells[1:]
     no = cells[0] if cells and CODE.match(cells[0]) and len(cells) > 1 else ""
     qty = unit = rate = pct = None
     words = []
@@ -572,8 +710,16 @@ def _row(blk, ml, amt):
             nums.append(float(c.replace(",", "")))
         else:
             words.append(c)
+    if words and unit is None:          # "640 hrs" run together on a scan, or at the end of the words
+        m = re.search(r"(?:^|\s)(\d[\d,]*(?:\.\d+)?)\s+([A-Za-z.²³0-9]{1,6})\.?$", words[-1])
+        if m and m.group(2).lower().strip(".") in {u.strip(".") for u in UNITS}:
+            qty, unit = float(m.group(1).replace(",", "")), m.group(2)
+            words[-1] = words[-1][:m.start()].strip()
+            words = [w for w in words if w]
     if nums:
-        if len(nums) >= 2:
+        if qty is not None:
+            rate = nums[-1]
+        elif len(nums) >= 2:
             qty, rate = nums[0], nums[-1]
         else:
             qty = nums[0]
@@ -583,6 +729,8 @@ def _row(blk, ml, amt):
     for l in blk:
         if l is ml:
             seen = True
+            continue
+        if _col_titles(l):
             continue
         t = " ".join(_cells_of(l)).strip()
         if t:

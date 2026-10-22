@@ -753,7 +753,7 @@ function pgBoardsFrame(target) {
   const f = document.getElementById("pg-boards-frame"); if (!f) return;
   const m = String(target || (location.hash.match(/boards:(b\d+(?:c\d+)?)/) || [])[1] || "").match(/b(\d+)(?:c(\d+))?/);
   const h = m ? `#/b/${m[1]}${m[2] ? "/c/" + m[2] : ""}` : "";
-  if (!f.getAttribute("src")) { f.dataset.src = "/portal/boards.html?embed=1" + h; f.addEventListener("load", () => { f.dataset.ready = "1"; if (f.dataset.pending) { try { f.contentWindow.postMessage({ kb: "go", target: f.dataset.pending }, location.origin); } catch (e) {} f.dataset.pending = ""; } }); pgFrame("pg-boards-frame"); }
+  if (!f.getAttribute("src")) { f.dataset.src = f.dataset.src.split("#")[0] + h; f.addEventListener("load", () => { f.dataset.ready = "1"; if (f.dataset.pending) { try { f.contentWindow.postMessage({ kb: "go", target: f.dataset.pending }, location.origin); } catch (e) {} f.dataset.pending = ""; } }); pgFrame("pg-boards-frame"); }
   else if (m) { if (f.dataset.ready === "1") { try { f.contentWindow.postMessage({ kb: "go", target: m[0] }, location.origin); } catch (e) {} } else f.dataset.pending = m[0]; pgFrame("pg-boards-frame"); }
   else pgFrame("pg-boards-frame");
 }
@@ -1290,6 +1290,20 @@ def build():
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)
+    # The pages held in a frame (Estimation, Trello, Staff ...) are asked for by a version of what is in
+    # them, so a deploy reaches the frame at once - not only after the browser drops its old copy.
+    import glob as _g
+    def _vdir(*pats):
+        hs = _h.sha1()
+        for pat in pats:
+            for fp in sorted(_g.glob(os.path.join(ROOT, pat))):
+                with open(fp, "rb") as f:
+                    hs.update(f.read())
+        return hs.hexdigest()[:10]
+    for pg, pats in (("est-app.html", ("portal/est-app.html", "portal/est/*")), ("boards.html", ("portal/boards.html", "portal/boards/*")),
+                     ("people.html", ("portal/people.html",)), ("access.html", ("portal/access.html",))):
+        page = re.sub(r'data-src="/portal/' + re.escape(pg) + r'(\?v=\w+&|\?v=\w+"|\?|")',
+                      lambda mm, pg=pg, pats=pats: f'data-src="/portal/{pg}?v={_vdir(*pats)}' + ("&" if mm.group(1).endswith(("&", "?")) else '"'), page)
     # A browser can keep an old app.html for a while after a deploy (no
     # cache header on a static file). The page asks for the build it
     # should be - a tiny file that is never cached - and, if it is older,

@@ -12,6 +12,8 @@ const DIR = '/tmp/claude-0/agrfix';
   const exp = JSON.parse(execSync(`python3 ${__dirname}/est_agreement_fixtures.py ${DIR}`).toString());
   const files = [];
   if (process.env.AGREEMENT_FILE) files.push({ path: process.env.AGREEMENT_FILE, code: '909', e: { name: 'Woodcraft Interiors (SPS LLC)', agreement: 'IC/909/SCA/01/26', date: '2026-10-22', value: 534000, type: 'Lump sum contract', adv: 50, ret: 10, items: 26, bills: { A: 453802.81, B: 31197.19, C: 49000 }, scope: 'Joinery' } });
+  if (process.env.SCANNED_FILE) files.push({ path: process.env.SCANNED_FILE, code: '909', e: { name: 'Woodcraft Interiors (SPS LLC)', agreement: 'IC/909/SCA/01/26', date: '2026-10-22', value: 534000, type: 'Lump sum contract', adv: 50, ret: 10, items: 26, scope: 'Joinery' } });
+  if (process.env.LIFT_FILE) files.push({ path: process.env.LIFT_FILE, code: '905', e: { name: 'AG MELCO ELEVATOR CO. L.L.C', agreement: 'IC/905/SCA/06/24', date: '2024-11-25', value: 101000, type: 'Lump sum contract', adv: 30, ret: 10, items: 1, scope: 'Elevator' } });
   files.push({ path: `${DIR}/912 MEP subcontract.docx`, code: '912', e: exp.docx });
   files.push({ path: `${DIR}/913 shoring LPO.xlsx`, code: '913', e: exp.xlsx });
   files.push({ path: `${DIR}/915 painting work order.pdf`, code: '915', e: exp.pdf2 });
@@ -26,7 +28,7 @@ const DIR = '/tmp/claude-0/agrfix';
     await p.evaluate(pid => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'subs.reg'); }, P); await p.goto(B + '/portal/est-app.html?view=projects'); await sleep(1500);
     await p.click('#add-sub'); await sleep(400);
     ck(`${tag}: the form has "Read from agreement"`, await p.isVisible('#ag-pick'));
-    await p.setInputFiles('#ag-file', F.path); await p.waitForSelector('.agres, .agnote.bad', { timeout: 30000 }); await sleep(300);
+    await p.setInputFiles('#ag-file', F.path); await p.waitForSelector('.agres, .agnote.bad', { timeout: 240000 }); await sleep(300);
     const v = async k => p.inputValue('#f-' + k);
     const bad0 = await p.$('.agnote.bad'); if (bad0) { ck(`${tag}: read`, false, await bad0.textContent()); continue; }
     ck(`${tag}: subcontractor "${e.name}"`, (await v('name')) === e.name, await v('name'));
@@ -40,7 +42,8 @@ const DIR = '/tmp/claude-0/agrfix';
     if (e.scope) ck(`${tag}: work "${e.scope}"`, (await v('scope')) === e.scope, await v('scope'));
     const res = await p.textContent('.agres');
     ck(`${tag}: ${e.items} priced lines, total = contract value`, res.includes(`Save the ${e.items} priced line`) && res.includes('= contract value'), res.slice(0, 300));
-    if (F.code === '909') { await p.click('.agsched summary'); await sleep(200); await p.screenshot({ path: SH + '909_form.png' }); }
+    if (/SCANNED|lift/i.test(F.path)) await p.screenshot({ path: SH + (F.code) + '_scan_form.png' });
+    if (F.code === '909' && !/SCANNED/.test(F.path)) { await p.click('.agsched summary'); await sleep(200); await p.screenshot({ path: SH + '909_form.png' }); }
     await p.click('#m-save'); await sleep(2000);
     const b = await api(`/store/est/projects/${P}`);
     const sub = b.subs.filter(x => x.name === e.name).pop();
