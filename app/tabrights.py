@@ -182,7 +182,7 @@ GATES = {
     ("GET", "/export/{month_year}/excel"): CARDS, ("GET", "/export/{month_year}/pdf"): CARDS,
     ("GET", "/export/{month_year}/cards/view"): CARDS,
     ("GET", "/export/{month_year}/excel-separate"): CARDS, ("GET", "/export/{month_year}/pdf-separate"): CARDS,
-    ("POST", "/reports/monthly-notes/{month_year}"): ["reports.labour.monthly"],
+    ("POST", "/reports/monthly-notes/{month_year}"): ["payroll.labourpay.monthly"],
     ("GET", "/reports/builder-catalog"): ["reports.labour.builder"],
     ("GET", "/reports/custom"): ["reports.labour.builder"],
     ("GET", "/export/{month_year}/custom-report"): ["reports.labour.builder"],

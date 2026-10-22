@@ -58,10 +58,12 @@ PAGES = {
         tab("livecard", "livecard", "Live card"),
         tab("masterdata", "masterdata", "Labour master data")]),
     "payroll": ("Payroll", [
-        tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck", "adjustments"], subs=[
+        tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck", "adjustments", "reports"], subs=[
             sub("combine", "Salary cards", screen="combine", right="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
             sub("adjust", "Additions & deductions", screen="combine", right="adjustments", show=["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]),
             sub("errorcheck", "Check before you pay", screen="errorcheck"),
+            # The month-end labour report sits with the payroll it reports on.
+            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             sub("increments", "Increments", screen="combine", right="combine", go="labIncLoad()", show=["#pg-labinc-card"]),
             sub("gratuity", "Gratuity", screen="combine", right="combine", go="labGratLoad()", show=["#pg-labgrat-card"])]),
         tab("hrpayroll", "hrpayroll", "Office payroll", "hrpayroll", subs=[
@@ -142,7 +144,6 @@ PAGES = {
     "reports": ("Reports", [
         tab("labour", "pgreports", "Labour", "reports", subs=[
             sub("builder", "Cycle report builder", screen="reports"),
-            sub("monthly", "Monthly report", screen="monthly", right="reports", go="openMonthlyReport()"),
             sub("accom", "Accommodation", screen="camp", right=["reports", "camp"], go="campLoad()"),
             sub("ppe", "PPE", screen="ppe", right=["reports", "ppe"], go="ppeLoad()")]),
             # Salary cards are on Payroll > Labour payroll, not repeated here.
@@ -173,7 +174,7 @@ PAGES = {
         tab("activity", "activity", "Activity monitor", "activity")]),
 }
 # Screens without a tab of their own, reached from inside another.
-EXTRA = {"monthly": "reports"}
+EXTRA = {"monthly": "payroll"}
 # Pages held in a frame inside the app rather than written from app.html.
 VIRTUAL = {"people": ("Staff", [tab("people", "pgstaff", "Staff", ["people_labour", "people_office", "people_local"])])}
 ORDER = ["dashboard", "attendance", "people", "payroll", "store", "expiry", "accounts", "estimation", "admin", "reports", "settings"]
@@ -233,7 +234,7 @@ PAY_SEEN = {
     "payroll.hrpayroll.increments": "salary history",
     "payroll.hrpayroll.gratuity": "basic, gratuity and final settlement",
     "reports.labour.builder": "wages in the cycle report",
-    "reports.labour.monthly": "wages in the monthly report",
+    "payroll.labourpay.monthly": "wages in the monthly report",
     "accounts.projexp": "labour cost per project (totals only)",
 }
 

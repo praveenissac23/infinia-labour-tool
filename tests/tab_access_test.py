@@ -31,7 +31,7 @@ ck('every tab a gate names is in the tree', named <= set(tabrights.LEAVES), name
 grants = {g for l in tabrights.LEAVES.values() for g in l['grant']}
 ck('every right can be given by a tick', all(s in grants for s in main.ALL_SCREENS if s != 'settings'),
    [s for s in main.ALL_SCREENS if s not in grants])
-ck('pages in the app order', [p['id'] for p in tabrights.TREE] == ['dashboard', 'attendance', 'people', 'payroll', 'store', 'expiry', 'accounts', 'admin', 'reports', 'settings'])
+ck('pages in the app order', [p['id'] for p in tabrights.TREE] == ['dashboard', 'attendance', 'people', 'payroll', 'store', 'expiry', 'accounts', 'estimation', 'admin', 'reports', 'settings'])
 ck('three levels: page > tab > tab inside', 'store.store.items' in tabrights.LEAVES and 'people.leave.office' in tabrights.LEAVES
    and 'accounts.petty.pro' in tabrights.LEAVES and 'payroll.hrpayroll.loans' in tabrights.LEAVES)
 

@@ -219,6 +219,17 @@
       ]
      },
      {
+      "id": "payroll.labourpay.monthly",
+      "label": "Monthly report",
+      "right": [
+       "reports"
+      ],
+      "grant": [
+       "reports"
+      ],
+      "pay": "wages in the monthly report"
+     },
+     {
       "id": "payroll.labourpay.increments",
       "label": "Increments",
       "right": [
@@ -819,17 +830,6 @@
        "reports"
       ],
       "pay": "wages in the cycle report"
-     },
-     {
-      "id": "reports.labour.monthly",
-      "label": "Monthly report",
-      "right": [
-       "reports"
-      ],
-      "grant": [
-       "reports"
-      ],
-      "pay": "wages in the monthly report"
      },
      {
       "id": "reports.labour.accom",

@@ -220,6 +220,7 @@ def seed_on_startup():
         _tick_est_tabs(db)
         _grant_camp(db)
         _grant_ppe(db)
+        _move_monthly_tick(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
         _docs_office_to_admin(db)
@@ -766,6 +767,23 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _move_monthly_tick(db):
+    """The labour Monthly report moved from Reports > Labour to Payroll > Labour payroll:
+    whoever had its tick keeps it under the new place. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "monthly_to_payroll").first():
+        return
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if "reports.labour.monthly" in keys:
+            keys = [k for k in keys if k != "reports.labour.monthly"]
+            if "payroll.labourpay.monthly" not in keys:
+                keys.append("payroll.labourpay.monthly")
+            setattr(obj, field, ",".join(keys))
+    db.add(models.Setting(key="monthly_to_payroll", value="1"))
     db.commit()
 
 
