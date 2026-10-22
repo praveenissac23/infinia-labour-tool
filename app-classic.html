@@ -17040,7 +17040,7 @@ async function bkStatement() {
 function bsDraw() {
   const el = document.getElementById("bk-stmt"); if (!BS) return;
   const c = BS.counts, last = BS.last;
-  const upl = `<label class="btn btn-dark btn-sm bs-up">Upload ADCB statement<input type="file" accept=".xlsx,.xls,.csv,.htm,.html" style="display:none" onchange="bsUpload(this)"></label>`;
+  const upl = `<label class="btn btn-dark btn-sm bs-up">Upload ADCB statement<input type="file" accept=".xlsx,.xls,.csv,.htm,.html,.pdf,.jpg,.jpeg,.png" style="display:none" onchange="(window.bsUploadDoc || bsUpload)(this)"></label><span class="help-i css-tip" tabindex="0" data-tip="The Excel download, or the PDF statement - even a scan or a photo of it. A PDF or scan is read on this computer; only its lines go to the server, the file is not uploaded.">i</span>`;
   if (!last) {
     el.innerHTML = `<div class="bs"><div class="bs-head"><div><b>ADCB statement check</b><span class="sub">Every debit and credit on the bank statement checked against what is entered here.</span></div>${upl}</div>
       <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement as <b>Excel (.xls or .xlsx) or CSV</b> (any period - a day, a week, a month). The Customer Reference you typed when paying becomes the line's description.</li>

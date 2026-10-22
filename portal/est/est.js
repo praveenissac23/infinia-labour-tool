@@ -395,7 +395,7 @@ function newProject() {
     if (file) { go("client.boq"); setTimeout(() => boqImport(file, r.id), 60); }     // after this form has closed
   }, {
     doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"]] },
-    bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="np-boq">Internal BOQ (optional) ${tip("Pick the internal BOQ Excel and every line goes into Overview > BOQ & budget, grouped by trade, with excluded / phase 2 bills kept aside. Only the lines are kept - the file is not stored. It can also be uploaded later from Overview > BOQ & budget.")}</label><input type="file" id="np-boq" accept=".xlsx,.xlsm"></div></div>`,
+    bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="np-boq">Internal BOQ (optional) ${tip("Pick the internal BOQ Excel and every line goes into Overview > BOQ & budget, grouped by trade, with excluded / phase 2 bills kept aside. Only the lines are kept - the file is not stored. It can also be uploaded later from Overview > BOQ & budget.")}</label><input type="file" id="np-boq" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png"></div></div>`,
     after: () => {
       const fill = () => { const s = ST.meta.sites.find(x => x.code === $("#f-code").value.trim()); if (s && !$("#f-name").value) $("#f-name").value = s.name; };
       $("#f-code").addEventListener("change", fill); $("#f-code").addEventListener("input", fill);
@@ -970,7 +970,7 @@ SECTIONS["client.boq"] = el => {
   const tot = inScope.reduce((a, x) => a + x.counted, 0), cost = inScope.reduce((a, x) => a + x.cost, 0);
   const out = all.filter(x => x.scope).reduce((a, x) => a + x.amount, 0);
   const open = ST.boqOpen = ST.boqOpen || {};
-  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload internal BOQ</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>` });
+  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ (Excel / PDF / scan)</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>` });
   if (!all.length) html += `<div class="empty">No BOQ yet. Press <b>Upload internal BOQ</b> and pick the internal BOQ Excel - every line comes in, grouped by trade, with what is excluded or phase 2 kept aside. ${tip("The workbook is read once and only its lines are kept; the Excel file itself is not stored. Upload a newer revision any time - the cost rates and done % you typed stay on the lines that come back.")}</div>`;
   else {
     html += `<div class="strip">${[["BOQ value", tot, "In the awarded scope"], ["Budget cost", cost, "Qty x your cost rate"], ["Budget margin", tot - cost, ""]].map(([l, v, t]) => `<div class="fig"><div class="l">${l}${t ? " " + tip(t) : ""}</div><div class="v">${aed(v)}</div></div>`).join("")}<div class="fig"><div class="l">Margin %</div><div class="v">${tot && cost ? (100 * (tot - cost) / tot).toFixed(1) + "%" : '<span class="muted">-</span>'}</div></div>${out ? `<div class="fig"><div class="l">Not in scope ${tip("Bills and sections the internal BOQ leaves out (Excluded, Phase 02, N/A ...). Kept for reference, not counted. Click the tag on a bill to bring it into scope when it is awarded.")}</div><div class="v muted">${aed(out)}</div></div>` : ""}</div>`;
@@ -1023,9 +1023,15 @@ function boqScope(bill, section, now) {
       after: () => { const c = $("#m-count"); if (c) c.onclick = async () => { try { await POST(`/store/est/projects/${ST.pid}/boq-scope`, { bill, section: section ?? null, scope: "" }); closeModal(); await reload(); toast("Now counted in the BOQ value"); } catch (e) { fail(e); } }; } });
 }
 // The internal BOQ workbook: read, shown bill by bill against the workbook's own summary, then saved.
+// A document to read in the browser (not an Excel workbook the server reads as it always has).
+function isDoc(file) { return /\.(pdf|docx|jpe?g|png|webp)$/i.test(file.name || "") || /^image\//.test(file.type || ""); }
 async function boqImport(file, pid) {
   pid = pid || ST.pid;
-  const send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
+  let send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
+  if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
+    let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
+    send = (save, mode) => POST(`/store/est/projects/${pid}/boq-import-text`, { lines: d.lines, save: save ? 1 : 0, mode: mode || "replace", name: file.name });
+  }
   let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
   const ok = r.summary_total === null || r.summary_total === undefined ? "" : Math.abs(r.total - r.summary_total) < 0.01 ? `<span class="st g">matches the ${esc(r.summary_sheet)} sheet</span>` : `<span class="st r">${esc(r.summary_sheet)} sheet says ${money(r.summary_total, false)}</span>`;
   modal(`Internal BOQ - ${file.name}`, [], async () => {
@@ -1042,7 +1048,7 @@ async function boqImport(file, pid) {
       ${r.notes.length ? `<div class="small" style="margin:6px 0">${r.notes.map(n => "• " + esc(n)).join("<br>")}</div>` : ""}
       <div class="tw" style="max-height:360px;overflow:auto"><table class="t"><thead><tr><th>Bill</th><th class="r">Lines</th><th class="r">Counted</th><th>Left out</th></tr></thead><tbody>${r.bills.map(x => `<tr><td>${esc(x.bill)}</td><td class="r">${x.lines}</td><td class="r">${money(x.counted)}</td><td>${x.scope ? `<span class="st b">${esc(x.scope)}</span> <span class="small muted">${money(x.left_out, false)}</span>` : x.sections_out.length ? `<span class="small">${x.sections_out.map(esc).join("<br>")}</span> <span class="small muted">${money(x.left_out, false)}</span>` : ""}</td></tr>`).join("")}
       <tr class="tot"><td>Total</td><td class="r">${r.lines}</td><td class="r">${money(r.total)}</td><td>${r.left_out ? `<span class="small muted">${money(r.left_out, false)} not counted</span>` : ""}</td></tr></tbody></table></div>
-      <div class="small muted" style="margin-top:6px">Only the lines are kept - the Excel file is not stored.</div>` });
+      <div class="small muted" style="margin-top:6px">Only the lines are kept - the file itself is not stored.</div>` });
 }
 function boqForm(x) {
   x = x || {};
@@ -1131,7 +1137,7 @@ SECTIONS["client.vo"] = el => {
   const sum = (k, s) => r2(b.variations.filter(v => (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
   const absorbed = sum("absorbed_amount");
   const fig = (l, v, c, tip) => `<div class="fig ${c || ""}" ${tip ? `title="${esc(tip)}"` : ""}><div class="l">${l}</div><div class="v">${aed(v)}</div></div>`;
-  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import Excel</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm" hidden>`,
+  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log (Excel / PDF / scan)</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>`,
       chips: [["", b.variations.length], ...VO_ST.filter(s => n(s) || ["Identified", "Submitted", "Approved", "Rejected"].includes(s)).map(s => [s, n(s)])] }) +
     `<div class="strip">${fig("Submitted", sum("submitted_amount"), "", "Every variation sent to the client (coordination lines left out)")}${fig("Approved", sum("approved_amount", "Approved"), "green", "Added to the contract value")}${fig("Waiting approval", sum("submitted_amount", "Submitted"), "amber", "Submitted, not yet accepted or rejected")}${absorbed ? fig("Absorbed", absorbed, "", "Cost Infinia carries itself - not added to the contract") : ""}</div>` +
     (list.length ? voTable(list) : '<div class="empty">No variations yet. Press + Variation, or Import Excel to bring in the QS variation log.</div>');
@@ -1175,7 +1181,11 @@ function voTable(list) {
 }
 // The QS variation log Excel: shows what will come in, then puts it in.
 async function voImport(file) {
-  const send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
+  let send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
+  if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
+    let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
+    send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0 });
+  }
   let r; try { r = await send(false); } catch (e) { return fail(e); }
   const by = Object.entries(r.by_status).map(([k, n]) => `${st(k)} ${n}`).join(" ");
   const orig = r2(r.contract - r.approved);

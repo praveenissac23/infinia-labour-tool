@@ -199,7 +199,10 @@ REF_RX = re.compile(r"\b(PHUB\d{5,}|[A-Z]{2,6}\d{7,}|\d{10,})\b")
 
 def parse(name, data):
     """-> list of {date, value_date, description, reference, debit, credit, balance} in file order."""
-    rows = read_rows(name, data)
+    return parse_rows(read_rows(name, data))
+
+
+def parse_rows(rows):
     h, cols = _header(rows)
     if h is None:
         raise HTTPException(status_code=400, detail=(
@@ -374,9 +377,107 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db), us
     data = await file.read()
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="The file is too big for a statement (over 8 MB).")
-    lines = parse(file.filename or "", data)
+    return _ingest(db, user, file.filename or "", parse(file.filename or "", data))
+
+
+@router.post("/store/bank/stmt/upload-text")
+def upload_text(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = BK):
+    """A PDF statement - or a scan of one - opened in the browser: only its words come here, laid out in
+    lines and cells (portal/est/agreement.js). Each cell is put under its heading, a narration carried onto
+    the next line is joined to its line, and the lines go in exactly as from the Excel download."""
+    import est_agreement as A
+    lines = payload.get("lines") or []
+    if not lines:
+        raise HTTPException(status_code=400, detail="No text came from that file.")
+    names, rows = A.grid(lines, lambda cells: _header([cells])[0] is not None)
+    if names is None:
+        raise HTTPException(status_code=400, detail="Could not find the statement's headings (Date, Description, Debit, Credit, Balance) in that file.")
+    _, cols = _header([names])
+    ocr = any(l.get("ocr") for l in lines if isinstance(l, dict))
+    table = [names]
+    for r in rows:
+        c = [_ocr_cell(x) for x in r["cells"]] if ocr else r["cells"]
+        has_date = bool(_date(c[cols["date"]])) if cols["date"] < len(c) else False
+        nums = any(_num(c[cols[k]]) is not None for k in ("debit", "credit", "amount", "balance") if k in cols and cols[k] < len(c))
+        if not has_date and not nums and len(table) > 1:
+            j = cols.get("desc", next((k for k, n in enumerate(names) if "desc" in _norm(n) or "narr" in _norm(n) or "particular" in _norm(n)), None))
+            words = " ".join(x for x in c if x).strip()
+            if j is not None and words and not re.match(r"^(opening|closing|total|balance)\b", words, re.I):
+                table[-1][j] = (str(table[-1][j] or "") + " " + words).strip()
+            continue
+        table.append(list(c))
+    got = parse_rows(table)
+    mended = 0
+    if ocr:                                   # newest first on some statements: mend in date order
+        fwd = sorted(range(len(got)), key=lambda i: (got[i]["date"], i))
+        back = got[0]["date"] > got[-1]["date"]
+        seq = got[::-1] if back else got
+        mended = _mend(seq)
+    out = _ingest(db, user, str(payload.get("name") or "statement.pdf"), got)
+    out["mended"] = mended
+    return out
+
+
+def _ocr_cell(v):
+    """What a scan does to a statement's figures and dates: '321.270.00' (a comma read as a point),
+    '0510/2026' (a slash lost), two dates run into one cell."""
+    t = str(v or "").strip()
+    if re.fullmatch(r"[\d.,]+", t) and t.count(".") >= 2:
+        head, _, tail = t.rpartition(".")
+        t = head.replace(".", ",") + "." + tail
+    m = re.fullmatch(r"(\d{2})(\d{2})[/.-](20\d{2})", t) or re.fullmatch(r"(\d{2})[/.-](\d{2})(20\d{2})", t)
+    if m:
+        t = f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
+    m = re.fullmatch(r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\s+\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}", t)
+    if m:
+        t = m.group(1)
+    return t
+
+
+def _mend(lines):
+    """A scanned statement: a figure the scan misread is put right from the running balance the bank printed -
+    only where the balance says exactly what it must be AND the misread figure has (nearly) the same digits.
+    Anything else is left for the balance check to warn about. -> how many figures were put right."""
+    def digits(x):
+        return f"{abs(x):.2f}".replace(".", "").rstrip("0").lstrip("0") or "0"
+
+    def near(a, b):                       # the same digits, or one digit added / lost / misread
+        a, b = digits(a), digits(b)
+        if a == b:
+            return True
+        if abs(len(a) - len(b)) > 1:
+            return False
+        if len(a) == len(b):
+            return sum(x != y for x, y in zip(a, b)) <= 1
+        s, t = (a, b) if len(a) < len(b) else (b, a)
+        return any(t[:i] + t[i + 1:] == s for i in range(len(t)))
+
+    ok = lambda a, b: a["balance"] is not None and b["balance"] is not None and abs(a["balance"] + b["credit"] - b["debit"] - b["balance"]) <= 0.011
+    n = 0
+    # a balance misread: the lines either side add up across it
+    for i in range(1, len(lines) - 1):
+        a, b, c = lines[i - 1], lines[i], lines[i + 1]
+        if a["balance"] is None or c["balance"] is None or (ok(a, b) and ok(b, c)):
+            continue
+        want = round(a["balance"] + b["credit"] - b["debit"], 2)
+        if abs(want + c["credit"] - c["debit"] - c["balance"]) <= 0.011 and (b["balance"] is None or near(b["balance"], want)):
+            b["balance"] = want; n += 1
+    # an amount misread: the balances before and after say what it was
+    for i in range(1, len(lines)):
+        a, b = lines[i - 1], lines[i]
+        if a["balance"] is None or b["balance"] is None or ok(a, b):
+            continue
+        delta = round(b["balance"] - a["balance"], 2)
+        read = b["debit"] or b["credit"]
+        if delta and read and near(read, delta):
+            b["debit"], b["credit"] = (round(-delta, 2), 0.0) if delta < 0 else (0.0, delta)
+            n += 1
+    return n
+
+
+def _ingest(db, user, filename, lines):
     breaks, opening, closing = balance_check(lines)
-    up = models.BankStmtUpload(filename=(file.filename or "")[:120], date_from=min(l["date"] for l in lines),
+    up = models.BankStmtUpload(filename=(filename or "")[:120], date_from=min(l["date"] for l in lines),
                                date_to=max(l["date"] for l in lines), lines=len(lines), breaks=breaks,
                                opening=opening, closing=closing, uploaded_by=user.id)
     db.add(up); db.flush()

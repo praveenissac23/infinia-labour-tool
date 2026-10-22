@@ -1435,9 +1435,52 @@ async def boq_import(pid: int, file: UploadFile = File(...), save: int = Form(0)
         raise HTTPException(400, str(e))
     except Exception:
         raise HTTPException(400, "That workbook could not be read. Upload the internal BOQ as .xlsx (sheets 1.PRELIM, 2.SUBSTR ...).")
+    return _boq_take(db, p, r, save, mode, user, file.filename or "")
+
+
+@router.post("/store/est/projects/{pid}/boq-import-text")
+def boq_import_text(pid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """A BOQ as a PDF, Word file or scan, opened in the browser (nothing uploaded): every priced line with
+    its bill / section, checked against the document's own totals, then put in like the workbook's lines."""
+    import est_agreement as A
+    p = _project(db, pid)
+    cl = A.clean_lines(data.get("lines") or [])
+    tabs = [t for t in A._tables(cl) if t["rows"]]
+    items = [x for t in tabs for x in t["rows"]]       # a BOQ is every bill in it, not one schedule
+    notes, secs = [], []
+    for t in tabs:
+        got = r2(sum(x["amount"] for x in t["rows"]))
+        b = t["rows"][0]
+        name = f"{b.get('bill') or ''} {b.get('bill_title') or ''}".strip() or "Bill"
+        if t.get("total") is not None:
+            secs.append({"bill": name, "total": got, "in_doc": t["total"], "ok": abs(got - t["total"]) < 0.01})
+    grand = None
+    for l in cl:
+        if re.match(r"^\s*(grand\s+total|total\s+of\s+(the\s+)?boq|boq\s+total|total\s+contract\s+sum)", l["t"], re.I):
+            nums = [A.money(c) for c in l["c"] if A.money(c) is not None]
+            if nums:
+                grand = nums[-1]
+    rd = {"notes": notes, "checks": {"sections": secs, "total_in_doc": grand}}
+    if not items:
+        raise HTTPException(400, "No priced BOQ lines were found in that file.")
+    lines = [{"bill": (f"{x['bill']} {x['bill_title']}".strip() if x.get("bill") else x.get("bill_title") or "")[:120], "section": x.get("section") or "",
+              "code": x.get("no") or "", "description": x["description"], "unit": x.get("unit") or "", "qty": x.get("qty") or 0,
+              "rate": x.get("rate") or (x["amount"] if not x.get("qty") else 0), "amount": x["amount"], "remark": "", "scope": ""} for x in items]
+    bills = {}
+    for x in lines:
+        b = bills.setdefault(x["bill"] or "BOQ", {"bill": x["bill"] or "BOQ", "lines": 0, "counted": 0.0, "scope": "", "left_out": 0.0, "sections_out": []})
+        b["lines"] += 1; b["counted"] = r2(b["counted"] + x["amount"])
+    c = rd["checks"]
+    r = {"lines": lines, "bills": list(bills.values()), "notes": rd["notes"] + [f"Section {s['bill']}: {s['total']:,.2f}" + ("" if s["ok"] else f" - the document says {s['in_doc']:,.2f}") for s in c.get("sections", [])],
+         "summary_sheet": "document", "summary_total": c.get("total_in_doc"), "total": r2(sum(x["amount"] for x in lines)), "left_out": 0.0}
+    return _boq_take(db, p, r, data.get("save"), data.get("mode") or "replace", user, str(data.get("name") or ""))
+
+
+def _boq_take(db, p, r, save, mode, user, fname):
+    pid = p.id
     have = db.query(EstBoq).filter(EstBoq.project_id == pid).order_by(EstBoq.sort, EstBoq.id).all()
     out = {k: r[k] for k in ("bills", "notes", "summary_sheet", "summary_total", "total", "left_out")}
-    out.update({"lines": len(r["lines"]), "existing": len(have), "file": file.filename or ""})
+    out.update({"lines": len(r["lines"]), "existing": len(have), "file": fname})
     if not save:
         return out
     if mode not in ("replace", "add"):
@@ -1587,6 +1630,72 @@ async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0),
         return out
     _vo_rows_in(db, p, rows, user.id)
     if take_off_contract and out["approved"]:
+        p.contract_value = r2((p.contract_value or 0) - out["approved"])
+    db.commit()
+    out["saved"] = True
+    out["contract"] = r2(p.contract_value)
+    return out
+
+
+def _vo_head(cell):
+    """A variation log's column heading as the Excel reader knows it ('Submitted Amount (AED)' -> 'submitted amount')."""
+    t = re.sub(r"\s+", " ", re.sub(r"\(.*?\)|aed|[:.]$", "", (cell or "").lower())).strip()
+    if re.sub(r"[^a-z]", "", t) in ("refno", "ref", "cpno", "vono", "variationno", "voref", "varno", "vref"):
+        return "ref.no"
+    if t in ("ref.no", "ref no", "ref", "ref.", "ref no.", "cp no", "vo no", "vo no.", "variation no", "s.no", "sl.no", "no", "no."):
+        return "ref.no" if t not in ("s.no", "sl.no", "no", "no.") else None
+    for k, h in (("submit", "submitted amount"), ("revis", "revised amount"), ("accept", "accepted amount"), ("approved amount", "approved amount"),
+                 ("absorb", "absorbed amount"), ("descr", "description"), ("date of sub", "date of submission"), ("date of acc", "date of acceptance"),
+                 ("date of appr", "date of approval"), ("claimed in", "claimed in pc"), ("remark", "remarks")):
+        if t.startswith(k) or (len(k) > 6 and k in t):
+            return h
+    return None
+
+
+@router.post("/store/est/projects/{pid}/variations/import-text")
+def vo_import_text(pid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """The variation log as a PDF, Word file or scan, opened in the browser (nothing uploaded): its table read
+    under its headings, then put in exactly as the Excel log is."""
+    import openpyxl
+    import est_agreement as A
+    import est_voimport
+    p = _project(db, pid)
+    lines = data.get("lines") or []
+    is_head = lambda cells: (lambda ks: "ref.no" in ks and "description" in ks)({_vo_head(c) for c in cells})
+    names, rows = A.grid(lines, is_head)
+    if names is None:
+        raise HTTPException(400, "No variation log found - the table needs headings like Ref. No and Description.")
+    keys = [_vo_head(c) or "" for c in names]
+    ti, ri = keys.index("description"), keys.index("ref.no")
+    table = []
+    for r in rows:
+        c = r["cells"]
+        nums = any(A.money(x) is not None for x in c)
+        if not (c[ri] if ri < len(c) else "") and not nums and table:          # a description carried onto the next line
+            words = " ".join(x for x in c if x).strip()
+            if words and not re.match(r"^(total|grand total)\b", words, re.I):
+                table[-1][ti] = (table[-1][ti] + " " + words).strip()
+            continue
+        if re.match(r"^(total|grand total|sub[- ]?total)\b", " ".join(c).strip(), re.I):
+            continue
+        table.append(list(c) + [""] * (len(keys) - len(c)))
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Variations"
+    ws.append([k or n for k, n in zip(keys, names)])
+    for r in table:
+        ws.append([(A.money(v) if keys[j] in ("submitted amount", "revised amount", "accepted amount", "approved amount", "absorbed amount") and A.money(v) is not None else v)
+                   for j, v in enumerate(r[:len(keys)])])
+    bio = io.BytesIO(); wb.save(bio)
+    try:
+        vrows = est_voimport.read_log(bio.getvalue())
+    except Exception as e:
+        raise HTTPException(400, f"Couldn't read that table as a variation log: {e}")
+    out = _vo_summary(vrows)
+    out["contract"] = r2(p.contract_value)
+    out["have"] = db.query(EstVariation).filter(EstVariation.project_id == pid).count()
+    if not data.get("save"):
+        return out
+    _vo_rows_in(db, p, vrows, user.id)
+    if data.get("take_off_contract") and out["approved"]:
         p.contract_value = r2((p.contract_value or 0) - out["approved"])
     db.commit()
     out["saved"] = True

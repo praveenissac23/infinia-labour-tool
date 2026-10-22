@@ -1288,7 +1288,9 @@ def build():
                  f'<script src="/portal/help/freeze.js?v={_v("portal/help/freeze.js")}" defer></script>\n'
                  f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>\n'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
-                 f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n')
+                 f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n'
+                 f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>\n'
+                 f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>\n')
     page = page.replace("</body>", help_tags + "</body>", 1)
     # The pages held in a frame (Estimation, Trello, Staff ...) are asked for by a version of what is in
     # them, so a deploy reaches the frame at once - not only after the browser drops its old copy.
@@ -1391,6 +1393,8 @@ def brand_hand_written(menu_rights=None):
                  f'<script src="/portal/help/freeze.js?v={_v("portal/help/freeze.js")}" defer></script>'
                  f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>'
+                 f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>'
+                 f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:
             new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)

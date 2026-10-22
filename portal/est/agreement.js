@@ -39,12 +39,12 @@
           var gap = it.x - end;
           if (cur && gap < Math.max(4, it.h * 0.9)) { cur.t += (gap > it.h * 0.15 && !/\s$/.test(cur.t) && !/^\s/.test(it.s) ? " " : "") + it.s; }
           else { cur = { t: it.s, x: Math.round(it.x) }; cells.push(cur); }
-          end = it.x + it.w; size = Math.max(size, it.h);
+          end = it.x + it.w; cur.e = Math.round(end); size = Math.max(size, it.h);
         });
-        cells.forEach(function (c) { c.t = c.t.replace(/\s+/g, " ").trim(); });
+        cells.forEach(function (c) { c.t = c.t.replace(/\s+/g, " ").trim(); });   // c.e: where the cell ends (figures line up on the right)
         cells = cells.filter(function (c) { return c.t; });
         if (!cells.length) return;
-        out.push({ p: pn, y: Math.round(r.y), h: Math.round(size * 10) / 10, c: cells.map(function (c) { return c.t; }), x: cells.map(function (c) { return c.x; }),
+        out.push({ p: pn, y: Math.round(r.y), h: Math.round(size * 10) / 10, c: cells.map(function (c) { return c.t; }), x: cells.map(function (c) { return c.x; }), xe: cells.map(function (c) { return c.e; }),
                    t: cells.map(function (c) { return c.t; }).join("  ") });
       });
     }
@@ -107,26 +107,68 @@
     return ocrWorker;
   }
   // what the recogniser saw, as lines and cells (a wide gap between words starts a new cell)
-  function ocrLines(data, pn, scale) {
+  function ocrLines(data, pn, scale, rules) {
     var out = [];
+    rules = rules || [];
+    var ruleBetween = function (a, b, y0, y1) {       // a column rule between two words of this line (page pixels)
+      for (var i = 0; i < rules.length; i++) { var r = rules[i]; if (r[0] > a && r[0] < b && r[1] < y1 && r[2] > y0) return true; }
+      return false;
+    };
     (data.lines || []).forEach(function (ln) {
       var words = (ln.words || []).filter(function (w) { return w.text && w.text.trim() && w.confidence > 15; });
       if (!words.length) return;
       var h = (ln.bbox.y1 - ln.bbox.y0) / scale, cells = [], cur = null, end = -1;
+      var cut = false;
       words.forEach(function (w) {
-        var x0 = w.bbox.x0 / scale, x1 = w.bbox.x1 / scale;
-        if (cur && x0 - end < Math.max(6, h * 1.1)) cur.t += " " + w.text; else { cur = { t: w.text, x: Math.round(x0) }; cells.push(cur); }
-        end = x1;
+        var x0 = w.bbox.x0 / scale, x1 = w.bbox.x1 / scale, t = w.text.trim();
+        if (/^[|\[\]{}~=_—–\\\/]+$/.test(t) && t !== "/") { cut = true; return; }   // a table rule read as a letter: a cell ends here
+        t = t.replace(/^[|\[\]]+|[|\[\]]+$/g, ""); if (!t) { cut = true; return; }
+        if (cur && !cut && rules.length && ruleBetween(end * scale, w.bbox.x0, w.bbox.y0, w.bbox.y1)) cut = true;
+        if (cur && !cut && x0 - end < Math.max(6, h * 1.1)) cur.t += " " + t; else { cur = { t: t, x: Math.round(x0) }; cells.push(cur); }
+        cut = false; end = x1; cur.e = Math.round(x1);
       });
       out.push({ p: pn, y: Math.round(ln.bbox.y0 / scale), h: Math.round(Math.min(h, 14) * 10) / 10, c: cells.map(function (c) { return c.t.trim(); }),
-                 x: cells.map(function (c) { return c.x; }), t: cells.map(function (c) { return c.t.trim(); }).join("  "), ocr: 1 });
+                 x: cells.map(function (c) { return c.x; }), xe: cells.map(function (c) { return c.e; }), t: cells.map(function (c) { return c.t.trim(); }).join("  "), ocr: 1 });
     });
     return out;
   }
+  // Table rules confuse the recogniser (a ruled line read as "|", figures beside it lost): long straight dark
+  // runs - far longer than any letter - are painted white first, so only the words are left.
+  function deRule(cv) {
+    var W = cv.width, H = cv.height, ctx = cv.getContext("2d"), im = ctx.getImageData(0, 0, W, H), d = im.data;
+    var dark = new Uint8Array(W * H), i, x, y;
+    for (i = 0; i < W * H; i++) dark[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) < 150 ? 1 : 0;
+    // how far each dark pixel runs across and down: a rule is long one way and thin the other
+    // (a shaded cell or a filled box is long both ways, and is left alone with its text)
+    var hl = new Uint16Array(W * H), vl = new Uint16Array(W * H), hmin = Math.max(60, Math.round(W * 0.06)), vmin = Math.max(70, Math.round(H * 0.035)), THIN = Math.max(6, Math.round(Math.max(W, H) * 0.005));
+    for (y = 0; y < H; y++) { var st = -1; for (x = 0; x <= W; x++) { var on = x < W && dark[y * W + x]; if (on && st < 0) st = x; if (!on && st >= 0) { for (var k = st; k < x; k++) hl[y * W + k] = Math.min(65535, x - st); st = -1; } } }
+    for (x = 0; x < W; x++) { var sv = -1; for (y = 0; y <= H; y++) { var on2 = y < H && dark[y * W + x]; if (on2 && sv < 0) sv = y; if (!on2 && sv >= 0) { for (var q = sv; q < y; q++) vl[q * W + x] = Math.min(65535, y - sv); sv = -1; } } }
+    var kill = new Uint8Array(W * H), cols = [];
+    for (i = 0; i < W * H; i++) if (dark[i] && ((hl[i] >= hmin && vl[i] <= THIN) || (vl[i] >= vmin && hl[i] <= THIN))) kill[i] = 1;
+    for (x = 0; x < W; x++) { var vr = 0; for (y = 0; y <= H; y++) { if (y < H && dark[y * W + x] && vl[y * W + x] >= vmin && hl[y * W + x] <= THIN) vr++; else { if (vr >= vmin) cols.push([x, y - vr, y]); vr = 0; } } }
+    cv._rules = cols;
+    var n = 0;
+    for (i = 0; i < W * H; i++) if (kill[i]) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255; n++; }
+    if (n) ctx.putImageData(im, 0, 0);
+    return cv;
+  }
+  function imageCanvas(url) {
+    return new Promise(function (ok, no) {
+      var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 4000 / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement("canvas");
+        cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); ok({ cv: cv, k: k });
+      };
+      img.onerror = function () { no(new Error("That picture could not be opened.")); };
+      img.src = url;
+    });
+  }
   async function ocrImage(src, pn, scale, say) {
     var w = await ocr();
+    try { if (src && src.getContext) src = deRule(src); } catch (e) { /* leave it as it is */ }
     var r = await w.recognize(src);
-    return ocrLines(r.data, pn, scale || 1);
+    return ocrLines(r.data, pn, scale || 1, src && src._rules);
   }
   async function readAgreement(file, say) {
     say = say || function () {};
@@ -134,7 +176,7 @@
     if (/\.(jpe?g|png|webp|bmp|tiff?)$/.test(name) || /^image\//.test(file.type || "")) {
       say("Recognising the text in the picture ... (the first time takes a little longer)");
       var url = URL.createObjectURL(file);
-      try { var il = await ocrImage(url, 1, 2); } finally { URL.revokeObjectURL(url); }
+      try { var ic = await imageCanvas(url); var il = await ocrImage(ic.cv, 1, 2 * ic.k); } finally { URL.revokeObjectURL(url); }
       if (!il.length) throw new Error("No text could be recognised in that picture - take it again, flat and in good light.");
       return { kind: "image", lines: il, ocr: true };
     }

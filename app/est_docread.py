@@ -302,3 +302,276 @@ def read_document(kind: str, payload: dict = Body(...), db: Session = Depends(ge
     if kind == "invoice":
         return read_invoice(lines, flat, payload.get("subs") or [])
     return READERS[kind](lines, flat)
+
+
+# ---- the rest of the app: receipts, cheques, ID documents, delivery notes, quotations -------------------
+
+COMPANY = re.compile(r"\b(L\.?L\.?C|LLC|FZE|FZC|FZCO|TRADING|EST\.?|ESTABLISHMENT|CO\.|COMPANY|CONTRACTING|SUPPLIES|SUPPLY|INDUSTRIES|GROUP|ENTERPRISES|"
+                     r"BUILDING MATERIALS|HARDWARE|ELECTRICAL|TECHNICAL|SERVICES|STORES?|CENTRE|CENTER|FACTORY|SUPERMARKET|HYPERMARKET|RESTAURANT|CAFETERIA|PHARMACY|GARAGE|STATION)\b", re.I)
+
+
+def _vendor(lines, avoid=("infinia",)):
+    """Who issued it: a company name near the top (LLC, TRADING, EST ...), not ours, not 'TAX INVOICE'."""
+    for l in lines[:14]:
+        for c in l["c"]:
+            t = c.strip(" :-")
+            if len(t) < 4 or any(a in t.lower() for a in avoid) or re.search(r"invoice|receipt|quotation|delivery|statement|tax|date|trn|tel|phone|p\.?o\.? box|email|www", t, re.I):
+                continue
+            if COMPANY.search(t) and len(t) <= 80:
+                i = lines.index(l)
+                nxt = lines[i + 1]["c"][0].strip() if i + 1 < len(lines) and lines[i + 1]["c"] else ""
+                if re.fullmatch(r"(L\.?L\.?C\.?|LLC|FZE|FZC|FZCO|FZ-?LLC|EST\.?|CO\.?|W\.?L\.?L\.?|\(L\.?L\.?C\.?\))", nxt, re.I) and not re.search(nxt.replace(".", r"\.") + "$", t):
+                    t = t + " " + nxt
+                return re.sub(r"^M/?S\.?\s*", "", t, flags=re.I)
+    for l in lines[:6]:
+        t = " ".join(l["c"]).strip()
+        if t.isupper() and 5 < len(t) <= 60 and not re.search(r"invoice|receipt|quotation|delivery|statement|tax", t, re.I) and not any(a in t.lower() for a in avoid):
+            return t.title()
+    return ""
+
+
+def _trn(flat):
+    m = re.search(r"\bTRN\b\s*(?:No\.?|Number)?\s*[:\-]?\s*(1\d{14})\b", flat, re.I) or re.search(r"\b(100\d{12})\b", flat)
+    return m.group(1) if m else ""
+
+
+def read_receipt(lines, flat):
+    """A shop receipt or supplier bill paid in cash -> date, supplier, receipt no., total, VAT, TRN, what for."""
+    f = {}
+    f["supplier"] = _vendor(lines)
+    f["receipt_no"] = _ref(lines, "receiptno", "invoiceno", "taxinvoiceno", "billno", "invno", "receiptnumber", "invoicenumber", "voucherno", "docno", "transactionno")
+    f["date"] = _date_of(lines, "date", "invoicedate", "receiptdate", "billdate", "dated", "transactiondate") or _letter_date(lines)
+    tot = _money_label(lines, "totalamountincludingvat", "totalincludingvat", "totalinclvat", "totalincvat", "grandtotal", "nettotal", "netamount", "totalamount",
+                       "amountpaid", "amountdue", "totalpayable", "total", "cash", "paid")
+    if tot is None:
+        nums = [A.money(c) for l in lines for c in l["c"] if A.money(c) is not None]
+        tot = max(nums) if nums else None
+    f["amount"] = tot
+    vat = _money_label(lines, "vatamount", "totalvat", "outputvat", "taxamount", "vat5", "vat", "tax")
+    if vat is None or (tot and abs(vat - 5) < 0.001):         # 'VAT 5% ........ 23.00': the figure at the end of the row
+        for l in lines:
+            if re.match(r"^\s*(total\s+)?(vat|tax)\b", l["c"][0], re.I) and not re.search(r"incl|excl|before|after|\btrn\b|registration", l["t"], re.I):
+                nums = [A.money(c) for c in l["c"][1:] if A.money(c) is not None]
+                nums = [x for x in nums if x != 5]
+                if nums:
+                    vat = nums[-1]
+                    break
+    if vat is not None and tot and vat < tot * 0.2:
+        f["vat"] = vat
+    f["trn"] = _trn(flat)
+    rows = max(A._tables(lines), key=lambda t: len(t["rows"]))["rows"] if A._tables(lines) else []
+    words = [r["description"] for r in rows if r["description"] and not re.search(r"total|vat|cash|change", r["description"], re.I)][:3]
+    tidy = lambda w: re.sub(r"(\s+[\d.,|\[\]]+)+\s*$", "", re.sub(r"[|\[\]]", " ", w)).strip(" ,-")
+    f["description"] = ", ".join(tidy(w)[:60] for w in words if tidy(w))
+    return _out(f, [("date", "Date"), ("supplier", "Supplier"), ("receipt_no", "Receipt no."), ("amount", "Amount"), ("vat", "VAT"), ("trn", "TRN")])
+
+
+BANKS = [("ADCB", r"ADCB|Abu Dhabi Commercial"), ("Emirates NBD", r"Emirates\s*NBD|ENBD"), ("FAB", r"First Abu Dhabi|\bFAB\b|NBAD"), ("Mashreq", r"Mashreq"),
+         ("RAKBANK", r"RAK\s*BANK|National Bank of Ras"), ("CBD", r"Commercial Bank of Dubai|\bCBD\b"), ("DIB", r"Dubai Islamic|\bDIB\b"),
+         ("ADIB", r"Abu Dhabi Islamic|ADIB"), ("Emirates Islamic", r"Emirates Islamic"), ("NBF", r"National Bank of Fujairah|\bNBF\b"),
+         ("HSBC", r"HSBC"), ("Standard Chartered", r"Standard Chartered"), ("Ajman Bank", r"Ajman Bank"), ("Sharjah Islamic", r"Sharjah Islamic"), ("UAB", r"United Arab Bank")]
+
+
+def read_cheque(lines, flat):
+    """A cheque (photo or scan) -> cheque no., date, amount, payee, bank."""
+    f = {}
+    for name, rx in BANKS:
+        if re.search(rx, flat, re.I):
+            f["bank"] = name
+            break
+    m = re.search(r"\bPay(?:\s+to(?:\s+the\s+order\s+of)?)?\s*[:\-]?\s+([A-Z][A-Za-z0-9&.,'()/ \-]{3,70}?)(?:\s+or\s+(?:bearer|order)\b|\s{2,}|$|\s+(?:AED|Dirhams|the\s+sum))", flat, re.I)
+    if m:
+        f["payee"] = re.sub(r"^M/?S\.?\s*", "", m.group(1).strip(" .,-"), flags=re.I)
+    # the amount in figures: AED **12,500.00** / 12500/- / the biggest sum on the cheque
+    cands = [float(x.replace(",", "")) for x in re.findall(r"(?:AED|Dhs?\.?|\*{1,}|#)\s*\**\s*(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d+(?:\.\d{2})?)\s*(?:/-|\**)", flat, re.I)]
+    cands += [A.money(c) for l in lines for c in l["c"] if A.money(c) is not None and ("," in c or "." in c)]
+    cands = [c for c in cands if c and c < 1e9]
+    if cands:
+        f["amount"] = max(cands)
+    # the date: dd/mm/yyyy, or the eight date boxes read as one number (15102026)
+    d = None
+    m = re.search(r"\b(\d{1,2})[/.\-](\d{1,2})[/.\-](20\d{2})\b", flat)
+    if m:
+        try:
+            d = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            d = None
+    if not d:
+        m = re.search(r"\b(\d{2})\s?(\d{2})\s?(20\d{2})\b", flat)
+        if m:
+            try:
+                d = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            except ValueError:
+                d = None
+    if not d:
+        x = A.a_date(flat)
+        d = x if x and 2000 < x.year < 2100 else None
+    f["date"] = d.isoformat() if d else ""
+    # cheque no.: the six digits at the start of the code line along the bottom
+    m = re.search(r"(?:Cheque|Chq)\s*(?:No\.?|Number)\s*[:\-]?\s*(\d{6})\b", flat, re.I)
+    if not m:
+        bottom = " ".join(l["t"] for l in lines[-4:])
+        m = re.search(r"[⑈|\"'«]?\s*(\d{6})\s*[⑈|\"'»]", bottom) or re.search(r"\b(\d{6})\b", bottom)
+    if m:
+        f["no"] = m.group(1)
+    return _out(f, [("no", "Cheque no."), ("date", "Date"), ("amount", "Amount"), ("payee", "Payee"), ("bank", "Bank")])
+
+
+def _mrz_date(s, future):
+    try:
+        y, mo, d = int(s[:2]), int(s[2:4]), int(s[4:6])
+    except ValueError:
+        return ""
+    y += 2000 if (future or y <= (date.today().year % 100) + 1) else 1900
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return ""
+
+
+def read_iddoc(lines, flat):
+    """Passport (from the code lines at the bottom), Emirates ID, residence visa, labour card ->
+    the kind of document, its number, issue and expiry dates, the name."""
+    f = {}
+    raw = [re.sub(r"\s+", "", l["t"]).upper().replace("«", "<").replace("K<", "<<") for l in lines]
+    mrz = [x for x in raw if x.count("<") >= 4 and len(x) >= 30]
+    if len(mrz) >= 2 and mrz[-2].startswith("P"):
+        l1, l2 = mrz[-2], mrz[-1]
+        f["kind"] = "passport"
+        f["number"] = l2[:9].replace("<", "").replace("O", "0") if len(l2) >= 9 else ""
+        f["nationality"] = l2[10:13].replace("<", "") if len(l2) >= 13 else ""
+        f["dob"] = _mrz_date(l2[13:19], False) if len(l2) >= 19 else ""
+        f["expires_on"] = _mrz_date(l2[21:27], True) if len(l2) >= 27 else ""
+        names = l1[5:].split("<<", 1)
+        f["name"] = (names[1].replace("<", " ").strip() + " " + names[0].replace("<", " ").strip()).strip().title() if len(names) == 2 else ""
+    low = flat.lower()
+    if not f.get("kind"):
+        if re.search(r"identity card|emirates id|\bid number\b|784-\d{4}", low):
+            f["kind"] = "eid"
+        elif re.search(r"residence|residency|entry permit|visa", low):
+            f["kind"] = "visa"
+        elif re.search(r"labou?r card|work permit|mohre|ministry of human resources", low):
+            f["kind"] = "labour_card"
+        elif "passport" in low:
+            f["kind"] = "passport"
+    if not f.get("number"):
+        m = re.search(r"\b(784-?\d{4}-?\d{7}-?\d)\b", flat)
+        if m:
+            d = re.sub(r"\D", "", m.group(1))
+            f["number"] = f"{d[:3]}-{d[3:7]}-{d[7:14]}-{d[14:]}"
+        else:
+            f["number"] = _ref(lines, "idnumber", "passportno", "passportnumber", "fileno", "filenumber", "uidno", "permitno", "cardno", "cardnumber",
+                               "documentno", "visano", "entrypermitno", "labourcardno", "workpermitno", "personalno")
+    if not f.get("expires_on"):
+        f["expires_on"] = _date_of(lines, "expirydate", "dateofexpiry", "expiry", "expireson", "validuntil", "validtill", "validupto", "expdate", "expires")
+    f["issued_on"] = _date_of(lines, "issuedate", "dateofissue", "issuedon", "issuingdate", "dateofissuing", "issued")
+    if not f.get("expires_on"):                  # an ID card with two dates: the later is the expiry
+        ds = sorted({A.a_date(m.group(0)) for m in re.finditer(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{4}\b", flat)} - {None})
+        if len(ds) >= 2:
+            f["expires_on"], f["issued_on"] = ds[-1].isoformat(), f.get("issued_on") or ds[-2].isoformat()
+    if not f.get("name"):
+        v = _lab(lines, "name", "fullname", "nameofholder", "holdername")
+        f["name"] = v if v and len(v) < 60 else ""
+    return _out(f, [("kind", "Document"), ("number", "Number"), ("issued_on", "Issued"), ("expires_on", "Expires"), ("name", "Name")])
+
+
+def read_delivery(lines, flat):
+    """A delivery note / supplier invoice for material -> supplier, DO / invoice no., date, LPO ref and the lines
+    (material, quantity, unit) - priced or not."""
+    f = {}
+    f["supplier"] = _vendor(lines)
+    f["ref"] = _ref(lines, "dono", "deliverynoteno", "deliveryno", "dnno", "deliveryorderno", "invoiceno", "taxinvoiceno", "invno", "challanno", "ref", "refno")
+    f["date"] = _date_of(lines, "deliverydate", "dodate", "date", "invoicedate", "dated") or _letter_date(lines)
+    f["lpo"] = _ref(lines, "lpono", "lpo", "pono", "purchaseorderno", "yourpono", "orderno", "yourref", "customerref")
+    f["trn"] = _trn(flat)
+    f["items"] = _material_rows(lines)
+    return _out(f, [("supplier", "Supplier"), ("ref", "DO / invoice no."), ("date", "Date"), ("lpo", "LPO ref."), ("items", "Material lines")])
+
+
+def _material_rows(lines):
+    """The material lines under a 'Description ... Qty' heading: on each row the words are the material, the
+    last figure the quantity, a short word like 'ton' / 'bag' the unit, a priced row's rate kept too. Read row by
+    row rather than by column, so a scan that joins or loses a column still gives the lines."""
+    def is_head(l):
+        s = " ".join(A.squash(c) for c in l["c"])
+        return any(k in s for k in ("description", "material", "particular", "product", "itemname")) and any(k in s for k in ("qty", "quantity", "qnty", "unit", "uom"))
+    hi = next((i for i, l in enumerate(lines) if is_head(l)), None)
+    if hi is None:
+        return []
+    units = {u.strip(".") for u in A.UNITS}
+    items = []
+    for l in lines[hi + 1:]:
+        if is_head(l):
+            continue
+        if re.search(r"\b(total|received|receiver|signature|driver|remarks|terms|prepared|checked|thank)\b", l["t"], re.I) and not items == []:
+            break
+        if l.get("edge"):
+            continue
+        NUM = re.compile(r"'?\d[\d,]*(\.\d+)?")
+        cells = []
+        for c in l["c"]:
+            c = c.strip(" |'`")
+            if not c:
+                continue
+            # 'roll 10' / 'ton 2.5': a unit and the quantity run into one cell
+            m = re.fullmatch(r"(.*?)\s*\b([A-Za-z.]{1,8})\s+(\d[\d,]*(?:\.\d+)?)((?:\s+\d[\d,]*(?:\.\d+)?)*)", c)
+            if m and m.group(2).lower().strip(".") in units:
+                if m.group(1).strip():
+                    cells.append(m.group(1).strip())
+                cells += [m.group(2), m.group(3)] + m.group(4).split()
+                continue
+            cells.append(c)
+        kinds = ["n" if NUM.fullmatch(c) else ("u" if c.lower().strip(".") in units else "t") for c in cells]
+        texts = [k for k, t in enumerate(kinds) if t == "t"]
+        if not texts:
+            if items and items[-1]["qty"] is None and "n" in kinds:
+                items[-1]["qty"] = float(cells[max(k for k, t in enumerate(kinds) if t == "n")].strip("'").replace(",", ""))
+            continue
+        desc = " ".join(cells[k] for k in texts)
+        desc = re.sub(r"^['`]?\d{1,3}[.)]?\s+", "", desc).strip(" -|")
+        if len(desc) < 3 or not re.search(r"[A-Za-z]{2}", desc):
+            continue
+        after = [float(cells[k].strip("'").replace(",", "")) for k in range(texts[-1] + 1, len(cells)) if kinds[k] == "n"]
+        unit = next((cells[k].lower().strip(".") for k in range(texts[-1] + 1, len(cells)) if kinds[k] == "u"), "")
+        qty = after[0] if after else None
+        rate = after[1] if len(after) >= 3 else None
+        items.append({"description": desc, "qty": qty, "unit": unit, "rate": rate})
+    return items
+
+
+def read_quotation(lines, flat):
+    """A supplier's quotation -> supplier, quotation ref and date, TRN, the priced lines (for a purchase order)."""
+    f = {}
+    f["supplier"] = _vendor(lines)
+    f["ref"] = _ref(lines, "quotationno", "quoteno", "quotationref", "quoteref", "qtnno", "ourref", "refno", "ref", "proformano", "offerno")
+    f["date"] = _date_of(lines, "quotationdate", "quotedate", "date", "dated") or _letter_date(lines)
+    f["trn"] = _trn(flat)
+    r = A.read(lines)
+    f["items"] = [{"description": x["description"], "qty": x.get("qty") or 1, "unit": x.get("unit") or "", "rate": x.get("rate") or x["amount"],
+                   "amount": x["amount"]} for x in r["items"]]
+    f["total"] = r["checks"].get("total_in_doc") or r["checks"].get("items_total")
+    return _out(f, [("supplier", "Supplier"), ("ref", "Quotation ref."), ("date", "Date"), ("trn", "TRN"), ("items", "Priced lines")])
+
+
+APP_READERS = {"receipt": read_receipt, "cheque": read_cheque, "iddoc": read_iddoc, "delivery": read_delivery, "quotation": read_quotation}
+
+
+import auth as _auth  # noqa: E402
+import models as _models  # noqa: E402
+
+
+@router.post("/store/docread/{kind}")
+def read_any(kind: str, payload: dict = Body(...), user: _models.User = Depends(_auth.get_current_user)):
+    """The text of a document opened in the browser (receipt, cheque, passport / ID, delivery note, quotation)
+    -> the fields of the form it is for. For any signed-in user; nothing is saved here."""
+    fn = APP_READERS.get(kind)
+    if not fn:
+        raise HTTPException(404, "Nothing reads that kind of document.")
+    lines = payload.get("lines") or []
+    if not isinstance(lines, list) or not lines or len(lines) > 20000:
+        raise HTTPException(400, "No text came from that file.")
+    lines = A.clean_lines(lines)
+    r = fn(lines, _flat(lines))
+    if kind in ("delivery", "quotation"):
+        r["items"] = r["fields"].pop("items", [])
+    return r

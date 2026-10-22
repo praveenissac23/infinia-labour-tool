@@ -32,7 +32,9 @@ CODE = re.compile(r"^(?:[A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3}){0,3}|\d{1,3}(?:\.\d{
 UNITS = {"ls", "l.s", "l.s.", "lumpsum", "lump sum", "no", "no.", "nos", "nos.", "nr", "item", "items", "set", "sets", "m", "lm", "l.m", "rm", "rmt",
          "m2", "sqm", "sq.m", "m²", "m3", "cum", "cu.m", "m³", "kg", "ton", "tons", "mt", "pcs", "pc", "each", "ea", "job", "lot", "day", "days",
          "month", "months", "hr", "hrs", "hour", "hours", "sqft", "sft", "rft", "ltr", "l", "unit", "units", "pair", "pairs", "point", "points", "pt", "pts",
-         "trip", "trips", "load", "loads", "visit", "visits", "week", "weeks"}
+         "trip", "trips", "load", "loads", "visit", "visits", "week", "weeks",
+         "bag", "bags", "roll", "rolls", "box", "boxes", "carton", "cartons", "ctn", "drum", "drums", "pail", "pails", "tin", "tins", "bundle", "bundles",
+         "sheet", "sheets", "length", "lengths", "litre", "litres", "liter", "pkt", "packet", "packets", "coil", "coils", "bucket", "buckets", "can", "cans", "bottle", "bottles"}
 
 
 def squash(s):
@@ -131,20 +133,33 @@ def clean_lines(lines):
     if ys and len({l.get("p") for l in out}) >= 2:
         bottom = max(ys)
         for l in out:
-            if "y" in l and (l["y"] < 50 or l["y"] > bottom - 22) and len(" ".join(l["c"])) < 110:
+            if "y" not in l or len(" ".join(l["c"])) >= 110:
+                continue
+            band = 28 if l.get("ocr") else 22          # a scan's footer sits less exactly
+            contact = re.search(r"P\.?\s?O\.?\s*Box|\bTel\b|\bFax\b|www\.|@[a-z0-9-]+\.|\bMob(ile)?\b", " ".join(l["c"]), re.I)
+            if l["y"] < 50 or l["y"] > bottom - band or (contact and (l["y"] < 90 or l["y"] > bottom - 70)):
                 l["edge"] = 1
     for l in out:
         xs = l.get("x")
         if xs and len(xs) == len(l["c"]):
-            nc, nx = [], []
-            for c, x in zip(l["c"], xs):
+            xe = l.get("xe") if l.get("xe") and len(l["xe"]) == len(xs) else [x + 8 * len(c) for x, c in zip(xs, l["c"])]
+            nc, nx, ne = [], [], []
+            for c, x, e in zip(l["c"], xs, xe):
                 parts = _split_figures([c])
                 nc += parts
-                nx += [x] + [x + 40 * (k + 1) for k in range(len(parts) - 1)]      # the split-off figures sit to the right
-            l["c"], l["x"] = nc, nx
+                if len(parts) == 1:
+                    nx.append(x); ne.append(e)
+                else:                                        # share the cell's width out by the length of each piece
+                    tot = sum(len(q) + 1 for q in parts) or 1
+                    pos = x
+                    for q in parts:
+                        w = (e - x) * (len(q) + 1) / tot
+                        nx.append(round(pos)); ne.append(round(pos + w)); pos += w
+            l["c"], l["x"], l["xe"] = nc, nx, ne
         else:
             l["c"] = _split_figures(l["c"])
-            l.pop("x", None) if xs else None
+            if xs:
+                l.pop("x", None); l.pop("xe", None)
         l["t"] = "  ".join(c for c in l["c"] if c)
     return out
 
@@ -165,8 +180,9 @@ def _merge_ocr_rows(out):
         prev = res[-1] if res else None
         if prev is not None and l.get("ocr") and prev.get("ocr") and prev.get("p") == l.get("p") and "x" in l and "x" in prev \
                 and abs(l["y"] - prev["y"]) <= max(5, 0.7 * max(l.get("h") or 8, prev.get("h") or 8)) and not _overlap(prev, l):
-            cells = sorted(list(zip(prev["x"], prev["c"])) + list(zip(l["x"], l["c"])))
-            prev["x"], prev["c"] = [c[0] for c in cells], [c[1] for c in cells]
+            pe, le = prev.get("xe") or prev["x"], l.get("xe") or l["x"]
+            cells = sorted(list(zip(prev["x"], prev["c"], pe)) + list(zip(l["x"], l["c"], le)))
+            prev["x"], prev["c"], prev["xe"] = [c[0] for c in cells], [c[1] for c in cells], [c[2] for c in cells]
             prev["h"] = max(prev.get("h") or 0, l.get("h") or 0)
             prev["y"] = min(prev["y"], l["y"])
             continue
@@ -779,3 +795,52 @@ def read_agreement(payload: dict = Body(...), db: Session = Depends(get_db), use
                 r["known"] = True
                 break
     return r
+
+
+# ---- a table read under its own headings (bank statements, variation logs ...) -----------------------
+
+NUMLIKE = re.compile(r"^[(\-]?(?:AED\s*)?[\d,]+(?:\.\d+)?\)?(?:\s*(?:cr|dr))?$", re.I)
+
+
+def grid(lines, is_header):
+    """The rows under a heading row, each cell put in its heading's column - by where it sits on the page
+    (a figure by where it ends, words by where they start), so a scanned or PDF table reads like the Excel
+    one. Word and Excel tables come with their cells already in order. A heading repeated on the next page
+    sets the columns again. -> (heading cells, [{"cells": [...], "p": page}])"""
+    lines = clean_lines(lines)
+    hi = next((i for i, l in enumerate(lines) if is_header(l["c"])), None)
+    if hi is None:
+        return None, []
+    head = lines[hi]
+    names = list(head["c"])
+    rows = []
+
+    def anchors(h):
+        xs = h.get("x")
+        xe = h.get("xe") if h.get("xe") and len(h["xe"]) == len(xs or []) else ([x + 6 * len(c) for x, c in zip(xs, h["c"])] if xs else None)
+        return xs, xe
+    hx, he = anchors(head)
+    for l in lines[hi + 1:]:
+        if is_header(l["c"]):
+            if len(l["c"]) == len(names):
+                hx, he = anchors(l)
+            continue
+        if l.get("edge"):
+            continue
+        if hx is None or "x" not in l:
+            cells = list(l["c"]) + [""] * max(0, len(names) - len(l["c"]))
+            rows.append({"cells": cells[:max(len(names), len(l["c"]))], "p": l.get("p", 1)})
+            continue
+        row = [""] * len(names)
+        xe = l.get("xe") if l.get("xe") and len(l["xe"]) == len(l["x"]) else [x + 6 * len(c) for x, c in zip(l["x"], l["c"])]
+        for c, x, e in zip(l["c"], l["x"], xe):
+            if NUMLIKE.match(c.replace(" ", "")):
+                # under the heading it overlaps most; if it overlaps none, the heading it ends nearest
+                ov = [min(e, he[j]) - max(x, hx[j]) for j in range(len(names))]
+                best = max(range(len(names)), key=lambda j: ov[j])
+                k = best if ov[best] > 0 else min(range(len(names)), key=lambda j: abs(e - he[j]))
+            else:
+                k = min(range(len(names)), key=lambda j: (0 if hx[j] - 6 <= x <= he[j] + 6 else min(abs(x - hx[j]), abs(x - he[j])), abs(x - hx[j])))
+            row[k] = (row[k] + " " + c).strip()
+        rows.append({"cells": row, "p": l.get("p", 1)})
+    return names, rows
