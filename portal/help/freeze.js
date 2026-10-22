@@ -150,6 +150,29 @@
     else if (head) grid(head).forEach(function (x) { x[0].style.textAlign = x[2] === 1 ? (how[x[1]] || "center") : "center"; });
   }
   var PREVIEW = /^\/export\//.test(location.pathname);
+  /* Ink: the heading row keeps the company red; titles are black and green / blue bands grey -
+     black on white otherwise. Done here once for every preview; the on-screen bar is left alone. */
+  function rgb(c) { var m = String(c).match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/); return m && (m[4] === undefined || +m[4] > 0.5) ? [+m[1], +m[2], +m[3]] : null; }
+  function lum(c) { return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255; }
+  function sat(c) { var mx = Math.max.apply(0, c), mn = Math.min.apply(0, c); return mx ? (mx - mn) / mx : 0; }
+  function inkSave() {
+    if (!PREVIEW || !document.body) return;
+    // one font, the app's own, on every preview too
+    var f = document.createElement("style");
+    f.textContent = 'body, body *:not(code):not(pre):not(kbd) { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; }';
+    document.head.appendChild(f);
+    document.querySelectorAll("body *").forEach(function (el) {
+      if (el.closest(".pvbar, .bar, .freeze-head, button, .btn, script, style") || /^(IMG|SVG|PATH|CANVAS|INPUT|BUTTON|A)$/.test(el.tagName)) return;
+      var cs = getComputedStyle(el), bg = rgb(cs.backgroundColor);
+      if (bg && sat(bg) > 0.12 && lum(bg) < 0.92 && lum(bg) > 0.6 && /^(TD|TR|TFOOT|TBODY)$/.test(el.tagName) && !el.closest("thead")) {
+        el.style.setProperty("background-color", "#F4F2EF", "important");     // a green / blue band: grey
+      }
+      var fg = rgb(cs.color);
+      if (fg && sat(fg) > 0.45 && parseFloat(cs.fontSize) >= 14 && el.textContent.trim().length > 2 && /^(H1|H2|H3|H4|DIV|SPAN|P|B|STRONG|TD|TH)$/.test(el.tagName))
+        el.style.setProperty("color", "#1F2328", "important");        // a red title in black
+    });
+  }
+  try { inkSave(); } catch (e) {}
   function alignAll() {
     var list = PREVIEW ? document.querySelectorAll("table") : document.querySelectorAll("#report-preview-card table, .pv-align table, table.pv-align");
     [].forEach.call(list, function (t) { if (!t.closest(".freeze-head") && !t.closest(".hd, .kvt, .ctr, .two, .sig")) { try { alignTable(t); } catch (e) {} } });

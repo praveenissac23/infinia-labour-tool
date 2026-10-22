@@ -1358,7 +1358,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bday-top { background: linear-gradient(135deg, #B7322A, #D9573F 55%, #E8A33D); color: #fff; padding: 26px 22px 20px; }
   .bday-cake { font-size: 46px; line-height: 1; animation: bday-bob 1.6s ease-in-out infinite; }
   @keyframes bday-bob { 50% { transform: translateY(-5px) rotate(-4deg); } }
-  .bday-top h2 { margin: 8px 0 2px; font-size: 27px; letter-spacing: .02em; color: #fff; font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .bday-top h2 { margin: 8px 0 2px; font-size: 27px; letter-spacing: .02em; color: #fff; }
   .bday-top p { margin: 0; font-size: 13px; opacity: .9; }
   .bday-list { padding: 14px 20px 6px; max-height: 46vh; overflow-y: auto; }
   .bday-person { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #F1ECE7; text-align: left; }
@@ -1643,6 +1643,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #vh-new { font-size:11.5px; color:#8A6200; margin-top:3px; }
   .vh-table td { vertical-align:middle; } .vh-steps { display:flex; flex-wrap:wrap; gap:4px; } .vh-steps span { font-size:11.5px; background:#E7F4EA; color:#2E7D32; border-radius:10px; padding:2px 8px; }
   .vh-acts { display:flex; gap:6px; justify-content:flex-end; flex-wrap:nowrap; }
+  /* the buttons stand in the same place on every line, whatever the middle one says (Edit / note, Close, Payments) */
+  .vh-acts .btn { justify-content:center; text-align:center; } .vh-acts .btn:nth-child(1) { min-width:84px; } .vh-acts .btn:nth-child(2) { min-width:104px; } .vh-acts .btn:nth-child(3) { min-width:138px; }
+  .vh-noteed input[type=text] { font:inherit; font-size:13px; font-weight:400; height:36px; padding:0 10px; box-sizing:border-box; width:100%; }
   .vh-note { display:block; font-size:11.5px; color:#8A6200; margin-top:2px; }
   .vh-noteed { display:flex; gap:8px; align-items:flex-end; margin:4px 0 10px; text-align:left; } .vh-noteed textarea { width:100%; box-sizing:border-box; font:inherit; font-size:13px; padding:6px 8px; border:1px solid #DDD4CC; border-radius:7px; resize:vertical; }
   .vh-detail td { background:#FBF8F5; padding:6px 14px !important; } .vh-pays { width:100%; border-collapse:collapse; font-size:12.5px; } .vh-pays td { padding:5px 6px; border-bottom:1px solid #EFE7E0; text-align:left; }
@@ -3605,7 +3608,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
           <div class="card pc-card">
             <h3 style="margin:0 0 8px;font-size:15px;">Ongoing visas</h3>
-            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vh-table"><thead><tr><th class="l" style="width:220px;">Whose visa</th><th class="l">Steps paid</th><th style="width:90px;">Payments</th><th class="n" style="width:130px;">Held (AED)</th><th style="width:340px;"></th></tr></thead><tbody id="vh-body"></tbody><tfoot id="vh-foot"></tfoot></table></div>
+            <div class="grid-wrap" style="max-height:none;"><table class="pc-table vh-table"><thead><tr><th class="l" style="width:220px;">Whose visa</th><th class="l">Steps paid</th><th style="width:116px;white-space:nowrap;">Payments</th><th class="n" style="width:130px;">Held (AED)</th><th style="width:340px;"></th></tr></thead><tbody id="vh-body"></tbody><tfoot id="vh-foot"></tfoot></table></div>
             <div id="vh-done"></div>
           </div>
           </div>

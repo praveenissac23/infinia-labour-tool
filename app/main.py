@@ -37,6 +37,7 @@ import auth
 import payroll_cycle as pcyc
 import reports as rp
 import export_web
+import inksave  # noqa: F401  - every PDF black on white (light heading rows, no solid colour)
 
 import push  # noqa: E402  (its tables are made with the rest)
 import watch  # noqa: E402  (its table too)
