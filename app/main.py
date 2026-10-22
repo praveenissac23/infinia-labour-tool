@@ -307,6 +307,18 @@ app.add_middleware(
 )
 
 
+def _freeze_version():
+    import hashlib
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portal", "help", "freeze.js"), "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()[:10]
+    except OSError:
+        return "0"
+
+
+_FREEZE_V = _freeze_version()
+
+
 @app.middleware("http")
 async def never_cache_api(request, call_next):
     """Every answer from this API is live data and must be fetched fresh.
@@ -332,6 +344,22 @@ async def never_cache_api(request, call_next):
     finally:
         if token is not None:
             export_web.VIEW_PREFS.reset(token)
+    # Every Preview page gets frozen heading rows (portal/help/freeze.js) - one place, all reports.
+    if request.url.path.startswith("/export/") and (response.headers.get("content-type") or "").startswith("text/html"):
+        try:
+            import gzip as _gz
+            raw = b"".join([chunk async for chunk in response.body_iterator])
+            zipped = (response.headers.get("content-encoding") or "").lower() == "gzip"
+            body = _gz.decompress(raw) if zipped else raw
+            tag = f'<script src="/portal/help/freeze.js?v={_FREEZE_V}" defer></script>'.encode()
+            if b"<table" in body and b"freeze.js" not in body:
+                i = body.rfind(b"</body>")
+                body = body[:i] + tag + body[i:] if i >= 0 else body + tag
+            out = _gz.compress(body) if zipped else body
+            headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+            response = HTMLResponse(content=out, status_code=response.status_code, headers=headers)
+        except Exception:
+            pass
     if not request.url.path.startswith("/export/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"

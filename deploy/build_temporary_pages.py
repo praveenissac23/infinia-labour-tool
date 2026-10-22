@@ -1284,6 +1284,7 @@ def build():
                  f'<script src="/portal/help/img/manifest.js?v={_v("portal/help/img/manifest.js")}" defer></script>\n'
                  f'<script src="/portal/help/heads.js?v={_v("portal/help/heads.js")}" defer></script>\n'
                  f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}" defer></script>\n'
+                 f'<script src="/portal/help/freeze.js?v={_v("portal/help/freeze.js")}" defer></script>\n'
                  f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>\n'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n')
@@ -1372,6 +1373,7 @@ def brand_hand_written(menu_rights=None):
                  f'<script src="/portal/help/guides.js?v={_v("portal/help/guides.js")}"></script>'
                  f'<script src="/portal/help/heads.js?v={_v("portal/help/heads.js")}"></script>'
                  f'<script src="/portal/help/tips.js?v={_v("portal/help/tips.js")}"></script>'
+                 f'<script src="/portal/help/freeze.js?v={_v("portal/help/freeze.js")}" defer></script>'
                  f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>'
                  '<!--/help-tips-->')
