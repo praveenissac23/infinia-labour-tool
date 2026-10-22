@@ -1320,7 +1320,14 @@ def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), use
         setattr(pc, STEP_DATE[step], None)
         if step == "Paid":
             pc.paid_amount = 0.0
+            pc.paid_ref = ""                 # not paid after all: no cheque reference left showing
         step = SUB_STEPS[i - 1] if i else "Received"
+    # the steps after this one have not happened (yet / any more): no dates left over from before
+    for later in SUB_STEPS[SUB_STEPS.index(step) + 1:]:
+        if STEP_DATE.get(later) and later != "Received":
+            setattr(pc, STEP_DATE[later], None)
+    if step != "Paid":
+        pc.paid_amount, pc.paid_ref = 0.0, ""
     pc.status = step
     pc.updated_by = user.id
     db.commit()
