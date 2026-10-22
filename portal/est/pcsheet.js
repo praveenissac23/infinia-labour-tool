@@ -38,7 +38,7 @@ async function scheduleEditor(sid) {
           <td><input data-k="qty" class="n" value="${x.qty || ""}" style="width:64px"></td><td><input data-k="unit" value="${esc(x.unit)}" style="width:48px"></td><td><input data-k="rate" class="n" value="${x.rate || ""}" style="width:86px"></td>
           <td><input data-k="amount" class="n" value="${x.amount || ""}" style="width:100px" placeholder="qty x rate"></td>
           <td><select data-k="measure">${MEAS.map(([k, l]) => `<option value="${k}" ${x.measure === k ? "selected" : ""}>${l}</option>`).join("")}</select></td>
-          <td class="nowrap"><input type="checkbox" data-k="is_var" ${x.is_var ? "checked" : ""}> <input data-k="var_ref" value="${esc(x.var_ref)}" placeholder="Var 01 / LPO" style="width:90px"></td>
+          <td class="nowrap"><input type="checkbox" data-k="is_var" ${x.is_var ? "checked" : ""}> <input data-k="var_ref" value="${esc(x.var_ref)}" placeholder="V01 / LPO" style="width:90px"></td>
           <td><button class="btn btn-plain btn-sm" data-del="${i}" ${x.used ? 'title="On a certificate - removing it takes it off the open certificates"' : ""}>&times;</button></td></tr>`).join("")}
         </tbody></table></div>` : `<div class="empty">No lines yet. Copy the lines of the agreement's BOQ in Excel (item, description, qty, unit, rate, amount) and press <b>Paste from Excel</b>.</div>`}
       </div>`;
@@ -94,7 +94,7 @@ function pasteItems(sid, sub, after) {
     { k: "text", label: "Lines copied from Excel", type: "area", full: true, focus: true, tip: "Select the rows in Excel (item no., description, type, qty, unit, rate, amount) and paste here. A line in capitals with no figures becomes a heading." },
     { k: "bill", label: "Bill (B1, B2 ...)", value: "", ph: "optional" }, { k: "bill_title", label: "Bill name", value: "", ph: "e.g. Electrical Works" },
     { k: "measure", label: "Measured by", type: "select", options: MEAS, value: (sub.contract_type || "").match(/measur|rate/i) ? "qty" : "pct" },
-    { k: "is_var", label: " ", type: "check", text: "These are variation lines", value: false }, { k: "var_ref", label: "Variation ref.", value: "", ph: "Var 01 / LPO no." },
+    { k: "is_var", label: " ", type: "check", text: "These are variation lines", value: false }, { k: "var_ref", label: "Variation ref.", value: "", ph: "V01 / LPO no." },
   ], async v => { const r = await POST(`/store/est/subs/${sid}/items/paste`, v); toast(`${r.added} lines added - ${money(r.total, false)}`); if (after) await after(); }, { wide: true, save: "Add lines",
     after: () => { const t = $("#f-text"); if (t) t.style.height = "180px"; } });
 }

@@ -1147,10 +1147,15 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
     elif kind == "variations":
         if not data.get("seq"):
             row.seq = _next_seq(db, EstVariation, project_id=row.project_id)
+        row.ref = vref(row.seq)                 # every variation is V01, V02 ... in the order made
         if row.on_date is None:
             row.on_date = t
         if not row.title:
             raise HTTPException(400, "What is the variation for?")
+    elif kind == "subvos":
+        nums = [int(m.group(1)) for (r,) in db.query(EstSubVO.ref).filter(EstSubVO.sub_id == row.sub_id).all()
+                for m in [re.match(r"^V(\d+)$", (r or "").strip(), re.I)] if m]
+        row.ref = vref(max(nums + [db.query(EstSubVO).filter(EstSubVO.sub_id == row.sub_id).count()]) + 1)
     elif kind == "logs":
         if row.kind not in LOG_STATUS:
             raise HTTPException(400, "Unknown log.")
@@ -1195,6 +1200,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
     row = db.query(model).get(rid)
     if not row:
         raise HTTPException(404, "That line is not there any more.")
+    if kind in ("variations", "subvos"):
+        data.pop("ref", None)                   # the V number is given, never typed
     if kind == "subs" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
             and db.query(EstSubPC).filter(EstSubPC.sub_id == row.id, EstSubPC.status == "Paid").first():
         raise HTTPException(400, "This subcontract has paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
@@ -1472,14 +1479,61 @@ def boq_scope(pid: int, data: dict = Body(...), db: Session = Depends(get_db), u
 
 # ---- variation log brought in from the QS Excel file ---------------------------------------
 
+def vref(seq):
+    """A variation's number: V01, V02 ... (V100 after V99)."""
+    return f"V{int(seq or 0):02d}"
+
+
+def renumber_variations(SessionLocal):
+    """Once: every variation on every project numbered V01, V02 ... in its log order (client
+    variations and subcontract variations alike). A reference that was something else (CP02,
+    OHP-1, Amendment 1) is kept in the remarks / description so nothing is lost."""
+    import est_pcsheet as S
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_vo_vnumbers").first():
+            return
+        n = 0
+        for pid in [x[0] for x in db.query(EstVariation.project_id).distinct().all()]:
+            for i, v in enumerate(db.query(EstVariation).filter(EstVariation.project_id == pid).order_by(EstVariation.seq, EstVariation.id).all(), 1):
+                old, new = (v.ref or "").strip(), vref(i)
+                if old and old.upper() != new and not (v.notes or "").startswith("QS log ref."):
+                    v.notes = (f"QS log ref. {old}" + (f" - {v.notes}" if v.notes else ""))[:4000]
+                v.seq, v.ref = i, new
+                n += 1
+        for sid in [x[0] for x in db.query(EstSubVO.sub_id).distinct().all()]:
+            remap = {}
+            for i, v in enumerate(db.query(EstSubVO).filter(EstSubVO.sub_id == sid).order_by(EstSubVO.on_date, EstSubVO.id).all(), 1):
+                old, new = (v.ref or "").strip(), vref(i)
+                if old and old.upper() != new:
+                    remap[old.lower()] = new
+                    if not re.match(r"^(var|vo|v)[\s.-]*\d+$", old, re.I) and old.lower() not in (v.title or "").lower():
+                        v.title = f"{v.title} ({old})"[:4000] if v.title else old
+                v.ref = new
+                n += 1
+            for it in db.query(S.EstSubItem).filter(S.EstSubItem.sub_id == sid, S.EstSubItem.is_var == True).all():  # noqa: E712
+                if (it.var_ref or "").strip().lower() in remap:
+                    it.var_ref = remap[it.var_ref.strip().lower()]
+        db.add(models.Setting(key="est_vo_vnumbers", value="1"))
+        db.commit()
+        if n:
+            print(f"Variations numbered V01, V02 ...: {n}")
+    finally:
+        db.close()
+
+
 def _vo_rows_in(db, p, rows, user_id):
     """Puts parsed variation rows on the project, numbered after what is there."""
     seq = _next_seq(db, EstVariation, project_id=p.id) - 1
     for x in rows:
         seq += 1
         v = EstVariation(project_id=p.id, seq=seq, created_by=user_id)
-        for k in ("title", "kind", "source", "ref", "pc_ref", "status", "notes"):
+        for k in ("title", "kind", "source", "pc_ref", "status", "notes"):
             setattr(v, k, x.get(k) or "")
+        v.ref = vref(seq)
+        old = str(x.get("ref") or "").strip()
+        if old and old.upper() != v.ref:        # the QS log's own number kept in the remarks
+            v.notes = (f"QS log ref. {old}" + (f" - {v.notes}" if v.notes else ""))[:4000]
         for k in ("submitted_amount", "revised_amount", "approved_amount", "absorbed_amount"):
             setattr(v, k, r2(x.get(k)))
         for k in ("submitted", "approved_on"):
@@ -1733,7 +1787,7 @@ def _export_rows(db, what, p, q, status, sub_id):
         money = ["Submitted amount", "Revised amount", "Approved amount", "Absorbed amount"]
         for v in b["variations"]:
             sub = next((s["name"] for s in b["subs"] if s["id"] == v["sub_id"]), "")
-            r = {"Ref.": v["ref"] or f"VO-{v['seq']:03d}", "Description": v["title"], "Type": v["kind"], "Source": v["source"],
+            r = {"Ref.": v["ref"] or vref(v["seq"]), "Description": v["title"], "Type": v["kind"], "Source": v["source"],
                  "Submitted": _d(v["submitted"]), "Submitted amount": v["submitted_amount"], "Revised amount": v["revised_amount"],
                  "Approved on": _d(v["approved_on"]), "Approved amount": v["approved_amount"], "Absorbed amount": v["absorbed_amount"],
                  "Claimed in PC": v["pc_ref"] or "", "Subcontractor": sub, "Status": v["status"], "Remarks": v["notes"] or ""}

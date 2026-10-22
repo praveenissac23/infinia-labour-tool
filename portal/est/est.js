@@ -95,7 +95,7 @@ function fieldHtml(f) {
   else if (f.type === "check") inp = `<label class="chk"><input type="checkbox" id="f-${f.k}" ${v ? "checked" : ""}> ${esc(f.text || "")}</label>`;
   else if (f.type === "date") inp = `<input id="f-${f.k}" type="date" value="${esc(v)}">`;
   else if (["money", "num", "pct"].includes(f.type)) inp = `<input id="f-${f.k}" class="money" inputmode="decimal" value="${v === "" || v === null ? "" : esc(v)}" placeholder="${f.ph || (f.type === "pct" ? "%" : "0.00")}">`;
-  else inp = `<input id="f-${f.k}" value="${esc(v)}" placeholder="${esc(f.ph || "")}" autocomplete="off">`;
+  else inp = `<input id="f-${f.k}" value="${esc(v)}" placeholder="${esc(f.ph || "")}" autocomplete="off"${f.ro ? ' readonly tabindex="-1" style="background:#f3f4f6;color:#374151"' : ""}>`;
   const q = f.quick ? `<div class="quick">${f.quick.map((x, i) => `<button type="button" data-q="${f.k}:${i}">${esc(x[0])}</button>`).join("")}</div>` : "";
   return `<div class="f ${f.full || f.type === "area" ? "full" : ""}">${lab}${inp}${q}${f.hint ? `<div class="hint">${f.hint}</div>` : ""}</div>`;
 }
@@ -675,7 +675,7 @@ function voSubForm(s, v) {
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
     { k: "sign", label: "Type", type: "seg", options: ["Addition", "Omission"], value: (v.amount || 0) < 0 ? "Omission" : "Addition", tip: "Omission takes the amount off the subcontract - type the amount without a minus." },
     { k: "amount", label: "Amount (AED)", type: "money", value: v.amount ? Math.abs(v.amount) : "" },
-    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Ref.", value: v.ref || `VO-${pad((s.vos || []).length + 1, 2)}`, tip: "Numbered for you (VO-01, VO-02 ...) - change it to the subcontractor's own reference if there is one." },
+    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Variation no.", value: v.ref || nextSubVoRef(s), ro: true, tip: "Numbered for you, in order: V01, V02, V03 ... The subcontractor's own reference can go in the description." },
   ], async x => { const a = Math.abs(Number(String(x.amount || 0).replace(/,/g, "")) || 0); x.amount = x.sign === "Omission" ? -a : a; delete x.sign; if (v.id) await PATCH(`/store/est/subvos/${v.id}`, x); else await POST("/store/est/subvos", Object.assign(x, { sub_id: s.id })); await reload(); toast("Saved"); },
   { del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
 }
@@ -1039,14 +1039,14 @@ SECTIONS["client.vo"] = el => {
   $$("[data-vst]", el).forEach(x => x.onclick = async () => { const [id, s] = x.dataset.vst.split(":"); const d = { status: s }; if (s === "Submitted") d.submitted = today(); try { await PATCH(`/store/est/variations/${id}`, d); await reload(); toast(s); } catch (e) { fail(e); } });
   $$("[data-vapp]", el).forEach(x => x.onclick = () => { const v = b.variations.find(y => y.id === +x.dataset.vapp);
     const base = v.revised_amount || v.submitted_amount;
-    modal(`${v.ref || "VO-" + pad(v.seq)} approved`, [{ k: "approved_amount", label: "Approved amount (AED)", type: "money", value: base, quick: [["As submitted", el2 => el2.value = v.submitted_amount], ...(v.revised_amount ? [["As revised", el2 => el2.value = v.revised_amount]] : [])], focus: true }, { k: "approved_on", label: "Approved on", type: "date", value: today() }, { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" }],
+    modal(`${v.ref || vref(v.seq)} approved`, [{ k: "approved_amount", label: "Approved amount (AED)", type: "money", value: base, quick: [["As submitted", el2 => el2.value = v.submitted_amount], ...(v.revised_amount ? [["As revised", el2 => el2.value = v.revised_amount]] : [])], focus: true }, { k: "approved_on", label: "Approved on", type: "date", value: today() }, { k: "pc_ref", label: "Claimed in PC", value: v.pc_ref || "" }],
       async d => { await PATCH(`/store/est/variations/${v.id}`, Object.assign(d, { status: "Approved" })); await reload(); toast("Approved - added to the contract"); }); });
 };
-// The variation log as the QS keeps it: grouped (variations & cost proposals / absorbed / coordination),
+// The variation log as the QS keeps it: grouped (variations / absorbed / coordination),
 // fixed columns, every figure lined up, a subtotal per group and the grand total.
 function voTable(list) {
   const m = v => v ? money(v, false) : '<span class="dash">-</span>';
-  const groups = [["Variations & cost proposals", list.filter(v => v.kind !== "Coordination" && v.status !== "Absorbed")],
+  const groups = [["Variations", list.filter(v => v.kind !== "Coordination" && v.status !== "Absorbed")],
                   ["Absorbed by Infinia - not added to the contract", list.filter(v => v.kind !== "Coordination" && v.status === "Absorbed")],
                   ["Coordination, builders' work & attendance (OHP)", list.filter(v => v.kind === "Coordination")]].filter(g => g[1].length);
   const tot = rows => ({ sub: r2(rows.reduce((a, v) => a + (v.submitted_amount || 0), 0)), rev: r2(rows.reduce((a, v) => a + (v.revised_amount || 0), 0)),
@@ -1084,9 +1084,9 @@ async function voImport(file) {
 }
 function voForm(v) {
   v = v || {};
-  modal(v.id ? (v.ref || `VO-${pad(v.seq)}`) : "New variation", [
+  modal(v.id ? (v.ref || vref(v.seq)) : "New variation", [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
-    { k: "ref", label: "Ref. (V01, CP02 ...)", value: v.ref || (v.id ? "" : nextVoRef()), tip: "Numbered for you after the last one in the log (V07 after V06). Change it for a cost proposal (CP...)." },
+    { k: "ref", label: "Variation no.", value: v.ref || (v.id ? vref(v.seq) : nextVoRef()), ro: true, tip: "Every variation is numbered for you in the order it is made: V01, V02, V03 ... (cost proposals and OHP claims too). The client's or QS's own reference can go in the remarks." },
     { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission", "Coordination"], value: v.kind || "Addition" },
     { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement", "Coordination & attendance"], value: v.source || "Client instruction" },
     { k: "submitted", label: "Submitted on", type: "date", value: v.submitted || "" },
@@ -1105,12 +1105,12 @@ function voForm(v) {
       if (st_.value === "Submitted" && !$("#f-submitted").value) $("#f-submitted").value = today();
       if (st_.value === "Approved") { if (!$("#f-approved_on").value) $("#f-approved_on").value = today(); if (!$("#f-approved_amount").value) $("#f-approved_amount").value = $("#f-revised_amount").value || $("#f-submitted_amount").value; } }); } });
 }
-// The next variation ref after the last one in the log: V06 -> V07, VO-12 -> VO-13.
-function nextVoRef() {
-  const refs = ST.b.variations.map(x => String(x.ref || "").trim()).filter(r => /^[A-Za-z]{1,3}[-\s]?\d+$/.test(r) && !/^CP/i.test(r));
-  if (!refs.length) return "V01";
-  const best = refs.map(r => { const m = r.match(/^([A-Za-z]{1,3}[-\s]?)(\d+)$/); return { p: m[1], n: +m[2], w: m[2].length }; }).sort((a, b) => b.n - a.n)[0];
-  return best.p + String(best.n + 1).padStart(best.w, "0");
+// Variation numbers: V01, V02 ... in the order they are made (the server gives the same number).
+function vref(n) { return "V" + String(+n || 0).padStart(2, "0"); }
+function nextVoRef() { return vref(Math.max(0, ...ST.b.variations.map(x => +x.seq || 0)) + 1); }
+function nextSubVoRef(s) {
+  const nums = (s.vos || []).map(x => { const m = String(x.ref || "").trim().match(/^V(\d+)$/i); return m ? +m[1] : 0; });
+  return vref(Math.max((s.vos || []).length, ...nums) + 1);
 }
 
 // ---------------- Overview > invoices (from Accounts) ----------------

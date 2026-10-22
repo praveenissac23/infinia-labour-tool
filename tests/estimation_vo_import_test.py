@@ -46,11 +46,16 @@ for code, (acc, absd) in SHEET.items():
     ck(f"{code}: contract back to the original {ORIGINAL[code]:,.2f}", abs(p.contract_value - ORIGINAL[code]) < 0.005, p.contract_value)
     ck(f"{code}: original + approved = the contract as it stood", abs(p.contract_value + a - seed[code]["contract_with_vos"]) < 0.005)
     ck(f"{code}: numbered 1..n", [v.seq for v in vs] == list(range(1, len(vs) + 1)))
+    ck(f"{code}: every line is V01, V02 ... in order", [v.ref for v in vs] == [E.vref(i) for i in range(1, len(vs) + 1)], [v.ref for v in vs][:6])
 
 # Line by line spot checks against the sheets.
 def one(code, ref, title_start=""):
     p = db.query(E.EstProject).filter_by(code=code).one()
-    return next(v for v in db.query(E.EstVariation).filter_by(project_id=p.id) if v.ref == ref and v.title.startswith(title_start))
+    # every line is now V01, V02 ...; the QS log's own number is kept in the remarks
+    def was(v):
+        n = v.notes or ""
+        return not ref or n == f"QS log ref. {ref}" or n.startswith(f"QS log ref. {ref} - ") or (v.ref == ref and not n.startswith("QS log ref."))
+    return next(v for v in db.query(E.EstVariation).filter_by(project_id=p.id) if was(v) and v.title.startswith(title_start))
 v = one("911", "V11")
 ck("911 V11: submitted 175.79, revised and accepted -2,709.74 (credit kept as a minus)", (v.submitted_amount, v.revised_amount, v.approved_amount) == (175.79, -2709.74, -2709.74), (v.submitted_amount, v.approved_amount))
 v = one("908", "CP01.B")

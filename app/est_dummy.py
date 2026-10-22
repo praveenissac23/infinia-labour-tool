@@ -236,7 +236,7 @@ def _subs(db, add, p, i, ago, S):
                       agreement=f"IC/{p.code}/SCA/03/26", lpo="", value=186450.0, adv_pct=10, ret_pct=10, vat_pct=5, status="Active",
                       start_date=ago(150), agreement_date=ago(160), contract_type="Contract progressive payment",
                       pay_terms="10% advance against undated security cheque\n15% upon drawing submission & approval of sample\n40% against material delivery\n35% against installation\nRetention 10%"))
-    add(E.EstSubVO(sub_id=s1.id, on_date=ago(70), ref="Var 01", title="Additional glass handrail at staircase", amount=12600.0))
+    add(E.EstSubVO(sub_id=s1.id, on_date=ago(70), ref="V01", title="Additional glass handrail at staircase", amount=12600.0))
     alu = [("1", "Sliding door 4 shutter (2 slide + 2 fix) slim system", "SD1", 1, "No", 36400.0), ("2", "Sliding door 2 shutter with top fixed panel", "SD2", 2, "No", 11650.0),
            ("3", "Curtain wall fixed glass - 6 panels", "W1", 1, "No", 35200.0), ("4", "Hinge window with top fixed glass", "W2", 4, "No", 1240.0),
            ("5", "Sky light - double laminated glass", "SKY", 1, "No", 2350.0), ("6", "Glass handrail 17.52 laminated with top rail", "GH", 28, "m", 860.0)]
@@ -244,7 +244,7 @@ def _subs(db, add, p, i, ago, S):
     for n, (no, d, ref, q, u, r) in enumerate(alu, 1):
         items1.append(add(S.EstSubItem(sub_id=s1.id, sort=n, no=no, description=d, ref=ref, qty=q, unit=u, rate=r, amount=E.r2(q * r), measure="size")))
     v1 = add(S.EstSubItem(sub_id=s1.id, sort=99, no="1", description="Additional glass handrail at staircase", ref="GH", qty=14.65, unit="m", rate=860, amount=12600.0,
-                          measure="size", is_var=True, var_ref="Var 01"))
+                          measure="size", is_var=True, var_ref="V01"))
     pc_adv = add(E.EstSubPC(sub_id=s1.id, seq=1, pc_type="Advance", inv_ref="Advance", adv_amount=E.r2(186450 * .1), status="Certified", certified_on=ago(140),
                             issued=ago(139), measured_on=ago(140), prep_by="Arathi.S", prep_on=ago(140), chk_by="Anoop.S", chk_on=ago(139)))
     pc2 = add(E.EstSubPC(sub_id=s1.id, seq=2, inv_ref="GL/INV/0412", inv_date=ago(62), inv_amount=78000, received=ago(60), to_site=ago(59), site_back=ago(55),
@@ -341,8 +341,8 @@ def _variations(add, p, base, ago):
     for n, (ref, title, kind, sub, rev, app, absd, sd, ad, pc, st, note) in enumerate(rows, 1):
         f = lambda v: E.r2(v * k)
         sign = -1 if kind == "Omission" else 1
-        add(E.EstVariation(project_id=p.id, seq=n, ref=ref, title=title, kind=kind, source="Client instruction", submitted=ago(sd) if sd else None,
+        add(E.EstVariation(project_id=p.id, seq=n, ref=E.vref(n), title=title, kind=kind, source="Client instruction", submitted=ago(sd) if sd else None,
                            on_date=ago(sd) if sd else ago(5), submitted_amount=sign * f(sub), revised_amount=sign * f(rev), approved_amount=sign * f(app),
                            approved_on=ago(ad) if ad else None, absorbed_amount=f(absd), pc_ref=pc, status=st, notes=note))
-    add(E.EstVariation(project_id=p.id, seq=len(rows) + 1, ref="OHP-1", title="For lift works - coordination and builders' work", kind="Coordination",
+    add(E.EstVariation(project_id=p.id, seq=len(rows) + 1, ref=E.vref(len(rows) + 1), title="For lift works - coordination and builders' work", kind="Coordination",
                        source="Coordination & attendance", submitted_amount=E.r2(12300 * k), status="Claimed", notes="Claimed 90%"))
