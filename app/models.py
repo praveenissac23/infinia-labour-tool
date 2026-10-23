@@ -1076,6 +1076,8 @@ class PettyCash(Base):
     vat_claim = Column(String, default="")        # "claim" (5%) | "zero" (not claimable) - the chief accountant's call per bill
     splits = Column(Text, default="")             # JSON [{"account":..., "amount":...}] - one receipt over several cost heads
     zoho_todo = Column(String, default="")        # "supplier" - sent without its Zoho vendor; add it in Zoho
+    zoho_vendor_id = Column(String, default="")   # "Paid to": the Zoho supplier the chief accountant picked on Send to Zoho
+    zoho_vendor = Column(String, default="")
     zoho_status = Column(String, default="")
     zoho_ref = Column(String, default="")
     zoho_id = Column(String, default="")      # "expense:<id>", "journal:<id>", "banktransaction:<id>"

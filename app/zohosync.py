@@ -308,6 +308,7 @@ def _row(x, learned, users):
             "amount": round((x.paid or 0) or (x.received or 0), 2), "kind": "received" if x.received else "paid",
             "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "receipt_no": x.receipt_no or "",
             "splits": _parts(x) or [], "account": acc, "flags": _flags(x, acc),
+            "vendor_id": x.zoho_vendor_id or "", "vendor": x.zoho_vendor or "",
             "changed": x.zoho_status == "changed", "zoho_ref": x.zoho_ref or "",
             "by": users.get(x.updated_by or x.created_by, "")}
 
@@ -435,6 +436,18 @@ def accounts_refresh(db: Session = Depends(get_db), user: models.User = ZG):
     return account_lists(db)
 
 
+@router.get("/store/zoho/vendors")
+def vendors(fresh: int = 0, db: Session = Depends(get_db), user: models.User = ZG):
+    """Every Zoho supplier, for "Paid to" on Send to Zoho."""
+    import zohoapi
+    if not zohoapi.connected(db):
+        return {"vendors": []}
+    try:
+        return {"vendors": zohoapi.vendor_list(db, fresh=bool(fresh))}
+    except Exception as e:
+        return {"vendors": [], "error": str(e)[:200]}
+
+
 @router.get("/store/zoho/queue")
 def queue(db: Session = Depends(get_db), user: models.User = ZG):
     import zohoapi
@@ -528,6 +541,9 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
                 if len(t) == 15 and not (x.trn or "").strip():
                     x.trn = t
             x.vat_claim = vc
+        if "vendor_id" in ln and not x.received:             # "Paid to": the Zoho supplier (blank = none)
+            x.zoho_vendor_id = str(ln.get("vendor_id") or "").strip()[:40]
+            x.zoho_vendor = str(ln.get("vendor") or "").strip()[:160] if x.zoho_vendor_id else ""
         if "splits" in ln:
             parts = [{"account": str(p.get("account") or "").strip(), "amount": round(float(str(p.get("amount") or 0).replace(",", "") or 0), 2)}
                      for p in (ln.get("splits") or []) if str(p.get("account") or "").strip() or float(str(p.get("amount") or 0).replace(",", "") or 0)]

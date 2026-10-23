@@ -521,6 +521,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table select.zh-site { width: 104px; min-width: 104px; } .zh-table select.zh-vat { width: 116px; min-width: 116px; }
   .zh-table input.zh-trn { width: 128px; height: 32px; font-size: 12.5px; margin-top: 5px; display: block; }
   .zh-accrow { display: flex; align-items: center; gap: 6px; }
+  .zh-paidto { margin-top: 6px; } .zh-paidto input.zh-vendor { width: 100%; max-width: 300px; height: 32px; font-size: 12.5px; padding: 0 8px; }
   .zh-accrow select.zh-acc { flex: 1; min-width: 232px; max-width: 238px; width: auto; padding-left: 8px; font-size: 12.5px; }
   .zh-splitbtn { height: 34px; padding: 0 10px; border: 1px solid #E3D7D1; background: #fff; color: #8C2F26; border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex: none; }
   .zh-splitbtn:hover { background: #FDF4F3; }
@@ -17216,7 +17217,7 @@ async function zhLoad() {
       ZH_SITES ? Promise.resolve(null) : apiCall("/sites").catch(() => []),
       apiCall("/store/zoho/queue"), apiCall("/store/zoho/link/status"),
       apiCall("/store/zoho/loans").catch(() => ({ rows: [] })), apiCall("/store/zoho/pos").catch(() => ({ rows: [] })),
-      apiCall("/store/bank/waiting").catch(() => ({ rows: [] })), zaLoad()]);
+      apiCall("/store/bank/waiting").catch(() => ({ rows: [] })), zaLoad(), ZH_VENDORS ? null : zhVendorsLoad()]);
     if (sites) ZH_SITES = sites.map(x => x.code).filter(Boolean);
     ZH = q; ZH.conn = conn; ZH.loans = loans.rows || []; ZH.pos = pos.rows || []; ZH.po_hint = !!pos.hint; ZH.po_del = !!pos.may_delete; ZH.bank = bw.rows || []; ZH.may_send_bank = bw.may_send;
   } catch (e) { showStatus("zh-status", "err", errText(e)); return; }
@@ -17225,7 +17226,9 @@ async function zhLoad() {
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
   ZH_PICK = {};
-  ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || (r.vat || r.kind === "received" ? "" : "none"), splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length }; });
+  ZH.rows.forEach(r => { const g = r.vendor_id ? { id: r.vendor_id, name: r.vendor } : zhVendorGuess(r.supplier);
+    ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || (r.vat || r.kind === "received" ? "" : "none"), splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length,
+                      vendor_id: g ? g.id : "", vendor: g ? g.name : "" }; });
   zhDraw();
 }
 function zhConnDraw(cached) {
@@ -17522,6 +17525,7 @@ function zhFlags(r) {
   if (r.kind !== "received" && !["claim", "zero", "none"].includes(p.vat_claim)) out.push("Pick VAT: claim or not");
   if (p.vat_claim === "claim" && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT claimed without TRN");
   if (r.changed) out.push("Correct it in Zoho first");
+  if (p.vendor_typed && !p.vendor_id) out.push("Paid to: pick the supplier from the list");
   return out;
 }
 function zhShort(a) {
@@ -17565,7 +17569,8 @@ function zhDraw() {
     const sp = (p.splits || []).filter(s => s.account || +s.amount);
     const acc = `<div class="zh-accrow">` + (sp.length ? `<button type="button" class="zh-splitshow" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split over ${sp.length} cost heads</button>`
       : zaButton(p.account, r.kind === "received" ? "received" : "paid", `zhSet(${r.id},'account',V)`, "zh-acc"))
-      + (r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">${sp.length ? "Edit" : "Split"}</button>` : "") + `</div>`;
+      + (r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">${sp.length ? "Edit" : "Split"}</button>` : "") + `</div>`
+      + (r.kind === "paid" ? `<div class="zh-paidto"><input list="zh-vendor-list" class="zh-vendor${p.vendor_typed && !p.vendor_id ? " zh-need" : ""}" value="${escapeAttr(p.vendor_typed !== undefined ? p.vendor_typed : (p.vendor || ""))}" placeholder="Paid to (supplier)…" title="The Zoho supplier this bill is from - pick from the list. Blank: no supplier." onchange="zhVendor(${r.id}, this.value)"></div>` : "");
     return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
       <td class="l">${escapeHtml(r.book_label)}</td><td class="l">${pcDate(r.date)}</td>
       <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}<span class="sub">${r.supplier ? `<b style="color:#4A433D;font-weight:600;">${escapeHtml(r.supplier)}</b>` : "No supplier"}${r.receipt_no ? " · rcpt " + escapeHtml(r.receipt_no) : ""}${r.by ? " · by " + escapeHtml(r.by) : ""}</span>${f.length ? `<div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}</div>` : ""}</td>
@@ -17586,6 +17591,29 @@ async function zhSite(id, v, el) {
         const r = ZH.rows.find(x => x.id === id); if (r) r.site = v;
         zhSet(id, "site", v); }
   catch (e) { showStatus("zh-status", "err", errText(e)); p.site = was; zhDraw(); }
+}
+// "Paid to": every Zoho supplier, typed to filter, picked from the list.
+let ZH_VENDORS = null;
+async function zhVendorsLoad() {
+  try { const d = await apiCall("/store/zoho/vendors"); ZH_VENDORS = d.vendors || []; } catch (e) { ZH_VENDORS = []; }
+  let dl = document.getElementById("zh-vendor-list");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "zh-vendor-list"; document.body.appendChild(dl); }
+  dl.innerHTML = ZH_VENDORS.map(v => `<option value="${escapeAttr(v.name)}">`).join("");
+}
+const zhKey = t => String(t || "").toLowerCase().replace(/\b(l\.?\s?l\.?\s?c\.?|llc|est\.?|establishment|trading|co\.?|company|fze|fzc|fzco)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+// The supplier typed on the petty cash line, matched to a Zoho supplier when the name is clearly the same.
+function zhVendorGuess(sup) {
+  if (!ZH_VENDORS || !sup) return null;
+  const k = zhKey(sup); if (k.length < 3) return null;
+  let hit = ZH_VENDORS.filter(v => zhKey(v.name) === k);
+  if (hit.length !== 1 && k.length >= 4) hit = ZH_VENDORS.filter(v => zhKey(v.name) === k || zhKey(v.name).startsWith(k + " "));
+  return hit.length === 1 ? hit[0] : null;
+}
+function zhVendor(id, name) {
+  const p = ZH_PICK[id], v = (ZH_VENDORS || []).find(x => x.name.toLowerCase() === String(name || "").trim().toLowerCase());
+  p.vendor_typed = name; p.vendor_id = v ? v.id : ""; p.vendor = v ? v.name : "";
+  if (!String(name || "").trim()) { p.vendor_typed = ""; }
+  zhDraw();
 }
 function zhSet(id, k, v) {
   const p = ZH_PICK[id]; p[k] = v;
@@ -17818,7 +17846,8 @@ function zhAll(on) { zhShown().forEach(r => { ZH_PICK[r.id].on = on && !zhFlags(
 async function zhApprove(only, btn) {
   const lines = zhShown().filter(r => (only ? only.includes(r.id) : ZH_PICK[r.id].on) && !zhFlags(r).length)
     .map(r => { const p = ZH_PICK[r.id], sp = (p.splits || []).filter(s => s.account || +s.amount);
-      return { id: r.id, account: sp.length ? sp[0].account : p.account, site: p.site || "", trn: p.trn || "", vat_claim: p.vat_claim || "", splits: sp }; });
+      return { id: r.id, account: sp.length ? sp[0].account : p.account, site: p.site || "", trn: p.trn || "", vat_claim: p.vat_claim || "", splits: sp,
+               vendor_id: r.kind === "received" ? "" : (p.vendor_id || ""), vendor: p.vendor || "" }; });
   if (!lines.length) return;
   if (!only && lines.length > 1 && !confirm(`Approve ${lines.length} petty cash lines (AED ${pcMoney(zhShown().filter(r => lines.some(l => l.id === r.id)).reduce((a, r) => a + r.amount, 0))}) for Zoho now?`)) return;
   const go = btn || document.getElementById("zh-go"); go.disabled = true;

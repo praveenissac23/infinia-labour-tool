@@ -556,7 +556,11 @@ def push(db, x):
     # Paid To: the supplier's Zoho vendor, as the accountant enters it.
     vendor = ""
     named = (x.supplier or "").strip() and not not_vendor(x.supplier)
-    if named:
+    if (getattr(x, "zoho_vendor_id", "") or "").strip():
+        vendor = x.zoho_vendor_id.strip()                   # "Paid to", picked by the chief accountant
+        body["vendor_id"] = vendor
+        named = True
+    elif named:
         key = M._supplier_key(x.supplier)
         sup = db.query(models.Supplier).filter(models.Supplier.name_key == key).first() if key else None
         vendor = (sup.zoho_id or "") if sup else ""
@@ -876,6 +880,15 @@ def not_vendor(name):
 
 
 _VENDORS = {"t": 0.0, "list": []}
+
+
+def vendor_list(db, fresh=False):
+    """Every Zoho supplier (vendor), kept 15 minutes: [{id, name}] by name."""
+    import time
+    if fresh or time.time() - _VENDORS["t"] > 900 or not _VENDORS["list"]:
+        import supzoho
+        _VENDORS["list"], _VENDORS["t"] = supzoho._vendors(db), time.time()
+    return sorted(_VENDORS["list"], key=lambda v: (v["name"] or "").lower())
 
 
 def vendor_by_name(db, name):
