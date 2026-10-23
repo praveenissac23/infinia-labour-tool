@@ -258,6 +258,12 @@ def modern(account):
 def _flags(x, account):
     """What must be put right before the line can go."""
     out = []
+    if (getattr(x, "zoho_kind", "") or "") == "payment" and not x.received:
+        if not (getattr(x, "zoho_vendor_id", "") or "").strip():
+            out.append("Pick the supplier")
+        if x.vat and (x.vat_claim or "") not in ("claim", "zero"):
+            out.append("Pick VAT: claim or not")
+        return out
     if not account:
         out.append("Pick account")
     elif x.received and not received_ok(account):
@@ -308,7 +314,8 @@ def _row(x, learned, users):
             "amount": round((x.paid or 0) or (x.received or 0), 2), "kind": "received" if x.received else "paid",
             "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "receipt_no": x.receipt_no or "",
             "splits": _parts(x) or [], "account": acc, "flags": _flags(x, acc),
-            "vendor_id": x.zoho_vendor_id or "", "vendor": x.zoho_vendor or "",
+            "zoho_kind": x.zoho_kind or "expense", "vendor_id": x.zoho_vendor_id or "", "vendor": x.zoho_vendor or "",
+            "bill_id": x.zoho_bill_id or "", "bill_no": x.zoho_bill_no or "",
             "changed": x.zoho_status == "changed", "zoho_ref": x.zoho_ref or "",
             "by": users.get(x.updated_by or x.created_by, "")}
 
@@ -448,6 +455,21 @@ def vendors(fresh: int = 0, db: Session = Depends(get_db), user: models.User = Z
         return {"vendors": [], "error": str(e)[:200]}
 
 
+@router.get("/store/zoho/bills")
+def vendor_bills(vendor_id: str = "", db: Session = Depends(get_db), user: models.User = ZG):
+    """The supplier's bills in Zoho still (partly) unpaid, newest first - for Payment Made."""
+    import zohoapi
+    if not vendor_id or not zohoapi.connected(db):
+        return {"bills": []}
+    try:
+        d = zohoapi.call(db, "GET", "bills", {"vendor_id": vendor_id, "status": "unpaid", "per_page": 100, "sort_column": "date", "sort_order": "D"})
+    except Exception as e:
+        return {"bills": [], "error": str(e)[:200]}
+    return {"bills": [{"id": b["bill_id"], "number": b.get("bill_number") or "", "date": b.get("date") or "", "due": b.get("due_date") or "",
+                       "total": round(float(b.get("total") or 0), 2), "balance": round(float(b.get("balance") or 0), 2), "status": b.get("status") or ""}
+                      for b in d.get("bills", []) if float(b.get("balance") or 0) > 0]}
+
+
 @router.get("/store/zoho/queue")
 def queue(db: Session = Depends(get_db), user: models.User = ZG):
     import zohoapi
@@ -541,9 +563,12 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
                 if len(t) == 15 and not (x.trn or "").strip():
                     x.trn = t
             x.vat_claim = vc
-        if "vendor_id" in ln and not x.received:             # "Paid to": the Zoho supplier (blank = none)
-            x.zoho_vendor_id = str(ln.get("vendor_id") or "").strip()[:40]
+        if not x.received:                                     # expense, or Payment Made to a supplier against his bill
+            x.zoho_kind = "payment" if str(ln.get("zoho_kind") or "") == "payment" else "expense"
+            x.zoho_vendor_id = str(ln.get("vendor_id") or "").strip()[:40] if x.zoho_kind == "payment" else ""
             x.zoho_vendor = str(ln.get("vendor") or "").strip()[:160] if x.zoho_vendor_id else ""
+            x.zoho_bill_id = str(ln.get("bill_id") or "").strip()[:40] if x.zoho_vendor_id else ""
+            x.zoho_bill_no = str(ln.get("bill_no") or "").strip()[:80] if x.zoho_bill_id else ""
         if "splits" in ln:
             parts = [{"account": str(p.get("account") or "").strip(), "amount": round(float(str(p.get("amount") or 0).replace(",", "") or 0), 2)}
                      for p in (ln.get("splits") or []) if str(p.get("account") or "").strip() or float(str(p.get("amount") or 0).replace(",", "") or 0)]
@@ -551,6 +576,8 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
             x.splits = _j.dumps(parts) if parts else ""
             if parts:
                 acc = parts[0]["account"]
+        if x.zoho_kind == "payment" and not acc:
+            acc = f"Payment to {x.zoho_vendor}"
         f = _flags(x, acc)
         if f:
             refused.append({"id": x.id, "why": ", ".join(f)})

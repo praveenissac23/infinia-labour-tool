@@ -533,6 +533,23 @@ def push(db, x):
         return transfer(box, to)
     if acc.startswith("Employee Advance"):
         return journal(need("Employee Advance"), box)
+    if (getattr(x, "zoho_kind", "") or "") == "payment" and not x.received:
+        # Payment Made: the cash paid to a supplier, set against his bill in Zoho (no new expense).
+        vid = (x.zoho_vendor_id or "").strip()
+        if not vid:
+            raise ZohoError(400, "Payment to a supplier: pick the supplier first - nothing sent")
+        body = {"vendor_id": vid, "payment_mode": "Cash", "amount": amt, "date": date, "reference_number": ref,
+                "paid_through_account_id": box, "description": desc}
+        bid = (getattr(x, "zoho_bill_id", "") or "").strip()
+        if bid:
+            b = call(db, "GET", f"bills/{bid}").get("bill") or {}
+            bal = round(float(b.get("balance") or 0), 2)
+            if b.get("status") in ("paid", "void") or bal <= 0:
+                raise ZohoError(400, f"Bill {b.get('bill_number') or bid} is already paid in Zoho - pick another bill")
+            body["bills"] = [{"bill_id": bid, "amount_applied": min(amt, bal)}]
+        d = call(db, "POST", "vendorpayments", body=body)
+        v = d.get("vendorpayment") or d.get("vendor_payment") or {}
+        return f"vendorpayment:{v.get('payment_id')}", f"Payment Made {v.get('payment_number') or ''}".strip() + (f" · bill {x.zoho_bill_no}" if x.zoho_bill_no else "")
     if acc in VENDOR_PAY:
         vname = VENDOR_PAY[acc]
         c = call(db, "GET", "contacts", {"contact_name_contains": vname.split()[0], "contact_type": "vendor", "per_page": 50})

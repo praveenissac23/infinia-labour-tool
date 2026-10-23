@@ -86,7 +86,7 @@ for x, path, check in cases:
 
 # checks before sending
 class X:
-    def __init__(self, **k): self.__dict__.update(dict(book="site", received=0, site="", vat=False, vat_claim="", trn="", splits="", paid=10), **k)
+    def __init__(self, **k): self.__dict__.update(dict(book="site", received=0, site="", vat=False, vat_claim="", trn="", splits="", paid=10, zoho_kind="", zoho_vendor_id=""), **k)
 ok(ZS._flags(X(), "Machinery Rent") == [], "Machinery Rent on a site line: no project demanded (not a site cost)")
 ok(ZS._flags(X(), "05. Blockworks") == ["Pick project"], "a portal cost head still needs its project")
 ok(ZS._flags(X(), "Made Up Account") == ["Pick account"], "an account Zoho does not have: refused")
