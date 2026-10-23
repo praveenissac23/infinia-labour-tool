@@ -16,7 +16,7 @@
   var css = ".dr-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;font-size:12.5px;color:#555}" +
     ".dr-bar .dr-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #C9CED6;border-radius:7px;background:#fff;color:#222;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer}" +
     ".dr-bar .dr-btn:hover{background:#F4F5F7}.dr-bar .dr-btn[disabled]{opacity:.6;cursor:wait}" +
-    ".dr-out{flex:1 1 260px;min-width:200px}.dr-out.ok{color:#1E6B3A}.dr-out.bad{color:#B42318}.dr-out.busy{color:#555}" +
+    ".dr-out{flex:1 1 260px;min-width:200px}.dr-out.ok{color:#1E6B3A}.dr-out.bad{color:#B42318}.dr-out.busy{color:#555}.dr-out.warn{color:#9A5B00;font-weight:600}" +
     ".dr-filled{background:#F3F8F4 !important;outline:1px solid #B9D8C2}";
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -72,8 +72,9 @@
           var found = (r.found || []);
           msg = msg || (found.length ? "Filled in: " + found.join(", ") + ". Check, then save." : "Nothing recognisable was found - fill it in by hand.");
           if (r.ocr) msg += " (read from a scan - check the figures)";
-          say(found.length ? "ok" : "bad", msg);
-        } else say("ok", msg);
+          if (r.notes && r.notes.length) msg += "  ⚠ " + r.notes.join("  ⚠ ");     // a figure put right or doubtful: said, to check
+          say(r.notes && r.notes.length ? "warn" : found.length ? "ok" : "bad", msg);
+        } else say(r.notes && r.notes.length ? "warn" : "ok", msg + (r.notes && r.notes.length ? "  ⚠ " + r.notes.join("  ⚠ ") : ""));
       } catch (e) { say("bad", errMsg(e)); }
       btn.disabled = false;
     };
@@ -92,7 +93,8 @@
         if (window.pcKind) try { window.pcKind("paid"); } catch (e) {}
         put("pc-date", x.date); put("pc-sup", x.supplier); put("pc-amt", x.amount != null ? money(x.amount) : "");
         put("pc-rcpt", x.receipt_no); if (x.description && !document.getElementById("pc-desc").value) put("pc-desc", x.description);
-        if (x.vat || x.trn) { put("pc-vat", true); if (window.pcVat) window.pcVat(); put("pc-trn", x.trn); }
+        if (window.pcAmtChanged) window.pcAmtChanged();          // the VAT in the total, filled in (clear it if the bill has none)
+        if (x.vat || x.trn) { put("pc-vat", true); if (window.pcVat) window.pcVat(true); put("pc-trn", x.trn); }
       });
     var v = document.getElementById("vh-form");
     if (v) bar(v, "receipt", "Read from receipt", "A photo or scan of the visa receipt (typing centre, medical, Amer): date, amount and supplier are filled in." + TIP_NOFILE,

@@ -3666,9 +3666,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <label class="pc-f" id="pc-sup-f"><span id="pc-sup-l">Supplier / contact</span><input type="text" id="pc-sup" list="pc-sup-list" placeholder="e.g. Al Hassai Building" maxlength="120" autocomplete="off" data-spell="off" oninput="this.dataset.auto = ''" onchange="pcTrnLookup()"></label>
               <datalist id="pc-sup-list"></datalist>
               <label class="pc-f pc-site"><span>Site</span><select id="pc-site" onchange="this.dataset.auto = ''"></select></label>
-              <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00"></label>
+              <label class="pc-f pc-amt"><span id="pc-amt-l">Paid (AED)</span><input type="text" inputmode="decimal" id="pc-amt" placeholder="0.00" oninput="pcAmtChanged()"></label>
               <label class="pc-f pc-rcpt"><span>Receipt no.</span><input type="text" id="pc-rcpt" maxlength="40" placeholder="Optional" data-spell="off"></label>
-              <div class="pc-f pc-vat" id="pc-vat-f"><span>VAT on the receipt?<span class="help-i in-label" tabindex="0" data-tip="Tick when the receipt shows VAT, and type the supplier's TRN. The chief accountant needs it to claim the VAT.">i</span></span><span class="pc-vatbox"><input type="checkbox" id="pc-vat" onchange="pcVat()"><label for="pc-vat" id="pc-vat-l">Yes</label><input type="text" id="pc-trn" inputmode="numeric" maxlength="15" placeholder="Supplier TRN - 15 digits" style="display:none;"></span></div>
+              <div class="pc-f pc-vat" id="pc-vat-f"><span>VAT in it (AED)<span class="help-i in-label" tabindex="0" data-tip="Filled in for you from the total: the 5% VAT inside it (total x 5 / 105 - a 105.00 bill has 5.00 VAT). No VAT on the receipt (taxi, Salik, fines ...)? Clear the box. Type the supplier's TRN so the chief accountant can claim it.">i</span></span><span class="pc-vatbox"><input type="text" id="pc-vatamt" inputmode="decimal" placeholder="No VAT" oninput="pcVatTyped()" onblur="pcVatSnap()" style="width:110px;height:36px;text-align:right;"><input type="checkbox" id="pc-vat" hidden onchange="pcVat()"><span id="pc-vat-l" style="display:none"></span><input type="text" id="pc-trn" inputmode="numeric" maxlength="15" placeholder="Supplier TRN - 15 digits" style="display:none;"></span></div>
               <div class="pc-f pc-go">
                 <button class="btn btn-primary" id="pc-save" onclick="pcSave()">Add</button>
                 <button class="btn btn-gray" id="pc-cancel" onclick="pcReset()" style="display:none;">Cancel</button>
@@ -16746,12 +16746,34 @@ function pcKind(k) {
   vf.style.display = vatOk ? "" : "none";
   vf.style.visibility = k === "paid" ? "" : "hidden";
 }
-// VAT ticked: the supplier's TRN, fetched if it was entered before.
-function pcVat() {
+// VAT: filled in from the total (the 5% inside it: total x 5 / 105); cleared = no VAT on this bill.
+// The box shows the figure; the line is kept as "with VAT" or not, and the VAT is always 5/105 of the total.
+function pcVatCalc() { const a = Number(String(document.getElementById("pc-amt").value || "").replace(/,/g, "")) || 0; return a > 0 ? Math.round(a * 5 / 105 * 100) / 100 : 0; }
+function pcVatOk() { const f = document.getElementById("pc-vat-f"); return PC_KIND === "paid" && f && f.style.display !== "none"; }
+function pcAmtChanged() {
+  const box = document.getElementById("pc-vatamt"); if (!box) return;
+  if (!pcVatOk()) return;
+  if (box.dataset.manual === "off") return;                 // VAT cleared by hand on this bill: stays off
+  const v = pcVatCalc();
+  box.value = v ? v.toFixed(2) : "";
+  document.getElementById("pc-vat").checked = v > 0; pcVat(true);
+}
+function pcVatTyped() {
+  const box = document.getElementById("pc-vatamt"), on = !!box.value.trim() && Number(box.value.replace(/,/g, "")) > 0;
+  box.dataset.manual = on ? "" : "off";
+  document.getElementById("pc-vat").checked = on; pcVat(true);
+}
+function pcVatSnap() {           // a figure typed in the box becomes the 5% of the total again - the VAT is never a guess
+  const box = document.getElementById("pc-vatamt");
+  if (document.getElementById("pc-vat").checked) { const v = pcVatCalc(); box.value = v ? v.toFixed(2) : ""; }
+  else box.value = "";
+}
+function pcVat(quiet) {
   const on = document.getElementById("pc-vat").checked, trn = document.getElementById("pc-trn");
   trn.style.display = on ? "" : "none";
-  document.getElementById("pc-vat-l").style.display = on ? "none" : "";
-  if (on) { pcTrnLookup(); if (!trn.value) trn.focus(); }
+  const box = document.getElementById("pc-vatamt");
+  if (box && document.activeElement !== box) { const v = pcVatCalc(); box.value = on && v ? v.toFixed(2) : ""; }
+  if (on) { pcTrnLookup(); if (!trn.value && !quiet) trn.focus(); }
 }
 async function pcTrnLookup() {
   const vat = document.getElementById("pc-vat"), trn = document.getElementById("pc-trn");
@@ -16980,7 +17002,7 @@ function bkDraw() {
     <div class="pc-stat${BK.connected ? " hand" : ""}"><span>Zoho</span><b>${BK.connected ? "Connected ✓" : "Not connected"}</b></div>`;
   document.getElementById("bk-body").innerHTML = rows.map(r => `<tr${BK_EDIT === r.id ? ' class="edit"' : ""}><td>${pcDate(r.date)}</td><td>${escapeHtml(r.kind_label)}</td>
     <td class="l">${escapeHtml(r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "ADCB" : "-"))}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
-    <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || "-")}${r.kind === "expense" && r.account ? `<span class="sub">${escapeHtml(r.account.replace(/^Office › /, "").split(" › ").pop())}</span>` : ""}${""}</td>
+    <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || "-")}${r.receipt ? `<span class="sub">Receipt ${r.receipt.cancelled ? `${escapeHtml(r.receipt.number)} (cancelled)` : xlink(r.receipt.number, `rcPdf(${r.receipt.id})`, null, "Open the receipt made from this line")}</span>` : ""}${r.kind === "expense" && r.account ? `<span class="sub">${escapeHtml(r.account.replace(/^Office › /, "").split(" › ").pop())}</span>` : ""}${""}</td>
     <td>${escapeHtml(r.site || ((BK_SCOPES || []).find(x => x.id === r.scope_id) || {}).project || "-")}${r.pp_id ? `<span class="sub" title="On Project payments, excl. VAT">PP ${pcMoney(r.net_amount)}</span>` : ""}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${BK._verified && BK._verified.has(r.id) ? `<span class="zx-tag zx-ok" title="On the ADCB statement">Bank ✓</span>` : `<span class="sub" style="display:inline;" title="Not on an uploaded ADCB statement yet">-</span>`}</td><td>${bkTag(r)}</td>
     <td class="pc-act">${r.zoho === "sent" ? (r.kind === "customer" ? `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})" title="In Zoho - only the Project payments scope can change">Project</button>` : `<span class="sub">In Zoho</span>`) : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
     || `<tr><td colspan="12" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
@@ -17065,7 +17087,7 @@ function bsDraw() {
   const upl = `<label class="btn btn-dark btn-sm bs-up">Upload ADCB statement<input type="file" accept=".xlsx,.xls,.csv,.htm,.html,.pdf,.jpg,.jpeg,.png" style="display:none" onchange="(window.bsUploadDoc || bsUpload)(this)"></label><span class="help-i css-tip" tabindex="0" data-tip="The Excel download, or the PDF statement - even a scan or a photo of it. A PDF or scan is read on this computer; only its lines go to the server, the file is not uploaded.">i</span>`;
   if (!last) {
     el.innerHTML = `<div class="bs"><div class="bs-head"><div><b>ADCB statement check</b><span class="sub">Every debit and credit on the bank statement checked against what is entered here.</span></div>${upl}</div>
-      <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement as <b>Excel (.xls or .xlsx) or CSV</b> (any period - a day, a week, a month). The Customer Reference you typed when paying becomes the line's description.</li>
+      <div class="bs-empty"><b>How it works</b><ol><li>In ADCB ProCash, download the account statement (any period - a day, a week, a month). The Customer Reference you typed when paying becomes the line's description.</li>
       <li>Press <b>Upload ADCB statement</b>. Lines already uploaded are skipped, so overlapping periods are fine.</li>
       <li>Each bank line is matched to its entry: <span class="zx-tag zx-ok">Bank ✓</span>. What is left shows in red: in the bank but not entered, or entered but not in the bank.</li></ol></div></div>`;
     return;
@@ -17203,7 +17225,7 @@ async function zhLoad() {
   const flag = (location.hash.match(/zoho=(\w+)/) || [])[1];
   if (flag) { showStatus("zh-status", flag === "connected" ? "ok" : "err", flag === "connected" ? "Zoho Books is connected - approved lines now go straight to Zoho." : "Zoho did not connect - try Connect Zoho again."); history.replaceState(null, "", location.href.replace(/[&?]zoho=\w+/, "")); }
   ZH_PICK = {};
-  ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || "", splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length }; });
+  ZH.rows.forEach(r => { ZH_PICK[r.id] = { account: r.account, site: r.site, trn: r.trn, vat_claim: r.vat_claim || (r.vat || r.kind === "received" ? "" : "none"), splits: (r.splits || []).map(s => ({ ...s })), on: !r.flags.length }; });
   zhDraw();
 }
 function zhConnDraw(cached) {
@@ -17497,8 +17519,8 @@ function zhFlags(r) {
     else if (Math.abs(tot - r.amount) > 0.005) out.push(`Split parts must add up to ${pcMoney(r.amount)}`);
     if (sp.some(s => zhProjectAcc(s.account)) && !(p.site || r.site || "").trim()) out.push("Pick project");
   } else if (zhProjectAcc(p.account) && !(p.site || "").trim()) out.push("Pick project");
-  if (r.vat && !["claim", "zero"].includes(p.vat_claim)) out.push("Pick VAT: claim or not");
-  if (r.vat && p.vat_claim === "claim" && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT claimed without TRN");
+  if (r.kind !== "received" && !["claim", "zero", "none"].includes(p.vat_claim)) out.push("Pick VAT: claim or not");
+  if (p.vat_claim === "claim" && !/^\d{15}$/.test((p.trn || "").trim())) out.push("VAT claimed without TRN");
   if (r.changed) out.push("Correct it in Zoho first");
   return out;
 }
@@ -17533,8 +17555,12 @@ function zhDraw() {
     // it is saved on the petty cash line itself and goes to Zoho with it.
     const site = r.kind === "received" ? `<span class="zh-none">—</span>`
       : `<select class="zh-site${!p.site && (zhProjectAcc(p.account) || (p.splits || []).some(s => zhProjectAcc(s.account))) ? " zh-need" : ""}" onchange="zhSite(${r.id},this.value,this)" title="Project / site - saved on the petty cash line too"><option value="">${p.site ? "No project" : "Project…"}</option>${[...new Set([...(ZH_SITES || []), p.site].filter(Boolean))].map(c => `<option${c === p.site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`;
-    const vat = !r.vat ? `<span class="zh-none">No VAT</span>` : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value)" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name.">
-        <option value="">Claim VAT?</option><option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option></select>`
+    // The chief accountant puts the VAT right before it goes: claim it, not claimable, or no VAT at all (the whole
+    // amount is the cost) - and can give VAT to a bill entered without it. Saved on the petty cash line too.
+    const vamt = Math.round((r.amount || 0) * 5 / 105 * 100) / 100;
+    const vat = r.kind === "received" ? `<span class="zh-none">—</span>` : `<select class="zh-vat" onchange="zhSet(${r.id},'vat_claim',this.value); zhDraw()" title="Claim 5%: bill in the company's name from a VAT-registered supplier. Not claimable: e.g. the bill is in a person's name. No VAT: the bill has none - the whole amount is the cost.">
+        ${p.vat_claim ? "" : `<option value="">Claim VAT?</option>`}<option value="claim"${p.vat_claim === "claim" ? " selected" : ""}>Claim 5%</option><option value="zero"${p.vat_claim === "zero" ? " selected" : ""}>Not claimable</option><option value="none"${p.vat_claim === "none" ? " selected" : ""}>No VAT</option></select>`
+      + (p.vat_claim && p.vat_claim !== "none" ? `<span class="sub">VAT ${pcMoney(vamt)}${!r.vat ? " - added" : ""}</span>` : (r.vat && p.vat_claim === "none" ? `<span class="sub">VAT ${pcMoney(vamt)} taken off</span>` : ""))
       + (r.trn ? `<span class="sub">TRN ${escapeHtml(r.trn)}</span>` : (p.vat_claim === "claim" ? `<input class="zh-trn" maxlength="15" inputmode="numeric" placeholder="TRN (15 digits)" value="${escapeAttr(p.trn || "")}" onchange="zhSet(${r.id},'trn',this.value)">` : ""));
     const sp = (p.splits || []).filter(s => s.account || +s.amount);
     const acc = `<div class="zh-accrow">` + (sp.length ? `<button type="button" class="zh-splitshow" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split over ${sp.length} cost heads</button>`
@@ -18876,7 +18902,7 @@ function pcReset() {
   ["pc-site", "pc-sup"].forEach(id => document.getElementById(id).dataset.auto = "");
   ["pc-desc", "pc-sup", "pc-amt", "pc-rcpt"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("pc-site").value = "";
-  document.getElementById("pc-vat").checked = false; document.getElementById("pc-trn").value = ""; pcVat();
+  document.getElementById("pc-vat").checked = false; document.getElementById("pc-trn").value = ""; document.getElementById("pc-vatamt").dataset.manual = ""; pcVat(true);
   document.getElementById("pc-date").value = pcToday();
   PC_VSEL = { yes: false, person: "", stage: "", done: false }; pcVisaShow();
   document.getElementById("pc-save").textContent = "Add";
@@ -18896,7 +18922,8 @@ function pcEdit(id) {
   if (r.site && ![...sel.options].some(o => o.value === r.site)) sel.insertAdjacentHTML("beforeend", `<option value="${escapeAttr(r.site)}">${escapeHtml(r.site)}</option>`);
   sel.value = r.site;
   document.getElementById("pc-amt").value = r.received || r.paid;
-  document.getElementById("pc-vat").checked = !!r.vat; document.getElementById("pc-trn").value = r.trn || ""; pcVat();
+  document.getElementById("pc-vat").checked = !!r.vat; document.getElementById("pc-trn").value = r.trn || "";
+  document.getElementById("pc-vatamt").dataset.manual = r.vat ? "" : "off"; pcVat(true);    // a line saved without VAT stays without it
   document.getElementById("pc-rcpt").value = r.receipt_no || "";
   PC_VSEL = { yes: !!r.visa_file_id, person: r.visa_person || "", stage: r.visa_stage || "", done: false };
   pcVisaShow();
@@ -18914,7 +18941,7 @@ async function pcSave() {
   const body = { date: document.getElementById("pc-date").value, description: document.getElementById("pc-desc").value,
                  supplier: document.getElementById("pc-sup").value, site: document.getElementById("pc-site").value,
                  received: PC_KIND === "received" ? amt : 0, paid: PC_KIND === "paid" ? amt : 0, book: PC_BOOK,
-                 vat: PC_KIND === "paid" && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
+                 vat: PC_KIND === "paid" && pcVatOk() && document.getElementById("pc-vat").checked, trn: document.getElementById("pc-trn").value.trim(),
                  receipt_no: document.getElementById("pc-rcpt").value.trim() };
   const btn = document.getElementById("pc-save"); btn.disabled = true;
   try {
@@ -19326,7 +19353,7 @@ function invDrawList() {
     const ztag = !zmay ? "" : (r.zoho === "sent" ? (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Void in Zoho</span>` : `<span class="zx-tag zx-ok" title="Released to Zoho">In Zoho ✓</span>`)
       : (cx ? "" : (r.zoho_err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.zoho_err)}">Not released</span>` : `<span class="zx-tag zx-skip" title="Held - goes to Zoho when released">Held</span>`)));
     return `<tr class="${cx ? "cx" : ""}${INV_EDIT === r.id ? " edit" : ""}">
-      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}${r.paid_stamp && !cx ? ` <span class="inv-tag paid" title="Prints with the PAID stamp (${accDmy(r.paid_on)})">PAID</span>` : ""}${!pro && !cx && r.received ? (r.balance <= 0.005 ? ` <span class="inv-tag full" title="Received in full (Receipts)">Received</span>` : ` <span class="inv-tag part" title="Received AED ${accMoney(r.received)} - AED ${accMoney(r.balance)} still due">Part received</span>`) : ""}</td><td>${accDmy(r.date)}</td>
+      <td class="txt num"><b>${xlink(r.number, `invPdf(${r.id})`, null, "Open the invoice")}</b>${tag} ${ztag}${r.paid_stamp && !cx ? ` <span class="inv-tag paid" title="Prints with the PAID stamp (${accDmy(r.paid_on)})">PAID</span>` : ""}${!pro && !cx && r.received ? (r.balance <= 0.005 ? ` <span class="inv-tag full" title="Received in full (Receipts)">Received</span>` : ` <span class="inv-tag part" title="Received AED ${accMoney(r.received)} - AED ${accMoney(r.balance)} still due">Part received</span>`) : ""}${!pro && !cx && r.pdc ? ` <span class="inv-tag part" title="AED ${accMoney(r.pdc)} on post-dated cheques - counted as received on their cheque dates">PDC ${accMoney(r.pdc)}</span>` : ""}</td><td>${accDmy(r.date)}</td>
       <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${r.project_no ? xlink(r.project_no, `xlProjectPay(${jsq(r.project_no)})`, "projpay", "This project's payment tracker") + escapeHtml(r.project && !r.project.startsWith(r.project_no) ? " - " + r.project : (r.project || "").slice(r.project_no.length)) : escapeHtml(r.project || "")}</td>
       <td class="n">${accMoney(r.subtotal)}</td><td class="n">${accMoney(r.vat)}</td><td class="n"><b>${accMoney(r.total)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="invPdf(${r.id})" title="Opens it with PDF, Excel, Print and Share">Preview</button>${cx ? "" :
@@ -19511,7 +19538,8 @@ function rcOpenInvoices() {
   const client = document.getElementById("rc-client").value.trim().toLowerCase(), pno = document.getElementById("rc-pno").value.trim();
   const mine = RC_EDIT ? (RC.rows.find(r => r.id === RC_EDIT) || { allocations: [] }).allocations : [];
   return RC.invoices.filter(i => (!client || i.client.toLowerCase() === client) && (!pno || i.project_no === pno) && (client || pno))
-    .map(i => { const m = mine.find(a => a.invoice_id === i.id); return m ? Object.assign({}, i, { received: i.received - m.amount, balance: i.balance + m.amount }) : i; })
+    .map(i => Object.assign({}, i, { balance: i.open !== undefined ? i.open : i.balance }))      // net of post-dated cheques already set against it
+    .map(i => { const m = mine.find(a => a.invoice_id === i.id); return m ? Object.assign({}, i, { received: Math.max(0, i.received - m.amount), balance: i.balance + m.amount }) : i; })
     .filter(i => i.balance > 0.005 || RC_PICK[i.id]);
 }
 function rcDrawInv() {
@@ -19583,6 +19611,7 @@ function rcEdit(id) {
   const r = RC.rows.find(x => x.id === id); if (!r) return;
   RC_EDIT = id; RC_AUTO = false; rcFill(r);
   document.getElementById("rc-form-title").textContent = "Edit receipt " + r.number; document.getElementById("rc-clear").textContent = "Cancel edit";
+  document.getElementById("rc-note").textContent = r.bank_line ? `Linked to the bank line of ${accDmy(r.bank_line.date)} (AED ${accMoney(r.bank_line.amount)}${r.bank_line.reference ? ", " + r.bank_line.reference : ""}). If that line changes, the amount, date, mode and reference here follow it; the client, project, invoices and notes stay as you set them.` : "";
   rcDrawList(); window.scrollTo({ top: 0, behavior: "smooth" });
 }
 async function rcSave(open) {
@@ -19623,7 +19652,7 @@ function rcDrawList() {
   document.getElementById("rc-body").innerHTML = rows.map(r => { const cx = r.status === "cancelled";
     const against = r.allocations.map(a => escapeHtml(a.number)).join(", ") + (r.advance > 0.005 ? `${r.allocations.length ? " + " : ""}advance ${accMoney(r.advance)}` : "");
     return `<tr class="${cx ? "cx" : ""}${RC_EDIT === r.id ? " edit" : ""}"><td class="txt num"><b>${xlink(r.number, `rcPdf(${r.id})`, null, "Open the receipt")}</b>${cx ? '<span class="inv-tag cx">Cancelled</span>' : ""}</td><td>${accDmy(r.date)}</td>
-      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no)}</td><td class="txt">${escapeHtml(r.mode)}${r.reference ? `<div style="font-size:11px;color:#888">${escapeHtml(r.reference)}</div>` : ""}</td>
+      <td class="txt">${escapeHtml(r.client)}</td><td class="txt">${escapeHtml(r.project_no)}</td><td class="txt">${escapeHtml(r.mode)}${r.reference ? `<div style="font-size:11px;color:#888">${escapeHtml(r.reference)}</div>` : ""}${!cx && !r.due ? `<div><span class="inv-tag part" title="A post-dated cheque counts as received on its cheque date">Counts on ${accDmy(r.cheque_date)}</span></div>` : ""}${r.bank_line ? `<div style="font-size:11px;color:#888" title="Made from / linked to this line on Accounts > Bank">From bank line ${accDmy(r.bank_line.date)}${Math.abs(r.bank_line.amount - r.amount) > 0.005 ? ` <span class="inv-tag cx" title="The bank line is AED ${accMoney(r.bank_line.amount)}">differs</span>` : ""}</div>` : ""}</td>
       <td class="txt" style="font-size:12px">${against || "-"}</td><td class="n"><b>${accMoney(r.amount)}</b></td>
       <td class="acts"><button class="btn btn-gray btn-sm" onclick="rcPdf(${r.id})">Preview</button>${cx ? "" : `<span class="hr-menu"><button type="button" class="btn btn-gray btn-sm hr-menu-btn" onclick="hrMenu(this, event)">&#8943;</button><div class="hr-menu-list">
         <button type="button" onclick="hrMenuClose(); rcEdit(${r.id})">Edit</button><hr><button type="button" class="danger" onclick="hrMenuClose(); rcCancel(${r.id})">Cancel receipt</button></div></span>`}</td></tr>`; }).join("")

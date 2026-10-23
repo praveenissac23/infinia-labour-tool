@@ -106,6 +106,71 @@
     await ocrWorker.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "3" });   // the whole page, laid out (titles and tables too)
     return ocrWorker;
   }
+  // A second reader for figures only: each number on the page is read again, close up, digits only.
+  var numWorker = null;
+  async function numOcr() {
+    if (numWorker) return numWorker;
+    var base = location.origin + V + "tesseract/";
+    numWorker = await root.Tesseract.createWorker("eng", 1, { workerPath: base + "worker.min.js", corePath: base, langPath: base.replace(/\/$/, ""), gzip: true,
+                                                             workerBlobURL: false, cacheMethod: "readwrite" });
+    await numWorker.setParameters({ tessedit_char_whitelist: "0123456789.,-/:%", tessedit_pageseg_mode: "7" });
+    return numWorker;
+  }
+  // Clean the picture before reading: grey, the contrast stretched (faded scans, watermarks, phone shadows),
+  // and small pictures (screenshots, WhatsApp photos) enlarged so letters are big enough to read surely.
+  function prep(cv) {
+    var mode = root.__ocrPrep || "up";                       // measured best: small pictures enlarged, the picture as it is (test switch: none | contrast | up | both)
+    if (mode === "none") { cv._up = 1; return cv; }
+    var W = cv.width, H = cv.height, side = Math.max(W, H), up = mode === "contrast" ? 1 : (side < 1100 ? Math.min(2, 1600 / Math.max(1, side)) : 1);   // only small pictures (WhatsApp, screenshots) are enlarged
+    var out = cv;
+    if (up > 1.05) {
+      out = document.createElement("canvas"); out.width = Math.round(W * up); out.height = Math.round(H * up);
+      var c2 = out.getContext("2d"); c2.imageSmoothingEnabled = true; c2.imageSmoothingQuality = "high"; c2.drawImage(cv, 0, 0, out.width, out.height);
+      W = out.width; H = out.height;
+    }
+    var ctx = out.getContext("2d"), im = ctx.getImageData(0, 0, W, H), d = im.data, hist = new Uint32Array(256), n = W * H, i;
+    for (i = 0; i < n; i++) { var g = Math.round(d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11); d[i * 4] = g; hist[g]++; }
+    var lo = 0, hi = 255, acc = 0;
+    for (i = 0; i < 256; i++) { acc += hist[i]; if (acc > n * 0.01) { lo = i; break; } }
+    acc = 0; for (i = 255; i >= 0; i--) { acc += hist[i]; if (acc > n * 0.02) { hi = i; break; } }
+    if (hi - lo < 40 || mode === "up") { lo = 0; hi = 255; }
+    var k = 255 / Math.max(1, hi - lo);
+    for (i = 0; i < n; i++) { var v = Math.max(0, Math.min(255, (d[i * 4] - lo) * k)); d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; }
+    ctx.putImageData(im, 0, 0);
+    out._up = up;
+    return out;
+  }
+  // Every word with a figure in it is read again by the digits-only reader, from the picture enlarged; the surer
+  // reading is kept. A dropped or doubled digit ("11118.18" read as "1118.18") is put right here.
+  async function recheckNumbers(cv, data) {
+    var words = [];
+    (data.lines || []).forEach(function (ln) { (ln.words || []).forEach(function (w) { if (/\d/.test(w.text || "") && (w.text || "").replace(/[^0-9]/g, "").length >= 2) words.push(w); }); });
+    if (!words.length) return;
+    words.sort(function (a, b) { return a.confidence - b.confidence; });
+    words = words.slice(0, 80);
+    var nw = await numOcr();
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i], b = w.bbox, hgt = b.y1 - b.y0, pad = Math.round(hgt * 0.45);
+      var x0 = Math.max(0, b.x0 - pad), y0 = Math.max(0, b.y0 - pad), x1 = Math.min(cv.width, b.x1 + pad), y1 = Math.min(cv.height, b.y1 + pad);
+      if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+      var z = Math.max(1, Math.min(4, 48 / Math.max(1, hgt))), c = document.createElement("canvas");
+      c.width = Math.round((x1 - x0) * z); c.height = Math.round((y1 - y0) * z);
+      var cx = c.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, c.width, c.height); cx.imageSmoothingQuality = "high";
+      cx.drawImage(cv, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+      try {
+        var r = await nw.recognize(c), t = (r.data.text || "").replace(/\s+/g, ""), conf = r.data.confidence || 0;
+        var digitsOld = (w.text || "").replace(/[^0-9]/g, ""), digitsNew = t.replace(/[^0-9]/g, "");
+        if (!digitsNew || digitsNew === digitsOld) continue;
+        // keep the letters around the figure ("AED", "Dhs") as they were; put the surer figure in
+        var dotsOld = ((w.text || "").match(/\./g) || []).length, dotsNew = (t.match(/\./g) || []).length;
+        if (dotsOld && dotsNew !== dotsOld) continue;          // never lose or add a decimal point ("2.5" is not "25")
+        if (conf >= Math.max(70, w.confidence + 5) && Math.abs(digitsNew.length - digitsOld.length) <= 2) {
+          var m = (w.text || "").match(/^([^0-9]*)([0-9][0-9.,\-\/:%]*[0-9%]?)(.*)$/);
+          w.text = m ? m[1] + t + m[3] : t; w.confidence = conf; w._rechecked = 1;
+        }
+      } catch (e) { /* the first reading stays */ }
+    }
+  }
   // what the recogniser saw, as lines and cells (a wide gap between words starts a new cell)
   function ocrLines(data, pn, scale, rules) {
     var out = [];
@@ -165,10 +230,13 @@
     });
   }
   async function ocrImage(src, pn, scale, say) {
-    var w = await ocr();
-    try { if (src && src.getContext) src = deRule(src); } catch (e) { /* leave it as it is */ }
+    var w = await ocr(), up = 1;
+    try { if (src && src.getContext) { src = prep(src); up = src._up || 1; } } catch (e) { /* leave it as it is */ }
+    var clean = src;
+    try { if (src && src.getContext) { var keep = document.createElement("canvas"); keep.width = src.width; keep.height = src.height; keep.getContext("2d").drawImage(src, 0, 0); clean = keep; src = deRule(src); } } catch (e) { /* leave it as it is */ }
     var r = await w.recognize(src);
-    return ocrLines(r.data, pn, scale || 1, src && src._rules);
+    try { if (clean && clean.getContext && !root.__noRecheck) await recheckNumbers(clean, r.data); } catch (e) { /* the first reading stays */ }
+    return ocrLines(r.data, pn, (scale || 1) * up, src && src._rules);
   }
   async function readAgreement(file, say) {
     say = say || function () {};

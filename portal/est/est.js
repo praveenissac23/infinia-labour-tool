@@ -340,7 +340,7 @@ const GROUPS = {
   home: { label: "", secs: [["dash", "Dashboard"]] },
   client: { label: "Overview", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
-  site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"]] },
+  site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["vo", "Variations"]] },
 };
 function renderProjectShell() {
   const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));
@@ -448,7 +448,7 @@ function renderProject() {
   document.body.dataset.ctx = "est." + key();          // which (i) notes apply (heads.js)
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
                   "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status === "With Accounts").length, 0),
-                  "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
+                  "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "site.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
   if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "home"; ST.sec = "dash"; }
@@ -595,7 +595,7 @@ function subForm(s, pre) {
 function docBar(doc) {
   const body = $("#m-body"); if (!body || !window.readAgreement) return;
   const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="doc-pick">Read from document</button>
-      <span class="small muted">The ${esc(doc.what)} - PDF (also scanned), Word, Excel or a photo - fills this in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its words are read for the details of this form; check them, then Save.")}</span>
+      <span class="small muted">Read from the ${esc(doc.what)} - the form fills in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its words are read for the details of this form; check them, then Save.")}</span>
       <input type="file" id="doc-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="doc-out"></div></div>`);
   body.insertBefore(bar, body.firstChild);
   $("#doc-pick").onclick = () => $("#doc-file").click();
@@ -635,7 +635,7 @@ function agreementBar(edit, s, keep) {
   const body = $("#m-body"); if (!body || !window.readAgreement) return;
   const has = edit && (s.items || 0) > 0;
   const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="ag-pick">Read from agreement</button>
-      <span class="small muted">PDF (also scanned), Word, Excel or a photo - the details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
+      <span class="small muted">The details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
       <input type="file" id="ag-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="ag-out"></div></div>`);
   body.insertBefore(bar, body.firstChild);
   $("#ag-pick").onclick = () => $("#ag-file").click();
@@ -745,7 +745,7 @@ function openSub(sid) {
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
         <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
-      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload Excel / PDF / Word</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
+      <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
@@ -781,24 +781,43 @@ function voSubForm(s, v) {
     del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
 }
 // Invoice received: the first step. Only the reference and amount are typed.
-function invoiceForm(sid) {
+function invoiceForm(sid, keep) {
   const subs = ST.b.subs.filter(x => x.status !== "Cancelled");
   let read = null;
-  if (!subs.length) { toast("Add the subcontract first", { err: true }); return; }
+  // No subcontractor is picked for you: chosen by hand, or found from the invoice (a new one can be added from it).
   modal("Invoice received", [
-    { k: "sub_id", label: "Subcontractor", type: "select", options: subs.map(x => [x.id, `${x.name} - ${x.scope}`]), value: sid || subs[0].id, full: true },
+    { k: "sub_id", label: "Subcontractor", type: "select", noseg: true, options: [["", subs.length ? "- Pick the subcontractor -" : "- None on this project yet: read the invoice to add it -"], ...subs.map(x => [x.id, `${x.name}${x.scope ? " - " + x.scope : ""}`])], value: sid || "", full: true },
     { k: "inv_ref", label: "Invoice no.", focus: true }, { k: "inv_amount", label: "Invoice amount (AED)", type: "money" },
     { k: "inv_date", label: "Invoice date", type: "date", value: today() }, { k: "received", label: "Received in office", type: "date", value: today() },
     { k: "to_site", label: "Sent to site for checking", type: "check", value: true, text: "Send to site today" },
   ], async v => {
+    if (!v.sub_id) throw new Error("Pick the subcontractor (or read the invoice and add it as a new one).");
     const send = v.to_site; delete v.to_site;
     if (read && read.inv_lines) v.inv_lines = read.inv_lines;          // the bill's own lines, read from the invoice
+    else if (keep && keep.inv_lines) v.inv_lines = keep.inv_lines;
     const r = await POST("/store/est/subpcs", v);
     if (send) await POST(`/store/est/subpcs/${r.id}/step`, { step: "At site" });
     await reload(); toast(send ? "Invoice logged and sent to site" : "Invoice logged");
   }, { doc: { kind: "invoice", what: "subcontractor's invoice", want: [["sub_id", "Subcontractor"], ["inv_ref", "Invoice no."], ["inv_amount", "Invoice amount"]],
-    extra: () => ({ subs: subs.map(x => ({ id: x.id, name: x.name })) }), keep: r => { read = r.fields; },
-    more: r => r.fields.inv_lines ? `<div class="small muted">${JSON.parse(r.fields.inv_lines).length} line(s) of the bill kept with the invoice - they show on its payment certificate.</div>` : "" } });
+    extra: () => ({ subs: subs.map(x => ({ id: x.id, name: x.name })) }), keep: r => { read = r.fields; setTimeout(() => newSubButton(r.fields), 0); },
+    more: r => (r.fields.new_sub ? `<div class="agrow" style="margin-top:6px"><button type="button" class="btn btn-primary" id="inv-newsub">+ Add ${esc(r.fields.new_sub)} as a new subcontractor</button></div>` : "")
+      + (r.fields.inv_lines ? `<div class="small muted">${JSON.parse(r.fields.inv_lines).length} line(s) of the bill kept with the invoice - they show on its payment certificate.</div>` : "") } });
+  if (keep) Object.entries(keep).forEach(([k, val]) => { const el = $("#f-" + k); if (el && val !== undefined && val !== null && val !== "") el.value = val; });
+}
+// The invoice is from a subcontractor not on this project: add it (name and scope from the invoice) and pick it.
+function newSubButton(f) {
+  const btn = $("#inv-newsub"); if (!btn || !f.new_sub) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const sup = (ST.meta.suppliers || []).find(x => x.name.toLowerCase() === f.new_sub.toLowerCase());
+      const r = await POST("/store/est/subs", { project_id: ST.pid, name: f.new_sub, scope: f.scope_hint || "", supplier_id: sup ? sup.id : null, status: "Active" });
+      const keep = { inv_lines: f.inv_lines || "" }; ["inv_ref", "inv_amount", "inv_date", "received"].forEach(k => { const el = $("#f-" + k); if (el) keep[k] = el.value; });
+      await reload();
+      invoiceForm(r.id, keep);
+      toast(`${f.new_sub} added to this project - check the contract value on Subcontracts later`);
+    } catch (e) { btn.disabled = false; toast(e.message || String(e), { err: true }); }
+  };
 }
 // Certify: the one number to type is the work done to date.
 function certifyForm(sid, pcid) {
@@ -970,7 +989,7 @@ SECTIONS["client.boq"] = el => {
   const tot = inScope.reduce((a, x) => a + x.counted, 0), cost = inScope.reduce((a, x) => a + x.cost, 0);
   const out = all.filter(x => x.scope).reduce((a, x) => a + x.amount, 0);
   const open = ST.boqOpen = ST.boqOpen || {};
-  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ (Excel / PDF / scan)</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>` });
+  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>` });
   if (!all.length) html += `<div class="empty">No BOQ yet. Press <b>Upload internal BOQ</b> and pick the internal BOQ Excel - every line comes in, grouped by trade, with what is excluded or phase 2 kept aside. ${tip("The workbook is read once and only its lines are kept; the Excel file itself is not stored. Upload a newer revision any time - the cost rates and done % you typed stay on the lines that come back.")}</div>`;
   else {
     html += `<div class="strip">${[["BOQ value", tot, "In the awarded scope"], ["Budget cost", cost, "Qty x your cost rate"], ["Budget margin", tot - cost, ""]].map(([l, v, t]) => `<div class="fig"><div class="l">${l}${t ? " " + tip(t) : ""}</div><div class="v">${aed(v)}</div></div>`).join("")}<div class="fig"><div class="l">Margin %</div><div class="v">${tot && cost ? (100 * (tot - cost) / tot).toFixed(1) + "%" : '<span class="muted">-</span>'}</div></div>${out ? `<div class="fig"><div class="l">Not in scope ${tip("Bills and sections the internal BOQ leaves out (Excluded, Phase 02, N/A ...). Kept for reference, not counted. Click the tag on a bill to bring it into scope when it is awarded.")}</div><div class="v muted">${aed(out)}</div></div>` : ""}</div>`;
@@ -1137,11 +1156,11 @@ SECTIONS["client.vo"] = el => {
   const sum = (k, s) => r2(b.variations.filter(v => (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
   const absorbed = sum("absorbed_amount");
   const fig = (l, v, c, tip) => `<div class="fig ${c || ""}" ${tip ? `title="${esc(tip)}"` : ""}><div class="l">${l}</div><div class="v">${aed(v)}</div></div>`;
-  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log (Excel / PDF / scan)</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>`,
+  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>`,
       chips: [["", b.variations.length], ...VO_ST.filter(s => n(s) || ["Identified", "Submitted", "Approved", "Rejected"].includes(s)).map(s => [s, n(s)])] }) +
     `<div class="strip">${fig("Submitted", sum("submitted_amount"), "", "Every variation sent to the client (coordination lines left out)")}${fig("Approved", sum("approved_amount", "Approved"), "green", "Added to the contract value")}${fig("Waiting approval", sum("submitted_amount", "Submitted"), "amber", "Submitted, not yet accepted or rejected")}${absorbed ? fig("Absorbed", absorbed, "", "Cost Infinia carries itself - not added to the contract") : ""}</div>` +
-    (list.length ? voTable(list) : '<div class="empty">No variations yet. Press + Variation, or Import Excel to bring in the QS variation log.</div>');
-  bindTools(el, () => SECTIONS["client.vo"](el));
+    (list.length ? voTable(list) : '<div class="empty">No variations yet. Press + Variation, or Import log to bring in the QS variation log.</div>');
+  bindTools(el, () => SECTIONS[key()](el));
   $("#add-vo", el).onclick = () => voForm();
   const fi = $("#imp-vo-f", el);
   $("#imp-vo", el).onclick = () => fi.click();
@@ -1239,6 +1258,7 @@ SECTIONS["client.inv"] = el => {
   const g = $("#go-inv", el); if (g) g.onclick = () => parent.postMessage({ est: "app", page: "accounts", tab: "invoices" }, location.origin);
 };
 
+SECTIONS["site.vo"] = el => SECTIONS["client.vo"](el);      // the same variations, from Site & technical too
 // ---------------- Site & technical: RFIs, submittals ----------------
 const LOGCFG = {
   rfi: { name: "RFI", title: "Subject", party: "To", reply: "Answered", btn: "Answer received" },

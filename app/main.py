@@ -13562,6 +13562,25 @@ import projectpay  # noqa: E402
 projectpay.create_tables(engine)
 app.include_router(projectpay.router)
 projectpay.seed_once(SessionLocal)
+
+
+def _receipts_from_bank():
+    """Once: every client's payment already on Accounts > Bank gets its receipt (made automatically from now on)."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "receipts_from_bank").first():
+            return
+        import receipts as _rc
+        _rc.backfill(db)
+        db.add(models.Setting(key="receipts_from_bank", value="1"))
+        db.commit()
+    except Exception as e:  # never keep the app from starting over this
+        db.rollback(); print("receipts from bank:", e)
+    finally:
+        db.close()
+
+
+_receipts_from_bank()
 import agent  # noqa: E402  - Claude connector: ask the app anything, read-only
 app.include_router(agent.router)
 import projexpense  # noqa: E402  - Accounts > Project expense: cost per project

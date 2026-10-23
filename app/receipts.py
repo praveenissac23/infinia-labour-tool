@@ -11,7 +11,7 @@ from html import escape
 
 from fastapi import Body, Depends, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
-from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Session
 
 import auth
@@ -44,6 +44,11 @@ class Receipt(Base):
     allocations = Column(Text, default="[]")    # [{invoice_id, amount}]
     notes = Column(String, default="")
     status = Column(String, default="issued")   # issued | cancelled
+    # The bank line (Accounts > Bank, Received from client) this receipt stands for - made from it
+    # automatically, or matched to it. A cheque dated later counts as received on its cheque date;
+    # its PAID stamp waits for that day (stamp_pending).
+    bank_id = Column(Integer, nullable=True, index=True)
+    stamp_pending = Column(Boolean, default=False)
     cancel_reason = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -62,25 +67,54 @@ def _allocs(x):
         return []
 
 
-def received_map(db, skip_id=None):
-    """invoice id -> money received on it (receipts not cancelled)."""
+CHEQUES = ("Cheque", "PDC")
+
+
+def is_due(x, as_of=None):
+    """Has the money come in? A cheque (or PDC) dated later counts only from its cheque date."""
+    if x.mode in CHEQUES and x.cheque_date:
+        return x.cheque_date <= (as_of or M._dubai_today())
+    return True
+
+
+def money_date(x):
+    """The day the money counts as received: the cheque date for a cheque, else the receipt date."""
+    return x.cheque_date if (x.mode in CHEQUES and x.cheque_date) else x.rc_date
+
+
+def received_map(db, skip_id=None, everything=False, as_of=None):
+    """invoice id -> money received on it (receipts not cancelled). A post-dated cheque counts only once its
+    date has come; everything=True counts it already (what is set against an invoice, so it is not set twice)."""
     out = {}
     for x in db.query(Receipt).filter(Receipt.status != "cancelled").all():
         if skip_id and x.id == skip_id:
+            continue
+        if not everything and not is_due(x, as_of):
             continue
         for a in _allocs(x):
             out[int(a["invoice_id"])] = r2(out.get(int(a["invoice_id"]), 0) + float(a.get("amount") or 0))
     return out
 
 
-def _inv_row(i, got):
-    return {"id": i.id, "number": i.number, "date": i.inv_date.isoformat(), "client": i.client or "", "client_trn": i.client_trn or "",
+def pending_map(db):
+    """invoice id -> money on post-dated cheques not yet due."""
+    out = {}
+    for x in db.query(Receipt).filter(Receipt.status != "cancelled").all():
+        if is_due(x):
+            continue
+        for a in _allocs(x):
+            out[int(a["invoice_id"])] = r2(out.get(int(a["invoice_id"]), 0) + float(a.get("amount") or 0))
+    return out
+
+
+def _inv_row(i, got, pdc=0.0):
+    return {"pdc": r2(pdc), "open": r2((i.total or 0) - got - pdc), "id": i.id, "number": i.number, "date": i.inv_date.isoformat(), "client": i.client or "", "client_trn": i.client_trn or "",
             "client_address": i.client_address or "", "project_no": i.project_no or "", "project": i.project or "", "location": i.location or "",
             "company_id": i.company_id, "total": r2(i.total), "received": r2(got), "balance": r2((i.total or 0) - got),
             "paid_stamp": bool(i.paid_stamp)}
 
 
-def _dict(db, x, invs=None, users=None):
+def _dict(db, x, invs=None, users=None, banks=None):
     invs = invs if invs is not None else {}
     al = []
     for a in _allocs(x):
@@ -93,7 +127,8 @@ def _dict(db, x, invs=None, users=None):
             "project": x.project or "", "location": x.location or "", "mode": x.mode or "", "reference": x.reference or "",
             "bank": x.bank or "", "cheque_date": x.cheque_date.isoformat() if x.cheque_date else "", "amount": r2(x.amount),
             "allocations": al, "applied": applied, "advance": r2((x.amount or 0) - applied), "notes": x.notes or "",
-            "status": x.status, "cancel_reason": x.cancel_reason or "", "by": (users or {}).get(x.updated_by or x.created_by, "")}
+            "status": x.status, "cancel_reason": x.cancel_reason or "", "by": (users or {}).get(x.updated_by or x.created_by, ""),
+            "due": is_due(x), "bank_id": x.bank_id, "bank_line": (banks or {}).get(x.bank_id)}
 
 
 def next_number(db, project_no=""):
@@ -133,7 +168,7 @@ def _clean(db, p, keep_id=None):
     mode = str(p.get("mode") or "Bank transfer")
     if mode not in MODES:
         mode = "Bank transfer"
-    got = received_map(db, skip_id=keep_id)
+    got = received_map(db, skip_id=keep_id, everything=True)
     allocs, seen = [], set()
     for a in p.get("allocations") or []:
         try:
@@ -161,8 +196,13 @@ def _clean(db, p, keep_id=None):
 
 
 def _stamp_paid(db, x, on_date, want):
-    """Invoices this receipt pays in full get the PAID stamp (dated the receipt); an invoice no
-    longer paid in full loses a stamp a receipt put on it."""
+    """Invoices this receipt pays in full get the PAID stamp (dated the day the money counts); an invoice no
+    longer paid in full loses a stamp a receipt put on it. A post-dated cheque's stamp waits for its date."""
+    x.stamp_pending = False
+    if want and x.status != "cancelled" and not is_due(x):
+        x.stamp_pending = True
+        return
+    on_date = money_date(x)
     got = received_map(db)
     for a in _allocs(x):
         inv = db.get(A.Invoice, int(a["invoice_id"]))
@@ -182,23 +222,44 @@ def _unstamp_if_short(db, inv_ids, rc_date):
         inv = db.get(A.Invoice, iid)
         if not (inv and inv.paid_stamp) or r2((inv.total or 0) - got.get(iid, 0)) <= 0.005:
             continue
-        dates = {rc_date} | {r.rc_date for r in db.query(Receipt).all() if any(int(a["invoice_id"]) == iid for a in _allocs(r))}
+        mine = [r for r in db.query(Receipt).all() if any(int(a["invoice_id"]) == iid for a in _allocs(r))]
+        dates = {rc_date} | {r.rc_date for r in mine} | {r.cheque_date for r in mine if r.cheque_date}
         if inv.paid_on in dates:
             inv.paid_stamp, inv.paid_on = False, None
 
 
+def mature(db):
+    """Post-dated cheques whose date has come: the PAID stamp they were waiting for goes on now."""
+    due = [x for x in db.query(Receipt).filter(Receipt.stamp_pending == True, Receipt.status != "cancelled").all() if is_due(x)]  # noqa: E712
+    for x in due:
+        _stamp_paid(db, x, x.rc_date, True)
+    if due:
+        db.commit()
+
+
+def _bank_lines(db):
+    out = {}
+    for b in db.query(models.BankEntry).filter(models.BankEntry.kind == "customer").all():
+        out[b.id] = {"id": b.id, "date": b.on_date.isoformat(), "amount": r2(b.amount), "party": b.party or "",
+                     "reference": b.reference or "", "zoho": b.zoho_status or ""}
+    return out
+
+
 @router.get("/employees/accounts/receipts")
 def list_receipts(db: Session = Depends(get_db), user: models.User = A.INV):
+    mature(db)
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    banks = _bank_lines(db)
     invs = {i.id: i for i in db.query(A.Invoice).filter(A.Invoice.kind == "tax").all()}
     rows = db.query(Receipt).order_by(Receipt.rc_date.desc(), Receipt.id.desc()).all()
     live = [r for r in rows if r.status != "cancelled"]
-    got = received_map(db)
-    open_inv = [_inv_row(i, got.get(i.id, 0)) for i in sorted(invs.values(), key=lambda i: (i.inv_date, i.id)) if i.status != "cancelled"]
+    got, pdc = received_map(db), pending_map(db)
+    open_inv = [_inv_row(i, got.get(i.id, 0), pdc.get(i.id, 0)) for i in sorted(invs.values(), key=lambda i: (i.inv_date, i.id)) if i.status != "cancelled"]
     companies = [{"id": c.id, "name": c.name} for c in db.query(models.Company).filter(models.Company.active == True).all()]  # noqa: E712
-    return {"rows": [_dict(db, r, invs, users) for r in rows], "invoices": open_inv, "companies": companies, "modes": MODES,
+    return {"rows": [_dict(db, r, invs, users, banks) for r in rows], "invoices": open_inv, "companies": companies, "modes": MODES,
             "clients": sorted({i.client for i in invs.values() if i.client} | {r.client for r in rows if r.client}),
-            "totals": {"count": len(live), "amount": r2(sum(r.amount or 0 for r in live))},
+            "totals": {"count": len(live), "amount": r2(sum(r.amount or 0 for r in live)),
+                       "pdc": r2(sum(r.amount or 0 for r in live if not is_due(r)))},
             "next": next_number(db)}
 
 
@@ -245,12 +306,153 @@ def cancel_receipt(rid: int, payload: dict = Body(default={}), db: Session = Dep
         raise HTTPException(status_code=404, detail="That receipt is not on file.")
     if x.status == "cancelled":
         return {"ok": True}
-    x.status, x.cancel_reason, x.updated_by = "cancelled", str(payload.get("reason") or "")[:200], user.id
+    x.status, x.cancel_reason, x.updated_by, x.stamp_pending = "cancelled", str(payload.get("reason") or "")[:200], user.id, False
     db.flush()
     _unstamp_if_short(db, [int(a["invoice_id"]) for a in _allocs(x)], x.rc_date)
     db.commit()
     M.log_action(db, user.id, "receipt_cancel", f"{x.number} {x.client}: AED {x.amount:,.2f}")
     return {"ok": True}
+
+
+# ---- the bank line it stands for ---------------------------------------------------------------------
+# Accounts > Bank, "Received from client": saving it makes the receipt here (or links one already made
+# for the same money), and changing or removing it keeps the receipt in step. The receipt stays editable -
+# client, project, invoices, notes are the office's; amount, date, mode and reference follow the bank line.
+
+BANK_MODE = {"Bank Transfer": "Bank transfer", "Cheque": "Cheque", "Credit Card": "Card", "Cash": "Cash"}
+
+
+def _norm_ref(v):
+    return "".join(ch for ch in str(v or "").upper() if ch.isalnum()).lstrip("0")
+
+
+def _bank_fields(b):
+    today = M._dubai_today()
+    mode = BANK_MODE.get(b.mode or "", "Bank transfer")
+    if mode == "Cheque":
+        later = b.on_date > today
+        return {"mode": "PDC" if later else "Cheque", "rc_date": today if later else b.on_date, "cheque_date": b.on_date,
+                "reference": (b.reference or "")[:120], "amount": r2(b.amount)}
+    return {"mode": mode, "rc_date": b.on_date, "cheque_date": None, "reference": (b.reference or "")[:120], "amount": r2(b.amount)}
+
+
+def _bank_invoices(db, b):
+    """The app's tax invoices the bank line names (by number, or a held one by its id), with the amount set on each."""
+    try:
+        docs = json.loads(b.docs or "[]")
+    except Exception:
+        docs = []
+    out = []
+    for d in docs:
+        inv = None
+        if d.get("portal_id"):
+            inv = db.get(A.Invoice, int(d["portal_id"]))
+        if not inv and d.get("number"):
+            inv = db.query(A.Invoice).filter(A.Invoice.kind == "tax", A.Invoice.number == str(d["number"]).strip()).first()
+        if inv and inv.kind == "tax" and inv.status != "cancelled":
+            out.append((inv, r2(d.get("amount"))))
+    return out
+
+
+def _fit_allocs(db, x, wanted):
+    """Set the money against the invoices, never past what is still open on each nor past the amount."""
+    got = received_map(db, skip_id=x.id, everything=True)
+    left, allocs = r2(x.amount), []
+    for inv, amt in wanted:
+        a = r2(min(amt, (inv.total or 0) - got.get(inv.id, 0), left))
+        if a > 0.005:
+            allocs.append({"invoice_id": inv.id, "amount": a})
+            got[inv.id] = r2(got.get(inv.id, 0) + a)
+            left = r2(left - a)
+    return allocs
+
+
+def from_bank(db, b, user_id=None):
+    """Keep the receipt in step with bank line b. Call after b is flushed; the caller commits."""
+    linked = db.query(Receipt).filter(Receipt.bank_id == b.id).order_by(Receipt.id).all()
+    live = next((r for r in linked if r.status != "cancelled"), None)
+    if b.kind != "customer":
+        if live:
+            cancel_linked(db, b, "The bank line is no longer money received from a client.", user_id)
+        return None
+    if linked and not live:
+        return None                      # the office cancelled its receipt on purpose - not made again
+    f = _bank_fields(b)
+    if not live:
+        # A receipt typed in by hand for the same money: link it rather than make a second one.
+        ref = _norm_ref(b.reference)
+        for r in db.query(Receipt).filter(Receipt.bank_id.is_(None), Receipt.status != "cancelled").all():
+            if abs(r2(r.amount) - f["amount"]) > 0.005 or abs((money_date(r) - b.on_date).days) > 15:
+                continue
+            if (ref and _norm_ref(r.reference) == ref) or (r.client or "").strip().lower() == (b.party or "").strip().lower():
+                r.bank_id = b.id
+                db.flush()
+                return r
+        wanted = _bank_invoices(db, b)
+        inv = wanted[0][0] if wanted else None
+        pno = (inv.project_no if inv else "") or ""
+        if not pno and b.scope_id:
+            import projectpay as pp
+            sc = db.get(pp.ProjectScope, b.scope_id)
+            pno = (sc.project if sc else "") or ""
+        x = Receipt(number=next_number(db, pno), company_id=inv.company_id if inv else None, client=(b.party or "")[:200],
+                    client_trn=(inv.client_trn if inv else "") or "", client_address=(inv.client_address if inv else "") or "",
+                    project_no=pno[:30], project=(inv.project if inv else "") or "", location=(inv.location if inv else "") or "",
+                    bank="ADCB" if f["mode"] != "Cash" else "", allocations="[]", notes=f"From bank line BK-{b.id}",
+                    bank_id=b.id, created_by=user_id, **f)
+        db.add(x)
+        db.flush()
+        x.allocations = json.dumps(_fit_allocs(db, x, wanted))
+        db.flush()
+        _stamp_paid(db, x, x.rc_date, True)
+        db.flush()
+        return x
+    # Linked already: the money facts follow the bank line.
+    before = [int(a["invoice_id"]) for a in _allocs(live)]
+    old_date = live.rc_date
+    changed = any(getattr(live, k) != v for k, v in f.items() if k != "rc_date") or (live.mode in CHEQUES and live.rc_date != f["rc_date"] and f["mode"] == "Cheque")
+    if not changed and abs(r2(live.amount) - f["amount"]) <= 0.005:
+        return live
+    for k, v in f.items():
+        if k == "rc_date" and live.mode == "PDC" and f["mode"] == "PDC":
+            continue                     # still post-dated: the day it was received stays
+        setattr(live, k, v)
+    live.updated_by = user_id
+    al, left = [], r2(live.amount)
+    for a in _allocs(live):              # the invoices stay; trimmed only if the amount went down
+        amt = r2(min(float(a.get("amount") or 0), left))
+        if amt > 0.005:
+            al.append({"invoice_id": int(a["invoice_id"]), "amount": amt})
+            left = r2(left - amt)
+    live.allocations = json.dumps(al)
+    db.flush()
+    _unstamp_if_short(db, before, old_date)
+    _stamp_paid(db, live, live.rc_date, True)
+    db.flush()
+    return live
+
+
+def cancel_linked(db, b, reason, user_id=None, unlink=False):
+    """The bank line is no longer a client's payment (or is removed): its receipt is cancelled. Removed, the link
+    goes too (the receipt's notes keep which line it was), so a new line never picks up an old receipt."""
+    for x in db.query(Receipt).filter(Receipt.bank_id == b.id).all():
+        if x.status != "cancelled":
+            x.status, x.cancel_reason, x.updated_by, x.stamp_pending = "cancelled", reason[:200], user_id, False
+            db.flush()
+            _unstamp_if_short(db, [int(a["invoice_id"]) for a in _allocs(x)], x.rc_date)
+        if unlink:
+            x.bank_id = None
+            if f"BK-{b.id}" not in (x.notes or ""):
+                x.notes = ((x.notes or "") + f" (bank line BK-{b.id} removed)").strip()[:500]
+    db.flush()
+
+
+def backfill(db):
+    """Once: a receipt for every client's payment already on Bank that has none."""
+    for b in db.query(models.BankEntry).filter(models.BankEntry.kind == "customer").order_by(models.BankEntry.on_date, models.BankEntry.id).all():
+        if not db.query(Receipt).filter(Receipt.bank_id == b.id).first():
+            from_bank(db, b, b.created_by)
+    db.commit()
 
 
 def _pdf(db, x):

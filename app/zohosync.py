@@ -517,8 +517,17 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
         if x.vat and not (x.trn or "").strip() and len(t) == 15:
             x.trn = t
         acc = str(ln.get("account") or "").strip()
-        if x.vat and str(ln.get("vat_claim") or "") in ("claim", "zero"):
-            x.vat_claim = str(ln["vat_claim"])
+        vc = str(ln.get("vat_claim") or "")
+        if vc == "none" and not x.received and x.vat:            # the chief accountant: the bill has no VAT - the whole amount is the cost
+            M.log_action(db, user.id, "petty_vat", f"petty cash #{x.id} {x.description}: VAT taken off by the chief accountant")
+            x.vat, x.vat_claim = False, ""
+        elif vc in ("claim", "zero") and not x.received:
+            if not x.vat:                                         # a bill entered without VAT that has it
+                M.log_action(db, user.id, "petty_vat", f"petty cash #{x.id} {x.description}: VAT added by the chief accountant")
+                x.vat = True
+                if len(t) == 15 and not (x.trn or "").strip():
+                    x.trn = t
+            x.vat_claim = vc
         if "splits" in ln:
             parts = [{"account": str(p.get("account") or "").strip(), "amount": round(float(str(p.get("amount") or 0).replace(",", "") or 0), 2)}
                      for p in (ln.get("splits") or []) if str(p.get("account") or "").strip() or float(str(p.get("amount") or 0).replace(",", "") or 0)]

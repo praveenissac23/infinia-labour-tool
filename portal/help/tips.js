@@ -144,7 +144,16 @@
   document.addEventListener("focusin", e => { if (CLEARABLE(e.target)) showX(e.target); else if (xb && e.target !== xb) { xfor = null; xb.style.display = "none"; } });
   document.addEventListener("input", e => { if (e.target === xfor) placeX(); });
   document.addEventListener("change", e => { if (e.target === xfor) placeX(); });
-  setInterval(() => { if (xfor && document.activeElement === xfor) placeX(); }, 400);
+  // The x never outlives its box: gone, hidden, emptied, or neither focused nor under the pointer -> it goes.
+  function checkX() {
+    if (!xb || xb.style.display === "none") return;
+    const el = xfor;
+    if (!el || !document.contains(el) || !el.getClientRects().length || !el.value
+        || (document.activeElement !== el && !el.matches(":hover") && !xb.matches(":hover"))) { xb.style.display = "none"; return; }
+    placeX();
+  }
+  setInterval(checkX, 250);
+  new MutationObserver(checkX).observe(document.documentElement, { childList: true, subtree: true });
   // Also when the pointer is over a filled box, not only when it has the cursor.
   document.addEventListener("mouseover", e => {
     const el = e.target;

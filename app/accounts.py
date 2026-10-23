@@ -240,13 +240,17 @@ def list_invoices(kind: str = "tax", db: Session = Depends(get_db), user: models
     live = [r for r in rows if r.status != "cancelled"]
     companies = [{"id": c.id, "name": c.name} for c in db.query(models.Company).filter(models.Company.active == True).all()]  # noqa: E712
     import receipts
+    if kind == "tax":
+        receipts.mature(db)
     got = receipts.received_map(db) if kind == "tax" else {}
+    pdc = receipts.pending_map(db) if kind == "tax" else {}
     out = []
     for r in rows:
         d = _dict(r, users)
         if kind == "tax":
             d["received"] = round(got.get(r.id, 0), 2)
             d["balance"] = round((r.total or 0) - got.get(r.id, 0), 2)
+            d["pdc"] = round(pdc.get(r.id, 0), 2)          # on post-dated cheques, counted from their dates
         out.append(d)
     return {"rows": out, "companies": companies,
             "totals": {"count": len(live), "subtotal": round(sum(r.subtotal for r in live), 2),

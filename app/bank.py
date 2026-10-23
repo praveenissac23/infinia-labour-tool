@@ -51,13 +51,14 @@ def _docs(x):
         return []
 
 
-def _row(x, users):
+def _row(x, users, rcpts=None):
     return {"id": x.id, "date": x.on_date.isoformat(), "kind": x.kind, "kind_label": KINDS.get(x.kind, x.kind),
             "party": x.party or "", "party_id": x.party_id or "", "mode": x.mode or "", "reference": x.reference or "",
             "docs": _docs(x), "account": x.account or "", "site": x.site or "", "amount": round(x.amount or 0, 2),
             "out": x.kind != "customer", "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "notes": x.notes or "",
             "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "", "zoho_err": x.zoho_err or "",
             "scope_id": x.scope_id, "net_amount": round(x.net_amount or 0, 2), "pp_id": x.pp_id,
+            "receipt": (rcpts or {}).get(x.id),
             "by": users.get(x.updated_by or x.created_by, "")}
 
 
@@ -90,7 +91,12 @@ def listing(db, month, start="", end=""):
     rows = (db.query(models.BankEntry).filter(models.BankEntry.on_date >= a, models.BankEntry.on_date <= b)
               .order_by(models.BankEntry.on_date, models.BankEntry.id).all())
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
-    out = [_row(x, users) for x in rows]
+    import receipts
+    rcpts = {}
+    for r in db.query(receipts.Receipt).filter(receipts.Receipt.bank_id.isnot(None)).order_by(receipts.Receipt.id).all():
+        if r.status != "cancelled" or r.bank_id not in rcpts:
+            rcpts[r.bank_id] = {"id": r.id, "number": r.number, "cancelled": r.status == "cancelled"}
+    out = [_row(x, users, rcpts) for x in rows]
     return {"month": f"{a:%Y-%m}", "label": label, "start": a.isoformat(), "end": b.isoformat(), "rows": out,
             "paid": round(sum(r["amount"] for r in out if r["out"]), 2),
             "received": round(sum(r["amount"] for r in out if not r["out"]), 2),
@@ -257,6 +263,8 @@ def add(payload: dict = Body(...), db: Session = Depends(get_db), user: models.U
         link_receipt(db, x)
     except HTTPException:
         db.rollback(); raise
+    import receipts
+    receipts.from_bank(db, x, user.id)      # a client's payment makes its receipt (Accounts > Invoices > Receipts)
     db.commit()
     M.log_action(db, user.id, "bank_add", f"{KINDS[x.kind]} {x.party} {x.amount:,.2f} {x.reference}")
     sent, failed = _send(db, [x], user) if _may_send(user) else (0, [])
@@ -288,6 +296,8 @@ def edit(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
         link_receipt(db, x)
     except HTTPException:
         db.rollback(); raise
+    import receipts
+    receipts.from_bank(db, x, user.id)
     db.commit()
     M.log_action(db, user.id, "bank_edit", f"#{bid} {KINDS[x.kind]} {x.party} {x.amount:,.2f}")
     sent, failed = _send(db, [x], user) if _may_send(user) else (0, [])
@@ -308,6 +318,8 @@ def delete(bid: int, db: Session = Depends(get_db), user: models.User = BK):
     import projectpay as pp
     for line in db.query(pp.ProjectPayment).filter(pp.ProjectPayment.source == f"bank:{x.id}").all():
         db.delete(line)
+    import receipts
+    receipts.cancel_linked(db, x, "The bank line was removed.", user.id, unlink=True)
     db.delete(x); db.commit()
     return {"ok": True}
 

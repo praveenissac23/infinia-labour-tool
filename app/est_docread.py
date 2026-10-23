@@ -156,6 +156,100 @@ def read_tender(lines, flat):
     return _out(f, [("name", "Tender / project"), ("client", "Client"), ("consultant", "Consultant"), ("location", "Location"), ("received", "Received"), ("due", "Submission due")])
 
 
+_ONES = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+                                     "seventeen eighteen nineteen".split())}
+_TENS = {w: 10 * (i + 2) for i, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split())}
+_TYPO = {"eigtheen": "eighteen", "eighten": "eighteen", "fourty": "forty", "ninty": "ninety", "thousands": "thousand", "hundreds": "hundred",
+         "lakh": "lac", "lakhs": "lac", "lacs": "lac", "millions": "million"}
+
+
+def words_amount(flat):
+    """The dirhams written in words ('Eleven Thousand One Hundred Eighteen and Eighteen Fils Only') -> 11118.18, or None.
+    The longest run of number words is the dirhams; number words just before 'fils' are the fils."""
+    toks = re.findall(r"[a-z]+", flat.lower())
+    toks = [_TYPO.get(t, t) for t in toks]
+    NUMW = set(_ONES) | set(_TENS) | {"hundred", "thousand", "lac", "million"}
+    def num(ws):
+        total = cur = 0
+        for w in ws:
+            if w in _ONES: cur += _ONES[w]
+            elif w in _TENS: cur += _TENS[w]
+            elif w == "hundred": cur = (cur or 1) * 100
+            elif w == "thousand": total += (cur or 1) * 1000; cur = 0
+            elif w == "lac": total += (cur or 1) * 100000; cur = 0
+            elif w == "million": total += (cur or 1) * 1000000; cur = 0
+        return total + cur
+    runs, cur = [], []                                   # runs of number words ("and" allowed inside)
+    for k, t in enumerate(toks):
+        if t in NUMW or (t == "and" and cur and k + 1 < len(toks) and toks[k + 1] in NUMW):
+            cur.append((k, t))
+        else:
+            if cur: runs.append(cur)
+            cur = []
+    if cur: runs.append(cur)
+    runs = [r for r in runs if any(t in NUMW for _, t in r)]
+    if not runs:
+        return None
+    # the dirhams: the run followed by dirhams / fils / only (or the biggest-valued run with 'thousand' or 'hundred')
+    def after(r): return toks[r[-1][0] + 1] if r[-1][0] + 1 < len(toks) else ""
+    fils_run = next((r for r in runs if after(r) == "fils"), None)
+    if fils_run is not None and {"thousand", "hundred", "lac", "million"} & {t for _, t in fils_run}:
+        fils_run = None                                  # one run holds both: "... Eighteen and Eighteen Fils" - split below
+    dh_run = None
+    for r in runs:
+        if r is fils_run:
+            continue
+        ws = [t for _, t in r]
+        if after(r) in ("dirham", "dirhams", "only", "fils", "and", "aed") or {"thousand", "hundred", "lac", "million"} & set(ws):
+            if dh_run is None or num([t for _, t in r if t != "and"]) > num([t for _, t in dh_run if t != "and"]):
+                dh_run = r
+    if dh_run is None:
+        return None
+    ws = [t for _, t in dh_run if t != "and"]
+    # "... Eighteen and Eighteen Fils": the run swallowed the fils - split at the last "and" before fils
+    fils = 0
+    if fils_run is None and after(dh_run) == "fils":
+        parts = [t for _, t in dh_run]
+        if "and" in parts:
+            cut = len(parts) - 1 - parts[::-1].index("and")
+            ws = [t for t in parts[:cut] if t != "and"]; fils = num([t for t in parts[cut + 1:] if t != "and"])
+        else:
+            return None
+    elif fils_run is not None:
+        fils = num([t for _, t in fils_run if t != "and"])
+    dh = num(ws)
+    if not dh or fils >= 100:
+        return None
+    return round(dh + fils / 100, 2)
+
+
+def check_total(lines, flat, tot, notes):
+    """The total, checked against the bill's own figures. A scan easily drops a digit ("11118.18" read as "1118.18"):
+    total before VAT + VAT, and the amount written in words, put it right - and it is said, to check."""
+    sub = _money_label(lines, "totalbeforevat", "totalexclvat", "totalexcludingvat", "subtotal", "taxableamount", "netamount", "totalamount", "amount")
+    vat = _money_label(lines, "vatamount", "vat5", "vat", "valueaddedtax", "tax5", "tax")
+    calc = None
+    if sub and vat is not None and 0 < vat <= sub * 0.06 and abs(vat - sub * 0.05) <= max(1.0, sub * 0.002):
+        calc = round(sub + vat, 2)
+    words = words_amount(flat)
+    pick, why = None, ""
+    if calc is not None and (tot is None or abs(tot - calc) > 0.05):
+        pick, why = calc, f"total {sub:,.2f} + VAT {vat:,.2f} = {calc:,.2f}"
+        if words is not None and abs(words - calc) > 0.05 and tot is not None and abs(words - tot) <= 0.05:
+            pick = None                                   # the words agree with the total read: keep it
+    elif words is not None and tot is not None and abs(words - tot) > 0.05 and calc is None:
+        a, b = str(int(round(tot))), str(int(round(words)))
+        if len(b) == len(a) + 1 and any(b[:i] + b[i + 1:] == a for i in range(len(b))):     # one digit dropped
+            pick, why = words, f"the amount in words ({words:,.2f})"
+    elif tot is None and words is not None:
+        pick, why = words, f"the amount in words ({words:,.2f})"
+    if pick is not None:
+        if tot is not None:
+            notes.append(f"The total read as {tot:,.2f} does not match {why} - {pick:,.2f} is filled in. Check it against the bill.")
+        return pick
+    return tot
+
+
 def read_invoice(lines, flat, subs=None):
     f = {}
     f["inv_ref"] = _ref(lines, "invoiceno", "taxinvoiceno", "invoicenumber", "invno", "billno", "invoice", "proformainvoiceno", "claimno", "applicationno")
@@ -166,6 +260,10 @@ def read_invoice(lines, flat, subs=None):
     if tot is None:
         tt = [t["total"] for t in tables if t.get("total")]
         tot = max(tt) if tt else None
+    # Check the total against its parts: a scan easily drops a digit ("11118.18" read as "1118.18"). Total before
+    # VAT + VAT is the invoice's own sum - when the total read disagrees with it, the sum is used and said.
+    notes = []
+    tot = check_total(lines, flat, tot, notes)
     f["inv_amount"] = tot
     # the bill's own lines
     rows = max(tables, key=lambda t: len(t["rows"]))["rows"] if tables else []
@@ -173,20 +271,61 @@ def read_invoice(lines, flat, subs=None):
     if inv_lines:
         import json
         f["inv_lines"] = json.dumps(inv_lines)
-    # which subcontractor: a name on the invoice that matches one on this project
-    hay = A.squash(flat)
-    best = None
-    for s in subs or []:
-        key = A.squash(re.sub(r"\b(llc|l\.l\.c|fze|fzc|est|establishment|co|company|trading|contracting|ms)\b", "", (s.get("name") or "").lower()))
-        if len(key) >= 5 and key in hay and (best is None or len(key) > best[1]):
-            best = (s["id"], len(key))
-    if best:
-        f["sub_id"] = best[0]
+    # which subcontractor: the company that issued the invoice (its name at the top - never ours, the "To"),
+    # matched to one on this project. Not on the project -> its name is given so it can be added as a new one.
+    issuer = _vendor(lines)
+    best = _match_sub(issuer, subs or []) if issuer else None
+    if best is None:
+        # no clear issuer: a subcontractor's full name written on the invoice, but never one read from our own lines
+        hay = A.squash(" ".join(l["t"] for l in lines if "infinia" not in l["t"].lower()))
+        for s in subs or []:
+            key = _sub_key(s.get("name"))
+            if len(key) >= 8 and key in hay and (best is None or len(key) > best[1]):
+                best = (s["id"], len(key))
+        best = best[0] if best else None
+    if best is not None:
+        f["sub_id"] = best
+    elif issuer:
+        f["new_sub"] = issuer = (issuer.title().replace("Llc", "LLC").replace("Fze", "FZE").replace("L.L.C", "L.L.C") if issuer.isupper() else issuer)
+        notes.append(f"{issuer} is not a subcontractor on this project yet - add it as a new one below.")
     m = re.search(r"(?:work\s+done|value\s+of\s+work|cumulative|gross\s+value)[^.\d]{0,50}?(?:to\s+date)?[^.\d]{0,30}?(?:AED\s*)?([\d,]{4,}(?:\.\d{1,2})?)", flat, re.I)
     if m and re.search(r"to\s+date|cumulative", m.group(0), re.I):
         f["work_cum"] = float(m.group(1).replace(",", ""))
+    if not f.get("inv_ref"):
+        m = re.search(r"\binvoice\s*(?:no\.?|number|#)\s*[:\-.]?\s*([A-Z0-9][A-Z0-9/\-]{0,30})", flat, re.I)
+        if m and re.search(r"\d", m.group(1)):
+            f["inv_ref"] = m.group(1).strip("-/")
+    sc = re.search(r"(?:payment|invoice|claim|bill)\s+for\s+(?:the\s+)?(.{6,90}?\bworks?\b)", flat, re.I)
+    if sc:
+        f["scope_hint"] = sc.group(1).strip(" ,.-").title()[:90]
     return _out(f, [("sub_id", "Subcontractor"), ("inv_ref", "Invoice no."), ("inv_date", "Invoice date"), ("inv_amount", "Invoice amount"),
-                    ("inv_lines", "Bill lines"), ("work_cum", "Work done to date")])
+                    ("inv_lines", "Bill lines"), ("work_cum", "Work done to date")], notes)
+
+
+_SUFFIX = r"\b(llc|l\.l\.c\.?|fze|fzc|fzco|est\.?|establishment|co\.?|company|trading|contracting|technical|services|general|ms|m/s|the)\b"
+
+
+def _sub_key(name):
+    return A.squash(re.sub(_SUFFIX, " ", (name or "").lower()))
+
+
+def _match_sub(issuer, subs):
+    """The subcontractor whose name is the issuer's (ignoring LLC, EST, TRADING ...), or None."""
+    want = _sub_key(issuer)
+    if len(want) < 3:
+        return None
+    best = None
+    for s in subs:
+        key = _sub_key(s.get("name"))
+        if len(key) < 3:
+            continue
+        import difflib
+        close = difflib.SequenceMatcher(None, key, want).ratio()
+        if key == want or (len(key) >= 5 and (key in want or want in key)) or (min(len(key), len(want)) >= 6 and close >= 0.85):
+            score = 1000 if key == want else (len(key) if (key in want or want in key) else close * 100)
+            if best is None or score > best[1]:
+                best = (s["id"], score)
+    return best[0] if best else None
 
 
 def read_subvo(lines, flat):
@@ -318,6 +457,12 @@ def _vendor(lines, avoid=("infinia",)):
             if len(t) < 4 or any(a in t.lower() for a in avoid) or re.search(r"invoice|receipt|quotation|delivery|statement|tax|date|trn|tel|phone|p\.?o\.? box|email|www", t, re.I):
                 continue
             if COMPANY.search(t) and len(t) <= 80:
+                # the whole name when the line was split in pieces ("ROYAL" | "EVERST TECHNICAL SERVICES EST.")
+                whole = " ".join(re.sub(r"[^\x20-\x7E]", " ", c).strip() for c in l["c"]).strip()
+                whole = re.sub(r"\s+", " ", whole)
+                if t in whole and len(whole) <= 80 and not re.search(r"invoice|receipt|quotation|delivery|statement|tax|date|trn|tel|phone|email|www|\d{3,}", whole, re.I) \
+                        and not any(a in whole.lower() for a in avoid):
+                    t = whole.strip(" :-")
                 i = lines.index(l)
                 nxt = lines[i + 1]["c"][0].strip() if i + 1 < len(lines) and lines[i + 1]["c"] else ""
                 if re.fullmatch(r"(L\.?L\.?C\.?|LLC|FZE|FZC|FZCO|FZ-?LLC|EST\.?|CO\.?|W\.?L\.?L\.?|\(L\.?L\.?C\.?\))", nxt, re.I) and not re.search(nxt.replace(".", r"\.") + "$", t):
@@ -346,6 +491,8 @@ def read_receipt(lines, flat):
     if tot is None:
         nums = [A.money(c) for l in lines for c in l["c"] if A.money(c) is not None]
         tot = max(nums) if nums else None
+    notes = []
+    tot = check_total(lines, flat, tot, notes)
     f["amount"] = tot
     vat = _money_label(lines, "vatamount", "totalvat", "outputvat", "taxamount", "vat5", "vat", "tax")
     if vat is None or (tot and abs(vat - 5) < 0.001):         # 'VAT 5% ........ 23.00': the figure at the end of the row
@@ -362,8 +509,16 @@ def read_receipt(lines, flat):
     rows = max(A._tables(lines), key=lambda t: len(t["rows"]))["rows"] if A._tables(lines) else []
     words = [r["description"] for r in rows if r["description"] and not re.search(r"total|vat|cash|change", r["description"], re.I)][:3]
     tidy = lambda w: re.sub(r"(\s+[\d.,|\[\]]+)+\s*$", "", re.sub(r"[|\[\]]", " ", w)).strip(" ,-")
+    words = [w for w in words if not re.search(r"\bamount\b|description|sl\.?\s*no|qty|unit\s*price|rate\b", w, re.I) and sum(ch.isalpha() for ch in w) >= 4]
     f["description"] = ", ".join(tidy(w)[:60] for w in words if tidy(w))
-    return _out(f, [("date", "Date"), ("supplier", "Supplier"), ("receipt_no", "Receipt no."), ("amount", "Amount"), ("vat", "VAT"), ("trn", "TRN")])
+    sent = re.search(r"(?:submit\s+our|being|towards)\s+(.{6,120}?\bworks?\b)", flat, re.I) or re.search(r"\b((?:\w+\s+){0,3}payment\s+for\s+.{4,100}?\bworks?\b)", flat, re.I)
+    if sent:
+        f["description"] = re.sub(r"\s+", " ", sent.group(1)).strip(" ,.-")[:120].capitalize()
+    if not f.get("receipt_no"):
+        m = re.search(r"\b(?:invoice|receipt|bill)\s*(?:no\.?|number|#)\s*[:\-.]?\s*([A-Z0-9][A-Z0-9/\-]{0,30})", flat, re.I)
+        if m and re.search(r"\d", m.group(1)):
+            f["receipt_no"] = m.group(1).strip("-/")
+    return _out(f, [("date", "Date"), ("supplier", "Supplier"), ("receipt_no", "Receipt no."), ("amount", "Amount"), ("vat", "VAT"), ("trn", "TRN")], notes)
 
 
 BANKS = [("ADCB", r"ADCB|Abu Dhabi Commercial"), ("Emirates NBD", r"Emirates\s*NBD|ENBD"), ("FAB", r"First Abu Dhabi|\bFAB\b|NBAD"), ("Mashreq", r"Mashreq"),
