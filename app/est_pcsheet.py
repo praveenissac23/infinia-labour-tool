@@ -422,6 +422,38 @@ def _can(user, role):
     return E.RIGHT in perms
 
 
+def _real(v):
+    """A detail worth printing: not blank, not a placeholder ("0", "-", "NA")."""
+    v = " ".join(str(v or "").split())
+    return "" if v.strip(" .-0").lower() in ("", "na", "n/a", "nil", "none") else v
+
+
+def _sub_details(s, sup):
+    """The subcontractor's address, phone, mobile and TRN - his own on the subcontract, else from the supplier list."""
+    g = lambda k: _real(getattr(s, k, "")) or (_real(getattr(sup, k, "")) if sup else "")
+    return {"address": (getattr(s, "address", "") or "").strip() or ((sup.address or "").strip() if sup else ""),
+            "phone": g("phone"), "mobile": _real(getattr(s, "mobile", "")),
+            "trn": "".join(ch for ch in g("trn") if ch.isdigit())}
+
+
+def _project_more(db, p):
+    """Client and plot for the paper: the project's own, else the site (Settings) and the project's invoices."""
+    client, plot = (p.client or "").strip(), (getattr(p, "plot_no", "") or "").strip()
+    if not plot or not client:
+        site = db.query(models.Site).filter(models.Site.code == p.code).first()
+        if site and not plot:
+            plot = (site.plot_no or "").strip()
+        if not client:
+            try:
+                import accounts as AC
+                inv = (db.query(AC.Invoice).filter(AC.Invoice.project_no == p.code, AC.Invoice.status != "cancelled", AC.Invoice.client != "")
+                         .order_by(AC.Invoice.inv_date.desc()).first())
+                client = (inv.client or "").strip() if inv else ""
+            except Exception:
+                client = ""
+    return client, plot
+
+
 def sheet(db, pc, user=None):
     s = E._sub_of(db, pc.sub_id)
     p = E._project(db, s.project_id)
@@ -442,7 +474,7 @@ def sheet(db, pc, user=None):
         "pc": E._plain(pc, E.KINDS["subpcs"][2]), "calc": calc.get(pc.id), "prev_calc": calc.get(prev.id) if prev else None,
         "pcs": [dict(E._plain(x, E.KINDS["subpcs"][2]), **calc.get(x.id, {})) for x in pcs],
         "sub": dict(E._plain(s, E.KINDS["subs"][2]), revised=E.sub_revised(s, vos), vo_total=r2(sum(v.amount or 0 for v in vos)),
-                    sup={"address": sup.address if sup else "", "phone": sup.phone if sup else "", "trn": sup.trn if sup else ""}),
+                    sup=_sub_details(s, sup)),
         "project": {"code": p.code, "name": p.name, "client": p.client, "location": p.location},
         "items": [_item_out(i) for i in items],
         "lines": {i.id: ln_out(i, mine.get(i.id)) for i in items if i.id in mine},
@@ -650,6 +682,7 @@ def build_doc(db, pc):
                      "cert": _dt(x.issued or x.certified_on) or "-", "amount": cx["this"], "paid": r2(x.paid_amount), "vat": cx["vat"],
                      "ret": r2((x.ret_cum or 0) - before_ret)})
     sup = sh["sub"]["sup"]
+    _pm = _project_more(db, p)
     inv_lines = []
     try:
         inv_lines = json.loads(pc.inv_lines or "[]") or []
@@ -657,15 +690,16 @@ def build_doc(db, pc):
         inv_lines = []
     return {
         "ref": _pc_ref(p, s, pc), "title": "PAYMENT CERTIFICATE", "kind": pc.pc_type or "Interim",
-        "head_l": [("Project Name", p.name or ""), ("Client", p.client or ""), ("Scope of work", s.scope or ""),
+        "head_l": [("Project Name", p.name or ""), ("Client", _pm[0]), ("Plot No.", _pm[1]), ("Scope of work", s.scope or ""),
                    ("Agreement Ref.", (s.agreement or s.lpo or "") + (f"   Date: {_dt(s.agreement_date)}" if s.agreement_date else "")),
                    ("Commencement Date", _dt(s.start_date)),
                    ("Inv. Ref", (pc.inv_ref or "") + (f"   Date: {_dt(pc.inv_date)}" if pc.inv_date else ""))],
         "head_r": [("Project Code", p.code), ("Measurement Date", _dt(pc.measured_on)), ("IPC No.", f"{(pc.seq or 0):02d}"),
-                   ("IPC Issued Date", _dt(pc.issued)), ("Inv. Received Date", _dt(pc.received))],
+                   ("IPC Issued Date", _dt(pc.issued or E.today())), ("Inv. Received Date", _dt(pc.received))],
         "main": INFINIA,
         "subc": [f"M/s. {s.name}"] + [x.strip() for x in (sup["address"] or "").splitlines() if x.strip()] +
-                ([f"Tel: {sup['phone']}"] if sup["phone"] else []) + ([f"TRN No.: {sup['trn']}"] if sup["trn"] else []),
+                ([f"Tel: {sup['phone']}"] if sup["phone"] else []) + ([f"Mobile: {sup['mobile']}"] if sup.get("mobile") else []) +
+                ([f"TRN No.: {sup['trn']}"] if sup["trn"] else []),
         "contract": [("Contract Value", f"AED {_m(s.value, False)}" if s.value else (s.contract_type or "Re-measurable based on actual quantities executed")),
                      ("Approved variation", f"AED {_m(sh['sub']['vo_total'], False)}" if sh["sub"]["vo_total"] else "N/A"),
                      ("Rev. Contract Value", f"AED {_m(sh['sub']['revised'], False)}" if s.value else ""),
@@ -675,7 +709,7 @@ def build_doc(db, pc):
         "A_total": total_exec,
         "B": [("Advance Payment", f"{s.adv_pct:g}%" if s.adv_pct else "%", adv_paid)],
         "C": [("Advance payment Recovery", f"{s.adv_pct:g}%" if s.adv_pct else "%", r2(pc.adv_rec_cum)),
-              ("Retention", f"{s.ret_pct:g}%" if s.ret_pct else "%", r2(pc.ret_cum)),
+              ("Retention", f"{(s.ret_pct or 0):g}%", r2(pc.ret_cum)),
               ("Material Supplied by the Main Contractor", "", cats["Material"]),
               ("Manpower Supplied by the Main Contractor", "", cats["Manpower"]),
               ("Plant & Equipment Supplied by the Main Contractor", "", cats["Plant & Equipment"]),

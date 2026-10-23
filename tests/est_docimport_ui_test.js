@@ -27,7 +27,7 @@ const C = JSON.parse(execSync(`python3 ${__dirname}/est_docimport_fixtures.py /t
   let b = await api(`/store/est/projects/${P}`);
   ck('BOQ saved: 5 lines, 191,785.00, bills A and B', b.boq.length === 5 && Math.abs(b.boq.reduce((a, x) => a + x.amount, 0) - 191785) < .005, [b.boq.length, b.boq.reduce((a, x) => a + x.amount, 0)]);
   // variation log
-  await go('client.vo');
+  await go('site.vo');
   const before = (await api(`/store/est/projects/${P}`)).variations.length;
   await p.setInputFiles('#imp-vo-f', C.volog.file); await p.waitForSelector('#m-save', { state: 'visible', timeout: 60000 }); await sleep(400);
   ck('VO log preview: 3 variations', /Add 3 variations/.test(await p.textContent('#m-save')), await p.textContent('#m-save'));

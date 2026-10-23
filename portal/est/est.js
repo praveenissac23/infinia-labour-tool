@@ -338,7 +338,7 @@ function finalMatrix(d) {
 // =====================================================================
 const GROUPS = {
   home: { label: "", secs: [["dash", "Dashboard"]] },
-  client: { label: "Overview", secs: [["boq", "BOQ & budget"], ["cpc", "Payment certificates"], ["vo", "Variations"], ["inv", "Invoices"]] },
+  client: { label: "Overview", secs: [["boq", "BOQ & budget"]] },       // variations are under Site & technical
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["vo", "Variations"]] },
 };
@@ -382,6 +382,8 @@ function newProject() {
     { k: "code", label: "Project (site)", type: "combo", options: sites.map(s => s.code), ph: "Pick the site code", tip: "Projects come from Settings > Companies & sites. A code not in the list can be typed.", focus: true,
       hint: sites.length ? sites.slice(0, 12).map(s => `<a href="#" data-site="${esc(s.code)}">${esc(s.code)}</a>`).join(" · ") : "" },
     { k: "name", label: "Project name", value: "", ph: "Filled in from the site" },
+    { k: "plot_no", label: "Plot no.", value: "", ph: "Filled in from the site" },
+    { k: "location", label: "Location", value: "" },
     { k: "client", label: "Client", type: "combo", options: [...new Set(ST.meta.projects.map(p => p.client).filter(Boolean))] },
     { k: "consultant", label: "Consultant", type: "combo", options: [...new Set(ST.meta.projects.map(p => p.consultant).filter(Boolean))] },
     { k: "contract_value", label: "Contract value (AED)", type: "money", tip: "Left empty, it is taken from Accounts > Project payments." },
@@ -397,9 +399,9 @@ function newProject() {
     doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"]] },
     bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="np-boq">Internal BOQ (optional) ${tip("Pick the internal BOQ Excel and every line goes into Overview > BOQ & budget, grouped by trade, with excluded / phase 2 bills kept aside. Only the lines are kept - the file is not stored. It can also be uploaded later from Overview > BOQ & budget.")}</label><input type="file" id="np-boq" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png"></div></div>`,
     after: () => {
-      const fill = () => { const s = ST.meta.sites.find(x => x.code === $("#f-code").value.trim()); if (s && !$("#f-name").value) $("#f-name").value = s.name; };
+      const fill = () => { const s = ST.meta.sites.find(x => x.code === $("#f-code").value.trim()); if (s && !$("#f-name").value) $("#f-name").value = s.name; if (s && s.plot && !$("#f-plot_no").value) $("#f-plot_no").value = s.plot; };
       $("#f-code").addEventListener("change", fill); $("#f-code").addEventListener("input", fill);
-      $$("[data-site]").forEach(a => a.onclick = e => { e.preventDefault(); $("#f-code").value = a.dataset.site; $("#f-name").value = ""; fill(); });
+      $$("[data-site]").forEach(a => a.onclick = e => { e.preventDefault(); $("#f-code").value = a.dataset.site; $("#f-name").value = ""; $("#f-plot_no").value = ""; fill(); });
     }
   });
 }
@@ -431,7 +433,8 @@ function editProject() {
   modal(`Project ${p.code} - details`, [
     { k: "name", label: "Project name", value: p.name, full: true },
     { k: "client", label: "Client", value: p.client }, { k: "consultant", label: "Consultant", value: p.consultant },
-    { k: "location", label: "Location / plot", value: p.location },
+    { k: "location", label: "Location", value: p.location },
+    { k: "plot_no", label: "Plot no.", value: p.plot_no || "", ph: "Printed on the payment certificates" },
     { k: "status", label: "Status", type: "select", options: ["Running", "Tender", "On hold", "Handed over", "Closed"], value: p.status },
     { k: "contract_value", label: "Contract value (AED)", type: "money", value: p.contract_value },
     { k: "ret_pct", label: "Retention %", type: "pct", value: p.ret_pct }, { k: "adv_pct", label: "Advance %", type: "pct", value: p.adv_pct },
@@ -484,13 +487,13 @@ function homeDash(el) {
       ${kpi("Margin", A(s.margin), "contract less subcontracts", s.margin < 0 ? "red" : "")}
     </div></div>
     <div class="dgrid">
-      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
-      <div class="card"><h3>Variations<span class="go" data-go="client.vo">Open</span></h3>
+      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
+      <div class="card"><h3>Variations<span class="go" data-go="site.vo">Open</span></h3>
         <div class="vs"><div><span>Approved</span><b class="ok">${money(sum(vs("Approved"), "approved_amount"), false)}</b><small class="muted">${vs("Approved").length} lines</small></div>
           <div><span>Waiting</span><b>${money(sum(vs("Submitted"), "submitted_amount"), false)}</b><small class="muted">${vs("Submitted").length} submitted</small></div>
           <div><span>Absorbed</span><b>${money(sum(b.variations, "absorbed_amount"), false)}</b><small class="muted">${vs("Absorbed").length} lines</small></div>
           <div><span>To price</span><b>${vs("Identified").length}</b><small class="muted">identified</small></div></div>
-        <h3 style="margin-top:16px">Client payment certificates<span class="go" data-go="client.cpc">Open</span></h3>
+        <h3 style="margin-top:16px">Client payment certificates</h3>
         ${b.clientpcs.length ? `<div class="tw"><table class="t"><thead><tr><th>IPA</th><th>Period to</th><th class="r">Certified</th><th>Status</th></tr></thead><tbody>${b.clientpcs.slice(-4).reverse().map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="muted small">None yet.</div>'}
       </div>
       <div class="card full"><h3>Subcontractors<span class="go" data-go="subs.reg">Open register</span></h3>
@@ -549,6 +552,9 @@ function subForm(s, pre) {
   const names = [...new Set([...m.suppliers.map(x => x.name), ...m.sub_names])];
   modal(edit ? "Subcontract - " + s.name : "New subcontract / LPO", [
     { k: "name", label: "Subcontractor", type: "combo", options: names, value: s.name || "", full: true, focus: !edit, ph: "Start typing - suppliers from Store & Purchasing", tip: "The list is every supplier in Store & Purchasing. A new name can be typed." },
+    { k: "address", label: "Address", type: "area", value: s.address || "", ph: "Office address - printed on his payment certificates", tip: "Printed under his name on every payment certificate. Filled from Store & Purchasing > Suppliers when he is there." },
+    { k: "phone", label: "Telephone", value: s.phone || "", ph: "04 ..." }, { k: "mobile", label: "Mobile", value: s.mobile || "", ph: "05 ..." },
+    { k: "trn", label: "TRN", value: s.trn || "", ph: "15 digits", tip: "His VAT number - printed on the payment certificates. Leave blank if he is not VAT registered." },
     { k: "scope", label: "Work", type: "combo", options: m.scopes, value: s.scope || "" },
     { k: "trade", label: "Trade", type: "select", options: m.trades, value: s.trade || "Civil" },
     { k: "kind", label: "Type", type: "select", options: ["Subcontract", "LPO", "Manpower"], value: s.kind || "Subcontract" },
@@ -558,7 +564,7 @@ function subForm(s, pre) {
     { k: "value", label: "Subcontract / LPO amount (AED)", type: "money", value: s.value ?? "", tip: "Before VAT. Variations are added later on the subcontract." },
     { k: "cancelled", label: "LPO cancellation (AED)", type: "money", value: s.cancelled || "" },
     { k: "adv_pct", label: "Advance %", type: "pct", value: s.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]], tip: "Recovered from each certificate by the same % of the work done, until it is all back." },
-    { k: "ret_pct", label: "Retention %", type: "pct", value: s.ret_pct ?? 0, quick: [["0", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]] },
+    { k: "ret_pct", label: "Retention % (required)", type: "pct", value: edit ? (s.ret_pct ?? 0) : (s.ret_pct ?? ""), ph: "Pick 0, 5% or 10%", quick: [["None (0)", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]], tip: "Held from each certificate as the agreement says - printed on the certificate. No retention: press None (0)." },
     { k: "vat_pct", label: "VAT %", type: "pct", value: s.vat_pct ?? 5, quick: [["5%", el => el.value = 5], ["0", el => el.value = 0]] },
     { k: "start_date", label: "Commencement date", type: "date", value: s.start_date || today() },
     { k: "agreement_date", label: "Agreement date", type: "date", value: s.agreement_date || "" },
@@ -566,6 +572,10 @@ function subForm(s, pre) {
     { k: "pay_terms", label: "Payment terms (printed on the certificate)", type: "area", full: true, value: s.pay_terms || "", tip: "Written for you from the advance and retention % while you leave it as it is. Type over it if the agreement words it differently.", ph: "10% advance against security cheque\n100% progressive payment after certification\n10% retention" },
     { k: "notes", label: "Notes", type: "area", value: s.notes || "" },
   ], async v => {
+    if (v.ret_pct === "" || v.ret_pct === null || v.ret_pct === undefined || isNaN(Number(v.ret_pct))) throw new Error("Retention: pick None (0), 5% or 10%, or type the % the agreement says.");
+    const trn = String(v.trn || "").replace(/\D/g, "");
+    if (trn && trn.length !== 15) throw new Error("A TRN has 15 digits.");
+    v.trn = trn;
     const sup = m.suppliers.find(x => x.name.toLowerCase() === v.name.toLowerCase());
     if (!v.contract_type && v.kind === "Manpower") v.contract_type = "Manpower rates";
     if (sup) v.supplier_id = sup.id;
@@ -702,6 +712,9 @@ function subAutoFill(edit, s) {
   const set = (k, v) => { if (!typed[k] && v !== undefined && v !== null && v !== "") setField(k, v); };
   const nm = $("#f-name");
   const fromName = () => {
+    // his address, phone and TRN from Store & Purchasing > Suppliers, into boxes still empty
+    const sp = (m.suppliers || []).find(x => x.name.toLowerCase() === g("name").trim().toLowerCase());
+    if (sp) { ["address", "phone", "trn"].forEach(k => { if (sp[k] && !g(k)) setField(k, sp[k]); }); }
     if (edit || (nm && nm.dataset.ag)) return;           // filled from the agreement itself: its own terms stand
     const t = m.sub_terms && m.sub_terms[g("name").trim().toLowerCase()]; if (!t) return;
     set("kind", t.kind); set("trade", t.trade); set("adv_pct", t.adv_pct); set("ret_pct", t.ret_pct); set("vat_pct", t.vat_pct);
@@ -848,6 +861,7 @@ function certifyForm(sid, pcid) {
     { k: "adv_amount", label: "Advance paid on this PC", type: "money", value: p.adv_amount || "" },
     { k: "pc_type", label: "Type", type: "select", options: ["Interim", "Advance", "Final", "Retention release"], value: p.pc_type || "Interim" },
     { k: "inv_ref", label: "Invoice no.", value: p.inv_ref }, { k: "inv_amount", label: "Invoice amount", type: "money", value: p.inv_amount || "" },
+    { k: "issued", label: "IPC issued date", type: "date", value: p.issued || today(), tip: "Printed on the certificate. Today unless changed." },
     { k: "remarks", label: "Remarks", type: "area", value: p.remarks },
   ];
   const live = () => {

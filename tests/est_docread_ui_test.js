@@ -62,7 +62,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await read('subvo', () => p.evaluate(id => voSubForm(ST.b.subs.find(s => s.id === id)), alnoor.id));
   await p.click('#m-cancel');
   // 5. client variation, 6. client PC
-  await go('909', 'client.vo');
+  await go('909', 'site.vo');
   await read('variation', () => p.evaluate(() => voForm()));
   await p.screenshot({ path: SH + 'variation.png' }); await p.click('#m-cancel');
   await go('909', 'client.cpc');

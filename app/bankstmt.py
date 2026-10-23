@@ -534,13 +534,16 @@ def check(month: str = "", start: str = "", end: str = "", db: Session = Depends
     lines = q.order_by(models.BankStmtLine.on_date, models.BankStmtLine.id).all()
     ents = {e.id: e for e in db.query(models.BankEntry).filter(models.BankEntry.id.in_([l.entry_id for l in lines if l.entry_id] or [0])).all()}
     last = db.query(models.BankStmtUpload).order_by(models.BankStmtUpload.date_to.desc(), models.BankStmtUpload.id.desc()).first()
-    covered = max((u.date_to for u in db.query(models.BankStmtUpload).all() if u.date_to), default=None)
+    ups = [(u.date_from or u.date_to, u.date_to) for u in db.query(models.BankStmtUpload).all() if u.date_to]
+    covered = max((t for f, t in ups), default=None)
+    # only a day a statement was uploaded for can say an entry is missing (no statement for 15 Oct: nothing to say)
+    on_statement = lambda d: any(f <= d <= t for f, t in ups)
     # entries this month the statement should already show, that it does not
     matched_ids = {l.entry_id for l in db.query(models.BankStmtLine).filter(models.BankStmtLine.entry_id.isnot(None)).all()}
     missing = []
     if covered:
         for e in db.query(models.BankEntry).filter(models.BankEntry.on_date >= a, models.BankEntry.on_date <= min(b, covered)).all():
-            if e.id in matched_ids:
+            if e.id in matched_ids or not on_statement(e.on_date):
                 continue
             # a cheque can clear days after its date - give it a week before calling it missing
             if (e.mode or "") == "Cheque" and (covered - e.on_date).days < 7:

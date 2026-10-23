@@ -13615,6 +13615,7 @@ try:
     import est_dummy
     est_dummy.run(SessionLocal)      # ESTIMATION DUMMY DATA - on / off in est_dummy.MODE
     estimation.renumber_variations(SessionLocal)     # every variation V01, V02 ... (once)
+    estimation.fill_plots(SessionLocal)              # each project's plot no. from its site (once)
 except Exception as _e:
     print("estimation tables:", _e)
 

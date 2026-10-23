@@ -80,6 +80,7 @@ class EstProject(Base):
     client = Column(String, default="")
     consultant = Column(String, default="")
     location = Column(String, default="")
+    plot_no = Column(String, default="")        # printed on the payment certificates
     contract_value = Column(Float, default=0.0)
     adv_pct = Column(Float, default=0.0)        # advance from the client, % of contract
     ret_pct = Column(Float, default=10.0)       # retention the client holds
@@ -99,6 +100,10 @@ class EstSub(Base):
     project_id = Column(Integer, nullable=False, index=True)
     supplier_id = Column(Integer, nullable=True)
     name = Column(String, default="")           # M/S. ONE GB PILING & FOUNDATION
+    address = Column(Text, default="")          # the subcontractor's details, printed on his payment certificates
+    phone = Column(String, default="")
+    mobile = Column(String, default="")
+    trn = Column(String, default="")
     scope = Column(String, default="")          # Shoring
     trade = Column(String, default="Civil")
     kind = Column(String, default="Subcontract")    # Subcontract | LPO | Manpower
@@ -369,6 +374,25 @@ TRACKER_NAMES = {"916": "VL-88 Keturah Reserve", "918": "VL-44 Keturah Reserve",
                  "925": "VE-225 Sobha Hartland", "926": "VE-226 Sobha Hartland", "927": "WS-41"}
 
 
+def fill_plots(SessionLocal):
+    """Once: every project's plot no. from its site (Settings > Companies & sites), for the payment certificates."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_plots_filled").first():
+            return
+        sites = {s.code: s for s in db.query(models.Site).all()}
+        for p in db.query(EstProject).all():
+            s = sites.get(p.code)
+            if s and not (p.plot_no or "").strip() and (s.plot_no or "").strip():
+                p.plot_no = s.plot_no.strip()
+        db.add(models.Setting(key="est_plots_filled", value="1"))
+        db.commit()
+    except Exception as e:
+        db.rollback(); print("estimation plots:", e)
+    finally:
+        db.close()
+
+
 def seed_projects(SessionLocal, first=901, last=927):
     """Every project from 901 to 927 made once, filled from what the app
     already knows: the site (Settings > Companies & sites), the contract from
@@ -489,10 +513,10 @@ def _rules(db):
 
 S, F, D, I, B = "s", "f", "d", "i", "b"
 KINDS = {
-    "projects": (EstProject, None, {"code": S, "name": S, "client": S, "consultant": S, "location": S, "contract_value": F,
+    "projects": (EstProject, None, {"code": S, "name": S, "client": S, "consultant": S, "location": S, "plot_no": S, "contract_value": F,
                                     "adv_pct": F, "ret_pct": F, "vat_pct": F, "start_date": D, "end_date": D, "status": S,
                                     "qs": S, "notes": S}),
-    "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
+    "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "address": S, "phone": S, "mobile": S, "trn": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
                                     "value": F, "cancelled": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "pay_days": I,
                                     "status": S, "start_date": D, "agreement_date": D, "contract_type": S, "pay_terms": S,
                                     "notes": S, "sort": I}),
@@ -873,7 +897,8 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
         "sub_terms": terms, "scope_trade": scope_trade,
         "projects": [{"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client} for p in projects],
         "sites": [{"code": s.code, "name": s.project_name or "", "plot": s.plot_no or ""} for s in sites],
-        "suppliers": [{"id": s.id, "name": s.name} for s in sups],
+        "suppliers": [{"id": s.id, "name": s.name, "address": (s.address or "").strip(), "phone": (s.phone or "").strip() if (s.phone or "").strip(" 0-") else "",
+                       "trn": "".join(ch for ch in (s.trn or "") if ch.isdigit())} for s in sups],
         "sub_names": sorted(n for n in names if n),
         "users": [{"id": u.id, "name": u.full_name} for u in users],
         "trades": TRADES, "scopes": SCOPES, "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
@@ -1000,6 +1025,19 @@ def add_project(data: dict = Body(...), db: Session = Depends(get_db), user: mod
     site = db.query(models.Site).filter(models.Site.code == code).first()
     if site and not p.name:
         p.name = site.project_name or ""
+    if site and not (p.plot_no or "").strip():
+        p.plot_no = site.plot_no or ""
+    if site and not (p.location or "").strip():
+        p.location = (site.address or "").strip()[:200]
+    if not (p.client or "").strip():                    # the client on the project's invoices, when there are any
+        try:
+            import accounts as AC
+            inv = (db.query(AC.Invoice).filter(AC.Invoice.project_no == code, AC.Invoice.status != "cancelled", AC.Invoice.client != "")
+                     .order_by(AC.Invoice.inv_date.desc()).first())
+            if inv:
+                p.client = inv.client
+        except Exception:
+            pass
     if not p.contract_value:
         _, pp = _received_for(db, code)
         p.contract_value = pp
