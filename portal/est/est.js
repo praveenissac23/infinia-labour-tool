@@ -172,7 +172,8 @@ async function exportGo(fmt, what, extra) {
   try {
     const t = await POST("/auth/download-token"); const tok = t.token || t.download_token;
     const p = new URLSearchParams(Object.assign({ token: tok, format: fmt === "share" ? "pdf" : fmt }, extra));
-    const url = what === "pc" ? `/export/est/pc/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` : `/export/est/${what}?${p}`;
+    const url = what === "ipa" ? `/export/est/ipa/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` :
+                what === "pc" ? `/export/est/pc/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` : `/export/est/${what}?${p}`;
     if (fmt === "share") {
       const r = await fetch(url); const blob = await r.blob(); const file = new File([blob], (extra.name || what).replace(/[^\w]+/g, "_") + ".pdf", { type: "application/pdf" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: extra.name || what });
@@ -341,6 +342,7 @@ const GROUPS = {
   client: { label: "Overview", secs: [["boq", "BOQ & budget"]] },       // variations are under Site & technical
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["vo", "Variations"]] },
+  bills: { label: "Bills", secs: [["ipa", "Bills to client"]] },      // portal/est/bills.js
 };
 function renderProjectShell() {
   const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));

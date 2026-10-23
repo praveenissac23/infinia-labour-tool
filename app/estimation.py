@@ -2064,3 +2064,4 @@ import est_pcsheet  # noqa: E402,F401  - the item schedule, the monthly sheet an
 import est_agreement  # noqa: E402,F401  - a subcontract agreement read into the subcontract form (nothing kept)
 import est_docread  # noqa: E402,F401  - any document read into an Estimation form (nothing kept)
 import est_dummy  # noqa: E402,F401  - ESTIMATION DUMMY DATA (reversible test data)
+import est_bills  # noqa: E402,F401  - Bills: the monthly bill to the client in the consultant's own format
