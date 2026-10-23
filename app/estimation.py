@@ -1267,14 +1267,22 @@ def del_row(kind: str, rid: int, db: Session = Depends(get_db), user: models.Use
             pass
     sid = getattr(row, "sub_id", None) if kind == "subpcs" else None
     pid = row.project_id if kind == "clientpcs" else None
+    gone_seq = row.seq if kind == "subpcs" else None
     if kind == "subpcs":
         import est_pcsheet
         est_pcsheet.drop_pc(db, row.id)
     db.delete(row)
     db.flush()
     if sid:
+        # the later certificates move up one number (PC 03 -> PC 02), unless one of them is paid (its number is on paper)
+        later = db.query(EstSubPC).filter(EstSubPC.sub_id == sid, EstSubPC.seq > (gone_seq or 0)).order_by(EstSubPC.seq).all()
+        if later and not any(x.status == "Paid" for x in later):
+            for x in later:
+                x.seq = (x.seq or 1) - 1
+            db.flush()
         import est_pcsheet
         est_pcsheet.refresh_sub(db, sid)
+        db.add(models.AuditLog(user_id=user.id, action="est_pc_removed", details=f"subcontract #{sid}: PC {gone_seq} removed"))
     if kind == "subvos":
         _refill_sub(db, row.sub_id)
     if pid:

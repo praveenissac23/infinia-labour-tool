@@ -1274,7 +1274,7 @@ def build():
                     right_of.setdefault(sb["screen"], sb["right"])
     for screen, key in EXTRA.items():
         page_of[screen] = key
-        right_of[screen] = key
+        right_of.setdefault(screen, key)        # the right of the sub-tab that opens it (Monthly report: "reports"), never the page's name
     for key, (_, right) in STANDALONE.items():
         pages_screens[key] = right if isinstance(right, list) else [key]
         for r in (right if isinstance(right, list) else [right]):

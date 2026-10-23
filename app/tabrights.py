@@ -183,10 +183,12 @@ GATES = {
     ("GET", "/export/{month_year}/cards/view"): CARDS,
     ("GET", "/export/{month_year}/excel-separate"): CARDS, ("GET", "/export/{month_year}/pdf-separate"): CARDS,
     ("POST", "/reports/monthly-notes/{month_year}"): ["payroll.labourpay.monthly"],
-    ("GET", "/reports/builder-catalog"): ["reports.labour.builder"],
-    ("GET", "/reports/custom"): ["reports.labour.builder"],
-    ("GET", "/export/{month_year}/custom-report"): ["reports.labour.builder"],
-    ("GET", "/export/{month_year}/custom-report/view"): ["reports.labour.builder"],
+    # Payroll > Monthly report is the builder with fixed columns: its tick reads the same routes
+    ("GET", "/reports/monthly-notes/{month_year}"): ["payroll.labourpay.monthly", "reports.labour.builder"],
+    ("GET", "/reports/builder-catalog"): ["reports.labour.builder", "payroll.labourpay.monthly"],
+    ("GET", "/reports/custom"): ["reports.labour.builder", "payroll.labourpay.monthly"],
+    ("GET", "/export/{month_year}/custom-report"): ["reports.labour.builder", "payroll.labourpay.monthly"],
+    ("GET", "/export/{month_year}/custom-report/view"): ["reports.labour.builder", "payroll.labourpay.monthly"],
     # Payroll > Office payroll, section by section
     ("POST", "/employees/payroll/full-month"): HR("cycle"),
     ("POST", "/employees/payroll/runs"): HR("cycle"),

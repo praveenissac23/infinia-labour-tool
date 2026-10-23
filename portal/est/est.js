@@ -743,7 +743,7 @@ function openSub(sid) {
       ${s.pcs.map(p => `<tr class="rowc" data-pc="${p.id}"><td class="nowrap"><b>PC ${pad(p.seq, 2)}</b>${p.pc_type !== "Interim" ? `<div class="small muted">${esc(p.pc_type)}</div>` : ""}</td><td class="small">${esc(p.inv_ref)}<div class="muted">${dt(p.inv_date || p.received)}</div></td><td class="r">${money(p.inv_amount)}</td>
         <td class="r">${money(p.work_cum)}${p.adv_amount ? `<div class="small muted">adv. ${money(p.adv_amount)}</div>` : ""}</td><td class="r neg">${p.adv_rec_cum ? "-" + money(p.adv_rec_cum) : money(0)}</td><td class="r neg">${p.ret_cum ? "-" + money(p.ret_cum) : money(0)}</td><td class="r neg">${p.other_cum ? "-" + money(p.other_cum) : money(0)}</td><td class="r">${money(p.ret_rel_cum)}</td>
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
-        <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button></td></tr>`).join("")}
+        <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button>${p.status !== "Paid" || ST.meta.me.admin ? `<button class="btn btn-ghost btn-sm" data-pcdel="${p.id}" title="Remove this certificate (an invoice entered twice, or by mistake). The later certificates are numbered down.">Remove</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
       <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
@@ -759,7 +759,16 @@ function openSub(sid) {
       async v => { await POST("/store/est/subpcs", { sub_id: s.id, pc_type: "Advance", adv_amount: v.adv_amount, inv_ref: v.inv_ref }); await reload(); toast("Advance certificate made - recovered from the next certificates"); });
     $("#s-vo").onclick = () => voSubForm(s);
     $("#s-edit").onclick = () => subForm(s);
-    $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print]")) return; openCert(s.id, +r.dataset.pc); });
+    $$("[data-pc]").forEach(r => r.onclick = e => { if (e.target.closest("[data-print],[data-pcdel]")) return; openCert(s.id, +r.dataset.pc); });
+    // Remove a certificate: pressed twice (the button asks once), never a browser box.
+    $$("[data-pcdel]").forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const p = s.pcs.find(x => x.id === +b.dataset.pcdel);
+      if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = `Remove PC ${pad(p.seq, 2)}?`; b.classList.add("btn-primary");
+        setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Remove"; b.classList.remove("btn-primary"); } }, 3500); return; }
+      try { await DEL(`/store/est/subpcs/${p.id}`); await reload(); toast(`PC ${pad(p.seq, 2)} removed (${p.inv_ref || "no invoice no."})`); }
+      catch (er) { fail(er); }
+    });
     $("#s-items").onclick = () => scheduleEditor(s.id);
     $("#s-paste").onclick = () => pasteItems(s.id, s, () => reload());
     const sf = $("#s-up-f"); $("#s-up").onclick = () => sf.click();
