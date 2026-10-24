@@ -305,11 +305,11 @@ async function loadDash() {
         ${kpi("PCs being prepared", k.preparing, k.pc_delays ? k.pc_delays + " past due date" : "none late", k.pc_delays ? "red click" : "click", 'data-go="subs.inv"')}
       </div></div>
     <div class="card"><h3>Projects</h3>
-      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub to pay</th><th class="r">Margin</th></tr></thead><tbody>
+      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub to pay</th>${ST.meta.me.admin ? `<th class="r">Margin</th>` : ""}</tr></thead><tbody>
       ${rows.map(r => `<tr class="rowc" data-pid="${r.id}" data-sec="home.dash"><td class="nowrap"><b>${esc(r.code)}</b></td><td>${esc(r.client)}</td><td>${st(r.status)}</td>
         <td class="r">${money(r.revised)}</td><td class="r">${money(r.client_certified)}</td><td><div class="bar"><i style="width:${Math.min(100, r.progress)}%"></i></div><span class="small muted">${r.progress}%</span></td>
-        <td class="r">${money(r.received)}</td><td class="r">${money(r.committed)}</td><td class="r">${money(r.sub_to_pay)}</td><td class="r ${r.margin < 0 ? "neg" : ""}">${money(r.margin)}</td></tr>`).join("")}
-      <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_to_pay)}</td><td></td></tr>
+        <td class="r">${money(r.received)}</td><td class="r">${money(r.committed)}</td><td class="r">${money(r.sub_to_pay)}</td>${ST.meta.me.admin ? `<td class="r ${r.margin < 0 ? "neg" : ""}">${money(r.margin)}</td>` : ""}</tr>`).join("")}
+      <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_to_pay)}</td>${ST.meta.me.admin ? "<td></td>" : ""}</tr>
       </tbody></table></div>` : `<div class="empty">No projects yet.<br><button class="btn btn-primary" onclick="goProject(0)">Add the first project</button></div>`}
     </div>
     <div class="card"><h3>Subcontractor invoices in hand ${tip("Every invoice not yet paid, oldest PC due date first. Site return is due " + d.rules.site_days + " days after it goes to site; the PC is due " + d.rules.pc_days + " days after the invoice arrives.")}<span class="spacer"></span><span class="small muted">${d.queue.length}</span></h3>
@@ -424,7 +424,7 @@ function projectInfo() {
       ${fig("Subcontracts", money(s.committed, false), b.subs.length + " subcontractors")}
       ${fig("Sub certified", money(s.sub_certified, false), money(s.sub_paid, false) + " paid")}
       ${fig("Sub to pay", money(s.sub_to_pay, false), "certified, not paid", s.sub_to_pay > 0 ? "amber" : "")}
-      ${fig("Margin", money(s.margin, false), "contract - subcontracts", s.margin < 0 ? "red" : "")}
+      ${ST.meta.me.admin ? fig("Margin", money(s.margin, false), "contract - subcontracts", s.margin < 0 ? "red" : "") : ""}
       ${fig("Overdue", s.overdue, "RFIs / submittals", s.overdue ? "red" : "")}
     </div>
     <div class="card"><h3>Details</h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}
@@ -489,7 +489,7 @@ function homeDash(el) {
       ${kpi("Subcontracts", A(s.committed), b.subs.length + " subcontractors")}
       ${kpi("Sub certified", A(s.sub_certified), money(s.sub_paid, false) + " paid")}
       ${kpi("Sub to pay", A(s.sub_to_pay), "certified, not paid", s.sub_to_pay > 0 ? "amber" : "")}
-      ${kpi("Margin", A(s.margin), "contract less subcontracts", s.margin < 0 ? "red" : "")}
+      ${ST.meta.me.admin ? kpi("Margin", A(s.margin), "contract less subcontracts", s.margin < 0 ? "red" : "") : ""}
     </div></div>
     <div class="dgrid">
       <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>

@@ -941,7 +941,9 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
     pre = _preload(db, projects, with_files=False)
     for p in projects:
         b = project_bundle(db, p, rules, pre)
-        s = b["summary"]
+        s = dict(b["summary"])
+        if user.role != "admin":
+            s.pop("margin", None)                   # the margin is for the admin only
         rows.append({"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client, **s,
                      "subs": len(b["subs"]), "progress": round(100.0 * s["client_work"] / s["revised"], 1) if s["revised"] else 0.0})
         for sb in b["subs"]:
@@ -991,7 +993,10 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
 def get_project(pid: int, db: Session = Depends(get_db), user: models.User = VIEW):
     p = _project(db, pid)
     _seed_project(db, p, user)
-    return project_bundle(db, p)
+    b = project_bundle(db, p)
+    if user.role != "admin":                         # the margin (contract less subcontracts) is for the admin only
+        b = dict(b, summary={k: v for k, v in b["summary"].items() if k != "margin"})
+    return b
 
 
 def _seed_project(db, p, user):
