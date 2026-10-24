@@ -3962,8 +3962,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <select id="rn-supplier" style="width:230px;" onchange="onReturnSupplier()"></select></div>
                 <div class="field"><label>Date *</label>
                   <input type="date" id="rn-date" style="width:150px;"></div>
-                <div class="field"><label>Returned from</label>
-                  <input type="text" id="rn-from" list="site-list" placeholder="Central store" style="width:160px;"></div>
+                <div class="field"><label>Returned from *</label>
+                  <select id="rn-from" style="width:190px;" onchange="onReturnPlace()"></select></div>
                 <div class="field"><label>Driver</label>
                   <input type="text" id="rn-driver" style="width:150px;"></div>
                 <div class="field"><label>Vehicle</label>
@@ -8551,7 +8551,7 @@ async function newReturnNote(supplierId) {
   document.getElementById("rn-form-title").textContent = "New Return Note";
   document.getElementById("rn-ref").value = "(on save)";
   document.getElementById("rn-date").value = isoLocal(new Date());
-  ["rn-from", "rn-driver", "rn-vehicle", "rn-notes"].forEach(id => document.getElementById(id).value = "");
+  ["rn-driver", "rn-vehicle", "rn-notes"].forEach(id => document.getElementById(id).value = "");
   showStatus("rn-status", null);
   // Only traders who actually have material out can be returned to.
   if (!hireOnHire.suppliers || !hireOnHire.suppliers.length) {
@@ -8566,15 +8566,33 @@ async function newReturnNote(supplierId) {
   window.scrollTo(0, 0);
 }
 
-// The lines come from what is actually on hire from the chosen trader,
-// so a note can never be written for material he never sent.
+// The lines come from what is actually on hire from the chosen trader, at the chosen site,
+// so a note can never be written for material he never sent or that is not standing there.
+function rnPlaceLabel(code) { return code ? code : "Central store"; }
 function onReturnSupplier() {
   const sid = parseInt(document.getElementById("rn-supplier").value || "0", 10);
   const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === sid);
-  rnLines = (g ? g.items : []).map(i => ({
-    item_id: i.item_id, description: i.name, unit: i.unit,
-    qty_on_hire: i.qty, qty_returned: "", qty_short: "", short_reason: "", notes: "",
-  }));
+  // the sites where this trader's material is standing now, with how many materials each holds
+  const places = {};
+  (g ? g.items : []).forEach(i => Object.entries(i.by_location || {}).forEach(([loc, q]) => { if (q > 1e-9) places[loc] = (places[loc] || 0) + 1; }));
+  const codes = Object.keys(places).sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, undefined, { numeric: true })));
+  const sel = document.getElementById("rn-from");
+  const was = sel.value;
+  sel.innerHTML = (codes.length > 1 ? `<option value="__pick">- Pick the site -</option>` : "")
+    + codes.map(c => `<option value="${c.replace(/"/g, "&quot;")}">${rnPlaceLabel(c)} (${places[c]} item${places[c] > 1 ? "s" : ""})</option>`).join("");
+  if (codes.includes(was)) sel.value = was;
+  onReturnPlace();
+}
+function onReturnPlace() {
+  const sid = parseInt(document.getElementById("rn-supplier").value || "0", 10);
+  const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === sid);
+  const place = document.getElementById("rn-from").value;
+  rnLines = place === "__pick" ? [] : (g ? g.items : [])
+    .filter(i => ((i.by_location || {})[place] || 0) > 1e-9)
+    .map(i => ({
+      item_id: i.item_id, description: i.name, unit: i.unit,
+      qty_on_hire: i.by_location[place], qty_returned: "", qty_short: "", short_reason: "", notes: "",
+    }));
   renderReturnLines();
 }
 
@@ -8598,7 +8616,8 @@ function renderReturnLines() {
   const body = document.getElementById("rn-lines");
   if (!body) return;
   if (!rnLines.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty-note">Nothing is on rent from this supplier.</td></tr>`;
+    const pick = (document.getElementById("rn-from") || {}).value === "__pick";
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">${pick ? "Pick the site it is going back from - its materials on rent show here." : "Nothing is on rent from this supplier."}</td></tr>`;
     renderReturnTotals();
     return;
   }
@@ -8658,7 +8677,9 @@ async function editReturnNote(id) {
     document.getElementById("rn-form-title").textContent = `Edit ${r.ref}`;
     document.getElementById("rn-ref").value = r.ref;
     document.getElementById("rn-date").value = r.return_date || isoLocal(new Date());
-    document.getElementById("rn-from").value = r.from_location || "";
+    const fromSel = document.getElementById("rn-from");
+    fromSel.innerHTML = `<option value="${(r.from_location || "").replace(/"/g, "&quot;")}">${rnPlaceLabel(r.from_location || "")}</option>`;
+    fromSel.value = r.from_location || "";
     document.getElementById("rn-driver").value = r.driver || "";
     document.getElementById("rn-vehicle").value = r.vehicle || "";
     document.getElementById("rn-notes").value = r.notes || "";
@@ -8680,6 +8701,9 @@ async function saveReturnNote() {
   const v = id => (document.getElementById(id).value || "").trim();
   const sid = parseInt(v("rn-supplier") || "0", 10);
   if (!sid) { showStatus("rn-status", "warn", "Nothing is on rent to return."); return; }
+  if (v("rn-from") === "__pick") { showStatus("rn-status", "warn", "Pick the site it is going back from."); return; }
+  const over = rnLines.find(l => (parseFloat(l.qty_returned) || 0) + (parseFloat(l.qty_short) || 0) > (l.qty_on_hire || 0) + 1e-9);
+  if (over) { showStatus("rn-status", "warn", `${over.description}: only ${num(over.qty_on_hire)} on rent at ${rnPlaceLabel(v("rn-from"))}.`); return; }
   const lines = rnLines
     .filter(l => (parseFloat(l.qty_returned) || 0) > 0 || (parseFloat(l.qty_short) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description, unit: l.unit,
@@ -8696,7 +8720,7 @@ async function saveReturnNote() {
     showStatus("rn-status", "warn", `${missing.description}: say why it is short.`);
     return;
   }
-  const body = { supplier_id: sid, return_date: v("rn-date"), from_location: v("rn-from"),
+  const body = { supplier_id: sid, return_date: v("rn-date"), from_location: document.getElementById("rn-from").value,
                  driver: v("rn-driver"), vehicle: v("rn-vehicle"), notes: v("rn-notes"), lines };
   try {
     const r = rnEditingId

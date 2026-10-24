@@ -125,13 +125,26 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
      await visible('#rn-form-card'));
   ck('and brings the Return Notes panel up with it',
      (await visible('#store-returns')) === 'visible', await visible('#store-returns'));
+  // ---- Returned from: a site picked, only what stands there, with its quantity there ----
+  const site = await p.evaluate(() => {
+    const sel = document.getElementById('rn-from');
+    const opts = [...sel.options].map(o => o.value).filter(v => v !== '__pick');
+    sel.value = opts[0]; onReturnPlace();
+    const g = hireOnHire.suppliers.find(x => x.supplier_id === +document.getElementById('rn-supplier').value);
+    const want = g.items.filter(i => (i.by_location || {})[opts[0]] > 0).map(i => [i.name, i.by_location[opts[0]]]);
+    return { opts, want, got: rnLines.map(l => [l.description, l.qty_on_hire]) };
+  });
+  ck('Returned from lists the sites holding his material', site.opts.length >= 1, site.opts);
+  ck('and the lines are only what is on rent at that site, with the quantity there',
+     JSON.stringify(site.want) === JSON.stringify(site.got) && site.got.length >= 1, site);
   const rows = await p.evaluate(() => document.querySelectorAll('#rn-lines tr').length);
   ck('with that supplier\'s materials on it', rows >= 1, rows);
 
   // ---- Fill it in and save ----------------------------------------
   await p.evaluate(() => {
-    rnLines[0].qty_returned = 70;
-    rnLines[0].qty_short = 20;
+    const q = rnLines[0].qty_on_hire;
+    rnLines[0].qty_returned = Math.min(70, Math.max(1, q - 20));
+    rnLines[0].qty_short = Math.min(20, q - rnLines[0].qty_returned);
     rnLines[0].short_reason = 'lost';
     renderReturnLines();
     document.getElementById('rn-driver').value = 'Rajan';

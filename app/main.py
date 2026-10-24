@@ -5415,7 +5415,11 @@ def _fill_return_lines(db, r, lines, supplier_id):
     """Replace a note's lines, refusing to send back more than is on
     hire. The quantity on hire is read here rather than trusted from the
     screen - the position may have moved since the note was opened."""
-    held = {h["item_id"]: h["qty"] for h in _on_hire(db, supplier_id=supplier_id)}
+    rows = _on_hire(db, supplier_id=supplier_id)
+    held = {h["item_id"]: h["qty"] for h in rows}
+    where = (r.from_location or "").strip()
+    if where:           # going back from one site: no more than is standing at that site
+        held = {h["item_id"]: (h.get("by_location") or {}).get(where, 0) for h in rows}
     for l in list(r.lines):
         db.delete(l)
     db.flush()
@@ -5430,8 +5434,8 @@ def _fill_return_lines(db, r, lines, supplier_id):
         if l.item_id and going > on_hire + 1e-9:
             name = item.name if item else "that material"
             raise HTTPException(status_code=400,
-                detail=f"{name}: only {round(on_hire, 2)} on hire, "
-                       f"but the note accounts for {round(going, 2)}.")
+                detail=f"{name}: only {round(on_hire, 2)} on hire" + (f" at {where}" if where else "")
+                       + f", but the note accounts for {round(going, 2)}.")
         if (l.qty_short or 0) > 0 and (l.short_reason or "").strip().lower() not in SHORT_REASONS:
             name = item.name if item else "a material"
             raise HTTPException(status_code=400,
