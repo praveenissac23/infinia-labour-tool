@@ -16,7 +16,7 @@ from datetime import date, datetime
 from fastapi import Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import Column, Date, DateTime, Float, Integer, LargeBinary, String, Text, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, deferred
 
 import auth
 import models
@@ -35,8 +35,9 @@ class EstBillFormat(Base):
     project_id = Column(Integer, nullable=False, index=True)
     name = Column(String, default="")              # "IPA - Emkaan format"
     filename = Column(String, default="")
-    data = Column(LargeBinary)                     # the workbook as uploaded (the bill comes out as this file)
-    model = Column(Text, default="")               # read once: cells, formulas, look, where the month's figures go
+    # both big (megabytes): loaded only when used - not on every list or bill request
+    data = deferred(Column(LargeBinary))           # the workbook as uploaded (the bill comes out as this file)
+    model = deferred(Column(Text, default=""))     # read once: cells, formulas, look, where the month's figures go
     checked = Column(Text, default="")             # how many formulas give Excel's own figures
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -68,7 +69,7 @@ class EstSignature(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, index=True)
     title = Column(String, default="")
-    png = Column(LargeBinary)                      # cleaned: white made see-through, cropped
+    png = deferred(Column(LargeBinary))            # cleaned: white made see-through, cropped
     updated_by = Column(Integer, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -87,6 +88,7 @@ def create_tables(engine):
 
 
 _MODEL_CACHE = {}
+_LIST_CACHE = {}
 
 
 def _model(fmt):
@@ -600,24 +602,33 @@ def _full_title(d):
 
 
 def bell_items(db, user):
-    """For the app's bell: bills waiting for this person to check or approve (their turn in the chain)."""
+    """For the app's bell (asked every few seconds by every login): bills waiting for this person to check or
+    approve. Read from what each bill has saved about its chain - no workbook is opened here."""
     out = []
     try:
-        bills = db.query(EstBill).filter(EstBill.status.in_(("Draft", "Awaiting approval"))).order_by(EstBill.id.desc()).limit(40).all()
-        projects = {p.id: p for p in db.query(E.EstProject).all()}
-        store = _sig_store(db)
+        bills = db.query(EstBill.id, EstBill.project_id, EstBill.label, EstBill.seq, EstBill.total_due, EstBill.signs,
+                         EstBill.updated_at, EstBill.created_at).filter(EstBill.status == "Awaiting approval").order_by(EstBill.id.desc()).limit(40).all()
+        if not bills:
+            return out
+        projects = {p.id: p for p in db.query(E.EstProject).filter(E.EstProject.id.in_({x.project_id for x in bills})).all()}
         for b in bills:
-            fmt = db.query(EstBillFormat).get(b.format_id)
-            if not fmt:
+            try:
+                sg = json.loads(b.signs or "{}") or {}
+            except ValueError:
                 continue
-            model = _bill_model(fmt, b)
-            for x in _signers_out(b, model, store):
-                if x["turn"] and x["step"] > 0 and (same_person(user.full_name or "", x["name"]) or same_person(user.username or "", x["name"])):
-                    p = projects.get(b.project_id)
-                    out.append({"id": f"ipa-{b.id}-{x['key']}", "kind": "bill", "title": f"Bill {b.label or b.seq} of {p.code if p else ''} waits for you to {x['labels'][0].lower().replace(' by', '')} and sign",
-                                "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pgestproj", "target": f"ipa{b.id}",
-                                "pid": b.project_id, "bill": b.id, "when": (b.updated_at or b.created_at).date().isoformat() if (b.updated_at or b.created_at) else "", "level": "info"})
-                    break
+            chain = sorted(((v.get("step", 1), k, v) for k, v in sg.items() if isinstance(v, dict) and v.get("name")), key=lambda x: (x[2].get("ord", 99), x[0]))
+            nxt = next((x for x in chain if not x[2].get("signed_at")), None)
+            if not nxt or nxt[0] == 0:
+                continue
+            name = nxt[2]["name"]
+            if not (same_person(user.full_name or "", name) or same_person(user.username or "", name)):
+                continue
+            p = projects.get(b.project_id)
+            word = {1: "check", 2: "certify", 3: "approve"}.get(nxt[0], "sign")
+            when = b.updated_at or b.created_at
+            out.append({"id": f"ipa-{b.id}-{nxt[1]}", "kind": "bill", "title": f"Bill {b.label or b.seq} of {p.code if p else ''} waits for you to {word} and sign",
+                        "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pgestproj", "target": f"ipa{b.id}",
+                        "pid": b.project_id, "bill": b.id, "when": when.date().isoformat() if when else "", "level": "info"})
     except Exception as e:
         print("bills bell:", e)
     return out
@@ -658,12 +669,15 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
             chk = json.loads(f.checked or "{}")
         except ValueError:
             chk = {}
-        m = _MODEL_CACHE.get(f.id)                    # the list only needs names and counts: never re-reads a workbook
+        m = _MODEL_CACHE.get(f.id) or _LIST_CACHE.get(f.id)   # the list only needs names and counts: never re-reads a workbook
         if m is None:
             try:
-                m = json.loads(f.model or "{}")
+                full = json.loads(f.model or "{}")
             except ValueError:
-                m = {}
+                full = {}
+            m = {"sheets": [{"name": x["name"], "visible": x["visible"]} for x in full.get("sheets", [])],
+                 "map": {k: full.get("map", {}).get(k) for k in ("progress", "bill_no", "issue_date", "total_due")}}
+            _LIST_CACHE[f.id] = m
         mp = m.get("map", {})
         out_f.append({"id": f.id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
                       "by": users.get(f.created_by, ""), "formulas": chk.get("formulas", 0), "same": chk.get("same", 0),
@@ -789,7 +803,7 @@ def delete_format(fid: int, db: Session = Depends(get_db), user: models.User = E
     db.query(EstBill).filter(EstBill.format_id == fid).delete(synchronize_session=False)
     db.delete(f)
     db.commit()
-    _MODEL_CACHE.pop(fid, None)
+    _MODEL_CACHE.pop(fid, None); _LIST_CACHE.pop(fid, None)
     E.M.log_action(db, user.id, "est_bill_format_removed", f"bill format #{fid} {f.filename}")
     return {"ok": True}
 
@@ -1033,6 +1047,10 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(403, f"Only {x['name']} can sign here (the login's full name must match), or an admin.")
     cur.update({"signed_at": E.today().isoformat(), "signed_by": user.id, "signed_by_name": user.full_name or user.username})
     sg[x["key"]] = cur
+    for i, y in enumerate(signers):                       # everyone in the chain kept with the bill, in order (for the bell)
+        d = dict(sg.get(y["key"]) or {})
+        d.setdefault("name", y["name"]); d.setdefault("title", y["title"]); d["step"] = y["step"]; d["ord"] = i
+        sg[y["key"]] = d
     b.signs = json.dumps(sg)
     b.updated_by = user.id
     rest = [y for y in signers if y["key"] != x["key"] and not y["signed_at"]]
