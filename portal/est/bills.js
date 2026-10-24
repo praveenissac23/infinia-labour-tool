@@ -96,6 +96,7 @@ let SAVING = Promise.resolve();
 async function openBill(id, step) {
   try { IPA.bill = await GET(`/store/est/ipa/bill/${id}`); } catch (e) { return fail(e); }
   try { IPA.people = (await GET("/store/est/ipa/signatures")).people; } catch (e) { IPA.people = []; }
+  try { IPA.staff = (await GET("/store/est/ipa/people")).people; } catch (e) { IPA.staff = []; }
   IPA.step = step || "work"; IPA.q = ""; IPA.filter = "";
   big("", `<div class="ipa"><nav class="ipa-nav" id="ipa-nav"></nav><div class="ipa-main" id="ipa-main"></div></div>`, billsRedraw, "est.ipa");
   $("#big .bbody").classList.add("ipa-body");
@@ -195,16 +196,41 @@ function drawCover(m) {
   $("#cv-notes").onchange = async e => { if (await save({ notes: e.target.value })) toast("Notes saved"); };
 }
 
+// the same person written two ways ("Anoop S" / "ANOOP SUBRAMANIAN", "Shafiq" / "Shafeeq") - as the server decides
+function samePerson(a, b) {
+  const toks = x => String(x || "").toLowerCase().split(/[^a-z]+/).filter(t => t && !["mr", "mrs", "ms", "miss", "dr", "eng", "engr"].includes(t));
+  const skel = t => { t = t.replace(/k/g, "q").replace(/ph/g, "f"); return (t[0] + t.slice(1).replace(/[aeiouy]/g, "")).replace(/(.)\1+/g, "$1"); };
+  const ta = toks(a), tb = toks(b);
+  if (!ta.length || !tb.length) return false;
+  if (ta.join(" ") === tb.join(" ")) return true;
+  const [sh, lg] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  const pool = lg.slice(); let whole = false;
+  for (const t of sh) {
+    let hit = -1;
+    for (let i = 0; i < pool.length; i++) {
+      const u = pool[i];
+      if (t === u || (t.length > 2 && u.length > 2 && skel(t) === skel(u))) { hit = i; whole = true; break; }
+      if ((t.length === 1 && u.startsWith(t)) || (u.length === 1 && t.startsWith(u))) { hit = i; break; }
+    }
+    if (hit < 0) return false;
+    pool.splice(hit, 1);
+  }
+  return whole;
+}
+
 // who prepares / checks / approves: the full name and designation printed on the bill, and the person's signature
 function signersCard(b) {
   if (!b.signers || !b.signers.length) return "";
-  const names = [...new Set((IPA.people || []).map(x => x.name).concat((ST.meta.users || []).map(u => u.name)).filter(Boolean))];
+  const staff = IPA.staff || [];
+  const names = [...new Set(staff.map(x => x.name).concat((IPA.people || []).map(x => x.name)).filter(Boolean))];
+  const who = n => staff.find(p => samePerson(p.name, n));
   return `<div class="ipa-card"><h3>Prepared, checked and approved by</h3>
     <div class="muted small" style="margin-bottom:10px">Who prepares, checks and approves this bill - the names and designations printed on it. Pick or type the full name; a signature uploaded once is kept for that person. It is printed only after they sign on Approve &amp; send, each in turn. Next month's bill keeps the same people.</div>
-    <datalist id="ipa-people">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    <datalist id="ipa-people">${names.map(n => { const p = staff.find(x => x.name === n); return `<option value="${esc(n)}">${p ? esc(p.designation) : ""}</option>`; }).join("")}</datalist>
     <div class="ipa-tw"><table class="ipa-sg" data-nofreeze><thead><tr><th>Signs as</th><th>Full name</th><th>Designation</th><th>Signature</th><th></th></tr></thead><tbody>
     ${b.signers.map(g => `<tr data-sg="${esc(g.key)}"><td><b>${esc(g.labels.join(" / "))}</b><div class="muted small">${esc(g.sheets.join(", "))}</div></td>
-      <td><input class="ipa-sgn" list="ipa-people" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off"></td>
+      <td><input class="ipa-sgn" list="ipa-people" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off" placeholder="Pick from the staff register">${(() => { const p = who(g.name);
+        return p ? `<div class="small ${p.login ? "muted" : "ipa-warn"}">Staff register: ${esc(p.name)} - ${esc(p.short || p.designation)}${p.login ? ` · login <b>${esc(p.login)}</b>` : " · no login, cannot sign"}</div>` : `<div class="small ipa-warn">Not in the staff register${g.step === 0 ? "" : " - cannot sign"}</div>`; })()}</td>
       <td><input class="ipa-sgt" value="${esc(g.title || "")}" data-noclear></td>
       <td class="sig">${g.sig ? `<img src="${g.sig}" alt="signature">` : `<span class="muted small">${g.format_has ? "none for this person" : "none"}</span>`}${g.sig && !g.own ? `<div class="muted small">from the format</div>` : ""}</td>
       <td class="r"><label class="btn btn-plain btn-sm">${g.own ? "Change signature" : "Upload signature"}<input type="file" accept="image/*" class="ipa-sgf" hidden></label></td></tr>`).join("")}
@@ -218,8 +244,12 @@ function bindSigners(m) {
       if (await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } })) { toast("Saved - printed on the bill"); drawBill(); }
     };
     n.onchange = () => {
-      const pp = (IPA.people || []).find(x => x.name.toLowerCase() === n.value.trim().toLowerCase());
-      if (pp && pp.title) t.value = pp.title;           // a person with a saved signature brings their designation
+      const was = (IPA.bill.signers.find(x => x.key === k) || {}).name || "";
+      const sp = (IPA.staff || []).find(x => samePerson(x.name, n.value.trim()));
+      const pp = (IPA.people || []).find(x => samePerson(x.name, n.value.trim()));
+      if (!samePerson(was, n.value.trim())) {          // another person: their designation from the staff register
+        if (pp && pp.title) t.value = pp.title; else if (sp && sp.designation) t.value = sp.designation;
+      }
       push();
     };
     t.onchange = push;
@@ -427,17 +457,17 @@ function bindPayInput(inp) {
 // signature prints only once its owner has signed
 function chainCard(b) {
   if (!b.signers || !b.signers.length) return "";
-  const me = (ST.meta.me.name || "").trim().toLowerCase();
+  const meName = ST.meta.me.name || "", meUser = ST.meta.me.username || "";
   return `<div class="ipa-card"><h3>Approval <span class="muted small">- each person signs in turn; the bill goes out once everyone has</span></h3>
     <ol class="ipa-chain">${b.signers.map(x => {
-      const mine = ST.meta.me.admin || x.name.trim().toLowerCase() === me;
+      const mine = ST.meta.me.admin || samePerson(meName, x.name) || samePerson(meUser, x.name);
       const state = x.signed_at ? "done" : x.turn ? "turn" : "wait";
       return `<li class="${state}"><span class="dot">${x.signed_at ? "&#10003;" : x.turn ? "&rarr;" : "&middot;"}</span>
         <div class="who"><b>${esc(x.labels.find(l => l !== "Signature") || x.labels[0])}</b><div>${esc(x.name)}${x.title ? ` <span class="muted">- ${esc(x.title)}</span>` : ""}</div>
           <div class="small muted">${x.signed_at ? `Signed on ${dt(x.signed_at)}` : x.turn ? (mine ? "Your turn to sign" : `Waiting for ${esc(x.name)} to sign`) : "After the one before"}</div></div>
         <div class="act">${x.signed_at ? (mine ? `<button class="btn btn-plain btn-sm" data-unsign="${esc(x.key)}">Take back</button>` : "")
           : x.turn && mine ? `<button class="btn btn-primary" data-sign="${esc(x.key)}">${x.step === 0 ? "Sign as prepared" : x.step >= 3 ? "Approve & sign" : "Check & sign"}</button>` : ""}</div></li>`; }).join("")}</ol>
-    ${b.signers.some(x => x.turn && !(ST.meta.me.admin || x.name.trim().toLowerCase() === me)) ? `<div class="small muted">Only the person named can sign (the login's full name must match), or an admin on their behalf. They see it on their bell.</div>` : ""}</div>`;
+    ${b.signers.some(x => x.turn && !(ST.meta.me.admin || samePerson(meName, x.name) || samePerson(meUser, x.name))) ? `<div class="small muted">Only the person named can sign - matched to their login through the staff register - or an admin on their behalf. They see it on their bell.</div>` : ""}</div>`;
 }
 function bindChain(m) {
   $$("[data-sign]", m).forEach(bt => bt.onclick = async () => {

@@ -361,8 +361,8 @@ def sign_images(model, signs, store):
         want = (signs or {}).get(g["key"]) or {}
         name = (want.get("name") or "").strip() or g["orig"]
         signed = bool(want.get("signed_at"))
-        sig = store.get(_key(name))
-        same = _key(name) == g["key"]
+        sig = _sig_for(store, name)
+        same = same_person(name, g["orig"])
         if not signed:
             png = None                                  # not signed yet: no signature on the bill, not even the format's
         elif same and not sig:
@@ -475,7 +475,7 @@ def _signers_out(b, model, store):
         want = sg.get(g["key"]) or {}
         name = want.get("name") or g["orig"]
         title = want.get("title") if want.get("title") is not None else g["orig_title"]
-        sig = store.get(_key(name))
+        sig = _sig_for(store, name)
         fimg = None
         for pi in g["places"]:
             p = places[pi]
@@ -484,7 +484,7 @@ def _signers_out(b, model, store):
                 im = sh["images"][p["img"]]
                 fimg = f"data:image/{'jpeg' if im['ext'] in ('jpg', 'jpeg') else im['ext']};base64,{im['data']}"
                 break
-        shown = _png_url(sig.png) if sig else (fimg if _key(name) == g["key"] else "")
+        shown = _png_url(sig.png) if sig else (fimg if same_person(name, g["orig"]) else "")
         out.append({"key": g["key"], "labels": g["labels"], "sheets": g["sheets"], "orig": g["orig"], "orig_title": g["orig_title"],
                     "name": name, "title": title, "sig": shown, "own": bool(sig), "format_has": bool(fimg),
                     "step": _step_of(g["labels"]), "signed_at": want.get("signed_at") or "", "signed_by": want.get("signed_by") or ""})
@@ -511,19 +511,92 @@ def _step_of(labels):
     return best if best is not None else 1
 
 
+_TITLES = {"mr", "mrs", "ms", "miss", "dr", "eng", "engr", "m/s"}
+
+
+def _toks(name):
+    return [t for t in re.split(r"[^a-z]+", (name or "").lower()) if t and t not in _TITLES]
+
+
+def _skel(t):
+    """A word with its vowels and doubled letters taken out: Shafiq / Shafeeq / Shafik -> shfq."""
+    t = t.replace("k", "q").replace("ph", "f")
+    out = t[0] + "".join(ch for ch in t[1:] if ch not in "aeiouy")
+    return re.sub(r"(.)\1+", r"\1", out)
+
+
+def same_person(a, b):
+    """The same person written two ways: "Anoop S" / "ANOOP SUBRAMANIAN" / login "anoop"; "Shafeeq" / "MOHAMED
+    SHAFEEQ" / login "Shafiq". Every word of the shorter name must be in the longer one - whole, as its initial,
+    or spelt a little differently - and at least one word must be whole (not just initials)."""
+    ta, tb = _toks(a), _toks(b)
+    if not ta or not tb:
+        return False
+    if ta == tb:
+        return True
+    short, long_ = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    whole = False
+    pool = list(long_)
+    for t in short:
+        hit = None
+        for i, u in enumerate(pool):
+            if t == u or (len(t) > 2 and len(u) > 2 and _skel(t) == _skel(u)):
+                hit = i; whole = True; break
+            if (len(t) == 1 and u.startswith(t)) or (len(u) == 1 and t.startswith(u)):
+                hit = i; break
+        if hit is None:
+            return False
+        pool.pop(hit)
+    return whole
+
+
 def can_sign(user, signer):
-    """The person named signs (their login's full name), or an admin on their behalf."""
+    """The person named signs (their login: full name or username, as the staff register has them), or an admin
+    on their behalf."""
     if user.role == "admin":
         return True
-    return _key(user.full_name or "") == _key(signer["name"]) or _key(user.username or "") == _key(signer["name"])
+    return same_person(user.full_name or "", signer["name"]) or same_person(user.username or "", signer["name"])
 
 
 def _user_for(db, name):
-    k = _key(name)
-    for u in db.query(models.User).all():
-        if _key(u.full_name or "") == k or _key(u.username or "") == k:
+    for u in db.query(models.User).filter(models.User.active == True).all():  # noqa: E712
+        if same_person(u.full_name or "", name) or same_person(u.username or "", name):
             return u
     return None
+
+
+def _sig_for(store, name):
+    """The saved signature of this person, whichever way the name is written."""
+    hit = store.get(_key(name))
+    if hit:
+        return hit
+    for k, v in store.items():
+        if same_person(v.name, name):
+            return v
+    return None
+
+
+def staff_people(db):
+    """Office staff from the staff register (QS, contracts manager, accounts ...) for picking who signs a bill."""
+    out = []
+    try:
+        rows = db.query(models.Employee).filter(models.Employee.staff == True, models.Employee.active == True).all()  # noqa: E712
+    except Exception:
+        return out
+    for e in rows:
+        if getattr(e, "terminated_on", None):
+            continue
+        nm = " ".join(w.capitalize() if not re.match(r"^[A-Z]\.?$", w) else w for w in (e.name or "").split())
+        out.append({"name": nm, "designation": _full_title(e.designation or ""), "short": e.designation or ""})
+    out.sort(key=lambda x: x["name"])
+    return out
+
+
+def _full_title(d):
+    t = (d or "").strip()
+    m = {"qs": "Quantity Surveyor", "senior qs": "Senior Quantity Surveyor", "sr qs": "Senior Quantity Surveyor", "sr. qs": "Senior Quantity Surveyor",
+         "accounts": "Accountant", "pm": "Project Manager", "pe": "Project Engineer"}
+    return m.get(t.lower(), t)
 
 
 def bell_items(db, user):
@@ -539,7 +612,7 @@ def bell_items(db, user):
                 continue
             model = _bill_model(fmt, b)
             for x in _signers_out(b, model, store):
-                if x["turn"] and x["step"] > 0 and (_key(user.full_name or "") == _key(x["name"]) or _key(user.username or "") == _key(x["name"])):
+                if x["turn"] and x["step"] > 0 and (same_person(user.full_name or "", x["name"]) or same_person(user.username or "", x["name"])):
                     p = projects.get(b.project_id)
                     out.append({"id": f"ipa-{b.id}-{x['key']}", "kind": "bill", "title": f"Bill {b.label or b.seq} of {p.code if p else ''} waits for you to {x['labels'][0].lower().replace(' by', '')} and sign",
                                 "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pgestproj", "target": f"ipa{b.id}",
@@ -811,7 +884,7 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
             name = str(want.get("name") or "").strip()[:80] or g["orig"]
             title = str(want.get("title") if want.get("title") is not None else g["orig_title"]).strip()[:80]
             prev = sg.get(k) or {}
-            if _key(prev.get("name") or g["orig"]) != _key(name):
+            if not same_person(prev.get("name") or g["orig"], name):
                 prev = {}                                  # another person: they sign afresh
             sg[k] = dict(prev, name=name, title=title, step=_step_of(g["labels"]))
             for pi in g["places"]:                       # the name and designation printed where the format has them
@@ -939,7 +1012,7 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     cur = dict(sg.get(x["key"]) or {})
     cur.setdefault("name", x["name"]); cur.setdefault("title", x["title"]); cur["step"] = x["step"]
     if payload.get("undo"):
-        if not (user.role == "admin" or _key(cur.get("signed_by_name") or "") == _key(user.full_name or "") or can_sign(user, x)):
+        if not (user.role == "admin" or same_person(cur.get("signed_by_name") or "", user.full_name or "") or can_sign(user, x)):
             raise HTTPException(403, "Only the person who signed (or an admin) can take it back.")
         cur.pop("signed_at", None); cur.pop("signed_by", None); cur.pop("signed_by_name", None)
         later = [y for y in signers if y["step"] > x["step"] and y["signed_at"]]
@@ -977,6 +1050,19 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
 
 
 # ---------------------------------------------------------------------------------------------------- signatures
+
+@router.get("/store/est/ipa/people")
+def bill_people(db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Who can sign a bill: the office staff in the staff register, with their designation, and whether they have a
+    login (so the bill can reach their bell) and a signature on file."""
+    store = _sig_store(db)
+    logins = db.query(models.User).filter(models.User.active == True).all()  # noqa: E712
+    out = []
+    for p in staff_people(db):
+        u = next((x for x in logins if same_person(x.full_name or "", p["name"]) or same_person(x.username or "", p["name"])), None)
+        out.append(dict(p, login=u.username if u else "", has_sig=bool(_sig_for(store, p["name"]))))
+    return {"people": out}
+
 
 @router.get("/store/est/ipa/signatures")
 def list_signatures(db: Session = Depends(get_db), user: models.User = E.VIEW):
@@ -1027,7 +1113,7 @@ async def upload_signature(name: str = Form(...), title: str = Form(""), file: U
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(400, "That picture is over 8 MB.")
     png = clean_signature(data)
-    x = next((y for y in db.query(EstSignature).all() if _key(y.name) == _key(name)), None)
+    x = next((y for y in db.query(EstSignature).all() if same_person(y.name, name)), None)
     if not x:
         x = EstSignature(name=name)
         db.add(x)

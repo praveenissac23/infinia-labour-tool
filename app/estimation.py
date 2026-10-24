@@ -904,7 +904,7 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
         "trades": TRADES, "scopes": SCOPES, "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
         "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db),
         "dummy": _dummy_count(db),
-        "me": {"id": user.id, "name": user.full_name, "admin": user.role == "admin",
+        "me": {"id": user.id, "name": user.full_name, "username": user.username, "admin": user.role == "admin",
                "accounts": "accounts_invoices" in perms, "boards": "estimation_boards" in perms},
         "today": today().isoformat(),
     }

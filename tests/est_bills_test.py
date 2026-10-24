@@ -200,7 +200,15 @@ ck("the chain is in order: prepared, checked, approved", [x["step"] for x in sg]
 r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": sg[1]["key"]})
 ck("the checker cannot sign before the preparer", r.status_code == 400 and "signs first" in r.text, r.text)
 # a login for Rahul
-ur = c.post("/users", headers=H, json={"username": "rahul", "password": "rahul12345", "full_name": "Rahul Menon", "role": "office"})
+# the staff register gives the names: a QS in the register, a login with only his first name
+import models as _Mo
+from database import SessionLocal as _SL
+_db = _SL()
+if not _db.query(_Mo.Employee).filter(_Mo.Employee.name == "RAHUL MENON").first():
+    _db.add(_Mo.Employee(emp_no="T-RAHUL", name="RAHUL MENON", staff=True, designation="QS", active=True)); _db.commit()
+pp = c.get("/store/est/ipa/people", headers=H).json()["people"]
+ck("people to sign come from the staff register, designation written out", any(x["name"] == "Rahul Menon" and x["designation"] == "Quantity Surveyor" for x in pp), [x["name"] for x in pp][:8])
+ur = c.post("/users", headers=H, json={"username": "rahul", "password": "rahul12345", "full_name": "Rahul", "role": "office"})
 HR = None
 if ur.status_code in (200, 201):
     c.post(f"/users/{ur.json()['id']}/permissions", headers=H, json={"permissions": "estimation_projects"})
@@ -209,6 +217,8 @@ if ur.status_code in (200, 201):
     ck("Rahul's bell shows nothing yet (preparer: his own bill)", not any(n["kind"] == "bill" for n in bell))
     r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=HR, json={"key": sg[1]["key"]})
     ck("Rahul cannot sign for Shafeeq", r.status_code in (400, 403), r.text)
+    pp = c.get("/store/est/ipa/people", headers=H).json()["people"]
+    ck("...the register shows his login (first-name login 'Rahul' matched to RAHUL MENON)", any(x["name"] == "Rahul Menon" and x["login"] == "rahul" for x in pp))
 r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=HR or H, json={"key": sg[0]["key"]})
 ck("Rahul signs as prepared; now awaiting approval, next is the checker", r.status_code == 200 and r.json()["status"] == "Awaiting approval" and r.json()["next"]["name"] == sg[1]["name"], r.text[:300])
 pv = c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=excel")
@@ -216,12 +226,12 @@ zz = zipfile.ZipFile(io.BytesIO(pv.content))
 ck("...his signature is now on the Excel (cover and appendix), the others' still not", sum(1 for n in zz.namelist() if "infsig" in n) == len(sg[0]["sheets"]))
 bell = c.get("/notifications", headers=H).json()["notifications"]
 ck("admin's bell does not carry it (not their turn)", not any(n["kind"] == "bill" for n in bell))
-us = c.post("/users", headers=H, json={"username": "shafeeq2", "password": "shafeeq12345", "full_name": "Shafeeq", "role": "office"})
+us = c.post("/users", headers=H, json={"username": "shafiq2", "password": "shafeeq12345", "full_name": "Shafiq", "role": "office"})
 if us.status_code in (200, 201):
     c.post(f"/users/{us.json()['id']}/permissions", headers=H, json={"permissions": "estimation_projects"})
-    HS = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "shafeeq2", "password": "shafeeq12345"}).json()["access_token"]}
+    HS = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "shafiq2", "password": "shafeeq12345"}).json()["access_token"]}
     bell = c.get("/notifications", headers=HS).json()["notifications"]
-    ck("Shafeeq's bell: the bill waits for him to check and sign", any(n["kind"] == "bill" and n["bill"] == bx["id"] for n in bell), [n["title"] for n in bell][:3])
+    ck("login 'Shafiq' gets the bell for 'Shafeeq' on the bill (spelt differently, same person)", any(n["kind"] == "bill" and n["bill"] == bx["id"] for n in bell), [n["title"] for n in bell][:3])
 r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": sg[1]["key"]})
 ck("admin signs on the checker's behalf", r.status_code == 200 and r.json()["signers"][1]["signed_at"], r.text[:200])
 for _ in range(6):
