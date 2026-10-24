@@ -275,4 +275,24 @@ c.post(f"/store/est/ipa/bill/{bf['id']}/status", headers=H, json={"status": "Sub
 bn = c.post("/store/est/ipa/new", headers=H, json={"project_id": projects["913"], "format_id": bf and bb["format_id"]}).json()
 fn = c.get(f"/store/est/ipa/bill/{bn['id']}", headers=H).json()["fees"][0]
 ck("next month: IPA 11 heading, this month's fees hidden, sub-total 0", fn["rows"][0]["desc"]["value"] == "IPA 11" and fn["total"] == 0 and fn["hidden"] >= 33, [(x["r"], x["desc"]["value"]) for x in fn["rows"]])
+# ---- the company stamp: bottom right of every page (in the footer), never dropped on the tables; logos keep their shape
+import re as _re, base64 as _b64
+from PIL import Image as _I
+pv = c.get(f"/export/est/ipa/{bn['id']}?token={c.post('/auth/download-token', headers=H).json()['token']}&format=preview").text
+pages = pv.count('<section class="pg')
+ck("stamp at the bottom right of every page", pv.count('class="stp"') == pages and pages >= 9, (pv.count('class="stp"'), pages))
+imgs = _re.findall(r'<img class="xi" src="data:image/(\w+);base64,([^"]+)" style="left:[\d.]+px;top:[\d.]+px;width:(\d+)px;height:(\d+)px"', pv)
+bad = []
+for ext, data, w, h in imgs:
+    iw, ih = _I.open(io.BytesIO(_b64.b64decode(data))).size
+    if int(w) >= 12 and int(h) >= 12 and abs((int(w) / int(h)) / (iw / ih) - 1) > 0.06:
+        bad.append((w, h, iw, ih))
+ck("every logo / picture keeps its own shape (not stretched)", imgs and not bad, bad[:5])
+ck("long text runs over without moving its cell (no positioned cells over the grid)", 'td.ov{overflow:visible}' in pv and "td.ov>span" in pv)
+x = c.get(f"/export/est/ipa/{bn['id']}?token={c.post('/auth/download-token', headers=H).json()['token']}&format=excel")
+z = zipfile.ZipFile(io.BytesIO(x.content))
+sx = z.read("xl/worksheets/sheet3.xml").decode()
+ck("Excel: the stamp is in the footer of each sheet (&G with its picture)", "&amp;R&amp;G" in sx and "legacyDrawingHF" in sx and "xl/media/infstamp.png" in z.namelist())
+wbx = openpyxl.load_workbook(io.BytesIO(x.content))
+ck("Excel: the workbook still opens", "APP B" in wbx.sheetnames)
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

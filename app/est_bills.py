@@ -347,9 +347,10 @@ def signed_model(model, signs, store):
                 else:
                     base = {k: v for k, v in ims[p["img"]].items() if not (p.get("box") and k in ("c2", "r2", "dx2", "dy2"))}
                     box = {k: v for k, v in (p.get("box") or {}).items() if k in ("cx", "cy")}
-                    ims[p["img"]] = dict(base, data=_b.b64encode(p["png"]).decode(), ext="png", **box)
+                    base.pop("_stamp", None)
+                    ims[p["img"]] = dict(base, data=_b.b64encode(p["png"]).decode(), ext="png", sig=True, **box)
             elif p["png"] is not None:
-                ims.append(dict(p["place"], data=_b.b64encode(p["png"]).decode(), ext="png"))
+                ims.append(dict(p["place"], data=_b.b64encode(p["png"]).decode(), ext="png", sig=True))
         sh["images"] = [x for i, x in enumerate(ims) if i not in drop]
         m["sheets"][si] = sh
     return m

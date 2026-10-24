@@ -267,7 +267,7 @@ def editable(model, sheet, k, inputs):
     return True
 
 
-def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None):
+def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None, stamp="below"):
     """The sheet as an HTML table at its own sizes, with its pictures. edit=True marks the cells staff can type in.
     rows_only: just these rows, in this order (one printed page: the rows repeated at the top, then the page's own);
     img_rows: the rows whose pictures belong on it."""
@@ -334,11 +334,18 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 attrs = f' data-k="{k}" data-raw="{escape(str(raw if raw is not None else ""), quote=True)}" data-nf="{escape(st.get("nf", "General"), quote=True)}"'
             if mark and k in mark:
                 cls.append(mark[k])
-            h.append(f'<td{span}{attrs}{(" class=" + chr(34) + " ".join(cls) + chr(34)) if cls else ""} style="{";".join(css)}">{escape(text)}</td>')
+            body_ = f"<span>{escape(text)}</span>" if "ov" in cls else escape(text)
+            h.append(f'<td{span}{attrs}{(" class=" + chr(34) + " ".join(cls) + chr(34)) if cls else ""} style="{";".join(css)}">{body_}</td>')
         h.append("</tr>")
     h.append("</table>")
-    # pictures where the consultant put them (logo, stamps, signatures)
+    # pictures where the consultant put them (logo, signatures); the company stamp at the bottom right - of each
+    # printed page (preview_html / render_pdf draw it there), or under the sheet on screen
+    from est_bills_engine import is_stamp, STAMP_PT
+    st_im = None
     for im in s.get("images", []):
+        if is_stamp(im):
+            st_im = st_im or im
+            continue
         if img_rows is not None and not _img_on(im, img_rows, s):
             continue
         pos = _img_box(im, cols, rows, colx, rowy, cw, rh, s)
@@ -347,8 +354,17 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
         x0, y0, w, hh = pos
         mime = "image/png" if im["ext"] == "png" else ("image/jpeg" if im["ext"] in ("jpg", "jpeg") else f"image/{im['ext']}")
         h.append(f'<img class="xi" src="data:{mime};base64,{im["data"]}" style="left:{x0}px;top:{y0}px;width:{w}px;height:{hh}px" alt="">')
+    if st_im is not None and stamp == "below":
+        sz = int(STAMP_PT * 4 / 3)
+        h.append(f'<img class="xi" src="data:{_mime(st_im)};base64,{st_im["data"]}" style="left:{max(0, width - sz)}px;top:{height + 8}px;width:{sz}px;height:{sz}px" alt="">')
+        h[0] = h[0].replace(f"height:{height}px", f"height:{height + sz + 12}px", 1)
+        height += sz + 12
     h.append("</div>")
     return "".join(h), width, height
+
+
+def _mime(im):
+    return "image/png" if im["ext"] == "png" else ("image/jpeg" if im["ext"] in ("jpg", "jpeg") else f"image/{im['ext']}")
 
 
 def _pos(idx, off, axis, cols, rows, colx, rowy, cw, rh, s):
@@ -387,7 +403,26 @@ def _img_box(im, cols, rows, colx, rowy, cw, rh, s):
     else:
         x1, y1 = x0 + im.get("cx", 0) / EMU_PX, y0 + im.get("cy", 0) / EMU_PX
     w, hh = max(1, x1 - x0), max(1, y1 - y0)
-    return int(x0), int(y0), int(w), int(hh)
+    # the picture keeps its own shape (a logo is never squashed or stretched), inside the place it was given
+    from est_bills_engine import _img_ratio
+    if "_ratio" not in im:
+        im["_ratio"] = _img_ratio(im)
+    ratio = im["_ratio"] or (w / hh)
+    nw, nh = (hh * ratio, hh) if w / hh > ratio else (w, w / ratio)
+    nx, ny = x0 + (w - nw) / 2, y0 + (hh - nh) / 2
+    if not im.get("sig"):
+        # a logo sits in the middle of the merged cell it was put in (the heading band), as it should
+        for m in s.get("merges") or []:
+            r1, c1, r2, c2 = m
+            if r1 <= im["r"] + 1 <= r2 and c1 <= im["c"] + 1 <= c2 and c1 in colx and c2 in colx and r1 in rowy and r2 in rowy:
+                ax0, ax1 = colx[c1], colx[c2] + cw[c2]
+                ay0, ay1 = rowy[r1], rowy[r2] + rh[r2]
+                if ax1 - ax0 >= nw and x0 >= ax0 - 4 and x0 + w <= ax1 + 4:
+                    nx = ax0 + (ax1 - ax0 - nw) / 2
+                    if ay1 - ay0 >= nh and y0 >= ay0 - 4 and y0 + hh <= ay1 + 4:
+                        ny = ay0 + (ay1 - ay0 - nh) / 2
+                break
+    return int(round(nx)), int(round(ny)), int(round(nw)), int(round(nh))
 
 
 def _faces():
@@ -406,7 +441,8 @@ SHEET_CSS = _faces() + """
 .xt{border-collapse:collapse;table-layout:fixed}
 .xt td{padding:0 3px;overflow:hidden;white-space:nowrap;text-overflow:clip;line-height:1.15}
 .xi{position:absolute;pointer-events:none}
-.xt td.ov{overflow:visible;position:relative;z-index:1}
+.xt td.ov{overflow:visible}
+.xt td.ov>span{position:relative;z-index:1}
 """
 
 
@@ -444,16 +480,18 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
     orientation, at its print scale, margins and centring, broken where the consultant broke it, the heading rows
     repeated on every page, his header and footer on each page."""
     PX = 96 / 72
+    from est_bills_engine import stamp_sheets, STAMP_PT
     sheets = printed_sheets(model)
     plans = [page_plan(model, sh, inputs) for sh in sheets]
     total = sum(len(pl["pages"]) for pl in plans)
+    stamps = stamp_sheets(model)
     out, pno = [], 0
     for sh, pl in zip(sheets, plans):
         size = "a3" if max(pl["pw"], pl["ph"]) > 1000 else "a4"
         orient = "l" if pl["pw"] > pl["ph"] else "p"
         for prow, own in pl["pages"]:
             pno += 1
-            body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow))
+            body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow), stamp=None)
             hf = []
             for k, t in pl["hf"].items():
                 txt = escape(hf_text(t, pno, total, sh["name"], fname or title))
@@ -462,6 +500,9 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
                 pos = (f"top:{pl['mh'] * PX:.1f}px" if k[0] == "h" else f"bottom:{pl['mf'] * PX:.1f}px")
                 side = {"l": f"left:{pl['ml'] * PX:.1f}px", "r": f"right:{pl['mr'] * PX:.1f}px", "c": "left:0;right:0;text-align:center"}[k[1]]
                 hf.append(f'<div class="hf" style="{pos};{side}">{txt}</div>')
+            if sh["name"] in stamps:                   # the company stamp: bottom right of every page, in the footer
+                im = stamps[sh["name"]]
+                hf.append(f'<img class="stp" src="data:{_mime(im)};base64,{im["data"]}" alt="" style="right:{pl["mr"] * PX:.1f}px;bottom:{pl["mf"] * PX:.1f}px;width:{STAMP_PT * PX:.1f}px;height:{STAMP_PT * PX:.1f}px">')
             out.append(f'<section class="pg {size}{orient}" style="width:{pl["pw"] * PX:.1f}px;height:{pl["ph"] * PX:.1f}px">'
                        f'<div class="pz" style="left:{pl["x0"] * PX:.1f}px;top:{pl["y0"] * PX:.1f}px"><div style="zoom:{pl["sc"]:.4f}">{body}</div></div>{"".join(hf)}'
                        f'<div class="pno">{pno} / {total}</div></section>')
@@ -475,6 +516,7 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E
 .pg{{position:relative;background:#fff;margin:0 auto 18px;box-shadow:0 2px 12px rgba(0,0,0,.12);overflow:hidden;box-sizing:border-box}}
 .pz{{position:absolute}}
 .hf{{position:absolute;font:9pt Arial,Helvetica,sans-serif;color:#000;white-space:nowrap}}
+.stp{{position:absolute;pointer-events:none}}
 .pno{{position:absolute;right:8px;bottom:4px;font:10px Arial;color:#aaa}}
 {SHEET_CSS}
 @page a4p{{size:A4 portrait;margin:0}} @page a4l{{size:A4 landscape;margin:0}} @page a3p{{size:A3 portrait;margin:0}} @page a3l{{size:A3 landscape;margin:0}}
@@ -610,6 +652,8 @@ def render_pdf(model, values, title, inputs=None, fname=""):
     M = 28.0                                         # margin, points
 
     fams = _pdf_fonts()
+    from est_bills_engine import stamp_sheets, STAMP_PT, is_stamp
+    stamps = stamp_sheets(model)
 
     def font(st):
         b, i = st.get("b"), st.get("i")
@@ -760,7 +804,7 @@ def render_pdf(model, values, title, inputs=None, fname=""):
             # pictures
             pxcolx = {c: colx[c] / (px * sc) for c in cols}
             for im in s.get("images", []):
-                if not _img_on(im, set(prow), s):
+                if is_stamp(im) or not _img_on(im, set(prow), s):
                     continue
                 rowy_px = {r: (TOP - rowy[r]) / (px * sc) for r in prow}
                 cwp = {c: cw[c] for c in cols}
@@ -772,6 +816,12 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                 try:
                     img = ImageReader(io.BytesIO(base64.b64decode(im["data"])))
                     cv.drawImage(img, M + bx * px * sc, TOP - (by + bh) * px * sc, bw * px * sc, bh * px * sc, mask="auto", preserveAspectRatio=False)
+                except Exception:
+                    pass
+            if s["name"] in stamps:                     # the company stamp: bottom right of every page, in the footer
+                try:
+                    img = ImageReader(io.BytesIO(base64.b64decode(stamps[s["name"]]["data"])))
+                    cv.drawImage(img, PW - pl["mr"] - STAMP_PT, pl["mf"], STAMP_PT, STAMP_PT, mask="auto", preserveAspectRatio=True)
                 except Exception:
                     pass
             # the sheet's own header and footer (Page 1 of 9, sheet name ...), at the consultant's margins

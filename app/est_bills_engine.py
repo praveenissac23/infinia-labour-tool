@@ -1173,6 +1173,108 @@ def _img_ratio(im):
         return 2.0
 
 
+STAMP_PT = 68                                  # the company stamp on the printed page: 68 pt (2.4 cm) square
+
+
+def is_stamp(im):
+    """The round company stamp: a square picture in coloured ink (blue / red / purple), not a client's square
+    logo in black and grey, not a signature."""
+    if im.get("sig"):
+        return False
+    if "_stamp" not in im:
+        ok = False
+        try:
+            from PIL import Image
+            I = Image.open(io.BytesIO(base64.b64decode(im["data"]))).convert("RGBA")
+            w, h = I.size
+            if 0.9 <= w / max(1, h) <= 1.1:
+                bg = Image.new("RGBA", I.size, (255, 255, 255, 255)); bg.alpha_composite(I)
+                J = bg.convert("RGB").resize((48, 48))
+                px, hs = list(J.getdata()), list(J.convert("HSV").getdata())
+                ink = [i for i, q in enumerate(px) if min(q) < 190]
+                ok = len(ink) >= 0.1 * len(px) and sum(hs[i][1] for i in ink) / len(ink) / 255 >= 0.25
+        except Exception:
+            ok = False
+        im["_stamp"] = ok
+    return im["_stamp"]
+
+
+def stamp_sheets(model):
+    """{sheet name: the stamp picture} for the printed sheets that carry the company stamp - it goes at the
+    bottom right of each of their pages instead of wherever it was dropped on the sheet."""
+    out = {}
+    for s in model["sheets"]:
+        if not s.get("visible", True):
+            continue
+        st = next((im for im in s.get("images", []) if is_stamp(im)), None)
+        if st:
+            out[s["name"]] = st
+    return out
+
+
+def _stamp_png(im):
+    raw = base64.b64decode(im["data"])
+    if im.get("ext") == "png":
+        return raw
+    from PIL import Image
+    b = io.BytesIO(); Image.open(io.BytesIO(raw)).save(b, "PNG")
+    return b.getvalue()
+
+
+def _hf_stamp(xml):
+    """The sheet's footer gets the stamp picture on the right (&G), on every page as Excel prints it."""
+    def add(t):
+        t = t.replace("&amp;G", "")
+        if "&amp;R" in t:
+            return t.replace("&amp;R", "&amp;R&amp;G", 1)
+        return t + "&amp;R&amp;G"
+    m = re.search(r"<headerFooter\b([^>]*)(/>|>(.*?)</headerFooter>)", xml, re.S)
+    if not m:
+        body = "<oddFooter>&amp;R&amp;G</oddFooter>"
+        new = f"<headerFooter>{body}</headerFooter>"
+        for tag in ("pageSetup", "pageMargins", "printOptions"):
+            mm = re.search(rf"<{tag}\b[^>]*?(/>|>.*?</{tag}>)", xml, re.S)
+            if mm:
+                return xml[:mm.end()] + new + xml[mm.end():]
+        return xml.replace("</sheetData>", "</sheetData>" + new, 1)
+    inner = m.group(3) or ""
+    if "<oddFooter" in inner:
+        inner = re.sub(r"<oddFooter>(.*?)</oddFooter>", lambda x: f"<oddFooter>{add(x.group(1))}</oddFooter>", inner, flags=re.S)
+        inner = re.sub(r"<oddFooter/>", "<oddFooter>&amp;R&amp;G</oddFooter>", inner)
+    else:
+        # oddFooter comes after oddHeader
+        if "</oddHeader>" in inner:
+            inner = inner.replace("</oddHeader>", "</oddHeader><oddFooter>&amp;R&amp;G</oddFooter>", 1)
+        else:
+            inner = "<oddFooter>&amp;R&amp;G</oddFooter>" + inner
+    for tag in ("evenFooter", "firstFooter"):
+        inner = re.sub(rf"<{tag}>(.*?)</{tag}>", lambda x, tag=tag: f"<{tag}>{add(x.group(1))}</{tag}>", inner, flags=re.S)
+    return xml[:m.start()] + f"<headerFooter{m.group(1)}>{inner}</headerFooter>" + xml[m.end():]
+
+
+def _legacy_hf(xml, rid):
+    """<legacyDrawingHF> goes after drawing / legacyDrawing and before picture, oleObjects, controls, tableParts..."""
+    xml = re.sub(r"<legacyDrawingHF\b[^>]*/>", "", xml)
+    tag = f'<legacyDrawingHF xmlns:r="{R_NS}" r:id="{rid}"/>'
+    for t in ("picture", "oleObjects", "controls", "webPublishItems", "tableParts", "extLst"):
+        mm = re.search(rf"<{t}\b", xml)
+        if mm:
+            return xml[:mm.start()] + tag + xml[mm.start():]
+    return xml.replace("</worksheet>", tag + "</worksheet>")
+
+
+def _stamp_vml(n):
+    return (f'<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">'
+            f'<o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="{900 + n}"/></o:shapelayout>'
+            '<v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f">'
+            '<v:stroke joinstyle="miter"/><v:formulas><v:f eqn="if lineDrawn pixelLineWidth 0"/><v:f eqn="sum @0 1 0"/><v:f eqn="sum 0 0 @1"/>'
+            '<v:f eqn="prod @2 1 2"/><v:f eqn="prod @3 21600 pixelWidth"/><v:f eqn="prod @3 21600 pixelHeight"/><v:f eqn="sum @0 0 1"/>'
+            '<v:f eqn="prod @6 1 2"/><v:f eqn="prod @7 21600 pixelWidth"/><v:f eqn="sum @8 21600 0"/><v:f eqn="prod @7 21600 pixelHeight"/>'
+            '<v:f eqn="sum @10 21600 0"/></v:formulas><v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/><o:lock v:ext="edit" aspectratio="t"/></v:shapetype>'
+            f'<v:shape id="RF" o:spid="_x0000_s{(900 + n) * 1024 + 1}" type="#_x0000_t75" style="position:absolute;margin-left:0;margin-top:0;width:{STAMP_PT}pt;height:{STAMP_PT}pt;z-index:1">'
+            '<v:imagedata o:relid="rId1" o:title="Stamp"/><o:lock v:ext="edit" rotation="t"/></v:shape></xml>')
+
+
 SIGN_LABEL = re.compile(r"^\s*((prepared|checked|approved|verified|submitted|reviewed|certified)\s+by|signature)\s*:?\s*$", re.I)
 
 
@@ -1542,6 +1644,29 @@ def _sign_patches(model, signs):
     return out
 
 
+VML_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
+
+
+def _rels_path(p):
+    d, f = p.rsplit("/", 1)
+    return f"{d}/_rels/{f}.rels"
+
+
+def _rels_owner(rp):
+    d, f = rp.split("/_rels/")
+    return f"{d}/{f[:-5]}"
+
+
+def _add_rel(raw, rid, typ, target):
+    rel = f'<Relationship Id="{rid}" Type="{typ}" Target="{target}"/>'
+    if raw is None:
+        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                + rel + "</Relationships>").encode("utf-8")
+    x = raw.decode("utf-8")
+    x = re.sub(rf'<Relationship[^>]*Id="{rid}"[^>]*/>', "", x)
+    return x.replace("</Relationships>", rel + "</Relationships>").encode("utf-8")
+
+
 def _patch_drawing(raw, patch):
     x = raw.decode("utf-8")
     m = re.search(r"<(\w+):wsDr\b", x)
@@ -1584,6 +1709,19 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
     out = io.BytesIO()
     zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
     dpatch = _sign_patches(model, signs)
+    stamps = stamp_sheets(model)
+    for s in model["sheets"]:                        # the stamp comes off the sheet: it is printed in the footer instead
+        if s["name"] not in stamps:
+            continue
+        for im in s.get("images", []):
+            if is_stamp(im) and im.get("drawing") and im.get("anchor") is not None:
+                d = dpatch.setdefault(im["drawing"], {"replace": {}, "add": [], "media": []})
+                d["replace"].setdefault(im["anchor"], None)
+    stamp_png = _stamp_png(next(iter(stamps.values()))) if stamps else None
+    hf_rels = {}                                     # sheet path -> the vml drawing number
+    for i, s in enumerate(model["sheets"]):
+        if s["name"] in stamps and paths.get(s["name"]):
+            hf_rels[paths[s["name"]]] = i + 1
     rels_of = {f'{d.rsplit("/", 1)[0]}/_rels/{d.rsplit("/", 1)[1]}.rels': d for d in dpatch}
     names = set(zin.namelist())
     ins = [(sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None) for sh, inp in (inputs or {}).items() if isinstance(inp, dict) for x in (inp.get("_rows") or [])]
@@ -1607,6 +1745,8 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
                     xml = re.sub(r"<f\b([^>]*)>(.*?)</f>", ff, xml, flags=re.S)
                 raw = xml.encode("utf-8")
             raw = _patch_sheet(raw, s, (inputs or {}).get(s["name"], {}), values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
+            if item.filename in hf_rels:
+                raw = _legacy_hf(_hf_stamp(raw.decode("utf-8")), "rIdInfStampHF").encode("utf-8")
         elif item.filename == "xl/workbook.xml":
             raw = _full_calc(raw)
             if ins:
@@ -1625,12 +1765,30 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
         elif item.filename == "xl/calcChain.xml":
             continue                                   # Excel rebuilds it
         elif item.filename in dpatch:
+            if ins and item.filename in draw_of:       # rows put in move the pictures below them first
+                xml = raw.decode("utf-8")
+                for sh, r, n, _l in ins:
+                    if sh == draw_of[item.filename]:
+                        xml = re.sub(r"<xdr:row>(\d+)</xdr:row>", lambda m: m.group(0) if int(m.group(1)) + 1 < r else f"<xdr:row>{int(m.group(1)) + n}</xdr:row>", xml)
+                raw = xml.encode("utf-8")
             raw = _patch_drawing(raw, dpatch[item.filename])
+        elif item.filename in {_rels_path(p) for p in hf_rels}:
+            raw = _add_rel(raw, "rIdInfStampHF", VML_REL, f"../drawings/vmlDrawingInfStamp{hf_rels[_rels_owner(item.filename)]}.vml")
         elif item.filename in rels_of:
             raw = _patch_rels(raw, dpatch[rels_of[item.filename]]["media"], rels_of[item.filename])
-        elif item.filename == "[Content_Types].xml" and dpatch and b'Extension="png"' not in raw:
-            raw = raw.replace(b"<Default ", b'<Default Extension="png" ContentType="image/png"/><Default ', 1)
+        elif item.filename == "[Content_Types].xml":
+            if (dpatch or stamps) and b'Extension="png"' not in raw:
+                raw = raw.replace(b"<Default ", b'<Default Extension="png" ContentType="image/png"/><Default ', 1)
+            if stamps and b'Extension="vml"' not in raw:
+                raw = raw.replace(b"<Default ", b'<Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Default ', 1)
         zout.writestr(item, raw)
+    for sp, n in hf_rels.items():
+        if _rels_path(sp) not in names:
+            zout.writestr(_rels_path(sp), _add_rel(None, "rIdInfStampHF", VML_REL, f"../drawings/vmlDrawingInfStamp{n}.vml"))
+        zout.writestr(f"xl/drawings/vmlDrawingInfStamp{n}.vml", _stamp_vml(n))
+        zout.writestr(f"xl/drawings/_rels/vmlDrawingInfStamp{n}.vml.rels", _add_rel(None, "rId1", IMG_REL, "../media/infstamp.png"))
+    if hf_rels:
+        zout.writestr("xl/media/infstamp.png", stamp_png)
     for rp, d in rels_of.items():
         if rp not in names and dpatch[d]["media"]:
             zout.writestr(rp, _patch_rels(None, dpatch[d]["media"], d))
