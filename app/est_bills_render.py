@@ -61,6 +61,17 @@ def _date_text(serial, fmt):
     return out.strip()
 
 
+_RAWNUM = re.compile(r"(?<![\w.\-/,])(-?\d{4,}\.\d+|-?\d+\.\d{3,}|(?<=AED )-?\d{4,}|(?<=AED)-?\d{4,}|(?<=Dhs )-?\d{4,})(?![\w.\-/,])")
+
+
+def tidy_text(t):
+    """Text a formula builds from figures (="= AED "&E14) shows them as Excel would print a raw number - 3589674.704.
+    On screen and on the PDF they are shown as money: 3,589,674.70. The Excel file keeps the consultant's formula."""
+    if not t:
+        return t
+    return _RAWNUM.sub(lambda m: f"{float(m.group(1)):,.2f}", t)
+
+
 def fmt(v, nf="General"):
     """A value as Excel shows it with that number format."""
     if v is None:
@@ -298,6 +309,8 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None):
             v = vals.get(k) if k in vals else (inp.get(k) if k in inp else cell.get("v"))
             num = isinstance(v, (int, float)) and not isinstance(v, bool)
             text = fmt(v, st.get("nf", "General")) if v is not None else ""
+            if isinstance(v, str) and "f" in cell:
+                text = tidy_text(text)
             css = _style_css(st, num) + _border_css(bd)
             cls = []
             if text and not num and not st.get("wrap") and (r, c) not in merges and (st.get("ha") or "left") in ("left", "general", ""):
@@ -305,7 +318,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None):
                 if nxt and f"{r},{nxt}" not in vals and (s["cells"].get(f"{r},{nxt}") or {}).get("v") in (None, "") and (r, nxt) not in covered:
                     cls.append("ov")                       # long text runs over the empty cell beside it, as in Excel
             attrs = ""
-            if edit and editable(model, s, k, inputs):
+            if edit and v not in (None, "") and editable(model, s, k, inputs):        # blank cells stay blank on screen
                 raw = inp.get(k, cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else ""))
                 if isinstance(raw, float) and raw.is_integer():
                     raw = int(raw)
@@ -389,7 +402,7 @@ def printed_sheets(model):
     return [s for s in model["sheets"] if s["visible"]]
 
 
-def preview_html(model, values, title, pdf_url, excel_url, inputs=None):
+def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=False):
     pages = []
     A4W = 718                                   # printable width in px at 96 dpi (A4 minus margins)
     for s in printed_sheets(model):
@@ -412,7 +425,7 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#ECE
 @media (max-width:800px){{.pg{{width:auto;margin:8px;padding:8px;overflow-x:auto}}}}
 </style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}">Excel</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
-{''.join(pages)}</body></html>"""
+{''.join(pages)}{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
 
 
 # ---------------------------------------------------------------------------------------------- PDF
@@ -494,6 +507,8 @@ def render_pdf(model, values, title, inputs=None):
                         continue
                     num = isinstance(v, (int, float)) and not isinstance(v, bool)
                     text = fmt(v, st.get("nf", "General"))
+                    if isinstance(v, str) and "f" in cell:
+                        text = tidy_text(text)
                     if not text:
                         continue
                     fs = max(4.0, (st.get("sz") or 11) * sc)

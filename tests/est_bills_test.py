@@ -108,4 +108,27 @@ for pat, code in (("*914_-_IPA_-_07_-_R2.xlsx", "914"), ("*909-IPA09.xlsx", "909
     bx = c.post("/store/est/ipa/new", headers=H, json={"project_id": projects[code], "format_id": fx["id"]}).json()
     bb = c.get(f"/store/est/ipa/bill/{bx['id']}", headers=H).json()
     ck(f"{code}: next bill numbered on ({bb['label']})", bb["label"] in ("8", "10"), bb["label"])
+# ---- Total = Previous + Current (Current typed): a new month starts Current at 0, Previous = last Total
+g = glob.glob(D + "*911-IPA_Pre_Final_Bill.xlsx")
+if g:
+    pid911 = projects.get("911") or pid
+    r = c.post("/store/est/ipa/format", headers=H, data={"project_id": str(pid911)}, files={"file": ("911.xlsx", open(g[0], "rb").read(), "application/octet-stream")})
+    fx = r.json()
+    import est_bills_engine as BE2
+    m = BE2.read_format(open(g[0], "rb").read(), "911.xlsx"); v0 = BE2.calculate(m, {})
+    bx = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid911, "format_id": fx["id"]}).json()
+    bb = c.get(f"/store/est/ipa/bill/{bx['id']}", headers=H).json()
+    cl = [l for t in bb["progress"] for l in t["lines"] if l["how"] == "cur"]
+    ck("911: lines where Current % is typed are found", len(cl) > 0, len(cl))
+    t0 = next(t for t in m["map"]["progress"] if any(l.get("how") == "cur" for l in t["lines"]))
+    l0 = next(l for l in t0["lines"] if l.get("how") == "cur")
+    was = v0[t0["sheet"]].get(f"{l0['r']},{t0['tot_c']}")
+    got = next(l for t in bb["progress"] if t["sheet"] == t0["sheet"] for l in t["lines"] if l["r"] == l0["r"])
+    ck("...new month: Current 0, Previous = last Total", abs((got["cur"] or 0)) < 1e-9 and abs(got["prev"] - was) < 1e-9, (got["cur"], got["prev"], was))
+    r = c.put(f"/store/est/ipa/bill/{bx['id']}", headers=H, json={"set": {t0["sheet"]: {got["cur_key"]: 0.1}}})
+    got2 = next(l for t in r.json()["progress"] if t["sheet"] == t0["sheet"] for l in t["lines"] if l["r"] == l0["r"])
+    ck("...typing Current 10% makes Total = Previous + 10%", abs(got2["total"] - (was + 0.1)) < 1e-9, got2)
+    ck("911: cover names the client", "KARIM" in (r.json()["cover"]["facts"].get("client") or ""), r.json()["cover"]["facts"])
+r = c.put(f"/store/est/ipa/bill/{b2['id']}", headers=H, json={"issue_date": "2026-11-05"})
+ck("issue date set from a date, written as the format writes it", r.status_code == 200 and r.json()["issue_date"] == "2026-11-05", r.text[:200])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

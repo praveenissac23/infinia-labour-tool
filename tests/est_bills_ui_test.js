@@ -1,12 +1,13 @@
-// Estimation > Bills in the browser: upload the consultant's bill as the format, start next month's bill,
-// type Total % on the Progress view, a payment on Payments, a cell on the sheet itself; preview / PDF / Excel.
+// Estimation > Bills in the browser, step by step: upload the consultant's bill as the format, start next month's bill,
+// Cover (bill no., issue date, payment summary), Work done (This month % or Total %, in place), Payments received
+// (money not formulas, date picker), Review (checks, preview, status, a figure on a sheet); a second format; phone width.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/billsui_';
 const D = process.env.BILLS_DIR || '/mnt/user-data/attachments/80e871d8-70e2-5c6a-a360-434939dea359/';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const f913 = D + fs.readdirSync(D).find(n => n.endsWith('913-IPA_09.xlsx'));
+const file = pat => D + fs.readdirSync(D).find(n => n.includes(pat));
 const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
 
 (async () => {
@@ -19,97 +20,126 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
   await p.evaluate(([pid]) => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'bills.ipa'); }, [P]); await p.reload(); await sleep(1800);
   ck('Bills is a main tab', (await p.textContent('#pnav')).includes('Bills'));
   ck('no format yet: it says what to upload', (await p.textContent('#sec')).includes('No bill format for this project yet'));
-  await p.screenshot({ path: SH + '1_empty.png' });
 
-  // an old .xls is stopped in the browser with how to save it
   await p.click('#ipa-up'); await sleep(300);
-  if (xls) {
-    await p.setInputFiles('#fm-file', D + xls); await p.click('#m-save'); await sleep(500);
-    ck('.xls refused with Save As advice', (await p.textContent('.toast')).includes('Save As'));
-  }
-  await p.setInputFiles('#fm-file', f913); await p.fill('#f-name', '913 - consultant IPA');
+  if (xls) { await p.setInputFiles('#fm-file', D + xls); await p.click('#m-save'); await sleep(500); ck('.xls refused with Save As advice', (await p.textContent('.toast')).includes('Save As')); }
+  await p.setInputFiles('#fm-file', file('913-IPA_09')); await p.fill('#f-name', '913 - consultant IPA');
   await p.click('#m-save'); await sleep(6000);
   const t = await p.textContent('.toast').catch(() => '');
   ck('format read: lines found, every formula as Excel', /lines with Previous/.test(t) && /All \d+ formulas/.test(t), t);
-  ck('format listed with its check', (await p.textContent('#sec')).includes('formulas match'));
-  await p.screenshot({ path: SH + '2_format.png' });
 
-  // next month's bill
   await p.click('#ipa-new'); await sleep(3000);
-  ck('bill opens full screen as IPA 10', await p.isVisible('#big') && (await p.textContent('#b-title')).includes('IPA 10'), await p.textContent('#b-title'));
-  const due0 = await p.textContent('#b-body .fig .v');
-  await p.screenshot({ path: SH + '3_progress.png' });
-  // MC Scope line at 30% -> 45%
-  const inputs = await p.$$('.ipa-pct');
-  let target = null;
-  for (const i of inputs) { if ((await i.inputValue()) === '30') { target = i; break; } }
-  ck('a line at 30% to update', !!target);
-  const k = await target.getAttribute('data-k');
-  await target.click(); await target.fill('45'); await p.keyboard.press('Enter'); await sleep(2500);
-  const due1 = await p.textContent('#b-body .fig .v');
-  ck('Total due worked out again after typing 45%', due1 !== due0, [due0, due1]);
-  const now = await p.$(`.ipa-pct[data-k="${k}"]`);
-  ck('the line keeps 45, marked changed', (await now.inputValue()) === '45' && (await now.getAttribute('class')).includes('ch'));
-  ck('focus moved on to the next line', await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('ipa-pct')));
-  ck('work this month shown, 1 line moved on', (await p.textContent('#b-body')).includes('1 line moved on') && !(await p.textContent('#b-body .fig:nth-child(2) .v')).startsWith('0.00'));
-  await p.fill('.ipa-pct >> nth=0', '150'); await p.keyboard.press('Enter'); await sleep(600);
-  ck('over 100% refused', (await p.textContent('.toast')).includes('between 0 and 100'));
+  ck('bill opens on Work done, titled Interim Bill 10', await p.isVisible('#big') && (await p.textContent('#b-title')).includes('Interim Bill 10') && (await p.getAttribute('#ipa-nav [data-step="work"]', 'class')).includes('on'));
+  ck('no sideways page scroll', await p.evaluate(() => { const b = document.querySelector('#big .bbody'); return b.scrollWidth <= b.clientWidth + 2; }));
+  const due = async () => (await p.textContent('#ipa-nav .ipa-due b')).trim();
+  const due0 = await due();
+
+  // ---- Work done: MC Scope, RCC 30% -> type 15 in This month
+  const row = async txt => (await p.$$('tr[data-line]')).find(async () => true) && (await p.$$eval('tr[data-line]', (rs, txt) => rs.findIndex(r => r.textContent.includes(txt)), txt));
+  const i = await row('RCC for Columns');
+  const tr = (await p.$$('tr[data-line]'))[i];
+  const now = await tr.$('input[data-w="now"]'), tot = await tr.$('input[data-w="tot"]');
+  ck('nothing this month: This month is empty, Total = 30', (await now.inputValue()) === '' && (await tot.inputValue()) === '30', [await now.inputValue(), await tot.inputValue()]);
+  await now.click(); await now.fill('15'); await p.keyboard.press('Enter'); await sleep(2500);
+  ck('Total % fills itself: 45', (await tot.inputValue()) === '45', await tot.inputValue());
+  ck('the row is marked moved, this month AED 197,343.15', (await tr.getAttribute('class')).includes('moved') && (await tr.textContent()).includes('197,343.15'), await tr.textContent());
+  ck('Enter went on to the next line', await p.evaluate(() => document.activeElement && document.activeElement.dataset.w === 'now' && !document.activeElement.closest('tr').textContent.includes('RCC')));
+  const due1 = await due();
+  ck('total due worked out again by the consultant formulas', due1 !== due0, [due0, due1]);
+  ck('side panel: 1 of N lines moved', (await p.textContent('#ipa-nav [data-step="work"] small')).startsWith('1 of'));
+  // Total % typed the other way
+  await tot.click(); await tot.fill('50'); await p.keyboard.press('Tab'); await sleep(2500);
+  ck('typing Total 50 makes This month 20', (await now.inputValue()) === '20', await now.inputValue());
+  // over 100 refused
+  const tr0 = (await p.$$('tr[data-line]'))[0];
+  const t0 = await tr0.$('input[data-w="tot"]');
+  await t0.click(); await t0.fill('140'); await p.keyboard.press('Enter'); await sleep(700);
+  ck('over 100% refused, value put back', (await p.textContent('.toast')).includes('cannot go over 100%') && (await t0.inputValue()) !== '140');
   await p.keyboard.press('Escape'); await sleep(200);
-  await p.fill('#ipa-q', 'superstructure'); await sleep(900);
-  ck('search narrows the lines', (await p.$$('.ipa-pct')).length < inputs.length);
-  await p.screenshot({ path: SH + '4_typed.png' });
-  await p.fill('#ipa-q', ''); await sleep(800);
+  ck('Escape in a box does not close the bill', await p.isVisible('#big'));
+  // filters + search
+  await p.click('[data-flt="moved"]'); await sleep(500);
+  ck('Moved this month shows only the moved line', (await p.$$('tr[data-line]')).length === 1);
+  await p.click('[data-flt=""]'); await sleep(400);
+  await p.fill('#ipa-q', 'plaster'); await sleep(700);
+  ck('search narrows the lines', (await p.$$('tr[data-line]')).length >= 1 && (await p.$$('tr[data-line]')).length < 5);
+  await p.fill('#ipa-q', ''); await sleep(600);
+  await p.screenshot({ path: SH + '2_work.png' });
 
-  // payments
-  await p.click('#ipa-views [data-v="payments"]'); await sleep(600);
-  ck('payments show IPA 9 put on the list', (await p.$$eval('.ipa-pay', a => a.map(x => x.value))).includes('Payment Application No 9'));
-  const descs = await p.$$('.ipa-pay[data-c="desc"]');
-  let row9 = null; for (const d of descs) if ((await d.inputValue()) === 'Payment Application No 9') row9 = d;
-  const tr = await row9.evaluateHandle(x => x.closest('tr'));
-  const amt = await tr.$('.ipa-pay[data-c="amount"]');
-  await amt.fill('=(989148-280)/1.05'); await amt.press('Tab'); await sleep(2500);
-  ck('payment formula worked out', (await p.textContent('#ipa-view')).includes('941,779.05'), (await p.textContent('#ipa-view')).slice(0, 400));
-  const due2 = await p.textContent('#b-body .fig .v');
-  ck('...and comes off the total due', due2 !== due1, [due1, due2]);
-  await p.screenshot({ path: SH + '5_payments.png' });
+  // ---- Cover
+  await p.click('#ipa-nav [data-step="cover"]'); await sleep(900);
+  const cv = await p.textContent('.ipa-cover');
+  ck('cover: project, client, payment summary and words', cv.includes('SOBHA HARTLAND') && cv.includes('ASIF') && cv.includes('Total Amount due for Payment') && /DIRHAMS/i.test(cv), cv.slice(0, 300));
+  ck('cover total = side panel total', cv.includes((await due()).replace('AED ', '')));
+  await p.fill('#cv-date', '2026-10-25'); await p.dispatchEvent('#cv-date', 'change'); await sleep(1500);
+  ck('issue date saved', (await p.textContent('#ipa-nav [data-step="cover"] small')).includes('25-Oct-26'));
+  await p.screenshot({ path: SH + '1_cover.png' });
 
-  // the sheet itself
-  const sheets = await p.$$eval('#ipa-views [data-v^="sheet:"]', a => a.map(x => [x.dataset.v, x.textContent]));
-  const ipa = sheets.find(s => s[1].trim() === 'IPA') || sheets[0];
-  await p.click(`#ipa-views [data-v="${ipa[0]}"]`); await sleep(2000);
-  ck('the IPA sheet is drawn with its typed cells marked', (await p.$$('.ipa-sheet td.ed')).length > 0 && (await p.textContent('.ipa-sheet')).includes('PAYMENT APPLICATION'));
-  ck('...with the logo/stamps', (await p.$$('.ipa-sheet img.xi')).length > 0);
-  await p.screenshot({ path: SH + '6_sheet.png' });
-  // edit the issue date cell? pick the first editable text cell and put it back
-  const ed = (await p.$$('.ipa-sheet td.ed'))[0];
-  const before = await ed.getAttribute('data-raw');
-  await ed.click(); await sleep(200);
-  ck('clicking a blue cell opens it for typing', await p.isVisible('.ipa-cell'));
-  await p.keyboard.press('Escape'); await sleep(200);
-  ck('Escape closes it unchanged', !(await p.isVisible('.ipa-cell')) && (await ed.getAttribute('data-raw')) === before);
+  // ---- Payments
+  await p.click('#ipa-nav [data-step="pay"]'); await sleep(900);
+  ck('no formula shown in the payments', !(await p.$$eval('.ipa-pin', a => a.some(x => x.value.startsWith('=') || /\(\d+.*\)\/1\.05/.test(x.value)))));
+  const descs = await p.$$('.ipa-pin[data-c="desc"]');
+  let r9 = null; for (const d of descs) if ((await d.inputValue()) === 'Payment Application No 9') r9 = d;
+  ck('IPA 9 is on the list', !!r9);
+  const prow = await r9.evaluateHandle(x => x.closest('tr'));
+  const am = await prow.$('.ipa-pin[data-c="amount"]');
+  await am.click(); await am.fill('(989148-280)/1.05'); await p.keyboard.press('Tab'); await sleep(2500);
+  const am2 = (await p.$$('.ipa-pin[data-c="amount"]'))[(await p.$$eval('.ipa-pin[data-c="desc"]', a => a.findIndex(x => x.value === 'Payment Application No 9')))];
+  ck('the sum is shown as money: 941,779.05', (await am2.inputValue()) === '941,779.05', await am2.inputValue());
+  await am2.click(); await sleep(200);
+  ck('...and the sum comes back to change it', (await am2.inputValue()).includes('989148'), await am2.inputValue());
+  await p.keyboard.press('Escape'); await am2.evaluate(x => x.blur()); await sleep(500);
+  const rowNow = (await p.$$('.ipa-pay tbody tr'))[(await p.$$eval('.ipa-pin[data-c="desc"]', a => a.findIndex(x => x.value === 'Payment Application No 9')))];
+  const rc = await rowNow.$('.ipa-pin[data-c="received"]');
+  if (rc) { await rc.fill('2026-10-20'); await rc.dispatchEvent('change'); await sleep(1500); }
+  const pv = await api(`/store/est/ipa/bill/${(await api(`/store/est/ipa/list?project_id=${P}`)).bills[0].id}`);
+  const r9d = pv.payments[0].rows.find(x => x.desc.value === 'Payment Application No 9');
+  ck('received date written like the consultant writes it', !rc || ['20.10.2026', 46315].includes(r9d.received.value), r9d.received);
+  await p.click('[data-addpay]'); await sleep(500);
+  ck('+ Add a payment line gives one empty line', (await p.$$eval('.ipa-pin[data-c="desc"]', a => a.filter(x => !x.value).length)) === 1);
+  await p.screenshot({ path: SH + '3_pay.png' });
 
-  // status + exports
-  await p.selectOption('#ipa-st', 'Submitted'); await sleep(800);
-  ck('status changed', (await p.textContent('#b-body')).includes('Submitted'));
-  const [pv] = await Promise.all([ctx.waitForEvent('page'), p.click('#b-tools [data-xp="preview"]')]);
-  await pv.waitForLoadState(); await sleep(1500);
-  ck('preview shows the bill', (await pv.textContent('body')).includes('PAYMENT APPLICATION'));
-  await pv.screenshot({ path: SH + '7_preview.png', fullPage: false }); await pv.close();
-  const tok = (await api('/auth/download-token', { method: 'POST' })).token;
-  const bid = (await api(`/store/est/ipa/list?project_id=${P}`)).bills[0].id;
-  const heads = await p.evaluate(async ([bid, tok]) => { const o = {}; for (const f of ['pdf', 'excel']) { const r = await fetch(`/export/est/ipa/${bid}?token=${tok}&format=${f}`); const b = new Uint8Array(await r.arrayBuffer()); o[f] = [r.status, String.fromCharCode(...b.slice(0, 4))]; } return o; }, [bid, tok]);
-  ck('PDF and Excel come out', heads.pdf[1] === '%PDF' && heads.excel[1].startsWith('PK'), heads);
-
-  // back to the list
+  // ---- Review
+  await p.click('#ipa-nav [data-step="review"]'); await sleep(3500);
+  const rv = await p.textContent('.ipa-rev');
+  ck('review: total due and checks', rv.includes('Total amount due') && rv.includes('1 line moved on this month') && rv.includes('Every earlier bill'), rv.slice(0, 400));
+  const fr = p.frames().find(f => f.url().includes('format=preview'));
+  ck('the print preview is on the page', !!fr && (await fr.textContent('body')).includes('PAYMENT APPLICATION'));
+  await p.screenshot({ path: SH + '4_review.png' });
+  await p.click('#ipa-adv summary'); await sleep(2000);
+  ck('a sheet opens for a figure to be changed; blank cells are not typed in', (await p.$$('.ipa-sheet td.ed')).length > 0 && (await p.$$eval('.ipa-sheet td.ed', a => a.every(x => x.textContent.trim() !== ''))));
+  await p.selectOption('#sh-pick', { label: 'MC Scope' }); await sleep(1800);
+  ck('sheet picker switches sheet', (await p.textContent('.ipa-sheet')).includes('Clearance of site'));
+  await p.click('#ipa-submit'); await sleep(1000);
+  ck('Mark as submitted', (await p.textContent('#b-title')).includes('Submitted'));
+  const heads = await p.evaluate(async () => { const t = await (await fetch('/auth/download-token', { method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') } })).json();
+    const id = document.querySelector('#b-tools [data-xp]') ? JSON.parse(document.querySelector('#b-tools [data-xp]').dataset.k).extra.id : 0; const o = {};
+    for (const f of ['pdf', 'excel']) { const r = await fetch(`/export/est/ipa/${id}?token=${t.token}&format=${f}`); const b = new Uint8Array(await r.arrayBuffer()); o[f] = String.fromCharCode(...b.slice(0, 4)); } return o; });
+  ck('PDF and Excel come out', heads.pdf === '%PDF' && heads.excel.startsWith('PK'), heads);
   await p.click('#b-x'); await sleep(1200);
-  ck('list shows IPA 10 Submitted with its total', (await p.textContent('#sec')).includes('IPA 10') && (await p.textContent('#sec')).includes('Submitted'));
-  await p.screenshot({ path: SH + '8_list.png' });
-  // phone width
-  await p.setViewportSize({ width: 390, height: 800 }); await sleep(400);
+  ck('list shows IPA 10 Submitted', (await p.textContent('#sec')).includes('IPA 10') && (await p.textContent('#sec')).includes('Submitted'));
+
+  // ---- a second consultant's format: Total = Previous + Current, a cover text built from figures (909 / 914)
+  const P2 = meta.projects.find(x => x.code === '909').id;
+  for (const [pat, code] of [['909-IPA09', '909']]) {
+    const b64 = fs.readFileSync(file(pat)).toString('base64');
+    await p.evaluate(async ([P, b64, name]) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      const fd = new FormData(); fd.append('project_id', P); fd.append('name', name); fd.append('file', new Blob([u]), name + '.xlsx');
+      await fetch('/store/est/ipa/format', { method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') }, body: fd }); }, [P2, b64, pat]);
+  }
+  const L2 = await api(`/store/est/ipa/list?project_id=${P2}`);
+  const nb = await api('/store/est/ipa/new', { method: 'POST', body: { project_id: P2, format_id: L2.formats[0].id } });
+  const tok = (await api('/auth/download-token', { method: 'POST' })).token;
+  const html = await p.evaluate(async ([id, tok]) => (await fetch(`/export/est/ipa/${id}?token=${tok}&format=preview`)).text(), [nb.id, tok]);
+  ck('909 cover: figures inside text shown as money, not 3589674.704', !/\d{7}\.\d{3}/.test(html) && /AED [\d,]+\.\d\d/.test(html));
+
+  // ---- phone
+  await p.setViewportSize({ width: 390, height: 820 }); await sleep(300);
+  await p.evaluate(([pid]) => { localStorage.setItem('est_pid', pid); }, [P]); await p.reload(); await sleep(1800);
   await p.click('[data-ipa]'); await sleep(2500);
-  await p.screenshot({ path: SH + '9_phone.png' });
-  const ov = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-  ck('phone: no page overflow', ov <= 2, ov);
+  await p.screenshot({ path: SH + '5_phone.png' });
+  ck('phone: no page overflow', await p.evaluate(() => { const b = document.querySelector('#big .bbody'); return b.scrollWidth <= b.clientWidth + 2 && document.documentElement.scrollWidth <= innerWidth + 2; }));
+  ck('phone: each line shows its description and the % boxes without sideways scroll', await p.evaluate(() => { const tr = document.querySelector('tr[data-line]'); const i = tr.querySelector('input'); const r = i.getBoundingClientRect(); return r.right <= innerWidth && tr.querySelector('.ds').getBoundingClientRect().width > 200; }));
   ck('no page errors', !errs.length, errs);
   await br.close();
   console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);

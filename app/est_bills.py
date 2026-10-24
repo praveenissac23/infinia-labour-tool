@@ -71,6 +71,8 @@ def _model(fmt):
     hit = _MODEL_CACHE.get(fmt.id)
     if hit is None:
         hit = json.loads(fmt.model or "{}")
+        if hit.get("sheets") and (hit.get("map") or {}).get("v") != BE.MAP_VERSION:
+            hit["map"] = BE.find_inputs(hit)             # a format read before the latest reading rules
         _MODEL_CACHE[fmt.id] = hit
         if len(_MODEL_CACHE) > 12:
             _MODEL_CACHE.pop(next(iter(_MODEL_CACHE)))
@@ -130,12 +132,19 @@ def _progress(model, values, inputs):
             amt = vals.get(f"{r},{t['amount_c']}") if t.get("amount_c") else None
             prev = vals.get(f"{r},{t['prev_c']}")
             tot = vals.get(f"{r},{t['tot_c']}")
-            lines.append({"r": r, "item": ln["item"], "desc": ln["desc"], "amount": amt if isinstance(amt, (int, float)) else None,
+            how = ln.get("how", "tot" if ln["typed_total"] else None)
+            cur = vals.get(f"{r},{t['cur_c']}") if t.get("cur_c") else None
+            lines.append({"r": r, "item": ln["item"], "desc": ln["desc"], "unit": ln.get("unit", ""),
+                          "amount": amt if isinstance(amt, (int, float)) else None, "amount_text": amt if isinstance(amt, str) else "",
                           "prev": prev if isinstance(prev, (int, float)) else None, "total": tot if isinstance(tot, (int, float)) else None,
-                          "tot_key": f"{r},{t['tot_c']}", "prev_key": f"{r},{t['prev_c']}",
-                          "tot_typed": ln["typed_total"], "prev_typed": ln["typed_prev"],
+                          "cur": cur if isinstance(cur, (int, float)) else None,
+                          "tot_key": f"{r},{t['tot_c']}", "prev_key": f"{r},{t['prev_c']}", "cur_key": f"{r},{t['cur_c']}" if t.get("cur_c") else None,
+                          "how": how, "follows": ln.get("follows", ""),
+                          "tot_typed": how == "tot", "prev_typed": ln["typed_prev"],
                           "changed": isinstance(tot, (int, float)) and isinstance(prev, (int, float)) and abs(tot - prev) > 1e-9})
-        out.append({"sheet": sh, "lines": lines})
+        vis = next((x["visible"] for x in model["sheets"] if x["name"] == sh), True)
+        out.append({"sheet": sh, "lines": lines, "hidden": not vis})
+    out.sort(key=lambda t: t["hidden"])                  # sheets the consultant hid (not printed) go last
     return out
 
 
@@ -162,6 +171,71 @@ def _payments(model, values, inputs):
     return out
 
 
+def _cover(model, values):
+    """The payment summary on the cover, as the consultant set it out: each line's words and amount, the total due
+    and the amount in words - shown on the bill's first step."""
+    mp = model.get("map", {})
+    td = mp.get("total_due")
+    if not td:
+        return None
+    s = next((x for x in model["sheets"] if x["name"] == td["sheet"]), None)
+    if not s:
+        return None
+    vals = values.get(s["name"], {})
+    g = lambda r, c: vals.get(f"{r},{c}") if f"{r},{c}" in vals else (s["cells"].get(f"{r},{c}") or {}).get("v")
+    top = td["r"]
+    for r in range(td["r"] - 1, max(1, td["r"] - 30), -1):
+        if any(isinstance(g(r, c), str) and re.fullmatch(r"\s*description\s*", g(r, c), re.I) for c in range(1, td["c"])):
+            top = r
+            break
+    rows = []
+    for r in range(top + 1, td["r"] + 1):
+        if r in set(s.get("hidden_rows") or []):
+            continue
+        texts = [g(r, c) for c in range(1, td["c"]) if isinstance(g(r, c), str) and g(r, c).strip()]
+        amt = g(r, td["c"])
+        if not texts and not isinstance(amt, (int, float)):
+            continue
+        rows.append({"label": texts[0].strip() if texts else "", "detail": BR.tidy_text(" ".join(t.strip() for t in texts[1:])) if len(texts) > 1 else "",
+                     "amount": amt if isinstance(amt, (int, float)) else None, "total": r == td["r"]})
+    words = ""
+    for w in mp.get("words", []):
+        x = values.get(w["sheet"], {}).get(f"{w['r']},{w['c']}")
+        if isinstance(x, str):
+            words = x.strip()
+    # the cover's own facts: "Project", "Location", "Client" ... with the value beside or under the label
+    facts = {}
+    want = {"project": r"project(\s+name)?", "location": r"location|site", "client": r"client|employer", "consultant": r"consultant|engineer"}
+    for r in range(1, top):
+        for c in range(1, s["maxc"] + 1):
+            x = g(r, c)
+            if not isinstance(x, str):
+                continue
+            t = x.strip().rstrip(":").strip()
+            for k, pat in want.items():
+                if k in facts:
+                    continue
+                m = re.match(rf"^({pat})\s*:\s*(.+)$", t, re.I | re.S)
+                if m:                                          # "PROJECT NAME: PROPOSED ..." in one cell
+                    facts[k] = m.group(m.lastindex).strip(); continue
+                if re.fullmatch(pat, t, re.I):
+                    right = next((g(r, cc) for cc in range(c + 1, min(c + 6, s["maxc"] + 1)) if isinstance(g(r, cc), str) and g(r, cc).strip()), None)
+                    below = next((g(rr, c) for rr in range(r + 1, min(r + 4, top)) if isinstance(g(rr, c), str) and g(rr, c).strip()), None)
+                    # Client / Consultant are usually headings with the name under them; Project / Location have it beside
+                    v = (below or right) if k in ("client", "consultant") else (right or below)
+                    if v and not re.fullmatch(r"(client|consultant|contractor|project|location)\s*:?", v.strip(), re.I):
+                        facts[k] = v.strip()
+    if "project" not in facts:                          # a title line across the top with no label
+        for r in range(1, min(top, 4)):
+            for c in range(1, s["maxc"] + 1):
+                x = g(r, c)
+                if isinstance(x, str) and len(x.strip()) > 25 and not re.search(r"payment application|interim", x, re.I):
+                    facts["project"] = x.strip(); break
+            if "project" in facts:
+                break
+    return {"rows": rows, "words": words, "facts": facts}
+
+
 def _bill_out(b, fmt, model, values, inputs, users=None):
     f = _facts(model, values)
     return {"id": b.id, "project_id": b.project_id, "format_id": b.format_id, "format": fmt.name or fmt.filename, "seq": b.seq,
@@ -169,7 +243,9 @@ def _bill_out(b, fmt, model, values, inputs, users=None):
             "status": b.status, "total_due": f["total_due"], "notes": b.notes or "",
             "by": (users or {}).get(b.updated_by or b.created_by, ""),
             "sheets": [{"i": i, "name": s["name"]} for i, s in enumerate(model["sheets"]) if s["visible"]],
-            "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs),
+            "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs), "cover": _cover(model, values),
+            "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
+            "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
             "changed": sum(len(v) for v in inputs.values())}
 
 
@@ -351,6 +427,18 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
                 inputs.setdefault(sh, {})[k] = _parse(v)
             except BE.BillError:
                 raise HTTPException(400, f"That formula cannot be read: {v}")
+    mp = model.get("map", {})
+    if payload.get("issue_date") and mp.get("issue_date"):
+        try:
+            d = date.fromisoformat(str(payload["issue_date"])[:10])
+        except ValueError:
+            raise HTTPException(400, "Pick the issue date.")
+        x = mp["issue_date"]
+        inputs.setdefault(x["sheet"], {})[f"{x['r']},{x['c']}"] = BE.date_input(model, d)
+    if payload.get("bill_no") not in (None, "") and mp.get("bill_no"):
+        x = mp["bill_no"]
+        v = str(payload["bill_no"]).strip()[:40]
+        inputs.setdefault(x["sheet"], {})[f"{x['r']},{x['c']}"] = int(v) if v.isdigit() else v
     if "notes" in payload:
         b.notes = str(payload.get("notes") or "")[:2000]
     inputs, values = _calc(model, inputs)
@@ -391,7 +479,7 @@ def delete_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.V
 # ---------------------------------------------------------------------------------------------------- out
 
 @router.get("/export/est/ipa/{bid}")
-def export_bill(bid: int, token: str, format: str = "preview", db: Session = Depends(get_db)):
+def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
     if E.RIGHT not in set(E.M.effective_permissions(u)) and u.role != "admin":
         raise HTTPException(403, "Estimation only.")
@@ -413,4 +501,4 @@ def export_bill(bid: int, token: str, format: str = "preview", db: Session = Dep
         buf = BR.render_pdf(model, values, title, inputs)
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={fname}.pdf"})
     base = f"/export/est/ipa/{bid}?token={token}"
-    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", inputs))
+    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", inputs, embed=bool(embed)))

@@ -843,13 +843,16 @@ def _text(s, r, c):
     return v if isinstance(v, str) else ""
 
 
+MAP_VERSION = 2
+
+
 def find_inputs(model):
     """Where the month's figures go, per sheet:
        progress tables  - lines with Previous % / Current % / Total % (Total typed, Previous rolled from last month)
        bill no. and issue date on the cover
        previous payments table (one row per bill paid)
        the amount in words under the total due."""
-    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None}
+    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "v": MAP_VERSION}
     for s in model["sheets"]:
         name = s["name"]
         # ---- header row of a progress table: a "Previous" and a "Total/Cumulative" with % under / in it
@@ -875,15 +878,26 @@ def find_inputs(model):
                 t = (heads.get(c) or "").lower()
                 if re.search(r"amount|value|total|cost", t):
                     amount_c = c; break
-            desc_c = next((c for c, t in heads.items() if re.search(r"description|work|item", t, re.I) and c < pc and c != amount_c), None)
-            item_c = 1
+            desc_c = next((c for c, t in heads.items() if re.search(r"description", t, re.I) and c < pc and c != amount_c), None) or \
+                     next((c for c, t in heads.items() if re.search(r"work|item", t, re.I) and c < pc and c != amount_c), None)
+            unit_c = next((c for c, t in heads.items() if re.fullmatch(r"\s*unit\s*", t, re.I) and c < pc), None)
+            # the item / ref. no. column: a heading like Item, Ref, No., S.No left of the description (the last such: BOQ ref over CSI ref)
+            item_c = None
+            for c in sorted(heads):
+                if desc_c and c >= desc_c:
+                    break
+                if re.search(r"\b(item|ref|no|s\.?\s*no|sr)\b", heads[c], re.I):
+                    item_c = c
+            item_c = item_c or 1
             start = r + 2 if any(_text(s, r + 1, c) for c in (pc, tc)) else r + 1
             lines = []
             for rr in range(start, s["maxr"] + 1):
                 tcell = s["cells"].get(f"{rr},{tc}")
                 pcell = s["cells"].get(f"{rr},{pc}")
+                ccell = s["cells"].get(f"{rr},{cc}") if cc else None
                 typed_t = tcell is not None and "v" in tcell and isinstance(tcell.get("v"), (int, float))
                 typed_p = pcell is not None and "v" in pcell and isinstance(pcell.get("v"), (int, float))
+                typed_c = ccell is not None and "v" in ccell and isinstance(ccell.get("v"), (int, float))
                 if not (typed_t or typed_p):
                     continue
                 if tcell is not None and "f" in tcell and pcell is not None and "f" in pcell:
@@ -896,8 +910,21 @@ def find_inputs(model):
                         t = _text(s, rr, c)
                         if len(t) > len(desc) and c != amount_c:
                             desc = t
-                lines.append({"r": rr, "item": general(s["cells"].get(f"{rr},{item_c}", {}).get("v")) if s["cells"].get(f"{rr},{item_c}") else "",
-                              "desc": desc[:300], "typed_total": typed_t, "typed_prev": typed_p})
+                # where this month's figure is typed: Total % (most formats) or Current % (Total = Previous + Current)
+                how = "tot" if typed_t else ("cur" if typed_c and tcell is not None and "f" in tcell else None)
+                follows = ""
+                if not how and tcell is not None and "f" in tcell:
+                    f = tcell["f"]
+                    m2 = re.match(r"^'?([^'!]+)'?!", f)
+                    if "!" in f and m2:
+                        follows = f"set on the {m2.group(1).strip()} sheet"
+                    else:
+                        m3 = re.fullmatch(r"\$?([A-Z]{1,3})\$?(\d+)", f.strip())
+                        follows = f"follows the line on row {m3.group(2)}" if m3 else "worked out by the sheet"
+                item = s["cells"].get(f"{rr},{item_c}", {}).get("v") if s["cells"].get(f"{rr},{item_c}") else None
+                lines.append({"r": rr, "item": general(item) if item is not None else "", "desc": desc[:300],
+                              "unit": _text(s, rr, unit_c) if unit_c else "",
+                              "typed_total": typed_t, "typed_prev": typed_p, "typed_cur": typed_c, "how": how, "follows": follows})
             if lines:
                 out["progress"].append({"sheet": name, "head_row": r, "prev_c": pc, "cur_c": cc, "tot_c": tc, "amount_c": amount_c,
                                         "desc_c": desc_c, "lines": lines})
@@ -993,6 +1020,17 @@ def bill_no_next(v):
     return s[:m.start()] + str(int(n) + 1).zfill(len(n)) + s[m.end():]
 
 
+def date_input(model, t):
+    """The issue date as the format has it: typed as text (06.10.2026) is written the same way, else a real date."""
+    d = model["map"]["issue_date"]
+    sd = next(x for x in model["sheets"] if x["name"] == d["sheet"])
+    was = (sd["cells"].get(f"{d['r']},{d['c']}") or {}).get("v")
+    if isinstance(was, str) and re.match(r"^\s*\d{1,2}([./-])\d{1,2}\1\d{2,4}\s*$", was):
+        sep = re.search(r"[./-]", was).group(0)
+        return f"{t.day:02d}{sep}{t.month:02d}{sep}{t.year}"
+    return _serial(t)
+
+
 def roll_over(model, prev_inputs, prev_values, today=None):
     """The next month's typed cells from last month's: Previous % = last Total %, Total % stays (to be changed),
     the bill no. moves on, the issue date is today, last bill goes on the previous payments as a line to complete."""
@@ -1007,20 +1045,15 @@ def roll_over(model, prev_inputs, prev_values, today=None):
                 inputs.setdefault(sh, {})[f"{ln['r']},{t['prev_c']}"] = float(tot)
                 if ln["typed_total"]:
                     inputs[sh][f"{ln['r']},{t['tot_c']}"] = float(tot)
+                elif ln.get("how") == "cur" and t.get("cur_c"):
+                    inputs[sh][f"{ln['r']},{t['cur_c']}"] = 0.0          # Total = Previous + Current: nothing done yet this month
     if mp.get("bill_no"):
         b = mp["bill_no"]
         cur = prev_values.get(b["sheet"], {}).get(f"{b['r']},{b['c']}")
         inputs.setdefault(b["sheet"], {})[f"{b['r']},{b['c']}"] = bill_no_next(cur)
     if mp.get("issue_date"):
         d = mp["issue_date"]
-        t = today or _dt.date.today()
-        sd = next(x for x in model["sheets"] if x["name"] == d["sheet"])
-        was = (sd["cells"].get(f"{d['r']},{d['c']}") or {}).get("v")
-        if isinstance(was, str) and re.match(r"^\s*\d{1,2}([./-])\d{1,2}\1\d{2,4}\s*$", was):
-            sep = re.search(r"[./-]", was).group(0)            # the date typed as text (06.10.2026): written the same way
-            inputs.setdefault(d["sheet"], {})[f"{d['r']},{d['c']}"] = f"{t.day:02d}{sep}{t.month:02d}{sep}{t.year}"
-        else:
-            inputs.setdefault(d["sheet"], {})[f"{d['r']},{d['c']}"] = _serial(t)
+        inputs.setdefault(d["sheet"], {})[f"{d['r']},{d['c']}"] = date_input(model, today or _dt.date.today())
     # last month's bill goes on the previous payments as a line - its amount is typed when the money comes in
     if mp.get("payments") and mp.get("bill_no"):
         b = mp["bill_no"]

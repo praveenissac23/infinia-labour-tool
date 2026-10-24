@@ -312,5 +312,22 @@
  "est|these are variation lines": "Ticked: the pasted lines are extra work (variations / additional LPO), certified and printed apart from the contract lines.",
  "est.site.submittal|reply": "In the list: the date the consultant's reply came back (empty = still waiting). In the reply form: the reply itself - Approved, Approved as noted, Revise & resubmit or Rejected - which sets the status.",
  "est.client.vo|type": "Addition, Omission (kept as minus figures) or Coordination (builders' work / attendance, listed apart and left out of the totals).",
- "est.client.boq|unit": "The unit of the line (m3, m2, nos, LS ...), as in the internal BOQ."
+ "est.client.boq|unit": "The unit of the line (m3, m2, nos, LS ...), as in the internal BOQ.",
+ "est.ipa|section": "A sheet of the consultant's bill that has % lines (a division, the main scope, a variation log). Click it to go to its lines.",
+ "est.ipa|value": "The value of all the lines on that sheet, as on the consultant's sheet.",
+ "est.ipa|previous": "Work certified up to the last bill: its Total % carried over as this bill's Previous %.",
+ "est.ipa|this month": "Work added in this bill: (Total % - Previous %) x amount. Worked out by the app from what is typed.",
+ "est.ipa|to date": "Work done up to this bill: Total % x amount.",
+ "est.ipa|done": "Work to date as a share of the value.",
+ "est.ipa|item": "The item / reference number on the consultant's sheet.",
+ "est.ipa|description": "The line's description as on the consultant's sheet.",
+ "est.ipa|amount": "The line's contract amount on the consultant's sheet.",
+ "est.ipa|this month %": "How much more of the line was done since the last bill. Type it here, or type the Total % - the other fills itself.",
+ "est.ipa|total %": "How much of the line is done up to this bill. Last bill's Total % becomes this bill's Previous %.",
+ "est.ipa|payment summary": "The cover's payment summary, worked out by the consultant's own formulas: work done, advance recovery, previous payments, VAT and the total due.",
+ "est.ipa|bill": "The earlier bill this payment was for (e.g. Payment Application No 9). The last bill is put on the list for you.",
+ "est.ipa|submitted on": "The day that bill was sent to the consultant.",
+ "est.ipa|certified on": "The day the consultant certified it.",
+ "est.ipa|received on": "The day the money came in.",
+ "est.ipa|amount (aed)": "What was received for that bill, as the consultant counts it (usually without VAT and authority fees). A sum such as (989148-280)/1.05 can be typed."
 }
