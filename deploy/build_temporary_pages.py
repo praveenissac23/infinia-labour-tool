@@ -767,7 +767,7 @@ function pgBoardsFrame(target) {
 function pgEstFrame(id, msg) {
   const f = document.getElementById(id); if (!f) return;
   if (!f.getAttribute("src")) {
-    if (msg && msg.pid) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + msg.pid + (msg.group ? "&s=" + msg.group + "." + msg.sec : "");
+    if (msg && msg.pid) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + msg.pid + (msg.group ? "&s=" + msg.group + "." + msg.sec : "") + (msg.bill ? "&bill=" + msg.bill : "");
     pgFrame(id);
   } else { if (msg) { try { f.contentWindow.postMessage(msg, location.origin); } catch (e) {} } pgFrame(id, !msg); }
 }

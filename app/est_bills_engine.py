@@ -683,7 +683,7 @@ class Book(object):
         """('v', value) | ('f', formula) | None"""
         k = f"{r},{c}"
         inp = self.inputs.get(sheet)
-        if inp is not None and k in inp:
+        if inp is not None and k in inp and not k.startswith("_"):
             v = inp[k]
             if isinstance(v, str) and v.startswith("="):
                 return ("f", v[1:])
@@ -925,7 +925,7 @@ class Book(object):
             if only_visible and not s["visible"]:
                 continue
             vals = {}
-            keys = set(s["cells"]) | set(self.inputs.get(s["name"], {}))
+            keys = set(s["cells"]) | {k for k in self.inputs.get(s["name"], {}) if not k.startswith("_")}
             for k in keys:
                 r, c = (int(x) for x in k.split(","))
                 v = self.value(s["name"], r, c)
@@ -989,7 +989,7 @@ def _text(s, r, c):
     return v if isinstance(v, str) else ""
 
 
-MAP_VERSION = 3
+MAP_VERSION = 4
 MODEL_VERSION = 4          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
 
 
@@ -999,7 +999,7 @@ def find_inputs(model):
        bill no. and issue date on the cover
        previous payments table (one row per bill paid)
        the amount in words under the total due."""
-    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "signs": [], "v": MAP_VERSION}
+    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "signs": [], "fees": [], "v": MAP_VERSION}
     for s in model["sheets"]:
         name = s["name"]
         # ---- header row of a progress table: a "Previous" and a "Total/Cumulative" with % under / in it
@@ -1136,6 +1136,28 @@ def find_inputs(model):
                     break
             if cols.get("amount") and total_r:
                 out["payments"].append({"sheet": name, "head_row": r, "total_row": total_r, "cols": cols})
+            break
+        # ---- payments to authorities (and any other small table): a "Description | Invoice reference | Amount" head
+        # with a total row under it - its rows are typed line by line
+        for k, cell in sorted(s["cells"].items(), key=lambda kv: [int(x) for x in kv[0].split(",")]):
+            v = cell.get("v")
+            if not isinstance(v, str) or not re.fullmatch(r"\s*(description|particulars)\s*", v, re.I):
+                continue
+            r, c = (int(x) for x in k.split(","))
+            heads = {cc: _text(s, r, cc).lower() for cc in range(1, s["maxc"] + 1) if _text(s, r, cc)}
+            ref_c = next((cc for cc, t in heads.items() if cc > c and re.search(r"invoice|reference|receipt|ref\b", t)), None)
+            amt_c = next((cc for cc, t in heads.items() if cc > c and re.search(r"amount", t)), None)
+            if not (ref_c and amt_c) or not s.get("visible", True) or any(p["sheet"] == name and p["head_row"] == r for p in out["payments"]):
+                continue
+            total_r = next((rr for rr in range(r + 1, min(r + 60, s["maxr"]) + 1)
+                            if any(re.search(r"\btotal\b", _text(s, rr, cc), re.I) for cc in range(1, amt_c))), None)
+            if not total_r:
+                continue
+            cols = {"desc": c, "ref": ref_c, "amount": amt_c}
+            sn = next((cc for cc, t in heads.items() if cc < c and re.search(r"^(sn|sl|s\.?\s*no|no)\b", t)), None)
+            if sn:
+                cols["sn"] = sn
+            out["fees"].append({"sheet": name, "head_row": r, "total_row": total_r, "cols": cols})
             break
         if s.get("visible", True):
             out["signs"].extend(find_signs(s))
@@ -1308,6 +1330,38 @@ def roll_over(model, prev_inputs, prev_values, today=None):
                     if cols.get("submitted") and isinstance(last_date, (int, float)):
                         inputs[sh][f"{r},{cols['submitted']}"] = float(last_date)
                     break
+    # payments to authorities: last month's lines are hidden (kept in the file), and a heading for this bill with
+    # one empty line is put in above the total, ready to type - as the office does in Excel
+    label_new = None
+    if mp.get("bill_no"):
+        b = mp["bill_no"]
+        label_new = general(inputs.get(b["sheet"], {}).get(f"{b['r']},{b['c']}", "")).strip()
+    for t in mp.get("fees", []):
+        sh = t["sheet"]
+        s = next(x for x in model["sheets"] if x["name"] == sh)
+        hid = set(s.get("hidden_rows") or []) | set(int(x) for x in inputs.get(sh, {}).get("_hide") or [])
+        vis = [r for r in range(t["head_row"] + 1, t["total_row"]) if r not in hid]
+        def has(r):
+            return any(inputs.get(sh, {}).get(f"{r},{c}") not in (None, "") or (s["cells"].get(f"{r},{c}") or {}).get("v") not in (None, "")
+                       for c in (t["cols"]["desc"], t["cols"]["ref"], t["cols"]["amount"]))
+        filled = [r for r in vis if has(r)]
+        if not filled:
+            continue
+        inp = inputs.setdefault(sh, {})
+        inp["_hide"] = sorted((hid - set(s.get("hidden_rows") or [])) | set(filled))
+        # new rows go in after the last line of last month's bill (before the empty row kept above the total)
+        at = filled[-1] + 1
+        heads = [r for r in filled if (inputs.get(sh, {}).get(f"{r},{t['cols']['amount']}") in (None, "") and (s["cells"].get(f"{r},{t['cols']['amount']}") or {}).get("v") in (None, ""))]
+        datas = [r for r in filled if r not in heads]
+        like = [heads[-1] if heads else filled[-1], datas[-1] if datas else filled[-1]]
+        inputs[sh] = shift_inputs(inp, sh, at, 2)
+        inputs[sh].setdefault("_rows", []).append([at, 2, like])
+        hc, ac = t["cols"]["desc"], t["cols"]["amount"]
+        inputs[sh][f"{at},{hc}"] = f"IPA {label_new}" if label_new else "This bill"
+        # the sub-total counts this bill's lines only (the office rewrites it each month in Excel)
+        tr = t["total_row"] + 2
+        col = get_column_letter(ac)
+        inputs[sh][f"{tr},{ac}"] = f"=SUM({col}{at}:{col}{tr - 1})"
     return inputs
 
 
@@ -1401,6 +1455,11 @@ def with_words(model, inputs):
 
 def _esc(t):
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _unesc(t):
+    return str(t).replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&amp;", "&")
+
 
 
 def _num_txt(v):
@@ -1527,13 +1586,42 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
     dpatch = _sign_patches(model, signs)
     rels_of = {f'{d.rsplit("/", 1)[0]}/_rels/{d.rsplit("/", 1)[1]}.rels': d for d in dpatch}
     names = set(zin.namelist())
+    ins = [(sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None) for sh, inp in (inputs or {}).items() if isinstance(inp, dict) for x in (inp.get("_rows") or [])]
+    draw_of = {}
+    for s in model["sheets"]:
+        for im in s.get("images", []):
+            if im.get("drawing"):
+                draw_of[im["drawing"]] = s["name"]
     for item in zin.infolist():
         raw = zin.read(item.filename)
         if item.filename in by_path:
             s = by_path[item.filename]
+            if ins:
+                xml = raw.decode("utf-8")
+                for sh, r, n, like in ins:                # rows put in, in the order they were added
+                    if sh == s["name"]:
+                        xml = _xml_shift_attr(xml, r, n)
+                        xml = _xml_insert_rows(xml, s, r, n, like)
+                    def ff(m, sh=sh, r=r, n=n):
+                        return "<f" + m.group(1) + ">" + _esc(shift_formula(_unesc(m.group(2)), s["name"], sh, r, n)) + "</f>"
+                    xml = re.sub(r"<f\b([^>]*)>(.*?)</f>", ff, xml, flags=re.S)
+                raw = xml.encode("utf-8")
             raw = _patch_sheet(raw, s, (inputs or {}).get(s["name"], {}), values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
         elif item.filename == "xl/workbook.xml":
             raw = _full_calc(raw)
+            if ins:
+                xml = raw.decode("utf-8")
+                for sh, r, n, _l in ins:
+                    def dn(m, sh=sh, r=r, n=n):
+                        return m.group(1) + _esc(shift_formula(_unesc(m.group(2)), "", sh, r, n)) + "</definedName>"
+                    xml = re.sub(r"(<definedName\b[^>]*>)(.*?)</definedName>", dn, xml, flags=re.S)
+                raw = xml.encode("utf-8")
+        elif ins and item.filename in draw_of and item.filename not in dpatch:
+            xml = raw.decode("utf-8")
+            for sh, r, n, _l in ins:
+                if sh == draw_of[item.filename]:
+                    xml = re.sub(r"<xdr:row>(\d+)</xdr:row>", lambda m: m.group(0) if int(m.group(1)) + 1 < r else f"<xdr:row>{int(m.group(1)) + n}</xdr:row>", xml)
+            raw = xml.encode("utf-8")
         elif item.filename == "xl/calcChain.xml":
             continue                                   # Excel rebuilds it
         elif item.filename in dpatch:
@@ -1594,6 +1682,160 @@ def _drop_file_hf(xml):
     return re.sub(r"<((?:odd|even|first)(?:Header|Footer))>(.*?)</\1>", fix, xml, flags=re.S)
 
 
+REF_RE = re.compile(r"(?<![A-Za-z0-9_.])(?:('(?:[^']|'')+'|[A-Za-z0-9_.]+)!)?(\$?)([A-Z]{1,3})(\$?)(\d+)(?![A-Za-z0-9_(])")
+
+
+def _unq(name):
+    name = name or ""
+    return name[1:-1].replace("''", "'") if name.startswith("'") else name
+
+
+def shift_formula(f, own_sheet, target, r, n):
+    """Cell refs on `target` at or below row r moved down by n - refs written in a formula on own_sheet
+    (unprefixed refs mean own_sheet)."""
+    def one(m):
+        sheet = _unq(m.group(1)) if m.group(1) else own_sheet
+        if sheet.strip().lower() != target.strip().lower():
+            return m.group(0)
+        row = int(m.group(5))
+        if row < r:
+            return m.group(0)
+        pre = m.group(0)[:m.start(2) - m.start(0)]
+        return f"{pre}{m.group(2)}{m.group(3)}{m.group(4)}{row + n}"
+    return REF_RE.sub(one, f)
+
+
+def insert_rows(model, sheet, r, n, like=None):
+    """A new model with n rows put in before row r of `sheet`: cells below move down, every formula in the
+    workbook that points at them follows, so do merges, heights, hidden rows, pictures, print area and breaks.
+    The new rows take the look (borders, fonts) of the row they were put in front of."""
+    import copy
+    m = dict(model); m["sheets"] = []
+    for s in model["sheets"]:
+        s2 = dict(s)
+        if s["name"] == sheet:
+            cells = {}
+            for k, cell in s["cells"].items():
+                rr, cc = (int(x) for x in k.split(","))
+                cell = dict(cell)
+                if "f" in cell:
+                    cell["f"] = shift_formula(cell["f"], s["name"], sheet, r, n)
+                cells[f"{rr + n if rr >= r else rr},{cc}"] = cell
+            # the new rows: the ruled, empty look of the rows they are modelled on (row r unless told otherwise)
+            srcs = [int(x) for x in (like or [])] or [r]
+            for i in range(n):
+                sr = srcs[min(i, len(srcs) - 1)]
+                for cc in range(1, s["maxc"] + 1):
+                    src = s["cells"].get(f"{sr},{cc}")
+                    if src and src.get("s"):
+                        cells[f"{r + i},{cc}"] = {"s": src["s"]}
+                if str(sr) in {str(k) for k in s["rowh"]}:
+                    pass
+            s2["cells"] = cells
+            s2["maxr"] = s["maxr"] + n
+            rowh = {str(k): v for k, v in s["rowh"].items()}
+            s2["rowh"] = {(str(int(k) + n) if int(k) >= r else k): v for k, v in rowh.items()}
+            for i in range(n):
+                sr = srcs[min(i, len(srcs) - 1)]
+                if str(sr) in rowh:
+                    s2["rowh"][str(r + i)] = rowh[str(sr)]
+            s2["hidden_rows"] = [x + n if x >= r else x for x in s.get("hidden_rows", [])]
+            s2["merges"] = [[a + n if a >= r else a, b, c2 + n if c2 >= r else c2, d] for a, b, c2, d in s.get("merges", [])]
+            pa = list(s["print_area"]); pa[2] = pa[2] + n if pa[2] >= r else pa[2]; s2["print_area"] = pa
+            if s.get("print"):
+                pr = dict(s["print"]); pr["breaks"] = [x + n if x >= r else x for x in pr.get("breaks", [])]
+                if pr.get("titles"):
+                    pr["titles"] = [x + n if x >= r else x for x in pr["titles"]]
+                s2["print"] = pr
+            ims = []
+            for im in s.get("images", []):
+                im = dict(im)
+                if im["r"] + 1 >= r:
+                    im["r"] += n
+                if "r2" in im and im["r2"] + 1 >= r:
+                    im["r2"] += n
+                ims.append(im)
+            s2["images"] = ims
+        else:
+            cells = {}
+            for k, cell in s["cells"].items():
+                if "f" in cell and sheet.lower() in cell["f"].lower():
+                    cell = dict(cell); cell["f"] = shift_formula(cell["f"], s["name"], sheet, r, n)
+                cells[k] = cell
+            s2["cells"] = cells
+        m["sheets"].append(s2)
+    return m
+
+
+def expand(model, inputs):
+    """The format with this bill's inserted rows applied ({sheet: {"_rows": [[r, n], ...]}}); the map read again."""
+    rows = [(sh, x) for sh, inp in (inputs or {}).items() for x in (inp.get("_rows") or []) if isinstance(inp, dict)]
+    if not rows:
+        return model
+    m = model
+    for sh, x in rows:
+        m = insert_rows(m, sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None)
+    m["map"] = find_inputs(m)
+    return m
+
+
+def shift_inputs(inp, sheet, at, n):
+    """A sheet's typed cells after n rows are put in before row `at`: keys below move down, formulas typed on the
+    sheet follow, the hidden-row list too."""
+    out = {}
+    for k, v in (inp or {}).items():
+        if k.startswith("_"):
+            out[k] = v; continue
+        r, c = (int(x) for x in k.split(","))
+        if isinstance(v, str) and v.startswith("="):
+            v = "=" + shift_formula(v[1:], sheet, sheet, at, n)
+        out[f"{r + n if r >= at else r},{c}"] = v
+    if out.get("_hide"):
+        out["_hide"] = [r + n if r >= at else r for r in out["_hide"]]
+    return out
+
+
+def hidden_extra(inputs, sheet):
+    """Rows this bill hides (last month's lines of a table, kept in the file but not printed)."""
+    inp = (inputs or {}).get(sheet) or {}
+    return set(int(x) for x in (inp.get("_hide") or []))
+
+
+def _xml_shift_attr(xml, r, n):
+    """Row numbers in a sheet's XML moved down: <row r>, <c r>, mergeCell refs, dimension, breaks, sqref."""
+    def row_fix(m):
+        rr = int(m.group(2))
+        return m.group(0) if rr < r else f'{m.group(1)}{rr + n}"'
+    xml = re.sub(r'(<row\b[^>]*?\br=")(\d+)"', row_fix, xml)
+    xml = re.sub(r'(<c\b[^>]*?\br="[A-Z]+)(\d+)"', row_fix, xml)
+    def ref_fix(m):                                      # A1:B9 style refs in attributes
+        return REF_RE.sub(lambda x: x.group(0) if int(x.group(5)) < r else f"{x.group(2)}{x.group(3)}{x.group(4)}{int(x.group(5)) + n}", m.group(0))
+    xml = re.sub(r'(?:ref|sqref)="[^"]*"', ref_fix, xml)
+    xml = re.sub(r'<brk\b[^>]*?\bid="(\d+)"', lambda m: m.group(0) if int(m.group(1)) < r else m.group(0).replace(f'id="{m.group(1)}"', f'id="{int(m.group(1)) + n}"'), xml)
+    return xml
+
+
+def _xml_insert_rows(xml, s_before, r, n, like=None):
+    """n rows put in before row r (after the numbers below were moved down), each with the look of the row it is
+    modelled on (row r unless told otherwise; `like` rows are numbered as before the move)."""
+    m = re.search(r'<row\b[^>]*?\br="%d"[^>]*?(?:/>|>.*?</row>)' % (r + n), xml, re.S)
+    if not m:
+        return xml
+    srcs = [int(x) for x in (like or [])] or [r]
+    new = []
+    for i in range(n):
+        sr = srcs[min(i, len(srcs) - 1)]
+        sr_now = sr + n if sr >= r else sr
+        sm = re.search(r'<row\b[^>]*?\br="%d"[^>]*?(?:/>|>.*?</row>)' % sr_now, xml, re.S)
+        row = (sm or m).group(0)
+        row = re.sub(r'(<row\b[^>]*?\br=")\d+"', lambda x: f'{x.group(1)}{r + i}"', row, count=1)
+        row = re.sub(r'(<c\b[^>]*?\br="[A-Z]+)\d+"', lambda x: f'{x.group(1)}{r + i}"', row)
+        row = re.sub(r'\shidden="(1|true)"', "", row, count=1)
+        row = CELL.sub(lambda x: "<c" + _attrs_without(x.group(1), "t") + "/>", row)        # values dropped, look kept
+        new.append(row)
+    return xml[:m.start()] + "".join(new) + xml[m.start():]
+
+
 def _patch_sheet(raw, s, inp, vals, shown=None):
     """Text edits on the sheet's XML: only the cells that change are rewritten, nothing else is touched."""
     xml = _drop_file_hf(raw.decode("utf-8"))
@@ -1606,7 +1848,7 @@ def _patch_sheet(raw, s, inp, vals, shown=None):
             return m.group(0)
         r, c = int(rm.group(2)), column_index_from_string(rm.group(1))
         k = f"{r},{c}"
-        if k in inp:
+        if k in inp and not k.startswith("_"):
             done.add(k)
             v = inp[k]
             if isinstance(v, str) and v.startswith("="):
@@ -1629,9 +1871,24 @@ def _patch_sheet(raw, s, inp, vals, shown=None):
             head = re.sub(r'\shidden="(1|true)"', "", m.group(0)[:head_end])
             return head + m.group(0)[head_end:]
         xml = ROW.sub(unhide, xml)
+    hide = set(int(x) for x in (inp.get("_hide") or []))
+    if hide:
+        def dohide(m):
+            if int(m.group(1)) not in hide or 'hidden="1"' in m.group(0)[:m.group(0).index(">")]:
+                return m.group(0)
+            head_end = m.group(0).index(">")
+            head = m.group(0)[:head_end]
+            if head.endswith("/"):
+                head = head[:-1] + ' hidden="1"/'
+            else:
+                head += ' hidden="1"'
+            return head + m.group(0)[head_end:]
+        xml = ROW.sub(dohide, xml)
     # typed cells that are empty in the format (no <c> there yet)
     todo = {}
     for k, v in inp.items():
+        if k.startswith("_"):
+            continue
         if k not in done:
             r, c = (int(x) for x in k.split(","))
             todo.setdefault(r, []).append((c, v))

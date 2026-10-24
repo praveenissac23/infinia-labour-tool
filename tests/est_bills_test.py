@@ -185,20 +185,84 @@ neethu = next((x for x in bb["signers"] if "neethu" in x["key"]), None)
 ck("909: the preparer is found (Neethu Treesa Jose, Quantity Surveyor, on IPA and APP B) with her signature", neethu and neethu["title"] == "Quantity Surveyor" and set(neethu["sheets"]) >= {"IPA", "APP B"} and neethu["sig"].startswith("data:image"), neethu)
 r = c.put(f"/store/est/ipa/bill/{bx['id']}", headers=H, json={"signs": {neethu["key"]: {"name": "Rahul Menon", "title": "Quantity Surveyor"}}})
 nb = next(x for x in r.json()["signers"] if x["key"] == neethu["key"])
-ck("changed to Rahul Menon: his own signature is used", r.status_code == 200 and nb["name"] == "Rahul Menon" and nb["own"], nb)
+ck("changed to Rahul Menon: his own signature is on file, not yet on the bill", r.status_code == 200 and nb["name"] == "Rahul Menon" and nb["own"] and not nb["signed_at"], nb)
 tok2 = c.post("/auth/download-token", headers=H).json()["token"]
 pv = c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=preview").text
 ck("...the bill prints 'Name: Rahul Menon' on the cover and the appendix", pv.count("Rahul Menon") >= 2 and "Neethu" not in pv, pv.count("Rahul Menon"))
 x = c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=excel")
 zz = zipfile.ZipFile(io.BytesIO(x.content))
-ck("...the Excel workbook carries his signature picture", any("infsig" in n for n in zz.namelist()) and b"rIdInfSig" in b"".join(zz.read(n) for n in zz.namelist() if "drawings/_rels" in n), [n for n in zz.namelist() if "media" in n][:12])
-wbx = openpyxl.load_workbook(io.BytesIO(x.content))
-ck("...and opens, with his name in the cell", "Rahul Menon" in str(wbx["IPA"].cell(31, 2).value), wbx["IPA"].cell(31, 2).value)
-ck("...PDF comes out", c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=pdf").content[:4] == b"%PDF")
+ck("...no signature picture in the Excel before anyone signs (the format's own taken off too)", not any("infsig" in n for n in zz.namelist()), [n for n in zz.namelist() if "media" in n][:12])
+pdf0 = c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=pdf").content
+ck("...PDF comes out", pdf0[:4] == b"%PDF")
+# ---- the chain: Prepared by (Rahul) -> Checked by (Shafeeq) -> Approved by (Anoop); each in turn, named logins only
+sg = r.json()["signers"]
+ck("the chain is in order: prepared, checked, approved", [x["step"] for x in sg] == sorted(x["step"] for x in sg) and sg[0]["turn"] and not sg[1]["turn"], [(x["labels"][0], x["name"], x["turn"]) for x in sg])
+r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": sg[1]["key"]})
+ck("the checker cannot sign before the preparer", r.status_code == 400 and "signs first" in r.text, r.text)
+# a login for Rahul
+ur = c.post("/users", headers=H, json={"username": "rahul", "password": "rahul12345", "full_name": "Rahul Menon", "role": "office"})
+HR = None
+if ur.status_code in (200, 201):
+    c.post(f"/users/{ur.json()['id']}/permissions", headers=H, json={"permissions": "estimation_projects"})
+    HR = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "rahul", "password": "rahul12345"}).json().get("access_token", "")}
+    bell = c.get("/notifications", headers=HR).json()["notifications"]
+    ck("Rahul's bell shows nothing yet (preparer: his own bill)", not any(n["kind"] == "bill" for n in bell))
+    r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=HR, json={"key": sg[1]["key"]})
+    ck("Rahul cannot sign for Shafeeq", r.status_code in (400, 403), r.text)
+r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=HR or H, json={"key": sg[0]["key"]})
+ck("Rahul signs as prepared; now awaiting approval, next is the checker", r.status_code == 200 and r.json()["status"] == "Awaiting approval" and r.json()["next"]["name"] == sg[1]["name"], r.text[:300])
+pv = c.get(f"/export/est/ipa/{bx['id']}?token={tok2}&format=excel")
+zz = zipfile.ZipFile(io.BytesIO(pv.content))
+ck("...his signature is now on the Excel (cover and appendix), the others' still not", sum(1 for n in zz.namelist() if "infsig" in n) == len(sg[0]["sheets"]))
+bell = c.get("/notifications", headers=H).json()["notifications"]
+ck("admin's bell does not carry it (not their turn)", not any(n["kind"] == "bill" for n in bell))
+us = c.post("/users", headers=H, json={"username": "shafeeq2", "password": "shafeeq12345", "full_name": "Shafeeq", "role": "office"})
+if us.status_code in (200, 201):
+    c.post(f"/users/{us.json()['id']}/permissions", headers=H, json={"permissions": "estimation_projects"})
+    HS = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "shafeeq2", "password": "shafeeq12345"}).json()["access_token"]}
+    bell = c.get("/notifications", headers=HS).json()["notifications"]
+    ck("Shafeeq's bell: the bill waits for him to check and sign", any(n["kind"] == "bill" and n["bill"] == bx["id"] for n in bell), [n["title"] for n in bell][:3])
+r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": sg[1]["key"]})
+ck("admin signs on the checker's behalf", r.status_code == 200 and r.json()["signers"][1]["signed_at"], r.text[:200])
+for _ in range(6):
+    cur = c.get(f"/store/est/ipa/bill/{bx['id']}", headers=H).json()
+    nxt = next((x for x in cur["signers"] if x["turn"]), None)
+    if not nxt:
+        break
+    r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": nxt["key"]})
+ck("...and the rest in turn, the approver last: the bill is Approved", r.status_code == 200 and r.json()["status"] == "Approved" and all(x["signed_at"] for x in r.json()["signers"]), r.text[:200])
+r = c.post(f"/store/est/ipa/bill/{bx['id']}/sign", headers=H, json={"key": sg[1]["key"], "undo": True})
+ck("taking the checker's signing back also takes back the approver's; status back to awaiting", r.status_code == 200 and r.json()["status"] == "Awaiting approval" and not r.json()["signers"][-1]["signed_at"] and r.json()["signers"][0]["signed_at"], r.text[:200])
 r = c.put(f"/store/est/ipa/bill/{bx['id']}", headers=H, json={"signs": {neethu["key"]: {"name": "Someone New", "title": "QS"}}})
 nb = next(x for x in r.json()["signers"] if x["key"] == neethu["key"])
-ck("a person with no signature uploaded: the old signature is not left on", nb["sig"] == "" and not nb["own"], nb)
+ck("a different preparer named: they sign afresh, no signature on the bill", nb["sig"] == "" and not nb["own"] and not nb["signed_at"], nb)
 b3 = c.post("/store/est/ipa/new", headers=H, json={"project_id": projects["909"], "format_id": bx and r.json()["format_id"]}).json()
 n3 = next(x for x in c.get(f"/store/est/ipa/bill/{b3['id']}", headers=H).json()["signers"] if x["key"] == neethu["key"])
-ck("next month's bill keeps the same people", n3["name"] == "Someone New", n3)
+ck("next month's bill keeps the same people, unsigned", n3["name"] == "Someone New" and not n3["signed_at"], n3)
+# ---- payments to authorities (913 APP B): this bill's lines typed, lines added, last month's hidden, sub-total this bill only
+g = glob.glob(D + "*913-IPA_09.xlsx")[0]
+r = c.post("/store/est/ipa/format", headers=H, data={"project_id": str(projects["913"]), "name": "913 fees"}, files={"file": ("913.xlsx", open(g, "rb").read(), "x")})
+bf = c.post("/store/est/ipa/new", headers=H, json={"project_id": projects["913"], "format_id": r.json()["id"]}).json()
+bb = c.get(f"/store/est/ipa/bill/{bf['id']}", headers=H).json()
+fe = bb["fees"][0]
+ck("913: the authority fees table is found, with this bill's heading and an empty line, last month's lines hidden", fe["rows"][0]["head"] and fe["rows"][0]["desc"]["value"] == "IPA 10" and fe["hidden"] >= 30 and fe["total"] == 0, [(x["r"], x["desc"]["value"]) for x in fe["rows"]])
+ln = fe["rows"][1]
+r = c.put(f"/store/est/ipa/bill/{bf['id']}", headers=H, json={"set": {fe["sheet"]: {ln["desc"]["key"]: "DM: Pergola permit fee", ln["ref"]["key"]: "WIFBP2030001 dtd 20.10.2026", ln["amount"]["key"]: 150}}})
+ck("a fee typed: sub-total 150, on the cover 150", r.json()["fees"][0]["total"] == 150 and any(x["amount"] == 150 for x in r.json()["cover"]["rows"] if "uthorit" in x["label"]), r.json()["fees"][0]["total"])
+r = c.post(f"/store/est/ipa/bill/{bf['id']}/rows", headers=H, json={"sheet": fe["sheet"], "at": ln["r"] + 1, "n": 1, "like": ln["r"]})
+ck("a line added (a row put in, as in Excel)", r.status_code == 200 and len(r.json()["fees"][0]["rows"]) == len(fe["rows"]) + 1, r.text[:200])
+nr = next(x for x in r.json()["fees"][0]["rows"] if x["r"] == ln["r"] + 1)
+r = c.put(f"/store/est/ipa/bill/{bf['id']}", headers=H, json={"set": {fe["sheet"]: {nr["desc"]["key"]: "DM: Second fee", nr["amount"]["key"]: 130}}})
+ck("...typed: sub-total 280 and the cover follows", r.json()["fees"][0]["total"] == 280 and any(x["amount"] == 280 for x in r.json()["cover"]["rows"] if "uthorit" in x["label"]), r.json()["fees"][0]["total"])
+x = c.get(f"/export/est/ipa/{bf['id']}?token={tok2}&format=excel")
+wbf = openpyxl.load_workbook(io.BytesIO(x.content)); ws = wbf["APP B"]
+tr = next(rr for rr in range(1, 60) if "sub - total" in str(ws.cell(rr, 2).value or "").lower())
+ck("Excel: the sub-total sums this bill's rows only, last month's rows hidden", str(ws.cell(tr, 4).value).startswith("=SUM(") and ws.row_dimensions[tr - 5].hidden and not ws.row_dimensions[tr - 1].hidden, (ws.cell(tr, 4).value, tr))
+ck("...the cover refers to the moved sub-total cell", f"D{tr}" in str(wbf["IPA"].cell(19, 5).value), wbf["IPA"].cell(19, 5).value)
+pv = c.get(f"/export/est/ipa/{bf['id']}?token={tok2}&format=preview").text
+ck("preview prints this bill's fees, not last month's", "Pergola permit" in pv and "Second fee" in pv and "Pergola Drawing Submission" not in pv)
+c.post(f"/store/est/ipa/bill/{bf['id']}/status", headers=H, json={"status": "Submitted"})
+bn = c.post("/store/est/ipa/new", headers=H, json={"project_id": projects["913"], "format_id": bf and bb["format_id"]}).json()
+fn = c.get(f"/store/est/ipa/bill/{bn['id']}", headers=H).json()["fees"][0]
+ck("next month: IPA 11 heading, this month's fees hidden, sub-total 0", fn["rows"][0]["desc"]["value"] == "IPA 11" and fn["total"] == 0 and fn["hidden"] >= 33, [(x["r"], x["desc"]["value"]) for x in fn["rows"]])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

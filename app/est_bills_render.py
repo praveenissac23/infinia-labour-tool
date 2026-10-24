@@ -177,13 +177,13 @@ def rowpx(h):
     return int(round((h if h else 15) * 96 / 72))
 
 
-def layout(s, area=None, shown=None):
+def layout(s, area=None, shown=None, hide=None):
     """Visible columns and rows of the area with their pixel sizes, and the merged blocks. shown: rows that are
-    hidden in the format but filled in this month (a spare payments row) - they show."""
+    hidden in the format but filled in this month (a spare payments row) - they show; hide: rows this bill hides."""
     r1, c1, r2, c2 = area or s["print_area"]
     dcw, drh = s.get("dcw", 8.43), s.get("drh", 15.0)
     cols = [c for c in range(c1, c2 + 1) if colpx(s["colw"].get(str(c), s["colw"].get(c, dcw))) > 0]
-    hidden = set(s.get("hidden_rows") or []) - set(shown or ())
+    hidden = (set(s.get("hidden_rows") or []) | set(hide or ())) - set(shown or ())
     rows = [r for r in range(r1, r2 + 1) if r not in hidden]
     cw = {c: colpx(s["colw"].get(str(c), s["colw"].get(c, dcw))) for c in cols}
     rh = {r: rowpx(s["rowh"].get(str(r), s["rowh"].get(r)) or drh) for r in rows}
@@ -274,7 +274,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
     styles = model["styles"]
     vals = values.get(s["name"], {})
     inp = (inputs or {}).get(s["name"], {})
-    cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs))
+    cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]))
     if rows_only is not None:
         rows = [r for r in rows_only if r in rh]
     colx, x = {}, 0
@@ -324,7 +324,9 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 if nxt and f"{r},{nxt}" not in vals and (s["cells"].get(f"{r},{nxt}") or {}).get("v") in (None, "") and (r, nxt) not in covered:
                     cls.append("ov")                       # long text runs over the empty cell beside it, as in Excel
             attrs = ""
-            if edit and v not in (None, "") and editable(model, s, k, inputs):        # blank cells stay blank on screen
+            # typed in: a cell with something in it, or an empty ruled cell of a table (an empty row to fill); never the
+            # blank page around the tables
+            if edit and (v not in (None, "") or (cell and any((st.get("bd") or [0, 0, 0, 0])))) and editable(model, s, k, inputs):
                 raw = inp.get(k, cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else ""))
                 if isinstance(raw, float) and raw.is_integer():
                     raw = int(raw)
@@ -415,6 +417,11 @@ def shown_rows(model, sheet, inputs):
     return _s(model, sheet, inputs)
 
 
+def hidden_extra(inputs, sheet):
+    from est_bills_engine import hidden_extra as _h
+    return _h(inputs, sheet)
+
+
 def _img_on(im, rows, s):
     """A picture belongs on the page that holds the row it is anchored to (or, anchored on a hidden row, the page
     the next shown row is on)."""
@@ -494,7 +501,7 @@ def page_plan(model, s, inputs=None):
     w, h = PAPER.get(pr.get("paper") or 9, PAPER[9])
     pw, ph = (h, w) if pr.get("landscape") else (w, h)
     ml, mr, mt, mb, mh, mf = [float(x) * 72 for x in (pr.get("m") or [.7, .7, .75, .75, .3, .3])]
-    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs))
+    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]))
     px = 0.75
     cont_w = sum(cw[c] for c in cols) * px
     cont_h = sum(rh[r] for r in rows) * px

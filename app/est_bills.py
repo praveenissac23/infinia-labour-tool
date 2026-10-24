@@ -26,7 +26,7 @@ import est_bills_engine as BE
 import est_bills_render as BR
 
 router = E.router
-STATUSES = ["Draft", "Submitted", "Certified", "Paid"]
+STATUSES = ["Draft", "Awaiting approval", "Approved", "Submitted", "Certified", "Paid"]
 
 
 class EstBillFormat(Base):
@@ -108,6 +108,26 @@ def _model(fmt):
         _MODEL_CACHE[fmt.id] = hit
         if len(_MODEL_CACHE) > 12:
             _MODEL_CACHE.pop(next(iter(_MODEL_CACHE)))
+    return hit
+
+
+_EXP_CACHE = {}
+
+
+def _bill_model(fmt, b_or_inputs):
+    """The format with this bill's inserted rows applied (lines the office added to a table)."""
+    inputs = b_or_inputs if isinstance(b_or_inputs, dict) else _inputs(b_or_inputs)
+    model = _model(fmt)
+    rows = tuple((sh, json.dumps(inp.get("_rows"))) for sh, inp in sorted(inputs.items()) if isinstance(inp, dict) and inp.get("_rows"))
+    if not rows:
+        return model
+    key = (fmt.id, rows)
+    hit = _EXP_CACHE.get(key)
+    if hit is None:
+        hit = BE.expand(model, inputs)
+        _EXP_CACHE[key] = hit
+        if len(_EXP_CACHE) > 24:
+            _EXP_CACHE.pop(next(iter(_EXP_CACHE)))
     return hit
 
 
@@ -339,14 +359,16 @@ def sign_images(model, signs, store):
     places = model.get("map", {}).get("signs", [])
     for g in _groups(model):
         want = (signs or {}).get(g["key"]) or {}
-        name = (want.get("name") or "").strip()
-        if not name:
-            continue                                    # left as the format has it
+        name = (want.get("name") or "").strip() or g["orig"]
+        signed = bool(want.get("signed_at"))
         sig = store.get(_key(name))
         same = _key(name) == g["key"]
-        if same and not sig:
-            continue                                    # the same person, no signature uploaded: the format's stays
-        png = sig.png if sig else None
+        if not signed:
+            png = None                                  # not signed yet: no signature on the bill, not even the format's
+        elif same and not sig:
+            continue                                    # signed, no signature uploaded: the format's own picture stays
+        else:
+            png = sig.png if sig else None
         for pi in g["places"]:
             p = places[pi]
             sh = next(x for x in model["sheets"] if x["name"] == p["sheet"])
@@ -396,6 +418,40 @@ def _new_place(sh, p, png):
     return {"r": max(0, p["name"]["r"] - 3), "c": col - 1, "dx": int(cw * 9525 * 0.45), "dy": 0, "cx": cx, "cy": hh}
 
 
+def _fees(model, values, inputs):
+    """Payments to authorities this bill: the lines above the total (history rows hidden), each typed."""
+    out = []
+    for t in model.get("map", {}).get("fees", []):
+        sh, cols = t["sheet"], t["cols"]
+        s = next(x for x in model["sheets"] if x["name"] == sh)
+        vals = values.get(sh, {})
+        inp = inputs.get(sh, {})
+        hid = set(s.get("hidden_rows") or []) | BE.hidden_extra(inputs, sh)
+        rows = []
+        for r in range(t["head_row"] + 1, t["total_row"]):
+            if r in hid:
+                continue
+            row = {"r": r}
+            for k, c in cols.items():
+                key = f"{r},{c}"
+                cell = s["cells"].get(key) or {}
+                raw = inp.get(key)
+                if raw is None:
+                    raw = cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else None)
+                row[k] = {"key": key, "value": vals.get(key), "raw": raw}
+            d = row["desc"]["value"]
+            row["head"] = bool(isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", d, re.I)) and row["amount"]["value"] in (None, "", 0)
+            rows.append(row)
+        # the lines of this bill: from its heading ("IPA 10") on; the spacer rows above are left alone
+        last_head = max((i for i, x in enumerate(rows) if x["head"]), default=None)
+        if last_head is not None:
+            rows = rows[last_head:]
+        total = vals.get(f"{t['total_row']},{cols['amount']}")
+        out.append({"sheet": sh, "cols": list(cols.keys()), "rows": rows, "total": total if isinstance(total, (int, float)) else None,
+                    "total_row": t["total_row"], "hidden": len([r for r in range(t["head_row"] + 1, t["total_row"]) if r in hid])})
+    return out
+
+
 def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
     f = _facts(model, values)
     return {"id": b.id, "project_id": b.project_id, "format_id": b.format_id, "format": fmt.name or fmt.filename, "seq": b.seq,
@@ -403,7 +459,7 @@ def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
             "status": b.status, "total_due": f["total_due"], "notes": b.notes or "",
             "by": (users or {}).get(b.updated_by or b.created_by, ""),
             "sheets": [{"i": i, "name": s["name"]} for i, s in enumerate(model["sheets"]) if s["visible"]],
-            "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs), "cover": _cover(model, values),
+            "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs), "fees": _fees(model, values, inputs), "cover": _cover(model, values),
             "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
             "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
             "changed": sum(len(v) for v in inputs.values()),
@@ -430,8 +486,78 @@ def _signers_out(b, model, store):
                 break
         shown = _png_url(sig.png) if sig else (fimg if _key(name) == g["key"] else "")
         out.append({"key": g["key"], "labels": g["labels"], "sheets": g["sheets"], "orig": g["orig"], "orig_title": g["orig_title"],
-                    "name": name, "title": title, "sig": shown, "own": bool(sig), "format_has": bool(fimg)})
+                    "name": name, "title": title, "sig": shown, "own": bool(sig), "format_has": bool(fimg),
+                    "step": _step_of(g["labels"]), "signed_at": want.get("signed_at") or "", "signed_by": want.get("signed_by") or ""})
+    out.sort(key=lambda x: x["step"])
+    # who signs next: the first unsigned in order (prepared -> checked -> approved); the rest wait
+    nxt = next((x for x in out if not x["signed_at"]), None)
+    for x in out:
+        x["turn"] = x is nxt
     return out
+
+
+STEP_ORDER = (("prepar", 0), ("submit", 0), ("review", 1), ("check", 1), ("verif", 1), ("certif", 2), ("approv", 3))
+
+
+def _step_of(labels):
+    """Where a signer stands in the chain: Prepared by 0, Checked / Reviewed by 1, Approved by 3; a bare 'Signature'
+    is placed by where it sits on the sheet (left first), as 9 + nothing - the sort below keeps their sheet order."""
+    best = None
+    for lab in labels:
+        l = lab.lower()
+        for word, n in STEP_ORDER:
+            if word in l:
+                best = n if best is None else min(best, n)
+    return best if best is not None else 1
+
+
+def can_sign(user, signer):
+    """The person named signs (their login's full name), or an admin on their behalf."""
+    if user.role == "admin":
+        return True
+    return _key(user.full_name or "") == _key(signer["name"]) or _key(user.username or "") == _key(signer["name"])
+
+
+def _user_for(db, name):
+    k = _key(name)
+    for u in db.query(models.User).all():
+        if _key(u.full_name or "") == k or _key(u.username or "") == k:
+            return u
+    return None
+
+
+def bell_items(db, user):
+    """For the app's bell: bills waiting for this person to check or approve (their turn in the chain)."""
+    out = []
+    try:
+        bills = db.query(EstBill).filter(EstBill.status.in_(("Draft", "Awaiting approval"))).order_by(EstBill.id.desc()).limit(40).all()
+        projects = {p.id: p for p in db.query(E.EstProject).all()}
+        store = _sig_store(db)
+        for b in bills:
+            fmt = db.query(EstBillFormat).get(b.format_id)
+            if not fmt:
+                continue
+            model = _bill_model(fmt, b)
+            for x in _signers_out(b, model, store):
+                if x["turn"] and x["step"] > 0 and (_key(user.full_name or "") == _key(x["name"]) or _key(user.username or "") == _key(x["name"])):
+                    p = projects.get(b.project_id)
+                    out.append({"id": f"ipa-{b.id}-{x['key']}", "kind": "bill", "title": f"Bill {b.label or b.seq} of {p.code if p else ''} waits for you to {x['labels'][0].lower().replace(' by', '')} and sign",
+                                "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pgestproj", "target": f"ipa{b.id}",
+                                "pid": b.project_id, "bill": b.id, "when": (b.updated_at or b.created_at).date().isoformat() if (b.updated_at or b.created_at) else "", "level": "info"})
+                    break
+    except Exception as e:
+        print("bills bell:", e)
+    return out
+
+
+def _waits(b):
+    """Who the bill waits for, from what is saved (no workbook read): the first unsigned in the chain."""
+    sg = _signs(b)
+    if not sg:
+        return ""
+    rows = sorted(sg.values(), key=lambda v: v.get("step", 1))
+    nxt = next((v for v in rows if not v.get("signed_at")), None)
+    return (nxt.get("name") or "") if nxt else ""
 
 
 def _save_totals(b, model, values):
@@ -474,7 +600,7 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
                       "bills": sum(1 for b in bills if b.format_id == f.id)})
     return {"formats": out_f, "statuses": STATUSES,
             "bills": [{"id": b.id, "seq": b.seq, "label": b.label, "issue_date": b.issue_date.isoformat() if b.issue_date else "",
-                       "status": b.status, "total_due": round(b.total_due or 0, 2), "format_id": b.format_id,
+                       "status": b.status, "total_due": round(b.total_due or 0, 2), "format_id": b.format_id, "waits": _waits(b),
                        "by": users.get(b.updated_by or b.created_by, ""), "updated": (b.updated_at or b.created_at).isoformat() if (b.updated_at or b.created_at) else ""}
                       for b in bills]}
 
@@ -483,8 +609,8 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
 def get_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.VIEW):
     b = _get(db, EstBill, bid)
     fmt = _get(db, EstBillFormat, b.format_id)
-    model = _model(fmt)
     inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
     values = BE.calculate(model, inputs)
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
@@ -495,10 +621,10 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
     """One sheet of the bill as laid out by the consultant, the cells staff may type in marked."""
     b = _get(db, EstBill, bid)
     fmt = _get(db, EstBillFormat, b.format_id)
-    model = _model(fmt)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
     if not (0 <= i < len(model["sheets"])):
         raise HTTPException(404, "No such sheet.")
-    inputs = _inputs(b)
     values = BE.calculate(model, inputs)
     s = model["sheets"][i]
     mark = {}
@@ -606,15 +732,19 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     fmt = _get(db, EstBillFormat, fid) if fid else db.query(EstBillFormat).filter(EstBillFormat.project_id == pid).order_by(EstBillFormat.id.desc()).first()
     if not fmt or fmt.project_id != pid:
         raise HTTPException(400, "Upload the bill format for this project first.")
-    model = _model(fmt)
     last = (db.query(EstBill).filter(EstBill.format_id == fmt.id).order_by(EstBill.seq.desc(), EstBill.id.desc()).first())
     prev_inputs = _inputs(last) if last else {}
+    model = _bill_model(fmt, prev_inputs)
     prev_values = BE.calculate(model, prev_inputs)
     inputs = BE.roll_over(model, prev_inputs, prev_values, E.today())
+    model = _bill_model(fmt, inputs)                       # rows the roll-over put in (a heading for this bill's fees)
     inputs, values = _calc(model, inputs)
     seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid).scalar() or 0) + 1
+    carried = {}
+    for k, v in (_signs(last) if last else {}).items():     # the same people sign next month - each signs afresh
+        carried[k] = {"name": v.get("name"), "title": v.get("title"), "step": v.get("step", 1)}
     b = EstBill(project_id=pid, format_id=fmt.id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
-                signs=(last.signs if last else "") or "")             # the same people sign next month unless changed
+                signs=json.dumps(carried) if carried else "")
     _save_totals(b, model, values)
     db.add(b)
     db.commit()
@@ -639,8 +769,8 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
-    model = _model(fmt)
     inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
     names = {s["name"]: s for s in model["sheets"]}
     for sh, cells in (payload.get("set") or {}).items():
         s = names.get(sh)
@@ -680,7 +810,10 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
                 continue
             name = str(want.get("name") or "").strip()[:80] or g["orig"]
             title = str(want.get("title") if want.get("title") is not None else g["orig_title"]).strip()[:80]
-            sg[k] = {"name": name, "title": title}
+            prev = sg.get(k) or {}
+            if _key(prev.get("name") or g["orig"]) != _key(name):
+                prev = {}                                  # another person: they sign afresh
+            sg[k] = dict(prev, name=name, title=title, step=_step_of(g["labels"]))
             for pi in g["places"]:                       # the name and designation printed where the format has them
                 p = places[pi]
                 inputs.setdefault(p["sheet"], {})[f"{p['name']['r']},{p['name']['c']}"] = (p["name"]["prefix"] or "") + name
@@ -729,6 +862,118 @@ def delete_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.V
     db.commit()
     E.M.log_action(db, user.id, "est_bill_removed", f"bill #{bid} {b.label}")
     return {"ok": True}
+
+
+@router.post("/store/est/ipa/bill/{bid}/rows")
+def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Lines put into a table of the bill, as the office would insert rows in Excel: {"sheet", "at": row, "n": 1}.
+    Everything below moves down and every formula follows; the new rows have the ruled look of the row at `at`."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
+    sh = str(payload.get("sheet") or "")
+    s = next((x for x in model["sheets"] if x["name"] == sh), None)
+    at, n = int(payload.get("at") or 0), max(1, min(20, int(payload.get("n") or 1)))
+    if not s or not (1 <= at <= s["maxr"] + 1):
+        raise HTTPException(400, "Pick where the line goes.")
+    like = payload.get("like")
+    moved = BE.shift_inputs(inputs.get(sh) or {}, sh, at, n)
+    moved.setdefault("_rows", []).append([at, n] + ([[int(like)]] if like else []))
+    inputs[sh] = moved
+    # a sub-total typed for this bill's lines grows to take the new rows in
+    for t in model["map"].get("fees", []):
+        if t["sheet"] == sh and t["head_row"] < at <= t["total_row"]:
+            tr, ac = t["total_row"] + n, t["cols"]["amount"]
+            k = f"{tr},{ac}"
+            if isinstance(moved.get(k), str) and moved[k].upper().startswith("=SUM("):
+                m_ = re.match(r"=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$", moved[k], re.I)
+                if m_:
+                    moved[k] = f"=SUM({m_.group(1)}{m_.group(2)}:{m_.group(3)}{tr - 1})"
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
+@router.post("/store/est/ipa/bill/{bid}/hide")
+def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Rows of a table hidden on this bill (kept in the file, not printed) or shown again: {"sheet", "rows": [..], "show": bool}."""
+    b = _get(db, EstBill, bid)
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    sh = str(payload.get("sheet") or "")
+    inp = inputs.setdefault(sh, {})
+    cur = set(int(x) for x in inp.get("_hide") or [])
+    rows = set(int(x) for x in payload.get("rows") or [])
+    inp["_hide"] = sorted((cur - rows) if payload.get("show") else (cur | rows))
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
+# ---------------------------------------------------------------------------------------------------- the chain of approval
+
+@router.post("/store/est/ipa/bill/{bid}/sign")
+def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """The person whose turn it is signs: Prepared by first, then Checked by, then Approved by. Only then does their
+    signature print. {"key": signer key, "undo": true to take a signing back}."""
+    b = _get(db, EstBill, bid)
+    fmt = _get(db, EstBillFormat, b.format_id)
+    model = _bill_model(fmt, b)
+    store = _sig_store(db)
+    signers = _signers_out(b, model, store)
+    x = next((y for y in signers if y["key"] == payload.get("key")), None)
+    if not x:
+        raise HTTPException(400, "Pick who is signing.")
+    sg = _signs(b)
+    cur = dict(sg.get(x["key"]) or {})
+    cur.setdefault("name", x["name"]); cur.setdefault("title", x["title"]); cur["step"] = x["step"]
+    if payload.get("undo"):
+        if not (user.role == "admin" or _key(cur.get("signed_by_name") or "") == _key(user.full_name or "") or can_sign(user, x)):
+            raise HTTPException(403, "Only the person who signed (or an admin) can take it back.")
+        cur.pop("signed_at", None); cur.pop("signed_by", None); cur.pop("signed_by_name", None)
+        later = [y for y in signers if y["step"] > x["step"] and y["signed_at"]]
+        for y in later:                                   # the ones after them sign again
+            c2 = dict(sg.get(y["key"]) or {}); c2.pop("signed_at", None); c2.pop("signed_by", None); c2.pop("signed_by_name", None); sg[y["key"]] = c2
+        sg[x["key"]] = cur
+        b.signs = json.dumps(sg)
+        b.status = "Draft" if not any((sg.get(y["key"]) or {}).get("signed_at") for y in signers if y["step"] > 0) else "Awaiting approval"
+        db.commit()
+        E.M.log_action(db, user.id, "est_bill_unsign", f"bill #{bid} {b.label}: {x['labels'][0]} {x['name']} taken back")
+        return get_bill(bid, db, user)
+    if x["signed_at"]:
+        raise HTTPException(400, f"{x['name']} has already signed.")
+    if not x["turn"]:
+        waiting = next((y for y in signers if not y["signed_at"]), None)
+        raise HTTPException(400, f"Not yet - {waiting['name']} ({waiting['labels'][0]}) signs first." if waiting else "Nothing to sign.")
+    if not can_sign(user, x):
+        raise HTTPException(403, f"Only {x['name']} can sign here (the login's full name must match), or an admin.")
+    cur.update({"signed_at": E.today().isoformat(), "signed_by": user.id, "signed_by_name": user.full_name or user.username})
+    sg[x["key"]] = cur
+    b.signs = json.dumps(sg)
+    b.updated_by = user.id
+    rest = [y for y in signers if y["key"] != x["key"] and not y["signed_at"]]
+    if not rest:
+        b.status = "Approved" if b.status in ("Draft", "Awaiting approval") else b.status
+    elif b.status == "Draft":
+        b.status = "Awaiting approval"
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_sign", f"bill #{bid} {b.label}: {x['labels'][0]} {x['name']}")
+    out = get_bill(bid, db, user)
+    nxt = next((y for y in out["signers"] if y["turn"]), None)
+    out["next"] = {"name": nxt["name"], "label": nxt["labels"][0], "has_login": bool(_user_for(db, nxt["name"]))} if nxt else None
+    out["warn"] = "" if (x["sig"] or x["format_has"]) else f"No signature picture for {x['name']} on file - the name prints without one until it is uploaded (Cover & details)."
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------- signatures
@@ -813,8 +1058,8 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
         raise HTTPException(403, "Estimation only.")
     b = _get(db, EstBill, bid)
     fmt = _get(db, EstBillFormat, b.format_id)
-    model = _model(fmt)
     inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
     values = BE.calculate(model, inputs)
     p = db.query(E.EstProject).get(b.project_id)
     code = p.code if p else ""

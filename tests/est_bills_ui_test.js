@@ -114,17 +114,56 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
   ck('+ Add a payment line gives one empty line', (await p.$$eval('.ipa-pin[data-c="desc"]', a => a.filter(x => !x.value).length)) === 1);
   await p.screenshot({ path: SH + '3_pay.png' });
 
-  // ---- Review
+  // ---- Authority fees (913 APP B): this bill's heading, a line typed, a line added
+  await p.click('#ipa-nav [data-step="fees"]'); await sleep(900);
+  ck('Authority fees step: IPA 10 heading, last month hidden', (await p.$$eval('.ipa-pay input', a => a.map(x => x.value))).includes('IPA 10') && (await p.textContent('#ipa-main')).includes('kept hidden'));
+  const fd = (await p.$$('.ipa-pin[data-c="desc"]')).find(async () => true);
+  const descs2 = await p.$$('.ipa-pin[data-c="desc"]');
+  let empty = null; for (const d of descs2) if ((await d.inputValue()) === '') { empty = d; break; }
+  await empty.fill('DM: Pergola permit fee'); await empty.press('Tab'); await sleep(1500);
+  const rowEl = (await p.$$('.ipa-pay tbody tr')).find(async () => true);
+  const trs = await p.$$('.ipa-pay tbody tr');
+  let feeTr = null; for (const t_ of trs) { const i = await t_.$('.ipa-pin[data-c="desc"]'); if (i && (await i.inputValue()) === 'DM: Pergola permit fee') feeTr = t_; }
+  await (await feeTr.$('.ipa-pin[data-c="ref"]')).fill('WIFBP2030001 dtd 20.10.2026'); await p.keyboard.press('Tab'); await sleep(1500);
+  const trs2 = await p.$$('.ipa-pay tbody tr'); feeTr = null;
+  for (const t_ of trs2) { const i = await t_.$('.ipa-pin[data-c="desc"]'); if (i && (await i.inputValue()) === 'DM: Pergola permit fee') feeTr = t_; }
+  const amF = await feeTr.$('.ipa-pin[data-c="amount"]'); await amF.click(); await amF.fill('150'); await amF.press('Tab'); await sleep(2000);
+  ck('fee typed: sub-total 150.00', (await p.textContent('.ipa-pay tr.tot')).includes('150.00'), await p.textContent('.ipa-pay tr.tot'));
+  await p.click('[data-addfee]'); await sleep(2500);
+  const nrows = (await p.$$('.ipa-pay tbody tr')).length;
+  ck('+ Add a line puts a row in, focus on it', await p.evaluate(() => document.activeElement && document.activeElement.dataset.c === 'desc'), nrows);
+  await p.keyboard.type('DM: Second fee'); await p.keyboard.press('Tab'); await sleep(1500);
+  const trs3 = await p.$$('.ipa-pay tbody tr'); let t2 = null;
+  for (const t_ of trs3) { const i = await t_.$('.ipa-pin[data-c="desc"]'); if (i && (await i.inputValue()) === 'DM: Second fee') t2 = t_; }
+  const am3 = await t2.$('.ipa-pin[data-c="amount"]'); await am3.click(); await am3.fill('130'); await am3.press('Tab'); await sleep(2000);
+  ck('second fee: sub-total 280.00', (await p.textContent('.ipa-pay tr.tot')).includes('280.00'), await p.textContent('.ipa-pay tr.tot'));
+  await p.screenshot({ path: SH + '3b_fees.png' });
+
+  // ---- Sheets: any sheet, an empty ruled cell of a table can be typed in
+  await p.click('#ipa-nav [data-step="sheets"]'); await sleep(2000);
+  ck('Sheets step: the IPA sheet drawn, typed cells marked', (await p.$$('.ipa-sheet td.ed')).length > 0 && (await p.textContent('.ipa-sheet')).includes('PAYMENT APPLICATION'));
+  await p.selectOption('#sh-pick', { label: 'APP B' }); await sleep(1800);
+  ck('APP B: the empty ruled line can be typed in', (await p.$$eval('.ipa-sheet td.ed', a => a.filter(x => x.textContent.trim() === '').length)) > 0);
+  await p.selectOption('#sh-pick', { label: 'MC Scope' }); await sleep(1800);
+  ck('sheet picker switches sheet', (await p.textContent('.ipa-sheet')).includes('Clearance of site'));
+  await p.screenshot({ path: SH + '3c_sheets.png' });
+
+  // ---- Approve & send: the chain
   await p.click('#ipa-nav [data-step="review"]'); await sleep(3500);
   const rv = await p.textContent('.ipa-rev');
   ck('review: total due and checks', rv.includes('Total amount due') && rv.includes('1 line moved on this month') && rv.includes('Every earlier bill'), rv.slice(0, 400));
+  ck('no Mark as submitted before everyone has signed', !(await p.$('#ipa-submit')));
+  const chain = await p.$$('.ipa-chain li');
+  ck('the chain lists the signers in order, the first one\'s turn', chain.length >= 2 && (await chain[0].getAttribute('class')).includes('turn') && (await chain[1].getAttribute('class')).includes('wait'));
   const fr = p.frames().find(f => f.url().includes('format=preview'));
   ck('the print preview is on the page', !!fr && (await fr.textContent('body')).includes('PAYMENT APPLICATION'));
   await p.screenshot({ path: SH + '4_review.png' });
-  await p.click('#ipa-adv summary'); await sleep(2000);
-  ck('a sheet opens for a figure to be changed; blank cells are not typed in', (await p.$$('.ipa-sheet td.ed')).length > 0 && (await p.$$eval('.ipa-sheet td.ed', a => a.every(x => x.textContent.trim() !== ''))));
-  await p.selectOption('#sh-pick', { label: 'MC Scope' }); await sleep(1800);
-  ck('sheet picker switches sheet', (await p.textContent('.ipa-sheet')).includes('Clearance of site'));
+  await p.click('[data-sign]'); await sleep(2500);
+  ck('admin signs for the preparer: done, next one\'s turn', (await (await p.$$('.ipa-chain li'))[0].getAttribute('class')).includes('done') && (await (await p.$$('.ipa-chain li'))[1].getAttribute('class')).includes('turn'));
+  ck('status now Awaiting approval', (await p.textContent('#b-title')).includes('Awaiting approval'));
+  for (let i = 0; i < 6; i++) { const bt = await p.$('[data-sign]'); if (!bt) break; await bt.click(); await sleep(2500); }
+  ck('everyone signed: Approved, Mark as submitted appears', (await p.textContent('#b-title')).includes('Approved') && !!(await p.$('#ipa-submit')));
+  await p.screenshot({ path: SH + '4b_signed.png' });
   await p.click('#ipa-submit'); await sleep(1000);
   ck('Mark as submitted', (await p.textContent('#b-title')).includes('Submitted'));
   const heads = await p.evaluate(async () => { const t = await (await fetch('/auth/download-token', { method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') } })).json();

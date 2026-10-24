@@ -7945,7 +7945,7 @@ function showNextNotification() {
     // approvals' and landing behind another notification made it look
     // as though the button had simply closed and done nothing.
     // ...and to the very request or material it is about, not just the screen.
-    if (CURRENT_ROLE === "admin" || MY_SCREENS.includes(target) || target === "dashboard" || target === "pgboards") openNotification(n.id, target, n.target);
+    if (CURRENT_ROLE === "admin" || MY_SCREENS.includes(target) || target === "dashboard" || target === "pgboards" || target === "pgestproj") openNotification(n.id, target, n.target);
     closeNotifications();
   };
   document.getElementById("notif-go").focus();
@@ -8086,6 +8086,8 @@ function openNotification(id, screen, target, extra) {
   // opened, with what has arrived against it.
   // A Trello note: the board, and the card on it.
   if (screen === "pgboards") { if (typeof pgGo === "function") pgGo("estimation"); if (typeof pgBoardsFrame === "function") setTimeout(() => pgBoardsFrame(target), 50); return; }
+  // A bill waiting for this person to check or approve: the project's Bills, the bill open on its approval step.
+  if (screen === "pgestproj" && n.bill) { if (typeof pgGo === "function") pgGo("estimation"); if (typeof pgEstFrame === "function") setTimeout(() => pgEstFrame("pg-estproj-frame", { est: "open", pid: n.pid, group: "bills", sec: "ipa", bill: n.bill }), 50); return; }
   if (target && ["approvals", "followup", "requests"].includes(screen)) { openRequestRef(target, n.status); return; }
   if (screen === "store" && target) {
     if (n.kind === "rental" && typeof xlGo === "function") {

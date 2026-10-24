@@ -13374,6 +13374,12 @@ def get_notifications(db: Session = Depends(get_db),
             out = _kb.bell_items(db, user) + out
         except Exception as _e:
             print("boards bell:", _e)
+    if "estimation_projects" in allowed:
+        try:
+            import est_bills as _eb
+            out = _eb.bell_items(db, user) + out
+        except Exception as _e:
+            print("bills bell:", _e)
     return {"notifications": out[:60], "count": len(out)}
 
 

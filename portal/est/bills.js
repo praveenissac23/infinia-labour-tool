@@ -87,7 +87,8 @@ async function newBill() {
 // ONE BILL - four steps: Cover & details, Work done, Payments received, Review & send.
 // The consultant's sheets are never re-laid out; these screens only gather what changes each month.
 // =====================================================================================================
-const IPA_STEPS = [["cover", "Cover & details"], ["work", "Work done"], ["pay", "Payments received"], ["review", "Review & send"]];
+const IPA_ALL_STEPS = [["cover", "Cover & details"], ["work", "Work done"], ["pay", "Payments received"], ["fees", "Authority fees"], ["sheets", "Sheets"], ["review", "Approve & send"]];
+let IPA_STEPS = IPA_ALL_STEPS;
 const pctTxt = v => v === null || v === undefined ? "" : (Math.round(v * 1e6) / 1e4).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "%";
 const amt = v => v === null || v === undefined || v === "" ? '<span class="muted">-</span>' : money(v, true);
 let SAVING = Promise.resolve();
@@ -122,6 +123,7 @@ function checks(b) {
     const open = pay.rows.filter(r => r.desc && /\d/.test(String(r.desc.value || "")) && !(r.amount && r.amount.value));
     out.push(open.length ? [false, `No amount yet for ${open.map(r => esc(r.desc.value)).join(", ")} - type it on Payments received once the money is in`] : [true, "Every earlier bill on the payments list has its amount"]);
   }
+  (b.signers || []).forEach(x => { const lab = x.labels.find(l => l !== "Signature") || x.labels[0]; out.push(x.signed_at ? (x.sig ? [true, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)}`] : [false, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)} but has no signature picture - upload it on Cover & details`]) : [false, `${esc(lab)}: ${esc(x.name)} has not signed yet${x.turn ? " - it is their turn" : ""}`]); });
   return out;
 }
 
@@ -130,15 +132,20 @@ function drawBill() {
   const p = ST.b.project;
   $("#b-title").innerHTML = `<span class="ipa-ttl">Interim Bill ${esc(billNo(b))}</span> <span class="muted small">${esc(p.code)}${p.name ? " · " + esc(p.name) : ""}</span> ${st(b.status)}`;
   $("#b-tools").innerHTML = xpButtons("ipa", { id: b.id, name: `${p.code} IPA ${billNo(b)}` });
+  IPA_STEPS = IPA_ALL_STEPS.filter(([k]) => k !== "fees" || (b.fees && b.fees.length));
+  if (!IPA_STEPS.some(x => x[0] === IPA.step)) IPA.step = "work";
+  const signed = (b.signers || []).filter(x => x.signed_at).length, nsign = (b.signers || []).length;
   const sub = { cover: `${dt(b.issue_date) || "no date"}`, work: `${f.moved} of ${f.entry} lines moved`,
                 pay: b.payments.length ? `total ${money(b.payments[0].total, false)}` : "none on this format",
-                review: ck.some(c => c[0] === false) ? `${ck.filter(c => c[0] === false).length} to look at` : "ready" };
+                fees: b.fees && b.fees.length ? `this bill ${money(b.fees[0].total, false)}` : "",
+                sheets: `${b.sheets.length} sheets`,
+                review: nsign ? (signed === nsign ? "approved" : `${signed} of ${nsign} signed`) : (ck.some(c => c[0] === false) ? `${ck.filter(c => c[0] === false).length} to look at` : "ready") };
   $("#ipa-nav").innerHTML = IPA_STEPS.map(([k, l], i) => `<button class="ipa-step ${IPA.step === k ? "on" : ""} ${k === "review" && ck.some(c => c[0] === false) ? "warn" : ""}" data-step="${k}">
       <span class="no">${i + 1}</span><span class="tx"><b>${l}</b><small>${sub[k]}</small></span></button>`).join("") +
     `<div class="ipa-due"><small>Total due this bill</small><b>AED ${money(b.total_due, false)}</b><small>work this month ${money(f.now, false)}</small></div>`;
   $$("#ipa-nav [data-step]").forEach(x => x.onclick = () => { IPA.step = x.dataset.step; drawBill(); $("#big .bbody").scrollTop = 0; });
   const m = $("#ipa-main");
-  ({ cover: drawCover, work: drawWork, pay: ipaDrawPay, review: drawReview })[IPA.step](m);
+  ({ cover: drawCover, work: drawWork, pay: ipaDrawPay, fees: drawFees, sheets: drawSheets, review: drawReview })[IPA.step](m);
 }
 function nextBtn(k) {
   const i = IPA_STEPS.findIndex(s => s[0] === k), n = IPA_STEPS[i + 1], pv = IPA_STEPS[i - 1];
@@ -193,7 +200,7 @@ function signersCard(b) {
   if (!b.signers || !b.signers.length) return "";
   const names = [...new Set((IPA.people || []).map(x => x.name).concat((ST.meta.users || []).map(u => u.name)).filter(Boolean))];
   return `<div class="ipa-card"><h3>Prepared, checked and approved by</h3>
-    <div class="muted small" style="margin-bottom:10px">The names, designations and signatures printed on this bill. Pick or type the full name; a signature uploaded once is used on every bill that person signs. Next month's bill keeps the same people.</div>
+    <div class="muted small" style="margin-bottom:10px">Who prepares, checks and approves this bill - the names and designations printed on it. Pick or type the full name; a signature uploaded once is kept for that person. It is printed only after they sign on Approve &amp; send, each in turn. Next month's bill keeps the same people.</div>
     <datalist id="ipa-people">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
     <div class="ipa-tw"><table class="ipa-sg" data-nofreeze><thead><tr><th>Signs as</th><th>Full name</th><th>Designation</th><th>Signature</th><th></th></tr></thead><tbody>
     ${b.signers.map(g => `<tr data-sg="${esc(g.key)}"><td><b>${esc(g.labels.join(" / "))}</b><div class="muted small">${esc(g.sheets.join(", "))}</div></td>
@@ -402,9 +409,9 @@ function bindPayInput(inp) {
       const ok = await save({ set: { [inp.dataset.sh]: { [inp.dataset.pk]: v } } });
       if (ok) { toast("Payment saved"); drawBill(); } else refill();
     };
-    const refill = () => { const p = IPA.bill.payments.find(x => x.sheet === inp.dataset.sh); const r = p && p.rows.find(rr => rr.amount && rr.amount.key === inp.dataset.pk); inp.value = r && typeof r.amount.value === "number" && r.amount.value ? money(r.amount.value, false) : ""; };
-  } else if (c === "desc") {
-    inp.onchange = async () => { if (await save({ set: { [inp.dataset.sh]: { [inp.dataset.pk]: inp.value.trim() || null } } })) { toast("Saved"); drawBill(); } };
+    const refill = () => { const p = IPA.bill.payments.concat(IPA.bill.fees || []).find(x => x.sheet === inp.dataset.sh && x.rows.some(rr => rr.amount && rr.amount.key === inp.dataset.pk)); const r = p && p.rows.find(rr => rr.amount && rr.amount.key === inp.dataset.pk); inp.value = r && typeof r.amount.value === "number" && r.amount.value ? money(r.amount.value, false) : ""; };
+  } else if (c === "desc" || c === "ref" || c === "sn") {
+    inp.onchange = async () => { const v = inp.value.trim(); const n = c === "sn" && /^\d+$/.test(v) ? Number(v) : (v || null); if (await save({ set: { [inp.dataset.sh]: { [inp.dataset.pk]: n } } })) { toast("Saved"); drawBill(); } };
   } else {
     inp.onchange = async () => {
       let v = null;
@@ -416,32 +423,115 @@ function bindPayInput(inp) {
 }
 
 // ---------------------------------------------------------------- 4. review & send
+// the chain: Prepared by signs first, then Checked by, then Approved by - each person on their own turn; a
+// signature prints only once its owner has signed
+function chainCard(b) {
+  if (!b.signers || !b.signers.length) return "";
+  const me = (ST.meta.me.name || "").trim().toLowerCase();
+  return `<div class="ipa-card"><h3>Approval <span class="muted small">- each person signs in turn; the bill goes out once everyone has</span></h3>
+    <ol class="ipa-chain">${b.signers.map(x => {
+      const mine = ST.meta.me.admin || x.name.trim().toLowerCase() === me;
+      const state = x.signed_at ? "done" : x.turn ? "turn" : "wait";
+      return `<li class="${state}"><span class="dot">${x.signed_at ? "&#10003;" : x.turn ? "&rarr;" : "&middot;"}</span>
+        <div class="who"><b>${esc(x.labels.find(l => l !== "Signature") || x.labels[0])}</b><div>${esc(x.name)}${x.title ? ` <span class="muted">- ${esc(x.title)}</span>` : ""}</div>
+          <div class="small muted">${x.signed_at ? `Signed on ${dt(x.signed_at)}` : x.turn ? (mine ? "Your turn to sign" : `Waiting for ${esc(x.name)} to sign`) : "After the one before"}</div></div>
+        <div class="act">${x.signed_at ? (mine ? `<button class="btn btn-plain btn-sm" data-unsign="${esc(x.key)}">Take back</button>` : "")
+          : x.turn && mine ? `<button class="btn btn-primary" data-sign="${esc(x.key)}">${x.step === 0 ? "Sign as prepared" : x.step >= 3 ? "Approve & sign" : "Check & sign"}</button>` : ""}</div></li>`; }).join("")}</ol>
+    ${b.signers.some(x => x.turn && !(ST.meta.me.admin || x.name.trim().toLowerCase() === me)) ? `<div class="small muted">Only the person named can sign (the login's full name must match), or an admin on their behalf. They see it on their bell.</div>` : ""}</div>`;
+}
+function bindChain(m) {
+  $$("[data-sign]", m).forEach(bt => bt.onclick = async () => {
+    bt.disabled = true;
+    try {
+      const r = await POST(`/store/est/ipa/bill/${IPA.bill.id}/sign`, { key: bt.dataset.sign });
+      IPA.bill = r;
+      if (r.warn) toast(r.warn, { err: true, ms: 7000 });
+      else toast(r.next ? `Signed. Now with ${r.next.name} to ${r.next.label.toLowerCase().replace(" by", "")}${r.next.has_login ? " - they see it on their bell" : " - they have no login with that name"}` : "Signed - the bill is approved", { ms: 5000 });
+      drawBill();
+    } catch (e) { fail(e); bt.disabled = false; }
+  });
+  $$("[data-unsign]", m).forEach(bt => bt.onclick = async () => {
+    if (!confirmInline(bt)) return;
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${IPA.bill.id}/sign`, { key: bt.dataset.unsign, undo: true }); toast("Signing taken back"); drawBill(); } catch (e) { fail(e); }
+  });
+}
+
+// ---------------------------------------------------------------- authority fees (Appendix B)
+const feeCols = t => ["sn", "desc", "ref", "amount"].filter(c => t.cols.includes(c));
+function drawFees(m) {
+  const b = IPA.bill;
+  const head = { sn: "SN", desc: "Description", ref: "Invoice reference", amount: "Amount (AED)" };
+  m.innerHTML = `<div class="ipa-card ipa-intro"><b>Fees paid to the authorities in this bill</b> (DM, DEWA, permits ...). Type each receipt: what it was for, the invoice reference and the amount.
+      Last month's lines are kept in the file but not printed; the sub-total counts this bill's lines only.</div>` +
+    b.fees.map((t, ti) => `<div class="ipa-card"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="muted small">- ${t.hidden} earlier line${t.hidden === 1 ? "" : "s"} kept hidden</span>` : ""}</h3>
+      <div class="ipa-tw"><table class="ipa-pay"><thead><tr>${feeCols(t).map(c => `<th class="${c === "amount" ? "r" : ""}" style="${c === "sn" ? "width:60px" : ""}">${head[c] || c}</th>`).join("")}<th style="width:40px"></th></tr></thead><tbody>
+      ${t.rows.map(r => r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
+        `<tr>${feeCols(t).map(c => { const x = r[c]; if (!x) return "<td></td>";
+          const at = `data-sh="${esc(t.sheet)}" data-pk="${x.key}" data-c="${c}"`;
+          if (c === "amount") return `<td class="r"><input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(x.raw === null || x.raw === undefined ? "" : String(x.raw).replace(/^=/, ""))}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}"></td>`;
+          if (c === "sn") return `<td><input class="ipa-pin" ${at} value="${esc(x.value ?? "")}" style="width:50px"></td>`;
+          return `<td><input class="ipa-pin ${c === "desc" ? "wide" : ""}" data-spell="off" ${at} value="${esc(x.value ?? "")}" ${c === "desc" ? 'placeholder="e.g. DM: Building permit fee"' : 'placeholder="e.g. WIFBP2017904 dtd 14.09.2026"'} style="${c === "ref" ? "width:230px" : ""}"></td>`; }).join("")}
+          <td class="r"><button class="btn btn-plain btn-sm" title="Clear this line" data-clear="${r.r}" data-sh="${esc(t.sheet)}" data-ti="${ti}">&times;</button></td></tr>`).join("")}
+      <tr class="tot"><td colspan="${t.cols.length - 1}">Sub-total this bill</td><td class="r">${money(t.total, false)}</td><td></td></tr>
+      </tbody></table></div>
+      <button class="btn btn-plain btn-sm" data-addfee="${ti}" style="margin-top:10px">+ Add a line</button></div>`).join("") + nextBtn("fees");
+  bindNext(m);
+  $$("[data-pk]", m).forEach(bindPayInput);
+  $$("[data-addfee]", m).forEach(x => x.onclick = async () => {
+    const t = b.fees[+x.dataset.addfee];
+    const data = t.rows.filter(r => !r.head);
+    const filled = data.filter(r => r.desc.value || r.ref.value || r.amount.value);
+    const empty = data.filter(r => !(r.desc.value || r.ref.value || r.amount.value));
+    if (empty.length) { const i = $(`.ipa-pin[data-pk="${empty[0].desc.key}"]`, m); if (i) i.focus(); return; }   // an empty line is there already
+    const last = filled.length ? filled[filled.length - 1] : t.rows[0];
+    try {
+      IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/rows`, { sheet: t.sheet, at: last.r + 1, n: 1, like: filled.length ? last.r : null });
+      drawBill(); const nt = IPA.bill.fees[+x.dataset.addfee]; const nr = nt.rows.find(r => r.r === last.r + 1);
+      if (nr) { const i = $(`.ipa-pin[data-pk="${nr.desc.key}"]`); if (i) i.focus(); }
+    } catch (e) { fail(e); }
+  });
+  $$("[data-clear]", m).forEach(x => x.onclick = async () => {
+    const t = b.fees[+x.dataset.ti], r = t.rows.find(rr => rr.r === +x.dataset.clear); if (!r) return;
+    const set = {}; t.cols.forEach(c => { if (r[c]) set[r[c].key] = null; });
+    if (await save({ set: { [t.sheet]: set } })) { toast("Line cleared"); drawBill(); }
+  });
+}
+
+// ---------------------------------------------------------------- the sheets themselves
+function drawSheets(m) {
+  const b = IPA.bill;
+  if (IPA.sheet === undefined || !b.sheets.some(s => s.i === IPA.sheet)) IPA.sheet = (b.sheets[0] || {}).i;
+  m.innerHTML = `<div class="ipa-card ipa-intro"><b>Every sheet of the bill, as the consultant laid it out.</b> For anything not on the steps before (a milestone % on a breakdown sheet, a note, a line of a table).
+      <span class="muted">Blue cells can be typed in; yellow = changed this month. Click a cell, type, press Enter. Clearing a cell puts back last month's figure. % cells take the percentage (45 = 45%). A sum starting with = works as in Excel.</span></div>
+    <div class="ipa-card"><div class="ipa-shbar"><button class="btn btn-plain btn-sm" id="sh-prev">&lsaquo;</button><select id="sh-pick">${b.sheets.map(s => `<option value="${s.i}" ${s.i === IPA.sheet ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select><button class="btn btn-plain btn-sm" id="sh-next">&rsaquo;</button>
+      <span class="muted small" id="sh-n"></span></div><div id="ipa-sheet"></div></div>${nextBtn("sheets")}`;
+  bindNext(m);
+  const pick = $("#sh-pick");
+  const go = d => { const opts = [...pick.options]; const i = opts.findIndex(o => o.selected) + d; if (opts[i]) { pick.value = opts[i].value; pick.onchange(); } };
+  pick.onchange = () => { IPA.sheet = +pick.value; $("#sh-n").textContent = `${[...pick.options].findIndex(o => o.selected) + 1} of ${pick.options.length}`; drawSheet($("#ipa-sheet"), IPA.sheet); };
+  $("#sh-prev").onclick = () => go(-1); $("#sh-next").onclick = () => go(1);
+  pick.onchange();
+}
+
 async function drawReview(m) {
   const b = IPA.bill, ck = checks(b), c = b.cover;
+  const allSigned = !(b.signers || []).some(x => !x.signed_at);
   m.innerHTML = `<div class="ipa-card ipa-rev">
       <div class="ipa-rev-top"><div><small>Total amount due for payment</small><div class="big">AED ${money(b.total_due, false)}</div>${c && c.words ? `<div class="muted small">${esc(c.words)}</div>` : ""}</div>
-        <div class="ipa-rev-st"><label class="small muted">Status</label><select id="ipa-st">${IPA.list.statuses.map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select>
-          ${b.status === "Draft" ? `<button class="btn btn-primary" id="ipa-submit">Mark as submitted</button>` : ""}</div></div>
+        <div class="ipa-rev-st"><label class="small muted">Status</label><select id="ipa-st" ${ST.meta.me.admin ? "" : "disabled"}>${IPA.list.statuses.map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          ${allSigned && ["Draft", "Awaiting approval", "Approved"].includes(b.status) ? `<button class="btn btn-primary" id="ipa-submit">Mark as submitted</button>` : ""}</div></div>
       <ul class="ipa-checks">${ck.map(([ok, t]) => `<li class="${ok === true ? "ok" : ok === false ? "no" : "na"}"><span>${ok === true ? "&#10003;" : ok === false ? "!" : "&ndash;"}</span>${t}</li>`).join("")}</ul>
       <div class="ipa-rev-x">${xpButtons("ipa", { id: b.id, name: `${ST.b.project.code} IPA ${billNo(b)}` })}</div>
     </div>
-    <div class="ipa-card"><h3>The bill as it will print <span class="muted small">- the consultant's own sheets, this month's figures</span></h3><div id="ipa-pv" class="ipa-pv"><div class="empty">Loading...</div></div></div>
-    <div class="ipa-card"><details id="ipa-adv"><summary><b>Change a figure on a sheet</b> <span class="muted small">- for anything not on the steps before (e.g. a milestone % on a breakdown sheet)</span></summary>
-      <div class="ipa-shbar"><button class="btn btn-plain btn-sm" id="sh-prev">&lsaquo;</button><select id="sh-pick">${b.sheets.map(s => `<option value="${s.i}" ${s.i === IPA.sheet ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select><button class="btn btn-plain btn-sm" id="sh-next">&rsaquo;</button>
-        <span class="muted small">Blue figures can be typed over; yellow = changed this month. Click, type, Enter. Clearing a figure puts back last month's.</span></div>
-      <div id="ipa-sheet"></div></details></div>
+    ${chainCard(b)}
+    <div class="ipa-card"><h3>The bill as it will print <span class="muted small">- the consultant's own sheets, this month's figures${allSigned ? "" : ", signatures once each person has signed"}</span></h3><div id="ipa-pv" class="ipa-pv"><div class="empty">Loading...</div></div></div>
     <div class="ipa-card"><button class="btn btn-ghost" id="ipa-del">Remove this bill</button></div>
     ${nextBtn("review")}`;
   bindNext(m);
   $("#ipa-st").onchange = e => setStatus(e.target.value);
   const sb = $("#ipa-submit"); if (sb) sb.onclick = () => setStatus("Submitted");
   $("#ipa-del").onclick = async () => { if (!confirmInline($("#ipa-del"))) return; try { await DEL(`/store/est/ipa/bill/${b.id}`); toast("Bill removed"); closeBig(billsRedraw); } catch (x) { fail(x); } };
-  if (IPA.sheet === undefined || !b.sheets.some(s => s.i === IPA.sheet)) IPA.sheet = (b.sheets[0] || {}).i;
-  const pick = $("#sh-pick");
-  const go = d => { const opts = [...pick.options]; const i = opts.findIndex(o => o.selected) + d; if (opts[i]) { pick.value = opts[i].value; pick.onchange(); } };
-  pick.onchange = () => { IPA.sheet = +pick.value; drawSheet($("#ipa-sheet"), IPA.sheet); };
-  $("#sh-prev").onclick = () => go(-1); $("#sh-next").onclick = () => go(1);
-  $("#ipa-adv").ontoggle = () => { if ($("#ipa-adv").open && !$("#ipa-sheet").innerHTML) drawSheet($("#ipa-sheet"), IPA.sheet); };
+  bindChain(m);
   try {
     const t = await POST("/auth/download-token"); const tok = t.token || t.download_token;
     const pv = $("#ipa-pv"); if (!pv) return;

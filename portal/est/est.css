@@ -454,6 +454,13 @@ tr.warnrow td { background: var(--amber-bg) !important; }
 .ipa-pin { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 8px; font: inherit; background: #fff; width: 150px; }
 .ipa-pin.wide { width: 100%; min-width: 220px; } .ipa-pin.amt { width: 150px; text-align: right; font-weight: 700; }
 .ipa-pin:focus { outline: 2px solid #2F6FD0; border-color: #2F6FD0; }
+/* approval chain */
+.ipa-chain { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.ipa-chain li { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; }
+.ipa-chain li .dot { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--grey-bg); color: var(--muted); }
+.ipa-chain li.done .dot { background: var(--green-bg); color: var(--green); } .ipa-chain li.turn { border-color: #E5C66A; background: #FFFBEA; } .ipa-chain li.turn .dot { background: var(--amber-bg); color: var(--amber); }
+.ipa-chain li .who { flex: 1; min-width: 0; } .ipa-chain li .act { flex: 0 0 auto; }
+.ipa-pay tr.hd td { background: #F6F3EF; }
 /* review */
 .ipa-rev-top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .ipa-rev-top small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }

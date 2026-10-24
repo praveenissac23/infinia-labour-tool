@@ -249,6 +249,8 @@ async function start() {
     let pid = +((location.hash.match(/p(\d+)/) || [])[1] || 0);
     try { pid = pid || +(localStorage.getItem("est_pid") || 0); } catch (e) {}
     const s = (location.hash.match(/s=(\w+)\.(\w+)/) || []);
+    const hb = +((location.hash.match(/bill=(\d+)/) || [])[1] || 0);
+    if (hb) ST.pendingOpen = { est: "open", pid: pid, group: "bills", sec: "ipa", bill: hb };
     if (s[1]) { ST.group = s[1]; ST.sec = s[2]; }
     else { try { const k = localStorage.getItem("est_sec"); if (k) [ST.group, ST.sec] = k.split("."); } catch (e) {} }
     renderProjectShell();
@@ -271,7 +273,8 @@ async function openFromMessage(d) {
   if (d.pid && !ST.meta.projects.some(p => p.id === +d.pid)) {         // made a moment ago (a won tender): fetch the list again
     try { ST.meta = await GET("/store/est/meta"); renderProjectShell(); } catch (e) {}
   }
-  if (d.pid) openProject(+d.pid, true); else if (ST.pid) openProject(ST.pid, true);
+  if (d.pid) await openProject(+d.pid, true); else if (ST.pid) await openProject(ST.pid, true);
+  if (d.bill && typeof openBill === "function") openBill(+d.bill, "review");       // a bill waiting for this person's signature
 }
 window.pgRefresh = () => { if (VIEW === "pay") loadPay(); else if (VIEW === "dash") loadDash(); else if (VIEW === "tenders") loadTenders(); else if (ST.pid) openProject(ST.pid, true); };
 function goProject(pid, group, sec) {
