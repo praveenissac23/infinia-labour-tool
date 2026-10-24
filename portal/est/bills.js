@@ -51,7 +51,18 @@ function uploadFormat() {
     const f = ($("#fm-file") || {}).files; const file = f && f[0];
     if (!file) throw new Error("Pick the Excel bill.");
     if (/\.xls$/i.test(file.name)) throw new Error("This is an old .xls file. Open it in Excel, File > Save As > Excel Workbook (.xlsx), and upload that.");
-    const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", v.name); fd.append("file", file);
+    const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", v.name);
+    const PART = 700 * 1024;                         // the web server takes about 1 MB a request: a bigger file goes in pieces
+    if (file.size > PART) {
+      const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join("");
+      const n = Math.ceil(file.size / PART);
+      for (let i = 0; i < n; i++) {
+        $("#m-save").textContent = `Uploading ${Math.round(100 * i / n)}%...`;
+        const pf = new FormData(); pf.append("upload_id", id); pf.append("index", i); pf.append("file", file.slice(i * PART, (i + 1) * PART), "part");
+        await api("/store/est/ipa/format/part", { method: "POST", body: pf });
+      }
+      fd.append("upload_id", id); fd.append("parts", n); fd.append("filename", file.name);
+    } else fd.append("file", file);
     $("#m-save").textContent = "Reading the workbook...";
     const r = await api("/store/est/ipa/format", { method: "POST", body: fd });
     const ok = r.same === r.formulas;
@@ -103,6 +114,7 @@ function checks(b) {
   const pay = b.payments[0];
   out.push(b.has_no ? [true, `Bill number ${esc(billNo(b))}`] : [null, "This format has no bill number cell"]);
   out.push(b.has_date ? [true, `Issue date ${dt(b.issue_date)}`] : [null, "This format has no issue date cell"]);
+  if (b.total_due < 0) out.push([false, `The total due is below zero (AED ${money(b.total_due, false)}) - check the % typed and the payments received`]);
   out.push(f.moved ? [true, `${f.moved} line${f.moved === 1 ? "" : "s"} moved on this month - ${money(f.now, false)} of work`] : [false, "No line has moved on since the last bill - type this month's % on Work done"]);
   if (f.bad.length) out.push([false, `${f.bad.length} line${f.bad.length === 1 ? " is" : "s are"} over 100% or below last month: ${f.bad.slice(0, 3).map(l => esc(l.item || l.desc.slice(0, 30))).join(", ")}`]);
   if (pay) {

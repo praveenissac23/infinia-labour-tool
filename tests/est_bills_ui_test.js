@@ -121,12 +121,12 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
 
   // ---- a second consultant's format: Total = Previous + Current, a cover text built from figures (909 / 914)
   const P2 = meta.projects.find(x => x.code === '909').id;
-  for (const [pat, code] of [['909-IPA09', '909']]) {
-    const b64 = fs.readFileSync(file(pat)).toString('base64');
-    await p.evaluate(async ([P, b64, name]) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-      const fd = new FormData(); fd.append('project_id', P); fd.append('name', name); fd.append('file', new Blob([u]), name + '.xlsx');
-      await fetch('/store/est/ipa/format', { method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') }, body: fd }); }, [P2, b64, pat]);
-  }
+  // 909 is a 2.6 MB workbook: over the web server's 1 MB a request, so it goes up in pieces through the form
+  await p.evaluate(([pid]) => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'bills.ipa'); }, [P2]); await p.reload(); await sleep(1800);
+  await p.click('#ipa-up'); await sleep(300);
+  await p.setInputFiles('#fm-file', file('909-IPA09')); await p.click('#m-save'); await sleep(9000);
+  const t9 = await p.textContent('.toast').catch(() => '');
+  ck('a 2.6 MB workbook uploads (in pieces) and is read', /All \d+ formulas/.test(t9), t9);
   const L2 = await api(`/store/est/ipa/list?project_id=${P2}`);
   const nb = await api('/store/est/ipa/new', { method: 'POST', body: { project_id: P2, format_id: L2.formats[0].id } });
   const tok = (await api('/auth/download-token', { method: 'POST' })).token;

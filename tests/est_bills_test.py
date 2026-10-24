@@ -131,4 +131,37 @@ if g:
     ck("911: cover names the client", "KARIM" in (r.json()["cover"]["facts"].get("client") or ""), r.json()["cover"]["facts"])
 r = c.put(f"/store/est/ipa/bill/{b2['id']}", headers=H, json={"issue_date": "2026-11-05"})
 ck("issue date set from a date, written as the format writes it", r.status_code == 200 and r.json()["issue_date"] == "2026-11-05", r.text[:200])
+# ---- a bill that comes out below zero (Total % lowered) saves, with "MINUS" in the words - not an error
+ln0 = next(l for t in bill2["progress"] for l in t["lines"] if l["tot_typed"] and (l["total"] or 0) > 0.5)
+sh0 = next(t["sheet"] for t in bill2["progress"] if any(l is ln0 for l in t["lines"]))
+r = c.put(f"/store/est/ipa/bill/{b2['id']}", headers=H, json={"set": {sh0: {ln0["tot_key"]: 0.0}}})
+ck("Total % lowered so the bill is below zero: saved, no error", r.status_code == 200 and r.json()["total_due"] < 0, (r.status_code, r.text[:200]))
+ck("...the words say MINUS", "MINUS" in (r.json()["cover"]["words"] or "").upper(), r.json()["cover"]["words"])
+# ---- the amount in words is written exactly as each consultant writes it
+import est_bills_engine as BE3, est_bills_render as BR3
+for fpath in sorted(glob.glob(D + "*.xlsx")):
+    mm = BE3.read_format(open(fpath, "rb").read(), fpath)
+    vv = BE3.calculate(mm, {})
+    for w in mm["map"]["words"]:
+        like = BE3._text(next(x for x in mm["sheets"] if x["name"] == w["sheet"]), w["r"], w["c"])
+        got = BE3.amount_words(vv[w["of"]["sheet"]][f'{w["of"]["r"]},{w["of"]["c"]}'], w.get("upper"), like)
+        ck(f"words as the consultant writes them: {os.path.basename(fpath)[:24]}", got == like, (like, got))
+# ---- pages break where the consultant's do (914: 36 printed pages, Division 01 broken after rows 36, 65, 104, 148)
+g = glob.glob(D + "*914_-_IPA_-_07_-_R2.xlsx")
+if g:
+    mm = BE3.read_format(open(g[0], "rb").read(), g[0])
+    plans = {s_["name"]: BR3.page_plan(mm, s_, {}) for s_ in BR3.printed_sheets(mm)}
+    ck("914 prints on 36 pages", sum(len(p_["pages"]) for p_ in plans.values()) == 36, sum(len(p_["pages"]) for p_ in plans.values()))
+    ck("...Division 01 breaks where the consultant broke it", [p_[1][-1] for p_ in plans["Division 01-General Requirement"]["pages"]] == [36, 65, 104, 148, 197])
+    ck("...heading rows repeated on every page", all(p_[0][:3] == [1, 2, 3] for p_ in plans["Division 01-General Requirement"]["pages"]))
+    ck("...APP C keeps its hidden rows hidden", all(r_ not in mm["sheets"][[x["name"] for x in mm["sheets"]].index("APP C")]["hidden_rows"] for p_ in plans["APP C"]["pages"] for r_ in p_[0]))
+    ck("...footer Page x of y", plans["IPA"]["hf"].get("fc") == "Page &P of &N", plans["IPA"]["hf"])
+# ---- a big workbook in pieces (the web server takes ~1 MB a request)
+g = glob.glob(D + "*909-IPA09.xlsx")
+if g:
+    data = open(g[0], "rb").read(); uid = "ab12cd34ef56ab12cd34"; n = (len(data) + 699_999) // 700_000
+    for i in range(n):
+        c.post("/store/est/ipa/format/part", headers=H, data={"upload_id": uid, "index": str(i)}, files={"file": ("part", data[i * 700_000:(i + 1) * 700_000], "application/octet-stream")})
+    r = c.post("/store/est/ipa/format", headers=H, data={"project_id": str(projects["909"]), "upload_id": uid, "parts": str(n), "filename": "909-IPA09.xlsx"})
+    ck("2.6 MB workbook sent in pieces is read whole", r.status_code == 200 and r.json()["same"] == r.json()["formulas"], r.text[:200])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

@@ -180,11 +180,12 @@ def layout(s, area=None, shown=None):
     """Visible columns and rows of the area with their pixel sizes, and the merged blocks. shown: rows that are
     hidden in the format but filled in this month (a spare payments row) - they show."""
     r1, c1, r2, c2 = area or s["print_area"]
-    cols = [c for c in range(c1, c2 + 1) if colpx(s["colw"].get(str(c), s["colw"].get(c, 8.43))) > 0]
+    dcw, drh = s.get("dcw", 8.43), s.get("drh", 15.0)
+    cols = [c for c in range(c1, c2 + 1) if colpx(s["colw"].get(str(c), s["colw"].get(c, dcw))) > 0]
     hidden = set(s.get("hidden_rows") or []) - set(shown or ())
     rows = [r for r in range(r1, r2 + 1) if r not in hidden]
-    cw = {c: colpx(s["colw"].get(str(c), s["colw"].get(c, 8.43))) for c in cols}
-    rh = {r: rowpx(s["rowh"].get(str(r), s["rowh"].get(r))) for r in rows}
+    cw = {c: colpx(s["colw"].get(str(c), s["colw"].get(c, dcw))) for c in cols}
+    rh = {r: rowpx(s["rowh"].get(str(r), s["rowh"].get(r)) or drh) for r in rows}
     if any(rh[r] == 0 for r in rows):
         rows = [r for r in rows if rh[r] > 0]
     merges = {}
@@ -265,12 +266,16 @@ def editable(model, sheet, k, inputs):
     return True
 
 
-def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None):
-    """The sheet as an HTML table at its own sizes, with its pictures. edit=True marks the cells staff can type in."""
+def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None):
+    """The sheet as an HTML table at its own sizes, with its pictures. edit=True marks the cells staff can type in.
+    rows_only: just these rows, in this order (one printed page: the rows repeated at the top, then the page's own);
+    img_rows: the rows whose pictures belong on it."""
     styles = model["styles"]
     vals = values.get(s["name"], {})
     inp = (inputs or {}).get(s["name"], {})
-    cols, rows, cw, rh, merges, covered = layout(s, area, filled_rows(inp))
+    cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs))
+    if rows_only is not None:
+        rows = [r for r in rows_only if r in rh]
     colx, x = {}, 0
     for c in cols:
         colx[c] = x; x += cw[c]
@@ -331,8 +336,8 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None):
     h.append("</table>")
     # pictures where the consultant put them (logo, stamps, signatures)
     for im in s.get("images", []):
-        if im["r"] + 1 not in rowset and not any(rr > im["r"] for rr in rows[:1]):
-            pass
+        if img_rows is not None and not _img_on(im, img_rows, s):
+            continue
         pos = _img_box(im, cols, rows, colx, rowy, cw, rh, s)
         if not pos:
             continue
@@ -351,7 +356,7 @@ def _pos(idx, off, axis, cols, rows, colx, rowy, cw, rh, s):
             return colx[c] + min(off / EMU_PX, cw[c])
         before = [cc for cc in cols if cc < c]
         if not before:
-            return off / EMU_PX - sum(colpx(s["colw"].get(str(cc), s["colw"].get(cc, 8.43))) for cc in range(c, cols[0])) if cols else 0
+            return off / EMU_PX - sum(colpx(s["colw"].get(str(cc), s["colw"].get(cc, s.get("dcw", 8.43)))) for cc in range(c, cols[0])) if cols else 0
         last = before[-1]
         return colx[last] + cw[last]
     r = idx + 1
@@ -393,8 +398,21 @@ SHEET_CSS = """
 
 # ---------------------------------------------------------------------------------------------- the printed bill (HTML)
 
-def filled_rows(inp):
-    return {int(k.split(",")[0]) for k, v in (inp or {}).items() if v not in (None, "")}
+def shown_rows(model, sheet, inputs):
+    from est_bills_engine import shown_rows as _s
+    return _s(model, sheet, inputs)
+
+
+def _img_on(im, rows, s):
+    """A picture belongs on the page that holds the row it is anchored to (or, anchored on a hidden row, the page
+    the next shown row is on)."""
+    r = im["r"] + 1
+    if r in rows:
+        return True
+    hidden = set(s.get("hidden_rows") or [])
+    while r in hidden:
+        r += 1
+    return r in rows
 
 
 def printed_sheets(model):
@@ -402,35 +420,142 @@ def printed_sheets(model):
     return [s for s in model["sheets"] if s["visible"]]
 
 
-def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=False):
-    pages = []
-    A4W = 718                                   # printable width in px at 96 dpi (A4 minus margins)
-    for s in printed_sheets(model):
-        body, w, hgt = sheet_html(model, s, values, inputs)
-        landscape = s.get("landscape")
-        pw = 1050 if landscape else A4W
-        z = min(1.0, pw / w) if w else 1.0
-        pages.append(f'<section class="pg{" ls" if landscape else ""}"><div class="pz" style="zoom:{z:.4f}">{body}</div></section>')
+def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=False, fname=""):
+    """The bill page by page exactly as it prints (and as the PDF comes out): each sheet on its own paper and
+    orientation, at its print scale, margins and centring, broken where the consultant broke it, the heading rows
+    repeated on every page, his header and footer on each page."""
+    PX = 96 / 72
+    sheets = printed_sheets(model)
+    plans = [page_plan(model, sh, inputs) for sh in sheets]
+    total = sum(len(pl["pages"]) for pl in plans)
+    out, pno = [], 0
+    for sh, pl in zip(sheets, plans):
+        size = "a3" if max(pl["pw"], pl["ph"]) > 1000 else "a4"
+        orient = "l" if pl["pw"] > pl["ph"] else "p"
+        for prow, own in pl["pages"]:
+            pno += 1
+            body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow))
+            hf = []
+            for k, t in pl["hf"].items():
+                txt = escape(hf_text(t, pno, total, sh["name"], fname or title))
+                if not txt:
+                    continue
+                pos = (f"top:{pl['mh'] * PX:.1f}px" if k[0] == "h" else f"bottom:{pl['mf'] * PX:.1f}px")
+                side = {"l": f"left:{pl['ml'] * PX:.1f}px", "r": f"right:{pl['mr'] * PX:.1f}px", "c": "left:0;right:0;text-align:center"}[k[1]]
+                hf.append(f'<div class="hf" style="{pos};{side}">{txt}</div>')
+            out.append(f'<section class="pg {size}{orient}" style="width:{pl["pw"] * PX:.1f}px;height:{pl["ph"] * PX:.1f}px">'
+                       f'<div class="pz" style="left:{pl["x0"] * PX:.1f}px;top:{pl["y0"] * PX:.1f}px"><div style="zoom:{pl["sc"]:.4f}">{body}</div></div>{"".join(hf)}'
+                       f'<div class="pno">{pno} / {total}</div></section>')
     t = escape(title)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{t}</title><style>
-body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#ECEAE6;margin:0;color:#22262A}}
+body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E2DE;margin:0;color:#22262A}}
 .bar{{position:sticky;top:0;z-index:5;background:#22262A;color:#fff;padding:9px 14px;display:flex;gap:8px;align-items:center}}
 .bar b{{flex:1;font-size:13px}} .bar a,.bar button{{background:#C0392B;color:#fff;border:0;border-radius:6px;padding:7px 12px;font-weight:600;text-decoration:none;font-size:13px;cursor:pointer}}
-.pg{{background:#fff;width:762px;margin:14px auto;padding:22px;box-shadow:0 2px 10px rgba(0,0,0,.08);box-sizing:border-box;overflow:hidden}}
-.pg.ls{{width:1094px}}
+.pages{{padding:16px 0 30px}}
+.pg{{position:relative;background:#fff;margin:0 auto 18px;box-shadow:0 2px 12px rgba(0,0,0,.12);overflow:hidden;box-sizing:border-box}}
+.pz{{position:absolute}}
+.hf{{position:absolute;font:9pt Arial,Helvetica,sans-serif;color:#000;white-space:nowrap}}
+.pno{{position:absolute;right:8px;bottom:4px;font:10px Arial;color:#aaa}}
 {SHEET_CSS}
-@page{{size:A4;margin:10mm}}
-@media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;padding:0;width:auto;break-after:page}} .xs,.xt td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
-@media (max-width:800px){{.pg{{width:auto;margin:8px;padding:8px;overflow-x:auto}}}}
+@page a4p{{size:A4 portrait;margin:0}} @page a4l{{size:A4 landscape;margin:0}} @page a3p{{size:A3 portrait;margin:0}} @page a3l{{size:A3 landscape;margin:0}}
+.a4p{{page:a4p}} .a4l{{page:a4l}} .a3p{{page:a3p}} .a3l{{page:a3l}}
+@media print{{.bar,.pno{{display:none}} body{{background:#fff}} .pages{{padding:0}} .pg{{box-shadow:none;margin:0;break-after:page;zoom:1!important}} .xs,.xt td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
 </style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}">Excel</a><button onclick="shr()">Share</button></div>
-<script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
-{''.join(pages)}{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
+<script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}
+function fit(){{var W=document.documentElement.clientWidth-24;document.querySelectorAll(".pg").forEach(function(p){{var w=parseFloat(p.style.width);p.style.zoom=w>W?(W/w).toFixed(4):"";}});}}
+addEventListener("resize",fit);addEventListener("DOMContentLoaded",fit);</script>
+<div class="pages">{''.join(out)}</div>{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
 
 
 # ---------------------------------------------------------------------------------------------- PDF
 
-def render_pdf(model, values, title, inputs=None):
+PAPER = {9: (595.28, 841.89), 8: (841.89, 1190.55), 1: (612.0, 792.0), 5: (612.0, 1008.0), 11: (419.53, 595.28)}
+
+
+def page_plan(model, s, inputs=None):
+    """The sheet's printed pages as Excel prints them: its paper and orientation, its scale (or fit to page),
+    margins and centring, the rows repeated at the top of every page, its manual page breaks, and new pages where
+    the rows run past the bottom. pages: [(rows drawn, the page's own rows)]. Sizes in points."""
+    pr = s.get("print") or {"paper": 9, "landscape": s.get("landscape"), "fit": s.get("fit"), "fw": 1, "fh": 0, "scale": 100,
+                             "m": [.7, .7, .75, .75, .3, .3], "hc": False, "vc": False, "titles": None, "breaks": [], "hf": {}}
+    w, h = PAPER.get(pr.get("paper") or 9, PAPER[9])
+    pw, ph = (h, w) if pr.get("landscape") else (w, h)
+    ml, mr, mt, mb, mh, mf = [float(x) * 72 for x in (pr.get("m") or [.7, .7, .75, .75, .3, .3])]
+    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs))
+    px = 0.75
+    cont_w = sum(cw[c] for c in cols) * px
+    cont_h = sum(rh[r] for r in rows) * px
+    aw, ah = pw - ml - mr, ph - mt - mb
+    if pr.get("fit") and not (pr.get("scale") and pr["scale"] != 100):
+        fw = 1 if pr.get("fw") is None else pr["fw"]
+        fh = 1 if pr.get("fh") is None else pr["fh"]
+        sc = 1.0
+        if fw and cont_w:
+            sc = min(sc, aw * fw / cont_w)
+        if fh and cont_h:
+            sc = min(sc, ah * fh / cont_h)
+    else:
+        # a fit-to-page sheet keeps the scale Excel worked out for it when it was saved - the scale the consultant's
+        # own print came out at, so the pages break where his did
+        sc = (pr.get("scale") or 100) / 100.0
+    if cont_w and cont_w * sc > aw + mr * 0.8:         # never cut columns off: shrink to the page width
+        sc = aw / cont_w
+    sc = max(sc, 0.1)
+    t = pr.get("titles")
+    titles = [r for r in rows if t and t[0] <= r <= t[1]]
+    tset = set(titles)
+    breaks = set(pr.get("breaks") or [])
+    # The consultant set his page breaks (or a short sheet) to fill whole pages. Excel prints a little smaller than
+    # the screen sizes suggest, so a block that comes out only slightly too long is brought onto its page by
+    # printing the sheet a touch smaller - never a near-empty extra page with one or two rows on it.
+    segs, cur_h, first = [], 0.0, True
+    for r in rows:
+        cur_h += rh[r] * px
+        if r in breaks:
+            segs.append(cur_h); cur_h = 0.0
+    segs.append(cur_h)
+    tpt = sum(rh[r] for r in titles) * px
+    need = sc
+    for i, hseg in enumerate(segs):
+        full = hseg + (tpt if i and titles else 0)
+        if full * sc > ah and full * sc <= ah * 1.12:
+            need = min(need, ah / full)
+    sc = max(need, sc * 0.88)
+    th = tpt * sc
+    pages, cur, own, used = [], [], [], 0.0
+    for r in rows:
+        if pages and r in tset:
+            continue                                    # repeated rows are already at the top of this page
+        hgt = rh[r] * px * sc
+        if own and used + hgt > ah + 0.5:
+            pages.append((cur, own)); cur, own, used = list(titles), [], th
+        cur.append(r); own.append(r); used += hgt
+        if r in breaks:
+            pages.append((cur, own)); cur, own, used = list(titles), [], th
+    if own:
+        pages.append((cur, own))
+    cw_pt = cont_w * sc
+    x0 = ml + ((aw - cw_pt) / 2 if pr.get("hc") else 0)
+    x0 = max(ml * 0.2, min(x0, pw - mr * 0.2 - cw_pt)) if cw_pt > aw else x0
+    return {"pw": pw, "ph": ph, "ml": ml, "mr": mr, "mt": mt, "mb": mb, "mh": mh, "mf": mf, "sc": sc, "x0": x0, "y0": mt,
+            "cols": cols, "cw": cw, "rh": rh, "merges": merges, "covered": covered, "pages": pages, "hf": pr.get("hf") or {},
+            "vc": pr.get("vc")}
+
+
+def hf_text(t, page, pages, sheet, title):
+    """An Excel header/footer section with its codes filled in: &P page, &N pages, &A sheet, &F / &Z file, &D date."""
+    import datetime as _d
+    t = re.sub(r'&"[^"]*"', "", t)
+    t = re.sub(r"&\d+", "", t)
+    t = t.replace("&&", "\x00")
+    t = (t.replace("&P", str(page)).replace("&N", str(pages)).replace("&A", sheet).replace("&F", title).replace("&Z", "")
+          .replace("&D", _d.date.today().strftime("%d/%m/%Y")).replace("&T", ""))
+    t = re.sub(r"&[A-Za-z]", "", t).replace("\x00", "&")
+    return " ".join(t.split())
+
+
+def render_pdf(model, values, title, inputs=None, fname=""):
     """Each printed sheet on A4 (landscape when the sheet is), scaled to the page width as Excel's 'fit to page'
     does, rows carried onto the next page when they run past the bottom."""
     from reportlab.lib.pagesizes import A4, landscape as LS
@@ -455,32 +580,25 @@ def render_pdf(model, values, title, inputs=None):
         except Exception:
             return (0, 0, 0)
 
-    for s in printed_sheets(model):
+    plans = [page_plan(model, sh, inputs) for sh in printed_sheets(model)]
+    total_pages = sum(len(pl["pages"]) for pl in plans)
+    pno = 0
+    for s, pl in zip(printed_sheets(model), plans):
         vals = values.get(s["name"], {})
-        cols, rows, cw, rh, merges, covered = layout(s, None, filled_rows((inputs or {}).get(s["name"])))
-        if not cols or not rows:
+        cols, cw, rh, merges, covered = pl["cols"], pl["cw"], pl["rh"], pl["merges"], pl["covered"]
+        if not cols or not pl["pages"]:
             continue
-        PW, PH = (LS(A4) if s.get("landscape") else A4)
-        cv.setPageSize((PW, PH))
-        px = 0.75                                    # px -> pt
-        total_w = sum(cw[c] for c in cols) * px
-        sc = min(1.0, (PW - 2 * M) / total_w) if total_w else 1.0
+        PW, PH = pl["pw"], pl["ph"]
+        px, sc = 0.75, pl["sc"]
         colx, x = {}, 0.0
         for c in cols:
             colx[c] = x; x += cw[c] * px * sc
-        # pages by rows
-        pages, cur, used = [], [], 0.0
-        for r in rows:
-            hgt = rh[r] * px * sc
-            if cur and used + hgt > PH - 2 * M:
-                pages.append(cur); cur, used = [], 0.0
-            cur.append(r); used += hgt
-        if cur:
-            pages.append(cur)
-        for pi, prow in enumerate(pages):
-            if pi or True:
-                pass
-            rowy, y = {}, PH - M
+        for pi, (prow, own) in enumerate(pl["pages"]):
+            pno += 1
+            cv.setPageSize((PW, PH))
+            M = pl["x0"]                               # left edge of the sheet on the page (margin, or centred)
+            TOP = PH - pl["y0"]
+            rowy, y = {}, TOP
             for r in prow:
                 rowy[r] = y; y -= rh[r] * px * sc
             pset = set(prow)
@@ -520,6 +638,12 @@ def render_pdf(model, values, title, inputs=None):
                         lines = _wrap(text, fn, fs, w - 2 * pad, stringWidth)
                     else:
                         lines = text.split("\n")
+                    if len(lines) > 1 and fs * 1.15 * len(lines) > hgt - 1:
+                        one = " ".join(x.strip() for x in lines)
+                        if stringWidth(one, fn, fs) <= w - 2 * pad:
+                            lines = [one]                                  # fits on one line: as the screen shows it
+                        else:
+                            fs = max(3.5, (hgt - 1) / (1.15 * len(lines)))  # wrapped text kept inside its cell
                     lh = fs * 1.15
                     block = lh * len(lines)
                     va = st.get("va") or "bottom"
@@ -586,9 +710,9 @@ def render_pdf(model, values, title, inputs=None):
             # pictures
             pxcolx = {c: colx[c] / (px * sc) for c in cols}
             for im in s.get("images", []):
-                if im["r"] + 1 not in pset and not (prow[0] <= im["r"] + 1 <= prow[-1]):
+                if not _img_on(im, set(prow), s):
                     continue
-                rowy_px = {r: (PH - M - rowy[r]) / (px * sc) for r in prow}
+                rowy_px = {r: (TOP - rowy[r]) / (px * sc) for r in prow}
                 cwp = {c: cw[c] for c in cols}
                 rhp = {r: rh[r] for r in prow}
                 box = _img_box(im, cols, prow, pxcolx, rowy_px, cwp, rhp, s)
@@ -597,9 +721,22 @@ def render_pdf(model, values, title, inputs=None):
                 bx, by, bw, bh = box
                 try:
                     img = ImageReader(io.BytesIO(base64.b64decode(im["data"])))
-                    cv.drawImage(img, M + bx * px * sc, PH - M - (by + bh) * px * sc, bw * px * sc, bh * px * sc, mask="auto", preserveAspectRatio=False)
+                    cv.drawImage(img, M + bx * px * sc, TOP - (by + bh) * px * sc, bw * px * sc, bh * px * sc, mask="auto", preserveAspectRatio=False)
                 except Exception:
                     pass
+            # the sheet's own header and footer (Page 1 of 9, sheet name ...), at the consultant's margins
+            for k, t in pl["hf"].items():
+                txt = hf_text(t, pno, total_pages, s["name"], fname or title)
+                if not txt:
+                    continue
+                cv.setFont("Helvetica", 8); cv.setFillColorRGB(0, 0, 0)
+                yy = PH - pl["mh"] - 8 if k[0] == "h" else pl["mf"]
+                if k[1] == "l":
+                    cv.drawString(pl["ml"], yy, txt)
+                elif k[1] == "r":
+                    cv.drawRightString(PW - pl["mr"], yy, txt)
+                else:
+                    cv.drawCentredString(PW / 2, yy, txt)
             cv.showPage()
     cv.save()
     buf.seek(0)

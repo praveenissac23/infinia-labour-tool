@@ -1,3 +1,4 @@
+import os
 """Serve the app the way the live server does, for the browser audits.
 
 Run: python3 tests/serve_like_nginx.py          (foreground, port 8032)
@@ -82,6 +83,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b"405 - this path is not forwarded to the API")
             return
         n = int(self.headers.get("Content-Length") or 0)
+        cap = int(os.environ.get("SRV_MAX_BODY") or 0)       # nginx's client_max_body_size (1 MB unless raised)
+        if cap and n > cap:
+            self.rfile.read(n)
+            self.send_response(413); self.end_headers(); self.wfile.write(b"413 Request Entity Too Large")
+            return
         self._proxy(self.rfile.read(n) if n else None)
 
     do_POST = do_PUT = do_PATCH = do_DELETE = lambda self: Handler._with_body(self)

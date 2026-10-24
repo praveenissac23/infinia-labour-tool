@@ -8,6 +8,8 @@ worked out as Excel does. The bill goes out as the same workbook (Excel), or pri
 """
 import io
 import json
+import os
+import tempfile
 import re
 from datetime import date, datetime
 
@@ -71,6 +73,11 @@ def _model(fmt):
     hit = _MODEL_CACHE.get(fmt.id)
     if hit is None:
         hit = json.loads(fmt.model or "{}")
+        if hit.get("sheets") and hit.get("mv") != BE.MODEL_VERSION and fmt.data:
+            try:                                          # read before the latest reading rules: read the kept workbook again
+                hit = BE.read_format(fmt.data, fmt.filename or "")
+            except Exception:
+                pass
         if hit.get("sheets") and (hit.get("map") or {}).get("v") != BE.MAP_VERSION:
             hit["map"] = BE.find_inputs(hit)             # a format read before the latest reading rules
         _MODEL_CACHE[fmt.id] = hit
@@ -322,11 +329,50 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
 
 # ---------------------------------------------------------------------------------------------------- the format
 
+_PARTS = os.path.join(tempfile.gettempdir(), "infinia_ipa_parts")
+
+
+@router.post("/store/est/ipa/format/part")
+async def upload_part(upload_id: str = Form(...), index: int = Form(...), file: UploadFile = File(...), user: models.User = E.VIEW):
+    """A big workbook comes in pieces (the web server takes about 1 MB per request); put together by upload_format."""
+    if not re.fullmatch(r"[a-f0-9]{16,40}", upload_id) or not (0 <= index < 60):
+        raise HTTPException(400, "Bad upload.")
+    os.makedirs(_PARTS, exist_ok=True)
+    data = await file.read()
+    with open(os.path.join(_PARTS, f"{user.id}_{upload_id}_{index:02d}"), "wb") as f:
+        f.write(data)
+    return {"ok": True, "bytes": len(data)}
+
+
+def _joined(user_id, upload_id, parts):
+    if not re.fullmatch(r"[a-f0-9]{16,40}", upload_id) or not (1 <= parts <= 60):
+        raise HTTPException(400, "Bad upload.")
+    out = b""
+    for i in range(parts):
+        fp = os.path.join(_PARTS, f"{user_id}_{upload_id}_{i:02d}")
+        if not os.path.exists(fp):
+            raise HTTPException(400, "Part of the file did not arrive - please upload it again.")
+        with open(fp, "rb") as f:
+            out += f.read()
+        os.remove(fp)
+    return out
+
+
 @router.post("/store/est/ipa/format")
-async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(...),
+async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(None),
+                        upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
                         db: Session = Depends(get_db), user: models.User = E.VIEW):
     E._project(db, project_id)
-    data = await file.read()
+    if file is None:
+        if not upload_id:
+            raise HTTPException(400, "Pick the Excel bill.")
+        data = _joined(user.id, upload_id, parts)
+
+        class _F:                                         # the pieces put back together, named as picked
+            pass
+        file = _F(); file.filename = filename or "bill.xlsx"
+    else:
+        data = await file.read()
     if not data:
         raise HTTPException(400, "That file is empty.")
     if len(data) > 25 * 1024 * 1024:
@@ -441,7 +487,14 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         inputs.setdefault(x["sheet"], {})[f"{x['r']},{x['c']}"] = int(v) if v.isdigit() else v
     if "notes" in payload:
         b.notes = str(payload.get("notes") or "")[:2000]
-    inputs, values = _calc(model, inputs)
+    try:
+        inputs, values = _calc(model, inputs)
+    except HTTPException:
+        raise
+    except Exception as e:                                  # never a bare "Something went wrong": say what, keep the bill as it was
+        import logging
+        logging.getLogger("est_bills").exception("bill %s: could not work out", bid)
+        raise HTTPException(400, f"That change could not be worked out on the consultant's sheet ({type(e).__name__}). Nothing was saved - please tell the office.")
     b.inputs = json.dumps(inputs)
     b.updated_by = user.id
     _save_totals(b, model, values)
@@ -498,7 +551,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
     if format == "pdf":
-        buf = BR.render_pdf(model, values, title, inputs)
+        buf = BR.render_pdf(model, values, title, inputs, fname=fname + ".xlsx")
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={fname}.pdf"})
     base = f"/export/est/ipa/{bid}?token={token}"
-    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", inputs, embed=bool(embed)))
+    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", inputs, embed=bool(embed), fname=fname + ".xlsx"))

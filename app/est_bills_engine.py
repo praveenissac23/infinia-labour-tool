@@ -214,6 +214,96 @@ def _join(folder, target):
     return "/".join(parts)
 
 
+def _hf(part):
+    try:
+        return (part.text or "") if part is not None else ""
+    except Exception:
+        return ""
+
+
+def parse_hf(t):
+    """An Excel header/footer string -> its left / centre / right parts (&L &C &R; text before any is centre)."""
+    out, cur, buf, i = {}, "c", "", 0
+    while i < len(t):
+        if t[i] == "&" and i + 1 < len(t) and t[i + 1] in "LCR":
+            if buf:
+                out[cur] = out.get(cur, "") + buf
+            cur, buf = t[i + 1].lower(), ""
+            i += 2
+            continue
+        buf += t[i]; i += 1
+    if buf:
+        out[cur] = out.get(cur, "") + buf
+    return {k: v for k, v in out.items() if v.strip()}
+
+
+def print_setup(ws, xml=""):
+    """How the consultant set the sheet to print: paper, orientation, scale or fit-to-page, margins, centring,
+    rows repeated at the top of each page, manual page breaks, header and footer."""
+    ps, pm = ws.page_setup, ws.page_margins
+    try:
+        fit = bool(ws.sheet_properties.pageSetUpPr and ws.sheet_properties.pageSetUpPr.fitToPage)
+    except Exception:
+        fit = False
+    titles = None
+    try:
+        t = ws.print_title_rows
+        if t:
+            m = re.match(r"^\$?(\d+):\$?(\d+)$", str(t).split(",")[0].strip())
+            if m:
+                titles = [int(m.group(1)), int(m.group(2))]
+    except Exception:
+        titles = None
+    def num(v, d=None):
+        try:
+            return float(v) if v is not None else d
+        except (TypeError, ValueError):
+            return d
+    out = {"paper": int(ps.paperSize) if ps.paperSize else 9, "landscape": ps.orientation == "landscape",
+           "fit": fit, "fw": int(ps.fitToWidth) if ps.fitToWidth is not None else None, "fh": int(ps.fitToHeight) if ps.fitToHeight is not None else None,
+           "scale": int(ps.scale) if ps.scale else 100,
+           "m": [num(pm.left, .7), num(pm.right, .7), num(pm.top, .75), num(pm.bottom, .75), num(pm.header, .3), num(pm.footer, .3)],
+           "hc": bool(ws.print_options.horizontalCentered), "vc": bool(ws.print_options.verticalCentered),
+           "titles": titles, "breaks": sorted(int(b.id) for b in ws.row_breaks.brk if b.id),
+           "hf": {}}
+    import html as _h
+    for tag, pre in (("oddHeader", "h"), ("oddFooter", "f")):
+        m = re.search(rf"<{tag}>(.*?)</{tag}>", xml or "", re.S)
+        if m:
+            for k, v in parse_hf(_h.unescape(m.group(1))).items():
+                out["hf"][pre + k] = v
+    return out
+
+
+def add_print(model, data):
+    """Formats read before the print set-up was kept: read it now from the stored workbook."""
+    if all("print" in s for s in model.get("sheets", [])):
+        return model
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), data_only=False)
+        for s in model["sheets"]:
+            if "print" not in s and s["name"] in wb.sheetnames:
+                s["print"] = print_setup(wb[s["name"]])            # (formats re-read in full now: see MODEL_VERSION)
+    except Exception:
+        pass
+    return model
+
+
+def shown_rows(model, sheet, inputs):
+    """Rows hidden in the format that are shown this month: a spare row of the previous-payments table once it
+    is filled. Nothing else is unhidden - a hidden % line stays hidden even though its Previous % is rolled on."""
+    out = set()
+    inp = (inputs or {}).get(sheet, {})
+    for p in (model.get("map") or {}).get("payments", []):
+        if p["sheet"] != sheet:
+            continue
+        keys = [p["cols"][k] for k in ("desc", "amount") if k in p["cols"]]
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            if any(inp.get(f"{r},{c}") not in (None, "") for c in keys):
+                out.add(r)
+    return out
+
+
 def read_format(data: bytes, filename: str = ""):
     """The uploaded bill -> the model kept for the project (JSON-able)."""
     if filename.lower().endswith(".xls") or data[:4] == b"\xd0\xcf\x11\xe0":
@@ -266,17 +356,26 @@ def read_format(data: bytes, filename: str = ""):
             else:
                 item["v"] = _serial(v)
             cells[f"{r},{c}"] = item
+        # the sheet's own default column width / row height (not Excel's 8.43 / 15 when the sheet sets others)
+        try:
+            dcw = float(ws.sheet_format.defaultColWidth) if ws.sheet_format.defaultColWidth else (float(ws.sheet_format.baseColWidth) + 0.43 if ws.sheet_format.baseColWidth else 8.43)
+        except (TypeError, ValueError):
+            dcw = 8.43
+        try:
+            drh = float(ws.sheet_format.defaultRowHeight) if ws.sheet_format.defaultRowHeight else 15.0
+        except (TypeError, ValueError):
+            drh = 15.0
         colw = {}
         for c in range(1, maxc + 1):
             d = ws.column_dimensions.get(get_column_letter(c))
-            colw[c] = round(float(d.width), 2) if d is not None and d.width else 8.43
+            colw[c] = round(float(d.width), 2) if d is not None and d.width else dcw
             if d is not None and d.hidden:
                 colw[c] = 0
         # column ranges defined as min..max
         for key, d in ws.column_dimensions.items():
             if d.min and d.max and d.max > d.min:
                 for c in range(d.min, min(d.max, maxc) + 1):
-                    colw[c] = 0 if d.hidden else (round(float(d.width), 2) if d.width else colw.get(c, 8.43))
+                    colw[c] = 0 if d.hidden else (round(float(d.width), 2) if d.width else colw.get(c, dcw))
         rowh, hidden_rows = {}, []
         for r in range(1, maxr + 1):
             d = ws.row_dimensions.get(r)
@@ -291,11 +390,11 @@ def read_format(data: bytes, filename: str = ""):
         except Exception:
             fit = False
         sheets.append({"name": ws.title, "visible": ws.sheet_state == "visible", "print_area": list(pa) if pa else [1, 1, maxr, maxc],
-                       "maxr": maxr, "maxc": maxc, "cells": cells, "colw": colw, "rowh": rowh, "hidden_rows": hidden_rows,
+                       "maxr": maxr, "maxc": maxc, "cells": cells, "colw": colw, "rowh": rowh, "hidden_rows": hidden_rows, "dcw": dcw, "drh": drh,
                        "merges": [m for m in merges if m], "fit": fit,
-                       "landscape": (ws.page_setup.orientation == "landscape"),
+                       "landscape": (ws.page_setup.orientation == "landscape"), "print": print_setup(ws, z.read(paths[ws.title]).decode("utf-8", "ignore") if paths.get(ws.title) in z.namelist() else ""),
                        "images": _images(z, paths.get(ws.title, "")) if paths.get(ws.title) in z.namelist() else []})
-    model = {"sheets": sheets, "styles": styles, "filename": filename}
+    model = {"sheets": sheets, "styles": styles, "filename": filename, "mv": MODEL_VERSION}
     model["map"] = find_inputs(model)
     return model
 
@@ -844,6 +943,7 @@ def _text(s, r, c):
 
 
 MAP_VERSION = 2
+MODEL_VERSION = 3          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
 
 
 def find_inputs(model):
@@ -1015,6 +1115,8 @@ def bill_no_next(v):
     s = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", s, flags=re.I)      # a revision suffix goes
     m = re.search(r"(\d+)(?!.*\d)", s)
     if not m:
+        if re.search(r"\bpre[\s-]*final\b", s, re.I):
+            return re.sub(r"\bpre[\s-]*final\b", "Final", s, flags=re.I)       # after the pre-final bill: the final bill
         return s
     n = m.group(1)
     return s[:m.start()] + str(int(n) + 1).zfill(len(n)) + s[m.end():]
@@ -1063,7 +1165,7 @@ def roll_over(model, prev_inputs, prev_values, today=None):
         s = next(x for x in model["sheets"] if x["name"] == sh)
         n = general(last_no).strip()
         n = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", n, flags=re.I)
-        label = f"Payment Application No {n}" if n else ""
+        label = (f"Payment Application No {n}" if re.match(r"^\d", n) else n) if n else ""      # "Pre Final Bill" by its name
         def cellv(r, c):
             k = f"{r},{c}"
             if k in inputs.get(sh, {}):
@@ -1087,45 +1189,71 @@ ONES = "zero one two three four five six seven eight nine ten eleven twelve thir
 TENS = "twenty thirty forty fifty sixty seventy eighty ninety".split()
 
 
-def _words(n):
+def _words(n, use_and=False):
+    """A whole number in English words; use_and: the British "two hundred and nineteen"."""
     n = int(n)
     if n < 20:
         return ONES[n]
     if n < 100:
         return TENS[n // 10 - 2] + ("-" + ONES[n % 10] if n % 10 else "")
     if n < 1000:
-        return ONES[n // 100] + " hundred" + (" " + _words(n % 100) if n % 100 else "")
+        r = n % 100
+        return ONES[n // 100] + " hundred" + (((" and " if use_and else " ") + _words(r, use_and)) if r else "")
     for div, name in ((10 ** 9, "billion"), (10 ** 6, "million"), (1000, "thousand")):
         if n >= div:
-            return _words(n // div) + " " + name + (" " + _words(n % div) if n % div else "")
+            r = n % div
+            return _words(n // div, use_and) + " " + name + (((" and " if use_and and r < 100 else " ") + _words(r, use_and)) if r else "")
     return str(n)
 
 
-NUMWORD = r"(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)"
+_NW = sorted("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "
+             "eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion".split(), key=len, reverse=True)
+NUMWORD = r"\b(?:" + "|".join(_NW) + r")\b"
+# the run of words that is the figure: number words joined by spaces, hyphens and "and", with any "... fils" part
+_RUN = re.compile(NUMWORD + r"(?:(?:\s+|-|\s+and\s+)" + NUMWORD + r")*(?:\s+(?:and\s+)?" + NUMWORD + r"(?:(?:\s+|-)" + NUMWORD + r")*\s+fils\b)?", re.I)
 
 
-def amount_words(v, upper=True, like=""):
-    """The figure in words, written the way the format writes it: "(DIRHAMS NINE HUNDRED ... ONLY)" or
-    "(One Hundred Fifty-Three Thousand ... Only)" - the words before and after the number kept from the format."""
+def _case_like(body, sample):
+    """Write the words in the case the format writes them: ALL CAPS, Title Case or lower case."""
+    letters = re.sub(r"[^A-Za-z]", "", sample)
+    if letters and letters.isupper():
+        return body.upper()
+    if sample[:1].isupper():
+        t = " ".join(w.capitalize() if w.lower() not in ("and",) else "and" for w in body.split(" "))
+        return re.sub(r"-([a-z])", lambda m: "-" + m.group(1).upper(), t)
+    return body.lower()
+
+
+def amount_words(v, upper=None, like=""):
+    """The figure in words, written exactly the way the format writes it - its words before and after the figure
+    kept, the same case, hyphens ("fifty-three") or not, "hundred and" or not:
+    "(DIRHAMS EIGHT HUNDRED SEVENTY EIGHT THOUSAND TWO HUNDRED AND NINETEEN Only)"."""
     v = round(float(v or 0), 2)
+    neg = v < 0                                       # the bill comes out below nothing: "MINUS ..." (never an error)
+    v = abs(v)
     d, f = int(v), int(round((v - int(v)) * 100))
-    hyphen = bool(re.search(NUMWORD + r"-" + NUMWORD, like or "", re.I))
-    num = _words(d).replace("-", "-" if hyphen else " ")
-    fils = (" and " + _words(f).replace("-", "-" if hyphen else " ") + " Fils") if f else ""
-    m1 = re.search(NUMWORD, like or "", re.I)
-    if like and m1:
-        last = None
-        for last in re.finditer(NUMWORD + r"|\bfils\b", like, re.I):
-            pass
-        prefix, suffix = like[:m1.start()], like[last.end():]
-        suffix = re.sub(r"^\s*(and\s+\w+(\s+\w+)?\s+fils)?", "", suffix, flags=re.I) if fils else re.sub(r"^\s*and\s+[\w\s-]*?fils", "", suffix, flags=re.I)
-        body = num.title().replace("-" + "And", "-and") + fils.title().replace(" And ", " and ")
-        if suffix and suffix[0].isalnum():
-            suffix = " " + suffix
-        out = prefix + body + suffix
+    if f == 100:
+        d, f = d + 1, 0
+    like = like or ""
+    hyphen = bool(re.search(NUMWORD + r"-" + NUMWORD, like, re.I)) or not re.search(NUMWORD, like, re.I)
+    use_and = bool(re.search(r"\b(hundred|thousand|million)\s+and\b", like, re.I))
+    def w(n):
+        # "and" only before the last part, as the consultants write it: "... thousand two hundred and nineteen"
+        t = _words(n)
+        if use_and and n >= 100 and n % 100:
+            head, tail = _words(n - n % 100), _words(n % 100)
+            t = head + " and " + tail
+        return t if hyphen else t.replace("-", " ")
+    body = ("minus " if neg else "") + w(d) + ((" and " + w(f) + " fils") if f else "")
+    runs = list(_RUN.finditer(like))
+    if runs:
+        m = max(runs, key=lambda x: len(x.group(0)))          # the figure is the longest run of number words
+        out = like[:m.start()] + _case_like(body, m.group(0)) + like[m.end():]
     else:
-        out = "(Dirhams " + num.title() + fils.title().replace(" And ", " and ") + " Only)"
-    return out.upper() if upper else out
+        out = "(Dirhams " + _case_like(body, "Title") + " Only)"
+        if upper:
+            out = out.upper()
+    return out
 
 
 def with_words(model, inputs):
@@ -1134,9 +1262,12 @@ def with_words(model, inputs):
     out = {k: dict(v) for k, v in (inputs or {}).items()}
     for w in model["map"].get("words", []):
         v = b.value(w["of"]["sheet"], w["of"]["r"], w["of"]["c"])
-        if isinstance(v, (int, float)):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
             like = _text(next(s for s in model["sheets"] if s["name"] == w["sheet"]), w["r"], w["c"])
-            out.setdefault(w["sheet"], {})[f"{w['r']},{w['c']}"] = amount_words(v, w.get("upper", True), like)
+            try:
+                out.setdefault(w["sheet"], {})[f"{w['r']},{w['c']}"] = amount_words(v, w.get("upper", True), like)
+            except Exception:
+                pass                                  # the words are left as they were rather than stop the bill saving
     return out
 
 
@@ -1204,7 +1335,7 @@ def write_xlsx(data: bytes, model, inputs, values):
         raw = zin.read(item.filename)
         if item.filename in by_path:
             s = by_path[item.filename]
-            raw = _patch_sheet(raw, s, (inputs or {}).get(s["name"], {}), values.get(s["name"], {}))
+            raw = _patch_sheet(raw, s, (inputs or {}).get(s["name"], {}), values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
         elif item.filename == "xl/workbook.xml":
             raw = _full_calc(raw)
         elif item.filename == "xl/calcChain.xml":
@@ -1244,7 +1375,7 @@ FORMULA = re.compile(r'<f\b[^>]*?(?:/>|>.*?</f>)', re.S)
 ROW = re.compile(r'<row\b[^>]*?\br="(\d+)"[^>]*?(?:/>|>.*?</row>)', re.S)
 
 
-def _patch_sheet(raw, s, inp, vals):
+def _patch_sheet(raw, s, inp, vals, shown=None):
     """Text edits on the sheet's XML: only the cells that change are rewritten, nothing else is touched."""
     xml = raw.decode("utf-8")
     done = set()
@@ -1269,7 +1400,7 @@ def _patch_sheet(raw, s, inp, vals):
 
     xml = CELL.sub(one, xml)
     # a row hidden in the format that is filled in this month (a spare payments row) is shown
-    filled = {int(k.split(",")[0]) for k, v in inp.items() if v not in (None, "")}
+    filled = shown or set()
     if filled:
         def unhide(m):
             r = int(m.group(1))
