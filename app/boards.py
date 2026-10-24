@@ -405,6 +405,13 @@ def _touch(db, board):
 def _act(db, board, user, kind, card=None, **data):
     db.add(KActivity(board_id=board.id, card_id=card.id if card else None, user_id=user.id if user else None,
                      kind=kind, data=json.dumps(data, default=str)))
+    if card is not None:
+        try:                        # every change on a card goes to everyone dealing with it
+            t = _note_text(kind, card, data)
+            if t:
+                _tell_card(db, user, board, card, NOTE_KIND.get(kind, "update"), t)
+        except Exception as e:      # never let a notification stop the change itself
+            print("kb tell:", e)
 
 
 def _source_of(db, c):
@@ -616,7 +623,7 @@ def _board_out(db, b, user, role, include_closed=False):
         bg_url = _file_url(a) if a else ""
     return {"id": b.id, "title": b.title, "desc": b.desc or "", "bg": bg, "bg_url": bg_url, "visibility": b.visibility,
             "closed": b.closed, "is_template": bool(b.is_template), "version": b.version, "prefs": _j(b.prefs, {}),
-            "starred": starred, "role": role, "me": user.id,
+            "starred": starred, "role": role, "me": user.id, "watching": user.id in _board_watchers(b),
             "members": members, "people": [_user_out(u) for u in users.values()],
             "labels": [{"id": l.id, "name": l.name or "", "color": l.color or ""} for l in labels],
             "fields": [{"id": f.id, "name": f.name, "type": f.type, "options": _j(f.options, []), "on_front": bool(f.on_front)} for f in fields],
@@ -660,18 +667,106 @@ def _due_words(v):
         return str(v)
 
 
+PERSONAL = ("mention", "added", "item", "board")      # told to one person by name - the general note is not repeated
+
+
 def _note(db, uid, actor, board, card, kind, text):
     if not uid or (actor and uid == actor.id):
         return
+    told = db.info.setdefault("kb_told", set())
+    if card is not None:
+        if kind in PERSONAL:
+            told.add((uid, card.id))
+        elif (uid, card.id) in told:
+            return
     db.add(KNote(user_id=uid, board_id=board.id, card_id=card.id if card else None,
                  actor_id=actor.id if actor else None, kind=kind, text=text[:400]))
 
 
+def _board_watchers(b):
+    return [int(x) for x in (_j(b.prefs, {}).get("watchers") or [])]
+
+
+def _card_people(db, card):
+    """Everyone dealing with a card: its members and watchers, whoever has a checklist item on it, made it,
+    commented or changed anything on it - on the card, the card it mirrors and every mirror of it - and
+    whoever watches a board it sits on. The general 'admin' login is only told when it is on the card."""
+    root = card.mirror_of or card.id
+    ids = {card.id, root} | {x for (x,) in db.query(KCard.id).filter(KCard.mirror_of == root).all()}
+    cards = db.query(KCard).filter(KCard.id.in_(ids)).all()
+    named, implied = set(), set()
+    boards = set()
+    for c in cards:
+        named |= set(_j(c.members, [])) | set(_j(c.watchers, []))
+        if c.created_by:
+            implied.add(c.created_by)
+        boards.add(c.board_id)
+    cls = [x for (x,) in db.query(KChecklist.id).filter(KChecklist.card_id.in_(ids)).all()]
+    if cls:
+        named |= {m for (m,) in db.query(KItem.member).filter(KItem.checklist_id.in_(cls), KItem.member != None).all()}  # noqa: E711
+    implied |= {u for (u,) in db.query(KComment.user_id).filter(KComment.card_id.in_(ids)).distinct().all()}
+    implied |= {u for (u,) in db.query(KActivity.user_id).filter(KActivity.card_id.in_(ids), KActivity.user_id != None).distinct().all()}  # noqa: E711
+    bl = db.query(KBoard).filter(KBoard.id.in_(boards)).all()
+    for b in bl:
+        named |= set(_board_watchers(b))
+    people = {x for x in named | implied if x}
+    if not people:
+        return set()
+    users = {u.id: u for u in db.query(models.User).filter(models.User.id.in_(people)).all()}
+    members = {(m.board_id, m.user_id) for m in db.query(KMember).filter(KMember.board_id.in_(boards)).all()}
+    out = set()
+    for uid in people:
+        u = users.get(uid)
+        if not u or getattr(u, "active", True) is False:
+            continue
+        if uid in implied and uid not in named and _is_app_admin(u):
+            continue
+        # only someone who can open one of the boards the card is on
+        if _is_app_admin(u) or any(b.visibility == "team" and not _is_inbox(b) or (b.id, uid) in members for b in bl):
+            out.add(uid)
+    return out
+
+
 def _tell_card(db, actor, board, card, kind, text, skip=()):
-    """Everyone on the card (members) and following it (watchers) - not the one who did it."""
-    for uid in set(_j(card.members, [])) | set(_j(card.watchers, [])):
+    """Everyone dealing with the card (see _card_people) - not the one who did it."""
+    for uid in _card_people(db, card):
         if uid not in skip:
             _note(db, uid, actor, board, card, kind, text)
+
+
+NOTE_KIND = {"card_moved": "moved", "card_moved_board": "moved", "card_due": "due", "card_complete": "done",
+             "attached": "attach", "comment": "comment"}
+
+
+def _note_text(kind, card, d):
+    t = card.title
+    return {
+        "card_added": f"added {t}" + (f" to {d.get('list')}" if d.get("list") else ""),
+        "card_renamed": f"renamed {d.get('old', '')} to {d.get('new', t)}",
+        "card_desc": f"changed the description of {t}",
+        "card_moved": f"moved {t}" + (f" from {d['frm']}" if d.get("frm") else "") + f" to {d.get('to', '')}",
+        "card_moved_board": f"moved {t} to the board {d['to']}" if d.get("to") else f"moved {t} here from {d.get('frm', '')}",
+        "card_due": f"set the due date of {t} to {_due_words(d['due'])}" if d.get("due") else f"removed the due date of {t}",
+        "card_complete": f"marked {t} complete",
+        "card_incomplete": f"marked {t} not complete",
+        "card_member_added": f"added {d.get('who', 'someone')} to {t}",
+        "card_member_removed": f"removed {d.get('who', 'someone')} from {t}",
+        "card_archived": f"archived {t}",
+        "card_restored": f"restored {t}",
+        "card_copied": f"copied {d.get('source', t)}",
+        "card_mirrored": f"mirrored {d.get('source', t)}" + (f" from {d['frm']}" if d.get("frm") else ""),
+        "checklist_added": f"added the checklist {d.get('title', '')} to {t}",
+        "checklist_removed": f"removed the checklist {d.get('title', '')} from {t}",
+        "item_done": f"completed \"{str(d.get('text', ''))[:80]}\" on {t}",
+        "item_undone": f"unticked \"{str(d.get('text', ''))[:80]}\" on {t}",
+        "comment": f"commented on {t}: {str(d.get('text', ''))[:160]}",
+        "attached": f"attached {d.get('name', 'a file')} to {t}",
+        "detached": f"removed the attachment {d.get('name', '')} from {t}",
+        "time_logged": f"logged {d.get('hours', '')} h on {t}",
+        "repeat_set": f"set {t} to repeat {d.get('every', '')}",
+        "button": f"ran {d.get('name', 'a button')} on {t}",
+        "rule": f"automation changed {t}: {d.get('title', '')}",
+    }.get(kind, "")
 
 
 def _mentions(db, text):
@@ -1176,7 +1271,7 @@ def update_board(bid: int, payload: dict = Body(...), db: Session = Depends(get_
         b.bg = (payload["bg"] or "blue")[:300]
     if "prefs" in payload and isinstance(payload["prefs"], dict):
         p = _j(b.prefs, {})
-        p.update(payload["prefs"])
+        p.update({k: v for k, v in payload["prefs"].items() if k != "watchers"})     # watching is each person's own (POST .../watch)
         b.prefs = json.dumps(p)
     for k in ("visibility", "closed", "is_template"):
         if k in payload:
@@ -1236,6 +1331,20 @@ def _remove_files(a):
                 os.remove(os.path.join(_store_dir(), p))
             except OSError:
                 pass
+
+
+@router.post("/store/kb/boards/{bid}/watch")
+def watch_board(bid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Watch a board: told of every change on every card on it."""
+    b, _ = _board(db, user, bid)
+    p = _j(b.prefs, {})
+    ws = [int(x) for x in p.get("watchers") or []]
+    on = payload.get("watch", user.id not in ws)
+    ws = [x for x in ws if x != user.id] + ([user.id] if on else [])
+    p["watchers"] = ws
+    b.prefs = json.dumps(p)
+    db.commit()
+    return {"watching": bool(on)}
 
 
 @router.post("/store/kb/boards/{bid}/star")
@@ -1549,6 +1658,8 @@ def edit_list(lid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         _touch(db, nb)
     if "closed" in payload:
         l.closed = bool(payload["closed"])
+        for c in db.query(KCard).filter(KCard.list_id == l.id, KCard.closed == False).all():  # noqa: E712
+            _tell_card(db, user, b, c, "update", f"{'archived' if l.closed else 'restored'} the list {l.title} with {c.title} on it")
         _act(db, b, user, "list_archived" if l.closed else "list_restored", title=l.title)
     for k in ("color", "wip", "collapsed"):
         if k in payload:
@@ -1584,6 +1695,7 @@ def move_all_cards(lid: int, payload: dict = Body(...), db: Session = Depends(ge
         c.list_id = to.id
         c.board_id = to.board_id
         c.pos = base + i * 65536
+        _tell_card(db, user, _b2, c, "moved", f"moved {c.title} from {l.title} to {to.title}")
         _run_rules(db, _b2, c, user, "card_moved", list_id=to.id)
         _run_rules(db, _b2, c, user, "card_added", list_id=to.id)
     _act(db, b, user, "list_moved_all", frm=l.title, to=to.title)
@@ -1601,6 +1713,7 @@ def archive_all_cards(lid: int, db: Session = Depends(get_db), user: models.User
     for c in db.query(KCard).filter(KCard.list_id == l.id, KCard.closed == False).all():  # noqa: E712
         c.closed = True
         n += 1
+        _tell_card(db, user, b, c, "update", f"archived {c.title} (with all of {l.title})")
     _act(db, b, user, "list_archived_cards", title=l.title, n=n)
     _touch(db, b)
     db.commit()
@@ -1841,7 +1954,6 @@ def _edit_card(db, user, c, b, payload):
         _act(db, target_board, user, "card_moved", c, frm=ol.title if ol else "", to=nl.title, title=c.title)
         events.append(("card_moved", {"list_id": nl.id}))
         events.append(("card_added", {"list_id": nl.id}))
-        _tell_card(db, user, target_board, c, "moved", f"moved {c.title} to {nl.title}")
         if "pos" not in payload:
             c.pos = _end_pos(db, KCard, list_id=nl.id)
     if "pos" in payload:
@@ -1854,7 +1966,6 @@ def _edit_card(db, user, c, b, payload):
                 _act(db, target_board, user, "card_due", c, due=v)
                 if v:
                     events.append(("due_set", {}))
-                    _tell_card(db, user, target_board, c, "due", f"set the due date of {c.title} to {_due_words(v)}")
             setattr(c, k, v)
     if "reminder" in payload:
         c.reminder = int(payload["reminder"] if payload["reminder"] is not None else -1)
@@ -1863,8 +1974,6 @@ def _edit_card(db, user, c, b, payload):
         if v != bool(c.due_complete):
             _act(db, target_board, user, "card_complete" if v else "card_incomplete", c)
             events.append(("card_complete", {}) if v else ("card_incomplete", {}))
-            if v:
-                _tell_card(db, user, target_board, c, "done", f"marked {c.title} complete")
         c.due_complete = v
     if "labels" in payload:
         old = set(_j(c.labels, []))
@@ -1991,6 +2100,9 @@ def copy_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
 @router.delete("/store/kb/cards/{cid}")
 def delete_card(cid: int, db: Session = Depends(get_db), user: models.User = VIEW):
     c, b, _ = _card(db, user, cid, "edit", follow=False)
+    _tell_card(db, user, b, c, "update", f"deleted {c.title}")
+    db.flush()
+    db.query(KNote).filter(KNote.card_id == c.id).update({KNote.card_id: None}, synchronize_session=False)   # the note stays, the card is gone
     _act(db, b, user, "card_deleted", None, title=c.title, no=c.no)
     db.query(KActivity).filter(KActivity.card_id == c.id).delete(synchronize_session=False)
     _delete_cards(db, [c.id])
@@ -2167,9 +2279,6 @@ def add_comment(cid: int, payload: dict = Body(...), db: Session = Depends(get_d
     for u in _mentions(db, t):
         _note(db, u.id, user, b, c, "mention", f"mentioned you on {c.title}: {t[:160]}")
         told.add(u.id)
-    for uid in set(_j(c.watchers, [])) | set(_j(c.members, [])):
-        if uid not in told:
-            _note(db, uid, user, b, c, "comment", f"commented on {c.title}: {t[:160]}")
     c.updated_at = _now()
     _act(db, b, user, "comment", c, title=c.title, text=t[:200])
     db.flush()
@@ -2286,7 +2395,6 @@ async def add_attachment(cid: int, request: Request, file: UploadFile = File(Non
     if (cover == "1" or (_j(b.prefs, {}).get("auto_cover", True) and not cov)) and a.path and a.mime.startswith("image/"):
         c.cover = json.dumps({"att": a.id, "size": "normal"})
     _act(db, b, user, "attached", c, name=a.name)
-    _tell_card(db, user, b, c, "attach", f"attached {a.name} to {c.title}")
     c.updated_at = _now()
     _touch(db, b)
     db.commit()
@@ -2580,7 +2688,7 @@ def bell_items(db, user):
         if n.kind == "item":
             m = re.search(r'"(.+)"', text)
             words = m.group(1) if m else ""
-        if n.kind in ("moved", "due", "attach", "done"):
+        if n.kind in ("moved", "due", "attach", "done", "update"):
             words = text[0].upper() + text[1:]
         out.append({"id": f"kb-{n.id}", "kind": "board", "bkind": n.kind, "title": f"{who} {text}"[:140],
                     "detail": f"Trello - {boards.get(n.board_id, '')}", "screen": "pgboards",

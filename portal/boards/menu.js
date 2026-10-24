@@ -19,6 +19,7 @@ function boardMenu(section, preset) {
       <button class="mi" data-s="visibility">${ic(b.visibility === "private" ? "lock" : "team", "s20")}<div>Visibility: ${b.visibility === "private" ? "Private" : "Workspace"}</div></button>
       <button class="mi" data-s="export">${ic("print", "s20")} Print, export, and share</button>
       <button class="mi" data-s="star">${ic("star", "s20")} ${b.starred ? "Unstar" : "Star"}</button>
+      <button class="mi" data-s="watch">${ic("eye", "s20")}<div>${b.watching ? "Watching this board" : "Watch this board"}<small>${b.watching ? "You are told of every change on every card - click to stop" : "Be told of every change on every card on this board"}</small></div></button>
       <hr>
       <button class="mi" data-s="settings">${ic("gear", "s20")} Settings</button>
       <button class="mi" data-s="background"><span class="swatch" style="background:${bgCss(b.bg, b.bg_url)}"></span> Change background</button>
@@ -38,6 +39,7 @@ function boardMenu(section, preset) {
     $$("[data-s]", body).forEach(x => x.onclick = () => boardMenu(x.dataset.s));
     return;
   }
+  if (sec === "watch") { POST(`/store/kb/boards/${b.id}/watch`, { watch: !b.watching }).then(r => { b.watching = r.watching; toast(r.watching ? "Watching - you will be told of every change on this board" : "Stopped watching this board"); boardMenu("main"); }).catch(fail); return; }
   if (sec === "star") { POST(`/store/kb/boards/${b.id}/star`).then(r => { b.starred = r.starred; renderHeader(); boardMenu("main"); }); return; }
   if (sec === "visibility") { m.remove(); visibilityPop($("#bh-vis") || $("#bh-menu")); return; }
   if (sec === "leave") { confirmPop($("#bh-menu"), "Leave board?", "You will be removed from all cards on this board.", "Leave", async () => { try { await DEL(`/store/kb/boards/${b.id}/members/${S.me.id}`); m.remove(); go("#/"); } catch (e) { fail(e); } }); return; }
