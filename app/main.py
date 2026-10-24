@@ -5946,6 +5946,75 @@ def _email_stock_writeoff(db, user, m, item):
         log_action(db, user.id, "stock_alert_email_failed", f"{item.code}: {why}")
 
 
+@app.put("/store/movements/{movement_id}")
+def edit_store_movement(movement_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                         user: models.User = Depends(require_screen("store"))):
+    """Correct a saved issue, site-to-site move or direct delivery: date, quantity, site, who took it,
+    reference, remarks, rate. Refused when the change would leave a place holding less than nothing.
+    Every change is written to the log with what it was before."""
+    if "storekeeper" not in effective_permissions(user):
+        raise HTTPException(status_code=403, detail="Only the store keeper can change a stock record.")
+    m = db.query(models.StoreMovement).filter(models.StoreMovement.id == movement_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="That record is not there any more.")
+    if m.kind not in ("out", "transfer", "in", "return"):
+        raise HTTPException(status_code=400, detail="This kind of record cannot be changed here.")
+    item = db.query(models.StoreItem).filter(models.StoreItem.id == m.item_id).first()
+    before = {"date": str(m.moved_on), "qty": m.qty, "from": m.from_location or "", "site": m.location or "",
+              "given_to": m.incharge or "", "ref": m.reference or "", "notes": m.notes or "", "rate": m.unit_cost or 0}
+    neg_before = {k for k, q in _stock_map(db, by_owner=True).items() if k[0] == m.item_id and q < -1e-6}
+    if "date" in payload and payload["date"]:
+        try:
+            d = datetime.strptime(str(payload["date"])[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="That date could not be read.")
+        if d > _dubai_today():
+            raise HTTPException(status_code=400, detail="The date is in the future.")
+        m.moved_on = d
+    if "qty" in payload:
+        try:
+            q = float(str(payload["qty"]).replace(",", ""))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Type the quantity as a number.")
+        if q <= 0:
+            raise HTTPException(status_code=400, detail="The quantity must be more than 0 - remove the line instead.")
+        m.qty = q
+    if "site" in payload:
+        site = (payload.get("site") or "").strip()
+        if m.kind in ("out", "transfer") and not site:
+            raise HTTPException(status_code=400, detail="Pick the site it went to.")
+        if m.kind == "transfer" and site == (m.from_location or ""):
+            raise HTTPException(status_code=400, detail="It cannot be moved to the site it came from.")
+        m.location = site
+    if "given_to" in payload:
+        m.incharge = _person_name(payload.get("given_to") or "")
+    if "ref" in payload:
+        m.reference = (payload.get("ref") or "").strip()[:100]
+    if "notes" in payload:
+        m.notes = (payload.get("notes") or "").strip()
+    if "rate" in payload and m.kind == "in":
+        try:
+            m.unit_cost = max(0.0, float(str(payload.get("rate") or 0).replace(",", "")))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Type the rate as a number.")
+    db.flush()
+    for k, q in _stock_map(db, by_owner=True).items():
+        if k[0] == m.item_id and q < -1e-6 and k not in neg_before:
+            db.rollback()
+            where = _place_label(k[1])
+            raise HTTPException(status_code=400,
+                detail=f"{item.name if item else 'That material'}: this change would leave {where} with {round(q, 2)} "
+                       f"{item.unit if item else ''} - more than was there has already gone out from it. Check the quantity and site.")
+    after = {"date": str(m.moved_on), "qty": m.qty, "from": m.from_location or "", "site": m.location or "",
+             "given_to": m.incharge or "", "ref": m.reference or "", "notes": m.notes or "", "rate": m.unit_cost or 0}
+    changed = {k: f"{before[k]} -> {after[k]}" for k in before if before[k] != after[k]}
+    db.commit()
+    if changed:
+        log_action(db, user.id, "store_edit_movement",
+                   f"#{movement_id} {m.kind} {item.name if item else ''}: " + "; ".join(f"{k} {v}" for k, v in changed.items()))
+    return {"ok": True, "changed": list(changed)}
+
+
 @app.delete("/store/movements/{movement_id}")
 def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("store"))):
@@ -6087,7 +6156,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "code": i.code, "name": i.name, "unit": i.unit,
                           "qty": round(m.qty, 2),
                           "from": _place_label(m.from_location),
-                          "to": _place_label(m.location),
+                          "to": _place_label(m.location), "_loc": m.location or "",
                           "given_to": (m.incharge or "").strip() or "-",
                           "reference": (m.reference or "").strip() or "-",
                           "notes": (m.notes or "").strip()})
@@ -6106,7 +6175,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                           "code": i_.code, "name": i_.name, "unit": i_.unit,
                           "qty": round(m.qty, 2),
                           "from": ((m.supplier or "").strip() or "Supplier") + " (direct)",
-                          "to": _place_label(m.location),
+                          "to": _place_label(m.location), "_loc": m.location or "",
                           "given_to": (m.incharge or "").strip() or "-",
                           "reference": (m.reference or "").strip() or "-",
                           "notes": (m.notes or "").strip()})
@@ -6165,6 +6234,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             r["rate"] = round(rate, 2) if rate else None
             r["amount"] = round(rate * r["qty"], 2) if rate else None
             r["_t"] = r["_type"]
+            r["_mid"] = r["_id"]                         # the record, for Edit on screen (never printed)
             for k in ("_id", "_item", "_qty", "_on", "_type", "_cost"):
                 r.pop(k, None)
             rows.append(r)
@@ -6184,7 +6254,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                 r["from"] = ""
         rows.sort(key=lambda r: (r["date"], r["to"], r["name"]), reverse=True)
         _drop_empty(rows, "reference", "notes", "from")
-        order = ["date", "code", "name", "qty", "unit", "from", "to", "given_to", "rate", "amount", "reference", "notes", "_move"]
+        order = ["date", "code", "name", "qty", "unit", "from", "to", "given_to", "rate", "amount", "reference", "notes", "_move", "_mid", "_loc"]
         rows = [{k: r[k] for k in order if k in r} for r in rows]
         priced = [r for r in rows if r.get("amount")]
         title = "Issued to sites" + (f" - {_place_label(site)}" if site else "")

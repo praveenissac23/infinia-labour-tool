@@ -11673,6 +11673,9 @@ async function loadStore() {
     // into one cell made it unreadable. Hide it from the columns and
     // give the row an expandable breakdown instead.
     const expandable = ["stock", "hired"].includes(view) && "by_site" in d.rows[0];
+    // Issued to sites: the store keeper can correct a saved line (Edit)
+    const canEdit = view === "usage" && (CURRENT_ROLE === "admin" || MY_SCREENS.includes("storekeeper")) && d.rows.some(r => r._mid);
+    window.USAGE_ROWS = d.rows;
     const blank = v => v === "" || v === null || v === undefined || v === "-";
     // A column with nothing in it on any row is left off, not shown as dashes.
     // Columns kept for paper but not for the screen: the code, the unit
@@ -11713,14 +11716,15 @@ async function loadStore() {
     // The material column takes the slack; everything else sits tight.
     const slack = keys.includes("name") ? "name" : keys.includes("materials") ? "materials" : null;
     head.innerHTML = (expandable ? '<th style="width:3%;"></th>' : "") +
-      keys.map(k => `<th class="${KIND[k]}"${k === slack ? ' style="width:45%;"' : ""} ${dragAttrs(view, k)}>${label(k)}</th>`).join("");
+      keys.map(k => `<th class="${KIND[k]}"${k === slack ? ' style="width:45%;"' : ""} ${dragAttrs(view, k)}>${label(k)}</th>`).join("")
+      + (canEdit ? '<th style="width:60px;"></th>' : "");
     const MOVE_TAG = { "Moved between sites": r => `moved from ${r.from}`, "Delivered direct": r => `delivered direct${r.from ? " · " + r.from.replace(/ \(direct\)$/, "") : ""}` };
     let lastGroup = null;
     body.innerHTML = d.rows.map((r, idx) => {
       let groupRow = "";
       if (groupOf) {
         const g = groupOf(r);
-        if (g !== lastGroup) { lastGroup = g; groupRow = `<tr class="rep-group"><td colspan="${keys.length + (expandable ? 1 : 0)}">${escapeHtml(groupLabel(g))}</td></tr>`; }
+        if (g !== lastGroup) { lastGroup = g; groupRow = `<tr class="rep-group"><td colspan="${keys.length + (expandable ? 1 : 0) + (canEdit ? 1 : 0)}">${escapeHtml(groupLabel(g))}</td></tr>`; }
       }
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       // A caret only where there is something to open - material sitting
@@ -11755,7 +11759,7 @@ async function loadStore() {
           v = escapeHtml(v);
         }
         return `<td${cls}>${v === "" || v === null || v === undefined ? "-" : v}</td>`;
-      }).join("") + "</tr>" + (canOpen ? `
+      }).join("") + (canEdit ? `<td>${r._mid ? `<button type="button" class="btn btn-sm btn-gray" onclick="editUsageRow(${idx})">Edit</button>` : ""}</td>` : "") + "</tr>" + (canOpen ? `
         <tr id="rr-${idx}" data-detail="1" style="display:none; background:#FAFAFA;">
           <td colspan="${keys.length + 1}" style="text-align:left; padding:14px 20px;">
             <div style="max-width:340px; margin-left:auto;">
@@ -11785,9 +11789,9 @@ async function loadStore() {
         const signed = ["received_from_sites", "sent_to_sites", "net_transfer"].includes(k) && t;
         return `<td class="n">${signed ? (t > 0 ? "+" : "") : ""}${isMoney ? money(t) : num(t)}</td>`;
       });
-      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}</tr>`;
+      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}${canEdit ? "<td></td>" : ""}</tr>`;
     } else if (d.total_value !== undefined)
-      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td></tr>`;
+      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td>${canEdit ? "<td></td>" : ""}</tr>`;
     filterStoreReport();
   } catch (e) {
     body.innerHTML = `<tr><td class="empty-note">Could not load.</td></tr>`;
@@ -18395,6 +18399,38 @@ function ppeSizeVals(id) {
   const box = document.getElementById(id); if (!box || !box.dataset.sized) return null;
   const o = {}; box.querySelectorAll("input[data-sz]").forEach(i => o[i.dataset.sz] = i.value); return o;
 }
+// Issued to sites > Edit: correct a saved issue / move / direct delivery. The server refuses a change that
+// would leave a site holding less than nothing, and logs what it was before.
+function editUsageRow(idx) {
+  const r = (window.USAGE_ROWS || [])[idx]; if (!r || !r._mid) return;
+  const direct = /direct/i.test(r._move || "");
+  const ov = ppeModal(`<h3>Edit - ${escapeHtml(r.name)}</h3>
+    <div class="sub2">${escapeHtml(r._move || "")}${r.from ? " · from " + escapeHtml(r.from) : ""}</div>
+    <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <div class="field"><label>Date</label><input type="date" id="ue-date" value="${r.date || ""}" style="width:150px;"></div>
+      <div class="field"><label>Qty (${escapeHtml(r.unit || "")})</label><input type="text" id="ue-qty" value="${r.qty}" style="width:110px; text-align:right;"></div>
+      <div class="field"><label>Site</label><select id="ue-site" style="width:220px;">${(r._loc && !(sites || []).some(x => x.code === r._loc) ? `<option value="${escapeAttr(r._loc)}" selected>${escapeHtml(r._loc)}</option>` : "") + siteOptionsHtml(r._loc || "")}</select></div>
+      <div class="field"><label>Given to</label><input type="text" id="ue-given" value="${escapeAttr(r.given_to || "")}" style="width:180px;"></div>
+      <div class="field"><label>Ref</label><input type="text" id="ue-ref" value="${escapeAttr(r.reference || "")}" style="width:150px;"></div>
+      ${direct ? `<div class="field"><label>Rate (AED)</label><input type="text" id="ue-rate" value="${r.rate || ""}" style="width:110px; text-align:right;"></div>` : ""}
+      <div class="field" style="flex:1; min-width:240px;"><label>Remarks</label><input type="text" id="ue-notes" value="${escapeAttr(r.notes || "")}" style="width:100%;"></div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+      <button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="ue-save">Save</button></div>`, true);
+  ov.querySelector("#ue-save").onclick = async () => {
+    const g = id => (ov.querySelector("#" + id) || {}).value;
+    const body = { date: g("ue-date"), qty: g("ue-qty"), site: g("ue-site"), given_to: g("ue-given"), ref: g("ue-ref"), notes: g("ue-notes") };
+    if (direct) body.rate = g("ue-rate");
+    try {
+      await apiCall(`/store/movements/${r._mid}`, { method: "PUT", body: JSON.stringify(body) });
+      ov.remove();
+      await loadStore();
+      showStatus("store-status", "ok", `${r.name}: saved.`);
+    } catch (e) { const m = ov.querySelector("#pe-msg"); m.className = "status-msg err"; m.textContent = errText(e); }
+  };
+}
+
 function ppeModal(inner, wide) {
   document.querySelectorAll(".zx-modal.pe-m").forEach(m => m.remove());
   const ov = document.createElement("div"); ov.className = "zx-modal pe-m";
