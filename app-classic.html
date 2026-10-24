@@ -6876,9 +6876,11 @@ function saveColOrder(view, keys) {
 // Put keys in the reader's saved order; anything new to them keeps its
 // natural position at the front, so a new column never hides.
 function orderColumns(view, keys) {
+  // The columns someone dragged keep their order; a column that was not there when the order was saved
+  // (Rate and Amount appear once a line is priced) stays in its own place instead of jumping to the front.
   const saved = savedColOrder(view).filter(k => keys.includes(k));
-  const rest = keys.filter(k => !saved.includes(k));
-  return [...rest, ...saved];
+  let n = 0;
+  return keys.map(k => saved.includes(k) ? saved[n++] : k);
 }
 
 // Make a header cell draggable. `onDone(newKeys)` re-renders the table.
