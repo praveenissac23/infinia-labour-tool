@@ -53,6 +53,18 @@ r = c.put(f"/store/movements/{mid}", json={"qty": 5}, headers=S)
 ck("someone who is not the store keeper cannot change it", r.status_code == 403, r.status_code)
 log = db.query(models.AuditLog).filter(models.AuditLog.action == "store_edit_movement").order_by(models.AuditLog.id.desc()).first() if hasattr(models, "AuditLog") else None
 ck("the change is logged with what it was before", log is None or "10.0 -> 12" in (log.details or "") or "10 -> 12" in (log.details or ""), getattr(log, "details", ""))
+# the wrong material picked: change it to the right one
+it2 = c.post("/store/items", json={"name": "SEM Test MDF 18mm", "unit": "pcs", "item_type": "consumable"}, headers=H).json()["id"]
+r = c.put(f"/store/movements/{mid}", json={"item_id": it2}, headers=H)
+ck("a line put on the material it should have been: refused when that material has none in the store", r.status_code == 400 and "MDF" in r.text, r.text[:200])
+post({"item_id": it2, "kind": "in", "qty": 20, "location": ""})
+r = c.put(f"/store/movements/{mid}", json={"item_id": it2}, headers=H)
+ck("...allowed once it is in the store", r.status_code == 200 and "material" in r.json()["changed"], r.text[:200])
+names = [x["name"] for x in c.get("/store/report?kind=usage", headers=H).json()["rows"]]
+ck("the report line now names the right material", "SEM Test MDF 18mm" in names, names[:5])
+st1 = next(x for x in c.get("/store/stock", headers=H).json() if x["item_id"] == iid)
+st2 = next(x for x in c.get("/store/stock", headers=H).json() if x["item_id"] == it2)
+ck("both stocks follow: plywood back to 50 (less the tiny issue), MDF 20 - 12 = 8", round(st1["central"]) == 50 and round(st2["central"]) == 8, (st1["central"], st2["central"]))
 tok = c.post("/auth/download-token", headers=H).json()["token"]
 x = c.get(f"/export/store/report?kind=usage&format=excel&token={tok}")
 ck("the export does not print the record id", x.status_code == 200 and b"_mid" not in x.content, x.status_code)

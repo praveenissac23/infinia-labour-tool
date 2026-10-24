@@ -18401,12 +18401,16 @@ function ppeSizeVals(id) {
 }
 // Issued to sites > Edit: correct a saved issue / move / direct delivery. The server refuses a change that
 // would leave a site holding less than nothing, and logs what it was before.
-function editUsageRow(idx) {
+async function editUsageRow(idx) {
   const r = (window.USAGE_ROWS || [])[idx]; if (!r || !r._mid) return;
+  try { await loadStoreItems(); } catch (e) {}
+  const mats = (storeItems || []).filter(i => i.active !== false);
   const direct = /direct/i.test(r._move || "");
   const ov = ppeModal(`<h3>Edit - ${escapeHtml(r.name)}</h3>
     <div class="sub2">${escapeHtml(r._move || "")}${r.from ? " · from " + escapeHtml(r.from) : ""}</div>
     <div class="form-row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <div class="field" style="flex:1; min-width:100%;"><label>Material</label><input type="text" id="ue-item" list="ue-mats" value="${escapeAttr(r.name)}" style="width:100%;" autocomplete="off" placeholder="Type to search the material list">
+        <datalist id="ue-mats">${mats.map(i => `<option value="${escapeAttr(i.name)}">${escapeHtml(i.code || "")}</option>`).join("")}</datalist></div>
       <div class="field"><label>Date</label><input type="date" id="ue-date" value="${r.date || ""}" style="width:150px;"></div>
       <div class="field"><label>Qty (${escapeHtml(r.unit || "")})</label><input type="text" id="ue-qty" value="${r.qty}" style="width:110px; text-align:right;"></div>
       <div class="field"><label>Site</label><select id="ue-site" style="width:220px;">${(r._loc && !(sites || []).some(x => x.code === r._loc) ? `<option value="${escapeAttr(r._loc)}" selected>${escapeHtml(r._loc)}</option>` : "") + siteOptionsHtml(r._loc || "")}</select></div>
@@ -18421,6 +18425,12 @@ function editUsageRow(idx) {
   ov.querySelector("#ue-save").onclick = async () => {
     const g = id => (ov.querySelector("#" + id) || {}).value;
     const body = { date: g("ue-date"), qty: g("ue-qty"), site: g("ue-site"), given_to: g("ue-given"), ref: g("ue-ref"), notes: g("ue-notes") };
+    const nm = (g("ue-item") || "").trim();
+    if (nm !== r.name) {
+      const it = mats.find(i => i.name.toLowerCase() === nm.toLowerCase());
+      if (!it) { const m = ov.querySelector("#pe-msg"); m.className = "status-msg err"; m.textContent = "Pick the material from the list (type part of its name)."; return; }
+      body.item_id = it.id;
+    }
     if (direct) body.rate = g("ue-rate");
     try {
       await apiCall(`/store/movements/${r._mid}`, { method: "PUT", body: JSON.stringify(body) });

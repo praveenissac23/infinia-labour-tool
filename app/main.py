@@ -5962,7 +5962,15 @@ def edit_store_movement(movement_id: int, payload: dict = Body(...), db: Session
     item = db.query(models.StoreItem).filter(models.StoreItem.id == m.item_id).first()
     before = {"date": str(m.moved_on), "qty": m.qty, "from": m.from_location or "", "site": m.location or "",
               "given_to": m.incharge or "", "ref": m.reference or "", "notes": m.notes or "", "rate": m.unit_cost or 0}
-    neg_before = {k for k, q in _stock_map(db, by_owner=True).items() if k[0] == m.item_id and q < -1e-6}
+    old_item = m.item_id
+    if payload.get("item_id") and int(payload["item_id"]) != m.item_id:     # the wrong material picked: put the right one
+        new = db.query(models.StoreItem).filter(models.StoreItem.id == int(payload["item_id"])).first()
+        if not new:
+            raise HTTPException(status_code=400, detail="That material is not on the list.")
+        before["material"] = item.name if item else ""
+        m.item_id, item = new.id, new
+    watch = {old_item, m.item_id}
+    neg_before = {k for k, q in _stock_map(db, by_owner=True).items() if k[0] in watch and q < -1e-6}
     if "date" in payload and payload["date"]:
         try:
             d = datetime.strptime(str(payload["date"])[:10], "%Y-%m-%d").date()
@@ -5999,15 +6007,16 @@ def edit_store_movement(movement_id: int, payload: dict = Body(...), db: Session
             raise HTTPException(status_code=400, detail="Type the rate as a number.")
     db.flush()
     for k, q in _stock_map(db, by_owner=True).items():
-        if k[0] == m.item_id and q < -1e-6 and k not in neg_before:
+        if k[0] in watch and q < -1e-6 and k not in neg_before:
+            it_ = db.query(models.StoreItem).filter(models.StoreItem.id == k[0]).first()
             db.rollback()
             where = _place_label(k[1])
             raise HTTPException(status_code=400,
-                detail=f"{item.name if item else 'That material'}: this change would leave {where} with {round(q, 2)} "
-                       f"{item.unit if item else ''} - more than was there has already gone out from it. Check the quantity and site.")
-    after = {"date": str(m.moved_on), "qty": m.qty, "from": m.from_location or "", "site": m.location or "",
+                detail=f"{it_.name if it_ else 'That material'}: this change would leave {where} with {round(q, 2)} "
+                       f"{it_.unit if it_ else ''} - more than is there. Check the material, quantity and site.")
+    after = {"material": item.name if item else "", "date": str(m.moved_on), "qty": m.qty, "from": m.from_location or "", "site": m.location or "",
              "given_to": m.incharge or "", "ref": m.reference or "", "notes": m.notes or "", "rate": m.unit_cost or 0}
-    changed = {k: f"{before[k]} -> {after[k]}" for k in before if before[k] != after[k]}
+    changed = {k: f"{before[k]} -> {after[k]}" for k in before if k in after and before[k] != after[k]}
     db.commit()
     if changed:
         log_action(db, user.id, "store_edit_movement",
