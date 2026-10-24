@@ -5,6 +5,7 @@ the same table for the editor and the preview) and as a PDF (render_pdf, reportl
 import base64
 import datetime as _dt
 import io
+import os
 import math
 import re
 from html import escape
@@ -209,7 +210,7 @@ def _family(name):
     n = (name or "").strip()
     if not n:
         return ""
-    fb = "'Times New Roman',Times,serif" if SERIF.search(n) else "Calibri,Carlito,Arial,sans-serif"
+    fb = "'Times New Roman',serif" if SERIF.search(n) else "Calibri,sans-serif"
     return f"font-family:'{n}',{fb}"
 
 
@@ -237,8 +238,8 @@ def _style_css(st, num):
     css.append(f"text-align:{ha}")
     va = {"center": "middle", "top": "top", "bottom": "bottom"}.get(st.get("va") or "", "bottom")
     css.append(f"vertical-align:{va}")
-    if st.get("wrap"):
-        css.append("white-space:pre-wrap;word-break:break-word")
+    if st.get("wrap") and not num:                       # Excel wraps text at spaces - never a number, never mid-word
+        css.append("white-space:pre-wrap;overflow-wrap:normal")
     if st.get("ind"):
         css.append(f"padding-left:{3 + st['ind'] * 9}px")
     return css
@@ -387,8 +388,19 @@ def _img_box(im, cols, rows, colx, rowy, cw, rh, s):
     return int(x0), int(y0), int(w), int(hh)
 
 
-SHEET_CSS = """
-.xs{position:relative;font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;color:#000;background:#fff}
+def _faces():
+    """The fonts the consultants' sheets use, with free look-alikes of the same widths for computers without them
+    (a Mac has no Calibri): text then sits in its cells exactly as in Excel."""
+    out = []
+    for fam, files in (("Calibri", "Carlito"), ("Cambria", "Caladea"), ("Arial", "LiberationSans"), ("Times New Roman", "LiberationSerif")):
+        for w, st_, suf in (("400", "normal", "Regular"), ("700", "normal", "Bold"), ("400", "italic", "Italic"), ("700", "italic", "BoldItalic")):
+            loc = fam + ("" if suf == "Regular" else " " + {"Bold": "Bold", "Italic": "Italic", "BoldItalic": "Bold Italic"}[suf])
+            out.append(f'@font-face{{font-family:"{fam}";font-weight:{w};font-style:{st_};src:local("{loc}"),url(/portal/fonts/{files}-{suf}.ttf) format("truetype")}}')
+    return "\n".join(out)
+
+
+SHEET_CSS = _faces() + """
+.xs{position:relative;font-family:Calibri,sans-serif;font-size:11pt;color:#000;background:#fff}
 .xt{border-collapse:collapse;table-layout:fixed}
 .xt td{padding:0 3px;overflow:hidden;white-space:nowrap;text-overflow:clip;line-height:1.15}
 .xi{position:absolute;pointer-events:none}
@@ -555,6 +567,28 @@ def hf_text(t, page, pages, sheet, title):
     return " ".join(t.split())
 
 
+_PDF_FONTS = None
+
+
+def _pdf_fonts():
+    """The same look-alike fonts in the PDF (portal/fonts), so its text has Excel's widths."""
+    global _PDF_FONTS
+    if _PDF_FONTS is not None:
+        return _PDF_FONTS
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portal", "fonts")
+    ok = True
+    try:
+        for fam in ("Carlito", "Caladea", "LiberationSans", "LiberationSerif"):
+            for suf in ("Regular", "Bold", "Italic", "BoldItalic"):
+                pdfmetrics.registerFont(TTFont(f"{fam}-{suf}", os.path.join(d, f"{fam}-{suf}.ttf")))
+    except Exception:
+        ok = False
+    _PDF_FONTS = ok
+    return ok
+
+
 def render_pdf(model, values, title, inputs=None, fname=""):
     """Each printed sheet on A4 (landscape when the sheet is), scaled to the page width as Excel's 'fit to page'
     does, rows carried onto the next page when they run past the bottom."""
@@ -568,9 +602,15 @@ def render_pdf(model, values, title, inputs=None, fname=""):
     styles = model["styles"]
     M = 28.0                                         # margin, points
 
+    fams = _pdf_fonts()
+
     def font(st):
         b, i = st.get("b"), st.get("i")
-        if SERIF.search(st.get("font") or ""):
+        n = (st.get("font") or "Calibri").lower()
+        fam = "Carlito" if "calibri" in n or not n.strip() else ("Caladea" if "cambria" in n else ("LiberationSerif" if SERIF.search(n) else "LiberationSans"))
+        if fams:
+            return f"{fam}-" + ("BoldItalic" if b and i else "Bold" if b else "Italic" if i else "Regular")
+        if fam in ("Caladea", "LiberationSerif"):
             return "Times-BoldItalic" if b and i else ("Times-Bold" if b else ("Times-Italic" if i else "Times-Roman"))
         return "Helvetica-BoldOblique" if b and i else ("Helvetica-Bold" if b else ("Helvetica-Oblique" if i else "Helvetica"))
 
@@ -663,6 +703,9 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                             if f"{r},{nxt}" in vals or (s["cells"].get(f"{r},{nxt}") or {}).get("v") not in (None, "") or (r, nxt) in covered:
                                 break
                             room += cw[nxt] * px * sc
+                    if num and lines and stringWidth(lines[0], fn, fs) > w - 2 * pad and w > 4:
+                        fs = max(3.5, fs * (w - 2 * pad) / stringWidth(lines[0], fn, fs))   # a figure always shows whole
+                        cv.setFont(fn, fs)
                     for ln in lines:
                         tw = stringWidth(ln, fn, fs)
                         if ha == "right":

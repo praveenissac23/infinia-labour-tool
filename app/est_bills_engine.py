@@ -177,10 +177,12 @@ def _images(z, sheet_xml):
             for x in ET.fromstring(z.read(drels_path)).findall("rel:Relationship", NS):
                 drels[x.get("Id")] = _join(dfolder, x.get("Target"))
         d = ET.fromstring(z.read(dpath))
+        ai = -1
         for anc in list(d):
             tag = anc.tag.split("}")[-1]
-            if tag not in ("twoCellAnchor", "oneCellAnchor"):
+            if tag not in ("twoCellAnchor", "oneCellAnchor", "absoluteAnchor"):
                 continue
+            ai += 1                                         # the anchor's place in the drawing (for a signature swapped in)
             blip = anc.find(".//a:blip", NS)
             if blip is None:
                 continue
@@ -191,7 +193,8 @@ def _images(z, sheet_xml):
             fr = anc.find("xdr:from", NS)
             g = lambda e, k: int(float(e.find("xdr:" + k, NS).text)) if e is not None and e.find("xdr:" + k, NS) is not None else 0
             item = {"c": g(fr, "col"), "r": g(fr, "row"), "dx": g(fr, "colOff"), "dy": g(fr, "rowOff"),
-                    "ext": ipath.rsplit(".", 1)[-1].lower(), "data": base64.b64encode(z.read(ipath)).decode()}
+                    "ext": ipath.rsplit(".", 1)[-1].lower(), "data": base64.b64encode(z.read(ipath)).decode(),
+                    "drawing": dpath, "anchor": ai}
             to = anc.find("xdr:to", NS)
             if to is not None:
                 item.update({"c2": g(to, "col"), "r2": g(to, "row"), "dx2": g(to, "colOff"), "dy2": g(to, "rowOff")})
@@ -942,8 +945,8 @@ def _text(s, r, c):
     return v if isinstance(v, str) else ""
 
 
-MAP_VERSION = 2
-MODEL_VERSION = 3          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
+MAP_VERSION = 3
+MODEL_VERSION = 4          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
 
 
 def find_inputs(model):
@@ -952,7 +955,7 @@ def find_inputs(model):
        bill no. and issue date on the cover
        previous payments table (one row per bill paid)
        the amount in words under the total due."""
-    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "v": MAP_VERSION}
+    out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "signs": [], "v": MAP_VERSION}
     for s in model["sheets"]:
         name = s["name"]
         # ---- header row of a progress table: a "Previous" and a "Total/Cumulative" with % under / in it
@@ -1090,6 +1093,85 @@ def find_inputs(model):
             if cols.get("amount") and total_r:
                 out["payments"].append({"sheet": name, "head_row": r, "total_row": total_r, "cols": cols})
             break
+        if s.get("visible", True):
+            out["signs"].extend(find_signs(s))
+    return out
+
+
+def _img_ratio(im):
+    try:
+        from PIL import Image
+        w, h = Image.open(io.BytesIO(base64.b64decode(im["data"]))).size
+        return w / max(1, h)
+    except Exception:
+        return 2.0
+
+
+SIGN_LABEL = re.compile(r"^\s*((prepared|checked|approved|verified|submitted|reviewed|certified)\s+by|signature)\s*:?\s*$", re.I)
+
+
+def find_signs(s):
+    """The signing places on a sheet: a "Prepared by:" / "Checked by:" / "Signature :" label, the name under it
+    ("Name: Anoop S"), the designation under that, and the signature picture beside it (if the format has one)."""
+    out = []
+    txt = lambda r, c: _text(s, r, c)
+    for k, cell in s["cells"].items():
+        v = cell.get("v")
+        if not isinstance(v, str) or not SIGN_LABEL.match(v):
+            continue
+        r, c = (int(x) for x in k.split(","))
+        name = None
+        for rr in range(r, r + 5):
+            for cc in (c, c + 1):
+                t = txt(rr, cc)
+                if not t or (rr == r and cc == c):
+                    continue
+                m = re.match(r"^\s*name\s*:?\s*(.*)$", t, re.I)
+                if m:
+                    if m.group(1).strip():
+                        name = {"r": rr, "c": cc, "prefix": t[:len(t) - len(m.group(1))], "orig": m.group(1).strip()}
+                    else:                                   # "Name:" with the name in the next cell
+                        nc = next((x for x in range(cc + 1, cc + 4) if txt(rr, x)), None)
+                        if nc:
+                            name = {"r": rr, "c": nc, "prefix": "", "orig": txt(rr, nc)}
+                    break
+            if name:
+                break
+        if not name:                                        # no "Name:" - the first words under the label
+            for rr in range(r + 1, r + 4):
+                t = txt(rr, c)
+                if t and not SIGN_LABEL.match(t):
+                    name = {"r": rr, "c": c, "prefix": "", "orig": t}
+                    break
+        if not name:
+            continue
+        title = None
+        for rr in range(name["r"] + 1, name["r"] + 3):
+            t = txt(rr, name["c"]) or txt(rr, c)
+            if t and not SIGN_LABEL.match(t) and not re.match(r"^\s*(name|date)\b", t, re.I):
+                title = {"r": rr, "c": name["c"] if txt(rr, name["c"]) else c, "orig": t}
+                break
+        # the signature picture anchored around the label - not the round company stamp (square), not a logo
+        cands = []
+        for i, im in enumerate(s.get("images", [])):
+            ir, ic = im["r"] + 1, im["c"] + 1
+            if not (r - 3 <= ir <= name["r"] and c - 1 <= ic <= c + 2) or ir <= 8:
+                continue
+            ratio = _img_ratio(im)
+            if 0.82 <= ratio <= 1.22:
+                continue                                    # square: the company stamp
+            cands.append((abs(ir - r) + 2 * abs(ic - c), i))
+        out.append({"sheet": s["name"], "label": v.strip().rstrip(":").strip(), "r": r, "c": c, "name": name, "title": title, "img": None, "_c": cands})
+    # each picture belongs to one signing place: the nearest
+    pairs = sorted((d, bi, i) for bi, b in enumerate(out) for d, i in b["_c"])
+    used_b, used_i = set(), set()
+    for d, bi, i in pairs:
+        if bi in used_b or i in used_i:
+            continue
+        out[bi]["img"] = i; used_b.add(bi); used_i.add(i)
+    for b in out:
+        b.pop("_c", None)
+    out.sort(key=lambda x: (x["r"], x["c"]))
     return out
 
 
@@ -1314,9 +1396,76 @@ def _cached(attrs, fxml, v):
     return f"<c{a}>{fxml}</c>"
 
 
-def write_xlsx(data: bytes, model, inputs, values):
-    """The original workbook with this month's typed cells written in and every formula's figure updated.
-    Everything else (pictures, page setup, styles, hidden sheets) is left exactly as it was."""
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+IMG_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+
+
+def _sig_anchor(p, r, c, dx, dy, cx, cy, rid, n):
+    return (f'<{p}:oneCellAnchor><{p}:from><{p}:col>{c}</{p}:col><{p}:colOff>{dx}</{p}:colOff><{p}:row>{r}</{p}:row><{p}:rowOff>{dy}</{p}:rowOff></{p}:from>'
+            f'<{p}:ext cx="{cx}" cy="{cy}"/><{p}:pic xmlns:a="{A_NS}" xmlns:r="{R_NS}"><{p}:nvPicPr><{p}:cNvPr id="{9000 + n}" name="Signature {n}"/>'
+            f'<{p}:cNvPicPr><a:picLocks noChangeAspect="1"/></{p}:cNvPicPr></{p}:nvPicPr><{p}:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></{p}:blipFill>'
+            f'<{p}:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></{p}:spPr></{p}:pic><{p}:clientData/></{p}:oneCellAnchor>')
+
+
+def _sign_patches(model, signs):
+    """Per drawing: {anchor index: new anchor xml or "" (taken off)}, new anchors, new media and relationships."""
+    out, n = {}, 0
+    for sp in signs or []:
+        sh = next((x for x in model["sheets"] if x["name"] == sp["sheet"]), None)
+        if not sh or not sh.get("images"):
+            continue
+        if sp["img"] is not None:
+            im = sh["images"][sp["img"]]
+        else:
+            im = sh["images"][0]                       # a sheet with pictures already has its drawing: the new one goes in it
+        dpath = im.get("drawing")
+        if not dpath:
+            continue
+        d = out.setdefault(dpath, {"replace": {}, "add": [], "media": []})
+        if sp["png"] is None:
+            if sp["img"] is not None:
+                d["replace"][im["anchor"]] = None
+            continue
+        n += 1
+        rid, media = f"rIdInfSig{n}", f"xl/media/infsig{n}.png"
+        d["media"].append((rid, media, sp["png"]))
+        if sp["img"] is not None:
+            box = sp.get("box") or {}
+            d["replace"][im["anchor"]] = (im["r"], im["c"], im.get("dx", 0), im.get("dy", 0), box.get("cx") or im.get("cx") or 1143000, box.get("cy") or im.get("cy") or 381000, rid, n)
+        else:
+            pl = sp["place"]
+            d["add"].append((pl["r"], pl["c"], pl["dx"], pl["dy"], pl["cx"], pl["cy"], rid, n))
+    return out
+
+
+def _patch_drawing(raw, patch):
+    x = raw.decode("utf-8")
+    m = re.search(r"<(\w+):wsDr\b", x)
+    p = m.group(1) if m else "xdr"
+    anchors = list(re.finditer(rf"<{p}:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b.*?</{p}:\1>", x, re.S))
+    for i in sorted(patch["replace"], reverse=True):
+        if i >= len(anchors):
+            continue
+        a = anchors[i]
+        new = "" if patch["replace"][i] is None else _sig_anchor(p, *patch["replace"][i])
+        x = x[:a.start()] + new + x[a.end():]
+    if patch["add"]:
+        end = x.rfind(f"</{p}:wsDr>")
+        x = x[:end] + "".join(_sig_anchor(p, *a) for a in patch["add"]) + x[end:]
+    return x.encode("utf-8")
+
+
+def _patch_rels(raw, media, dpath):
+    x = raw.decode("utf-8") if raw else f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'
+    add = "".join(f'<Relationship Id="{rid}" Type="{IMG_REL}" Target="../media/{m.rsplit("/", 1)[1]}"/>' for rid, m, _ in media)
+    return x.replace("</Relationships>", add + "</Relationships>").encode("utf-8")
+
+
+def write_xlsx(data: bytes, model, inputs, values, signs=None):
+    """The original workbook with this month's typed cells written in and every formula's figure updated, and this
+    bill's signatures in place of the format's. Everything else (pictures, page setup, styles, hidden sheets) is left
+    exactly as it was."""
     for prefix, uri in NS.items():
         if prefix in ("m",):
             ET.register_namespace("", uri)
@@ -1331,6 +1480,9 @@ def write_xlsx(data: bytes, model, inputs, values):
             by_path[p] = s
     out = io.BytesIO()
     zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    dpatch = _sign_patches(model, signs)
+    rels_of = {f'{d.rsplit("/", 1)[0]}/_rels/{d.rsplit("/", 1)[1]}.rels': d for d in dpatch}
+    names = set(zin.namelist())
     for item in zin.infolist():
         raw = zin.read(item.filename)
         if item.filename in by_path:
@@ -1340,7 +1492,19 @@ def write_xlsx(data: bytes, model, inputs, values):
             raw = _full_calc(raw)
         elif item.filename == "xl/calcChain.xml":
             continue                                   # Excel rebuilds it
+        elif item.filename in dpatch:
+            raw = _patch_drawing(raw, dpatch[item.filename])
+        elif item.filename in rels_of:
+            raw = _patch_rels(raw, dpatch[rels_of[item.filename]]["media"], rels_of[item.filename])
+        elif item.filename == "[Content_Types].xml" and dpatch and b'Extension="png"' not in raw:
+            raw = raw.replace(b"<Default ", b'<Default Extension="png" ContentType="image/png"/><Default ', 1)
         zout.writestr(item, raw)
+    for rp, d in rels_of.items():
+        if rp not in names and dpatch[d]["media"]:
+            zout.writestr(rp, _patch_rels(None, dpatch[d]["media"], d))
+    for d in dpatch.values():
+        for rid, media, png in d["media"]:
+            zout.writestr(media, png)
     zout.close()
     # the content types and relationships must not point at the removed calcChain
     return _drop_calcchain_refs(out.getvalue())

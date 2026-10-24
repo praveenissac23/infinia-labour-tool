@@ -94,6 +94,7 @@ let SAVING = Promise.resolve();
 
 async function openBill(id, step) {
   try { IPA.bill = await GET(`/store/est/ipa/bill/${id}`); } catch (e) { return fail(e); }
+  try { IPA.people = (await GET("/store/est/ipa/signatures")).people; } catch (e) { IPA.people = []; }
   IPA.step = step || "work"; IPA.q = ""; IPA.filter = "";
   big("", `<div class="ipa"><nav class="ipa-nav" id="ipa-nav"></nav><div class="ipa-main" id="ipa-main"></div></div>`, billsRedraw, "est.ipa");
   $("#big .bbody").classList.add("ipa-body");
@@ -176,13 +177,58 @@ function drawCover(m) {
       </tbody></table>${c.words ? `<div class="ipa-words">${esc(c.words)}</div>` : ""}` : `<div class="muted">The cover's payment summary could not be found on this format.</div>`}
       <div class="ipa-cv-note muted small">Worked out by the consultant's own formulas from Work done and Payments received. The printed cover keeps the consultant's layout, logo and stamps.</div>
     </div>
+    ${signersCard(b)}
     <div class="ipa-card"><h3>Notes <span class="muted small">(for the office - not printed)</span></h3><textarea id="cv-notes" rows="2" placeholder="e.g. sent to consultant by email, waiting for site measurement">${esc(b.notes)}</textarea></div>
     ${nextBtn("cover")}`;
   bindNext(m);
+  bindSigners(m);
   const no = $("#cv-no"), d = $("#cv-date");
   no.onchange = async () => { if (no.value.trim() && await save({ bill_no: no.value.trim() })) { toast("Bill number saved"); drawBill(); } };
   d.onchange = async () => { if (d.value && await save({ issue_date: d.value })) { toast("Issue date saved"); drawBill(); } };
   $("#cv-notes").onchange = async e => { if (await save({ notes: e.target.value })) toast("Notes saved"); };
+}
+
+// who prepares / checks / approves: the full name and designation printed on the bill, and the person's signature
+function signersCard(b) {
+  if (!b.signers || !b.signers.length) return "";
+  const names = [...new Set((IPA.people || []).map(x => x.name).concat((ST.meta.users || []).map(u => u.name)).filter(Boolean))];
+  return `<div class="ipa-card"><h3>Prepared, checked and approved by</h3>
+    <div class="muted small" style="margin-bottom:10px">The names, designations and signatures printed on this bill. Pick or type the full name; a signature uploaded once is used on every bill that person signs. Next month's bill keeps the same people.</div>
+    <datalist id="ipa-people">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    <div class="ipa-tw"><table class="ipa-sg" data-nofreeze><thead><tr><th>Signs as</th><th>Full name</th><th>Designation</th><th>Signature</th><th></th></tr></thead><tbody>
+    ${b.signers.map(g => `<tr data-sg="${esc(g.key)}"><td><b>${esc(g.labels.join(" / "))}</b><div class="muted small">${esc(g.sheets.join(", "))}</div></td>
+      <td><input class="ipa-sgn" list="ipa-people" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off"></td>
+      <td><input class="ipa-sgt" value="${esc(g.title || "")}" data-noclear></td>
+      <td class="sig">${g.sig ? `<img src="${g.sig}" alt="signature">` : `<span class="muted small">${g.format_has ? "none for this person" : "none"}</span>`}${g.sig && !g.own ? `<div class="muted small">from the format</div>` : ""}</td>
+      <td class="r"><label class="btn btn-plain btn-sm">${g.own ? "Change signature" : "Upload signature"}<input type="file" accept="image/*" class="ipa-sgf" hidden></label></td></tr>`).join("")}
+    </tbody></table></div></div>`;
+}
+function bindSigners(m) {
+  $$("tr[data-sg]", m).forEach(tr => {
+    const k = tr.dataset.sg, n = $(".ipa-sgn", tr), t = $(".ipa-sgt", tr), f = $(".ipa-sgf", tr);
+    const push = async () => {
+      if (!n.value.trim()) { toast("Type the full name", { err: true }); return; }
+      if (await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } })) { toast("Saved - printed on the bill"); drawBill(); }
+    };
+    n.onchange = () => {
+      const pp = (IPA.people || []).find(x => x.name.toLowerCase() === n.value.trim().toLowerCase());
+      if (pp && pp.title) t.value = pp.title;           // a person with a saved signature brings their designation
+      push();
+    };
+    t.onchange = push;
+    f.onchange = async () => {
+      const file = f.files[0]; if (!file) return;
+      if (!n.value.trim()) { toast("Type the full name first", { err: true }); return; }
+      const fd = new FormData(); fd.append("name", n.value.trim()); fd.append("title", t.value.trim()); fd.append("file", file);
+      try {
+        toast("Uploading the signature...");
+        await api("/store/est/ipa/signature", { method: "POST", body: fd });
+        IPA.people = (await GET("/store/est/ipa/signatures")).people;
+        await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } });
+        toast("Signature saved - the paper's white is taken out"); drawBill();
+      } catch (e) { fail(e); }
+    };
+  });
 }
 
 // ---------------------------------------------------------------- 2. work done
@@ -332,7 +378,7 @@ function payCell(p, r, c) {
   const x = r[c]; if (!x) return "<td></td>";
   const paid = IPA.bill.status === "Paid" && !ST.meta.me.admin;
   const at = `data-sh="${esc(p.sheet)}" data-pk="${x.key}" data-c="${c}"`;
-  if (c === "desc") return `<td>${paid ? esc(x.value || "") : `<input class="ipa-pin wide" ${at} value="${esc(x.value ?? "")}" placeholder="e.g. Payment Application No 9">`}</td>`;
+  if (c === "desc") return `<td>${paid ? esc(x.value || "") : `<input class="ipa-pin wide" data-spell="off" ${at} value="${esc(x.value ?? "")}" placeholder="e.g. Payment Application No 9">`}</td>`;
   if (c === "amount") {
     const raw = x.raw === null || x.raw === undefined ? "" : String(x.raw).replace(/^=/, "");
     return `<td class="r">${paid ? money(x.value) : `<input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(raw)}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}" placeholder="">`}</td>`;

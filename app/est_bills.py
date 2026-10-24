@@ -55,15 +55,35 @@ class EstBill(Base):
     total_due = Column(Float, default=0.0)
     work_done = Column(Float, default=0.0)
     notes = Column(Text, default="")
+    signs = Column(Text, default="")               # who signs: {group: {"name", "title"}} (the person's signature from est_signatures)
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class EstSignature(Base):
+    """A person's signature for the bills (uploaded once, used on every bill they prepare / check)."""
+    __tablename__ = "est_signatures"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, index=True)
+    title = Column(String, default="")
+    png = Column(LargeBinary)                      # cleaned: white made see-through, cropped
+    updated_by = Column(Integer, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 def create_tables(engine):
-    for t in (EstBillFormat, EstBill):
+    from sqlalchemy import inspect, text
+    for t in (EstBillFormat, EstBill, EstSignature):
         t.__table__.create(bind=engine, checkfirst=True)
+    try:                                           # est_bills made before the signatures came in
+        have = {c["name"] for c in inspect(engine).get_columns("est_bills")}
+        if "signs" not in have:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE est_bills ADD COLUMN signs TEXT"))
+    except Exception as e:
+        print("est_bills.signs:", e)
 
 
 _MODEL_CACHE = {}
@@ -243,7 +263,135 @@ def _cover(model, values):
     return {"rows": rows, "words": words, "facts": facts}
 
 
-def _bill_out(b, fmt, model, values, inputs, users=None):
+def _key(name):
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
+def _signs(b):
+    try:
+        return json.loads(b.signs or "{}") or {}
+    except ValueError:
+        return {}
+
+
+def _sig_store(db):
+    return {_key(x.name): x for x in db.query(EstSignature).all()}
+
+
+def _groups(model):
+    """Signing places grouped by the person the format names (the same person signs the cover and an appendix)."""
+    out = {}
+    for i, g in enumerate(model.get("map", {}).get("signs", [])):
+        k = _key(g["name"]["orig"])
+        x = out.setdefault(k, {"key": k, "orig": g["name"]["orig"], "orig_title": (g["title"] or {}).get("orig", ""), "places": [], "labels": []})
+        x["places"].append(i)
+        lab = g["label"] if g["label"].lower() != "signature" else "Signature"
+        if lab not in x["labels"]:
+            x["labels"].append(lab)
+        x.setdefault("sheets", [])
+        if g["sheet"] not in x["sheets"]:
+            x["sheets"].append(g["sheet"])
+    return list(out.values())
+
+
+def _png_url(data):
+    import base64 as _b
+    return "data:image/png;base64," + _b.b64encode(data).decode() if data else ""
+
+
+def signed_model(model, signs, store):
+    """The format with this bill's signatures in place: a person's own signature where the format has one (or
+    beside the name where it has none); a picture of someone no longer signing is taken off."""
+    import copy, base64 as _b
+    plan = sign_images(model, signs, store)
+    if not plan:
+        return model
+    m = dict(model); m["sheets"] = list(model["sheets"])
+    for si, sh in enumerate(m["sheets"]):
+        mine = [p for p in plan if p["sheet"] == sh["name"]]
+        if not mine:
+            continue
+        sh = dict(sh); ims = [dict(x) for x in sh.get("images", [])]
+        drop = set()
+        for p in mine:
+            if p["img"] is not None:
+                if p["png"] is None:
+                    drop.add(p["img"])
+                else:
+                    base = {k: v for k, v in ims[p["img"]].items() if not (p.get("box") and k in ("c2", "r2", "dx2", "dy2"))}
+                    box = {k: v for k, v in (p.get("box") or {}).items() if k in ("cx", "cy")}
+                    ims[p["img"]] = dict(base, data=_b.b64encode(p["png"]).decode(), ext="png", **box)
+            elif p["png"] is not None:
+                ims.append(dict(p["place"], data=_b.b64encode(p["png"]).decode(), ext="png"))
+        sh["images"] = [x for i, x in enumerate(ims) if i not in drop]
+        m["sheets"][si] = sh
+    return m
+
+
+def sign_images(model, signs, store):
+    """What changes on the pictures: [{sheet, img (index or None), png (bytes or None = take off), place}]."""
+    out = []
+    places = model.get("map", {}).get("signs", [])
+    for g in _groups(model):
+        want = (signs or {}).get(g["key"]) or {}
+        name = (want.get("name") or "").strip()
+        if not name:
+            continue                                    # left as the format has it
+        sig = store.get(_key(name))
+        same = _key(name) == g["key"]
+        if same and not sig:
+            continue                                    # the same person, no signature uploaded: the format's stays
+        png = sig.png if sig else None
+        for pi in g["places"]:
+            p = places[pi]
+            sh = next(x for x in model["sheets"] if x["name"] == p["sheet"])
+            if p["img"] is not None:
+                box = {}
+                if png:                                 # keep the new signature's own shape inside the old picture's place
+                    box = _fit_box(sh, sh["images"][p["img"]], png)
+                out.append({"sheet": p["sheet"], "img": p["img"], "png": png, "box": box})
+            elif png:
+                out.append({"sheet": p["sheet"], "img": None, "png": png, "place": _new_place(sh, p, png)})
+    return out
+
+
+def _fit_box(sh, im, png):
+    """A one-cell anchor at the old picture's top-left, sized to the old picture's height, the new one's shape."""
+    try:
+        from PIL import Image
+        w, h = Image.open(io.BytesIO(png)).size
+    except Exception:
+        return {}
+    if "cx" in im:
+        hh = im.get("cy", 0) or 381000
+    else:
+        rows = range(im["r"] + 1, im.get("r2", im["r"]) + 1)
+        hh = sum(int((sh["rowh"].get(str(r), sh["rowh"].get(r)) or sh.get("drh", 15)) * 12700) for r in rows) - im.get("dy", 0) + im.get("dy2", 0)
+        hh = max(hh, 254000)
+    hh = min(hh, 571500)                                # at most ~45 pt tall
+    cx = int(hh * w / max(1, h))
+    if cx > 1714500:                                    # and at most ~135 pt wide: a long scrawl is made smaller, not wider
+        hh, cx = int(hh * 1714500 / cx), 1714500
+    return {"cx": cx, "cy": int(hh)}
+
+
+def _new_place(sh, p, png):
+    """Where a signature goes on a format that had none: above the name, right of the label."""
+    try:
+        from PIL import Image
+        w, h = Image.open(io.BytesIO(png)).size
+    except Exception:
+        w, h = 3, 1
+    hh = 381000                                         # 30 pt tall
+    col = p["c"]                                        # 1-based label column
+    cw = (sh["colw"].get(str(col), sh["colw"].get(col)) or sh.get("dcw", 8.43)) * 7 + 5
+    cx = int(hh * w / max(1, h))
+    if cx > 1714500:
+        hh, cx = int(hh * 1714500 / cx), 1714500
+    return {"r": max(0, p["name"]["r"] - 3), "c": col - 1, "dx": int(cw * 9525 * 0.45), "dy": 0, "cx": cx, "cy": hh}
+
+
+def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
     f = _facts(model, values)
     return {"id": b.id, "project_id": b.project_id, "format_id": b.format_id, "format": fmt.name or fmt.filename, "seq": b.seq,
             "label": f["label"] or b.label, "issue_date": (f["issue_date"] or b.issue_date).isoformat() if (f["issue_date"] or b.issue_date) else "",
@@ -253,7 +401,32 @@ def _bill_out(b, fmt, model, values, inputs, users=None):
             "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs), "cover": _cover(model, values),
             "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
             "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
-            "changed": sum(len(v) for v in inputs.values())}
+            "changed": sum(len(v) for v in inputs.values()),
+            "signers": _signers_out(b, model, store or {})}
+
+
+def _signers_out(b, model, store):
+    sg = _signs(b)
+    out = []
+    import base64 as _b
+    places = model.get("map", {}).get("signs", [])
+    for g in _groups(model):
+        want = sg.get(g["key"]) or {}
+        name = want.get("name") or g["orig"]
+        title = want.get("title") if want.get("title") is not None else g["orig_title"]
+        sig = store.get(_key(name))
+        fimg = None
+        for pi in g["places"]:
+            p = places[pi]
+            if p["img"] is not None:
+                sh = next(x for x in model["sheets"] if x["name"] == p["sheet"])
+                im = sh["images"][p["img"]]
+                fimg = f"data:image/{'jpeg' if im['ext'] in ('jpg', 'jpeg') else im['ext']};base64,{im['data']}"
+                break
+        shown = _png_url(sig.png) if sig else (fimg if _key(name) == g["key"] else "")
+        out.append({"key": g["key"], "labels": g["labels"], "sheets": g["sheets"], "orig": g["orig"], "orig_title": g["orig_title"],
+                    "name": name, "title": title, "sig": shown, "own": bool(sig), "format_has": bool(fimg)})
+    return out
 
 
 def _save_totals(b, model, values):
@@ -304,7 +477,7 @@ def get_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.VIEW
     inputs = _inputs(b)
     values = BE.calculate(model, inputs)
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
-    return _bill_out(b, fmt, model, values, inputs, users)
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
 
 @router.get("/store/est/ipa/bill/{bid}/sheet/{i}")
@@ -323,7 +496,8 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
         if t["sheet"] == s["name"]:
             for ln in t["lines"]:
                 mark[f"{ln['r']},{t['tot_c']}"] = "tot"
-    html, w, h = BR.sheet_html(model, s, values, inputs, edit=b.status not in ("Paid",), mark=mark)
+    sm = signed_model(model, _signs(b), _sig_store(db))
+    html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status not in ("Paid",), mark=mark)
     return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS}
 
 
@@ -429,7 +603,8 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     inputs = BE.roll_over(model, prev_inputs, prev_values, E.today())
     inputs, values = _calc(model, inputs)
     seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid).scalar() or 0) + 1
-    b = EstBill(project_id=pid, format_id=fmt.id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id)
+    b = EstBill(project_id=pid, format_id=fmt.id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
+                signs=(last.signs if last else "") or "")             # the same people sign next month unless changed
     _save_totals(b, model, values)
     db.add(b)
     db.commit()
@@ -485,6 +660,23 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         x = mp["bill_no"]
         v = str(payload["bill_no"]).strip()[:40]
         inputs.setdefault(x["sheet"], {})[f"{x['r']},{x['c']}"] = int(v) if v.isdigit() else v
+    if isinstance(payload.get("signs"), dict):
+        sg = _signs(b)
+        places = mp.get("signs", [])
+        groups = {g["key"]: g for g in _groups(model)}
+        for k, want in payload["signs"].items():
+            g = groups.get(k)
+            if not g or not isinstance(want, dict):
+                continue
+            name = str(want.get("name") or "").strip()[:80] or g["orig"]
+            title = str(want.get("title") if want.get("title") is not None else g["orig_title"]).strip()[:80]
+            sg[k] = {"name": name, "title": title}
+            for pi in g["places"]:                       # the name and designation printed where the format has them
+                p = places[pi]
+                inputs.setdefault(p["sheet"], {})[f"{p['name']['r']},{p['name']['c']}"] = (p["name"]["prefix"] or "") + name
+                if p.get("title") and title:
+                    inputs[p["sheet"]][f"{p['title']['r']},{p['title']['c']}"] = title
+        b.signs = json.dumps(sg)
     if "notes" in payload:
         b.notes = str(payload.get("notes") or "")[:2000]
     try:
@@ -500,7 +692,7 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     _save_totals(b, model, values)
     db.commit()
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
-    return _bill_out(b, fmt, model, values, inputs, users)
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
 
 @router.post("/store/est/ipa/bill/{bid}/status")
@@ -529,6 +721,79 @@ def delete_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.V
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------------------------------- signatures
+
+@router.get("/store/est/ipa/signatures")
+def list_signatures(db: Session = Depends(get_db), user: models.User = E.VIEW):
+    return {"people": [{"id": x.id, "name": x.name, "title": x.title or "", "sig": _png_url(x.png)}
+                       for x in db.query(EstSignature).order_by(EstSignature.name).all()]}
+
+
+def clean_signature(data):
+    """A photo or scan of a signature -> a PNG with the paper made see-through, cropped to the ink."""
+    from PIL import Image, ImageOps
+    try:
+        im = Image.open(io.BytesIO(data))
+        im = ImageOps.exif_transpose(im).convert("RGBA")
+    except Exception:
+        raise HTTPException(400, "That is not a picture - upload a photo or scan of the signature (PNG or JPG).")
+    im.thumbnail((1400, 1400))
+    px = im.load()
+    W, H = im.size
+    # paper: anything light and grey-ish goes; ink (dark or coloured) stays
+    for y in range(H):
+        for x in range(W):
+            r, g, b_, a = px[x, y]
+            light = (r + g + b_) / 3
+            sat = max(r, g, b_) - min(r, g, b_)
+            if a < 30 or (light > 175 and sat < 60):
+                px[x, y] = (255, 255, 255, 0)
+    box = im.getbbox()
+    if not box:
+        raise HTTPException(400, "No signature could be seen in that picture - sign on white paper, dark pen, and try again.")
+    im = im.crop(box)
+    pad = 6
+    out = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (255, 255, 255, 0))
+    out.paste(im, (pad, pad), im)
+    if out.height > 220:
+        out = out.resize((int(out.width * 220 / out.height), 220))
+    buf = io.BytesIO()
+    out.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+@router.post("/store/est/ipa/signature")
+async def upload_signature(name: str = Form(...), title: str = Form(""), file: UploadFile = File(...),
+                           db: Session = Depends(get_db), user: models.User = E.VIEW):
+    name = (name or "").strip()[:80]
+    if not name:
+        raise HTTPException(400, "Type the person's full name.")
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(400, "That picture is over 8 MB.")
+    png = clean_signature(data)
+    x = next((y for y in db.query(EstSignature).all() if _key(y.name) == _key(name)), None)
+    if not x:
+        x = EstSignature(name=name)
+        db.add(x)
+    x.name, x.png, x.updated_by = name, png, user.id
+    if title.strip():
+        x.title = title.strip()[:80]
+    db.commit()
+    E.M.log_action(db, user.id, "est_signature", f"signature for {name}")
+    return {"id": x.id, "name": x.name, "title": x.title or "", "sig": _png_url(png)}
+
+
+@router.delete("/store/est/ipa/signature/{sid}")
+def delete_signature(sid: int, db: Session = Depends(get_db), user: models.User = E.VIEW):
+    x = db.query(EstSignature).get(sid)
+    if not x:
+        raise HTTPException(404, "Not there any more.")
+    db.delete(x); db.commit()
+    E.M.log_action(db, user.id, "est_signature_removed", f"signature for {x.name}")
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------------------------------- out
 
 @router.get("/export/est/ipa/{bid}")
@@ -546,12 +811,13 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     label = b.label or str(b.seq)
     title = f"{code} - IPA {label}" + (f" - {b.issue_date:%d %b %Y}" if b.issue_date else "")
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
+    store = _sig_store(db)
     if format == "excel":
-        data = BE.write_xlsx(fmt.data, model, inputs, values)
+        data = BE.write_xlsx(fmt.data, model, inputs, values, sign_images(model, _signs(b), store))
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
     if format == "pdf":
-        buf = BR.render_pdf(model, values, title, inputs, fname=fname + ".xlsx")
+        buf = BR.render_pdf(signed_model(model, _signs(b), store), values, title, inputs, fname=fname + ".xlsx")
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={fname}.pdf"})
     base = f"/export/est/ipa/{bid}?token={token}"
-    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", inputs, embed=bool(embed), fname=fname + ".xlsx"))
+    return HTMLResponse(BR.preview_html(signed_model(model, _signs(b), store), values, title, base + "&format=pdf", base + "&format=excel", inputs, embed=bool(embed), fname=fname + ".xlsx"))

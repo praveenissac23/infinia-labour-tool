@@ -73,6 +73,21 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
   ck('cover total = side panel total', cv.includes((await due()).replace('AED ', '')));
   await p.fill('#cv-date', '2026-10-25'); await p.dispatchEvent('#cv-date', 'change'); await sleep(1500);
   ck('issue date saved', (await p.textContent('#ipa-nav [data-step="cover"] small')).includes('25-Oct-26'));
+  // who signs: change the preparer, upload his signature
+  ck('cover lists who prepares / checks / approves, with names and designations', (await p.$$('tr[data-sg]')).length >= 2 && (await p.$$eval('.ipa-sgt', a => a.map(x => x.value))).includes('Senior Contracts Manager'));
+  const sgRow = (await p.$$('tr[data-sg]'))[0];
+  const sgn = await sgRow.$('.ipa-sgn');
+  await sgn.fill('Rahul Menon'); await sgn.press('Tab'); await sleep(2000);
+  ck('the new name is saved and printed on the bill', (await p.$$eval('.ipa-sgn', a => a.map(x => x.value))).includes('Rahul Menon'));
+  const rows = await p.$$('tr[data-sg]');
+  let rr = null; for (const r_ of rows) if ((await (await r_.$('.ipa-sgn')).inputValue()) === 'Rahul Menon') rr = r_;
+  await (await rr.$('.ipa-sgf')).setInputFiles(process.env.SIG_FILE || '/tmp/claude-0/sig_test.png'); await sleep(3500);
+  const rows2 = await p.$$('tr[data-sg]');
+  let rr2 = null; for (const r_ of rows2) if ((await (await r_.$('.ipa-sgn')).inputValue()) === 'Rahul Menon') rr2 = r_;
+  ck('his signature is uploaded and shown', !!(await rr2.$('td.sig img')) && (await rr2.textContent()).includes('Change signature'));
+  await p.evaluate(() => document.querySelector('.ipa-sg').scrollIntoView({ block: 'center' })); await sleep(300);
+  await p.screenshot({ path: SH + '1b_signers.png' });
+  await p.evaluate(() => document.querySelector('#big .bbody').scrollTop = 0); await sleep(200);
   await p.screenshot({ path: SH + '1_cover.png' });
 
   // ---- Payments

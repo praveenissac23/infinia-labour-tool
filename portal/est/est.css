@@ -443,6 +443,12 @@ tr.warnrow td { background: var(--amber-bg) !important; }
 .ipa-lines tr.moved td { background: #FFFBEA; } .ipa-lines tr.moved td.in { background: #FFF5CF; }
 .ipa-lines tr.bad td { background: #FDECEA; } .ipa-lines tr.bad .ipa-in { border-color: var(--red); color: var(--red); }
 .ipa-lines tr.saving td[data-c] { opacity: .55; }
+/* signatures */
+.ipa-sg { width: 100%; border-collapse: collapse; }
+.ipa-sg th { background: var(--red); color: #fff; font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; padding: 7px 8px; text-align: left; }
+.ipa-sg td { padding: 7px 8px; border-bottom: 1px solid #F0ECE7; vertical-align: middle; }
+.ipa-sg input { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 8px; width: 100%; min-width: 150px; font: inherit; }
+.ipa-sg td.sig { width: 170px; } .ipa-sg td.sig img { max-height: 46px; max-width: 160px; display: block; background: #fff; }
 /* payments */
 .ipa-pay td { padding: 6px 8px; border-bottom: 1px solid #F0ECE7; }
 .ipa-pin { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 8px; font: inherit; background: #fff; width: 150px; }
