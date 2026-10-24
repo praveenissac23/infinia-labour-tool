@@ -321,11 +321,33 @@ function lineRow(sh, l) {
   const edit = l.how && !paid;
   const inp = (k, v) => edit ? `<input class="ipa-in" data-noclear data-row="${esc(id)}" data-w="${k}" value="${k === "now" ? pnow(v) : pnum(v)}" placeholder="0" inputmode="decimal" autocomplete="off"><span class="pc">%</span>` : `<span class="ro">${v === null ? "" : pctTxt(v)}</span>`;
   return `<tr class="${c.cls}" data-line="${esc(id)}"><td class="it">${esc(l.item)}</td>
-    <td class="ds">${esc(l.desc)}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? `<div class="fl">${esc(l.follows)}</div>` : ""}</td>
+    <td class="ds">${esc(l.desc)}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
     <td class="r muted" data-c="prev" data-l="Previous">${c.prev}</td>
     <td class="r in" data-c="now" data-l="This month %">${inp("now", c.now)}</td><td class="r in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
     <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td></tr>`;
+}
+function followsLink(sh, l) {     // "follows the line on row 21" -> a link that takes you to that line
+  const m = l.follows.match(/row (\d+)$/), o = l.follows.match(/^set on the (.+) sheet$/);
+  if (m) {
+    const t = IPA.bill.progress.find(x => x.sheet === sh), tl = t && t.lines.find(x => x.r === +m[1]);
+    const txt = tl && tl.item ? `follows item ${tl.item} (row ${m[1]})` : l.follows;
+    return `<a class="fl" href="#" data-goto="${esc(sh + "|" + m[1])}" title="Go to row ${m[1]}">${esc(txt)} &rarr;</a>`;
+  }
+  if (o && IPA.bill.progress.some(x => x.sheet === o[1])) return `<a class="fl" href="#" data-gosec="${esc(o[1])}" title="Go to the ${esc(o[1])} sheet">${esc(l.follows)} &rarr;</a>`;
+  return `<div class="fl">${esc(l.follows)}</div>`;
+}
+function gotoLine(id) {
+  let tr = $(`#ipa-secs tr[data-line="${CSS.escape(id)}"]`);
+  if (!tr && (IPA.q || IPA.filter)) {          // hidden by the search or a filter: clear them first
+    IPA.q = ""; IPA.filter = ""; drawWork($("#ipa-secs").parentElement);
+    tr = $(`#ipa-secs tr[data-line="${CSS.escape(id)}"]`);
+  }
+  if (!tr) { toast(`Row ${id.slice(id.lastIndexOf("|") + 1)} is a heading or total in the sheet, not a line you type`, { ms: 3500 }); return; }
+  tr.scrollIntoView({ behavior: "smooth", block: "center" });
+  tr.classList.remove("flash"); void tr.offsetWidth; tr.classList.add("flash");
+  setTimeout(() => tr.classList.remove("flash"), 2200);
+  const inp = $("input.ipa-in", tr); if (inp) setTimeout(() => inp.focus({ preventScroll: true }), 450);
 }
 function findLine(id) { const [sh, r] = [id.slice(0, id.lastIndexOf("|")), +id.slice(id.lastIndexOf("|") + 1)]; const t = IPA.bill.progress.find(x => x.sheet === sh); return t && { sh, l: t.lines.find(x => x.r === r) }; }
 function patchWork() {           // new figures in place: no redraw, so typing carries on
@@ -339,6 +361,14 @@ function patchWork() {           // new figures in place: no redraw, so typing c
   refreshNav();
 }
 function bindWork(m) {
+  const secs = $("#ipa-secs", m);
+  if (secs) secs.onclick = e => {
+    const a = e.target.closest("a[data-goto], a[data-gosec]"); if (!a) return;
+    e.preventDefault();
+    if (a.dataset.goto) return gotoLine(a.dataset.goto);
+    const i = IPA.bill.progress.findIndex(x => x.sheet === a.dataset.gosec), sec = $(`#ipa-sec-${i}`);
+    if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const all = () => $$("input.ipa-in", m);
   all().forEach(inp => {
     inp.dataset.was = inp.value;

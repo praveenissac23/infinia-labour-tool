@@ -434,6 +434,10 @@ tr.warnrow td { background: var(--amber-bg) !important; }
 .ipa-lines td.it { font-weight: 700; color: var(--ink2); font-size: 12.5px; word-break: break-word; }
 .ipa-lines td.ds { line-height: 1.35; }
 .ipa-lines td.ds .fl { font-size: 11px; color: var(--blue); margin-top: 2px; }
+.ipa-lines td.ds a.fl { display: table; text-decoration: none; cursor: pointer; }
+.ipa-lines td.ds a.fl:hover { text-decoration: underline; }
+.ipa-lines tr.flash > td { animation: ipaFlash 2.2s ease-out; }
+@keyframes ipaFlash { 0%, 40% { background: #fff3b0; } 100% { background: transparent; } }
 .ipa-lines th.in { background: #8E2A20; }
 .ipa-lines td.in { background: #FBF9F6; white-space: nowrap; }
 .ipa-in { width: 64px; height: 30px; text-align: right; border: 1px solid #CFC7BE; border-radius: 6px; padding: 0 6px; font: inherit; font-weight: 700; background: #fff; }
