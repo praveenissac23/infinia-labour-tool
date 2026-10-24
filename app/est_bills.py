@@ -94,8 +94,13 @@ def _model(fmt):
     if hit is None:
         hit = json.loads(fmt.model or "{}")
         if hit.get("sheets") and hit.get("mv") != BE.MODEL_VERSION and fmt.data:
-            try:                                          # read before the latest reading rules: read the kept workbook again
+            try:                                          # read before the latest reading rules: read the kept workbook again,
                 hit = BE.read_format(fmt.data, fmt.filename or "")
+                from sqlalchemy.orm import object_session   # and keep it, so this happens once - not on every visit
+                ses = object_session(fmt)
+                if ses is not None:
+                    fmt.model = json.dumps(hit)
+                    ses.commit()
             except Exception:
                 pass
         if hit.get("sheets") and (hit.get("map") or {}).get("v") != BE.MAP_VERSION:
@@ -454,7 +459,12 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
             chk = json.loads(f.checked or "{}")
         except ValueError:
             chk = {}
-        m = _model(f)
+        m = _MODEL_CACHE.get(f.id)                    # the list only needs names and counts: never re-reads a workbook
+        if m is None:
+            try:
+                m = json.loads(f.model or "{}")
+            except ValueError:
+                m = {}
         mp = m.get("map", {})
         out_f.append({"id": f.id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
                       "by": users.get(f.created_by, ""), "formulas": chk.get("formulas", 0), "same": chk.get("same", 0),

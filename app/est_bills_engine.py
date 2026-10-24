@@ -307,8 +307,51 @@ def shown_rows(model, sheet, inputs):
     return out
 
 
+def _col_n(letters):
+    n = 0
+    for ch in letters:
+        n = n * 26 + ord(ch) - 64
+    return n
+
+
+def slim(data: bytes) -> bytes:
+    """The same workbook without the empty formatted cells far to the right of everything (a sheet formatted out
+    to column XFD holds half a million of them, and reading those took a minute). Only for reading the format -
+    the workbook kept and sent out is the original."""
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        paths = _sheet_paths(z)
+        wbx = z.read("xl/workbook.xml").decode("utf-8", "ignore")
+        order = [m.group(1) for m in re.finditer(r'<sheet\b[^>]*\bname="([^"]*)"', wbx)]
+        pa_col = {}
+        for m in re.finditer(r'<definedName[^>]*name="_xlnm.Print_Area"[^>]*localSheetId="(\d+)"[^>]*>([^<]*)</definedName>', wbx):
+            cols = [_col_n(c) for c in re.findall(r"\$?([A-Z]{1,3})\$?\d+", m.group(2))]
+            i = int(m.group(1))
+            if cols and i < len(order):
+                pa_col[order[i]] = max(cols)
+        bypath = {v: k for k, v in paths.items()}
+    except Exception:
+        return data
+    out = io.BytesIO()
+    zo = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    cell_re = re.compile(r'<c r="([A-Z]{1,3})(\d+)"[^>]*/>')
+    for it in z.infolist():
+        raw = z.read(it.filename)
+        if it.filename in bypath and len(raw) > 2_000_000:
+            x = raw.decode("utf-8", "ignore")
+            used = [_col_n(m.group(1)) for m in re.finditer(r'<c r="([A-Z]{1,3})\d+"[^>]*>', x) if not m.group(0).endswith("/>")]
+            bound = max(used + [pa_col.get(bypath[it.filename], 0), 1]) + 2
+            x = cell_re.sub(lambda m: "" if _col_n(m.group(1)) > bound else m.group(0), x)
+            raw = x.encode("utf-8")
+        zo.writestr(it, raw)
+    zo.close()
+    return out.getvalue()
+
+
 def read_format(data: bytes, filename: str = ""):
     """The uploaded bill -> the model kept for the project (JSON-able)."""
+    if not (filename.lower().endswith(".xls") or data[:4] == b"\xd0\xcf\x11\xe0"):
+        data = slim(data)
     if filename.lower().endswith(".xls") or data[:4] == b"\xd0\xcf\x11\xe0":
         raise BillError("This is the old Excel format (.xls). Open it in Excel and save it as .xlsx (File > Save As > Excel Workbook), then upload that.")
     try:
