@@ -155,7 +155,8 @@ if g:
     ck("...Division 01 breaks where the consultant broke it", [p_[1][-1] for p_ in plans["Division 01-General Requirement"]["pages"]] == [36, 65, 104, 148, 197])
     ck("...heading rows repeated on every page", all(p_[0][:3] == [1, 2, 3] for p_ in plans["Division 01-General Requirement"]["pages"]))
     ck("...APP C keeps its hidden rows hidden", all(r_ not in mm["sheets"][[x["name"] for x in mm["sheets"]].index("APP C")]["hidden_rows"] for p_ in plans["APP C"]["pages"] for r_ in p_[0]))
-    ck("...footer Page x of y", plans["IPA"]["hf"].get("fc") == "Page &P of &N", plans["IPA"]["hf"])
+    ck("...footer Page x of y, and no file-name header", plans["IPA"]["hf"].get("fc") == "Page &P of &N" and not any("&F" in v for v in plans["IPA"]["hf"].values()), plans["IPA"]["hf"])
+ck("the Excel file carries no file-name header either", all(b"&amp;F" not in zipfile.ZipFile(io.BytesIO(x.content)).read(n) for n in zipfile.ZipFile(io.BytesIO(x.content)).namelist() if n.startswith("xl/worksheets/sheet")))
 # ---- a big workbook in pieces (the web server takes ~1 MB a request)
 g = glob.glob(D + "*909-IPA09.xlsx")
 if g:

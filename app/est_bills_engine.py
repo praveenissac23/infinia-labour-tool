@@ -274,7 +274,8 @@ def print_setup(ws, xml=""):
         m = re.search(rf"<{tag}>(.*?)</{tag}>", xml or "", re.S)
         if m:
             for k, v in parse_hf(_h.unescape(m.group(1))).items():
-                out["hf"][pre + k] = v
+                if not FILE_HF.search(v):                 # the file / sheet name is Excel's own, not for the client
+                    out["hf"][pre + k] = v
     return out
 
 
@@ -1582,9 +1583,20 @@ FORMULA = re.compile(r'<f\b[^>]*?(?:/>|>.*?</f>)', re.S)
 ROW = re.compile(r'<row\b[^>]*?\br="(\d+)"[^>]*?(?:/>|>.*?</row>)', re.S)
 
 
+FILE_HF = re.compile(r"&[FAZ]")       # &F file name, &A sheet name, &Z path: Excel's own in a header - not for the client
+
+
+def _drop_file_hf(xml):
+    """A page header or footer that prints the file / sheet name (IC/913_IPA_10.xlsx/IPA/26) is taken off;
+    "Page 1 of 9" stays."""
+    def fix(m):
+        return "" if FILE_HF.search(m.group(2).replace("&amp;", "&")) else m.group(0)
+    return re.sub(r"<((?:odd|even|first)(?:Header|Footer))>(.*?)</\1>", fix, xml, flags=re.S)
+
+
 def _patch_sheet(raw, s, inp, vals, shown=None):
     """Text edits on the sheet's XML: only the cells that change are rewritten, nothing else is touched."""
-    xml = raw.decode("utf-8")
+    xml = _drop_file_hf(raw.decode("utf-8"))
     done = set()
 
     def one(m):
