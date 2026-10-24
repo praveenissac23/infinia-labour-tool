@@ -436,10 +436,15 @@ def read_document(kind: str, payload: dict = Body(...), db: Session = Depends(ge
         raise HTTPException(400, "No text came from that file.")
     if len(lines) > 20000:
         raise HTTPException(400, "That file is too long to read here.")
+    if kind in ("ipa", "subpc"):          # previous records: a scan's figures put back beside their words first
+        import est_prevread as _P
+        lines = _P._join_ocr(lines)
     lines = A.clean_lines(lines)
     flat = _flat(lines)
     if kind == "invoice":
         return read_invoice(lines, flat, payload.get("subs") or [])
+    if kind == "subpc":
+        return READERS["subpc"](lines, flat, payload.get("subs") or [])
     return READERS[kind](lines, flat)
 
 
@@ -730,3 +735,6 @@ def read_any(kind: str, payload: dict = Body(...), user: _models.User = Depends(
     if kind in ("delivery", "quotation"):
         r["items"] = r["fields"].pop("items", [])
     return r
+
+
+import est_prevread  # noqa: E402,F401  - previous records: the client bill and subcontractor PC readers (READERS["ipa"], ["subpc"])

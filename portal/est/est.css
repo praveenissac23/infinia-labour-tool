@@ -508,3 +508,15 @@ tr.warnrow td { background: var(--amber-bg) !important; }
   .ipa-in { width: 70px; height: 34px; font-size: 15px; }
   .ipa-sec { padding: 12px 10px 4px; }
 }
+
+/* Previous records (prev.js) */
+.prev-wrap h3 { margin: 0 0 8px; font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.prev-wrap h3 .spacer { flex: 1; }
+.prev-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.prev-card { border: 1.5px dashed #E3B5AE; background: #FFF8F6; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.prev-card b { color: #7A2A20; font-size: 13.5px; }
+.prev-card .n { font-size: 22px; font-weight: 800; color: #C0392B; margin: 4px 0 6px; }
+.prev-chk { border: 1px solid #E9EBEE; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12.5px; line-height: 1.6; }
+.prev-chk .ok { color: #1F7A45; font-weight: 600; } .prev-chk .bad { color: #B42318; font-weight: 700; }
+.prev-calc td.r { font-variant-numeric: tabular-nums; } .prev-calc .ok { color: #1F7A45; font-weight: 700; } .prev-calc .bad { color: #B42318; font-weight: 700; }
+@media (max-width: 760px) { .prev-cards { grid-template-columns: 1fr 1fr; } }

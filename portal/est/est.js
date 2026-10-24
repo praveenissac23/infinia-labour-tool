@@ -346,6 +346,7 @@ const GROUPS = {
   subs: { label: "Subcontractors", secs: [["reg", "Subcontract register"], ["inv", "Invoice tracker"], ["pcs", "Payment certificates"], ["final", "Finalization log"]] },
   site: { label: "Site & technical", secs: [["rfi", "RFI log"], ["approval", "NOCs & approvals"], ["submittal", "Submittals"], ["vo", "Variations"]] },
   bills: { label: "Bills", secs: [["ipa", "Bills to client"]] },      // portal/est/bills.js
+  prev: { label: "Previous records", secs: [["rec", "Bring in old records"]] },   // portal/est/prev.js - for going live
 };
 function renderProjectShell() {
   const list = ST.meta.projects.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true }));
@@ -589,7 +590,7 @@ function subForm(s, pre) {
     else {
       v.project_id = ST.pid; const r = await POST("/store/est/subs", v); sid = r.id;
       if (pre && pre.final_id) await PATCH(`/store/est/finals/${pre.final_id}`, { sub_id: r.id });      // made from the finalization log: linked to its line
-      else ST.openAfter = r.id;
+      else if (!window.PREV_NO_OPEN) ST.openAfter = r.id;        // not while bringing in previous records: the next file opens instead
     }
     // the priced schedule read from the agreement becomes the item schedule (certified line by line)
     let n = 0;
