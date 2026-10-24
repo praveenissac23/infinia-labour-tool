@@ -137,6 +137,22 @@ const SUPPLIER = `Test Scaffolding ${TAG}`;
   ck('Returned from lists the sites holding his material', site.opts.length >= 1, site.opts);
   ck('and the lines are only what is on rent at that site, with the quantity there',
      JSON.stringify(site.want) === JSON.stringify(site.got) && site.got.length >= 1, site);
+  // ---- search the materials: typed figures survive a search ----
+  const srch = await p.evaluate(() => {
+    const first = rnLines[0].description, word = first.split(/\s+/)[0];
+    rnLines[0].qty_returned = 1;
+    const q = document.getElementById('rn-q'); q.value = 'zzzz-no-such'; renderReturnLines();
+    const none = document.querySelector('#rn-lines').textContent;
+    q.value = word.toLowerCase(); renderReturnLines();
+    const shown = [...document.querySelectorAll('#rn-lines tr[data-i]')].map(r => r.cells[0].textContent);
+    q.value = ''; document.getElementById('rn-only').checked = true; renderReturnLines();
+    const only = document.querySelectorAll('#rn-lines tr[data-i]').length;
+    document.getElementById('rn-only').checked = false; rnLines[0].qty_returned = ''; renderReturnLines();
+    return { none, shown, word, only, count: document.getElementById('rn-count').textContent };
+  });
+  ck('search: nothing matching says so', /No material matches/.test(srch.none), srch.none);
+  ck('search: only matching materials shown', srch.shown.length >= 1 && srch.shown.every(t => t.toLowerCase().includes(srch.word.toLowerCase())), srch);
+  ck('"only lines being returned" shows the typed line, and the figure was kept through the search', srch.only === 1, srch);
   const rows = await p.evaluate(() => document.querySelectorAll('#rn-lines tr').length);
   ck('with that supplier\'s materials on it', rows >= 1, rows);
 

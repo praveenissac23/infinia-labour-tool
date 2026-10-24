@@ -3969,7 +3969,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <div class="field"><label>Vehicle</label>
                   <input type="text" id="rn-vehicle" style="width:130px;"></div>
               </div>
-              <div class="grid-wrap" style="margin-top:10px;">
+              <div class="form-row" style="margin-top:10px; gap:10px; align-items:center;">
+                <input type="search" id="rn-q" placeholder="Search material..." autocomplete="off"
+                       oninput="renderReturnLines()" style="width:280px;">
+                <label style="font-size:12px; display:flex; gap:6px; align-items:center; white-space:nowrap;">
+                  <input type="checkbox" id="rn-only" onchange="renderReturnLines()"> Only lines being returned</label>
+                <span id="rn-count" style="font-size:12px; color:#888;"></span>
+              </div>
+              <div class="grid-wrap" style="margin-top:8px;">
                 <table>
                   <thead><tr>
                     <th style="width:28%;">Material</th>
@@ -8551,7 +8558,8 @@ async function newReturnNote(supplierId) {
   document.getElementById("rn-form-title").textContent = "New Return Note";
   document.getElementById("rn-ref").value = "(on save)";
   document.getElementById("rn-date").value = isoLocal(new Date());
-  ["rn-driver", "rn-vehicle", "rn-notes"].forEach(id => document.getElementById(id).value = "");
+  ["rn-driver", "rn-vehicle", "rn-notes", "rn-q"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("rn-only").checked = false;
   showStatus("rn-status", null);
   // Only traders who actually have material out can be returned to.
   if (!hireOnHire.suppliers || !hireOnHire.suppliers.length) {
@@ -8602,7 +8610,7 @@ function onRnField(i, field, value) {
     const active = document.activeElement;
     const pos = active && active.selectionStart;
     renderReturnLines();
-    const row = document.querySelectorAll("#rn-lines tr")[i];
+    const row = document.querySelector(`#rn-lines tr[data-i="${i}"]`);
     if (row) {
       const box = row.querySelectorAll("input")[{ qty_returned: 0, qty_short: 1 }[field]];
       if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (e) {} }
@@ -8621,11 +8629,26 @@ function renderReturnLines() {
     renderReturnTotals();
     return;
   }
+  // search and "only lines being returned": rows are hidden, never dropped - what is typed stays on the note
+  const q = ((document.getElementById("rn-q") || {}).value || "").trim().toLowerCase();
+  const only = (document.getElementById("rn-only") || {}).checked;
+  const words = q.split(/\s+/).filter(Boolean);
+  const shows = l => words.every(w => (l.description || "").toLowerCase().includes(w))
+    && (!only || (parseFloat(l.qty_returned) || 0) > 0 || (parseFloat(l.qty_short) || 0) > 0);
+  const n = rnLines.filter(shows).length;
+  const cnt = document.getElementById("rn-count");
+  if (cnt) cnt.textContent = (q || only) ? `${n} of ${rnLines.length} materials` : `${rnLines.length} materials`;
+  if (!n) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">No material matches "${q.replace(/</g, "&lt;")}".</td></tr>`;
+    renderReturnTotals();
+    return;
+  }
   body.innerHTML = rnLines.map((l, i) => {
+    if (!shows(l)) return "";
     const ret = parseFloat(l.qty_returned) || 0, sh = parseFloat(l.qty_short) || 0;
     const left = (l.qty_on_hire || 0) - ret - sh;
     const over = left < -1e-9;
-    return `<tr${over ? ' style="background:#FFF1F0;"' : ""}>
+    return `<tr data-i="${i}"${over ? ' style="background:#FFF1F0;"' : ""}>
       <td style="text-align:left;">${l.description}</td>
       <td style="text-align:right;">${num(l.qty_on_hire)} ${l.unit || ""}</td>
       <td><input type="text" value="${l.qty_returned}" oninput="onRnField(${i}, 'qty_returned', this.value)"
