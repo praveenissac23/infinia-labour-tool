@@ -30,4 +30,7 @@ ck("admin: margin on the project", "margin" in c.get(f"/store/est/projects/{pid}
 pq = c.get(f"/store/est/projects/{pid}", headers=Q)
 ck("QS: no margin on the project", pq.status_code == 200 and "margin" not in pq.json()["summary"], pq.text[:200])
 ck("admin still sees it after a QS looked (nothing shared changed)", "margin" in c.get(f"/store/est/projects/{pid}", headers=H).json()["summary"])
+tok = c.post("/auth/download-token", headers=H).json()["token"]
+x = c.get(f"/export/est/dash?token={tok}&format=excel")
+ck("the all-projects export still works (no margin on it)", x.status_code == 200 and len(x.content) > 1000, x.status_code)
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

@@ -25,7 +25,7 @@ import estimation as E
 import models
 from database import Base
 
-MODE = "on"          # "on" = put the dummy data in (once) · "off" = take it all out again
+MODE = "off"         # "on" = put the dummy data in (once) · "off" = take it all out again  (off: Estimation went live 26 Oct 2026)
 DONE_KEY = "est_dummy_done"
 V2_KEY = "est_dummy_v2"      # second round: every tab filled, the word "dummy" gone
 

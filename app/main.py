@@ -13707,6 +13707,8 @@ try:
     estimation.fill_plots(SessionLocal)              # each project's plot no. from its site (once)
     import est_bills
     est_bills.create_tables(engine)                  # Bills: formats and monthly bills
+    import est_golive
+    est_golive.run(SessionLocal)                     # go-live 26 Oct 2026: Estimation starts clean (once; backup kept)
 except Exception as _e:
     print("estimation tables:", _e)
 

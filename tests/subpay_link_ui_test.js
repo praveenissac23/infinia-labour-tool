@@ -10,8 +10,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()'); await sleep(3000);
   const api = async (path, opt = {}) => p.evaluate(async ([path, opt]) => { const r = await fetch(path, { method: opt.method || 'GET', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token'), 'Content-Type': 'application/json' }, body: opt.body ? JSON.stringify(opt.body) : undefined }); return r.json(); }, [path, opt]);
   const meta = await api('/store/est/meta'); const P = meta.projects.find(x => x.code === '922');
-  const b0 = await api(`/store/est/projects/${P.id}`);
+  let b0 = await api(`/store/est/projects/${P.id}`);
   const allPcs = b0 => b0.subs.flatMap(s => s.pcs);
+  if (!allPcs(b0).some(x => x.status === 'With Accounts')) {      // a certificate waiting with Accounts (no test data on the app since go-live)
+    const sid = (await api('/store/est/subs', { method: 'POST', body: { project_id: P.id, name: 'Subpay Link Test Contracting', scope: 'Tiling', value: 100000, ret_pct: 10, vat_pct: 5, status: 'Active' } })).id;
+    const pid = (await api('/store/est/subpcs', { method: 'POST', body: { sub_id: sid, inv_ref: 'SLT-1', inv_amount: 21000, work_cum: 20000, adv_auto: false, ret_auto: false, ret_cum: 2000 } })).id;
+    const d = new Date().toISOString().slice(0, 10);
+    await api(`/store/est/subpcs/${pid}`, { method: 'PATCH', body: { certified_on: d, issued: d } });
+    for (const step of ['Certified', 'PC issued', 'With Accounts']) await api(`/store/est/subpcs/${pid}/step`, { method: 'POST', body: { step } });
+    b0 = await api(`/store/est/projects/${P.id}`);
+  }
   const subs = b0.subs, pc = allPcs(b0).find(x => x.status === 'With Accounts');
   ck('a certificate is waiting with Accounts on 922', !!pc);
   const sub = subs.find(s => s.id === pc.sub_id);

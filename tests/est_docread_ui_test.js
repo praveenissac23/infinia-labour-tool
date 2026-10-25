@@ -41,8 +41,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const tl = await api('/store/est/tenders');
   ck('tender: saved with its submission date', (tl.tenders || []).some(t => t.name.startsWith('Design & Build of B+G+1 Villa') && t.due === '2026-11-05'));
   // 3. invoice received on 922 - the subcontractor picked from the invoice
-  const P922 = await go('922', 'subs.inv');
-  const b922 = await api(`/store/est/projects/${P922}`), alnoor = b922.subs.find(s => /Al Noor/.test(s.name));
+  let P922 = await go('922', 'subs.inv');
+  let b922 = await api(`/store/est/projects/${P922}`);
+  if (!b922.subs.some(s => /Al Noor/.test(s.name))) {           // the subcontractor the invoice is from (no test data on the app since go-live)
+    await api('/store/est/subs', { method: 'POST', body: { project_id: P922, name: 'Al Noor Technical Manpower', scope: 'Manpower', value: 250000, ret_pct: 10, status: 'Active' } });
+    P922 = await go('922', 'subs.inv'); b922 = await api(`/store/est/projects/${P922}`);
+  }
+  const alnoor = b922.subs.find(s => /Al Noor/.test(s.name));
   await read('invoice', () => p.evaluate(() => invoiceForm()));
   ck('invoice: the subcontractor chosen from the name on the invoice', Number(await p.inputValue('#f-sub_id')) === alnoor.id, await p.inputValue('#f-sub_id'));
   await p.screenshot({ path: SH + 'invoice.png' });

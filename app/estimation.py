@@ -942,8 +942,8 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
     for p in projects:
         b = project_bundle(db, p, rules, pre)
         s = dict(b["summary"])
-        if user.role != "admin":
-            s.pop("margin", None)                   # the margin is for the admin only
+        if user is None or user.role != "admin":
+            s.pop("margin", None)                   # the margin is for the admin only (and not on the exports)
         rows.append({"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client, **s,
                      "subs": len(b["subs"]), "progress": round(100.0 * s["client_work"] / s["revised"], 1) if s["revised"] else 0.0})
         for sb in b["subs"]:
