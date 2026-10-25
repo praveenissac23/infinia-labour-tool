@@ -368,7 +368,8 @@ body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'
 .pg iframe{{width:100%;height:1180px;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(x.lines)} document(s) &middot; {escape(x.on_date.strftime('%d %b %Y'))}</span><span class="sp"></span>
 <a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{xl}">Excel</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>
-<div class="pg"><iframe src="{pdf}#toolbar=0&view=FitH" title="{escape(title)}"></iframe></div>
+<div class="pg pvwide"><iframe src="{pdf}#toolbar=0&view=FitH" title="{escape(title)}"></iframe></div>
+{export_web.phone_pages(pdf)}
 {export_web.SHARE_JS}</body></html>""")
     if format == "excel":
         d = _dict(x, users)

@@ -452,8 +452,6 @@ def view_invoice(iid: int, token: str, db: Session = Depends(get_db)):
   .doc {{ width:min(210mm, calc(100% - 24px)); height:calc(100vh - 90px); margin:12px auto; background:white;
           box-shadow:0 1px 6px rgba(0,0,0,.14); }}
   .doc iframe {{ width:100%; height:100%; border:0; }}
-  .phone {{ display:none; text-align:center; color:#666; font-size:14px; padding:30px 16px; }}
-  @media (max-width: 700px) {{ .doc {{ display:none; }} .phone {{ display:block; }} }}
 </style></head><body>
 <div class="pvbar"><h1>{escape(title)}</h1><span class="who">{escape(sub)}</span><span class="sp"></span>
   <a class="btn dark" href="{escape(pdf)}" target="_blank">Download PDF</a>
@@ -461,8 +459,8 @@ def view_invoice(iid: int, token: str, db: Session = Depends(get_db)):
   <a class="btn" href="{escape(pdf)}" target="_blank">Print</a>
   {export_web.share_button(pdf, title)}</div>
 {export_web.SHARE_JS}
-<div class="doc"><iframe src="{escape(pdf)}#view=FitH" title="{escape(title)}"></iframe></div>
-<div class="phone">Tap <b>Share</b> to send it on WhatsApp or mail, or <b>Download PDF</b> to open it.</div>
+<div class="doc pvwide"><iframe src="{escape(pdf)}#view=FitH" title="{escape(title)}"></iframe></div>
+{export_web.phone_pages(pdf)}
 </body></html>""")
 
 

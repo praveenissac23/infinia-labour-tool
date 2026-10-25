@@ -129,6 +129,30 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 SHARE_JS = SHARE_JS + SORT_JS
 
 
+def phone_pages(pdf_url):
+    """A PDF shown on a phone: an iPhone / Android browser does not show a PDF inside a page (one blank page or
+    nothing), so on a narrow screen every page of the PDF is drawn here, one under the other, to scroll and zoom.
+    A wide screen keeps the browser's own PDF viewer. (pdf.js from the app's own copy - nothing leaves the app.)"""
+    from html import escape as _e
+    return (f'<div class="pvphone" data-pdf="{_e(pdf_url)}"><div class="pvp-msg">Loading the pages...</div></div>'
+            "<style>.pvphone{display:none;padding:10px 8px 24px}.pvphone canvas{display:block;width:100%;height:auto;background:#fff;"
+            "box-shadow:0 1px 6px rgba(0,0,0,.16);margin:0 auto 10px;border-radius:2px}.pvp-msg{text-align:center;color:#666;font:14px -apple-system,"
+            "BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:24px 10px}@media (max-width:700px){.pvphone{display:block}.pvwide{display:none!important}}"
+            "@media print{.pvphone{display:none!important}}</style>"
+            """<script>(function(){var box=document.querySelector(".pvphone");if(!box||window.innerWidth>700)return;
+function say(t){box.innerHTML='<div class="pvp-msg">'+t+'</div>';}
+var s=document.createElement("script");s.src="/portal/vendor/pdf-3.11.174.min.js";
+s.onerror=function(){say("The pages could not be shown here - tap <b>Download PDF</b> to open it.");};
+s.onload=function(){var L=window.pdfjsLib;L.GlobalWorkerOptions.workerSrc="/portal/vendor/pdf.worker-3.11.174.min.js";
+L.getDocument({url:box.getAttribute("data-pdf"),isEvalSupported:false}).promise.then(async function(doc){box.innerHTML="";
+var dpr=Math.min(window.devicePixelRatio||1,2.5);
+for(var i=1;i<=doc.numPages;i++){var pg=await doc.getPage(i),w=box.clientWidth||window.innerWidth-16,v1=pg.getViewport({scale:1});
+var vp=pg.getViewport({scale:w/v1.width*dpr}),c=document.createElement("canvas");c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+box.appendChild(c);await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;}})
+.catch(function(){say("The pages could not be shown here - tap <b>Download PDF</b> to open it.");});};
+document.head.appendChild(s);})();</script>""")
+
+
 def share_button(pdf_url, title):
     from html import escape as _e
     import re as _re
