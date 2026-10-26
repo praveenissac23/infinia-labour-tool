@@ -931,6 +931,23 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .hr-field > span { font-size: 11px; font-weight: 700; color: #6B7075; letter-spacing: .2px; }
 
   .grid-wrap { background: white; border-radius: 8px; border: 1px solid #E8E8E8; overflow: auto; max-height: 60vh; }
+  /* LPO terms: clause-set chips and the clause-set library */
+  .lpo-cl-head { margin-top: 10px; } .lpo-cl-head > label { font-weight: 600; font-size: 12.5px; }
+  .lpo-cl-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  .lpo-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #B9DFBC; background: #E3F4E4; color: #1E5B2A; border-radius: 20px; padding: 4px 6px 4px 12px; font-weight: 600; font-size: 12.5px; }
+  .lpo-chip i { font-style: normal; font-weight: 500; opacity: .75; font-size: 11.5px; }
+  .lpo-chip b { cursor: pointer; padding: 0 6px; border-radius: 10px; opacity: .6; } .lpo-chip b:hover { opacity: 1; background: rgba(0,0,0,.08); }
+  #lpo-cladd { width: auto; padding: 5px 8px; border-radius: 20px; font-size: 12.5px; }
+  .lpo-clm { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 3000; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; }
+  .lpo-clm-box { background: #fff; border-radius: 12px; width: min(860px, 100%); max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+  .lpo-clm-h { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #eee; font-size: 15px; }
+  .lpo-clm-x { border: 0; background: none; font-size: 22px; cursor: pointer; color: #888; }
+  .lpo-clm-b { padding: 16px 18px; overflow: auto; } .lpo-clm-b label { display: block; font-size: 11.5px; color: #777; font-weight: 600; margin-bottom: 4px; }
+  .lpo-clm-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #eee; }
+  .lpo-clm-t { width: 100%; border-collapse: collapse; } .lpo-clm-t th { text-align: left; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .5px; padding: 8px; background: #F7F5F1; }
+  .lpo-clm-t td { padding: 9px 8px; border-bottom: 1px solid #F1EEEA; } .lpo-clm-t .c { text-align: center; } .lpo-clm-t .r { text-align: right; }
+  .clm-row { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 8px; } .clm-row span { width: 20px; color: #999; font-weight: 700; padding-top: 8px; }
+  .clm-row textarea { flex: 1; font-size: 12.5px; } .clm-row button { border: 1px solid #e3d9d0; background: #fff; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #7A2E22; }
   /* Save / submit floats at the bottom of the screen (left of INFI), always in reach - see floatSaves() */
   .btn.fab { position: fixed !important; bottom: 22px; right: 24px; z-index: 60; margin: 0 !important; padding: 13px 26px !important;
     font-size: 14px; border-radius: 24px !important; box-shadow: 0 4px 14px rgba(0,0,0,.28); width: auto !important; }
@@ -2907,14 +2924,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
                 <input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;"></div>
-              <div class="field"><label>Terms &amp; conditions</label>
-                <select id="lpo-termsset" style="width:210px;" onchange="onLpoTermsSet()">
-                  <option value="default">Standard (2 clauses)</option>
-                  <option value="material">Material with sample (4)</option>
-                  <option value="rental">Rental (5 clauses)</option>
-                </select></div>
             </div>
-            <textarea id="lpo-termstext" rows="5" style="width:100%; margin-top:6px; font-size:12px;"></textarea>
+            <!-- Terms: the clause sets the materials on the order bring in (Standard always), as chips - plus any added by hand. -->
+            <div class="lpo-cl-head"><label>Terms &amp; conditions</label>
+              <div class="lpo-cl-row" id="lpo-clsets"></div></div>
+            <textarea id="lpo-termstext" rows="6" style="width:100%; margin-top:6px; font-size:12px;" oninput="lpoTermsTyped = true; lpoClDraw()"></textarea>
 
             <div class="form-row" style="margin-top:12px; gap:10px;">
               <button class="btn btn-primary" id="lpo-save-btn" onclick="saveLpo()">Save &amp; Generate</button>
@@ -12935,8 +12949,7 @@ async function newLpo() {
    "lpo-notes"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("lpo-contact").dataset.manual = "";
   document.getElementById("lpo-discount").value = "0";
-  document.getElementById("lpo-termsset").value = "default";
-  document.getElementById("lpo-termstext").value = n.terms_default || "";
+  lpoClReset(n.clause_sets, false);
   lpoFormRun += 1;
   lpoLines = [];
   lpoRequestLineIds = [];
@@ -12988,7 +13001,7 @@ async function editLpo(id) {
     document.getElementById("lpo-location").value = o.project_location || "";
     document.getElementById("lpo-discount").value = o.discount_pct || 0;
     document.getElementById("lpo-notes").value = o.notes || "";
-    document.getElementById("lpo-termsset").value = "default";
+    try { lpoClReset((await apiCall("/store/purchase/clauses")).sets, true); } catch (e) { lpoClReset(null, true); }
     document.getElementById("lpo-termstext").value = o.terms_text || "";
     const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
     lpoFormRun += 1;
@@ -13005,13 +13018,123 @@ async function editLpo(id) {
   }
 }
 
-function onLpoTermsSet() {
-  const which = document.getElementById("lpo-termsset").value;
-  document.getElementById("lpo-termstext").value =
-    which === "rental" ? (lpoDefaults.terms_rental || "")
-    : which === "material" ? (lpoDefaults.terms_material || "")
-    : (lpoDefaults.terms_default || "");
+// ---- Terms from clause sets --------------------------------------------------------------------------
+// Each set (kept by the purchaser: Store & Purchasing > LPO > Clause sets) comes onto the order by itself when a
+// line names one of its words or is one of its materials; Standard always. The chips show which sets are on,
+// x takes one off, "+ Add a clause set" puts one on by hand. The box is the order's own copy: typing in it is
+// kept for this order (the sets then wait for "Update the clauses").
+let lpoClSets = [], lpoClOn = new Set(), lpoClOff = new Set(), lpoTermsTyped = false;
+function lpoClReset(sets, editing) {
+  lpoClSets = Array.isArray(sets) && sets.length ? sets : [];
+  lpoClOn = new Set(); lpoClOff = new Set(); lpoTermsTyped = !!editing;
+  lpoClApply();
 }
+function lpoClAuto() {                       // which sets the lines bring in
+  const lines = (lpoLines || []).filter(l => (l.description || "").trim() || l.item_id);
+  return lpoClSets.filter(x => x.always || lines.some(l => {
+    const d = " " + String(l.description || "").toLowerCase() + " " + String(l.description2 || "").toLowerCase() + " ";
+    return (x.items || []).includes(+l.item_id) || (x.words || []).some(w => w && d.includes(String(w).toLowerCase()));
+  })).map(x => x.id);
+}
+function lpoClActive() {
+  const ids = new Set([...lpoClAuto(), ...lpoClOn]);
+  lpoClOff.forEach(i => ids.delete(i));
+  return lpoClSets.filter(x => ids.has(x.id));          // in the library's order: Standard first
+}
+function lpoClText(active) {
+  let n = 0; const out = [];
+  active.forEach((x, k) => {
+    if (k > 0 || !x.always) out.push(x.name);           // a heading per set after the standard clauses
+    (x.clauses || []).forEach(c => out.push(`${++n}. ${c}`));
+  });
+  return out.join("\n");
+}
+let lpoClLast = "";
+function lpoClApply(force) {
+  const active = lpoClActive(), key = active.map(x => x.id).join(",");
+  if (!lpoTermsTyped || force) {
+    const box = document.getElementById("lpo-termstext");
+    if (box && (force || key !== lpoClLast || !box.value)) box.value = lpoClText(active);
+    if (force) lpoTermsTyped = false;
+  }
+  lpoClLast = key;
+  lpoClDraw();
+}
+function lpoClDraw() {
+  const el = document.getElementById("lpo-clsets"); if (!el) return;
+  const active = lpoClActive(), auto = new Set(lpoClAuto()), ids = new Set(active.map(x => x.id));
+  const stale = lpoTermsTyped && lpoClText(active) !== (document.getElementById("lpo-termstext").value || "");
+  const esc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  el.innerHTML = active.map(x => `<span class="lpo-chip" title="${esc((x.clauses || []).join("\n"))}">${esc(x.name)} (${(x.clauses || []).length})${auto.has(x.id) && !x.always ? ' <i>from the lines</i>' : ""}<b data-cloff="${esc(x.id)}" title="Take these clauses off this order">&times;</b></span>`).join("")
+    + `<select id="lpo-cladd" title="Put a clause set on this order"><option value="">+ Add a clause set</option>${lpoClSets.filter(x => !ids.has(x.id)).map(x => `<option value="${esc(x.id)}">${esc(x.name)} (${(x.clauses || []).length})</option>`).join("")}</select>`
+    + (stale ? `<button type="button" class="btn btn-dark btn-sm" id="lpo-clupd" title="Rebuild the clauses from the sets (your typing in the box is replaced)">Update the clauses</button>` : "")
+    + `<span style="flex:1"></span><button type="button" class="btn btn-dark btn-sm" id="lpo-clsave" title="Keep what is in the box as a clause set for next time">Save as a new clause set</button>`
+    + `<button type="button" class="btn btn-dark btn-sm" id="lpo-clman">Clause sets</button>`;
+  el.querySelectorAll("[data-cloff]").forEach(b => b.onclick = () => { lpoClOn.delete(b.dataset.cloff); lpoClOff.add(b.dataset.cloff); lpoClApply(); });
+  document.getElementById("lpo-cladd").onchange = e => { const v = e.target.value; if (!v) return; lpoClOff.delete(v); lpoClOn.add(v); lpoClApply(); };
+  const u = document.getElementById("lpo-clupd"); if (u) u.onclick = () => lpoClApply(true);
+  document.getElementById("lpo-clsave").onclick = lpoClSaveNew;
+  document.getElementById("lpo-clman").onclick = () => lpoClManage();
+}
+async function lpoClSave(sets) {
+  const r = await apiCall("/store/purchase/clauses", { method: "PUT", body: JSON.stringify({ sets }) });
+  lpoClSets = r.sets || sets; if (lpoDefaults) lpoDefaults.clause_sets = lpoClSets;
+  return lpoClSets;
+}
+async function lpoClSaveNew() {
+  const text = document.getElementById("lpo-termstext").value || "";
+  const used = new Set(lpoClActive().flatMap(x => x.clauses || []));
+  const fresh = text.split("\n").map(x => x.replace(/^\s*\d+\s*[.)]\s*/, "").trim()).filter(x => x && !lpoClSets.some(s => s.name === x) && !used.has(x));
+  lpoClManage({ id: "", name: "", always: false, words: [], items: [], clauses: fresh.length ? fresh : [""] });
+}
+// The library: every set, its words, its clauses - added to, changed, put in order, removed.
+function lpoClManage(start) {
+  let sets = JSON.parse(JSON.stringify(lpoClSets)), cur = start ? -1 : null, draft = start || null;
+  const ov = document.createElement("div"); ov.className = "lpo-clm"; document.body.appendChild(ov);
+  const esc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const close = () => ov.remove();
+  const listView = () => {
+    ov.innerHTML = `<div class="lpo-clm-box"><div class="lpo-clm-h"><b>LPO clause sets</b><span style="flex:1"></span><button class="btn btn-primary btn-sm" data-a="new">+ New clause set</button><button class="lpo-clm-x" data-a="close">&times;</button></div>
+      <div class="lpo-clm-b"><table class="lpo-clm-t"><thead><tr><th>Clause set</th><th>Comes onto an order by itself when a line has</th><th class="c">Clauses</th><th class="c">Used on</th><th></th></tr></thead><tbody>
+      ${sets.map((x, i) => `<tr><td><b>${esc(x.name)}</b></td><td class="small">${x.always ? '<span style="color:#888">every LPO</span>' : esc([...(x.words || [])].join(", ")) + ((x.items || []).length ? ` <span style="color:#888">+ ${(x.items || []).length} material(s)</span>` : "") || '<span style="color:#888">only when added by hand</span>'}</td>
+        <td class="c">${(x.clauses || []).length}</td><td class="c">${x.used != null ? x.used + " LPOs" : ""}</td><td class="r"><button class="btn btn-dark btn-sm" data-e="${i}">Edit</button></td></tr>`).join("")}</tbody></table></div></div>`;
+    ov.querySelector('[data-a="close"]').onclick = close;
+    ov.querySelector('[data-a="new"]').onclick = () => { cur = -1; draft = { id: "", name: "", always: false, words: [], items: [], clauses: [""] }; editView(); };
+    ov.querySelectorAll("[data-e]").forEach(b => b.onclick = () => { cur = +b.dataset.e; draft = JSON.parse(JSON.stringify(sets[cur])); editView(); });
+  };
+  const editView = () => {
+    const d = draft;
+    ov.innerHTML = `<div class="lpo-clm-box"><div class="lpo-clm-h"><b>${cur === -1 ? "New clause set" : "Clause set - " + esc(d.name)}</b><span style="flex:1"></span><button class="lpo-clm-x" data-a="back">&times;</button></div>
+      <div class="lpo-clm-b"><div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+        <div><label>Name</label><input id="clm-name" value="${esc(d.name)}" placeholder="e.g. Ready-mix concrete" style="width:100%"></div>
+        <div><label>Comes onto an order by itself when a line has any of these words (comma between)</label><input id="clm-words" value="${esc((d.words || []).join(", "))}" placeholder="e.g. concrete, ready mix, RMC" style="width:100%" ${d.always ? "disabled" : ""}></div></div>
+        <label style="display:flex;gap:6px;align-items:center;margin:8px 0 12px;font-weight:normal"><input type="checkbox" id="clm-always" ${d.always ? "checked" : ""} style="width:auto"> On every LPO</label>
+        <label>Clauses</label><div id="clm-cl">${(d.clauses || []).map((c, i) => `<div class="clm-row"><span>${i + 1}</span><textarea rows="2" data-c="${i}">${esc(c)}</textarea><button data-up="${i}" title="Move up">&uarr;</button><button data-dn="${i}" title="Move down">&darr;</button><button data-rm="${i}" title="Remove">&times;</button></div>`).join("")}</div>
+        <button class="btn btn-dark btn-sm" data-a="addc">+ Add a clause</button></div>
+      <div class="lpo-clm-f">${cur >= 0 ? '<button class="btn btn-danger btn-sm" data-a="del" style="margin-right:auto">Remove this set</button>' : ""}<button class="btn btn-gray" data-a="back">Cancel</button><button class="btn btn-primary" data-a="save">Save</button></div></div>`;
+    const grab = () => { d.name = ov.querySelector("#clm-name").value.trim(); d.always = ov.querySelector("#clm-always").checked;
+      d.words = ov.querySelector("#clm-words").value.split(",").map(w => w.trim()).filter(Boolean); d.clauses = [...ov.querySelectorAll("[data-c]")].map(t => t.value.trim()); };
+    ov.querySelectorAll('[data-a="back"]').forEach(b => b.onclick = () => start ? close() : listView());
+    ov.querySelector("#clm-always").onchange = () => { grab(); editView(); };
+    ov.querySelector('[data-a="addc"]').onclick = () => { grab(); d.clauses.push(""); editView(); const t = ov.querySelectorAll("[data-c]"); t[t.length - 1].focus(); };
+    ov.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { grab(); d.clauses.splice(+b.dataset.rm, 1); if (!d.clauses.length) d.clauses.push(""); editView(); });
+    ov.querySelectorAll("[data-up]").forEach(b => b.onclick = () => { grab(); const i = +b.dataset.up; if (i > 0) [d.clauses[i - 1], d.clauses[i]] = [d.clauses[i], d.clauses[i - 1]]; editView(); });
+    ov.querySelectorAll("[data-dn]").forEach(b => b.onclick = () => { grab(); const i = +b.dataset.dn; if (i < d.clauses.length - 1) [d.clauses[i + 1], d.clauses[i]] = [d.clauses[i], d.clauses[i + 1]]; editView(); });
+    const del = ov.querySelector('[data-a="del"]'); if (del) del.onclick = async () => { if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Press again to remove"; return; }
+      sets.splice(cur, 1); try { sets = await lpoClSave(sets); lpoClApply(); listView(); } catch (e) { alertBox(errText(e)); } };
+    ov.querySelector('[data-a="save"]').onclick = async () => {
+      grab(); d.clauses = d.clauses.filter(Boolean);
+      if (!d.name) return ov.querySelector("#clm-name").focus();
+      if (!d.clauses.length) return;
+      if (cur === -1) sets.push(d); else sets[cur] = d;
+      try { sets = await lpoClSave(sets); if (cur === -1) { const nw = sets[sets.length - 1]; if (nw) { lpoClOff.delete(nw.id); lpoClOn.add(nw.id); } } lpoClApply(); if (start) close(); else listView(); }
+      catch (e) { alertBox(errText(e)); }
+    };
+  };
+  if (start) { cur = -1; editView(); }
+  else { listView(); apiCall("/store/purchase/clauses").then(r => { if (r && r.sets && cur === null) { sets = r.sets; listView(); } }).catch(() => {}); }
+}
+function alertBox(msg) { showStatus("lpo-status", "err", msg); }
 
 // Typing a project location on an order raised from nothing fills the
 // same details the queue would have brought with it.
@@ -13441,6 +13564,7 @@ function renderLpoTotals() {
     ${disc ? `<div>Discount (${disc}%) <strong style="margin-left:10px;">- ${money(discount)}</strong></div>` : ""}
     <div>VAT <strong style="margin-left:10px;">${money(vat)}</strong></div>
     <div style="font-size:15px; margin-top:4px;">Total <strong style="margin-left:10px;">AED ${money(net + vat)}</strong></div>`;
+  if (lpoClSets.length) lpoClApply();          // a material on the lines brings its clauses
 }
 
 async function saveLpo() {

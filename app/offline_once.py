@@ -53,7 +53,7 @@ async def once(request, call_next):
     async for chunk in resp.body_iterator:
         body += chunk if isinstance(chunk, bytes) else chunk.encode()
     ctype = resp.headers.get("content-type", "application/json")
-    if len(body) < 2_000_000 and ("json" in ctype or "text" in ctype):
+    if len(body) < 2_000_000 and ("json" in ctype or "text" in ctype) and not resp.headers.get("content-encoding"):
         db = SessionLocal()
         try:
             db.add(OfflineReq(id=rid, path=request.url.path[:300], status=resp.status_code, ctype=ctype[:120], body=body.decode("utf-8", "replace")))
@@ -62,5 +62,5 @@ async def once(request, call_next):
             db.rollback()
         finally:
             db.close()
-    headers = {k: v for k, v in resp.headers.items() if k.lower() not in ("content-length", "content-encoding")}
+    headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
     return Response(content=body, status_code=resp.status_code, headers=headers, media_type=resp.media_type)

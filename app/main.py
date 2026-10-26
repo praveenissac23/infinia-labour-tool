@@ -300,6 +300,8 @@ def seed_on_startup():
 # difference between a screen that opens and one that stalls on a poor
 # connection.
 from fastapi.middleware.gzip import GZipMiddleware
+# working offline: a save sent twice is done once (inside the compression, so it keeps the plain answer)
+app.middleware("http")(offline_once.once)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
@@ -320,9 +322,6 @@ def _freeze_version():
 
 
 _FREEZE_V = _freeze_version()
-
-
-app.middleware("http")(offline_once.once)
 
 
 @app.middleware("http")
@@ -7757,6 +7756,66 @@ def save_company_settings(payload: dict = Body(...), db: Session = Depends(get_d
     return read_company_settings(db=db, user=user)
 
 
+# ---- LPO clause sets: the purchaser's library of terms, each brought onto an order by the materials on it ----
+def _clause_lines(text):
+    return [re.sub(r"^\s*\d+\s*[.)]\s*", "", x).strip() for x in (text or "").splitlines() if x.strip()]
+
+
+def _default_clause_sets():
+    std = _clause_lines(DEFAULT_LPO_TERMS)
+    return [
+        {"id": "standard", "name": "Standard", "always": True, "words": [], "items": [], "clauses": std},
+        {"id": "material", "name": "Material with sample", "always": False, "words": ["sample"], "items": [],
+         "clauses": [c for c in _clause_lines(MATERIAL_LPO_TERMS) if c not in std]},
+        {"id": "rental", "name": "Rental", "always": False, "words": ["rental", "rent", "hire"], "items": [],
+         "clauses": [c for c in _clause_lines(RENTAL_LPO_TERMS) if c not in std]},
+    ]
+
+
+def lpo_clause_sets(db):
+    raw = get_setting(db, "lpo_clause_sets")
+    if raw:
+        try:
+            v = json.loads(raw)
+            if isinstance(v, list):
+                return v
+        except ValueError:
+            pass
+    return _default_clause_sets()
+
+
+@app.get("/store/purchase/clauses")
+def get_clause_sets(db: Session = Depends(get_db), user: models.User = Depends(require_screen("approvals"))):
+    sets = lpo_clause_sets(db)
+    # how many orders carry each set (its first clause in their terms)
+    for x in sets:
+        first = (x.get("clauses") or [""])[0][:60]
+        x["used"] = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.terms_text.contains(first)).count() if first else 0
+    return {"sets": sets}
+
+
+@app.put("/store/purchase/clauses")
+def save_clause_sets(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = Depends(require_screen("approvals"))):
+    out, seen = [], set()
+    for x in payload.get("sets") or []:
+        name = str(x.get("name") or "").strip()[:80]
+        clauses = [str(c).strip()[:600] for c in (x.get("clauses") or []) if str(c).strip()][:30]
+        if not name or not clauses:
+            continue
+        sid = re.sub(r"[^a-z0-9]+", "-", str(x.get("id") or name).lower()).strip("-")[:40] or "set"
+        while sid in seen:
+            sid += "-2"
+        seen.add(sid)
+        out.append({"id": sid, "name": name, "always": bool(x.get("always")),
+                    "words": [str(w).strip().lower()[:40] for w in (x.get("words") or []) if str(w).strip()][:20],
+                    "items": [int(i) for i in (x.get("items") or []) if str(i).isdigit()][:50], "clauses": clauses})
+    if not out:
+        raise HTTPException(400, "Keep at least one clause set.")
+    put_setting(db, "lpo_clause_sets", json.dumps(out))
+    log_action(db, user.id, "lpo_clause_sets", f"{len(out)} clause sets: " + ", ".join(x["name"] for x in out))
+    return {"sets": out}
+
+
 @app.get("/store/purchase/next-no")
 def next_lpo_number(db: Session = Depends(get_db),
                      user: models.User = Depends(require_screen("approvals"))):
@@ -7766,6 +7825,7 @@ def next_lpo_number(db: Session = Depends(get_db),
             "store_incharge_mobile": get_setting(db, "store_incharge_mobile"),
             "terms_default": DEFAULT_LPO_TERMS,
             "terms_rental": RENTAL_LPO_TERMS, "terms_material": MATERIAL_LPO_TERMS,
+            "clause_sets": lpo_clause_sets(db),
             **_lpo_people(db)}
 
 
