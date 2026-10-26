@@ -1,0 +1,20 @@
+// Subcontract form: how the advance is recovered - a choice, the % box only for "a fixed %", the start PC.
+const { chromium } = require('playwright');
+const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/subrec_';
+let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+(async () => { const br = await chromium.launch(); const p = await (await br.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto(B + '/portal/est-app.html?view=projects'); await p.fill('#lg-u', 'admin'); await p.fill('#lg-p', 'changeme123'); await p.click('#lg-go'); await sleep(2000);
+  await p.evaluate(() => subForm()); await sleep(600);
+  const vis = id => p.evaluate(id => { const e = document.getElementById(id); const b = e && (e.closest('.f') || e.parentElement); return !!b && getComputedStyle(b).display !== 'none'; }, id);
+  ck('the choice is there, in step with the work done by default', (await p.inputValue('#f-adv_rec_mode')) === '');
+  ck('no % box unless "a fixed %"', !(await vis('f-adv_rec_pct')) && await vis('f-adv_rec_from'));
+  await p.selectOption('#f-adv_rec_mode', 'pct'); await sleep(200);
+  ck('"a fixed %" shows the % box', await vis('f-adv_rec_pct'));
+  await p.selectOption('#f-adv_rec_mode', 'none'); await sleep(200);
+  ck('"not recovered" hides the % and the start PC', !(await vis('f-adv_rec_pct')) && !(await vis('f-adv_rec_from')));
+  await p.selectOption('#f-adv_rec_mode', ''); await sleep(200);
+  await p.locator('#f-adv_rec_mode').scrollIntoViewIfNeeded(); await p.screenshot({ path: SH + 'form.png' });
+  ck('no page errors', !errs.length, errs);
+  await br.close(); console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0); })();

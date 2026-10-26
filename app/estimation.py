@@ -130,7 +130,9 @@ class EstSub(Base):
     value = Column(Float, default=0.0)          # initial subcontract / LPO amount
     cancelled = Column(Float, default=0.0)      # LPO cancellation
     adv_pct = Column(Float, default=0.0)
-    adv_rec_pct = Column(Float, nullable=True)   # advance recovered at this % of the work done; empty = the advance %, 0 = not recovered
+    adv_rec_pct = Column(Float, nullable=True)   # with adv_rec_mode "pct": recovered at this % of the work done
+    adv_rec_mode = Column(String, default="")     # how the advance comes back: "" in step with the work done | pct | none | manual
+    adv_rec_from = Column(Integer, default=1)     # recovery starts on this PC no. (the PCs before take nothing back)
     ret_pct = Column(Float, default=0.0)
     vat_pct = Column(Float, default=5.0)
     pay_days = Column(Integer, default=0)
@@ -538,7 +540,7 @@ KINDS = {
                                     "adv_pct": F, "ret_pct": F, "vat_pct": F, "start_date": D, "end_date": D, "status": S,
                                     "qs": S, "notes": S}),
     "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "address": S, "phone": S, "mobile": S, "trn": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
-                                    "value": F, "cancelled": F, "adv_pct": F, "adv_rec_pct": F, "ret_pct": F, "vat_pct": F, "pay_days": I,
+                                    "value": F, "cancelled": F, "adv_pct": F, "adv_rec_pct": F, "adv_rec_mode": S, "adv_rec_from": I, "ret_pct": F, "vat_pct": F, "pay_days": I,
                                     "status": S, "start_date": D, "agreement_date": D, "contract_type": S, "pay_terms": S,
                                     "notes": S, "sort": I}),
     "subvos": (EstSubVO, "sub_id", {"on_date": D, "ref": S, "title": S, "amount": F}),
@@ -646,11 +648,28 @@ def sub_revised(s, vos):
 LOCKED_STATUS = ("Paid", "Invoiced")
 
 
+REC_MODES = {"": "In step with the work done", "pct": "A fixed % of the work done", "none": "Not recovered", "manual": "Typed on each certificate"}
+
+
+def sub_rec_rule(s):
+    """How a subcontract's advance is recovered: {mode, pct, from}.
+      ""     in step with the work done - the share of the advance taken back is the share of the work done
+             (work done x advance %: 20% of the work done = 20% of the advance back)
+      pct    a fixed % of the work done
+      none   not recovered
+      manual typed on each certificate
+    and from which PC no. (the certificates before it take nothing back)."""
+    mode = getattr(s, "adv_rec_mode", "") or ""
+    pct = getattr(s, "adv_rec_pct", None)
+    if not mode and pct is not None:                  # set before the modes came in: 0 = not recovered, a figure = fixed %
+        mode = "none" if not pct else "pct"
+    return {"mode": mode, "pct": (pct or 0) if mode == "pct" else (0 if mode == "none" else (s.adv_pct or 0)),
+            "from": max(1, int(getattr(s, "adv_rec_from", 1) or 1))}
+
+
 def sub_rec(s):
-    """The % of the work done the advance is recovered at: the subcontract's own recovery % if set (0 = the
-    advance is not recovered), else the advance %."""
-    r = getattr(s, "adv_rec_pct", None)
-    return s.adv_pct if r is None else r
+    """The % printed against 'Advance payment Recovery' on a certificate."""
+    return sub_rec_rule(s)["pct"]
 
 
 def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0, rec_pct=None):
@@ -662,11 +681,16 @@ def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0, rec_pct=
     work = getattr(pc, work_key) or 0
     var = getattr(pc, "var_cum", 0) or 0         # advance is recovered on the contract work; retention is held on work + variations
     adv_paid = prev_adv_paid + (pc.adv_amount or 0)
-    if pc.adv_auto:
-        if rec_pct is not None and not rec_pct:
+    rule = rec_pct if isinstance(rec_pct, dict) else None
+    if rule and rule["mode"] == "manual":
+        pass                                      # typed on each certificate: left as typed
+    elif pc.adv_auto:
+        if rule and (pc.seq or 1) < rule["from"]:
+            pc.adv_rec_cum = r2(getattr(pc, "_prev_rec", 0) or 0)   # recovery has not started yet: nothing more taken back
+        elif rule and rule["mode"] == "none":
             pc.adv_rec_cum = 0.0                  # the advance is not recovered on this subcontract
         else:
-            pct = (rec_pct if rec_pct is not None else adv_pct) or (100.0 * adv_paid / base if base else 0)
+            pct = (rule["pct"] if rule else adv_pct) or (100.0 * adv_paid / base if base else 0)
             pc.adv_rec_cum = r2(min(adv_paid, work * pct / 100.0)) if pct else r2(min(adv_paid, pc.adv_rec_cum or 0))
     if pc.ret_auto:
         pc.ret_cum = r2((work + var) * (ret_pct or 0) / 100.0)
@@ -680,9 +704,12 @@ def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=
     rows = sorted(pcs, key=lambda p: (p.seq or 0, p.id or 0))
     # Certificates up to the last paid one are history: a paid PC's amount depends on them all.
     last_locked = max([i for i, p in enumerate(rows) if (p.status or "") in LOCKED_STATUS] or [-1])
+    prev_rec = 0.0
     for i, pc in enumerate(rows):
         if fill and i > last_locked:
+            pc._prev_rec = prev_rec
             _auto_fill(pc, adv_paid, adv_pct, ret_pct, work_key, base, rec_pct)
+        prev_rec = pc.adv_rec_cum or 0
         adv_paid = r2(adv_paid + (pc.adv_amount or 0))
         work = r2(getattr(pc, work_key))
         var = r2(getattr(pc, "var_cum", 0) or 0)
@@ -1165,7 +1192,7 @@ def _refill_sub(db, sid):
     s = _sub_of(db, sid)
     pcs = db.query(EstSubPC).filter(EstSubPC.sub_id == sid).all()
     vos = db.query(EstSubVO).filter(EstSubVO.sub_id == sid).all()
-    chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct, fill=True, base=sub_revised(s, vos), rec_pct=getattr(s, "adv_rec_pct", None))
+    chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct, fill=True, base=sub_revised(s, vos), rec_pct=sub_rec_rule(s))
 
 
 def _refill_client(db, pid):
@@ -1246,6 +1273,8 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
     _apply(row, fields, data)
     if kind == "subs" and str(data.get("adv_rec_pct", "")).strip() in ("", "None"):
         row.adv_rec_pct = None                  # blank: recovered at the advance %
+    if kind == "subs" and "adv_rec_mode" in data and (row.adv_rec_mode or "") != "pct":
+        row.adv_rec_pct = None                  # only "a fixed %" uses the recovery %
     if kind == "boq":
         _boq_amount_in(row, data)
     for k, ty in fields.items():      # the table's defaults, before anything is worked out
@@ -1288,6 +1317,8 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
             for k in ("adv_auto", "ret_auto"):
                 if k not in data:
                     setattr(row, k, getattr(prev, k))
+        if sub_rec_rule(_sub_of(db, row.sub_id))["mode"] == "manual" and "adv_rec_cum" not in data:
+            row.adv_auto = False                  # typed on each certificate: starts from the last one's figure
         if row.received is None and "received" not in data:
             row.received = t
         if not row.status:
@@ -1408,6 +1439,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
     _apply(row, fields, data)
     if kind == "subs" and "adv_rec_pct" in data and str(data.get("adv_rec_pct")).strip() in ("", "None"):
         row.adv_rec_pct = None
+    if kind == "subs" and "adv_rec_mode" in data and (row.adv_rec_mode or "") != "pct":
+        row.adv_rec_pct = None                  # only "a fixed %" uses the recovery %
     if kind == "boq":
         _boq_amount_in(row, data)
     row.updated_by = user.id

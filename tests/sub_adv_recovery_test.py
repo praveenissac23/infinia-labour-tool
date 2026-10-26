@@ -32,4 +32,28 @@ c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_pct": 20})
 ck("set to 20%: 20,000 recovered", row()["adv_rec_cum"] == 20000, row()["adv_rec_cum"])
 c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_pct": ""})
 ck("emptied: back to the advance % (50,000)", sub()["adv_rec_pct"] is None and row()["adv_rec_cum"] == 50000, [sub()["adv_rec_pct"], row()["adv_rec_cum"]])
+# the modes: in step with the work done / fixed % / not recovered / typed, and from which PC
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_mode": "", "adv_rec_pct": ""})
+c.patch(f"/store/est/subpcs/{pc}", headers=H, json={"work_cum": 106800})        # 20% of 534,000 done
+ck("in step with the work done: 20% done = 20% of the 267,000 advance back (53,400)", row()["adv_rec_cum"] == 53400, row()["adv_rec_cum"])
+pc3 = c.post("/store/est/subpcs", headers=H, json={"sub_id": sid, "work_cum": 213600}).json()["id"]   # 40% done
+row3 = lambda: next(x for x in sub()["pcs"] if x["id"] == pc3)
+ck("next certificate at 40% done: 40% of the advance back to date (106,800)", row3()["adv_rec_cum"] == 106800, row3()["adv_rec_cum"])
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_from": 3})
+ck("recovery from PC 3: PC 2 takes nothing back", row()["adv_rec_cum"] == 0, row()["adv_rec_cum"])
+ck("...and PC 3 catches up with the work done (106,800)", row3()["adv_rec_cum"] == 106800, row3()["adv_rec_cum"])
+html = c.get(f"/export/est/pc/{pc}?token={c.post('/auth/download-token', headers=H).json()['token']}&format=preview").text
+m = re.search(r"Advance payment Recovery</td>\s*<td[^>]*>([^<]*)<", html)
+ck("PC 2 prints 0% (recovery not started)", m and m.group(1).strip() == "0%", m and m.group(1))
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_from": 1, "adv_rec_mode": "pct", "adv_rec_pct": 10})
+ck("a fixed 10% of the work done: PC 3 = 21,360", row3()["adv_rec_cum"] == 21360, row3()["adv_rec_cum"])
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_mode": "manual"})
+pc4 = c.post("/store/est/subpcs", headers=H, json={"sub_id": sid, "work_cum": 300000}).json()["id"]
+row4 = lambda: next(x for x in sub()["pcs"] if x["id"] == pc4)
+ck("typed on each certificate: a new PC starts from the last figure, not worked out", row4()["adv_rec_cum"] == 21360, row4()["adv_rec_cum"])
+c.patch(f"/store/est/subpcs/{pc4}", headers=H, json={"adv_rec_cum": 75000})
+ck("...and keeps what is typed", row4()["adv_rec_cum"] == 75000, row4()["adv_rec_cum"])
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_mode": "pct", "adv_rec_pct": 10})
+c.patch(f"/store/est/subs/{sid}", headers=H, json={"adv_rec_mode": "", "adv_rec_pct": 10, "adv_rec_from": 1})   # the form sends the hidden box too
+ck("switched back to 'in step with the work done' (a left-over % in the hidden box ignored)", sub()["adv_rec_pct"] is None and row3()["adv_rec_cum"] == 106800, [sub()["adv_rec_pct"], row3()["adv_rec_cum"]])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

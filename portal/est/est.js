@@ -609,6 +609,9 @@ SECTIONS["subs.reg"] = el => {
   const a = $("#add-sub", el); if (a) a.onclick = () => subForm();
   $$("[data-sub]", el).forEach(r => r.onclick = () => openSub(+r.dataset.sub));
 };
+function recMode(s) { return s.adv_rec_mode || (s.adv_rec_pct === 0 ? "none" : s.adv_rec_pct != null && s.adv_rec_pct !== undefined ? "pct" : ""); }
+function recShow() { const m = $("#f-adv_rec_mode"); if (!m) return; const f = $("#f-adv_rec_pct"); const box = f && (f.closest(".f") || f.parentElement); if (box) box.style.display = m.value === "pct" ? "" : "none";
+  const fr = $("#f-adv_rec_from"); const fb = fr && (fr.closest(".f") || fr.parentElement); if (fb) fb.style.display = m.value === "none" || m.value === "manual" ? "none" : ""; }
 function subForm(s, pre) {
   const m = ST.meta, edit = !!s; s = s || Object.assign({}, pre || {});
   let ag = null;                 // what was read from the agreement file (nothing of the file is kept)
@@ -627,9 +630,12 @@ function subForm(s, pre) {
     { k: "value", label: "Subcontract / LPO amount (AED)", type: "money", value: s.value ?? "", tip: "Before VAT. Variations are added later on the subcontract." },
     { k: "cancelled", label: "LPO cancellation (AED)", type: "money", value: s.cancelled || "" },
     { k: "adv_pct", label: "Advance %", type: "pct", value: s.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]], tip: "The advance paid on this subcontract, as a % of its value." },
-    { k: "adv_rec_pct", label: "Advance recovery %", type: "pct", value: s.adv_rec_pct ?? "", ph: "Same as the advance %",
-      quick: [["Same as advance", el => el.value = ""], ["None - not recovered", el => el.value = 0]],
-      tip: "How much of each certificate's work done is taken back against the advance, until it is all back. Empty: the same % as the advance. 0: the advance is not recovered from the certificates (printed as 0% on them)." },
+    { k: "adv_rec_mode", label: "How the advance is recovered", type: "select", noseg: true, value: recMode(s),
+      options: [["", "In step with the work done"], ["pct", "A fixed % of the work done"], ["none", "Not recovered"], ["manual", "Typed on each certificate"]],
+      tip: "In step with the work done: each certificate takes back the same share of the advance as the share of the work done (work done x advance %). A fixed %: that % of the work done, whatever the advance. Not recovered: nothing taken back (0% on the certificates). Typed: the QS types the amount on each certificate." },
+    { k: "adv_rec_pct", label: "Recovery % of the work done", type: "pct", value: s.adv_rec_pct ?? "", ph: "e.g. 20" },
+    { k: "adv_rec_from", label: "Start recovering from PC no.", type: "num", value: s.adv_rec_from || 1,
+      tip: "1 = from the first certificate. 2 = the first certificate takes nothing back, recovery starts with the second (catching up with the work done so far)." },
     { k: "ret_pct", label: "Retention % (required)", type: "pct", value: edit ? (s.ret_pct ?? 0) : (s.ret_pct ?? ""), ph: "Pick 0, 5% or 10%", quick: [["None (0)", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]], tip: "Held from each certificate as the agreement says - printed on the certificate. No retention: press None (0)." },
     { k: "vat_pct", label: "VAT %", type: "pct", value: s.vat_pct ?? 5, quick: [["5%", el => el.value = 5], ["0", el => el.value = 0]] },
     { k: "start_date", label: "Commencement date", type: "date", value: s.start_date || today() },
@@ -663,7 +669,7 @@ function subForm(s, pre) {
     await reload(); toast((edit ? "Saved" : "Subcontract added") + (n ? ` with its ${n}-line schedule` : ""));
     if (ST.openAfter) { openSub(ST.openAfter); ST.openAfter = null; }
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
-    after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); } });
+    after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); recShow(); const m = $("#f-adv_rec_mode"); if (m) m.addEventListener("change", recShow); } });
 }
 // Read from a document - on any Estimation form. The file is opened on this computer (portal/est/agreement.js);
 // only its words go to /store/est/read/<kind>, which finds the form's details. Nothing is uploaded or kept.
@@ -828,7 +834,7 @@ function openSub(sid) {
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
-      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}%${s.adv_rec_pct === 0 ? " (not recovered)" : s.adv_rec_pct != null && s.adv_rec_pct !== s.adv_pct ? ` (recovered at ${s.adv_rec_pct}%)` : ""} · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
+      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}%${({ none: " (not recovered)", manual: " (recovery typed on each PC)", pct: ` (recovered at ${s.adv_rec_pct}% of the work)` })[recMode(s)] || ""}${(s.adv_rec_from || 1) > 1 && !["none", "manual"].includes(recMode(s)) ? ` from PC ${s.adv_rec_from}` : ""} · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
     $("#s-inv").onclick = () => invoiceForm(s.id);
     const sa = $("#s-adv"); if (sa) sa.onclick = () => modal("Advance payment certificate", [
       { k: "adv_amount", label: "Advance amount (AED)", type: "money", value: s.adv_pct ? r2(s.value * s.adv_pct / 100) : "", focus: true,
@@ -919,8 +925,8 @@ function certifyForm(sid, pcid) {
     { k: "mos_cum", label: "Material on site to date", type: "money", value: p.mos_cum || "" },
     { k: "other_cum", label: "Other deductions to date", type: "money", value: p.other_cum || "", tip: "Back-charges, manpower supplied by us, damages ... to date." },
     { k: "other_note", label: "Deduction reason", type: "combo", value: p.other_note, options: ["Manpower supplied by main contractor", "Back-charge", "Material supplied", "Damages", "Rectification"] },
-    { k: "adv_rec_cum", label: `Advance recovered to date ${s.adv_rec_pct === 0 ? "(not recovered)" : (s.adv_rec_pct ?? s.adv_pct) ? "(" + (s.adv_rec_pct ?? s.adv_pct) + "%)" : ""}`, type: "money", value: p.adv_rec_cum || "",
-      tip: "Worked out from the recovery % on the subcontract. Typing a figure here fixes it for this certificate." },
+    { k: "adv_rec_cum", label: `Advance recovered to date ${({ none: "(not recovered)", manual: "(type it)", pct: "(" + s.adv_rec_pct + "% of the work)" })[recMode(s)] || (s.adv_pct ? "(" + s.adv_pct + "%)" : "")}`, type: "money", value: p.adv_rec_cum || "",
+      tip: "Worked out from how the advance is recovered on the subcontract. Typing a figure here fixes it for this certificate." },
     { k: "adv_auto", label: " ", type: "check", value: p.adv_auto, text: "Work it out from the %" },
     { k: "ret_cum", label: `Retention to date ${s.ret_pct ? "(" + s.ret_pct + "%)" : ""}`, type: "money", value: p.ret_cum || "" },
     { k: "ret_auto", label: " ", type: "check", value: p.ret_auto, text: "Work it out from the %" },

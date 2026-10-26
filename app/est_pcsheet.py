@@ -102,6 +102,18 @@ E.TABLES += [EstSubItem, EstPCLine, EstPCDeduct]
 
 # ---- money ----------------------------------------------------------------------------------
 
+
+def _rec_label(s, pc):
+    """The % printed against 'Advance payment Recovery': the subcontract's rule; typed on each certificate - the
+    share of the work done it comes to; before recovery starts - 0%."""
+    rule = E.sub_rec_rule(s)
+    if rule["mode"] == "none" or (pc.seq or 1) < rule["from"]:
+        return "0%"
+    if rule["mode"] == "manual":
+        w = (pc.work_cum or 0)
+        return f"{round(100.0 * (pc.adv_rec_cum or 0) / w, 2):g}%" if w and pc.adv_rec_cum else "0%"
+    return f"{rule['pct']:g}%" if rule["pct"] else "%"
+
 def item_amount(it):
     """The line amount as the agreement prints it; qty x rate only when no amount is given
     (3 x 6,539.45 is 19,618.34 on the 910 agreement - its rate has more decimals)."""
@@ -708,7 +720,7 @@ def build_doc(db, pc):
         "A": [("Value of Work Executed to Date", _dt(pc.measured_on), work), ("Value of Variations Executed to Date", _dt(pc.measured_on), var)],
         "A_total": total_exec,
         "B": [("Advance Payment", f"{s.adv_pct:g}%" if s.adv_pct else "%", adv_paid)],
-        "C": [("Advance payment Recovery", f"{E.sub_rec(s):g}%" if (s.adv_pct or getattr(s, "adv_rec_pct", None) is not None) else "%", r2(pc.adv_rec_cum)),
+        "C": [("Advance payment Recovery", _rec_label(s, pc), r2(pc.adv_rec_cum)),
               ("Retention", f"{(s.ret_pct or 0):g}%", r2(pc.ret_cum)),
               ("Material Supplied by the Main Contractor", "", cats["Material"]),
               ("Manpower Supplied by the Main Contractor", "", cats["Manpower"]),
