@@ -6662,7 +6662,10 @@ async function addSite() {
 // The list the purchase order suggests from.
 function refreshSiteList() {
   const dl = document.getElementById("site-list");
-  if (dl) dl.innerHTML = (sites || []).map(s => `<option value="${s.code}"></option>`).join("");
+  // The store first: most orders are delivered there.
+  const isStore = s => /store/i.test(s.code || "");
+  const list = [...(sites || []).filter(isStore), ...(sites || []).filter(s => !isStore(s))];
+  if (dl) dl.innerHTML = list.map(s => `<option value="${s.code}"></option>`).join("");
 }
 
 // Where a quantity is, as a list to choose from rather than a name to
