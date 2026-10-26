@@ -32,6 +32,7 @@
 .bar .s{display:flex;justify-content:space-between;font-size:12.5px;color:#555;margin-bottom:8px;gap:8px}
 .btn{display:block;width:100%;border:0;border-radius:11px;padding:13px;font:700 15px inherit;cursor:pointer;text-align:center}
 .ok{background:#2E8B57;color:#fff}.no{background:#fff;color:#C0392B;border:1px solid #E5D7D2;margin-top:8px;font-weight:600;font-size:14px;padding:11px}
+.row2{display:grid;grid-template-columns:1fr 1.6fr;gap:8px}.row2 .btn{margin-top:0}
 .btn:disabled{opacity:.6}
 .dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:7}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:18px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(0,0,0,.25)}
@@ -118,7 +119,7 @@ textarea{height:80px;resize:vertical}
       <div class="stamps">${D.stamps.map(x => `<span class="${x.back ? "back" : ""}">${x.back ? "&#8630; Sent back" : "&#10003; " + esc(x.s)} &middot; ${esc(x.by || "")}<small>${esc(when(x.at))}${x.note ? " - " + esc(x.note) : ""}</small></span>`).join("")}</div>${st}</div></div>
       <div class="pages" id="pages"><div class="msg">Loading the PDF...</div></div>
       ${D.can_act && !done[id] ? `<div class="bar"><div class="in"><div class="s"><span><b>${esc(D.sub)} &middot; PC ${String(D.seq).padStart(2, "0")}</b> &middot; ${esc(D.project)}</span><b>AED ${money(D.payable)}</b></div>
-        <button class="btn ok" id="b-ok">&#10003; ${esc(WORD[D.next] || "Approve")}</button><button class="btn no" id="b-no">&#10005; Reject - send back</button></div></div>` :
+        <div class="row2"><button class="btn no" id="b-no">&#10005; Reject</button><button class="btn ok" id="b-ok">&#10003; ${esc(WORD[D.next] || "Approve")}</button></div></div></div>` :
         (idx + 1 < n ? `<div class="bar"><div class="in"><button class="btn ok" id="b-next">Next certificate &rarr;</button></div></div>` : "")}`;
     if ($("#b-ok")) $("#b-ok").onclick = confirmOk;
     if ($("#b-no")) $("#b-no").onclick = reject;
