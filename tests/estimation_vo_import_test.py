@@ -53,8 +53,7 @@ def one(code, ref, title_start=""):
     p = db.query(E.EstProject).filter_by(code=code).one()
     # every line is now V01, V02 ...; the QS log's own number is kept in the remarks
     def was(v):
-        n = v.notes or ""
-        return not ref or n == f"QS log ref. {ref}" or n.startswith(f"QS log ref. {ref} - ") or (v.ref == ref and not n.startswith("QS log ref."))
+        return not ref or (v.qs_ref or "") == ref or (v.ref == ref and not v.qs_ref)
     return next(v for v in db.query(E.EstVariation).filter_by(project_id=p.id) if was(v) and v.title.startswith(title_start))
 v = one("911", "V11")
 ck("911 V11: submitted 175.79, revised and accepted -2,709.74 (credit kept as a minus)", (v.submitted_amount, v.revised_amount, v.approved_amount) == (175.79, -2709.74, -2709.74), (v.submitted_amount, v.approved_amount))

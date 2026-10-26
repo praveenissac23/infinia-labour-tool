@@ -13807,6 +13807,7 @@ try:
     estimation.renumber_variations(SessionLocal)     # every variation V01, V02 ... (once)
     estimation.fill_plots(SessionLocal)              # each project's plot no. from its site (once)
     estimation.migrate_pc_flow(SessionLocal)         # certificates on the old steps moved onto the new approval way (once)
+    estimation.drop_qs_log_refs(SessionLocal)        # "QS log ref. ..." taken off variation remarks (once)
     import est_bills
     est_bills.create_tables(engine)                  # Bills: formats and monthly bills
     import est_golive

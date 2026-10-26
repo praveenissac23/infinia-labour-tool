@@ -459,7 +459,7 @@ function renderProject() {
   document.body.dataset.ctx = "est." + key();          // which (i) notes apply (heads.js)
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
                   "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => pcMine(Object.assign({ sub: x }, p)) && STEPS.indexOf(p.status) >= 3).length, 0),
-                  "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "site.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
+                  "client.cpc": b.clientpcs.length, "client.vo": b.variations.filter(v => v.status !== "Cancelled").length, "site.vo": b.variations.filter(v => v.status !== "Cancelled").length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
   if (!GROUPS[ST.group] || !GROUPS[ST.group].secs.some(x => x[0] === ST.sec)) { ST.group = "home"; ST.sec = "dash"; }
@@ -500,7 +500,7 @@ function homeDash(el) {
       <div class="card"><h3>Variations<span class="go" data-go="site.vo">Open</span></h3>
         <div class="vs"><div><span>Approved</span><b class="ok">${money(sum(vs("Approved"), "approved_amount"), false)}</b><small class="muted">${vs("Approved").length} lines</small></div>
           <div><span>Waiting</span><b>${money(sum(vs("Submitted"), "submitted_amount"), false)}</b><small class="muted">${vs("Submitted").length} submitted</small></div>
-          <div><span>Absorbed</span><b>${money(sum(b.variations, "absorbed_amount"), false)}</b><small class="muted">${vs("Absorbed").length} lines</small></div>
+          <div><span>Absorbed</span><b>${money(sum(b.variations.filter(v => v.status !== "Cancelled"), "absorbed_amount"), false)}</b><small class="muted">${vs("Absorbed").length} lines</small></div>
           <div><span>To price</span><b>${vs("Identified").length}</b><small class="muted">identified</small></div></div>
         <h3 style="margin-top:16px">Client payment certificates</h3>
         ${b.clientpcs.length ? `<div class="tw"><table class="t"><thead><tr><th>IPA</th><th>Period to</th><th class="r">Certified</th><th>Status</th></tr></thead><tbody>${b.clientpcs.slice(-4).reverse().map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="muted small">None yet.</div>'}
@@ -1315,12 +1315,12 @@ function cpcForm(c) {
 }
 
 // ---------------- Overview > variations ----------------
-const VO_ST = ["Identified", "Submitted", "Approved", "Rejected", "Absorbed", "Claimed"];
+const VO_ST = ["Identified", "Submitted", "Approved", "Rejected", "Absorbed", "Claimed", "Cancelled"];
 SECTIONS["client.vo"] = el => {
   const b = ST.b, f = filt();
   const list = b.variations.filter(v => (!f || v.status === f) && match(v));
   const n = s => b.variations.filter(v => v.status === s).length;
-  const sum = (k, s) => r2(b.variations.filter(v => (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
+  const sum = (k, s) => r2(b.variations.filter(v => v.status !== "Cancelled" && (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
   const absorbed = sum("absorbed_amount");
   const fig = (l, v, c, tip) => `<div class="fig ${c || ""}" ${tip ? `title="${esc(tip)}"` : ""}><div class="l">${l}</div><div class="v">${aed(v)}</div></div>`;
   el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>`,
@@ -1333,6 +1333,7 @@ SECTIONS["client.vo"] = el => {
   $("#imp-vo", el).onclick = () => fi.click();
   fi.onchange = () => { if (fi.files[0]) voImport(fi.files[0]); fi.value = ""; };
   $$("[data-vo]", el).forEach(r => r.onclick = e => { if (e.target.closest("button")) return; voForm(b.variations.find(v => v.id === +r.dataset.vo)); });
+  $$("[data-vrestore]", el).forEach(x => x.onclick = async () => { try { const r = await POST(`/store/est/variations/${x.dataset.vrestore}/cancel`, { restore: true }); await reload(); toast(`Restored as ${r.ref} - the numbers after it moved down`); } catch (e) { fail(e); } });
   $$("[data-vst]", el).forEach(x => x.onclick = async () => { const [id, s] = x.dataset.vst.split(":"); const d = { status: s }; if (s === "Submitted") d.submitted = today(); try { await PATCH(`/store/est/variations/${id}`, d); await reload(); toast(s); } catch (e) { fail(e); } });
   $$("[data-vapp]", el).forEach(x => x.onclick = () => { const v = b.variations.find(y => y.id === +x.dataset.vapp);
     const base = v.revised_amount || v.submitted_amount;
@@ -1343,13 +1344,19 @@ SECTIONS["client.vo"] = el => {
 // fixed columns, every figure lined up, a subtotal per group and the grand total.
 function voTable(list) {
   const m = v => v ? money(v, false) : '<span class="dash">-</span>';
-  const groups = [["Variations", list.filter(v => v.kind !== "Coordination" && v.status !== "Absorbed")],
-                  ["Absorbed by Infinia - not added to the contract", list.filter(v => v.kind !== "Coordination" && v.status === "Absorbed")],
-                  ["Coordination, builders' work & attendance (OHP)", list.filter(v => v.kind === "Coordination")]].filter(g => g[1].length);
+  const live = list.filter(v => v.status !== "Cancelled");
+  const groups = [["Variations", live.filter(v => v.kind !== "Coordination" && v.status !== "Absorbed")],
+                  ["Absorbed by Infinia - not added to the contract", live.filter(v => v.kind !== "Coordination" && v.status === "Absorbed")],
+                  ["Coordination, builders' work & attendance (OHP)", live.filter(v => v.kind === "Coordination")],
+                  ["Cancelled - not counted, no number", list.filter(v => v.status === "Cancelled")]].filter(g => g[1].length);
   const tot = rows => ({ sub: r2(rows.reduce((a, v) => a + (v.submitted_amount || 0), 0)), rev: r2(rows.reduce((a, v) => a + (v.revised_amount || 0), 0)),
                          app: r2(rows.filter(v => v.status === "Approved").reduce((a, v) => a + (v.approved_amount || 0), 0)), abs: r2(rows.reduce((a, v) => a + (v.absorbed_amount || 0), 0)) });
   const cols = 8;
   const row = v => { const rem = (v.notes || "").split("\n").filter(Boolean)[0] || "";
+    if (v.status === "Cancelled") return `<tr class="rowc vcan" data-vo="${v.id}" style="opacity:.75"><td class="ref small muted">Cancelled</td>
+      <td class="desc"><div class="t1" style="text-decoration:line-through">${esc(v.title)}</div><div class="t2" style="color:#9B2C20">${dt(v.cancelled_on)}: ${esc(v.cancel_note)}</div>${rem ? `<div class="t2" title="${esc(v.notes)}">${esc(rem)}</div>` : ""}</td>
+      <td class="r muted" style="text-decoration:line-through">${v.submitted_amount ? money(v.submitted_amount, false) : ""}</td><td></td><td></td><td></td><td></td>
+      <td>${st("Cancelled")}<div class="va"><button class="btn btn-plain btn-sm" data-vrestore="${v.id}" title="Bring it back on the log (it takes its number again)">Restore</button></div></td></tr>`;
     return `<tr class="rowc" data-vo="${v.id}"><td class="ref">${v.ref ? esc(v.ref) : '<span class="dash">-</span>'}</td>
       <td class="desc"><div class="t1">${esc(v.title)}${v.kind === "Omission" ? ' <span class="om">omission</span>' : ""}${v.contract_id && CTRS().length ? ` <span class="ctag">${esc(ctrName(v.contract_id))}</span>` : ""}</div>${rem ? `<div class="t2" title="${esc(v.notes)}">${esc(rem)}</div>` : ""}</td>
       <td class="r">${m(v.submitted_amount)}${v.submitted ? `<div class="dd">${dt(v.submitted)}</div>` : ""}</td><td class="r">${m(v.revised_amount)}</td>
@@ -1358,10 +1365,10 @@ function voTable(list) {
       <td>${st(v.status)}${v.status === "Identified" ? `<div class="va"><button class="btn btn-ghost btn-sm" data-vst="${v.id}:Submitted" title="Sent to the client today">Mark submitted</button></div>` : v.status === "Submitted" ? `<div class="va"><button class="btn btn-ok btn-sm" data-vapp="${v.id}">Approved</button><button class="btn btn-plain btn-sm" data-vst="${v.id}:Rejected">Rejected</button></div>` : ""}</td></tr>`; };
   const z = v => v ? money(v, false) : "";
   const sumRow = (label, t, cls) => `<tr class="${cls}"><td></td><td>${label}</td><td class="r">${z(t.sub)}</td><td class="r">${z(t.rev)}</td><td class="r">${z(t.app)}</td><td class="r">${z(t.abs)}</td><td></td><td></td></tr>`;
-  const all = tot(list.filter(v => v.kind !== "Coordination"));
+  const all = tot(live.filter(v => v.kind !== "Coordination"));
   return `<div class="tw"><table class="t vlog"><colgroup><col style="width:74px"><col><col style="width:120px"><col style="width:112px"><col style="width:120px"><col style="width:104px"><col style="width:84px"><col style="width:178px"></colgroup>
     <thead><tr><th>Ref.</th><th>Description</th><th class="r">Submitted</th><th class="r">Revised</th><th class="r">Approved</th><th class="r">Absorbed</th><th class="c">PC ref.</th><th>Status</th></tr></thead><tbody>
-    ${groups.map(([title, rows]) => `<tr class="grp"><td colspan="${cols}">${esc(title)} <span>${rows.length}</span></td></tr>${rows.map(row).join("")}${groups.length > 1 ? sumRow("Subtotal", tot(rows), "sub") : ""}`).join("")}
+    ${groups.map(([title, rows]) => `<tr class="grp"><td colspan="${cols}">${esc(title)} <span>${rows.length}</span></td></tr>${rows.map(row).join("")}${groups.length > 1 && !title.startsWith("Cancelled") ? sumRow("Subtotal", tot(rows), "sub") : ""}`).join("")}
     ${sumRow("Total" + (groups.some(g => g[0].startsWith("Coord")) ? " (coordination left out)" : ""), all, "tot")}
     </tbody></table></div>`;
 }
@@ -1399,14 +1406,23 @@ function voForm(v) {
     { k: "approved_amount", label: "Approved amount (AED)", type: "money", value: v.approved_amount || "" },
     { k: "absorbed_amount", label: "Absorbed amount (AED)", type: "money", value: v.absorbed_amount || "" },
     { k: "pc_ref", label: "Claimed in PC", type: "combo", options: [...new Set([...ST.b.clientpcs.map(c => `PC ${pad(c.seq, 2)}`), ...ST.b.variations.map(x => x.pc_ref).filter(Boolean)])], value: v.pc_ref || "", ph: "Pick the PC" },
-    { k: "status", label: "Status", type: "select", options: VO_ST, value: v.status || "Identified", tip: "Submitted / Approved fill today's date in their box when it is empty." },
+    { k: "status", label: "Status", type: "select", options: v.status === "Cancelled" ? VO_ST : VO_ST.filter(x => x !== "Cancelled"), value: v.status || "Identified", tip: "Submitted / Approved fill today's date in their box when it is empty." },
     { k: "sub_id", label: "Passed to subcontractor", type: "select", options: [["", "-"], ...ST.b.subs.map(s => [s.id, s.name])], value: v.sub_id || "" },
     { k: "notes", label: "Remarks", type: "area", value: v.notes || "" },
   ], async d => { if (!d.submitted) d.submitted = null; if (!d.approved_on) d.approved_on = null; d.on_date = d.submitted || v.on_date || today(); if (v.id) await PATCH(`/store/est/variations/${v.id}`, d); else await POST("/store/est/variations", Object.assign(d, { project_id: ST.pid })); await reload(); toast("Saved"); },
   { wide: true, doc: { kind: "variation", what: "cost proposal or variation letter", want: [["title", "Description"], ["submitted_amount", "Submitted amount"]] }, del: v.id ? async () => { await DEL(`/store/est/variations/${v.id}`); reload(); } : null,
-    after: () => { const st_ = $("#f-status"); if (st_) st_.addEventListener("input", () => {
+    extra: v.id && v.status !== "Cancelled" ? `<button class="btn btn-plain" id="m-vcancel" title="Keep it on the log with a note, struck out - not counted and not numbered; the ones after it move up">Cancel variation</button>` : "",
+    after: () => { const cb = $("#m-vcancel"); if (cb) cb.onclick = () => voCancel(v);
+      const st_ = $("#f-status"); if (st_) st_.addEventListener("input", () => {
       if (st_.value === "Submitted" && !$("#f-submitted").value) $("#f-submitted").value = today();
       if (st_.value === "Approved") { if (!$("#f-approved_on").value) $("#f-approved_on").value = today(); if (!$("#f-approved_amount").value) $("#f-approved_amount").value = $("#f-revised_amount").value || $("#f-submitted_amount").value; } }); } });
+}
+// Cancel a variation: kept on the log with its note, not counted, no number - the ones after it move up.
+function voCancel(v) {
+  modal(`Cancel ${v.ref || vref(v.seq)} - ${v.title}`, [
+    { k: "note", label: "Why it is cancelled (kept on the log)", value: "", focus: true, full: true, quick: [["Implemented before the portal", el => el.value = "Implemented before the portal"], ["Submitted twice", el => el.value = "Submitted twice"], ["Withdrawn", el => el.value = "Withdrawn"]] },
+  ], async d => { if (!d.note) throw new Error("Say why it is cancelled (one line)."); await POST(`/store/est/variations/${v.id}/cancel`, { note: d.note }); await reload(); toast(`${v.ref || "Variation"} cancelled - the ones after it are renumbered`); },
+  { save: "Cancel variation", top: `<div class="small muted" style="margin-bottom:8px">It stays on the log, struck out with your note. It counts in no total and takes no number - ${esc(v.ref || "")} goes, and the variations after it move up (e.g. V05 becomes V04).</div>` });
 }
 // Variation numbers: V01, V02 ... in the order they are made (the server gives the same number).
 function vref(n) { return "V" + String(+n || 0).padStart(2, "0"); }

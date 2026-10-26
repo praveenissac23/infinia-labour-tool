@@ -253,10 +253,14 @@ class EstVariation(Base):
     revised_amount = Column(Float, default=0.0)     # what it came down to after the talks (before acceptance)
     absorbed_amount = Column(Float, default=0.0)    # cost Infinia carries itself - never added to the contract
     pc_ref = Column(String, default="")             # where it was claimed (e.g. "Item VII", "V06")
-    status = Column(String, default="Identified")   # Identified | Submitted | Approved | Rejected | Absorbed | Claimed
+    status = Column(String, default="Identified")   # Identified | Submitted | Approved | Rejected | Absorbed | Claimed | Cancelled
     sub_id = Column(Integer, nullable=True)
     contract_id = Column(Integer, nullable=True, index=True)   # which contract (only when the project has several)
     notes = Column(Text, default="")
+    cancel_note = Column(String, default="")       # cancelled: why (e.g. done before the portal) - not counted, not numbered
+    cancelled_on = Column(Date, nullable=True)
+    prev_status = Column(String, default="")       # the status it had before it was cancelled (to restore it)
+    qs_ref = Column(String, default="")            # the QS log's own number (CP01, OHP-1) - kept, not shown
     locals().update(_audit())
 
 
@@ -662,7 +666,7 @@ KINDS = {
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
-                                                "status": S, "sub_id": I, "notes": S, "contract_id": I}),
+                                                "status": S, "sub_id": I, "notes": S, "contract_id": I, "cancel_note": S, "cancelled_on": D, "prev_status": S}),
     "contracts": (EstContract, "project_id", {"name": S, "ref": S, "value": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "sort": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
                                    "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
@@ -2119,6 +2123,70 @@ def renumber_variations(SessionLocal):
         db.close()
 
 
+def renumber_project_vos(db, pid):
+    """The project's variations numbered V01, V02 ... in their order - a cancelled one takes no number (and
+    the ones after it move up), so the log has no gap."""
+    n = 0
+    for v in db.query(EstVariation).filter(EstVariation.project_id == pid).order_by(EstVariation.seq, EstVariation.id).all():
+        if (v.status or "") == "Cancelled":
+            v.seq, v.ref = 0, ""
+            continue
+        n += 1
+        v.seq, v.ref = n, vref(n)
+
+
+@router.post("/store/est/variations/{rid}/cancel")
+def cancel_variation(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Cancel a variation with a note (e.g. "Implemented before the portal"): it stays in the log, struck out with
+    its note, counts in no total and takes no number - the ones after it move up (V05 becomes V04)."""
+    v = db.query(EstVariation).get(rid)
+    if not v:
+        raise HTTPException(404, "That variation is not there any more.")
+    if data.get("restore"):
+        if (v.status or "") != "Cancelled":
+            return {"ok": True}
+        v.status = v.prev_status or "Identified"
+        v.cancel_note, v.cancelled_on, v.prev_status = "", None, ""
+        v.seq = 10 ** 6                           # back at the end of the log, then numbered
+    else:
+        note = str(data.get("note") or "").strip()[:300]
+        if not note:
+            raise HTTPException(400, "Say why it is cancelled (one line) - it is kept on the log.")
+        if (v.status or "") != "Cancelled":
+            v.prev_status = v.status or ""
+        v.status, v.cancel_note, v.cancelled_on = "Cancelled", note, today()
+    v.updated_by = user.id
+    db.flush()
+    renumber_project_vos(db, v.project_id)
+    db.add(models.AuditLog(user_id=user.id, action="est_vo_cancel", details=f"variation #{v.id} {v.title[:60]}: " + ("restored" if data.get("restore") else f"cancelled - {v.cancel_note}")))
+    db.commit()
+    return {"ok": True, "ref": v.ref, "status": v.status}
+
+
+def drop_qs_log_refs(SessionLocal):
+    """Once: the "QS log ref. CP01 - " put in front of variation remarks taken out (not wanted on the log)."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_vo_qsref_gone").first():
+            return
+        n = 0
+        for v in db.query(EstVariation).filter(EstVariation.notes.like("QS log ref.%")).all():
+            m = re.match(r"^QS log ref\.\s*(\S+)(\s+-\s+|\s*$)", v.notes or "")
+            if m:
+                v.qs_ref = v.qs_ref or m.group(1)[:60]
+                v.notes = (v.notes or "")[m.end():].strip()
+            n += 1
+        db.add(models.Setting(key="est_vo_qsref_gone", value="1"))
+        db.commit()
+        if n:
+            print(f"QS log refs taken off {n} variation remarks")
+    except Exception as e:
+        db.rollback()
+        print("QS log refs:", e)
+    finally:
+        db.close()
+
+
 def _vo_rows_in(db, p, rows, user_id, cid=None):
     """Puts parsed variation rows on the project, numbered after what is there."""
     seq = _next_seq(db, EstVariation, project_id=p.id) - 1
@@ -2129,8 +2197,8 @@ def _vo_rows_in(db, p, rows, user_id, cid=None):
             setattr(v, k, x.get(k) or "")
         v.ref = vref(seq)
         old = str(x.get("ref") or "").strip()
-        if old and old.upper() != v.ref:        # the QS log's own number kept in the remarks
-            v.notes = (f"QS log ref. {old}" + (f" - {v.notes}" if v.notes else ""))[:4000]
+        if old and old.upper() != v.ref:        # the QS log's own number kept out of sight
+            v.qs_ref = old[:60]
         for k in ("submitted_amount", "revised_amount", "approved_amount", "absorbed_amount"):
             setattr(v, k, r2(x.get(k)))
         for k in ("submitted", "approved_on"):
@@ -2461,8 +2529,16 @@ def _export_rows(db, what, p, q, status, sub_id):
     elif what == "variations":
         title = "Variation log"
         money = ["Submitted amount", "Revised amount", "Approved amount", "Absorbed amount"]
-        for v in b["variations"]:
+        for v in sorted(b["variations"], key=lambda v: ((v["status"] == "Cancelled"), v["seq"] or 0)):
             sub = next((s["name"] for s in b["subs"] if s["id"] == v["sub_id"]), "")
+            if v["status"] == "Cancelled":
+                r = {"Ref.": "Cancelled", "Description": v["title"], "Type": v["kind"], "Source": v["source"], "Submitted": _d(v["submitted"]),
+                     "Submitted amount": "", "Revised amount": "", "Approved on": "", "Approved amount": "", "Absorbed amount": "",
+                     "Claimed in PC": "", "Subcontractor": sub, "Status": "Cancelled",
+                     "Remarks": " - ".join(t for t in (f"Cancelled {_d(v.get('cancelled_on'))}: {v.get('cancel_note') or ''}", v["notes"] or "") if t)}
+                if keep(r, v["status"]):
+                    rows.append(r)
+                continue
             r = {"Ref.": v["ref"] or vref(v["seq"]), "Description": v["title"], "Type": v["kind"], "Source": v["source"],
                  "Submitted": _d(v["submitted"]), "Submitted amount": v["submitted_amount"], "Revised amount": v["revised_amount"],
                  "Approved on": _d(v["approved_on"]), "Approved amount": v["approved_amount"], "Absorbed amount": v["absorbed_amount"],
