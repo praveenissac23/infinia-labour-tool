@@ -74,6 +74,16 @@
       var cs = realCells[i] && getComputedStyle(realCells[i]);
       if (cs) PROPS.forEach(function (k) { c.style.setProperty(k, cs.getPropertyValue(k)); });
       c.style.position = "static"; c.removeAttribute("draggable");
+      // what is inside the heading keeps its own look too (a heading folded onto two lines by its screen's
+      // style: without this the pinned copy put it on one line and it ran into the next column)
+      if (realCells[i]) {
+        var rk = realCells[i].querySelectorAll("*"), ck = c.querySelectorAll("*");
+        for (var j = 0; j < rk.length && j < ck.length; j++) {
+          var ks = getComputedStyle(rk[j]);
+          ["display", "max-width", "white-space", "line-height", "vertical-align", "margin-left", "margin-right"].forEach(function (k) { ck[j].style.setProperty(k, ks.getPropertyValue(k)); });
+        }
+      }
+      c.style.overflow = "hidden";
       [].slice.call(c.attributes).forEach(function (at) { if (/^data-/.test(at.name) && at.name !== "data-tip") c.removeAttribute(at.name); });
     });
     var bg = getComputedStyle(realCells[0] || thead).backgroundColor;
