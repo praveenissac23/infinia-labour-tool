@@ -12,15 +12,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const meta = await api('/store/est/meta'); const P = meta.projects.find(x => x.code === '922');
   let b0 = await api(`/store/est/projects/${P.id}`);
   const allPcs = b0 => b0.subs.flatMap(s => s.pcs);
-  if (!allPcs(b0).some(x => x.status === 'With Accounts')) {      // a certificate waiting with Accounts (no test data on the app since go-live)
+  if (!allPcs(b0).some(x => x.status === 'MD approved')) {      // a certificate waiting with Accounts (no test data on the app since go-live)
     const sid = (await api('/store/est/subs', { method: 'POST', body: { project_id: P.id, name: 'Subpay Link Test Contracting', scope: 'Tiling', value: 100000, ret_pct: 10, vat_pct: 5, status: 'Active' } })).id;
     const pid = (await api('/store/est/subpcs', { method: 'POST', body: { sub_id: sid, inv_ref: 'SLT-1', inv_amount: 21000, work_cum: 20000, adv_auto: false, ret_auto: false, ret_cum: 2000 } })).id;
     const d = new Date().toISOString().slice(0, 10);
     await api(`/store/est/subpcs/${pid}`, { method: 'PATCH', body: { certified_on: d, issued: d } });
-    for (const step of ['Certified', 'PC issued', 'With Accounts']) await api(`/store/est/subpcs/${pid}/step`, { method: 'POST', body: { step } });
+    for (const step of ['Certified', 'Prepared', 'CM approved', 'Verified', 'MD approved']) await api(`/store/est/subpcs/${pid}/step`, { method: 'POST', body: { step } });
     b0 = await api(`/store/est/projects/${P.id}`);
   }
-  const subs = b0.subs, pc = allPcs(b0).find(x => x.status === 'With Accounts');
+  const subs = b0.subs, pc = allPcs(b0).find(x => x.status === 'MD approved');
   ck('a certificate is waiting with Accounts on 922', !!pc);
   const sub = subs.find(s => s.id === pc.sub_id);
   const paidBefore = (b0.subs.find(s => s.id === sub.id) || {}).paid || 0;

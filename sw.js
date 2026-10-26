@@ -237,6 +237,8 @@ self.addEventListener("push", e => {
 self.addEventListener("notificationclick", e => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || "/";
+  // a page of its own (a certificate to approve): opened straight there, not through the dashboard
+  if (!/^\/(\?|$)/.test(url)) { e.waitUntil(self.clients.openWindow(url)); return; }
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of all) {

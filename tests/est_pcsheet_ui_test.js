@@ -29,9 +29,10 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   await p.click('#s-inv'); await sleep(300); await p.fill('#f-inv_ref', '1GB/585/04/2025'); await p.fill('#f-inv_amount', '35912'); await p.click('#m-save'); await sleep(1200);
   await p.click('#d-x'); await sleep(200); await goSec(p, 'subs.inv'); await sleep(500);
   const pc = (await api(`/store/est/projects/${P}`)).subs.find(x => x.id === sid).pcs.at(-1);
-  await p.click(`[data-next="${pc.id}"]`); await sleep(800);          // Back from site
-  await p.click(`[data-next="${pc.id}"]`); await sleep(1200);         // Certify -> the sheet
-  ck('Certify opens the full sheet (the subcontract has a schedule)', await p.isVisible('#big') && (await p.textContent('#b-title')).includes('PC 05'));
+  await p.click(`[data-pc="${pc.id}"][data-to="Certified"]`); await sleep(500);   // certified at site
+  await p.click('#m-save'); await sleep(1000);
+  await p.click(`[data-pc="${pc.id}"][data-to="open"]`); await sleep(1200);       // Open PC -> the sheet
+  ck('Open PC opens the full sheet (the subcontract has a schedule)', await p.isVisible('#big') && (await p.textContent('#b-title')).includes('PC 05'));
   const qs = await p.$$('[data-k="qty"][data-l]');
   await qs[0].fill('1'); await qs[1].fill('26.8'); await qs[2].fill('1'); await sleep(200);
   ck('live: work to date 257,820.00', (await p.textContent('#calcbox')).includes('257,820.00'));
@@ -51,7 +52,7 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   ck('live: net 34,202.00, VAT 1,710.10, total AED 35,912.10', calc.includes('34,202.00') && calc.includes('1,710.10') && calc.includes('35,912.10'), calc);
   ck('the invoice difference is flagged (35,912.00 vs 35,912.10)', calc.includes('difference'));
   await p.screenshot({ path: SH + 'sheet.png' });
-  await p.click('#sh-cert'); await sleep(1500);
+  await p.click('#sh-cert, #sh-cert2'); await sleep(1500);
   const srv = await api(`/store/est/subpcs/${pc.id}/sheet`);
   ck('saved & certified: the server agrees (34,202.00 / 35,912.10)', srv.pc.status === 'Certified' && Math.abs(srv.calc.this - 34202) < .01 && Math.abs(srv.calc.payable - 35912.1) < .01, srv.calc);
   await p.click('[data-sign="prep"]'); await sleep(900);

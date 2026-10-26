@@ -195,14 +195,20 @@ ck("checked before prepared is refused", r.status_code == 400)
 c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "site"}, headers=QS)
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "prep"}, headers=QS).json()
 ck("prepared: the QS's name and today's date", r["pc"]["prep_by"] == "Arathi.S" and r["pc"]["prep_on"] == E.today().isoformat() and r["pc"]["verified_by"] == "Arathi.S")
-r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "rev"}, headers=QS)
-ck("only Accounts signs as reviewed", r.status_code == 403)
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "rev"}, headers=ACC)
-ck("Accounts signs as reviewed", r.status_code == 200 and r.json()["pc"]["rev_by"] == "Shafeeq", r.text[:200])
+ck("Accounts verifies only after the contracts manager has approved", r.status_code == 400, r.text[:200])
+r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "chk"}, headers=ACC)
+ck("only the contracts manager approves (not Accounts)", r.status_code == 403, r.text[:200])
+r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "chk"}, headers=MGR)
+ck("approved for the contracts manager (by the admin)", r.status_code == 200 and r.json()["pc"]["chk_by"] == "Praveen", r.text[:200])
+r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "rev"}, headers=QS)
+ck("only Accounts verifies", r.status_code == 403)
+r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "rev"}, headers=ACC)
+ck("Accounts verifies", r.status_code == 200 and r.json()["pc"]["rev_by"] == "Shafeeq", r.text[:200])
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "app"}, headers=QS)
-ck("only the manager approves", r.status_code == 403)
+ck("only the Managing Director (admin) approves", r.status_code == 403)
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "app"}, headers=MGR)
-ck("the manager approves", r.status_code == 200 and r.json()["pc"]["app_by"] == "Praveen")
+ck("the Managing Director approves", r.status_code == 200 and r.json()["pc"]["app_by"] == "Praveen" and r.json()["pc"]["status"] == "MD approved")
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "prep", "undo": True}, headers=ACC)
 ck("someone else can't take off the QS's signature", r.status_code in (400, 403))
 
@@ -211,7 +217,7 @@ tok = c.post("/auth/download-token", headers=QS).json()
 tok = tok.get("token") or tok.get("download_token")
 for name, pid, want in [("910", None, ["33,053.90", "34,706.60", "159,906.76", "28,742.73", "18,864.95", "IPC - 01 to IPC - 04"]),
                         ("913", None, ["34,202.00", "35,912.10", "6,623.00", "5,944.00", "1,584.00", "Not deducted"]),
-                        ("915", pc12, ["9,738.75", "10,225.69", "10,588.75", "Arathi.S", "Shafeeq", "Praveen", "Verified at site"])]:
+                        ("915", pc12, ["9,738.75", "10,225.69", "10,588.75", "ARATHI.S", "SHAFEEQ", "PRAVEEN", "MANAGING", "Verified at site"])]:
     if pid is None:
         sid = {"910": s910, "913": s913}[name]
         pid = max(x.id for x in db.query(E.EstSubPC).filter_by(sub_id=sid).all())

@@ -177,7 +177,7 @@ function prevPcForm(x, keepSub) {
     { k: "ret_rel_cum", label: "Retention released to date", type: "money", value: f.ret_rel_cum ?? "" },
     { k: "other_cum", label: "Deductions to date (material, manpower, plant, other)", type: "money", value: f.other_cum ?? "" },
     { k: "other_note", label: "Deduction details", value: f.other_note || "", full: true },
-    { k: "status", label: "Status now", type: "select", options: ["Paid", "With Accounts", "PC issued"], value: "Paid" },
+    { k: "status", label: "Status now", type: "select", options: [["Paid", "Paid"], ["MD approved", "Approved - to pay"], ["Prepared", "Prepared - waiting for approval"]], value: "Paid" },
     { k: "paid_on", label: "Paid on", type: "date", value: "" },
     { k: "paid_amount", label: "Amount paid (AED)", type: "money", value: f.total ?? "", tip: "The total amount due on the certificate (with VAT) - change it if a different amount was paid." },
     { k: "remarks", label: "Remarks", type: "area", full: true, value: `Previous record: ${x.file.name}${f.agreement ? " · agreement " + f.agreement : ""}` },
@@ -226,7 +226,7 @@ function prevPcForm(x, keepSub) {
     if (d.adv_amount < 0) d.adv_amount = 0;
     if (!d.seq) delete d.seq;
     d.certified_on = d.issued || null;
-    if (d.status !== "PC issued") d.to_accounts = d.issued || null;
+    if (d.status !== "Prepared") d.to_accounts = d.issued || null;
     if (d.status !== "Paid") { d.paid_on = null; d.paid_amount = 0; }
     // the certificate rounds its total to the dirham (10,225.69 -> 10,226.00): paid as the app works it out, so nothing
     // is left over or overpaid by the fils of the rounding; the certificate's own total is kept in the remarks

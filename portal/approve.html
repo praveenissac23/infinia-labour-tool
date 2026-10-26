@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- A payment certificate to approve, opened straight from the link (WhatsApp) or the phone notification:
+     the PDF itself - every page, pinch to zoom - and Approve / Reject fixed below it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#22262A">
+<title>Approve - Infinia</title>
+<link rel="icon" href="/portal/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+*{box-sizing:border-box}html,body{margin:0}body{background:#E9E6E1;font:14px/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#22262A}
+.top{position:sticky;top:0;z-index:5;background:#22262A;color:#fff;padding:10px 14px calc(10px);padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px}
+.top b{flex:1;font-size:14.5px}.top small{color:#bbb;font-weight:400}.top a,.top button{color:#fff;background:#C0392B;border:0;border-radius:7px;padding:6px 11px;font:600 13px inherit;text-decoration:none;cursor:pointer}
+.top .x{background:transparent;font-size:20px;padding:0 4px}
+.info{max-width:900px;margin:10px auto 0;padding:0 10px}
+.card{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h1{font-size:15px;margin:0}.card .m{color:#6B7178;font-size:12.5px;margin-top:2px}
+.amt{font-size:18px;font-weight:800;margin-top:4px}
+.stamps{display:flex;flex-wrap:wrap;gap:4px 5px;margin-top:8px}
+.stamps span{border:1.2px solid #2E8B57;color:#1E6B3A;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;line-height:1.35}
+.stamps span.back{border-color:#C0392B;color:#B42318}
+.stamps small{font-weight:500;color:#5b6b60;margin-left:3px}
+.state{margin-top:10px;padding:9px 12px;border-radius:9px;font-size:13px;font-weight:600}
+.state.wait{background:#FFF1D6;color:#7A5200}.state.done{background:#E3F4E4;color:#1E5B2A}.state.bad{background:#FBE0DE;color:#7A1F16}
+.pages{max-width:900px;margin:10px auto;padding:0 8px 190px}
+.pages canvas{display:block;width:100%;height:auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.16);margin:0 auto 10px;border-radius:2px}
+.msg{text-align:center;color:#666;padding:30px 10px}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;box-shadow:0 -4px 18px rgba(0,0,0,.15);padding:10px 12px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+.bar .in{max-width:640px;margin:0 auto}
+.bar .s{display:flex;justify-content:space-between;font-size:12.5px;color:#555;margin-bottom:8px;gap:8px}
+.btn{display:block;width:100%;border:0;border-radius:11px;padding:13px;font:700 15px inherit;cursor:pointer;text-align:center}
+.ok{background:#2E8B57;color:#fff}.no{background:#fff;color:#C0392B;border:1px solid #E5D7D2;margin-top:8px;font-weight:600;font-size:14px;padding:11px}
+.btn:disabled{opacity:.6}
+.dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:7}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:18px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(0,0,0,.25)}
+.sheet .in{max-width:640px;margin:0 auto}.sheet h2{margin:0 0 4px;font-size:17px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.chips span{border:1px solid #E5D7D2;border-radius:18px;padding:6px 11px;font-size:13px;color:#7A2E22;cursor:pointer}
+textarea,select,input{width:100%;border:1px solid #DDD3CB;border-radius:9px;padding:10px;font:14px inherit}
+textarea{height:80px;resize:vertical}
+.lg{max-width:360px;margin:60px auto;background:#fff;border-radius:14px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+.lg h2{margin:0 0 4px}.lg input{margin-top:10px}.lg label{display:flex;gap:6px;align-items:center;font-size:13px;color:#555;margin:10px 0}.lg label input{width:auto;margin:0}
+.err{color:#B42318;font-size:13px;margin-top:6px;min-height:18px}
+.donebox{max-width:420px;margin:60px auto;text-align:center;padding:20px}
+.donebox .c{width:76px;height:76px;border-radius:50%;background:#2E8B57;color:#fff;font-size:40px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.donebox .c.r{background:#C0392B}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="top"><b id="t-title">For approval</b><a id="t-pdf" class="hide" target="_blank" rel="noopener">PDF</a><button class="x" id="t-close" title="Close">&times;</button></div>
+<div id="app"><div class="msg">Opening...</div></div>
+<script src="/portal/vendor/pdf-3.11.174.min.js"></script>
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const money = v => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const when = t => { if (!t) return ""; const d = new Date(t); return isNaN(d) ? t : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + t.slice(11, 16); };
+  let TOKEN = null;
+  try { TOKEN = sessionStorage.getItem("infinia_token") || localStorage.getItem("infinia_keep"); } catch (e) {}
+  const q = new URLSearchParams(location.search);
+  let ids = (q.get("pc") || "").split(",").map(x => parseInt(x, 10)).filter(x => x > 0);
+  let idx = 0, done = {}, D = null;
+  $("#t-close").onclick = () => { if (history.length > 1) history.back(); else location.href = "/"; };
+
+  async function api(url, opt) {
+    opt = opt || {};
+    const r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: "Bearer " + TOKEN }, opt.body ? { "Content-Type": "application/json" } : {}) }));
+    if (r.status === 401) { const e = new Error("signin"); e.signin = true; throw e; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "Could not do that (" + r.status + ").");
+    return j;
+  }
+
+  function login(msg) {
+    $("#t-title").innerHTML = "Sign in to approve";
+    $("#app").innerHTML = `<div class="lg"><h2>Infinia</h2><div style="color:#666;font-size:13px">${esc(msg || "Sign in once on this phone - it stays signed in.")}</div>
+      <input id="lg-u" placeholder="Username" autocomplete="username" autocapitalize="none"><input id="lg-p" type="password" placeholder="Password" autocomplete="current-password">
+      <label><input type="checkbox" id="lg-k" checked> Keep me signed in on this device</label><button class="btn ok" id="lg-go">Sign in</button><div class="err" id="lg-e"></div></div>`;
+    const go = async () => {
+      $("#lg-e").textContent = "";
+      try {
+        const r = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ username: $("#lg-u").value.trim(), password: $("#lg-p").value, remember: $("#lg-k").checked ? "1" : "0" }) });
+        if (!r.ok) { $("#lg-e").textContent = "Wrong username or password."; return; }
+        TOKEN = (await r.json()).access_token;
+        try { sessionStorage.setItem("infinia_token", TOKEN); if ($("#lg-k").checked) { localStorage.setItem("infinia_keep", TOKEN); localStorage.setItem("infinia_keep_tick", "1"); } } catch (e) {}
+        show();
+      } catch (e) { $("#lg-e").textContent = "Could not reach the server."; }
+    };
+    $("#lg-go").onclick = go; $("#lg-p").onkeydown = e => { if (e.key === "Enter") go(); };
+    $("#lg-u").focus();
+  }
+
+  const WORD = { "MD approved": "Approve", "CM approved": "Approve", "Verified": "Verified" };
+  const BACKTO = [["Certified", "QS (to prepare again)"], ["Prepared", "Contracts manager"], ["CM approved", "Accounts (to verify again)"]];
+
+  async function show() {
+    if (!ids.length) { $("#app").innerHTML = `<div class="msg">No certificate in this link.</div>`; return; }
+    if (!TOKEN) return login();
+    const id = ids[idx];
+    $("#app").innerHTML = `<div class="msg">Opening the certificate...</div>`;
+    try { D = await api(`/store/est/subpcs/${id}/approval`); }
+    catch (e) { if (e.signin) return login("Your sign-in has run out - sign in again."); $("#app").innerHTML = `<div class="msg">${esc(e.message)}</div>`; return; }
+    // the others waiting at the same desk come after the ones in the link
+    (D.others || []).forEach(o => { if (!ids.includes(o)) ids.push(o); });
+    const n = ids.length;
+    $("#t-title").innerHTML = `For approval <small>&middot; ${idx + 1} of ${n}</small>`;
+    const st = done[id] ? `<div class="state done">${esc(done[id])}</div>` :
+      D.can_act ? "" : (D.status === "Paid" ? `<div class="state done">Paid - nothing to approve.</div>` :
+        D.next ? `<div class="state wait">Waiting on ${esc(D.waiting)} - not your step.</div>` :
+        `<div class="state done">Now: ${esc(D.status)}${D.waiting ? " - with " + esc(D.waiting) : ""}.</div>`);
+    $("#app").innerHTML = `<div class="info"><div class="card"><h1>${esc(D.sub)} &middot; PC ${String(D.seq).padStart(2, "0")}${D.pc_type && D.pc_type !== "Interim" ? " (" + esc(D.pc_type) + ")" : ""}</h1>
+      <div class="m">${esc(D.project)} ${esc(D.project_name || "")} &middot; ${esc(D.scope || "")}${D.inv_ref ? " &middot; Inv. " + esc(D.inv_ref) : ""}</div>
+      <div class="amt">AED ${money(D.payable)}</div>
+      <div class="stamps">${D.stamps.map(x => `<span class="${x.back ? "back" : ""}">${x.back ? "&#8630; Sent back" : "&#10003; " + esc(x.s)} &middot; ${esc(x.by || "")}<small>${esc(when(x.at))}${x.note ? " - " + esc(x.note) : ""}</small></span>`).join("")}</div>${st}</div></div>
+      <div class="pages" id="pages"><div class="msg">Loading the PDF...</div></div>
+      ${D.can_act && !done[id] ? `<div class="bar"><div class="in"><div class="s"><span><b>${esc(D.sub)} &middot; PC ${String(D.seq).padStart(2, "0")}</b> &middot; ${esc(D.project)}</span><b>AED ${money(D.payable)}</b></div>
+        <button class="btn ok" id="b-ok">&#10003; ${esc(WORD[D.next] || "Approve")}</button><button class="btn no" id="b-no">&#10005; Reject - send back</button></div></div>` :
+        (idx + 1 < n ? `<div class="bar"><div class="in"><button class="btn ok" id="b-next">Next certificate &rarr;</button></div></div>` : "")}`;
+    if ($("#b-ok")) $("#b-ok").onclick = confirmOk;
+    if ($("#b-no")) $("#b-no").onclick = reject;
+    if ($("#b-next")) $("#b-next").onclick = () => { idx++; show(); };
+    pdf(id);
+  }
+
+  async function pdf(id) {
+    const box = $("#pages");
+    try {
+      const t = await api("/auth/download-token", { method: "POST" });
+      const url = `/export/est/pc/${id}?token=${encodeURIComponent(t.token || t.download_token)}&format=pdf`;
+      const a = $("#t-pdf"); a.href = url; a.classList.remove("hide");
+      const L = window.pdfjsLib; L.GlobalWorkerOptions.workerSrc = "/portal/vendor/pdf.worker-3.11.174.min.js";
+      const doc = await L.getDocument({ url, isEvalSupported: false }).promise;
+      box.innerHTML = "";
+      const dpr = Math.min(window.devicePixelRatio || 1, 2) * 1.6;      // drawn sharper than the screen: zooming in stays crisp
+      for (let i = 1; i <= doc.numPages; i++) {
+        const pg = await doc.getPage(i), w = box.clientWidth || innerWidth - 16, v1 = pg.getViewport({ scale: 1 });
+        const vp = pg.getViewport({ scale: Math.min(w, 900) / v1.width * dpr }), c = document.createElement("canvas");
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); box.appendChild(c);
+        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+      }
+    } catch (e) { box.innerHTML = `<div class="msg">The PDF could not be shown here - tap <b>PDF</b> at the top to open it.</div>`; }
+  }
+
+  function sheet(html) {
+    const d = document.createElement("div"); d.innerHTML = `<div class="dim"></div><div class="sheet"><div class="in">${html}</div></div>`;
+    document.body.appendChild(d); d.querySelector(".dim").onclick = () => d.remove(); return d;
+  }
+
+  function confirmOk() {
+    const s = sheet(`<h2>${esc(WORD[D.next] || "Approve")} ${esc(D.sub)} PC ${String(D.seq).padStart(2, "0")}?</h2>
+      <div style="color:#666;font-size:13px">AED ${money(D.payable)} &middot; approved digitally as ${esc(D.me)} - the stamp goes on the certificate with the date and time.</div>
+      <button class="btn ok" id="c-go" style="margin-top:14px">Confirm</button><button class="btn no" id="c-x">Cancel</button>`);
+    s.querySelector("#c-x").onclick = () => s.remove();
+    s.querySelector("#c-go").onclick = async e => {
+      e.target.disabled = true;
+      try { await api(`/store/est/subpcs/${D.id}/step`, { method: "POST", body: JSON.stringify({ step: D.next }) }); s.remove(); finished(true); }
+      catch (x) { if (x.signin) return login(); e.target.disabled = false; alertIn(s, x.message); }
+    };
+  }
+
+  function reject() {
+    const cur = ["Received", "At site", "Certified", "Prepared", "CM approved", "Verified", "MD approved", "Paid"].indexOf(D.status);
+    const opts = BACKTO.filter(([k]) => ["Received", "At site", "Certified", "Prepared", "CM approved", "Verified", "MD approved", "Paid"].indexOf(k) < cur);
+    const s = sheet(`<h2>Send back - ${esc(D.sub)} PC ${String(D.seq).padStart(2, "0")}</h2>
+      <div class="chips">${["Hold this month", "Check the deductions", "Check the figures", "Talk to me first"].map(x => `<span>${esc(x)}</span>`).join("")}</div>
+      <textarea id="r-note" placeholder="Why it goes back (one line)"></textarea>
+      <div style="margin-top:10px;font-size:13px;color:#555">Send back to</div><select id="r-to">${opts.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+      <button class="btn ok" id="r-go" style="margin-top:14px;background:#C0392B">Send back</button><button class="btn no" id="r-x">Cancel</button>`);
+    s.querySelectorAll(".chips span").forEach(c => c.onclick = () => { const t = s.querySelector("#r-note"); t.value = t.value ? t.value + " - " + c.textContent : c.textContent; });
+    s.querySelector("#r-x").onclick = () => s.remove();
+    s.querySelector("#r-go").onclick = async e => {
+      const note = s.querySelector("#r-note").value.trim();
+      if (!note) { alertIn(s, "Say why it goes back (one line)."); return; }
+      e.target.disabled = true;
+      try { await api(`/store/est/subpcs/${D.id}/step`, { method: "POST", body: JSON.stringify({ back: true, to: s.querySelector("#r-to").value, note }) }); s.remove(); finished(false); }
+      catch (x) { if (x.signin) return login(); e.target.disabled = false; alertIn(s, x.message); }
+    };
+  }
+
+  function alertIn(s, m) { let e = s.querySelector(".err"); if (!e) { e = document.createElement("div"); e.className = "err"; s.querySelector(".in").appendChild(e); } e.textContent = m; }
+
+  function finished(ok) {
+    done[D.id] = ok ? "Done - " + (WORD[D.next] === "Verified" ? "verified" : "approved") + " by you." : "Sent back.";
+    const left = ids.filter((x, i) => i !== idx && !done[x]);
+    const nextI = ids.findIndex((x, i) => i > idx && !done[x]);
+    window.scrollTo(0, 0);
+    $("#app").innerHTML = `<div class="donebox"><div class="c ${ok ? "" : "r"}">${ok ? "&#10003;" : "&#8630;"}</div>
+      <h2 style="margin:0">${ok ? (WORD[D.next] === "Verified" ? "Verified" : "Approved") : "Sent back"}</h2>
+      <div style="color:#666;margin:6px 0 18px">${esc(D.sub)} PC ${String(D.seq).padStart(2, "0")} &middot; AED ${money(D.payable)}<br>${ok ? (D.next === "MD approved" ? "Accounts has been told - it is in their To pay list." : "The next person has been told.") : "It is back with them, with your note."}</div>
+      ${nextI >= 0 ? `<button class="btn ok" id="d-next">Next certificate &rarr;</button><div style="color:#888;font-size:12.5px;margin-top:8px">${left.length} more waiting</div>` : `<button class="btn ok" id="d-home">Done</button>`}</div>`;
+    if ($("#d-next")) $("#d-next").onclick = () => { idx = nextI; show(); };
+    if ($("#d-home")) $("#d-home").onclick = () => { location.href = "/"; };
+    $("#t-pdf").classList.add("hide");
+  }
+
+  show();
+})();
+</script>
+</body>
+</html>

@@ -22,7 +22,7 @@
 import io
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -423,15 +423,9 @@ def _who(user):
     return (user.full_name or user.username or "").strip()
 
 
-def _can(user, role):
-    perms = set(E.M.effective_permissions(user))
-    if user.role == "admin":
-        return True
-    if role == "rev":
-        return "accounts_bank" in perms
-    if role == "app":
-        return False
-    return E.RIGHT in perms
+def _can(user, role, db=None):
+    can = E.pc_roles(user, E._rules(db) if db is not None else E.DEFAULT_RULES)[0]
+    return {"site": "site", "prep": "qs", "chk": "cm", "rev": "acc", "app": "md"}.get(role) in can
 
 
 def _real(v):
@@ -497,7 +491,7 @@ def sheet(db, pc, user=None):
         "locked": _is_locked(pcs, pc),
     }
     if user is not None:
-        out["me"] = {"name": _who(user), "admin": user.role == "admin", "can": {r: _can(user, r) for r in ("site", "prep", "chk", "rev", "app")}}
+        out["me"] = {"name": _who(user), "admin": user.role == "admin", "can": {r: _can(user, r, db) for r in ("site", "prep", "chk", "rev", "app")}}
     return out
 
 
@@ -589,32 +583,36 @@ def put_sheet(rid: int, data: dict = Body(...), db: Session = Depends(get_db), u
 
 SIGN = {"site": ("verified_by", "verified_on"), "prep": ("prep_by", "prep_on"), "chk": ("chk_by", "chk_on"),
         "rev": ("rev_by", "rev_on"), "app": ("app_by", "app_on")}
+SIGN_STEP = {"site": "Certified", "prep": "Prepared", "chk": "CM approved", "rev": "Verified", "app": "MD approved"}
 
 
 @router.post("/store/est/subpcs/{rid}/sign")
 def sign(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = PAYER):
-    """One click: prepared / checked / reviewed by Accounts / approved / verified
-    at site - the name and today's date go on the certificate."""
+    """A sign-off on the certificate sheet is the certificate's step: prepared (QS), approved (contracts manager),
+    verified (Accounts), approved (MD) - the same as the button in the invoice tracker."""
     pc = db.query(E.EstSubPC).get(rid)
     if not pc:
         raise HTTPException(404, "That certificate is not there any more.")
     role = data.get("role")
     if role not in SIGN:
         raise HTTPException(400, "Unknown sign-off.")
-    if not _can(user, role):
-        raise HTTPException(403, {"rev": "Only Accounts can sign as reviewed.", "app": "Only the manager (admin) approves."}.get(role, "Not allowed."))
-    by, on = SIGN[role]
+    step = SIGN_STEP[role]
     if data.get("undo"):
-        if getattr(pc, by) and getattr(pc, by) != _who(user) and user.role != "admin":
-            raise HTTPException(400, f"Signed by {getattr(pc, by)} - only they or an admin can take it off.")
-        setattr(pc, by, "")
-        setattr(pc, on, None)
+        if pc.status == step:
+            E.pc_step(rid, {"step": step, "undo": True}, db, user)
+        elif role == "site" and user.role == "admin" or (role == "site" and pc.verified_by == _who(user)):
+            pc.verified_by, pc.verified_on = "", None
+            db.commit()
+        else:
+            raise HTTPException(400, "It has moved on past that step - undo the later steps first.")
     else:
-        if role in ("chk", "rev", "app") and not pc.prep_by:
-            raise HTTPException(400, "The QS signs it as prepared first.")
-        setattr(pc, by, _who(user))
-        setattr(pc, on, E.today())
-    db.commit()
+        if role == "site" and pc.status not in ("Received", "At site"):
+            if not pc.verified_by:
+                pc.verified_by, pc.verified_on = _who(user), E.today()
+                db.commit()
+        else:
+            E.pc_step(rid, {"step": step}, db, user)
+    db.refresh(pc)
     return sheet(db, pc, user)
 
 
@@ -730,8 +728,7 @@ def build_doc(db, pc):
         "D": [("Retention Release", "", r2(pc.ret_rel_cum))], "mos": r2(pc.mos_cum),
         "E": e_lines, "E_total": r2(c["prev_net"]),
         "net": c["this"], "vat_pct": s.vat_pct or 0, "vat": c["vat"], "payable": c["payable"],
-        "sign": [("Prepared By", pc.prep_by, pc.prep_on), ("Checked By", pc.chk_by, pc.chk_on), ("Reviewed By Accounts", pc.rev_by, pc.rev_on),
-                 ("Approved By Manager", pc.app_by, pc.app_on), ("Subcontractor", "", None)],
+        "sign": sign_boxes(pc), "paid_line": paid_line(pc),
         "verified": (pc.verified_by, pc.verified_on),
         "changed": sum(1 for b in bills for r in b["rows"] if r["chg"]),
         "changed_note": (lambda n: "" if not n else (f"Shaded: the {n} line{'s' if n > 1 else ''} claimed on this certificate (the first one)." if not prev else
@@ -743,6 +740,38 @@ def build_doc(db, pc):
         "deds": deds, "inv": {"ref": pc.inv_ref or "", "date": _dt(pc.inv_date), "amount": r2(pc.inv_amount), "received": _dt(pc.received), "lines": inv_lines},
         "sub_name": s.name, "pc_seq": pc.seq or 0, "date": _dt(pc.issued or pc.certified_on or E.today()),
     }
+
+
+def _stamp_time(pc, step, d):
+    """The date and time a step was done (from the certificate's own record), else the day."""
+    for x in reversed(E.flow_of(pc)):
+        if x.get("s") == step and not x.get("undo") and not x.get("back") and x.get("at"):
+            try:
+                return datetime.fromisoformat(x["at"]).strftime("%d-%b-%Y %H:%M")
+            except ValueError:
+                break
+    return _dt(d)
+
+
+def sign_boxes(pc):
+    """The boxes at the foot of the certificate: a stamp for each step done - who, as what, when. The Managing
+    Director approves digitally (no name, no drawn signature). (title, word, name, role, when)"""
+    adv = not pc.verified_by and (pc.pc_type or "Interim") != "Interim" and pc.prep_by
+    return [("Certified at site", "CERTIFIED", pc.verified_by or ("In the office" if adv else ""), "Site" if pc.verified_by else "",
+             _stamp_time(pc, "Certified", pc.verified_on) if pc.verified_by else ""),
+            ("Prepared by", "PREPARED", pc.prep_by, "Quantity Surveyor", _stamp_time(pc, "Prepared", pc.prep_on) if pc.prep_by else ""),
+            ("Approved by", "APPROVED", pc.chk_by, "Contracts Manager", _stamp_time(pc, "CM approved", pc.chk_on) if pc.chk_by else ""),
+            ("Verified by", "VERIFIED", pc.rev_by, "Accounts", _stamp_time(pc, "Verified", pc.rev_on) if pc.rev_by else ""),
+            ("Approved by", "APPROVED", "Managing Director" if pc.app_by else "", "Digitally approved", _stamp_time(pc, "MD approved", pc.app_on) if pc.app_by else ""),
+            ("Subcontractor", "", "", "", "")]
+
+
+def paid_line(pc):
+    if (pc.status or "") != "Paid":
+        return ""
+    bits = [f"Paid on {_dt(pc.paid_on)}"] + ([f"ref. {pc.paid_ref}"] if pc.paid_ref else []) + ([f"by {pc.paid_by}"] if pc.paid_by else []) + \
+        [f"AED {_m(pc.paid_amount, False)}"]
+    return " · ".join(bits)
 
 
 def line_changes(ln, pv):
@@ -907,14 +936,24 @@ def render_pdf(doc):
     t = Table(body, colWidths=[7 * mm, tw - 7 * mm - 30 * mm - 34 * mm, 30 * mm, 34 * mm])
     t.setStyle(TableStyle(styles))
     el += [t, Spacer(1, 3 * mm)]
-    sig = [[P(a, stb) for a, _, _ in doc["sign"]],
-           [P(("Name: " + n) if n else "Name:") for _, n, _ in doc["sign"]],
-           [P(("Date: " + _dt(o)) if o else "Date:") for _, _, o in doc["sign"]],
-           [P("signed in the portal" if n else "Sign:", sts) for _, n, _ in doc["sign"]]]
-    t = Table(sig, colWidths=[tw / 5] * 5)
+    stamp_st = ParagraphStyle("stp", fontName="Helvetica", fontSize=7, leading=8.6, textColor=colors.black)      # ink-saving: black
+    stamp_md = stamp_st
+
+    def stamp(word, name, role, when, md=False):
+        if not name:
+            return P("Sign:" if not word else "", sts)
+        lines = ([f"<b>{word}</b>"] if word else []) + [f"<b>{X(name.upper())}</b>"] + ([X(role)] if role else []) + ([X(when)] if when else [])
+        return Paragraph("<br/>".join(lines), stamp_md if md else stamp_st)
+    n = len(doc["sign"])
+    sig = [[P(a, stb) for a, *_ in doc["sign"]],
+           [stamp(w, nm, r, wh, i == 4) for i, (_, w, nm, r, wh) in enumerate(doc["sign"])]]
+    t = Table(sig, colWidths=[tw / n] * n)
     t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), .5, LINE), ("INNERGRID", (0, 0), (-1, -1), .3, LINE), ("BACKGROUND", (0, 0), (-1, 0), TINT),
-                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
-    el.append(KeepTogether([t]))
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 1), (-1, 1), "TOP")]))
+    parts = [t]
+    if doc.get("paid_line"):
+        parts.append(Paragraph(X(doc["paid_line"]), ParagraphStyle("pl", fontName="Helvetica-Bold", fontSize=7.5, textColor=colors.black, spaceBefore=3)))
+    el.append(KeepTogether(parts))
     # Appendix A
     if doc["bills"]:
         el += [NextPageTemplate("L"), PageBreak()]
@@ -1057,7 +1096,12 @@ def render_html(doc, pdf_url):
             f"<tr class='b netrow'><td></td><td colspan=2>Net Amount Due for Payment (A + B - C + D - E)</td><td class=r>{_m(doc['net'], False)}</td></tr>"
             f"<tr class=b><td></td><td colspan=2>VAT ({doc['vat_pct']:g}%)</td><td class=r>{_m(doc['vat'], False)}</td></tr>"
             f"<tr class='b pay'><td></td><td colspan=2>Total Amount Due for Payment</td><td class=r>AED {_m(doc['payable'], False)}</td></tr>")
-    sig = "".join(f"<div><b>{e(a)}</b><br>Name: {e(n)}<br>Date: {_dt(o)}<br><span class=m>{'signed in the portal' if n else 'Sign:'}</span></div>" for a, n, o in doc["sign"])
+    sig = "".join(f"<div><b>{e(a)}</b>" + (f"<span class='stp{' md' if i == 4 else ''}'>{('<b>&#10003; ' + e(w) + '</b><br>') if w else ''}<b>{e(nm.upper())}</b><br>{e(r)}{('<br>' + e(wh)) if wh else ''}</span>" if nm else
+                  ("<br><span class=m>Sign:</span>" if not w else "<br><span class=m>-</span>")) + "</div>" for i, (a, w, nm, r, wh) in enumerate(doc["sign"]))
+    if doc.get("paid_line"):
+        sig_after = f"<p class=paidl>{e(doc['paid_line'])}</p>"
+    else:
+        sig_after = ""
     if doc["bills"]:
         ae = "<section class='pg wide'><h2>Appendix - A &nbsp; Value of Work done &amp; Variations</h2>"
         if doc["changed_note"]:
@@ -1133,7 +1177,8 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .ctr th{{text-align:left;padding:2px 8px 2px 0;white-space:nowrap}} .ctr td{{padding:2px 0}}
 .ce{{border:1px solid #C9CDD2}} .ce td{{padding:3px 6px}} .ce .sh td{{background:#F7F2F1;font-weight:700}} .ce .b td{{font-weight:700}} .ce .netrow td{{border-top:1.5px solid #222}} .ce{{table-layout:fixed}} .ce .pay td{{background:#FDF0EE;font-size:13px}}
 .r{{text-align:right;white-space:nowrap}} .c{{text-align:center;white-space:nowrap}}
-.sig{{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #C9CDD2;margin-top:10px}} .sig div{{padding:6px;border-left:1px solid #C9CDD2;line-height:1.5}} .sig div:first-child{{border-left:0}}
+.stp{{display:block;margin-top:4px;color:#22262A;font-size:10.5px;line-height:1.4}} .stp b{{font-weight:700}} .paidl{{font-weight:700;margin:6px 0 0}}
+.sig{{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid #C9CDD2;margin-top:10px}} .sig div{{padding:6px;border-left:1px solid #C9CDD2;line-height:1.5}} .sig div:first-child{{border-left:0}}
 .m{{color:#6B7178;font-size:10.5px}} .tw{{overflow-x:auto}}
 .t tr.mv td{{background:#FFFBEB}} .t tr.mv td.chg{{background:#FDF1C7}} .t tr.mv td:first-child{{box-shadow:inset 3px 0 0 #E0B84C}} .mvkey{{font-size:10.5px;color:#6B5A1E;margin:-2px 0 6px}} .mvkey i{{display:inline-block;width:11px;height:11px;background:#FDF1C7;border:1px solid #E0B84C;vertical-align:-1px;margin-right:4px}}
 @media print{{.t tr.mv td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
@@ -1148,7 +1193,7 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 <table class="hd"><tr><td style="width:62%;vertical-align:top;padding:0"><table>{rows(doc['head_l'])}</table></td><td style="vertical-align:top;padding:0"><table>{rows(doc['head_r'])}</table></td></tr></table>
 <div class="two"><div><b>Main Contractor Details</b>{'<br>'.join(e(x) for x in doc['main'])}</div><div><b>Subcontractor Details</b>{'<br>'.join(e(x) for x in doc['subc'])}</div></div>
 <div class="ctr"><div><table>{''.join(f'<tr><th>{e(k)}</th><td>{e(v)}</td></tr>' for k, v in doc['contract'] if k and v)}</table></div><div><b>Payment Terms</b><br>{terms}</div></div>
-<table class="ce"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:140px"></colgroup>{cert}</table><div class="sig">{sig}</div></section>
+<table class="ce"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:140px"></colgroup>{cert}</table><div class="sig">{sig}</div>{sig_after}</section>
 {(ae + '<div style="height:14px"></div>' + appb + appc + appd + '</section>') if ae else ('<section class="pg">' + appb + appc + appd + '</section>')}</body></html>"""
 
 

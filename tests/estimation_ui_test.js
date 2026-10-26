@@ -47,11 +47,13 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   await p.click('#d-x'); await sleep(200);
   // invoice tracker: next-step buttons
   await goSec(p, 'subs.inv'); await sleep(400);
-  await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(900);
+  const btn = (id, to) => p.click(`[data-pc="${id}"][data-to="${to}"]`);
+  await btn(sub.pcs[1].id, 'Certified'); await sleep(400);
+  await p.fill('#f-by', 'Akhil'); await p.click('#m-save'); await sleep(900);
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
-  ck('one click: back from site', sub.pcs[1].status === 'Back from site', sub.pcs[1].status);
-  await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(500);
-  ck('Certify opens the certificate form', await p.isVisible('#f-work_cum'));
+  ck('one click: certified at site, by the site engineer named', sub.pcs[1].status === 'Certified' && sub.pcs[1].verified_by === 'Akhil', sub.pcs[1].status);
+  await btn(sub.pcs[1].id, 'open'); await sleep(500);
+  ck('Open PC opens the certificate form', await p.isVisible('#f-work_cum'));
   await p.click('[data-q="work_cum:1"]'); await sleep(200);   // 25%
   const shown = await p.$$eval('#calc tr', rs => rs.map(r => r.textContent));
   const payTxt = shown.find(t => t.startsWith('Amount payable')) || '';
@@ -62,11 +64,14 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
   ck('server agrees with the live figures', sub.pcs[1].payable === 42000 && sub.pcs[1].status === 'Certified', sub.pcs[1]);
   await p.screenshot({ path: SH + 'tracker.png' });
-  await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(800);
-  await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(800);
+  for (const to of ['Prepared', 'CM approved', 'Verified', 'MD approved']) {
+    await btn(sub.pcs[1].id, to); await sleep(900);
+    if (to === 'Verified') ck('verified: asks to tell the MD on WhatsApp, the link in the message', await p.isVisible('#modal') && /approve\.html\?pc=/.test(await p.textContent('#m-body')));
+    if (await p.isVisible('#modal')) { await p.click('#m-cancel'); await sleep(200); }
+  }
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
-  ck('PC issued, then with Accounts', sub.pcs[1].status === 'With Accounts', sub.pcs[1].status);
-  await p.click(`[data-next="${sub.pcs[1].id}"]`); await sleep(300);
+  ck('prepared, approved, verified, MD approved (the admin may press each)', sub.pcs[1].status === 'MD approved', sub.pcs[1].status);
+  await btn(sub.pcs[1].id, 'Paid'); await sleep(300);
   ck('Mark paid prefilled with the payable', (await p.inputValue('#f-amount')) === '42000');
   await p.fill('#f-ref', 'TT-55'); await p.click('#m-save'); await sleep(900);
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
@@ -74,10 +79,10 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   // undo with the arrow
   await p.click(`[data-undo="${sub.pcs[1].id}"]`); await sleep(800);
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
-  ck('back one step with the arrow', sub.pcs[1].status === 'With Accounts' && sub.pcs[1].paid_amount === 0);
+  ck('back one step with the arrow', sub.pcs[1].status === 'MD approved' && sub.pcs[1].paid_amount === 0);
   // chips filter
-  await p.click('[data-f="With Accounts"]'); await sleep(300);
-  ck('status chip filters the list', (await p.$$('[data-next]')).length === 1);
+  await p.click('[data-f="MD approved"]'); await sleep(300);
+  ck('status chip filters the list', (await p.$$('tr[data-row]')).length === 1);
   // ---- finalization: click to cycle ----
   await goSec(p, 'subs.final'); await sleep(400);
   const cell = await p.$('[data-fc$=":st"]');

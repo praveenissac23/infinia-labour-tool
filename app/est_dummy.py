@@ -245,10 +245,10 @@ def _subs(db, add, p, i, ago, S):
         items1.append(add(S.EstSubItem(sub_id=s1.id, sort=n, no=no, description=d, ref=ref, qty=q, unit=u, rate=r, amount=E.r2(q * r), measure="size")))
     v1 = add(S.EstSubItem(sub_id=s1.id, sort=99, no="1", description="Additional glass handrail at staircase", ref="GH", qty=14.65, unit="m", rate=860, amount=12600.0,
                           measure="size", is_var=True, var_ref="V01"))
-    pc_adv = add(E.EstSubPC(sub_id=s1.id, seq=1, pc_type="Advance", inv_ref="Advance", adv_amount=E.r2(186450 * .1), status="Certified", certified_on=ago(140),
+    pc_adv = add(E.EstSubPC(sub_id=s1.id, seq=1, pc_type="Advance", inv_ref="Advance", adv_amount=E.r2(186450 * .1), status="Prepared", certified_on=ago(140),
                             issued=ago(139), measured_on=ago(140), prep_by="Arathi.S", prep_on=ago(140), chk_by="Anoop.S", chk_on=ago(139)))
     pc2 = add(E.EstSubPC(sub_id=s1.id, seq=2, inv_ref="GL/INV/0412", inv_date=ago(62), inv_amount=78000, received=ago(60), to_site=ago(59), site_back=ago(55),
-                         certified_on=ago(52), issued=ago(51), to_accounts=ago(50), status="Certified", measured_on=ago(56),
+                         certified_on=ago(52), issued=ago(51), to_accounts=ago(50), status="Prepared", measured_on=ago(56),
                          verified_by="Febiyans Lucas", verified_on=ago(55), prep_by="Arathi.S", prep_on=ago(52), chk_by="Anoop.S", chk_on=ago(51),
                          rev_by="Shafeeq", rev_on=ago(50), app_by="Praveen", app_on=ago(50), remarks="Progressive payment"))
     for it, (w, h, pct) in zip(items1, [(5.1, 3.5, 40), (3.0, 3.0, 40), (4.5, 7.5, 55), (0.95, 1.2, 40), (0, 0, 0), (0, 0, 0)]):
@@ -276,10 +276,10 @@ def _subs(db, add, p, i, ago, S):
             n += 1
             it2.append(add(S.EstSubItem(sub_id=s2.id, sort=n, bill=bill, bill_title=title, no=no, description=d, qty=1, unit="LS", amount=amt, measure="pct")))
     v2 = add(S.EstSubItem(sub_id=s2.id, sort=99, no="1", description="Additional DB for future gym", qty=1, unit="LS", amount=6500, measure="pct", is_var=True, var_ref="Amendment-01"))
-    pa = add(E.EstSubPC(sub_id=s2.id, seq=1, pc_type="Advance", inv_ref="Advance", adv_amount=61200.0, status="Certified", certified_on=ago(115), issued=ago(114),
+    pa = add(E.EstSubPC(sub_id=s2.id, seq=1, pc_type="Advance", inv_ref="Advance", adv_amount=61200.0, status="Prepared", certified_on=ago(115), issued=ago(114),
                         prep_by="Arathi.S", prep_on=ago(115)))
     pb = add(E.EstSubPC(sub_id=s2.id, seq=2, inv_ref="PL/2026/118", inv_date=ago(20), inv_amount=52000, received=ago(19), to_site=ago(18), site_back=ago(16),
-                        certified_on=ago(14), issued=ago(13), to_accounts=ago(12), status="With Accounts", measured_on=ago(17), verified_by="Febiyans Lucas",
+                        certified_on=ago(14), issued=ago(13), to_accounts=ago(12), status="MD approved", measured_on=ago(17), verified_by="Febiyans Lucas",
                         verified_on=ago(16), prep_by="Arathi.S", prep_on=ago(14), chk_by="Anoop.S", chk_on=ago(13), rev_by="Shafeeq", rev_on=ago(12)))
     for it, pct in zip(it2, [35, 20, 0, 25, 30, 0, 10, 15, 0]):
         add(S.EstPCLine(pc_id=pb.id, item_id=it.id, pct=pct))
@@ -299,7 +299,7 @@ def _subs(db, add, p, i, ago, S):
             n += 1
             it3.append(add(S.EstSubItem(sub_id=s3.id, sort=n, bill=bill, bill_title=title, no=no, description=d, unit="m3", rate=rate, measure="qty")))
     q1 = add(E.EstSubPC(sub_id=s3.id, seq=1, inv_ref="ANT/07", inv_date=ago(48), inv_amount=31000, received=ago(47), to_site=ago(46), site_back=ago(44),
-                        certified_on=ago(42), issued=ago(41), to_accounts=ago(40), status="Certified", measured_on=ago(45), verified_by="Febiyans Lucas",
+                        certified_on=ago(42), issued=ago(41), to_accounts=ago(40), status="Prepared", measured_on=ago(45), verified_by="Febiyans Lucas",
                         verified_on=ago(44), prep_by="Arathi.S", prep_on=ago(42), app_by="Praveen", app_on=ago(40)))
     for it, q in zip(it3, [98, 31, 0, 0, 0, 0]):
         add(S.EstPCLine(pc_id=q1.id, item_id=it.id, qty=q, claimed_qty=q + 2))

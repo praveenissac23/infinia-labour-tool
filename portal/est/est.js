@@ -24,10 +24,10 @@ function today() { return (ST.meta && ST.meta.today) || new Date().toISOString()
 function pad(n, w = 3) { return String(n).padStart(w, "0"); }
 function h(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 function st(s) {
-  const g = ["Paid", "Approved", "Claimed", "Closed", "Answered", "Won", "Completed", "Current", "Certified", "Approved as noted", "✔"];
-  const a = ["Submitted", "At site", "Back from site", "With Accounts", "PC issued", "Pricing", "Invoiced", "Preparing", "Running"];
+  const g = ["Paid", "Approved", "Claimed", "Closed", "Answered", "Won", "Completed", "Current", "Certified", "Certified at site", "Approved as noted", "✔"];
+  const a = ["Submitted", "At site", "Pricing", "Invoiced", "Preparing", "Running", "MD approved"];
   const r = ["Rejected", "Lost", "Revise & resubmit", "Cancelled", "Overdue"];
-  const b = ["Received", "Open", "Draft", "Identified", "Not started", "Absorbed"];
+  const b = ["Received", "Open", "Draft", "Identified", "Not started", "Absorbed", "Prepared", "CM approved", "Verified"];
   const k = g.includes(s) ? "g" : a.includes(s) ? "a" : r.includes(s) ? "r" : b.includes(s) ? "b" : "";
   return `<span class="st ${k}">${esc(s || "-")}</span>`;
 }
@@ -322,7 +322,7 @@ async function loadDash() {
   </div>`;
   $$("[data-pid]", app).forEach(r => r.onclick = () => { const s = (r.dataset.sec || "").split("."); goProject(+r.dataset.pid, s[0], s[1]); });
   $$("[data-go]", app).forEach(f => f.onclick = () => {
-    const s = f.dataset.go.split("."), want = s[1] === "pcs" ? ["With Accounts", "PC issued"] : ["At site", "Received", "Back from site", "Certified"];
+    const s = f.dataset.go.split("."), want = s[1] === "pcs" ? ["Prepared", "CM approved", "Verified", "MD approved"] : ["At site", "Received", "Certified"];
     const n = {}; d.queue.filter(x => want.includes(x.status)).forEach(x => n[x.project_id] = (n[x.project_id] || 0) + 1);
     const best = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
     if (best) goProject(+best[0], s[0], s[1]); else toast("Nothing waiting there just now");
@@ -458,7 +458,7 @@ function renderProject() {
   const b = ST.b, s = b.summary;
   document.body.dataset.ctx = "est." + key();          // which (i) notes apply (heads.js)
   const count = { "subs.reg": b.subs.length, "subs.inv": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status !== "Paid").length, 0),
-                  "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => p.status === "With Accounts").length, 0),
+                  "subs.pcs": b.subs.reduce((n, x) => n + x.pcs.filter(p => pcMine(Object.assign({ sub: x }, p)) && STEPS.indexOf(p.status) >= 3).length, 0),
                   "client.cpc": b.clientpcs.length, "client.vo": b.variations.length, "site.vo": b.variations.length, "client.inv": b.invoices.length, "client.boq": b.boq.length,
                   "site.rfi": s.open_rfi, "site.submittal": s.open_submittals,
                   "site.approval": s.approvals_total ? `${s.approvals_done}/${s.approvals_total}` : 0, "subs.final": s.finals_total ? `${s.finals_done}/${s.finals_total}` : 0 };
@@ -958,7 +958,7 @@ function certifyForm(sid, pcid) {
     delete v.adv_rec_cum_x;
     if (v.adv_auto) delete v.adv_rec_cum; if (v.ret_auto) delete v.ret_cum;
     await PATCH(`/store/est/subpcs/${p.id}`, v);
-    if (["Received", "At site", "Back from site"].includes(p.status) && Number(v.work_cum || 0) > 0) await POST(`/store/est/subpcs/${p.id}/step`, { step: "Certified" });
+    if (p.status === "At site" && Number(v.work_cum || 0) > 0) await POST(`/store/est/subpcs/${p.id}/step`, { step: "Certified" }).catch(() => {});
     await reload(); toast("Certificate saved");
   }, { wide: true, live, top: '<div class="calc" id="calc" style="margin:0 0 12px"></div>', save: locked ? "Locked - paid" : "Save certificate",
        extra: `<button class="btn btn-plain" id="m-sheet" title="Line by line from the item schedule, deductions with their details, the subcontractor's bill and the sign-off">Full sheet</button><button class="btn btn-plain" id="m-print">Print PC</button>`,
@@ -967,48 +967,115 @@ function certifyForm(sid, pcid) {
 }
 
 // ---------------- Subcontractors > invoice tracker ----------------
-const STEPS = ["Received", "At site", "Back from site", "Certified", "PC issued", "With Accounts", "Paid"];
-const NEXT = { "Received": "At site", "At site": "Back from site", "Back from site": "Certified", "Certified": "PC issued", "PC issued": "With Accounts", "With Accounts": "Paid" };
-const NEXT_LABEL = { "At site": "Sent to site", "Back from site": "Back from site", "Certified": "Certify", "PC issued": "PC issued", "With Accounts": "Send to Accounts", "Paid": "Mark paid" };
+// A certificate's way: invoice received -> site -> certified -> prepared (QS) -> approved (contracts manager) ->
+// verified (Accounts) -> approved (Managing Director) -> paid (Accounts). Each step is a click by the person whose
+// turn it is: their name and the time go on it, the next person is told. Where it waits, and for how long, shows.
+const STEPS = ["Received", "At site", "Certified", "Prepared", "CM approved", "Verified", "MD approved", "Paid"];
+const STEP_LABEL = { "Received": "Received", "At site": "At site", "Certified": "Certified at site", "Prepared": "Prepared", "CM approved": "CM approved",
+                     "Verified": "Verified", "MD approved": "MD approved", "Paid": "Paid" };
+const STAGE_CHIP = [["At site", "At site"], ["Certified", "To prepare"], ["Prepared", "CM approval"], ["CM approved", "Accounts verify"], ["Verified", "MD approval"], ["MD approved", "To pay"], ["Paid", "Paid"]];
+const STEP_DONE = { "At site": "Sent to site", "Certified": "Certified", "Prepared": "Prepared", "CM approved": "Approved", "Verified": "Verified", "MD approved": "MD approved", "Paid": "Paid", "Received": "Received" };
 function allPcs() { return ST.b.subs.flatMap(s => s.pcs.map(p => Object.assign({ sub: s }, p))); }
+function pcCan(role) { const m = (ST.meta && ST.meta.me) || {}; return (m.pc_can || []).includes(role); }
+function pcMine(p) { const m = (ST.meta && ST.meta.me) || {}; return !!(p.flow && p.flow.turn && (m.pc_mine || []).includes(p.flow.turn)); }
+function ageTxt(h) { return h < 1 ? "just now" : h < 24 ? `${h} h` : `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}`; }
+function stampTxt(l) { if (!l) return ""; const t = l.at ? `${dt(l.at.slice(0, 10))} ${l.at.slice(11, 16)}` : ""; return `${l.back ? "&#8630; Sent back" : "&#10003; " + esc(STEP_DONE[l.s] || l.s)} - ${esc(l.by || "")}${t ? ", " + t : ""}`; }
+function nextBtns(p) {
+  // the buttons for the person whose turn it is (an admin may press any step)
+  const st = p.status, t = p.flow && p.flow.turn, mine = pcMine(p), can = t && pcCan(t);
+  if (!t || !can) return "";
+  const cls = mine ? "btn-ok" : "btn-plain", d = `data-pc="${p.id}" data-sub="${p.sub.id}"`;
+  const b = (to, label, c = cls) => `<button class="btn ${c} btn-sm" ${d} data-to="${to}">${label}</button>`;
+  const back = ["Prepared", "CM approved", "Verified"].includes(st) && mine ? ` <button class="btn btn-plain btn-sm" ${d} data-back="1" title="Send it back with a note">&#8630; Send back</button>` : "";
+  if (st === "Received") return (p.pc_type !== "Interim" ? b("Prepared", "Prepared &#10003;") + " " : b("At site", "Send to site") + " ") + b("Certified", "Certify in office", "btn-plain");
+  if (st === "At site") return b("Certified", "Certified &#10003;");
+  if (st === "Certified") return b("open", "Open PC", "btn-plain") + " " + b("Prepared", "Prepared &#10003;");
+  if (st === "Prepared") return b("CM approved", "Approve &#10003;") + back;
+  if (st === "CM approved") return b("Verified", "Verified &#10003;") + back;
+  if (st === "Verified") return b("MD approved", "Approve &#10003;") + back;
+  if (st === "MD approved") return b("Paid", "Mark paid");
+  return "";
+}
 SECTIONS["subs.inv"] = el => {
   const f = filt(), all = allPcs();
-  const list = all.filter(p => (!f || p.status === f) && match({ a: p.sub.name, b: p.inv_ref, c: p.status, d: p.sub.scope })).sort((a, b) => (a.status === "Paid") - (b.status === "Paid") || (a.pc_due || "").localeCompare(b.pc_due || ""));
-  const n = s => all.filter(p => p.status === s).length;
+  const list = all.filter(p => (!f || (f === "__mine" ? pcMine(p) : f === "__stuck" ? p.flow && p.flow.stuck : p.status === f)) && match({ a: p.sub.name, b: p.inv_ref, c: p.status, d: p.sub.scope }))
+    .sort((a, b) => (a.status === "Paid") - (b.status === "Paid") || pcMine(b) - pcMine(a) || (b.flow ? b.flow.hours : 0) - (a.flow ? a.flow.hours : 0));
+  const n = s => all.filter(p => p.status === s).length, mineN = all.filter(pcMine).length, stuckN = all.filter(p => p.flow && p.flow.stuck).length;
   const r = ST.b.rules;
-  el.innerHTML = tools("invoices", { add: `<button class="btn btn-primary" id="add-inv">+ Invoice received</button>`, chips: [["", all.length], ...STEPS.map(s => [s, n(s)])],
-      right: `<button class="btn btn-plain btn-sm" id="rules">Days: site ${r.site_days} · PC ${r.pc_days}</button>` }) +
-    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>PC</th><th>Invoice</th><th class="r">Amount</th><th>Received</th><th>Site</th><th>PC due</th><th>Progress</th><th>Status</th><th class="r">Payable</th><th>Next step</th></tr></thead><tbody>
-    ${list.map(p => { const i = STEPS.indexOf(p.status), nx = NEXT[p.status];
-      return `<tr><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}</td><td class="small">${esc(p.inv_ref)}</td><td class="r">${money(p.inv_amount)}</td><td class="nowrap">${dt(p.received)}</td>
-      <td class="small nowrap">${p.to_site ? "out " + dt(p.to_site) : ""}${p.site_back ? "<br>back " + dt(p.site_back) : p.to_site ? `<br><span class="${p.site_delay ? "late" : "muted"}">due ${dt(p.site_due)}</span>` : ""}${p.site_delay ? `<div class="late">${p.site_delay}d late</div>` : ""}</td>
-      <td class="nowrap ${p.pc_delay ? "late" : ""}">${dt(p.pc_due)}${p.issued ? `<div class="small muted">issued ${dt(p.issued)}</div>` : ""}${p.pc_delay ? `<div class="small">${p.pc_delay}d late</div>` : ""}</td>
-      <td><span class="flow">${STEPS.map((s, j) => `<i class="${j < i ? "on" : j === i ? (p.status === "Paid" ? "on" : "cur") : ""}" title="${s}"></i>`).join("")}</span></td><td>${st(p.status)}</td>
+  const chip = (v, label, c, extra = "") => `<span class="chip ${f === v ? "on" : ""}" data-f="${esc(v)}" ${extra}>${label}<span class="n">${c}</span></span>`;
+  el.innerHTML = tools("invoices", { add: `<button class="btn btn-primary" id="add-inv">+ Invoice received</button>`,
+      right: `<button class="btn btn-plain btn-sm" id="rules">Days: site ${r.site_days} · PC ${r.pc_days} · stuck after ${r.stuck_days || 2}</button>` }) +
+    `<div class="chips crow">${chip("__mine", "Waiting for me", mineN, mineN ? 'style="border-color:#C0392B;font-weight:700"' : "")}${chip("__stuck", "Stuck &gt; " + (r.stuck_days || 2) + " days", stuckN, stuckN ? 'style="color:#B42318;border-color:#E8B4AE;font-weight:700"' : "")}${chip("", "All", all.length)}${n("Received") ? chip("Received", "Received", n("Received")) : ""}${STAGE_CHIP.map(([v, l]) => chip(v, l, n(v))).join("")}</div>` +
+    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>PC</th><th>Invoice</th><th class="r">Amount</th><th>Progress &middot; last stamp</th><th>Stage</th><th>Waiting on</th><th>Days here</th><th class="r">Payable</th><th>Next step</th></tr></thead><tbody>
+    ${list.map(p => { const i = STEPS.indexOf(p.status), fl = p.flow || {}, mine = pcMine(p);
+      return `<tr class="${fl.stuck ? "late-row" : ""}" style="${mine ? "background:#FFF8E6" : ""}" data-row="${p.id}"><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}${p.pc_type !== "Interim" ? ` <span class="small muted">${esc(p.pc_type)}</span>` : ""}</td><td class="small">${esc(p.inv_ref)}</td><td class="r">${money(p.inv_amount)}</td>
+      <td><span class="flow">${STEPS.map((s, j) => `<i class="${j < i ? "on" : j === i ? (p.status === "Paid" ? "on" : "cur") : ""}" title="${STEP_LABEL[s]}"></i>`).join("")}</span><div class="small muted" style="margin-top:3px">${stampTxt(fl.last)}</div>${fl.note ? `<div class="small late">&ldquo;${esc(fl.note)}&rdquo;</div>` : ""}</td>
+      <td>${st(STEP_LABEL[p.status] || p.status)}</td>
+      <td>${fl.turn ? (mine ? `<b style="color:#C0392B">You</b>` : `<b>${esc(fl.waiting)}</b>`) + `<div class="small muted">${esc(fl.task)}</div>` : '<span class="muted">-</span>'}</td>
+      <td class="nowrap ${fl.stuck ? "late" : ""}">${fl.turn ? ageTxt(fl.hours) + (fl.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
       <td class="r">${p.work_cum || p.adv_amount ? money(p.payable, false) : '<span class="muted">-</span>'}</td>
-      <td class="nowrap">${nx ? `<button class="btn ${nx === "Paid" ? "btn-ok" : "btn-ghost"} btn-sm" data-next="${p.id}" data-sub="${p.sub.id}" data-to="${nx}">${NEXT_LABEL[nx]}</button>` : ""}${i > 0 ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
-    </tbody></table></div>` : `<div class="empty">No invoices${f ? " at this step" : ""}.</div>`);
+      <td class="nowrap">${nextBtns(p) || (fl.turn ? `<span class="small muted">${esc(fl.waiting)}'s turn</span>` : "")}${p.status === "Verified" ? ` <button class="btn btn-plain btn-sm" data-wa="${p.id}" title="Tell the Managing Director on WhatsApp - the link opens this certificate">WhatsApp</button>` : ""}${i > 0 && pcCan(TURN_OF[STEPS[i - 1]]) ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty">${f === "__mine" ? "Nothing waiting for you." : f === "__stuck" ? "Nothing stuck." : "No invoices" + (f ? " at this step" : "") + "."}</div>`);
   bindTools(el, () => SECTIONS["subs.inv"](el));
   $("#add-inv", el).onclick = () => invoiceForm();
   $("#rules", el).onclick = rulesForm;
-  $$("[data-next]", el).forEach(b => b.onclick = () => step(+b.dataset.next, b.dataset.to, +b.dataset.sub));
+  bindPcButtons(el, () => reload());
   $$("[data-undo]", el).forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.undo}/step`, { step: b.dataset.st, undo: true }); await reload(); toast("Moved back one step"); } catch (e) { fail(e); } });
   $$("[data-open]", el).forEach(b => b.onclick = () => openCert(+b.dataset.sub, +b.dataset.open));
+  $$("[data-wa]", el).forEach(b => b.onclick = () => { const p = all.find(x => x.id === +b.dataset.wa); waShare([p]); });
 };
-async function step(pcid, to, sid) {
-  if (to === "Certified") { openCert(sid, pcid); return; }
-  if (to === "Paid") { payForm(sid, pcid); return; }
+const TURN_OF = { "Received": "qs", "At site": "site", "Certified": "qs", "Prepared": "cm", "CM approved": "acc", "Verified": "md", "MD approved": "acc" };
+function bindPcButtons(el, after) {
+  $$("[data-pc]", el).forEach(b => b.onclick = () => {
+    const pcid = +b.dataset.pc, sid = +b.dataset.sub;
+    if (b.dataset.back) return sendBack(pcid, after);
+    if (b.dataset.to === "open") return openCert(sid, pcid);
+    step(pcid, b.dataset.to, sid, after);
+  });
+}
+function pcOf(pcid) { return allPcs().find(x => x.id === pcid); }
+async function step(pcid, to, sid, after) {
+  after = after || reload;
+  const p = pcOf(pcid);
+  if (to === "Paid") { payForm(sid, pcid, after); return; }
+  if (to === "Certified" && p && p.status === "At site") {
+    modal(`Certified at site - PC ${pad(p.seq, 2)} ${p.sub.name}`, [{ k: "by", label: "Certified by (site engineer)", value: p.verified_by || "", focus: true, tip: "The name goes on the certificate. Leave blank if you certify it yourself." },
+      { k: "date", label: "On", type: "date", value: today() }], async v => { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Certified", by: v.by, date: v.date }); await after(); toast("Certified at site"); });
+    return;
+  }
   try {
-    await POST(`/store/est/subpcs/${pcid}/step`, { step: to }); await reload();
-    toast(`${NEXT_LABEL[to] || to} - ${dt(today())}`, { undo: async () => { await POST(`/store/est/subpcs/${pcid}/step`, { step: to, undo: true }); reload(); } });
+    await POST(`/store/est/subpcs/${pcid}/step`, { step: to }); await after();
+    toast(`${STEP_DONE[to] || to} - ${dt(today())}`, { undo: async () => { await POST(`/store/est/subpcs/${pcid}/step`, { step: to, undo: true }); after(); } });
+    if (to === "Verified" && p) waAsk([p]);
   } catch (e) { fail(e); }
 }
-function payForm(sid, pcid) {
+function sendBack(pcid, after) {
+  const p = pcOf(pcid) || { seq: 0, sub: { name: "" }, status: "" };
+  const i = STEPS.indexOf(p.status);
+  const opts = [["Certified", "QS - to prepare again"], ["Prepared", "Contracts manager"], ["CM approved", "Accounts - to verify again"]].filter(([k]) => STEPS.indexOf(k) < i);
+  modal(`Send back - PC ${pad(p.seq, 2)} ${p.sub.name}`, [{ k: "note", label: "Why (one line)", focus: true, full: true },
+    { k: "to", label: "Back to", type: "select", options: opts, value: "Certified" }],
+    async v => { if (!v.note) throw new Error("Say why it goes back."); await POST(`/store/est/subpcs/${pcid}/step`, { back: true, to: v.to, note: v.note }); await (after || reload)(); toast("Sent back with your note"); });
+}
+function approveLink(ps) { return `${location.origin}/portal/approve.html?pc=${ps.map(p => p.id || p.pc_id).join(",")}`; }
+function waText(ps) {
+  const one = ps.length === 1, p = ps[0], name = x => x.sub && x.sub.name ? x.sub.name : x.sub;
+  const tot = ps.reduce((a, x) => a + (x.payable || 0), 0);
+  return one ? `Payment certificate for approval: ${name(p)} PC ${pad(p.seq, 2)} - AED ${money(p.payable, false)}\n${approveLink(ps)}`
+             : `${ps.length} payment certificates for approval - AED ${money(tot, false)} in total\n${approveLink(ps)}`;
+}
+function waShare(ps) { window.open("https://wa.me/?text=" + encodeURIComponent(waText(ps)), "_blank"); }
+function waAsk(ps) {
+  modal("Sent to the Managing Director", [], async () => { waShare(ps); }, { top: `<div style="font-size:14px;line-height:1.5">The managers have a notification.<br>Also tell them on WhatsApp? It opens with the message and the link already typed - the link opens the certificate (the PDF) with Approve / Reject.</div>
+    <div class="small muted" style="margin-top:8px;white-space:pre-wrap;background:#F7F5F1;border-radius:8px;padding:8px">${esc(waText(ps))}</div>`, save: "WhatsApp" });
+}
+function payForm(sid, pcid, after) {
   const s = ST.b.subs.find(x => x.id === sid), p = s.pcs.find(x => x.id === pcid);
   modal(`Paid - PC ${pad(p.seq, 2)} ${s.name}`, [
     { k: "amount", label: "Amount paid (AED)", type: "money", value: p.payable, tip: "Filled in with the amount payable (incl. VAT)." },
     { k: "date", label: "Paid on", type: "date", value: today() },
     { k: "ref", label: "Cheque / transfer ref.", focus: true },
-  ], async v => { await POST(`/store/est/subpcs/${pcid}/step`, Object.assign({ step: "Paid" }, v)); await reload(); toast("Marked paid"); });
+  ], async v => { await POST(`/store/est/subpcs/${pcid}/step`, Object.assign({ step: "Paid" }, v)); await (after || reload)(); toast("Marked paid - Estimation can see it"); });
 }
 function rulesForm() {
   const r = ST.b.rules;
@@ -1017,26 +1084,29 @@ function rulesForm() {
     { k: "pc_days", label: "PC to be issued after the invoice arrives (days)", type: "num", value: r.pc_days },
     { k: "rfi_days", label: "Reply to an RFI (days)", type: "num", value: r.rfi_days },
     { k: "submittal_days", label: "Reply to a submittal (days)", type: "num", value: r.submittal_days },
-  ], async v => { await PUT("/store/est/rules", v); await reload(); toast("Saved - delays recounted"); });
+    { k: "stuck_days", label: "A certificate is 'stuck' after (days at one step)", type: "num", value: r.stuck_days || 2 },
+    { k: "pc_cm", label: "Contracts manager(s) who approve certificates", value: r.pc_cm || "", tip: "Names, comma between. They get the Approve button and the notification. Accounts verifies and pays; the Managing Director is the admin login." },
+  ], async v => { await PUT("/store/est/rules", v); ST.meta = await GET("/store/est/meta"); await reload(); toast("Saved"); });
 }
 
-// ---------------- Subcontractors > payment certificates (to Accounts) ----------------
+// ---------------- Subcontractors > payment certificates ----------------
 SECTIONS["subs.pcs"] = el => {
-  const f = filt() || "", all = allPcs().filter(p => ["Certified", "PC issued", "With Accounts", "Paid"].includes(p.status));
+  const f = filt() || "", all = allPcs().filter(p => STEPS.indexOf(p.status) >= STEPS.indexOf("Prepared"));
   const list = all.filter(p => (!f || p.status === f) && match({ a: p.sub.name, b: p.inv_ref, c: p.status }));
   const n = s => all.filter(p => p.status === s).length;
   const tot = k => r2(list.reduce((a, p) => a + (p[k] || 0), 0));
-  el.innerHTML = tools("invoices", { chips: [["", all.length], ["Certified", n("Certified")], ["PC issued", n("PC issued")], ["With Accounts", n("With Accounts")], ["Paid", n("Paid")]],
-      add: `<span class="muted small">Certified PCs go to Accounts from here; Accounts marks them paid ${tip("Accounts staff with the Bank right can mark a certificate paid and print it, without seeing the rest of Estimation.")}</span>` }) +
-    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>PC</th><th class="r">This PC</th><th class="r">VAT</th><th class="r">Payable</th><th>Issued</th><th>To Accounts</th><th>Paid</th><th class="r">Paid amount</th><th>Status</th><th></th></tr></thead><tbody>
-    ${list.map(p => `<tr><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}${p.pc_type !== "Interim" ? ` <span class="small muted">${esc(p.pc_type)}</span>` : ""}</td><td class="r">${money(p.this, false)}</td><td class="r">${money(p.vat)}</td><td class="r"><b>${money(p.payable, false)}</b></td>
-      <td>${dt(p.issued)}</td><td>${dt(p.to_accounts)}</td><td>${dt(p.paid_on)}<div class="small muted">${esc(p.paid_ref)}</div></td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
-      <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button> ${p.status === "Certified" ? `<button class="btn btn-ghost btn-sm" data-next="${p.id}" data-sub="${p.sub.id}" data-to="PC issued">PC issued</button>` : p.status === "PC issued" ? `<button class="btn btn-ghost btn-sm" data-next="${p.id}" data-sub="${p.sub.id}" data-to="With Accounts">Send to Accounts</button>` : p.status === "With Accounts" ? `<button class="btn btn-ok btn-sm" data-next="${p.id}" data-sub="${p.sub.id}" data-to="Paid">Mark paid</button>` : ""}</td></tr>`).join("")}
+  el.innerHTML = tools("invoices", { chips: [["", all.length], ...["Prepared", "CM approved", "Verified", "MD approved", "Paid"].map(s => [s, n(s)])],
+      add: `<span class="muted small">Prepared &rarr; Contracts manager &rarr; Accounts verify &rarr; Managing Director &rarr; Accounts pay ${tip("Each step is a click by the person whose turn it is - their name and the time go on the certificate. Accounts (with the Bank right) verifies and pays from Accounts > Subcontractor payments.")}</span>` }) +
+    (list.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>PC</th><th class="r">This PC</th><th class="r">VAT</th><th class="r">Payable</th><th>Last stamp</th><th>Waiting on</th><th>Paid</th><th class="r">Paid amount</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.map(p => { const fl = p.flow || {}; return `<tr class="${fl.stuck ? "late-row" : ""}"><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}${p.pc_type !== "Interim" ? ` <span class="small muted">${esc(p.pc_type)}</span>` : ""}</td><td class="r">${money(p.this, false)}</td><td class="r">${money(p.vat)}</td><td class="r"><b>${money(p.payable, false)}</b></td>
+      <td class="small">${stampTxt(fl.last)}</td><td>${fl.turn ? (pcMine(p) ? '<b style="color:#C0392B">You</b>' : esc(fl.waiting)) + ` <span class="small ${fl.stuck ? "late" : "muted"}">${ageTxt(fl.hours)}</span>` : ""}</td>
+      <td>${dt(p.paid_on)}<div class="small muted">${esc(p.paid_ref)}</div></td><td class="r">${money(p.paid_amount)}</td><td>${st(STEP_LABEL[p.status] || p.status)}</td>
+      <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button> ${nextBtns(p)}</td></tr>`; }).join("")}
     <tr class="tot"><td>Total</td><td></td><td class="r">${money(tot("this"))}</td><td class="r">${money(tot("vat"))}</td><td class="r">${money(tot("payable"))}</td><td></td><td></td><td></td><td class="r">${money(tot("paid_amount"))}</td><td></td><td></td></tr>
-    </tbody></table></div>` : '<div class="empty">No certificates here yet. They appear once an invoice is certified.</div>');
+    </tbody></table></div>` : '<div class="empty">No certificates here yet. They appear once the QS presses Prepared.</div>');
   bindTools(el, () => SECTIONS["subs.pcs"](el));
   $$("[data-print]", el).forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.print }));
-  $$("[data-next]", el).forEach(b => b.onclick = () => step(+b.dataset.next, b.dataset.to, +b.dataset.sub));
+  bindPcButtons(el, () => reload());
 };
 
 // ---------------- Subcontractors > finalization log ----------------
@@ -1577,30 +1647,58 @@ async function loadPay() {
   drawPay();
 }
 function drawPay() {
-  const d = ST.pay, f = ST.filt.pay ?? "With Accounts", q = (ST.q.pay || "").toLowerCase();
-  const rows = d.rows.filter(r => (!f || r.status === f) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  // Accounts: verify what the contracts manager approved (it then goes to the Managing Director), and pay what the MD approved.
+  const d = ST.pay, mineAcc = (d.mine || []).includes("acc") || (d.can || []).includes("acc");
+  const f = ST.filt.pay ?? "__mine", q = (ST.q.pay || "").toLowerCase();
+  const isMine = r => r.status === "CM approved" || r.status === "MD approved";
+  const rows = d.rows.filter(r => (!f || (f === "__mine" ? isMine(r) : r.status === f)) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
   const n = s => d.rows.filter(r => r.status === s).length;
-  const due = d.rows.filter(r => r.status === "With Accounts").reduce((a, r) => a + r.payable, 0);
+  const sum = s => d.rows.filter(r => r.status === s).reduce((a, r) => a + r.payable, 0);
+  const age = h => h < 1 ? "just now" : h < 24 ? `${h} h` : `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}`;
+  const fl = i => '<span class="flow">' + [0, 1, 2, 3, 4, 5, 6, 7].map(j => `<i class="${j < i ? "on" : j === i ? "cur" : ""}"></i>`).join("") + "</span>";
+  const IDX = { "CM approved": 4, "Verified": 5, "MD approved": 6, "Paid": 7 };
+  const LBL = { "CM approved": "To verify", "Verified": "With the MD", "MD approved": "To pay", "Paid": "Paid" };
+  const checks = r => { const c = r.checks || {}; const ok = t => `<span style="color:#1E6B2A">&#10003; ${t}</span>`, bad = t => `<span class="late">&#9888; ${t}</span>`;
+    return [c.agreement ? ok("Agreement on file") : bad("No agreement ref. on the subcontract"),
+            c.prev_n ? (c.unpaid.length ? bad(`Not paid yet: ${c.unpaid.join(", ")}`) : ok(`Previous ${c.prev_n} PC${c.prev_n > 1 ? "s" : ""} paid: ${money(c.prev_paid, false)}`)) : ok("First certificate"),
+            c.adv_paid ? ok(`Advance ${money(c.adv_paid, false)} - recovered so far ${money(c.adv_rec, false)}`) : ""].filter(Boolean).join(" &middot; "); };
+  const chip = (v, l, c) => `<span class="chip ${f === v ? "on" : ""}" data-pf="${v}">${l}<span class="n">${c}</span></span>`;
   $("#app").innerHTML = `<div class="wrap">
-    <div class="strip"><div class="fig amber"><div class="l">To pay now</div><div class="v">${aed(due)}</div><div class="s">${n("With Accounts")} certificates with Accounts</div></div>
-      <div class="fig"><div class="l">Issued, not yet sent</div><div class="v">${n("PC issued")}</div></div><div class="fig green"><div class="l">Paid (last 60 days)</div><div class="v">${aed(d.rows.filter(r => r.status === "Paid").reduce((a, r) => a + r.paid_amount, 0))}</div></div></div>
-    <div class="tools"><input class="q" placeholder="Search" value="${esc(ST.q.pay || "")}" id="pq"><div class="chips">${[["With Accounts", n("With Accounts")], ["PC issued", n("PC issued")], ["Paid", n("Paid")], ["", d.rows.length]].map(([v, c]) => `<span class="chip ${f === v ? "on" : ""}" data-pf="${v}">${v || "All"}<span class="n">${c}</span></span>`).join("")}</div>
-      <span class="spacer"></span><span class="small muted">Sent by Estimation once certified ${tip("Print the certificate, pay it, then press Mark paid. The QS sees it paid at once.")}</span></div>
-    ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th class="r">This PC</th><th class="r">VAT</th><th class="r">Payable</th><th>Sent</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td><b>${esc(r.project)}</b><div class="small muted">${esc(r.project_name)}</div></td><td><b>${esc(r.sub)}</b><div class="small muted">${esc(r.scope)}${r.inv_ref ? " · " + esc(r.inv_ref) : ""}</div></td><td class="nowrap">PC ${pad(r.seq, 2)}${r.pc_type !== "Interim" ? ` <span class="small muted">${esc(r.pc_type)}</span>` : ""}</td>
-      <td class="r">${money(r.this, false)}</td><td class="r">${money(r.vat)}</td><td class="r"><b>${money(r.payable, false)}</b></td><td class="nowrap">${dt(r.to_accounts || r.issued)}</td><td class="nowrap">${dt(r.paid_on)}${r.paid_ref ? `<div class="small muted">${esc(r.paid_ref)}</div>` : ""}</td><td>${st(r.status)}</td>
-      <td class="nowrap"><button class="btn btn-plain btn-sm" data-pp="${r.pc_id}">Print</button> ${r.status === "Paid" ? `<button class="btn btn-plain btn-sm" data-pundo="${r.pc_id}" title="Not paid after all">&#8630;</button>` : `<button class="btn btn-ok btn-sm" data-ppay="${r.pc_id}">Mark paid</button>`}</td></tr>`).join("")}
-    <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(rows.reduce((a, r) => a + r.this, 0))}</td><td class="r">${money(rows.reduce((a, r) => a + r.vat, 0))}</td><td class="r">${money(rows.reduce((a, r) => a + r.payable, 0))}</td><td></td><td></td><td></td><td></td></tr></tbody></table></div>`
-    : `<div class="card empty">Nothing ${f ? (f === "Paid" ? "paid in the last 60 days" : "here") : "yet"}.</div>`}</div>`;
+    <div class="strip"><div class="fig"><div class="l">To verify</div><div class="v">${n("CM approved")}</div><div class="s">${aed(sum("CM approved"))} approved by the contracts manager</div></div>
+      <div class="fig amber"><div class="l">To pay now</div><div class="v">${aed(sum("MD approved"))}</div><div class="s">${n("MD approved")} approved by the MD</div></div>
+      <div class="fig"><div class="l">With the MD</div><div class="v">${n("Verified")}</div><div class="s">${aed(sum("Verified"))}</div></div>
+      <div class="fig green"><div class="l">Paid (last 60 days)</div><div class="v">${aed(d.rows.filter(r => r.status === "Paid").reduce((a, r) => a + r.paid_amount, 0))}</div></div></div>
+    <div class="tools"><input class="q" placeholder="Search" value="${esc(ST.q.pay || "")}" id="pq"><div class="chips">${chip("__mine", "Waiting for me", n("CM approved") + n("MD approved"))}${chip("CM approved", "To verify", n("CM approved"))}${chip("MD approved", "To pay", n("MD approved"))}${chip("Verified", "With the MD", n("Verified"))}${chip("Paid", "Paid", n("Paid"))}${chip("", "All", d.rows.length)}</div>
+      <span class="spacer"></span>${n("Verified") ? `<button class="btn btn-plain btn-sm" id="wa-all" title="One WhatsApp message to the managers with one link for all of them">WhatsApp the MD (${n("Verified")})</button>` : ""}<span class="small muted">Verify &rarr; goes to the MD &middot; Mark paid &rarr; Estimation is told ${tip("The MD approves from the link (WhatsApp or the phone notification): the PDF opens with Approve / Reject.")}</span></div>
+    ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th class="r">Payable</th><th>Progress &middot; last stamp</th><th>Stage</th><th>Days here</th><th>Paid</th><th></th></tr></thead><tbody>
+    ${rows.map(r => { const w = r.flow || {}, mine = isMine(r) && mineAcc; return `<tr class="${w.stuck && r.status !== "Paid" ? "late-row" : ""}" style="${mine ? "background:#FFF8E6" : ""}"><td><b>${esc(r.project)}</b><div class="small muted">${esc(r.project_name)}</div></td><td><b>${esc(r.sub)}</b><div class="small muted">${esc(r.scope)}${r.inv_ref ? " · " + esc(r.inv_ref) : ""}</div></td><td class="nowrap">PC ${pad(r.seq, 2)}${r.pc_type !== "Interim" ? ` <span class="small muted">${esc(r.pc_type)}</span>` : ""}</td>
+      <td class="r"><b>${money(r.payable, false)}</b><div class="small muted">VAT ${money(r.vat)}</div></td>
+      <td>${fl(IDX[r.status] || 0)}<div class="small muted" style="margin-top:3px">${stampTxt(w.last)}</div>${w.note ? `<div class="small late">&ldquo;${esc(w.note)}&rdquo;</div>` : ""}${r.status === "CM approved" ? `<div class="small" style="margin-top:3px">${checks(r)}</div>` : ""}</td>
+      <td>${st(LBL[r.status] || r.status)}</td><td class="nowrap ${w.stuck && r.status !== "Paid" ? "late" : ""}">${r.status !== "Paid" ? age(w.hours || 0) + (w.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
+      <td class="nowrap">${dt(r.paid_on)}${r.paid_ref ? `<div class="small muted">${esc(r.paid_ref)}</div>` : ""}</td>
+      <td class="nowrap"><button class="btn btn-plain btn-sm" data-pp="${r.pc_id}">Print</button> ${r.status === "CM approved" && mineAcc ? `<button class="btn btn-ok btn-sm" data-pver="${r.pc_id}">Verified &#10003;</button> <button class="btn btn-plain btn-sm" data-pback="${r.pc_id}">&#8630; Send back</button>` :
+        r.status === "MD approved" && mineAcc ? `<button class="btn btn-ok btn-sm" data-ppay="${r.pc_id}">Mark paid</button>` :
+        r.status === "Verified" ? `<button class="btn btn-plain btn-sm" data-pwa="${r.pc_id}">WhatsApp the MD</button> <span class="small muted">MD's turn</span>` :
+        r.status === "Paid" && mineAcc ? `<button class="btn btn-plain btn-sm" data-pundo="${r.pc_id}" title="Not paid after all">&#8630;</button>` : ""}</td></tr>`; }).join("")}
+    <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(rows.reduce((a, r) => a + r.payable, 0))}</td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>`
+    : `<div class="card empty">${f === "__mine" ? "Nothing waiting for you." : "Nothing " + (f === "Paid" ? "paid in the last 60 days" : "here") + "."}</div>`}</div>`;
   $("#pq").oninput = debounce(() => { ST.q.pay = $("#pq").value; drawPay(); const n2 = $("#pq"); n2.focus(); n2.setSelectionRange(n2.value.length, n2.value.length); }, 250);
   $$("[data-pf]").forEach(c => c.onclick = () => { ST.filt.pay = c.dataset.pf; drawPay(); });
   $$("[data-pp]").forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.pp }));
-  $$("[data-ppay]").forEach(b => b.onclick = () => { const r = d.rows.find(x => x.pc_id === +b.dataset.ppay);
+  const row = id => d.rows.find(x => x.pc_id === +id);
+  $$("[data-pver]").forEach(b => b.onclick = async () => { const r = row(b.dataset.pver);
+    try { b.disabled = true; await POST(`/store/est/subpcs/${r.pc_id}/step`, { step: "Verified" }); await loadPay(); toast("Verified - sent to the Managing Director"); waAsk([{ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable }]); } catch (e) { b.disabled = false; fail(e); } });
+  $$("[data-pback]").forEach(b => b.onclick = () => { const r = row(b.dataset.pback);
+    modal(`Send back - ${r.sub}, PC ${pad(r.seq, 2)}`, [{ k: "note", label: "Why (one line)", focus: true, full: true }, { k: "to", label: "Back to", type: "select", options: [["Prepared", "Contracts manager"], ["Certified", "QS - to prepare again"]], value: "Prepared" }],
+      async v => { if (!v.note) throw new Error("Say why it goes back."); await POST(`/store/est/subpcs/${r.pc_id}/step`, { back: true, to: v.to, note: v.note }); await loadPay(); toast("Sent back with your note"); }); });
+  $$("[data-pwa]").forEach(b => b.onclick = () => { const r = row(b.dataset.pwa); waShare([{ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable }]); });
+  if ($("#wa-all")) $("#wa-all").onclick = () => waShare(d.rows.filter(r => r.status === "Verified").map(r => ({ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable })));
+  $$("[data-ppay]").forEach(b => b.onclick = () => { const r = row(b.dataset.ppay);
     modal(`Paid - ${r.sub}, PC ${pad(r.seq, 2)}`, [
       { k: "amount", label: "Amount paid (AED)", type: "money", value: r.payable, tip: "Filled in with the amount payable (incl. VAT)." },
       { k: "date", label: "Paid on", type: "date", value: d.today }, { k: "ref", label: "Cheque / transfer ref.", focus: true }],
-      async v => { await POST(`/store/est/subpcs/${r.pc_id}/step`, Object.assign({ step: "Paid" }, v)); await loadPay(); toast("Marked paid"); }); });
-  $$("[data-pundo]").forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.pundo}/step`, { step: "Paid", undo: true }); await loadPay(); toast("Back with Accounts"); } catch (e) { fail(e); } });
+      async v => { await POST(`/store/est/subpcs/${r.pc_id}/step`, Object.assign({ step: "Paid" }, v)); await loadPay(); toast("Marked paid - Estimation is told"); }); });
+  $$("[data-pundo]").forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.pundo}/step`, { step: "Paid", undo: true }); await loadPay(); toast("Back to pay"); } catch (e) { fail(e); } });
 }
 function addDays(n) { const d = new Date(today() + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 

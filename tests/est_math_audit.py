@@ -131,7 +131,7 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
 for k, v in tot.items():
     same(f"dashboard total {k} = sum of projects", dash["totals"][k], r2(v))
 # dashboard: money with Accounts = the PCs with Accounts
-wa = r2(sum(pc["payable"] for p in db.query(E.EstProject).all() for sb in c.get(f"/store/est/projects/{p.id}", headers=H).json()["subs"] for pc in sb["pcs"] if pc["status"] == "With Accounts"))
+wa = r2(sum(pc["payable"] for p in db.query(E.EstProject).all() for sb in c.get(f"/store/est/projects/{p.id}", headers=H).json()["subs"] for pc in sb["pcs"] if pc["status"] == "MD approved"))
 same("dashboard: with Accounts amount", dash["kpi"]["with_accounts_amount"], wa)
 # Accounts > Subcontractor payments lists the same payable per PC
 pay = c.get("/store/est/payqueue", headers=H)

@@ -132,7 +132,7 @@ async function pcSheet(pcid) {
     const prevNet = prev ? prev.net_cum : 0, th = r2(net - prevNet), vat = r2(th * (s.vat_pct || 0) / 100);
     return { work, vr, other, advPaid, advRec, ret, net, prevNet, th, vat, pay: r2(th + vat) };
   };
-  const signBox = (role, label, by, on) => `<div class="sg ${by ? "on" : ""}"><span>${label}</span>${by ? `<b>${esc(by)}</b><small>${dt(on)}</small>${d.me && (d.me.admin || d.me.name === by) ? `<button class="btn btn-plain btn-sm" data-unsign="${role}">Undo</button>` : ""}` : (d.me && d.me.can[role] ? `<button class="btn btn-ghost btn-sm" data-sign="${role}">Sign</button>` : `<small class="muted">waiting</small>`)}</div>`;
+  const signBox = (role, label, by, on) => `<div class="sg ${by ? "on" : ""}"><span>${label}</span>${by ? `<b>${esc(by)}</b><small>${dt(on)}</small>${d.me && (d.me.admin || d.me.name === by) ? `<button class="btn btn-plain btn-sm" data-unsign="${role}">Undo</button>` : ""}` : (d.me && d.me.can[role] ? `<button class="btn btn-ghost btn-sm" data-sign="${role}">${role === "prep" ? "Prepared" : role === "rev" ? "Verified" : role === "site" ? "Certified" : "Approve"}</button>` : `<small class="muted">waiting</small>`)}</div>`;
   const calcHtml = F => { const p = d.pc; return `<div class="card calc2"><h3>Certificate ${pad(p.seq, 2)}<span class="spacer"></span>${st(p.status)}</h3><table>
           <tr><td>Work executed to date</td><td class="r">${money(F.work, false)}</td></tr><tr><td>Variations executed to date</td><td class="r">${money(F.vr, false)}</td></tr>
           ${num(S.f.mos_cum) ? `<tr><td>Material on site</td><td class="r">${money(S.f.mos_cum, false)}</td></tr>` : ""}
@@ -202,7 +202,7 @@ async function pcSheet(pcid) {
       <aside class="sh-side">
         <div id="calcbox">${calcHtml(F)}</div>
         <div class="card"><h3>Sign-off ${tip("Each click puts the name and today's date on the certificate. Reviewed is for Accounts, Approved for the manager.")}</h3><div class="sgs">
-          ${signBox("site", "Verified at site", p.verified_by, p.verified_on)}${signBox("prep", "Prepared by (QS)", p.prep_by, p.prep_on)}${signBox("chk", "Checked by", p.chk_by, p.chk_on)}${signBox("rev", "Reviewed by Accounts", p.rev_by, p.rev_on)}${signBox("app", "Approved by Manager", p.app_by, p.app_on)}</div></div>
+          ${signBox("site", "Certified at site", p.verified_by, p.verified_on)}${signBox("prep", "Prepared (QS)", p.prep_by, p.prep_on)}${signBox("chk", "Approved (contracts manager)", p.chk_by, p.chk_on)}${signBox("rev", "Verified (Accounts)", p.rev_by, p.rev_on)}${signBox("app", "Approved (Managing Director)", p.app_by ? "Managing Director" : "", p.app_on)}</div></div>
       </aside></div>`;
     bind();
   };
@@ -247,7 +247,7 @@ async function pcSheet(pcid) {
   const save = async certify => {
     try {
       d = await PUT(`/store/est/subpcs/${pcid}/sheet`, body()); S.d = d;
-      if (certify && ["Received", "At site", "Back from site"].includes(d.pc.status)) { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Certified" }); d = await GET(`/store/est/subpcs/${pcid}/sheet`); }
+      if (certify && ["Received", "At site"].includes(d.pc.status)) { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Certified" }); d = await GET(`/store/est/subpcs/${pcid}/sheet`); }
       init(); draw(); toast(certify ? "Certified - figures saved" : "Saved"); return true;
     } catch (e) { fail(e); return false; }
   };
@@ -256,7 +256,7 @@ async function pcSheet(pcid) {
     try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); toast(undo ? "Signature taken off" : "Signed"); } catch (e) { fail(e); }
   };
   big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload(), "est.sheet");
-  $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>${locked ? "" : `<button class="btn btn-ghost" id="sh-save">Save</button>${["Received", "At site", "Back from site"].includes(d.pc.status) ? `<button class="btn btn-primary" id="sh-cert">Save & certify</button>` : `<button class="btn btn-primary" id="sh-cert2">Save</button>`}`}`;
+  $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>${locked ? "" : `<button class="btn btn-ghost" id="sh-save">Save</button>${["Received", "At site"].includes(d.pc.status) ? `<button class="btn btn-primary" id="sh-cert">Save & certify</button>` : `<button class="btn btn-primary" id="sh-cert2">Save</button>`}`}`;
   const sv = $("#sh-save"); if (sv) sv.onclick = () => save(false);
   const ce = $("#sh-cert"); if (ce) ce.onclick = () => save(true);
   const c2 = $("#sh-cert2"); if (c2) { c2.onclick = () => save(false); if (sv) sv.remove(); }

@@ -55,7 +55,7 @@ ck("no 'dummy' written anywhere", not any("dummy" in (x.name or "").lower() for 
    and not any("dummy" in str(v).lower() for p_ in db.query(E.EstSubPC).all() for v in (p_.prep_by, p_.remarks, p_.paid_ref, p_.verified_by))
    and not any("dummy" in (b.description or "").lower() for b in db.query(E.EstBoq).all()))
 st = {x[0] for x in db.query(E.EstSubPC.status).distinct().all()}
-ck("certificates at every step (received, at site, certified, with Accounts, paid)", {"Received", "At site", "Certified", "With Accounts", "Paid"} <= st, st)
+ck("certificates at every step (received, at site, prepared, MD approved, paid)", {"Received", "At site", "Prepared", "MD approved", "Paid"} <= st, st)
 ck("item schedules, sheet lines and deductions in", db.query(S.EstSubItem).count() and db.query(S.EstPCLine).count() and db.query(S.EstPCDeduct).count())
 ck("client PCs, BOQ, RFIs, submittals, approvals and finalization where empty",
    all(db.query(m).count() for m in (E.EstClientPC, E.EstBoq, E.EstFinal)) and {x[0] for x in db.query(E.EstLog.kind).distinct().all()} >= {"rfi", "submittal", "approval"})

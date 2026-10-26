@@ -15,7 +15,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const P = meta.projects.find(x => x.code === '912').id;
   const sb = (await api('/store/est/subs', { method: 'POST', body: { project_id: P, name: 'FIX SUB LLC', scope: 'Tiling', value: 100000, ret_pct: 10 } })).id;
   const pc = (await api('/store/est/subpcs', { method: 'POST', body: { sub_id: sb, inv_ref: 'F-1', work_cum: 40000 } })).id;
-  for (const s of ['At site', 'Back from site', 'Certified', 'PC issued', 'With Accounts']) await api(`/store/est/subpcs/${pc}/step`, { method: 'POST', body: { step: s } });
+  for (const s of ['At site', 'Certified', 'Prepared', 'CM approved', 'Verified', 'MD approved']) await api(`/store/est/subpcs/${pc}/step`, { method: 'POST', body: { step: s } });
   // ---- dashboard figure card -> the project that has the invoices
   await p.goto(B + '/?p=estimation#estdash'); await sleep(3000);
   const fr = n => p.frames().find(f => f.url().includes(n));

@@ -658,7 +658,7 @@ window.HELP_GUIDES = [
     go: { page: "estimation", tab: "estproj" },
     steps: [{ say: "Open the project, Subcontractors > Invoice tracker, press + Invoice received." },
             { say: "Pick the subcontractor, type the invoice no. and amount. Leave 'Send to site today' ticked." },
-            { say: "Each row has one button for the next step: Back from site, Certify, PC issued, Send to Accounts, Mark paid. Each stamps today's date." }],
+            { say: "Each row has one button for the person whose turn it is: Send to site, Certified, Prepared, Approve (contracts manager), Verified (Accounts), Approve (Managing Director), Mark paid. Each stamps the name and the time; Send back returns it with a note." }],
     tip: "Late site returns and late PCs turn red by themselves. The days allowed are on the Days button." },
   { id: "est-pc", area: "Estimation", title: "How to make a subcontractor payment certificate (PC)",
     words: "payment certificate pc certify work done retention advance recovery deduction release retention print pc subcontractor",

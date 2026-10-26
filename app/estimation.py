@@ -203,6 +203,9 @@ class EstSubPC(Base):
     rev_on = Column(Date, nullable=True)
     app_by = Column(String, default="")
     app_on = Column(Date, nullable=True)
+    paid_by = Column(String, default="")
+    stage_at = Column(DateTime, nullable=True)  # when it reached the step it is at (Dubai time) - "days here"
+    flow_log = Column(Text, default="")         # every step, by whom and when, and notes sent back: JSON [{s, by, at, note, back}]
     locals().update(_audit())
 
 
@@ -397,6 +400,23 @@ TRACKER_NAMES = {"916": "VL-88 Keturah Reserve", "918": "VL-44 Keturah Reserve",
                  "925": "VE-225 Sobha Hartland", "926": "VE-226 Sobha Hartland", "927": "WS-41"}
 
 
+def migrate_pc_flow(SessionLocal):
+    """Once: the certificates on the old steps moved onto the new way (prepared -> CM -> accounts -> MD -> paid)."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_pcflow2").first():
+            return
+        for old, new in OLD_STEPS:
+            db.query(EstSubPC).filter(EstSubPC.status == old).update({EstSubPC.status: new}, synchronize_session=False)
+        db.add(models.Setting(key="est_pcflow2", value="1"))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("pc flow move:", e)
+    finally:
+        db.close()
+
+
 def fill_plots(SessionLocal):
     """Once: every project's plot no. from its site (Settings > Companies & sites), for the payment certificates."""
     db = SessionLocal()
@@ -516,9 +536,16 @@ LOG_STATUS = {
     "doc": ["Current", "Superseded"],
 }
 LOG_PREFIX = {"rfi": "RFI", "approval": "AP", "submittal": "SUB", "doc": "DOC"}
-SUB_STEPS = ["Received", "At site", "Back from site", "Certified", "PC issued", "With Accounts", "Paid"]
+SUB_STEPS = ["Received", "At site", "Certified", "Prepared", "CM approved", "Verified", "MD approved", "Paid"]
+# a certificate's way through: whose turn each step is (qs, site engineer, contracts manager, accounts, managing director)
+TURN = {"Received": "qs", "At site": "site", "Certified": "qs", "Prepared": "cm", "CM approved": "acc", "Verified": "md", "MD approved": "acc"}
+TURN_LABEL = {"qs": "QS", "site": "Site engineer", "cm": "Contracts manager", "acc": "Accounts", "md": "Managing Director"}
+TURN_TASK = {"Received": "to send to site", "At site": "to certify", "Certified": "to prepare", "Prepared": "to approve",
+             "CM approved": "to verify", "Verified": "to approve", "MD approved": "to pay"}
+# the steps of the old way, read as the new ones (once, on the first start after the change)
+OLD_STEPS = [("Certified", "Prepared"), ("PC issued", "Prepared"), ("Back from site", "Certified"), ("With Accounts", "MD approved")]
 RULES_KEY = "est_rules"
-DEFAULT_RULES = {"site_days": 5, "pc_days": 10, "rfi_days": 7, "approval_days": 14, "submittal_days": 14}
+DEFAULT_RULES = {"site_days": 5, "pc_days": 10, "rfi_days": 7, "approval_days": 14, "submittal_days": 14, "stuck_days": 2}
 
 
 def _rules(db):
@@ -526,10 +553,87 @@ def _rules(db):
     out = dict(DEFAULT_RULES)
     if s:
         try:
-            out.update({k: int(v) for k, v in json.loads(s.value or "{}").items() if k in DEFAULT_RULES})
+            raw = json.loads(s.value or "{}")
+            out.update({k: int(v) for k, v in raw.items() if k in DEFAULT_RULES})
+            out["pc_cm"] = str(raw.get("pc_cm", out.get("pc_cm", "")) or "")
         except (ValueError, TypeError):
             pass
+    out.setdefault("pc_cm", "Anoop")
     return out
+
+
+def _same(user, name):
+    import est_bills
+    return bool(name) and (est_bills.same_person(user.full_name or "", name) or est_bills.same_person(user.username or "", name))
+
+
+def pc_roles(user, rules, perms=None):
+    """What this login may do on a subcontractor certificate, and what is "waiting for me".
+    (can, mine): can - every step they may press; mine - the steps that are their job."""
+    perms = set(perms if perms is not None else M.effective_permissions(user))
+    adm = user.role == "admin"
+    est, acc = RIGHT in perms, "accounts_bank" in perms
+    cms = [x.strip() for x in (rules.get("pc_cm") or "").split(",") if x.strip()]
+    is_cm = est and any(_same(user, n) for n in cms)
+    can = set()
+    if est or adm:
+        can |= {"qs", "site"}
+    if acc or adm:
+        can.add("acc")
+    if adm or is_cm or (est and not cms):
+        can.add("cm")
+    if adm:
+        can.add("md")
+    if adm:
+        mine = {"md"}
+    elif is_cm:
+        mine = {"cm"}
+    elif acc and not est:
+        mine = {"acc"}
+    elif acc:
+        mine = {"acc", "qs", "site"}
+    elif est:
+        mine = {"qs", "site"}
+    else:
+        mine = set()
+    return can, mine
+
+
+def dubai_now():
+    return datetime.utcnow() + timedelta(hours=4)
+
+
+def flow_of(pc):
+    try:
+        return json.loads(pc.flow_log or "[]") or []
+    except ValueError:
+        return []
+
+
+def _stage_at(pc):
+    """When it reached the step it is at: the time saved, or for one from before, the day of that step."""
+    if pc.stage_at:
+        return pc.stage_at
+    d = getattr(pc, STEP_DATE.get(pc.status or "Received", "received"), None) or pc.received
+    return datetime(d.year, d.month, d.day, 9) if d else None
+
+
+def flow_info(pc, rules, now=None):
+    """Where a certificate stands: whose turn, for how long, stuck or not, the last stamp and any note sent back."""
+    st = pc.status or "Received"
+    turn = TURN.get(st, "")
+    at = _stage_at(pc)
+    now = now or dubai_now()
+    hours = max(0, int((now - at).total_seconds() // 3600)) if at else 0
+    log = flow_of(pc)
+    last = next((x for x in reversed(log) if not x.get("undo")), None)
+    who = TURN_LABEL.get(turn, "")
+    if turn == "cm":
+        who = ((rules.get("pc_cm") or "").split(",")[0].strip() or who)
+    return {"turn": turn, "waiting": who, "task": TURN_TASK.get(st, ""), "hours": hours,
+            "stuck": bool(turn) and hours >= 24 * max(1, rules.get("stuck_days") or 2),
+            "last": last, "note": (last or {}).get("note", "") if (last or {}).get("back") else "",
+            "log": log}
 
 
 # ---- the generic save: field lists per kind ------------------------------------------
@@ -738,6 +842,9 @@ def _sub_bundle(db, s, vos, pcs, rules):
         d["site_delay"] = max(0, ((p.site_back or t) - site_due).days) if site_due and p.to_site else 0
         d["pc_delay"] = max(0, ((p.issued or t) - pc_due).days) if pc_due else 0
         d["sub_id"] = s.id
+        f = flow_info(p, rules)
+        d["paid_by"] = p.paid_by or ""
+        d["flow"] = {k: f[k] for k in ("turn", "waiting", "task", "hours", "stuck", "last", "note")}
         pc_list.append(d)
     certified = pc_list[-1]["net_cum"] if pc_list else 0.0
     last_work = r2(pc_list[-1]["work"] + pc_list[-1]["var"]) if pc_list else 0.0
@@ -1008,7 +1115,8 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
         "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db),
         "dummy": _dummy_count(db),
         "me": {"id": user.id, "name": user.full_name, "username": user.username, "admin": user.role == "admin",
-               "accounts": "accounts_invoices" in perms, "boards": "estimation_boards" in perms},
+               "accounts": "accounts_invoices" in perms, "boards": "estimation_boards" in perms,
+               "pc_can": sorted(pc_roles(user, _rules(db), perms)[0]), "pc_mine": sorted(pc_roles(user, _rules(db), perms)[1])},
         "today": today().isoformat(),
     }
 
@@ -1022,6 +1130,8 @@ def set_rules(data: dict = Body(...), db: Session = Depends(get_db), user: model
                 r[k] = max(0, min(365, int(data[k])))
             except (TypeError, ValueError):
                 raise HTTPException(400, "Days must be a whole number.")
+    if "pc_cm" in data:
+        r["pc_cm"] = ", ".join(x.strip() for x in str(data.get("pc_cm") or "").split(",") if x.strip())[:200]
     s = db.query(models.Setting).filter(models.Setting.key == RULES_KEY).first()
     if not s:
         s = models.Setting(key=RULES_KEY)
@@ -1059,13 +1169,15 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
                     kpi["at_site"] += 1
                 if pc["site_delay"] and st == "At site":           # late now, not late once
                     kpi["site_delays"] += 1
-                if pc["pc_delay"] and st in ("Received", "At site", "Back from site", "Certified"):
+                if pc["pc_delay"] and st in ("Received", "At site", "Certified"):
                     kpi["pc_delays"] += 1
-                if st in ("Received", "Back from site", "Certified"):
+                if st in ("Received", "Certified"):
                     kpi["preparing"] += 1
-                if st == "PC issued":
+                if st in ("Prepared", "CM approved", "Verified"):
                     kpi["issued"] += 1
-                if st == "With Accounts":
+                if pc["flow"]["stuck"]:
+                    kpi["stuck"] = kpi.get("stuck", 0) + 1
+                if st == "MD approved":
                     kpi["with_accounts"] += 1
                     kpi["with_accounts_amount"] = r2(kpi["with_accounts_amount"] + pc["payable"])
                 if st == "Paid":
@@ -1074,7 +1186,7 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
                     item = {"project_id": p.id, "code": p.code, "sub_id": sb["id"], "sub": sb["name"], "scope": sb["scope"],
                             "pc_id": pc["id"], "seq": pc["seq"], "inv_ref": pc["inv_ref"], "status": st, "received": pc["received"],
                             "pc_due": pc["pc_due"], "site_delay": pc["site_delay"], "pc_delay": pc["pc_delay"],
-                            "payable": pc["payable"], "this": pc["this"]}
+                            "payable": pc["payable"], "this": pc["this"], "flow": pc["flow"]}
                     queue.append(item)
         for l in b["logs"]:
             if l["status"] in ("Open", "Submitted", "Preparing", "Revise & resubmit") and l["due"] and l["due"] < t.isoformat() and l["kind"] != "approval":
@@ -1535,78 +1647,263 @@ def del_row(kind: str, rid: int, db: Session = Depends(get_db), user: models.Use
 
 # ---- one click: the next step of an invoice ------------------------------------------------
 
-STEP_DATE = {"At site": "to_site", "Back from site": "site_back", "Certified": "certified_on", "PC issued": "issued",
-             "With Accounts": "to_accounts", "Paid": "paid_on", "Received": "received"}
+STEP_DATE = {"Received": "received", "At site": "to_site", "Certified": "site_back", "Prepared": "issued", "CM approved": "chk_on",
+             "Verified": "to_accounts", "MD approved": "app_on", "Paid": "paid_on"}
+# the stamp each step puts on the certificate (name, date)
+STAMP = {"Certified": ("verified_by", "verified_on"), "Prepared": ("prep_by", "prep_on"), "CM approved": ("chk_by", "chk_on"),
+         "Verified": ("rev_by", "rev_on"), "MD approved": ("app_by", "app_on"), "Paid": ("paid_by", "paid_on")}
+STEP_WORD = {"At site": "Sent to site", "Certified": "Certified at site", "Prepared": "Prepared", "CM approved": "Approved",
+             "Verified": "Verified", "MD approved": "MD approved", "Paid": "Paid", "Received": "Received"}
+
+
+def _allowed_next(pc):
+    """The steps a certificate may go to from where it is."""
+    st = pc.status or "Received"
+    if st == "Received":
+        return ["At site", "Certified", "Prepared"] if pc.pc_type != "Interim" else ["At site", "Certified"]
+    i = SUB_STEPS.index(st) if st in SUB_STEPS else 0
+    return SUB_STEPS[i + 1:i + 2]
+
+
+def _has_figures(db, pc):
+    return bool((pc.work_cum or 0) or (pc.adv_amount or 0) or (pc.ret_rel_cum or 0) or (pc.var_cum or 0) or (pc.mos_cum or 0))
+
+
+def _clear_from(pc, step):
+    """The steps from `step` on have not happened (yet / any more): their dates and stamps go."""
+    for later in SUB_STEPS[SUB_STEPS.index(step):]:
+        if later == "Received":
+            continue
+        if STEP_DATE.get(later):
+            setattr(pc, STEP_DATE[later], None)
+        if later in STAMP:
+            setattr(pc, STAMP[later][0], "")
+            setattr(pc, STAMP[later][1], None)
+    if SUB_STEPS.index(step) <= SUB_STEPS.index("Paid"):
+        pc.paid_amount, pc.paid_ref = 0.0, ""
+
+
+def _log(pc, entry):
+    log = flow_of(pc)
+    log.append(entry)
+    pc.flow_log = json.dumps(log[-60:])
 
 
 @router.post("/store/est/subpcs/{rid}/step")
 def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = PAYER):
+    """One click: the next step of a subcontractor certificate, by the person whose turn it is - their name and
+    the time go on it, and the next person is told. Also: undo (back one step) and send back with a note."""
     pc = db.query(EstSubPC).get(rid)
     if not pc:
         raise HTTPException(404, "That invoice is not there any more.")
+    rules = _rules(db)
+    can, _mine = pc_roles(user, rules)
     step = data.get("step")
+    now = dubai_now()
+    who = (user.full_name or user.username or "").strip()
+    cur = pc.status or "Received"
+    if cur not in SUB_STEPS:
+        cur = "Received"
+    note = str(data.get("note") or "").strip()[:500]
+    if data.get("back"):
+        # sent back with a note: to the QS (to prepare again), or to an earlier desk
+        to = data.get("to") or ("Certified" if pc.verified_by or pc.pc_type == "Interim" else "Received")
+        if to not in SUB_STEPS or SUB_STEPS.index(to) >= SUB_STEPS.index(cur) or cur == "Paid":
+            raise HTTPException(400, "It can only go back to an earlier step.")
+        if TURN.get(cur) not in can:
+            raise HTTPException(403, "Only the person whose turn it is can send it back.")
+        if not note:
+            raise HTTPException(400, "Say why it goes back (one line).")
+        _clear_from(pc, SUB_STEPS[SUB_STEPS.index(to) + 1])
+        pc.status = to
+        pc.stage_at = now
+        _log(pc, {"s": to, "from": cur, "by": who, "at": now.isoformat(timespec="minutes"), "note": note, "back": True})
+        pc.updated_by = user.id
+        db.commit()
+        return {"ok": True, "status": pc.status}
     if step not in SUB_STEPS:
         raise HTTPException(400, "Unknown step.")
-    perms = M.effective_permissions(user)
-    if RIGHT not in perms and step not in ("Paid", "With Accounts"):
-        raise HTTPException(403, "Accounts can only mark a certificate paid.")
+    if not (can - {"acc"}) and step not in ("Verified", "Paid"):
+        raise HTTPException(403, "Accounts verifies a certificate and marks it paid.")
+    if data.get("undo"):
+        # back one step: the step undone loses its date and stamp
+        if step != cur:
+            raise HTTPException(400, "It has moved on since - refresh the page.")
+        i = SUB_STEPS.index(step)
+        if not i:
+            return {"ok": True, "status": cur}
+        prev = SUB_STEPS[i - 1]
+        if TURN.get(prev) not in can and user.role != "admin":
+            raise HTTPException(403, "Only the person who did that step (or an admin) can undo it.")
+        if step == "Received":
+            return {"ok": True, "status": cur}
+        _clear_from(pc, step)
+        back_to = prev
+        if prev in ("At site", "Received") and step == "Certified" and not pc.to_site:
+            back_to = "Received"
+        if step == "Prepared" and not pc.site_back and not pc.verified_by:
+            back_to = "Received"
+        pc.status = back_to
+        pc.stage_at = now
+        _log(pc, {"s": back_to, "from": step, "by": who, "at": now.isoformat(timespec="minutes"), "undo": True})
+        pc.updated_by = user.id
+        db.commit()
+        return {"ok": True, "status": pc.status}
+    if step == cur:
+        return {"ok": True, "status": cur}
+    if step not in _allowed_next(pc):
+        raise HTTPException(400, f"It is at '{cur}' - the next step is {' or '.join(_allowed_next(pc)) or 'none'}.")
+    role = TURN.get(cur)
+    if role not in can:
+        raise HTTPException(403, {"cm": "The contracts manager approves this step.", "acc": "Accounts does this step.",
+                                  "md": "The Managing Director (admin) approves this step."}.get(role, "Not your step."))
     on = _coerce(D, data.get("date"), "date") or today()
+    if step in ("Prepared",) and not _has_figures(db, pc):
+        raise HTTPException(400, "Fill in the certificate first (work done to date, or the advance) - then press Prepared.")
     s = _sub_of(db, pc.sub_id)
     if step == "Paid":
         calc = {c["id"]: c for c in chain(db.query(EstSubPC).filter(EstSubPC.sub_id == s.id).all(), s.adv_pct, s.ret_pct, s.vat_pct)}
         amt = data.get("amount")
         pc.paid_amount = _coerce(F, amt, "amount") if amt not in (None, "") else calc[pc.id]["payable"]
         pc.paid_ref = str(data.get("ref") or pc.paid_ref or "")[:200]
-        if not pc.issued:
-            pc.issued = on
-    if step in ("Certified", "PC issued", "With Accounts") and not pc.certified_on:
-        pc.certified_on = on
-    if step in ("PC issued", "With Accounts") and not pc.issued:
-        pc.issued = on
+    if step == "Certified":
+        if cur == "Received":
+            note = note or "Certified in the office"
+        by = str(data.get("by") or "").strip()[:80]
+        pc.verified_by = by or who
+        pc.verified_on = on
+    elif step in STAMP:
+        setattr(pc, STAMP[step][0], who)
+        setattr(pc, STAMP[step][1], on)
+    if step == "Prepared":
+        pc.certified_on = pc.certified_on or on
+        if not pc.verified_by and cur == "Received":
+            note = note or "Advance - certified in the office"
     setattr(pc, STEP_DATE[step], on)
-    if data.get("undo"):
-        # Back one step: the date of the step undone is cleared.
-        i = SUB_STEPS.index(step)
-        setattr(pc, STEP_DATE[step], None)
-        if step == "Paid":
-            pc.paid_amount = 0.0
-            pc.paid_ref = ""                 # not paid after all: no cheque reference left showing
-        step = SUB_STEPS[i - 1] if i else "Received"
-    # the steps after this one have not happened (yet / any more): no dates left over from before
-    for later in SUB_STEPS[SUB_STEPS.index(step) + 1:]:
-        if STEP_DATE.get(later) and later != "Received":
-            setattr(pc, STEP_DATE[later], None)
-    if step != "Paid":
-        pc.paid_amount, pc.paid_ref = 0.0, ""
     pc.status = step
+    pc.stage_at = now
+    _log(pc, {"s": step, "by": pc.verified_by if step == "Certified" else who, "at": now.isoformat(timespec="minutes"), "note": note})
     pc.updated_by = user.id
     db.commit()
     return {"ok": True, "status": pc.status}
+
+
+# ---- the bell (and the phone): a certificate waiting at someone's desk ---------------------------
+
+def _pcs_brief(db, pcs):
+    """Sub, project and payable for a few certificates, worked out per subcontract."""
+    subs = {x.id: x for x in db.query(EstSub).filter(EstSub.id.in_({p.sub_id for p in pcs})).all()} if pcs else {}
+    projects = {x.id: x for x in db.query(EstProject).filter(EstProject.id.in_({x.project_id for x in subs.values()})).all()} if subs else {}
+    pay = {}
+    for sid, s_ in subs.items():
+        for c in chain(db.query(EstSubPC).filter(EstSubPC.sub_id == sid).all(), s_.adv_pct, s_.ret_pct, s_.vat_pct):
+            pay[c["id"]] = c
+    return subs, projects, pay
+
+
+def approve_link(ids):
+    return "/portal/approve.html?pc=" + ",".join(str(i) for i in ids)
+
+
+def bell_items(db, user):
+    """Certificates waiting at this person's desk - contracts manager, Accounts (to verify, to pay), Managing Director."""
+    out = []
+    try:
+        rules = _rules(db)
+        _can, mine = pc_roles(user, rules)
+        desks = mine & {"cm", "acc", "md"}
+        if not desks:
+            return out
+        steps = [st for st, t in TURN.items() if t in desks]
+        pcs = db.query(EstSubPC).filter(EstSubPC.status.in_(steps)).order_by(EstSubPC.id.desc()).limit(80).all()
+        subs, projects, pay = _pcs_brief(db, pcs)
+        now = dubai_now()
+        for pc in pcs:
+            s_ = subs.get(pc.sub_id)
+            p_ = projects.get(s_.project_id) if s_ else None
+            if not s_ or not p_:
+                continue
+            f = flow_info(pc, rules, now)
+            amt = pay.get(pc.id, {}).get("payable", 0.0)
+            last = f["last"] or {}
+            n = {"id": f"subpc-{pc.id}-{pc.status}", "kind": "subpc", "subpc": pc.id, "pid": p_.id,
+                 "title": f"{s_.name} PC {(pc.seq or 0):02d} ({p_.code}) - {('stuck ' if f['stuck'] else '')}{f['task']}",
+                 "detail": f"AED {amt:,.2f}" + (f" · {STEP_WORD.get(last.get('s'), last.get('s', ''))} by {last.get('by')}" if last.get("by") else "")
+                           + (f" · sent back: {f['note']}" if f["note"] else ""),
+                 "when": (_stage_at(pc) or now).date().isoformat(), "level": "warn" if f["stuck"] else "info", "status": pc.status}
+            if f["turn"] == "md":
+                n["screen"], n["url"] = "pcapprove", approve_link([pc.id])
+            elif f["turn"] == "acc":
+                n["screen"] = "pgsubpay"
+            else:
+                n["screen"], n["target"] = "pgestproj", f"subpc{pc.id}"
+            out.append(n)
+    except Exception as e:
+        print("certificates bell:", e)
+    return out
+
+
+@router.get("/store/est/subpcs/{rid}/approval")
+def approval(rid: int, db: Session = Depends(get_db), user: models.User = PAYER):
+    """The approval page (from the link / the phone notification): the certificate, where it stands, and
+    whether this login may approve it now - and the others waiting at the same desk."""
+    pc = db.query(EstSubPC).get(rid)
+    if not pc:
+        raise HTTPException(404, "That certificate is not there any more.")
+    rules = _rules(db)
+    can, _mine = pc_roles(user, rules)
+    subs, projects, pay = _pcs_brief(db, [pc])
+    s_ = subs[pc.sub_id]
+    p_ = projects[s_.project_id]
+    f = flow_info(pc, rules)
+    turn = TURN.get(pc.status or "Received")
+    nxt = {"Prepared": "CM approved", "CM approved": "Verified", "Verified": "MD approved"}.get(pc.status or "")
+    others = [x.id for x in db.query(EstSubPC).filter(EstSubPC.status == pc.status, EstSubPC.id != pc.id).order_by(EstSubPC.id).all()] if nxt else []
+    stamps = [{"s": STEP_WORD.get(x.get("s"), x.get("s")), "by": x.get("by"), "at": x.get("at"), "note": x.get("note", ""), "back": bool(x.get("back"))}
+              for x in f["log"] if not x.get("undo")]
+    return {"id": pc.id, "sub": s_.name, "scope": s_.scope, "project": p_.code, "project_name": p_.name, "seq": pc.seq or 0,
+            "pc_type": pc.pc_type, "status": pc.status, "payable": pay.get(pc.id, {}).get("payable", 0.0), "inv_ref": pc.inv_ref,
+            "can_act": bool(nxt) and turn in can, "next": nxt, "turn": turn, "waiting": f["waiting"], "stamps": stamps,
+            "others": others, "me": (user.full_name or user.username)}
 
 
 # ---- Accounts: the subcontractor certificates sent for payment ----------------------------
 
 @router.get("/store/est/payqueue")
 def payqueue(db: Session = Depends(get_db), user: models.User = PAYER):
-    """Accounts > Subcontractor payments: every certificate issued or sent to Accounts, and the last 60 days paid."""
+    """Accounts > Subcontractor payments: the certificates approved by the contracts manager (to verify), with the
+    MD, approved by the MD (to pay), and the last 60 days paid - each with the checks Accounts makes."""
     rules = _rules(db)
     projects = db.query(EstProject).order_by(EstProject.code).all()
     pre = _preload(db, projects, with_files=False)
     since = (today() - timedelta(days=60)).isoformat()
     rows = []
+    now = dubai_now()
     for p in projects:
         for s_ in pre["subs"].get(p.id, []):
-            sb = _sub_bundle(db, s_, pre["vos"].get(s_.id, []), pre["pcs"].get(s_.id, []), rules)
+            pcs_ = pre["pcs"].get(s_.id, [])
+            sb = _sub_bundle(db, s_, pre["vos"].get(s_.id, []), pcs_, rules)
+            objs = {x.id: x for x in pcs_}
             for pc in sb["pcs"]:
-                if pc["status"] in ("PC issued", "With Accounts") or (pc["status"] == "Paid" and (pc["paid_on"] or "") >= since):
+                if pc["status"] in ("CM approved", "Verified", "MD approved") or (pc["status"] == "Paid" and (pc["paid_on"] or "") >= since):
+                    earlier = [x for x in sb["pcs"] if (x["seq"] or 0, x["id"]) < (pc["seq"] or 0, pc["id"])]
+                    unpaid = [x for x in earlier if x["status"] != "Paid"]
                     rows.append({"pc_id": pc["id"], "project": p.code, "project_name": p.name, "sub": sb["name"], "scope": sb["scope"],
                                  "seq": pc["seq"], "pc_type": pc["pc_type"], "inv_ref": pc["inv_ref"], "this": pc["this"], "vat": pc["vat"],
                                  "payable": pc["payable"], "issued": pc["issued"], "to_accounts": pc["to_accounts"], "paid_on": pc["paid_on"],
-                                 "paid_amount": pc["paid_amount"], "paid_ref": pc["paid_ref"], "status": pc["status"]})
-    order = {"With Accounts": 0, "PC issued": 1, "Paid": 2}
-    rows.sort(key=lambda r: (order.get(r["status"], 3), r["to_accounts"] or r["issued"] or "", r["project"]))
+                                 "paid_amount": pc["paid_amount"], "paid_ref": pc["paid_ref"], "paid_by": pc.get("paid_by", ""), "status": pc["status"],
+                                 "flow": pc["flow"],
+                                 "checks": {"agreement": bool((s_.agreement or s_.lpo or "").strip()), "value": r2(s_.value or 0),
+                                            "prev_n": len(earlier), "prev_paid": r2(sum(x["paid_amount"] or 0 for x in earlier)),
+                                            "prev_cert": r2(sum(x["payable"] for x in earlier)),
+                                            "unpaid": [f"PC {(x['seq'] or 0):02d}" for x in unpaid],
+                                            "adv_rec": r2(objs[pc["id"]].adv_rec_cum or 0), "adv_paid": r2(pc["adv_paid_cum"])}})
+    order = {"CM approved": 0, "MD approved": 1, "Verified": 2, "Paid": 3}
+    rows.sort(key=lambda r: (order.get(r["status"], 4), -(r["flow"]["hours"]), r["project"]))
     perms = M.effective_permissions(user)
-    return {"rows": rows, "today": today().isoformat(), "estimation": RIGHT in perms}
+    can, mine = pc_roles(user, rules, perms)
+    return {"rows": rows, "today": today().isoformat(), "estimation": RIGHT in perms, "can": sorted(can), "mine": sorted(mine),
+            "stuck_days": rules["stuck_days"]}
 
 
 # ---- BOQ pasted from Excel --------------------------------------------------------------
@@ -2141,9 +2438,9 @@ def _export_rows(db, what, p, q, status, sub_id):
         for s in b["subs"]:
             for pc in s["pcs"]:
                 r = {"Subcontractor": s["name"], "PC No.": pc["seq"], "Invoice ref.": pc["inv_ref"],
-                     "Invoice amount": pc["inv_amount"], "Received": _d(pc["received"]), "Back from site": _d(pc["site_back"]),
+                     "Invoice amount": pc["inv_amount"], "Received": _d(pc["received"]), "Certified at site": _d(pc["site_back"]),
                      "Site delay": f"{pc['site_delay']} days" if pc["site_delay"] else "Nil", "PC due": _d(pc["pc_due"]),
-                     "PC issued": _d(pc["issued"]), "PC delay": f"{pc['pc_delay']} days" if pc["pc_delay"] else "Nil",
+                     "PC prepared": _d(pc["issued"]), "PC delay": f"{pc['pc_delay']} days" if pc["pc_delay"] else "Nil",
                      "This certificate": pc["this"], "Payable": pc["payable"], "Status": pc["status"]}
                 if keep(r, pc["status"]):
                     rows.append(r)

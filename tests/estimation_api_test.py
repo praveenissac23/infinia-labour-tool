@@ -132,8 +132,9 @@ dele(f"/store/est/subs/{S2}")
 # ---- invoice steps, delays, paid -------------------------------------------------------------
 old = (date.today() - timedelta(days=20)).isoformat()
 patch(f"/store/est/subpcs/{PC3}", {"received": old})
-for st in ["At site", "Back from site", "Certified", "PC issued", "With Accounts"]:
-    r = post(f"/store/est/subpcs/{PC3}/step", {"step": st})
+HADM = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}
+for st, who in [("At site", A), ("Certified", A), ("Prepared", A), ("CM approved", HADM), ("Verified", ACC), ("MD approved", HADM)]:
+    r = post(f"/store/est/subpcs/{PC3}/step", {"step": st}, who)
     ck("step " + st, r.status_code == 200 and r.json()["status"] == st, r.text)
 s = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == SB)
 p3 = s["pcs"][2]
@@ -147,8 +148,8 @@ s = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] ==
 ck("paid amount = payable", s["pcs"][2]["paid_amount"] == s["pcs"][2]["payable"], s["pcs"][2])
 ck("paid PC figures locked", patch(f"/store/est/subpcs/{PC3}", {"work_cum": 1}).status_code == 400)
 ck("paid PC cannot be removed", dele(f"/store/est/subpcs/{PC3}").status_code == 400)
-r = post(f"/store/est/subpcs/{PC3}/step", {"step": "Paid", "undo": True})
-ck("undo paid", r.json()["status"] == "With Accounts")
+r = post(f"/store/est/subpcs/{PC3}/step", {"step": "Paid", "undo": True}, ACC)
+ck("undo paid", r.json()["status"] == "MD approved", r.text)
 s = next(x for x in get(f"/store/est/projects/{P}").json()["subs"] if x["id"] == SB)
 ck("undo clears the payment", s["pcs"][2]["paid_amount"] == 0 and not s["pcs"][2]["paid_on"])
 

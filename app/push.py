@@ -161,7 +161,7 @@ def message_for(n: dict) -> dict:
                           "n_kind": n.get("kind") or "", "n_status": n.get("status") or "", "n_when": n.get("when") or "",
                           "n_people": n.get("people") or 0, "n_company": n.get("company") or 0})
     return {"title": n.get("title") or "Infinia", "body": body_for(n), "tag": n.get("id") or "",
-            "url": q}
+            "url": n.get("url") or q}       # a certificate for the MD: straight to its approval page
 
 
 SHOW = 5    # lines a phone shows before "+ more"
