@@ -1217,6 +1217,15 @@ def read_me(user: models.User = Depends(auth.get_current_user)):
     return {"username": user.username, "full_name": user.full_name, "role": user.role}
 
 
+@app.post("/auth/renew")
+def renew_sign_in(token: str = Depends(auth.oauth2_scheme), user: models.User = Depends(auth.get_current_user)):
+    """A kept sign-in ("Keep me signed in on this device") runs 30 days from the last time the app was
+    opened, not from the day of signing in - so someone using it every day is never asked again."""
+    if not auth.kept_token(token):
+        return {"access_token": None}
+    return {"access_token": auth.create_access_token({"sub": user.username}, remember=True)}
+
+
 @app.post("/auth/download-token")
 def get_download_token(user: models.User = Depends(auth.get_current_user)):
     """

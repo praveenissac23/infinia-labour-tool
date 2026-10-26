@@ -44,7 +44,20 @@ def create_access_token(data: dict, remember: bool = False) -> str:
     expire = datetime.utcnow() + (timedelta(days=REMEMBER_DAYS) if remember
                                   else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
+    if remember:
+        to_encode["keep"] = True
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def kept_token(token: str) -> bool:
+    """A "keep me signed in" sign-in (marked, or - from before the mark - one with more than a working day left)."""
+    try:
+        p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return False
+    if p.get("keep"):
+        return True
+    return p.get("exp", 0) - datetime.utcnow().timestamp() > ACCESS_TOKEN_EXPIRE_MINUTES * 60 + 3600
 
 
 def create_download_token(username: str) -> str:

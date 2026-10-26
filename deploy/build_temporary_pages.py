@@ -1450,6 +1450,7 @@ def brand_hand_written(menu_rights=None):
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>'
                  f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>'
                  f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>'
+                 f'<script src="/portal/help/fab.js?v={_v("portal/help/fab.js")}" defer></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:
             new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)

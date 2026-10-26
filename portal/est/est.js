@@ -61,7 +61,7 @@ function fail(e) { toast(e && e.message ? e.message : String(e), { err: true });
 
 // ---------- sign in ----------
 function signIn() {
-  TOKEN = null; sessionStorage.removeItem("infinia_token");
+  TOKEN = null; sessionStorage.removeItem("infinia_token"); try { localStorage.removeItem("infinia_keep"); } catch (e) {}
   if (window.PG_EMBED) { try { parent.postMessage("pg-signin", location.origin); } catch (e) {} return; }
   $("#login").classList.remove("hide"); $("#lg-u").focus();
 }
@@ -69,13 +69,15 @@ async function doLogin() {
   $("#lg-e").textContent = "";
   try {
     const r = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ username: $("#lg-u").value.trim(), password: $("#lg-p").value }) });
+      body: new URLSearchParams({ username: $("#lg-u").value.trim(), password: $("#lg-p").value, remember: $("#lg-keep").checked ? "1" : "0" }) });
     if (!r.ok) { $("#lg-e").textContent = "Wrong username or password."; return; }
     TOKEN = (await r.json()).access_token; sessionStorage.setItem("infinia_token", TOKEN);
+    try { const k = $("#lg-keep").checked; if (k) localStorage.setItem("infinia_keep", TOKEN); else localStorage.removeItem("infinia_keep"); localStorage.setItem("infinia_keep_tick", k ? "1" : "0"); } catch (e) {}
     $("#login").classList.add("hide"); start();
   } catch (e) { $("#lg-e").textContent = "Could not reach the server."; }
 }
 $("#lg-go").onclick = doLogin;
+try { const t = localStorage.getItem("infinia_keep_tick"); if (t !== null) $("#lg-keep").checked = t === "1"; } catch (e) {}
 $("#lg-p").onkeydown = e => { if (e.key === "Enter") doLogin(); };
 
 // ---------- modal: a form built from a list of fields ----------

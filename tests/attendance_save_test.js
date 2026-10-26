@@ -7,7 +7,7 @@ for (const url of ['/?p=attendance', '/app-classic.html']) {
   if (url.includes('classic')) { await p.evaluate("switchScreen('attendance')"); await p.waitForTimeout(2500); }
   const i = url.includes('classic') ? 12 : 9; const row = p.locator('#grid-body tr').nth(i); const sels = row.locator('select');
   await sels.nth(0).selectOption('Absent'); await sels.nth(1).selectOption('Absent'); await p.waitForTimeout(300);
-  await p.click('#floating-save-btn'); await p.waitForTimeout(3000);
+  await p.click('#att-save-btn:visible, #floating-save-btn:visible'); await p.waitForTimeout(3000);
   const st = await p.evaluate(() => document.getElementById('att-status').textContent);
   // read it back from the server
   const emp = await row.locator('td.empno').textContent();

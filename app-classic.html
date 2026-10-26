@@ -903,6 +903,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .hr-field > span { font-size: 11px; font-weight: 700; color: #6B7075; letter-spacing: .2px; }
 
   .grid-wrap { background: white; border-radius: 8px; border: 1px solid #E8E8E8; overflow: auto; max-height: 60vh; }
+  /* Save / submit floats at the bottom of the screen (left of INFI), always in reach - see floatSaves() */
+  .btn.fab { position: fixed !important; bottom: 22px; right: 24px; z-index: 60; margin: 0 !important; padding: 13px 26px !important;
+    font-size: 14px; border-radius: 24px !important; box-shadow: 0 4px 14px rgba(0,0,0,.28); width: auto !important; }
+  body.infi-on .btn.fab { right: 96px; }
+  @media (max-width: 900px) { .btn.fab { bottom: 16px; right: 16px; padding: 12px 20px !important; } body.infi-on .btn.fab { right: 90px; } }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   /* Light, quiet headers. Solid brand-red header bars on every table
      were the single loudest amateur signal - red now belongs to
@@ -1775,17 +1780,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     <!-- ground -->
     <path d="M0 299h1440" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="2"/>
   </svg>
-  <div id="login-box">
+  <form id="login-box" onsubmit="event.preventDefault(); doLogin();" autocomplete="on">
     <img class="logo" src="/portal/logo-bb952b26.png" alt="Infinia Contracting">
-    <input type="text" id="login-username" placeholder="Username" value="admin" data-spell="off">
-    <input type="password" id="login-password" placeholder="Password">
+    <input type="text" id="login-username" name="username" autocomplete="username" placeholder="Username" value="admin" data-spell="off">
+    <input type="password" id="login-password" name="password" autocomplete="current-password" placeholder="Password">
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;">
       <input type="checkbox" onchange="togglePassword('login-password', this)" style="width:auto; margin-right:5px;"> Show password</label>
     <label style="display:block; font-size:12px; color:#666; margin:6px 0 0; cursor:pointer;" title="Stays signed in for 30 days - your phone's own lock (Face ID, fingerprint, PIN) protects it">
       <input type="checkbox" id="login-keep" style="width:auto; margin-right:5px;"> Keep me signed in on this device</label>
-    <button onclick="doLogin()">Sign In</button>
+    <button type="submit">Sign In</button>
     <div id="login-error"></div>
-  </div>
+  </form>
 </div>
 
 <div id="app-screen">
@@ -1989,8 +1994,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
-        <button id="floating-save-btn" class="btn btn-primary" onclick="saveAttendance()"
-                style="display:none; position:fixed; bottom:24px; right:24px; padding:14px 26px; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,0.3); z-index:50; border-radius:24px;">
+        <button id="floating-save-btn" class="btn btn-primary fab" onclick="saveAttendance()" style="display:none;">
           Save Attendance
         </button>
 
@@ -5138,7 +5142,8 @@ async function doLogin() {
     CURRENT_USERNAME = data.username || "";
     sessionStorage.setItem("infinia_token", TOKEN);
     // Kept on the phone itself when asked, so closing the app does not sign out.
-    try { if (document.getElementById("login-keep").checked) localStorage.setItem("infinia_keep", TOKEN); else localStorage.removeItem("infinia_keep"); } catch (e) {}
+    // The tick itself is remembered too, so it is already ticked the next time on this device.
+    try { const k = document.getElementById("login-keep").checked; if (k) localStorage.setItem("infinia_keep", TOKEN); else localStorage.removeItem("infinia_keep"); localStorage.setItem("infinia_keep_tick", k ? "1" : "0"); } catch (e) {}
     document.getElementById("who-label").textContent = `${data.full_name} (${data.role})`;
     try { sessionStorage.setItem("infinia_who", `${data.full_name} (${data.role})`); } catch (e) {}
     // A fresh sign-in starts on this login's own first page (Estimation for an estimation login,
@@ -5394,6 +5399,56 @@ function switchScreen(name) {
   if (name === "attendance") loadDashboardCalendar(calendarMonthFor(new Date((currentDate || isoLocal(new Date())) + "T00:00:00")), "attendance-calendar");
   document.getElementById("floating-save-btn").style.display = name === "attendance" ? "block" : "none";
 }
+
+// No empty band under a list: the last table on a page runs down to the bottom of the
+// window (its rows scroll inside, headings and buttons stay in view) instead of stopping
+// at a fixed share of the screen height. Phones scroll the page as before.
+function fitGrids() {
+  const gs = [...document.querySelectorAll(".grid-wrap")].filter(g => g.offsetParent && !g.parentElement.closest(".grid-wrap")
+    && !g.closest("[id$='-overlay'], [id$='-modal'], .zx-modal, .modal, .px-sheet, #modal"));
+  document.querySelectorAll(".grid-wrap[data-mh]").forEach(g => { if (!gs.includes(g) && g.style.maxHeight !== g.dataset.mh) g.style.maxHeight = g.dataset.mh; });
+  if (innerWidth <= 900) { gs.forEach(g => { if (g.dataset.mh !== undefined && g.style.maxHeight !== g.dataset.mh) g.style.maxHeight = g.dataset.mh; }); return; }
+  const last = new Map();
+  gs.forEach(g => { const scr = g.closest(".screen") || document.body; last.set(scr, g); });
+  document.querySelectorAll(".screen.fit").forEach(x => { if (![...last.keys()].includes(x)) x.classList.remove("fit"); });
+  last.forEach((g, scr) => {
+    if (g.dataset.mh === undefined) g.dataset.mh = g.style.maxHeight || "";
+    const r = g.getBoundingClientRect(), sr = scr.getBoundingClientRect();
+    const content = g.closest(".content"), cs = content ? getComputedStyle(content) : null;
+    const top = r.top + scrollY + (content ? content.scrollTop : 0);
+    // the screen's own room for the INFI button is given back: the list scrolls under it instead
+    if (!scr.classList.contains("fit")) scr.classList.add("fit");
+    const after = Math.max(0, scr.getBoundingClientRect().bottom - r.bottom - (parseFloat(getComputedStyle(scr).paddingBottom) || 0))
+                + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
+    const room = Math.floor(innerHeight - top - after);
+    const want = Math.max(room, 260) + "px";
+    if (g.style.maxHeight !== want) g.style.maxHeight = want;
+    const infi = document.getElementById("infi-btn"), fab = [...document.querySelectorAll(".btn.fab")].some(b => b.offsetParent || getComputedStyle(b).display !== "none");
+    const long = g.scrollHeight - (g.classList.contains("fit-long") ? 76 : 0) > g.clientHeight + 1
+                 && ((infi && getComputedStyle(infi).display !== "none") || fab);
+    if (g.classList.contains("fit-long") !== !!long) g.classList.toggle("fit-long", !!long);
+  });
+}
+// Save, submit, send, record, approve: the page's one main action floats at the bottom of the
+// screen, so it is always in reach without scrolling. Pop-ups keep theirs in their own footer;
+// a page showing several such forms at once keeps them in place (one floating button only).
+const SAVE_WORDS = /^\s*(save|submit|send|post|record|issue|approve|update|confirm)\b(?!\s+(a|an|new)\b)/i;   // not an opener ("Record a direct purchase")
+function floatSaves() {
+  const infi = document.getElementById("infi-btn");
+  const on = !!(infi && getComputedStyle(infi).display !== "none");
+  if (document.body.classList.contains("infi-on") !== on) document.body.classList.toggle("infi-on", on);
+  const scr = document.querySelector("#app-screen .screen.active");
+  const fixedUp = el => { for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (getComputedStyle(e).position === "fixed") return true; return false; };
+  const cand = scr && !scr.querySelector("#floating-save-btn") ? [...scr.querySelectorAll(".btn.btn-primary")].filter(b =>
+    b.getClientRects().length && SAVE_WORDS.test(b.textContent) && !b.closest("td, th, .grid-wrap") && !fixedUp(b)) : [];
+  const pick = cand.length === 1 ? cand[0] : null;
+  document.querySelectorAll(".fab-auto").forEach(x => { if (x !== pick) x.classList.remove("fab", "fab-auto"); });
+  if (pick && !pick.classList.contains("fab-auto")) pick.classList.add("fab", "fab-auto");
+}
+let FIT_T = 0;
+function fitGridsSoon() { if (FIT_T) return; FIT_T = setTimeout(() => { FIT_T = 0; try { floatSaves(); } catch (e) {} try { fitGrids(); } catch (e) {} }, 120); }
+addEventListener("resize", fitGridsSoon);
+new MutationObserver(fitGridsSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
 
 // A download token is fetched ahead of time (screen open + every 45s
 // while there) rather than at click time, so Export/Backup buttons
@@ -14072,6 +14127,16 @@ checkBuild();
 setInterval(() => { if (!document.hidden) checkBuild(); }, 120000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkBuild(); });
 
+// A kept sign-in starts its 30 days again each time the app is opened.
+function renewKept(saved) {
+  try { if (localStorage.getItem("infinia_keep") !== saved) return; } catch (e) { return; }
+  apiCall("/auth/renew", { method: "POST" }).then(r => {
+    if (!r || !r.access_token) return;
+    TOKEN = r.access_token; sessionStorage.setItem("infinia_token", TOKEN);
+    try { localStorage.setItem("infinia_keep", TOKEN); } catch (e) {}
+  }).catch(() => {});
+}
+try { const t = localStorage.getItem("infinia_keep_tick"); const b = document.getElementById("login-keep"); if (b && t !== null) b.checked = t === "1"; } catch (e) {}
 // Auto-resume session if a token is already stored
 (function tryResume() {
   const saved = sessionStorage.getItem("infinia_token");
@@ -14085,6 +14150,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "block";
       initApp();
+      renewKept(saved);
     }).catch(e => {
       // Only a sign-in the server refuses ends it. A dropped or slow
       // connection (a weak site network) tries again instead of throwing
@@ -20902,6 +20968,9 @@ async function dailyReportCopy() {
 <style>
   /* room under the last row so the INFI button never sits on top of a total or a row's buttons */
   #app-screen .screen.active { padding-bottom: 84px; }
+  /* a page whose last list runs to the window bottom: no band under it - the last rows scroll clear of INFI instead */
+  @media (min-width: 901px) { #app-screen .screen.active.fit { padding-bottom: 0; } }
+  .grid-wrap.fit-long::after { content: ""; display: block; height: 76px; }
   #infi-btn { position: fixed; right: 18px; bottom: 18px; z-index: 2550; width: 64px; height: 64px; border-radius: 50%;
     border: 0; padding: 0; cursor: pointer; background: radial-gradient(circle at 50% 40%, #fff, #EDEAE6 70%);
     box-shadow: 0 6px 18px rgba(0,0,0,.22), 0 0 0 3px rgba(192,57,43,.18); display: none; overflow: hidden;
