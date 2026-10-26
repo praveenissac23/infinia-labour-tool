@@ -1,0 +1,22 @@
+// Ask INFI: a box to type (or speak) the question; Ask opens Claude with the question already in it, in one reused tab.
+const { chromium } = require('playwright');
+const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/infi_';
+let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+(async () => { const br = await chromium.launch(); const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await ctx.route('https://claude.ai/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Claude</h1>' }));
+  await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()'); await sleep(3500);
+  await p.click('#infi-btn', { force: true }); await sleep(400);
+  ck('the box opens ready to type, with a mic', await p.evaluate(() => document.activeElement.id === 'infi-q') && await p.isVisible('#infi-mic'));
+  await p.screenshot({ path: SH + '1_box.png' });
+  await p.fill('#infi-q', 'LPOs sent to Danube this month');
+  const [tab] = await Promise.all([ctx.waitForEvent('page'), p.press('#infi-q', 'Enter')]);
+  await tab.waitForLoadState().catch(() => {});
+  const u = decodeURIComponent(tab.url());
+  ck('Enter opens Claude with the question in it (and the connector named)', /claude\.ai\/new\?q=Using the Infinia connector .*LPOs sent to Danube this month/.test(u), u);
+  await p.bringToFront(); await p.click('#infi-btn', { force: true }); await sleep(300);
+  ck('the question is kept as a recent one', /Danube/.test(await p.textContent('#infi-recent')));
+  ck('voice: a mic button (the browser speech recognition)', await p.evaluate(() => typeof infiVoice === 'function'));
+  ck('no page errors', !errs.length, errs);
+  await br.close(); console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0); })();
