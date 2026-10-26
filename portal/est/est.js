@@ -1348,38 +1348,101 @@ SECTIONS["client.inv"] = el => {
 };
 
 SECTIONS["site.vo"] = el => SECTIONS["client.vo"](el);      // the same variations, from Site & technical too
-// ---------------- Site & technical: RFIs, submittals ----------------
+// ---------------- Site & technical: RFIs, submittals, NOCs & approvals ----------------
+// One line per item. The status is one click (the dates stamp themselves), remarks are typed straight
+// into the line - for anything stuck, so everyone sees why. The pencil opens the few details there are.
 const LOGCFG = {
-  rfi: { name: "RFI", title: "Subject", party: "To", reply: "Answered", btn: "Answer received" },
-  submittal: { name: "Submittal", title: "Item submitted", party: "To", reply: "Approved", btn: "Reply received" },
+  rfi: { name: "RFI", pre: "RFI", title: "Subject", add: "New RFI - type the subject and press Enter", days: "rfi_days",
+         steps: [["Open", "Open"], ["Answered", "Answered"], ["Closed", "Closed"]] },
+  submittal: { name: "Submittal", pre: "SUB", title: "Item submitted", add: "New submittal - type what is being submitted and press Enter", days: "submittal_days",
+         steps: [["Preparing", "Preparing"], ["Submitted", "Sent"], ["Approved", "Approved"], ["Approved as noted", "As noted"], ["Revise & resubmit", "Revise"], ["Rejected", "Rejected"]] },
+  approval: { name: "Item", pre: "AP", title: "Item",
+         steps: [["Not started", "Not started"], ["Submitted", "Submitted"], ["Approved", "Approved"], ["Rejected", "Rejected"], ["N/A", "N/A"]] },
 };
+const LOG_DONE = ["Closed", "Approved", "Approved as noted", "Answered", "Rejected", "N/A"];
+const STEP_TONE = { "Not started": "z", "Preparing": "z", "Approved": "g", "Approved as noted": "g", "Answered": "g", "Closed": "g", "Submitted": "b", "Open": "b", "Revise & resubmit": "a", "Rejected": "r", "N/A": "n" };
+// What one click on a status writes: the status, and the date it happened (today) where that date is still empty.
+function stepData(kind, l, s) {
+  const t = today(), d = { status: s };
+  const sentAt = () => { if (!l.sent) d.sent = t; if (kind !== "approval" && !l.due) d.due = addDays(ST.b.rules[LOGCFG[kind].days] || 14); };
+  if (kind === "approval") {
+    if (s === "Not started") { d.sent = null; d.replied = null; }
+    else if (s === "Submitted") { sentAt(); d.replied = null; }
+    else if (s === "Approved" || s === "Rejected") { if (!l.sent) d.sent = t; d.replied = t; }
+  } else if (kind === "submittal") {
+    if (s === "Preparing") { d.sent = null; d.replied = null; d.due = null; }
+    else if (s === "Submitted") { sentAt(); d.replied = null; }
+    else { if (!l.sent) d.sent = t; d.replied = t; }
+  } else {
+    if (s === "Open") d.replied = null;
+    else { if (!l.replied) d.replied = t; }
+  }
+  return d;
+}
+function dueTag(l) {
+  if (!l.due || LOG_DONE.includes(l.status) || l.replied) return l.due ? `<span class="muted">${dt(l.due)}</span>` : "";
+  const n = Math.round((new Date(l.due) - new Date(today())) / 864e5);
+  return n < 0 ? `<span class="due late">${-n} day${n === -1 ? "" : "s"} late</span>` : n === 0 ? `<span class="due soon">due today</span>` : `<span class="due ${n <= 3 ? "soon" : ""}">in ${n} day${n === 1 ? "" : "s"}</span>`;
+}
+function stampLine(kind, l) {
+  const a = kind === "approval" ? ["Submitted", "Approved"] : kind === "rfi" ? ["Sent", "Answered"] : ["Sent", "Reply"];
+  const bits = [l.sent ? `${a[0]} ${dt(l.sent)}` : "", l.replied ? `${l.status === "Rejected" ? "Rejected" : a[1]} ${dt(l.replied)}` : ""].filter(Boolean);
+  return bits.length ? `<div class="stamp">${bits.join(" · ")}</div>` : "";
+}
+function stepsHtml(kind, l) {
+  return `<div class="steps">${LOGCFG[kind].steps.map(([v, lab]) => `<button class="${l.status === v ? "on " + (STEP_TONE[v] || "") : ""}" data-step="${l.id}" data-v="${esc(v)}" title="${esc(v)}${l.status === v ? "" : " - one click, today's date goes in"}">${esc(lab)}</button>`).join("")}</div>${stampLine(kind, l)}`;
+}
+const dIn = (l, k) => `<input type="date" class="cell-d" data-cell="${l.id}" data-k="${k}" value="${l[k] || ""}" title="Change the date">`;
+const tIn = (l, k, ph, cls = "") => `<input class="cell-t ${cls}" data-cell="${l.id}" data-k="${k}" value="${esc(l[k] || "")}" placeholder="${esc(ph)}" data-spell="off">`;
+function logRemarks(l) { return `<input class="cell-t rm ${l.note ? "has" : ""}" data-cell="${l.id}" data-k="note" value="${esc((l.note || "").replace(/\n/g, " · "))}" placeholder="Add a remark..." data-spell="off" title="${esc(l.note || "Anything stuck or to remember - everyone on the project sees it")}">`; }
+// Saving a typed cell: no reload, the line keeps its place and the cursor moves on.
+function bindLogCells(el, redraw) {
+  $$("[data-step]", el).forEach(x => x.onclick = async () => {
+    const l = ST.b.logs.find(y => y.id === +x.dataset.step); if (!l || l.status === x.dataset.v) return;
+    try { await PATCH(`/store/est/logs/${l.id}`, stepData(l.kind, l, x.dataset.v)); await reload(); toast(`${l.title.slice(0, 40)}: ${x.dataset.v}`); } catch (e) { fail(e); }
+  });
+  $$("[data-cell]", el).forEach(x => {
+    const save = async () => {
+      const l = ST.b.logs.find(y => y.id === +x.dataset.cell); const k = x.dataset.k; if (!l) return;
+      const v = x.value.trim(), old = k === "note" ? (l.note || "").replace(/\n/g, " · ") : (l[k] || "");
+      if (v === old) return;
+      try { await PATCH(`/store/est/logs/${l.id}`, { [k]: v || (x.type === "date" ? null : "") }); l[k] = v; x.classList.toggle("has", !!v); x.classList.add("saved"); setTimeout(() => x.classList.remove("saved"), 900); }
+      catch (e) { fail(e); x.value = old; }
+    };
+    x.onchange = save;
+    x.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); x.blur(); } if (e.key === "Escape") { x.value = x.dataset.k === "note" ? "" : x.value; x.blur(); } };
+  });
+  $$("[data-resub]", el).forEach(x => x.onclick = () => { const l = ST.b.logs.find(y => y.id === +x.dataset.resub);
+    quickLog(l.id, { rev: String((+l.rev || 0) + 1), status: "Submitted", sent: today(), replied: null, due: addDays(ST.b.rules.submittal_days) }, "Resubmitted - rev " + ((+l.rev || 0) + 1)); });
+}
 function logSection(kind) {
   return el => {
     const b = ST.b, cfg = LOGCFG[kind], f = filt(), sts = ST.meta.log_status[kind], t = today();
     const all = b.logs.filter(l => l.kind === kind);
-    const list = all.filter(l => (!f || l.status === f || (f === "Overdue" && l.due && l.due < t && !l.replied)) && match(l));
-    const late = all.filter(l => l.due && l.due < t && !l.replied && !["Closed", "Approved", "Answered", "Rejected"].includes(l.status)).length;
-    el.innerHTML = tools(kind, { add: `<button class="btn btn-primary" id="add-log">+ ${cfg.name}</button>`, chips: [["", all.length], ...sts.map(s => [s, all.filter(l => l.status === s).length]), ["Overdue", late]],
-      right: `<button class="btn btn-plain btn-sm" id="rules">Reply in ${kind === "rfi" ? b.rules.rfi_days : b.rules.submittal_days} days</button>` }) +
-      (list.length ? `<div class="tw"><table class="t"><thead><tr><th>No.</th><th>${cfg.title}</th><th>${cfg.party}</th><th>Discipline</th><th>Ref.</th>${kind === "submittal" ? "<th>Rev.</th>" : ""}<th>Sent</th><th>Due</th><th>Reply</th><th>Status</th><th></th></tr></thead><tbody>
-      ${list.map(l => { const od = l.due && l.due < t && !l.replied && !["Closed", "Approved", "Answered", "Rejected"].includes(l.status);
-        return `<tr class="rowc" data-log="${l.id}"><td class="nowrap"><b>${kind === "rfi" ? "RFI" : "SUB"}-${pad(l.seq)}</b></td><td>${esc(l.title)}${l.note ? `<div class="small muted">${esc(l.note.slice(0, 120))}</div>` : ""}</td><td>${esc(l.party)}</td><td class="small">${esc(l.discipline)}</td><td class="small">${esc(l.ref)}</td>${kind === "submittal" ? `<td>${esc(l.rev)}</td>` : ""}
-        <td class="nowrap">${dt(l.sent)}</td><td class="nowrap ${od ? "late" : ""}">${dt(l.due)}${od ? " !" : ""}</td><td class="nowrap">${dt(l.replied)}</td><td>${st(l.status)}</td>
-        <td class="nowrap">${!l.replied ? `<button class="btn btn-ghost btn-sm" data-reply="${l.id}">${cfg.btn}</button>` : kind === "rfi" && l.status !== "Closed" ? `<button class="btn btn-plain btn-sm" data-close="${l.id}">Close</button>` : l.status === "Revise & resubmit" ? `<button class="btn btn-ghost btn-sm" data-resub="${l.id}">Resubmit (rev ${(+l.rev || 0) + 1})</button>` : ""}</td></tr>`; }).join("")}
-      </tbody></table></div>` : `<div class="empty">No ${cfg.name}s${f ? " here" : " yet"}.</div>`);
+    const isLate = l => l.due && l.due < t && !l.replied && !LOG_DONE.includes(l.status);
+    const list = all.filter(l => (!f || l.status === f || (f === "Overdue" && isLate(l)) || (f === "With remarks" && l.note)) && match(l));
+    const late = all.filter(isLate).length, noted = all.filter(l => l.note).length;
+    el.innerHTML = tools(kind, { chips: [["", all.length], ...sts.map(s => [s, all.filter(l => l.status === s).length]).filter(([s, n]) => n || ["Submitted", "Open"].includes(s)), ["Overdue", late], ["With remarks", noted]],
+        right: `<button class="btn btn-plain btn-sm" id="rules" title="Days allowed for a reply - the due date is set from it">Reply in ${b.rules[cfg.days]} days</button>` }) +
+      `<div class="qadd"><input id="qa-title" placeholder="${esc(cfg.add)}"><select id="qa-party" title="Sent to">${ST.meta.parties.map(x => `<option ${x === (lastLog(kind, "party") || "Consultant") ? "selected" : ""}>${esc(x)}</option>`).join("")}</select><button class="btn btn-primary" id="qa-go">Add</button></div>` +
+      (list.length ? `<div class="tw"><table class="t lg"><colgroup><col style="width:76px"><col>${kind === "submittal" ? '<col style="width:46px">' : ""}<col style="width:104px"><col style="width:${kind === "submittal" ? 410 : 250}px"><col style="width:26%"><col style="width:36px"></colgroup>
+        <thead><tr><th>No.</th><th>${cfg.title}</th>${kind === "submittal" ? '<th class="c">Rev</th>' : ""}<th>Reply due</th><th>Status - one click</th><th>Remarks</th><th></th></tr></thead><tbody>
+        ${list.map(l => `<tr class="${isLate(l) ? "late-row" : ""}"><td class="nowrap"><b>${cfg.pre}-${pad(l.seq)}</b></td>
+          <td><div class="t1">${esc(l.title)}</div><div class="small muted">to ${esc(l.party || "-")}${l.ref ? " · Ref. " + esc(l.ref) : ""}</div></td>${kind === "submittal" ? `<td class="c">${esc(l.rev || "0")}</td>` : ""}
+          <td class="nowrap small">${dueTag(l)}</td>
+          <td>${stepsHtml(kind, l)}${l.status === "Revise & resubmit" ? `<button class="btn btn-ghost btn-sm resub" data-resub="${l.id}">Resubmit as rev ${(+l.rev || 0) + 1}</button>` : ""}</td>
+          <td>${logRemarks(l)}</td><td><button class="ico" data-edit="${l.id}" title="Details">&#9998;</button></td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="empty">No ${cfg.name}s${f ? " here" : " yet"} - type one in the box above.</div>`);
     bindTools(el, () => logSection(kind)(el));
-    $("#add-log", el).onclick = () => logForm(kind);
     $("#rules", el).onclick = rulesForm;
-    $$("[data-log]", el).forEach(r => r.onclick = e => { if (e.target.closest("button")) return; logForm(kind, all.find(l => l.id === +r.dataset.log)); });
-    $$("[data-reply]", el).forEach(x => x.onclick = () => {
-      const l = all.find(y => y.id === +x.dataset.reply);
-      if (kind === "rfi") return quickLog(l.id, { replied: today(), status: "Answered" }, "Answer received");
-      modal(`SUB-${pad(l.seq)} reply`, [{ k: "status", label: "Reply", type: "select", options: ["Approved", "Approved as noted", "Revise & resubmit", "Rejected"] }, { k: "replied", label: "Reply date", type: "date", value: today() }, { k: "note", label: "Comments", type: "area", value: l.note }],
-        async v => { await PATCH(`/store/est/logs/${l.id}`, v); await reload(); toast("Saved"); });
-    });
-    $$("[data-close]", el).forEach(x => x.onclick = () => quickLog(+x.dataset.close, { status: "Closed" }, "Closed"));
-    $$("[data-resub]", el).forEach(x => x.onclick = () => { const l = all.find(y => y.id === +x.dataset.resub);
-      quickLog(l.id, { rev: String((+l.rev || 0) + 1), status: "Submitted", sent: t, replied: "", due: addDays(b.rules.submittal_days) }, "Resubmitted - rev " + ((+l.rev || 0) + 1)); });
+    const add = async () => {
+      const title = $("#qa-title").value.trim(); if (!title) { $("#qa-title").focus(); return; }
+      try { await POST("/store/est/logs", { kind, project_id: ST.pid, title, party: $("#qa-party").value, status: kind === "rfi" ? "Open" : "Submitted", sent: t }); await reload(); toast(`${cfg.name} added - sent today, reply due in ${b.rules[cfg.days]} days`); setTimeout(() => { const q = $("#qa-title"); if (q) q.focus(); }, 50); }
+      catch (e) { fail(e); }
+    };
+    $("#qa-go", el).onclick = add; $("#qa-title", el).onkeydown = e => { if (e.key === "Enter") add(); };
+    bindLogCells(el);
+    $$("[data-edit]", el).forEach(x => x.onclick = () => logForm(kind, all.find(l => l.id === +x.dataset.edit)));
   };
 }
 async function quickLog(id, d, msg) { try { await PATCH(`/store/est/logs/${id}`, d); await reload(); toast(msg); } catch (e) { fail(e); } }
@@ -1388,17 +1451,17 @@ function logForm(kind, l) {
   l = l || {}; const cfg = LOGCFG[kind], m = ST.meta;
   const fields = [
     { k: "title", label: cfg.title, value: l.title || "", full: true, focus: true },
-    { k: "party", label: cfg.party, type: "select", options: m.parties, value: l.party || lastLog(kind, "party") || "Consultant" },
-    { k: "discipline", label: "Discipline", type: "select", options: ["", ...m.disciplines], value: l.discipline || (l.id ? "" : lastLog(kind, "discipline")) },
+    { k: "party", label: "Sent to", type: "select", options: m.parties, value: l.party || lastLog(kind, "party") || "Consultant" },
     { k: "ref", label: "Ref. / letter no.", value: l.ref || "" },
-    { k: "sent", label: "Sent on", type: "date", value: l.sent || today() }, { k: "due", label: "Reply due", type: "date", value: l.due || "", hint: l.id ? "" : "Left empty, it is set from the days allowed." },
-    { k: "replied", label: "Reply received", type: "date", value: l.replied || "" },
-    { k: "status", label: "Status", type: "select", options: m.log_status[kind], value: l.status || m.log_status[kind][0] },
-    { k: "note", label: kind === "rfi" ? "Question / answer" : "Comments", type: "area", value: l.note || "" },
+    ...(kind === "submittal" ? [{ k: "rev", label: "Revision", type: "select", options: ["0", "1", "2", "3", "4", "5"], value: l.rev || "0" }] : []),
+    { k: "discipline", label: "Discipline", type: "select", options: ["", ...m.disciplines], value: l.discipline || (l.id ? "" : lastLog(kind, "discipline")) },
+    { k: "note", label: "Remarks", type: "area", full: true, value: l.note || "", ph: "Anything stuck or to remember - everyone on the project sees it" },
+    { k: "sent", label: "Sent on", type: "date", value: l.sent || (l.id ? "" : today()), tip: "Put in by the status click - change it only if it went on another day." },
+    { k: "due", label: "Reply due", type: "date", value: l.due || "", tip: `Set for you: ${ST.b.rules[cfg.days]} days after it is sent.` },
+    ...(l.id ? [{ k: "replied", label: "Reply received", type: "date", value: l.replied || "" }] : []),
   ];
-  if (kind === "submittal") fields.splice(4, 0, { k: "rev", label: "Revision", type: "select", options: ["0", "1", "2", "3", "4", "5"], value: l.rev || "0" });
-  modal(l.id ? `${kind === "rfi" ? "RFI" : "SUB"}-${pad(l.seq)}` : `New ${cfg.name}`, fields,
-    async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else { v.kind = kind; v.project_id = ST.pid; await POST("/store/est/logs", v); } await reload(); toast("Saved"); },
+  modal(l.id ? `${cfg.pre}-${pad(l.seq)}` : `New ${cfg.name}`, fields,
+    async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else { v.kind = kind; v.project_id = ST.pid; v.status = kind === "rfi" ? "Open" : v.sent ? "Submitted" : "Preparing"; await POST("/store/est/logs", v); } await reload(); toast("Saved"); },
     { wide: true, doc: { kind: "log", what: kind === "rfi" ? "RFI or its letter" : "submittal transmittal or its letter", want: [["title", "Subject"], ["ref", "Ref. / letter no."]] },
       del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
@@ -1409,32 +1472,37 @@ SECTIONS["site.submittal"] = logSection("submittal");
 SECTIONS["site.approval"] = el => {
   const b = ST.b, f = filt();
   const all = b.logs.filter(l => l.kind === "approval");
-  const list = all.filter(l => (!f || l.status === f) && match(l));
-  let html = tools("approval", { add: `<button class="btn btn-ghost" id="add-ap">+ Item</button>`, chips: [["", all.length], ...ST.meta.log_status.approval.map(s => [s, all.filter(l => l.status === s).length])],
-      right: `<span class="small muted">One click stamps today's date ${tip("Submitted / Approved put today's date in. Click the item to change a date.")}</span>` });
-  html += `<div class="tw"><table class="t"><thead><tr><th>Item</th><th>Authority</th><th>Submitted</th><th>Approved</th><th>Status</th><th>Ref.</th><th></th></tr></thead><tbody>`;
+  const list = all.filter(l => (!f || l.status === f || (f === "With remarks" && l.note)) && match(l));
+  const done = all.filter(l => ["Approved", "N/A"].includes(l.status)).length, pct = all.length ? Math.round(100 * done / all.length) : 0;
+  let html = tools("approval", { add: `<button class="btn btn-ghost" id="add-ap">+ Item</button>`,
+      chips: [["", all.length], ...ST.meta.log_status.approval.map(s => [s, all.filter(l => l.status === s).length]), ["With remarks", all.filter(l => l.note).length]],
+      right: `<div class="prog" title="Approved or not needed"><div class="bar"><i style="width:${pct}%"></i></div><span>${done} of ${all.length} done</span></div>` });
+  html += `<div class="tw"><table class="t lg"><colgroup><col><col style="width:160px"><col style="width:350px"><col style="width:140px"><col style="width:26%"><col style="width:36px"></colgroup>
+    <thead><tr><th>Item</th><th>Authority</th><th>Status - one click</th><th>Ref. / permit no.</th><th>Remarks</th><th></th></tr></thead><tbody>`;
   let g = null;
   for (const l of list) {
-    if (l.group !== g) { g = l.group; html += `<tr class="sec"><td colspan="7">${esc(g || "Other")}</td></tr>`; }
-    html += `<tr class="rowc" data-ap="${l.id}"><td>${esc(l.title)}</td><td class="small">${esc(l.party)}</td><td class="nowrap">${dt(l.sent)}</td><td class="nowrap">${dt(l.replied)}</td><td>${st(l.status)}</td><td class="small">${esc(l.ref)}</td>
-      <td class="nowrap">${l.status === "Not started" || l.status === "Rejected" ? `<button class="btn btn-ghost btn-sm" data-aq="${l.id}:Submitted">Submitted</button> <button class="btn btn-plain btn-sm" data-aq="${l.id}:N/A">N/A</button>` : l.status === "Submitted" ? `<button class="btn btn-ok btn-sm" data-aq="${l.id}:Approved">Approved</button> <button class="btn btn-plain btn-sm" data-aq="${l.id}:Rejected">Rejected</button>` : ""}</td></tr>`;
+    if (l.group !== g) { g = l.group; html += `<tr class="sec"><td colspan="6">${esc(g || "Other")}</td></tr>`; }
+    html += `<tr><td><div class="t1">${esc(l.title)}</div></td><td class="small">${esc(l.party)}</td><td>${stepsHtml("approval", l)}</td>
+      <td>${tIn(l, "ref", "Type it")}</td><td>${logRemarks(l)}</td><td><button class="ico" data-edit="${l.id}" title="Details">&#9998;</button></td></tr>`;
   }
   el.innerHTML = html + "</tbody></table></div>";
   bindTools(el, () => SECTIONS["site.approval"](el));
-  $$("[data-aq]", el).forEach(x => x.onclick = e => { e.stopPropagation(); const [id, s] = x.dataset.aq.split(":"); const d = { status: s }; if (s === "Submitted") d.sent = today(); if (s === "Approved") d.replied = today(); quickLog(+id, d, s); });
-  $$("[data-ap]", el).forEach(r => r.onclick = e => { if (e.target.closest("button")) return; apForm(all.find(l => l.id === +r.dataset.ap)); });
+  bindLogCells(el);
+  $$("[data-edit]", el).forEach(x => x.onclick = () => apForm(all.find(l => l.id === +x.dataset.edit)));
   $("#add-ap", el).onclick = () => apForm();
 };
 function apForm(l) {
   l = l || {};
   modal(l.id ? l.title : "New approval item", [
-    { k: "group", label: "Stage", type: "combo", options: [...new Set(ST.b.logs.filter(x => x.kind === "approval").map(x => x.group))], value: l.group || "" },
-    { k: "title", label: "Item", value: l.title || "", focus: !l.id }, { k: "party", label: "Authority", type: "select", options: ST.meta.parties, value: l.party || "DM (Dubai Municipality)" },
-    { k: "sent", label: "Submitted", type: "date", value: l.sent || "" }, { k: "replied", label: "Approved", type: "date", value: l.replied || "" },
-    { k: "status", label: "Status", type: "select", options: ST.meta.log_status.approval, value: l.status || "Not started" },
-    { k: "ref", label: "Ref. / permit no.", value: l.ref || "" }, { k: "note", label: "Note", type: "area", value: l.note || "" },
-  ], async v => { if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else await POST("/store/est/logs", Object.assign(v, { kind: "approval", project_id: ST.pid })); await reload(); toast("Saved"); },
-  { doc: { kind: "approval", what: "NOC, permit or authority letter", want: [["title", "Item"], ["ref", "Ref. / permit no."]] }, del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
+    { k: "title", label: "Item", value: l.title || "", focus: !l.id, full: true, ph: "e.g. Civil Defence NOC" },
+    { k: "party", label: "Authority", type: "select", options: ST.meta.parties, value: l.party || "DM (Dubai Municipality)" },
+    { k: "group", label: "Stage", type: "combo", options: [...new Set(ST.b.logs.filter(x => x.kind === "approval").map(x => x.group))], value: l.group || "NOCs", tip: "The heading it sits under in the list." },
+    { k: "ref", label: "Ref. / permit no.", value: l.ref || "" },
+    { k: "note", label: "Remarks", type: "area", full: true, value: l.note || "", ph: "Anything stuck or to remember - everyone on the project sees it" },
+    ...(l.id ? [{ k: "sent", label: "Submitted on", type: "date", value: l.sent || "", tip: "Put in by the Submitted click - change it only if it went on another day." },
+                { k: "replied", label: "Approved on", type: "date", value: l.replied || "", tip: "Put in by the Approved click - change it only if it came on another day." }] : []),
+  ], async v => { if ("sent" in v && !v.sent) v.sent = null; if ("replied" in v && !v.replied) v.replied = null; if (l.id) await PATCH(`/store/est/logs/${l.id}`, v); else await POST("/store/est/logs", Object.assign(v, { kind: "approval", project_id: ST.pid, status: "Not started" })); await reload(); toast("Saved"); },
+  { save: l.id ? "Save" : "Add item", doc: { kind: "approval", what: "NOC, permit or authority letter", want: [["title", "Item"], ["ref", "Ref. / permit no."]] }, del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
 
 // =====================================================================
