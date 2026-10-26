@@ -495,7 +495,8 @@ function homeDash(el) {
       ${ST.meta.me.admin ? kpi("Margin", A(s.margin), "contract less subcontracts", s.margin < 0 ? "red" : "") : ""}
     </div></div>
     <div class="dgrid">
-      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
+      ${contractsCard()}
+      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${CTRS().length ? row("Contracts", CTRS().length + " - see above") : row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "") + row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
       <div class="card"><h3>Variations<span class="go" data-go="site.vo">Open</span></h3>
         <div class="vs"><div><span>Approved</span><b class="ok">${money(sum(vs("Approved"), "approved_amount"), false)}</b><small class="muted">${vs("Approved").length} lines</small></div>
           <div><span>Waiting</span><b>${money(sum(vs("Submitted"), "submitted_amount"), false)}</b><small class="muted">${vs("Submitted").length} submitted</small></div>
@@ -516,6 +517,8 @@ function homeDash(el) {
       </div>
     </div>`;
   $("#pd-edit", el).onclick = editProject;
+  const ca = $("#ctr-add", el); if (ca) ca.onclick = () => contractForm();
+  $$("[data-ctr]", el).forEach(r => r.onclick = () => { ctrSet(+r.dataset.ctr); go("bills.ipa"); });
   $$("[data-go]", el).forEach(x => x.onclick = () => go(x.dataset.go));
   $$("[data-sub]", el).forEach(r => r.onclick = () => openSub(+r.dataset.sub));
 }
@@ -533,6 +536,58 @@ function bindTools(el, redraw) {
 }
 function match(row) { const q = (ST.q[key()] || "").toLowerCase(); return !q || JSON.stringify(row).toLowerCase().includes(q); }
 function filt() { return ST.filt[key()] || ""; }
+
+// ---------------- contracts: a project built under several agreements with the client ----------------
+// (shell & core, MEP, swimming pool ...). One agreement needs none: the project's own figures are the contract.
+function CTRS() { return (ST.b && ST.b.contracts) || []; }
+function ctrName(id) { const k = CTRS().find(c => c.id === +id); return k ? k.name : ""; }
+function ctrPick() {                     // the contract shown on the Bills tab (remembered per project)
+  const ks = CTRS(); if (!ks.length) return null;
+  let id = null; try { id = +localStorage.getItem("est_ctr_" + ST.pid); } catch (e) {}
+  return (ks.find(k => k.id === id) || ks[0]).id;
+}
+function ctrSet(id) { try { localStorage.setItem("est_ctr_" + ST.pid, id); } catch (e) {} }
+function ctrField(value, label = "Contract") {   // the "which contract" box on a form - only when there are several
+  const ks = CTRS(); if (!ks.length) return null;
+  return { k: "contract_id", label, type: "select", noseg: true, value: value || (ks.length === 1 ? ks[0].id : ctrPick() || ""),
+           options: [["", "- Pick the contract -"], ...ks.map(k => [k.id, k.name + (k.ref ? " · " + k.ref : "")])],
+           tip: "This project is under several agreements with the client - each has its own bills, certificates and variations." };
+}
+let CTR_TYPED = "";
+function contractForm(k) {
+  const p = ST.b.project, edit = !!k, first = !CTRS().length; k = k || {};
+  modal(edit ? `Contract - ${k.name}` : `Add contract to ${p.code}`, [
+    ...(first ? [{ k: "first_name", label: `Name of the contract already on ${p.code}`, value: "Main contract", full: true, ph: "e.g. Shell & Core",
+                   tip: `Project ${p.code} has one contract now (AED ${money(p.contract_value, false)}). It becomes the first of the contracts with this name - its bills, certificates and variations stay with it.` }] : []),
+    { k: "name", label: first ? "New contract name" : "Contract name", value: k.name || "", full: true, focus: true, ph: "e.g. MEP works, Swimming pool works" },
+    { k: "ref", label: "Agreement / LOA no.", value: k.ref || "", ph: `IC/${p.code}/...` },
+    { k: "value", label: "Contract value (AED, excl. VAT)", type: "money", value: k.value ?? "" },
+    { k: "adv_pct", label: "Advance %", type: "pct", value: k.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]] },
+    { k: "ret_pct", label: "Retention %", type: "pct", value: k.ret_pct ?? 10, quick: [["0", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]] },
+    { k: "vat_pct", label: "VAT %", type: "pct", value: k.vat_pct ?? 5, quick: [["5%", el => el.value = 5], ["0", el => el.value = 0]] },
+    { k: "notes", label: "Notes", type: "area", value: k.notes || "" },
+  ], async v => {
+    if (!String(v.name || "").trim()) throw new Error("Name the contract (e.g. MEP works).");
+    if (edit) await PATCH(`/store/est/contracts/${k.id}`, v);
+    else { const r = await POST("/store/est/contracts", Object.assign(v, { project_id: ST.pid })); ctrSet(r.id); }
+    ST.meta = await GET("/store/est/meta"); await reload(); toast(edit ? "Saved" : `Contract ${v.name} added - it has its own bills from now on`);
+  }, { wide: true, save: edit ? "Save" : "Add contract",
+       doc: { kind: "project", what: "agreement or letter of award", want: [["value", "Contract value"]], extra: () => { CTR_TYPED = $("#f-name") ? $("#f-name").value : ""; return {}; },
+              keep: r => { const f = (r && r.fields) || {}; if (f.contract_value && $("#f-value")) setField("value", f.contract_value); if (CTR_TYPED && $("#f-name")) $("#f-name").value = CTR_TYPED; } },
+       del: edit ? async () => { await DEL(`/store/est/contracts/${k.id}`); ST.meta = await GET("/store/est/meta"); await reload(); toast("Contract removed"); } : null });
+}
+function contractsCard() {                 // the project dashboard: one line per contract and the project total
+  const ks = CTRS(); if (!ks.length) return "";
+  const t = f => r2(ks.reduce((a, k) => a + (k[f] || 0), 0));
+  const pc = (a, b) => b ? (Math.round(1000 * a / b) / 10).toFixed(1) + "%" : "-";
+  return `<div class="card full"><h3>Contracts with the client<span class="go" id="ctr-add">+ Add contract</span></h3><div class="tw"><table class="t">
+    <thead><tr><th>Contract</th><th>Agreement</th><th class="r">Value</th><th class="r">Variations</th><th class="r">Revised</th><th class="r">Work done (last bill)</th><th class="r">%</th><th class="r">Certified</th><th class="r">Retention held</th><th>Last bill</th></tr></thead><tbody>
+    ${ks.map(k => `<tr class="rowc" data-ctr="${k.id}"><td><b>${esc(k.name)}</b></td><td class="small">${esc(k.ref || "")}</td><td class="r">${money(k.value)}</td><td class="r">${money(k.approved_vo)}</td><td class="r"><b>${money(k.revised)}</b></td>
+      <td class="r">${money(k.work_done)}</td><td class="r">${pc(k.work_done, k.revised)}</td><td class="r">${money(k.certified)}</td><td class="r">${money(k.retention)}</td>
+      <td class="small">${k.last_bill ? `IPA ${esc(k.last_bill.label)} ${st(k.last_bill.status)}` : '<span class="muted">none yet</span>'}</td></tr>`).join("")}
+    <tr class="tot"><td>Project ${esc(ST.b.project.code)} total</td><td></td><td class="r">${money(t("value"))}</td><td class="r">${money(t("approved_vo"))}</td><td class="r">${money(t("revised"))}</td><td class="r">${money(t("work_done"))}</td><td class="r">${pc(t("work_done"), t("revised"))}</td><td class="r">${money(t("certified"))}</td><td class="r">${money(t("retention"))}</td><td></td></tr>
+    </tbody></table></div></div>`;
+}
 
 const SECTIONS = {};
 SECTIONS["home.dash"] = homeDash;
@@ -1165,6 +1220,7 @@ function cpcForm(c) {
   const b = ST.b, p = b.project, edit = !!c; c = c || {};
   const last = b.clientpcs[b.clientpcs.length - 1];
   modal(edit ? `Payment certificate ${pad(c.seq, 2)}` : "New payment certificate", [
+    ...[ctrField(c.contract_id)].filter(Boolean),
     { k: "claimed_cum", label: "Work done to date - claimed (AED)", type: "money", value: edit ? c.claimed_cum : (last ? last.claimed_cum : ""), focus: true,
       quick: [25, 50, 75, 100].map(n => [n + "%", el => el.value = r2(b.summary.revised * n / 100)]), hint: `Revised contract ${money(b.summary.revised, false)}${last && !edit ? " · last claim " + money(last.claimed_cum, false) : ""}` },
     { k: "certified_cum", label: "Certified to date (AED)", type: "money", value: c.certified_cum || "" },
@@ -1215,7 +1271,7 @@ function voTable(list) {
   const cols = 8;
   const row = v => { const rem = (v.notes || "").split("\n").filter(Boolean)[0] || "";
     return `<tr class="rowc" data-vo="${v.id}"><td class="ref">${v.ref ? esc(v.ref) : '<span class="dash">-</span>'}</td>
-      <td class="desc"><div class="t1">${esc(v.title)}${v.kind === "Omission" ? ' <span class="om">omission</span>' : ""}</div>${rem ? `<div class="t2" title="${esc(v.notes)}">${esc(rem)}</div>` : ""}</td>
+      <td class="desc"><div class="t1">${esc(v.title)}${v.kind === "Omission" ? ' <span class="om">omission</span>' : ""}${v.contract_id && CTRS().length ? ` <span class="ctag">${esc(ctrName(v.contract_id))}</span>` : ""}</div>${rem ? `<div class="t2" title="${esc(v.notes)}">${esc(rem)}</div>` : ""}</td>
       <td class="r">${m(v.submitted_amount)}${v.submitted ? `<div class="dd">${dt(v.submitted)}</div>` : ""}</td><td class="r">${m(v.revised_amount)}</td>
       <td class="r ${v.status === "Approved" ? "ok" : ""}">${m(v.approved_amount)}${v.approved_on ? `<div class="dd">${dt(v.approved_on)}</div>` : ""}</td><td class="r">${m(v.absorbed_amount)}</td>
       <td class="c small">${v.pc_ref ? esc(v.pc_ref) : '<span class="dash">-</span>'}</td>
@@ -1231,17 +1287,18 @@ function voTable(list) {
 }
 // The QS variation log Excel: shows what will come in, then puts it in.
 async function voImport(file) {
-  let send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
+  const cid = () => ($("#vo-ctr") && $("#vo-ctr").value) || "";
+  let send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); fd.append("contract_id", cid()); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
   if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
     let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
-    send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0 });
+    send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0, contract_id: cid() || null });
   }
   let r; try { r = await send(false); } catch (e) { return fail(e); }
   const by = Object.entries(r.by_status).map(([k, n]) => `${st(k)} ${n}`).join(" ");
   const orig = r2(r.contract - r.approved);
   modal(`Import ${file.name}`, [], async () => { const off = $("#vo-off") && $("#vo-off").checked; const x = await send(true, off); await reload(); toast(`${x.rows} variations added${off ? " - contract set to " + money(x.contract, false) : ""}`); }, {
     wide: true, save: `Add ${r.rows} variations`,
-    top: `${r.have ? `<div class="warn">This project already has ${r.have} variation(s). These are added after them - nothing is replaced.</div>` : ""}
+    top: `${CTRS().length ? `<div class="frm"><div class="f full"><label for="vo-ctr">These variations are for the contract</label><select id="vo-ctr"><option value="">- Pick the contract -</option>${CTRS().map(k => `<option value="${k.id}" ${k.id === ctrPick() ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></div></div>` : ""}${r.have ? `<div class="warn">This project already has ${r.have} variation(s). These are added after them - nothing is replaced.</div>` : ""}
       <div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.rows}</div></div><div class="fig green"><div class="l">Approved</div><div class="v">${money(r.approved, false)}</div></div><div class="fig"><div class="l">Submitted</div><div class="v">${money(r.submitted, false)}</div></div>${r.absorbed ? `<div class="fig"><div class="l">Absorbed</div><div class="v">${money(r.absorbed, false)}</div></div>` : ""}</div>
       <div class="small" style="margin:6px 0">${by}</div>
       ${r.approved ? `<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0"><input type="checkbox" id="vo-off"><span>The contract value (${money(r.contract, false)}) already includes these approved variations - set it to the original ${money(orig, false)} so they aren't counted twice.</span></label>` : ""}
@@ -1251,6 +1308,7 @@ function voForm(v) {
   v = v || {};
   modal(v.id ? (v.ref || vref(v.seq)) : "New variation", [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
+    ...[ctrField(v.contract_id)].filter(Boolean),
     { k: "ref", label: "Variation no.", value: v.ref || (v.id ? vref(v.seq) : nextVoRef()), ro: true, tip: "Every variation is numbered for you in the order it is made: V01, V02, V03 ... (cost proposals and OHP claims too). The client's or QS's own reference can go in the remarks." },
     { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission", "Coordination"], value: v.kind || "Addition" },
     { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement", "Coordination & attendance"], value: v.source || "Client instruction" },

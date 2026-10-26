@@ -101,12 +101,13 @@ const prevN = v => Number(String(v ?? "").replace(/,/g, "")) || 0;
 // ---- a client bill -------------------------------------------------------------------------------------------
 function prevCpcForm(x) {
   const f = x.read.fields || {}, b = ST.b;
-  const dup = f.seq != null && b.clientpcs.find(c => +c.seq === +f.seq);
+  const dup = f.seq != null && b.clientpcs.find(c => +c.seq === +f.seq && (!CTRS().length || c.contract_id === ctrPick()));
   const xl = /\.xls[xm]?$/i.test(x.file.name);
   const extra = (f.extra || []).map(e => `${e.label} ${money(e.v, false)}`).join("; ");
   const remarks = [`Previous record: ${x.file.name}`, f.bill_label ? `bill ${f.bill_label}` : "", f.previous != null ? `previous payments ${money(f.previous, false)}` : "",
                    f.vat != null ? `VAT ${money(f.vat, false)}` : "", f.authority ? `authority fees ${money(f.authority, false)}` : "", extra, f.total != null ? `amount due ${money(f.total, false)}` : ""].filter(Boolean).join(" · ");
   modal(`Previous bill - ${x.file.name}`, [
+    ...[ctrField("", "Bill for the contract")].filter(Boolean),
     { k: "seq", label: "Bill / certificate no.", type: "num", value: f.seq ?? "", tip: "The bill's own number - the bills are kept in this order." },
     { k: "pc_type", label: "Type", type: "select", options: ["Interim", "Advance", "Final"], value: f.pc_type || "Interim" },
     { k: "submitted", label: "Submitted on", type: "date", value: f.submitted || "" },
@@ -127,7 +128,7 @@ function prevCpcForm(x) {
     ["submitted", "period_to", "certified_on"].forEach(k => { if (!d[k]) d[k] = null; });
     if (!d.seq) delete d.seq;
     await POST("/store/est/clientpcs", d);
-    if (xl && $("#pv-fmt") && $("#pv-fmt").checked) await prevAsFormat(x.file);
+    if (xl && $("#pv-fmt") && $("#pv-fmt").checked) await prevAsFormat(x.file, d.contract_id);
     await reload(); toast(`Bill ${v.seq || ""} saved`);
   }, { wide: true, save: "Save bill",
        top: `${dup ? `<div class="warn">Bill ${esc(String(f.seq))} is already in the app - saving adds it again. Skip it if it is the same bill.</div>` : ""}${prevChecks(x.read)}`,
@@ -139,8 +140,9 @@ function prevLatest(x, kind) {           // the highest bill no. among the files
   const all = PREV.q.filter(y => y.pid === x.pid && y.kind === kind && y.st !== "skipped");
   return all.every(y => n(y) <= n(x) || !y.read);
 }
-async function prevAsFormat(file) {
+async function prevAsFormat(file, contractId) {
   const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", file.name.replace(/\.xls[xm]?$/i, ""));
+  if (contractId) fd.append("contract_id", contractId);
   const PART = 700 * 1024;
   if (file.size > PART) {
     const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join(""), n = Math.ceil(file.size / PART);

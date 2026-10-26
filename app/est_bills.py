@@ -33,6 +33,7 @@ class EstBillFormat(Base):
     __tablename__ = "est_bill_formats"
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, nullable=False, index=True)
+    contract_id = Column(Integer, nullable=True, index=True)   # which of the project's contracts (only when it has several)
     name = Column(String, default="")              # "IPA - Emkaan format"
     filename = Column(String, default="")
     # both big (megabytes): loaded only when used - not on every list or bill request
@@ -48,6 +49,7 @@ class EstBill(Base):
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, nullable=False, index=True)
     format_id = Column(Integer, nullable=False, index=True)
+    contract_id = Column(Integer, nullable=True, index=True)   # the format's contract
     seq = Column(Integer, default=1)
     label = Column(String, default="")             # the bill no. as on the bill (9, 7-R2 ...)
     issue_date = Column(Date, nullable=True)
@@ -78,13 +80,14 @@ def create_tables(engine):
     from sqlalchemy import inspect, text
     for t in (EstBillFormat, EstBill, EstSignature):
         t.__table__.create(bind=engine, checkfirst=True)
-    try:                                           # est_bills made before the signatures came in
-        have = {c["name"] for c in inspect(engine).get_columns("est_bills")}
-        if "signs" not in have:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE est_bills ADD COLUMN signs TEXT"))
-    except Exception as e:
-        print("est_bills.signs:", e)
+    for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER")):
+        try:                                       # columns added after the tables were made
+            have = {c["name"] for c in inspect(engine).get_columns(tb)}
+            if col not in have:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {tb} ADD COLUMN {col} {typ}"))
+        except Exception as e:
+            print(f"{tb}.{col}:", e)
 
 
 _MODEL_CACHE = {}
@@ -648,6 +651,10 @@ def _waits(b):
 def _save_totals(b, model, values):
     f = _facts(model, values)
     b.total_due = f["total_due"]
+    try:                                           # work done to date: every % line's amount x its Total % (as the Work done step adds it up)
+        b.work_done = round(sum((l["amount"] or 0) * (l["total"] or 0) for t in _progress(model, values, {}) for l in t["lines"]), 2)
+    except Exception:
+        pass
     b.label = f["label"] or b.label
     b.issue_date = f["issue_date"] or b.issue_date
 
@@ -680,7 +687,7 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
                  "map": {k: full.get("map", {}).get(k) for k in ("progress", "bill_no", "issue_date", "total_due")}}
             _LIST_CACHE[f.id] = m
         mp = m.get("map", {})
-        out_f.append({"id": f.id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
+        out_f.append({"id": f.id, "contract_id": f.contract_id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
                       "by": users.get(f.created_by, ""), "formulas": chk.get("formulas", 0), "same": chk.get("same", 0),
                       "sheets": [s["name"] for s in m.get("sheets", []) if s["visible"]],
                       "lines": sum(len(t["lines"]) for t in mp.get("progress", [])), "bill_no": bool(mp.get("bill_no")),
@@ -688,7 +695,8 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
                       "bills": sum(1 for b in bills if b.format_id == f.id)})
     return {"formats": out_f, "statuses": STATUSES,
             "bills": [{"id": b.id, "seq": b.seq, "label": b.label, "issue_date": b.issue_date.isoformat() if b.issue_date else "",
-                       "status": b.status, "total_due": round(b.total_due or 0, 2), "format_id": b.format_id, "waits": _waits(b),
+                       "status": b.status, "total_due": round(b.total_due or 0, 2), "work_done": round(b.work_done or 0, 2), "format_id": b.format_id,
+                       "contract_id": b.contract_id, "waits": _waits(b),
                        "by": users.get(b.updated_by or b.created_by, ""), "updated": (b.updated_at or b.created_at).isoformat() if (b.updated_at or b.created_at) else ""}
                       for b in bills]}
 
@@ -757,10 +765,11 @@ def _joined(user_id, upload_id, parts):
 
 
 @router.post("/store/est/ipa/format")
-async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(None),
+async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(None), contract_id: str = Form(""),
                         upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
                         db: Session = Depends(get_db), user: models.User = E.VIEW):
     E._project(db, project_id)
+    cid = E._contract_ok(db, project_id, int(contract_id) if str(contract_id).strip().isdigit() else None)
     if file is None:
         if not upload_id:
             raise HTTPException(400, "Pick the Excel bill.")
@@ -784,7 +793,7 @@ async def upload_format(project_id: int = Form(...), name: str = Form(""), file:
     if not mp.get("progress"):
         raise HTTPException(400, "No lines with Previous % / Total % were found in this workbook. Upload the bill as sent to the consultant "
                                  "(the sheets with the % of work done).")
-    f = EstBillFormat(project_id=project_id, name=(name or "").strip()[:120] or re.sub(r"\.xlsx?$", "", file.filename or "Bill format", flags=re.I)[:120],
+    f = EstBillFormat(project_id=project_id, contract_id=cid, name=(name or "").strip()[:120] or re.sub(r"\.xlsx?$", "", file.filename or "Bill format", flags=re.I)[:120],
                       filename=(file.filename or "")[:200], data=data, model=json.dumps(model), checked=json.dumps(chk), created_by=user.id)
     db.add(f)
     db.commit()
@@ -793,6 +802,18 @@ async def upload_format(project_id: int = Form(...), name: str = Form(""), file:
             "lines": sum(len(t["lines"]) for t in mp["progress"]), "sheets": [t["sheet"] for t in mp["progress"]],
             "bill_no": bool(mp.get("bill_no")), "issue_date": bool(mp.get("issue_date")), "total_due": bool(mp.get("total_due")),
             "payments": bool(mp.get("payments"))}
+
+
+@router.patch("/store/est/ipa/format/{fid}")
+def move_format(fid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Which contract a bill format (and the bills made on it) belongs to."""
+    f = _get(db, EstBillFormat, fid)
+    cid = E._contract_ok(db, f.project_id, payload.get("contract_id"))
+    f.contract_id = cid
+    db.query(EstBill).filter(EstBill.format_id == fid).update({"contract_id": cid}, synchronize_session=False)
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_format_moved", f"bill format #{fid} {f.filename} -> contract #{cid}")
+    return {"ok": True}
 
 
 @router.delete("/store/est/ipa/format/{fid}")
@@ -817,9 +838,13 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     pid = int(payload.get("project_id") or 0)
     E._project(db, pid)
     fid = int(payload.get("format_id") or 0)
-    fmt = _get(db, EstBillFormat, fid) if fid else db.query(EstBillFormat).filter(EstBillFormat.project_id == pid).order_by(EstBillFormat.id.desc()).first()
+    cid = payload.get("contract_id")
+    q = db.query(EstBillFormat).filter(EstBillFormat.project_id == pid)
+    if cid:
+        q = q.filter(EstBillFormat.contract_id == int(cid))
+    fmt = _get(db, EstBillFormat, fid) if fid else q.order_by(EstBillFormat.id.desc()).first()
     if not fmt or fmt.project_id != pid:
-        raise HTTPException(400, "Upload the bill format for this project first.")
+        raise HTTPException(400, "Upload the bill format for this " + ("contract" if cid else "project") + " first.")
     last = (db.query(EstBill).filter(EstBill.format_id == fmt.id).order_by(EstBill.seq.desc(), EstBill.id.desc()).first())
     prev_inputs = _inputs(last) if last else {}
     model = _bill_model(fmt, prev_inputs)
@@ -827,11 +852,11 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     inputs = BE.roll_over(model, prev_inputs, prev_values, E.today())
     model = _bill_model(fmt, inputs)                       # rows the roll-over put in (a heading for this bill's fees)
     inputs, values = _calc(model, inputs)
-    seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid).scalar() or 0) + 1
+    seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid, *([EstBill.contract_id == fmt.contract_id] if fmt.contract_id else [])).scalar() or 0) + 1
     carried = {}
     for k, v in (_signs(last) if last else {}).items():     # the same people sign next month - each signs afresh
         carried[k] = {"name": v.get("name"), "title": v.get("title"), "step": v.get("step", 1)}
-    b = EstBill(project_id=pid, format_id=fmt.id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
+    b = EstBill(project_id=pid, format_id=fmt.id, contract_id=fmt.contract_id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
                 signs=json.dumps(carried) if carried else "")
     _save_totals(b, model, values)
     db.add(b)

@@ -13,12 +13,24 @@ SECTIONS["bills.ipa"] = async el => {
   let d;
   try { d = await GET(`/store/est/ipa/list?project_id=${ST.pid}`); } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (key() !== "bills.ipa") return;
-  IPA.list = d;
+  // A project under several contracts: one contract at a time, each with its own formats and bills.
+  const ks = CTRS(), cur = ctrPick(), K = ks.find(k => k.id === cur);
+  const formats = K ? d.formats.filter(f => f.contract_id === cur) : d.formats;
+  IPA.list = Object.assign({}, d, { formats, contract_id: cur });
   const fm = id => d.formats.find(f => f.id === id);
   const q = (ST.q[key()] || "").toLowerCase();
-  const bills = d.bills.filter(b => !q || JSON.stringify(b).toLowerCase().includes(q));
-  el.innerHTML = tools(null, { add: (d.formats.length ? `<button class="btn btn-primary" id="ipa-new">+ New bill</button>` : "") + `<button class="btn btn-ghost" id="ipa-up">Upload bill format</button>` }) +
-    (!d.formats.length ? `<div class="card empty" style="text-align:left;line-height:1.6"><b>No bill format for this project yet.</b><br>
+  const bills = d.bills.filter(b => (!K || b.contract_id === cur) && (!q || JSON.stringify(b).toLowerCase().includes(q)));
+  const pc = (a, b) => b ? (Math.round(1000 * a / b) / 10).toFixed(1) + "%" : "-";
+  const ctrRow = K ? `<div class="ctrs"><span class="lbl">Contract</span>${ks.map(k => `<button class="ctr ${k.id === cur ? "on" : ""}" data-ctrpick="${k.id}"><b>${esc(k.name)}</b><small>${esc([k.ref, "AED " + money(k.value, false), k.bills ? k.bills + " bill" + (k.bills === 1 ? "" : "s") : "no bills yet"].filter(Boolean).join(" · "))}</small></button>`).join("")}
+      <button class="ctr add" id="ctr-add">+ Add contract</button><span class="spacer"></span><button class="btn btn-ghost" id="ctr-edit">Edit contract</button></div>
+    <div class="kpis k5 ctrk">${kpi("Contract value (with variations)", money(K.revised, false), K.approved_vo ? `original ${money(K.value, false)} + VOs ${money(K.approved_vo, false)}` : "original contract")}
+      ${kpi("Work done to date (last bill)", money(K.work_done, false), pc(K.work_done, K.revised) + " of the contract")}
+      ${kpi("Certified by client", money(K.certified, false), K.pcs + " certificate" + (K.pcs === 1 ? "" : "s"))}
+      ${kpi("Retention held", money(K.retention, false), K.ret_pct + "% retention")}
+      ${kpi("Advance recovered", K.adv_paid ? `${money(K.adv_recovered, false)} <span class="muted small">of ${money(K.adv_paid, false)}</span>` : "-", K.adv_pct ? K.adv_pct + "% advance" : "no advance")}</div>` : "";
+  el.innerHTML = ctrRow + tools(null, { add: (formats.length ? `<button class="btn btn-primary" id="ipa-new">+ New bill${K ? " - " + esc(K.name) : ""}</button>` : "") + `<button class="btn btn-ghost" id="ipa-up">Upload bill format${K ? " - " + esc(K.name) : ""}</button>`,
+      right: K ? "" : `<button class="btn btn-plain" id="ctr-add" title="This project is under more than one agreement with the client (e.g. shell & core, MEP, swimming pool): each gets its own bills, certificates and variations.">+ Another contract</button>` }) +
+    (!formats.length ? `<div class="card empty" style="text-align:left;line-height:1.6"><b>No bill format for ${K ? "the " + esc(K.name) + " contract" : "this project"} yet.</b><br>
         Upload the last bill exactly as it was sent to the consultant (the Excel workbook with the cover, summary and the sheets with Previous % / Total %).
         Each new bill starts from it: last month's Total % becomes Previous %, the bill number goes up by one and the date is today.
         The workbook comes back out with the same layout, logo, stamps and formulas.<br><span class="muted small">An old .xls file must first be saved as .xlsx in Excel (File &gt; Save As).</span></div>` :
@@ -27,11 +39,15 @@ SECTIONS["bills.ipa"] = async el => {
         <td class="r"><b>${money(b.total_due)}</b></td><td>${st(b.status)}</td><td class="small muted">${esc(b.by)}${b.updated ? " · " + dt(b.updated) : ""}</td>
         <td class="r"><button class="btn btn-ghost btn-sm" data-ipaopen="${b.id}">Open</button></td></tr>`).join("")}</tbody></table></div>` :
      `<div class="card empty">No bills yet. Press <b>+ New bill</b> - it starts from the uploaded format.</div>`) +
-    (d.formats.length ? `<div class="card" style="margin-top:14px"><h3>Bill formats</h3><div class="tw"><table class="t"><thead><tr><th>Format</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills</th><th>Uploaded</th><th></th></tr></thead><tbody>
-      ${d.formats.map(f => `<tr><td><b>${esc(f.name)}</b></td><td class="small">${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td><td class="c">${f.lines}</td>
+    (formats.length ? `<div class="card" style="margin-top:14px"><h3>Bill formats${K ? " - " + esc(K.name) : ""}</h3><div class="tw"><table class="t"><thead><tr><th>Format</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
+      ${formats.map(f => `<tr><td><b>${esc(f.name)}</b></td><td class="small">${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td><td class="c">${f.lines}</td>
         <td class="small">${f.same === f.formulas ? `<span class="st g">all ${f.formulas} formulas match</span>` : `<span class="st a">${f.same} of ${f.formulas} formulas match</span>`}</td>
-        <td class="c">${f.bills}</td><td class="small muted">${esc(f.by)} · ${dt(f.on)}</td><td class="r"><button class="btn btn-ghost btn-sm" data-fmdel="${f.id}">Remove</button></td></tr>`).join("")}</tbody></table></div></div>` : "");
+        <td class="c">${f.bills}</td><td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ks.length > 1 ? `<td><select class="sel-sm" data-fmmove="${f.id}" title="Move this format and its bills to another contract">${ks.map(k => `<option value="${k.id}" ${k.id === f.contract_id ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></td>` : ""}<td class="r"><button class="btn btn-ghost btn-sm" data-fmdel="${f.id}">Remove</button></td></tr>`).join("")}</tbody></table></div></div>` : "");
   bindTools(el, () => SECTIONS["bills.ipa"](el));
+  $$("[data-ctrpick]", el).forEach(b => b.onclick = () => { ctrSet(+b.dataset.ctrpick); SECTIONS["bills.ipa"](el); });
+  const ca = $("#ctr-add", el); if (ca) ca.onclick = () => contractForm();
+  const ce = $("#ctr-edit", el); if (ce) ce.onclick = () => contractForm(K);
+  $$("[data-fmmove]", el).forEach(x => x.onchange = async () => { try { await PATCH(`/store/est/ipa/format/${x.dataset.fmmove}`, { contract_id: +x.value }); await reload(); toast(`Moved to ${ctrName(x.value)}`); } catch (e) { fail(e); } });
   $("#ipa-up", el).onclick = uploadFormat;
   const nb = $("#ipa-new", el); if (nb) nb.onclick = newBill;
   $$("[data-ipa]", el).forEach(r => r.onclick = () => openBill(+r.dataset.ipa));
@@ -44,14 +60,15 @@ SECTIONS["bills.ipa"] = async el => {
 function billsRedraw() { if (key() === "bills.ipa" && $("#sec")) SECTIONS["bills.ipa"]($("#sec")); }
 
 function uploadFormat() {
-  const p = ST.b.project;
-  modal("Upload bill format", [
-    { k: "name", label: "Name", value: [p.consultant || p.client, "bill"].filter(Boolean).join(" - "), ph: "e.g. Consultant's IPA format", full: true },
+  const p = ST.b.project, K = CTRS().find(k => IPA.list && k.id === IPA.list.contract_id);
+  modal("Upload bill format" + (K ? " - " + K.name : ""), [
+    { k: "name", label: "Name", value: [p.consultant || p.client, K ? K.name : "", "bill"].filter(Boolean).join(" - "), ph: "e.g. Consultant's IPA format", full: true },
   ], async v => {
     const f = ($("#fm-file") || {}).files; const file = f && f[0];
     if (!file) throw new Error("Pick the Excel bill.");
     if (/\.xls$/i.test(file.name)) throw new Error("This is an old .xls file. Open it in Excel, File > Save As > Excel Workbook (.xlsx), and upload that.");
     const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", v.name);
+    if (IPA.list && IPA.list.contract_id) fd.append("contract_id", IPA.list.contract_id);
     const PART = 700 * 1024;                         // the web server takes about 1 MB a request: a bigger file goes in pieces
     if (file.size > PART) {
       const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -74,7 +91,7 @@ function uploadFormat() {
 async function newBill() {
   const fs = IPA.list.formats;
   const make = async fid => {
-    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, format_id: fid });
+    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, format_id: fid, contract_id: IPA.list.contract_id || null });
     toast("New bill started from the last one"); billsRedraw(); openBill(r.id);
   };
   if (fs.length === 1) { try { await make(fs[0].id); } catch (e) { fail(e); } return; }

@@ -93,6 +93,24 @@ class EstProject(Base):
     locals().update(_audit())
 
 
+class EstContract(Base):
+    """One agreement with the client on a project. A project with one contract needs none of these (its own
+    figures are the contract); one built under several agreements (shell & core, MEP, swimming pool ...) has one
+    row each, and every bill, client certificate and variation belongs to one of them."""
+    __tablename__ = "est_contracts"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, nullable=False, index=True)
+    name = Column(String, default="")           # Shell & Core
+    ref = Column(String, default="")            # agreement / LOA no.
+    value = Column(Float, default=0.0)          # before VAT
+    adv_pct = Column(Float, default=0.0)
+    ret_pct = Column(Float, default=10.0)
+    vat_pct = Column(Float, default=5.0)
+    sort = Column(Integer, default=0)
+    notes = Column(Text, default="")
+    locals().update(_audit())
+
+
 class EstSub(Base):
     """A subcontract or an LPO on a project."""
     __tablename__ = "est_subs"
@@ -205,6 +223,7 @@ class EstClientPC(Base):
     ret_auto = Column(Boolean, default=True)
     ret_rel_cum = Column(Float, default=0.0)
     other_cum = Column(Float, default=0.0)
+    contract_id = Column(Integer, nullable=True, index=True)   # which contract (only when the project has several)
     status = Column(String, default="Draft")        # Draft | Submitted | Certified | Invoiced | Paid
     invoice_no = Column(String, default="")
     remarks = Column(Text, default="")
@@ -230,6 +249,7 @@ class EstVariation(Base):
     pc_ref = Column(String, default="")             # where it was claimed (e.g. "Item VII", "V06")
     status = Column(String, default="Identified")   # Identified | Submitted | Approved | Rejected | Absorbed | Claimed
     sub_id = Column(Integer, nullable=True)
+    contract_id = Column(Integer, nullable=True, index=True)   # which contract (only when the project has several)
     notes = Column(Text, default="")
     locals().update(_audit())
 
@@ -350,7 +370,7 @@ class EstFile(Base):
     locals().update(_audit())
 
 
-TABLES = [EstProject, EstSub, EstSubVO, EstSubPC, EstClientPC, EstVariation, EstBoq, EstLog, EstFinal, EstTender, EstFile]
+TABLES = [EstProject, EstContract, EstSub, EstSubVO, EstSubPC, EstClientPC, EstVariation, EstBoq, EstLog, EstFinal, EstTender, EstFile]
 
 
 def create_tables(engine):
@@ -531,11 +551,12 @@ KINDS = {
     "clientpcs": (EstClientPC, "project_id", {"seq": I, "pc_type": S, "period_to": D, "submitted": D, "claimed_cum": F,
                                               "certified_cum": F, "certified_on": D, "mos_cum": F, "adv_amount": F,
                                               "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F,
-                                              "other_cum": F, "status": S, "invoice_no": S, "remarks": S}),
+                                              "other_cum": F, "status": S, "invoice_no": S, "remarks": S, "contract_id": I}),
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
-                                                "status": S, "sub_id": I, "notes": S}),
+                                                "status": S, "sub_id": I, "notes": S, "contract_id": I}),
+    "contracts": (EstContract, "project_id", {"name": S, "ref": S, "value": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "sort": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
                                    "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
     "logs": (EstLog, "project_id", {"kind": S, "seq": I, "group": S, "title": S, "party": S, "discipline": S, "ref": S, "rev": S,
@@ -702,8 +723,13 @@ def _sub_bundle(db, s, vos, pcs, rules):
     return out
 
 
-def _client_bundle(p, pcs):
-    calc = {c["id"]: c for c in chain(pcs, p.adv_pct, p.ret_pct, p.vat_pct, work_key="_work")}
+def _client_bundle(p, pcs, ctrs=None):
+    calc = {}
+    if ctrs:
+        for k in ctrs:
+            calc.update({c["id"]: c for c in chain([x for x in pcs if x.contract_id == k.id], k.adv_pct, k.ret_pct, k.vat_pct, work_key="_work")})
+    else:
+        calc = {c["id"]: c for c in chain(pcs, p.adv_pct, p.ret_pct, p.vat_pct, work_key="_work")}
     out = []
     for c in sorted(pcs, key=lambda c: (c.seq or 0, c.id)):
         d = _plain(c, KINDS["clientpcs"][2])
@@ -756,7 +782,16 @@ def _preload(db, projects, with_files=True):
     pids = [p.id for p in projects] or [-1]
     codes = [p.code for p in projects] or ["-"]
     g = lambda: defaultdict(list)
-    d = {k: g() for k in ("subs", "vos", "pcs", "cpcs", "vars", "boq", "logs", "finals", "files", "invoices")}
+    d = {k: g() for k in ("subs", "vos", "pcs", "cpcs", "vars", "boq", "logs", "finals", "files", "invoices", "ctrs", "bills")}
+    for x in db.query(EstContract).filter(EstContract.project_id.in_(pids)).order_by(EstContract.sort, EstContract.id):
+        d["ctrs"][x.project_id].append(x)
+    try:
+        import est_bills
+        for x in db.query(est_bills.EstBill.project_id, est_bills.EstBill.contract_id, est_bills.EstBill.seq, est_bills.EstBill.label, est_bills.EstBill.status,
+                          est_bills.EstBill.work_done, est_bills.EstBill.total_due, est_bills.EstBill.issue_date).filter(est_bills.EstBill.project_id.in_(pids)):
+            d["bills"][x.project_id].append(x)
+    except Exception:
+        pass
     for x in db.query(EstSub).filter(EstSub.project_id.in_(pids)).order_by(EstSub.sort, EstSub.id):
         d["subs"][x.project_id].append(x)
     sids = [x.id for v in d["subs"].values() for x in v] or [-1]
@@ -814,7 +849,8 @@ def project_bundle(db, p, rules=None, pre=None):
     finals = pre["finals"].get(p.id, [])
     files = pre["files"].get(p.id, [])
     names = _uname(db, [f.created_by for f in files]) if files else {}
-    client = _client_bundle(p, cpcs)
+    ctrs = pre["ctrs"].get(p.id, [])
+    client = _client_bundle(p, cpcs, ctrs)
     received, pp_contract = pre["received"].get(p.code, 0.0), pre["pp_contract"].get(p.code, 0.0)
     invoices = pre["invoices"].get(p.code, [])
     approved_vo = r2(sum(v.approved_amount or 0 for v in vars_ if v.status == "Approved"))
@@ -834,6 +870,31 @@ def project_bundle(db, p, rules=None, pre=None):
     if cert:     # an advance still in draft before the last certified one is not certified money
         last_seq = cert[-1]["seq"]
         draft_adv = r2(sum(c["adv_amount"] for c in client if c["pc_type"] == "Advance" and c["status"] == "Draft" and c["seq"] <= last_seq))
+    def _certified(rows):
+        cert_ = [c for c in rows if c["status"] in ("Certified", "Invoiced", "Paid") or (c["pc_type"] == "Advance" and c["status"] != "Draft")]
+        if not cert_:
+            return [], 0.0
+        ls = cert_[-1]["seq"]
+        return cert_, r2(sum(c["adv_amount"] for c in rows if c["pc_type"] == "Advance" and c["status"] == "Draft" and c["seq"] <= ls))
+    ctr_out = []
+    if ctrs:
+        bills = pre["bills"].get(p.id, [])
+        for k in ctrs:
+            rows = [c for c in client if c.get("contract_id") == k.id]
+            ce, da = _certified(rows)
+            kv = r2(sum(v.approved_amount or 0 for v in vars_ if v.status == "Approved" and v.contract_id == k.id))
+            kb = sorted([x for x in bills if x.contract_id == k.id], key=lambda x: (x.seq or 0))
+            lastb = kb[-1] if kb else None
+            ret = r2((ce[-1]["ret_cum"] - ce[-1]["ret_rel_cum"]) if ce else 0)
+            ctr_out.append({"id": k.id, "name": k.name, "ref": k.ref, "value": r2(k.value), "adv_pct": k.adv_pct, "ret_pct": k.ret_pct, "vat_pct": k.vat_pct,
+                            "notes": k.notes, "approved_vo": kv, "revised": r2((k.value or 0) + kv),
+                            "certified": r2(ce[-1]["net_cum"] - da) if ce else 0.0, "work_certified": ce[-1]["work"] if ce else 0.0,
+                            "claimed": rows[-1]["net_cum"] if rows else 0.0, "retention": ret,
+                            "adv_recovered": r2(ce[-1]["adv_rec_cum"]) if ce else 0.0, "adv_paid": r2(ce[-1]["adv_paid_cum"]) if ce else 0.0,
+                            "bills": len(kb), "work_done": r2(lastb.work_done or 0) if lastb else 0.0,
+                            "last_bill": {"label": lastb.label or str(lastb.seq), "status": lastb.status, "total_due": r2(lastb.total_due or 0),
+                                          "date": _iso(lastb.issue_date)} if lastb else None,
+                            "vos": sum(1 for v in vars_ if v.contract_id == k.id), "pcs": len(rows)})
     summary = {
         "contract": r2(contract), "approved_vo": approved_vo, "revised": r2(contract + approved_vo),
         "client_certified": r2(cert[-1]["net_cum"] - draft_adv) if cert else 0.0,
@@ -851,8 +912,12 @@ def project_bundle(db, p, rules=None, pre=None):
         "overdue": len(overdue),
         "finals_done": sum(1 for f in finals if f.st == "✔"), "finals_total": sum(1 for f in finals if f.sc not in ("N/A",)),
     }
+    if ctr_out:                      # several agreements: the client figures are the sum of the contracts'
+        summary["client_certified"] = r2(sum(c["certified"] for c in ctr_out))
+        summary["client_work"] = r2(sum(c["work_certified"] for c in ctr_out))
+        summary["client_claimed"] = r2(sum(c["claimed"] for c in ctr_out))
     return {
-        "project": proj, "summary": summary, "subs": sub_out,
+        "project": proj, "summary": summary, "subs": sub_out, "contracts": ctr_out,
         "clientpcs": client, "variations": [_plain(v, KINDS["variations"][2]) for v in vars_],
         "boq": [dict(_plain(b, KINDS["boq"][2]), amount=boq_amount(b), counted=boq_counted(b), cost=boq_cost(b), given=b.amount is not None) for b in boq],
         "logs": [_plain(l, KINDS["logs"][2]) for l in logs],
@@ -1095,7 +1160,51 @@ def _refill_sub(db, sid):
 def _refill_client(db, pid):
     p = _project(db, pid)
     pcs = db.query(EstClientPC).filter(EstClientPC.project_id == pid).all()
-    chain(pcs, p.adv_pct, p.ret_pct, p.vat_pct, work_key="_work", fill=True, base=p.contract_value or 0)
+    ctrs = db.query(EstContract).filter(EstContract.project_id == pid).all()
+    if not ctrs:
+        chain(pcs, p.adv_pct, p.ret_pct, p.vat_pct, work_key="_work", fill=True, base=p.contract_value or 0)
+        return
+    for c in ctrs:                       # each contract's certificates run on their own: own advance, retention, VAT
+        chain([x for x in pcs if x.contract_id == c.id], c.adv_pct, c.ret_pct, c.vat_pct, work_key="_work", fill=True, base=c.value or 0)
+
+
+def contracts_of(db, pid):
+    return db.query(EstContract).filter(EstContract.project_id == pid).order_by(EstContract.sort, EstContract.id).all()
+
+
+def _sync_contracts(db, pid):
+    """The project's contract value is the sum of its contracts."""
+    ctrs = contracts_of(db, pid)
+    if ctrs:
+        p = _project(db, pid)
+        p.contract_value = r2(sum(c.value or 0 for c in ctrs))
+
+
+def _first_contract(db, p, name, user_id):
+    """The project's existing agreement becomes its first contract, and everything already on the project goes with it."""
+    import est_bills
+    c = EstContract(project_id=p.id, name=(name or "Main contract").strip()[:120] or "Main contract", value=p.contract_value or 0,
+                    adv_pct=p.adv_pct or 0, ret_pct=p.ret_pct if p.ret_pct is not None else 10, vat_pct=p.vat_pct if p.vat_pct is not None else 5,
+                    sort=1, created_by=user_id)
+    db.add(c)
+    db.flush()
+    for m in (EstClientPC, EstVariation, est_bills.EstBillFormat, est_bills.EstBill):
+        db.query(m).filter(m.project_id == p.id, m.contract_id.is_(None)).update({"contract_id": c.id}, synchronize_session=False)
+    return c
+
+
+def _contract_ok(db, pid, cid):
+    """A bill / certificate / variation on a project with several contracts must name one of them."""
+    ctrs = contracts_of(db, pid)
+    if not ctrs:
+        return None
+    if cid in (None, "", 0):
+        if len(ctrs) == 1:
+            return ctrs[0].id
+        raise HTTPException(400, "This project has several contracts - pick which one this is for.")
+    if not any(c.id == int(cid) for c in ctrs):
+        raise HTTPException(400, "That contract is not on this project.")
+    return int(cid)
 
 
 def _check_pc(db, pc):
@@ -1132,6 +1241,15 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
             dv = col.default.arg if col.default is not None and not callable(col.default.arg) else None
             setattr(row, k, dv if dv is not None else (True if ty == B else 0.0 if ty == F else ""))
     t = today()
+    if kind in ("clientpcs", "variations"):
+        row.contract_id = _contract_ok(db, row.project_id, data.get("contract_id"))
+    if kind == "contracts":
+        p = _project(db, row.project_id)
+        if not (row.name or "").strip():
+            raise HTTPException(400, "Name the contract (e.g. MEP works).")
+        if not contracts_of(db, p.id):
+            _first_contract(db, p, data.get("first_name") or "Main contract", user.id)
+        row.sort = (db.query(func.max(EstContract.sort)).filter(EstContract.project_id == p.id).scalar() or 0) + 1
     if kind == "subs":
         if not row.name and row.supplier_id:
             sup = db.query(models.Supplier).get(row.supplier_id)
@@ -1174,7 +1292,7 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
                 row.status, row.certified_on = "Certified", t
         _check_pc(db, row)
     elif kind == "clientpcs":
-        prev = db.query(EstClientPC).filter(EstClientPC.project_id == row.project_id).order_by(EstClientPC.seq.desc()).first()
+        prev = db.query(EstClientPC).filter(EstClientPC.project_id == row.project_id, *([EstClientPC.contract_id == row.contract_id] if row.contract_id else [])).order_by(EstClientPC.seq.desc()).first()
         if not data.get("seq"):
             row.seq = (prev.seq if prev else 0) + 1
         if prev:
@@ -1183,7 +1301,8 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
                     setattr(row, k, getattr(prev, k) or 0)
         if row.pc_type == "Advance" and not row.adv_amount:
             p = _project(db, row.project_id)
-            row.adv_amount = r2((p.contract_value or 0) * (p.adv_pct or 0) / 100.0)
+            c = db.query(EstContract).get(row.contract_id) if row.contract_id else None
+            row.adv_amount = r2((c.value or 0) * (c.adv_pct or 0) / 100.0) if c else r2((p.contract_value or 0) * (p.adv_pct or 0) / 100.0)
         row.status = row.status or "Draft"
         if row.period_to is None:
             row.period_to = t
@@ -1231,6 +1350,10 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         _refill_sub(db, row.sub_id)
     if kind == "clientpcs":
         _refill_client(db, row.project_id)
+    if kind == "contracts":
+        _sync_contracts(db, row.project_id)
+        _refill_client(db, row.project_id)
+        db.add(models.AuditLog(user_id=user.id, action="est_contract", details=f"project #{row.project_id}: contract {row.name} added"))
     db.commit()
     return {"id": row.id}
 
@@ -1262,10 +1385,19 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
             data["adv_auto"] = False
         if "ret_cum" in data and "ret_auto" not in data:
             data["ret_auto"] = False
+    if kind in ("clientpcs", "variations") and "contract_id" in data:
+        data["contract_id"] = _contract_ok(db, row.project_id, data.get("contract_id"))
+    if kind == "contracts" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
+            and db.query(EstClientPC).filter(EstClientPC.contract_id == row.id, EstClientPC.status.in_(LOCKED_STATUS)).first():
+        raise HTTPException(400, "This contract has invoiced or paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
     _apply(row, fields, data)
     if kind == "boq":
         _boq_amount_in(row, data)
     row.updated_by = user.id
+    if kind == "contracts":
+        db.flush()
+        _sync_contracts(db, row.project_id)
+        _refill_client(db, row.project_id)
     if kind == "subpcs":
         _check_pc(db, row)
         db.flush()
@@ -1303,6 +1435,23 @@ def del_row(kind: str, rid: int, db: Session = Depends(get_db), user: models.Use
         est_pcsheet.drop_sub(db, rid)
         db.query(EstSubPC).filter(EstSubPC.sub_id == rid).delete(synchronize_session=False)
         db.query(EstSubVO).filter(EstSubVO.sub_id == rid).delete(synchronize_session=False)
+    if kind == "contracts":
+        import est_bills
+        used = (db.query(EstClientPC).filter(EstClientPC.contract_id == rid).count() + db.query(EstVariation).filter(EstVariation.contract_id == rid).count()
+                + db.query(est_bills.EstBillFormat).filter(est_bills.EstBillFormat.contract_id == rid).count())
+        if used:
+            raise HTTPException(400, "This contract has bills, certificates or variations on it - move or remove them first.")
+        cpid = row.project_id
+        db.delete(row)
+        db.flush()
+        left = contracts_of(db, cpid)
+        if len(left) == 1:              # back to one agreement: the project is that contract again
+            p = _project(db, cpid)
+            c = left[0]
+            p.contract_value, p.adv_pct, p.ret_pct, p.vat_pct = c.value or 0, c.adv_pct or 0, c.ret_pct or 0, c.vat_pct or 0
+        _sync_contracts(db, cpid)
+        db.commit()
+        return {"ok": True}
     if kind == "files":
         try:
             os.remove(os.path.join(FILES, row.stored))
@@ -1623,12 +1772,12 @@ def renumber_variations(SessionLocal):
         db.close()
 
 
-def _vo_rows_in(db, p, rows, user_id):
+def _vo_rows_in(db, p, rows, user_id, cid=None):
     """Puts parsed variation rows on the project, numbered after what is there."""
     seq = _next_seq(db, EstVariation, project_id=p.id) - 1
     for x in rows:
         seq += 1
-        v = EstVariation(project_id=p.id, seq=seq, created_by=user_id)
+        v = EstVariation(project_id=p.id, seq=seq, created_by=user_id, contract_id=cid)
         for k in ("title", "kind", "source", "pc_ref", "status", "notes"):
             setattr(v, k, x.get(k) or "")
         v.ref = vref(seq)
@@ -1645,6 +1794,17 @@ def _vo_rows_in(db, p, rows, user_id):
     return seq
 
 
+def _vo_take_off(db, p, cid, amount):
+    """The contract value already had the accepted variations in it: take them off (the contract's, when it has several)."""
+    if cid:
+        c = db.query(EstContract).get(cid)
+        c.value = r2((c.value or 0) - amount)
+        db.flush()
+        _sync_contracts(db, p.id)
+    else:
+        p.contract_value = r2((p.contract_value or 0) - amount)
+
+
 def _vo_summary(rows):
     by = {}
     for x in rows:
@@ -1658,7 +1818,7 @@ def _vo_summary(rows):
 
 
 @router.post("/store/est/projects/{pid}/variations/import")
-async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0), take_off_contract: int = Form(0),
+async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0), take_off_contract: int = Form(0), contract_id: str = Form(""),
                     db: Session = Depends(get_db), user: models.User = VIEW):
     """The variation log Excel (Ref.No, Description, Submitted / Revised / Accepted /
     Absorbed amount, dates, Claimed in PC, Remarks; the OHP sheet too). First call
@@ -1679,9 +1839,10 @@ async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0),
     out["have"] = db.query(EstVariation).filter(EstVariation.project_id == pid).count()
     if not save:
         return out
-    _vo_rows_in(db, p, rows, user.id)
+    cid = _contract_ok(db, pid, int(contract_id) if str(contract_id).strip().isdigit() else None)
+    _vo_rows_in(db, p, rows, user.id, cid)
     if take_off_contract and out["approved"]:
-        p.contract_value = r2((p.contract_value or 0) - out["approved"])
+        _vo_take_off(db, p, cid, out["approved"])
     db.commit()
     out["saved"] = True
     out["contract"] = r2(p.contract_value)
@@ -1745,9 +1906,10 @@ def vo_import_text(pid: int, data: dict = Body(...), db: Session = Depends(get_d
     out["have"] = db.query(EstVariation).filter(EstVariation.project_id == pid).count()
     if not data.get("save"):
         return out
-    _vo_rows_in(db, p, vrows, user.id)
+    cid = _contract_ok(db, pid, data.get("contract_id"))
+    _vo_rows_in(db, p, vrows, user.id, cid)
     if data.get("take_off_contract") and out["approved"]:
-        p.contract_value = r2((p.contract_value or 0) - out["approved"])
+        _vo_take_off(db, p, cid, out["approved"])
     db.commit()
     out["saved"] = True
     out["contract"] = r2(p.contract_value)
