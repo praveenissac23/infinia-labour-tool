@@ -46,6 +46,34 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #login-screen::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 45vh; pointer-events: none;
     background: radial-gradient(ellipse 60% 70% at 50% 100%, rgba(192,57,43,0.28), transparent 70%); }
   #login-skyline { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 38vh; min-height: 220px; pointer-events: none; }
+  /* The sign-in screen comes alive: the skyline draws itself, the cranes slew, windows light up, beacons blink,
+     the red glow breathes and the sign-in card rises in. Only while it is on screen. */
+  #login-screen::after { opacity: 0; animation: lsGlowIn 2.4s ease-out .4s forwards, lsBreathe 6s ease-in-out 2.8s infinite; }
+  @keyframes lsGlowIn { to { opacity: 1; } } @keyframes lsBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+  #login-skyline .ls-b { fill: none; stroke: #fff; stroke-opacity: .16; stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lsDraw 2.2s cubic-bezier(.6,.1,.3,1) forwards; }
+  #login-skyline .ls-ground { stroke: #fff; stroke-opacity: .28; stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lsDraw 1.4s ease-out forwards; }
+  @keyframes lsDraw { to { stroke-dashoffset: 0; } }
+  #login-skyline .ls-jibL { transform-origin: 150px 60px; animation: lsSlewL 14s ease-in-out 2.6s infinite; }
+  #login-skyline .ls-jibR { transform-origin: 1250px 40px; animation: lsSlewR 17s ease-in-out 3s infinite; }
+  @keyframes lsSlewL { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-2.2deg); } } @keyframes lsSlewR { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(1.8deg); } }
+  #login-skyline .ls-hook { animation: lsHook 5s ease-in-out 2.6s infinite; } #login-skyline .ls-hook2 { animation: lsHook 6s ease-in-out 3.2s infinite reverse; }
+  @keyframes lsHook { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(22px); } }
+  #login-skyline .ls-win { fill: #F5B041; opacity: 0; animation: lsWin .6s ease-out forwards; } #login-skyline .ls-win.r { fill: #E8604C; }
+  @keyframes lsWin { to { opacity: .5; } }
+  #login-skyline .ls-beacon { fill: #ff3b2f; opacity: 0; animation: lsBlink 1.6s steps(1) 2.4s infinite; }
+  @keyframes lsBlink { 0% { opacity: .95; } 50% { opacity: .08; } }
+  #login-skyline .ls-star { fill: #fff; opacity: 0; animation: lsTw 4s ease-in-out infinite; }
+  @keyframes lsTw { 0%, 100% { opacity: 0; } 50% { opacity: .55; } }
+  #login-box { animation: lsBoxIn .9s cubic-bezier(.2,.8,.2,1) .9s both; }
+  @keyframes lsBoxIn { from { opacity: 0; transform: translateY(26px) scale(.98); } to { opacity: 1; transform: none; } }
+  #login-box .logo { animation: lsFade .8s ease 1.4s both; }
+  #login-box > input { animation: lsUp .5s ease both; } #login-box > input:nth-of-type(1) { animation-delay: 1.6s; } #login-box > input:nth-of-type(2) { animation-delay: 1.75s; }
+  #login-box > label { animation: lsFade .5s ease 1.9s both; }
+  #login-box > button { position: relative; overflow: hidden; animation: lsFade .5s ease 2s both; }
+  #login-box > button::after { content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); transform: skewX(-20deg); animation: lsShine 4.5s ease-in-out 3s infinite; }
+  @keyframes lsFade { from { opacity: 0; } to { opacity: 1; } } @keyframes lsUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes lsShine { 0% { left: -60%; } 30%, 100% { left: 130%; } }
+  @media (prefers-reduced-motion: reduce) { #login-screen *, #login-screen::after { animation-duration: .01s !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; } }
   #login-box { position: relative; z-index: 2; background: rgba(255,255,255,0.96); border-radius: 12px; padding: 32px 40px 36px; width: 340px;
     box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); backdrop-filter: blur(2px); }
   #login-box .logo { display: block; width: 210px; max-width: 100%; height: auto; margin: 0 auto 22px; }
@@ -1765,20 +1793,27 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 <div id="bday-overlay" onclick="if (event.target === this) bdayClose()"><div class="bday-card" id="bday-card"></div></div>
 <div id="login-screen">
   <svg id="login-skyline" viewBox="0 0 1440 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <g fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="2">
-      <!-- tower crane, left -->
-      <path d="M150 300V60 M138 60h24 M150 60L40 90 M150 60L420 72 M420 72v10 M150 90l8-30 M150 120l-8-30 M150 150l8-30 M150 180l-8-30 M150 210l8-30 M150 240l-8-30 M150 270l8-30 M300 76v70 M292 146h16v10h-16z"/>
-      <!-- framed tower, centre-left -->
-      <path d="M470 300V150h120v150 M470 180h120 M470 210h120 M470 240h120 M470 270h120 M500 150v150 M530 150v150 M560 150v150"/>
-      <!-- tall tower -->
-      <path d="M660 300V96h150v204 M660 126h150 M660 156h150 M660 186h150 M660 216h150 M660 246h150 M660 276h150 M698 96v204 M736 96v204 M774 96v204 M700 96l-12-34h100l-12 34"/>
-      <!-- tower crane, right -->
-      <path d="M1250 300V40 M1238 40h24 M1250 40l-230 24 M1250 40l170 10 M1020 64v12 M1250 70l-8-30 M1250 100l8-30 M1250 130l-8-30 M1250 160l8-30 M1250 190l-8-30 M1250 220l8-30 M1250 250l-8-30 M1250 280l8-30 M1120 58v96 M1112 154h16v10h-16z"/>
-      <!-- low blocks -->
-      <path d="M880 300V200h110v100 M880 230h110 M880 260h110 M916 200v100 M952 200v100 M1300 300V180h90v120 M1300 210h90 M1300 240h90 M1300 270h90 M1345 180v120 M0 300V230h100v70 M0 260h100 M50 230v70"/>
-    </g>
-    <!-- ground -->
-    <path d="M0 299h1440" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="2"/>
+    <g id="ls-stars"></g>
+    <path class="ls-ground" pathLength="1" d="M0 299h1440"/>
+    <!-- tower crane, left: the mast draws itself, the jib slews slowly, the hook goes up and down -->
+    <path class="ls-b" pathLength="1" style="animation-delay:.3s" d="M150 300V60 M138 60h24 M150 90l8-30 M150 120l-8-30 M150 150l8-30 M150 180l-8-30 M150 210l8-30 M150 240l-8-30 M150 270l8-30"/>
+    <g class="ls-jibL"><path class="ls-b" pathLength="1" style="animation-delay:.9s" d="M150 60L40 90 M150 60L420 72 M420 72v10"/>
+      <g class="ls-hook"><path class="ls-b" pathLength="1" style="animation-delay:1.3s" d="M300 76v70 M292 146h16v10h-16z"/></g>
+      <circle class="ls-beacon" cx="420" cy="72" r="3"/></g>
+    <circle class="ls-beacon" cx="150" cy="58" r="3" style="animation-delay:2.9s"/>
+    <!-- framed tower, centre-left -->
+    <path class="ls-b" pathLength="1" style="animation-delay:.5s" d="M470 300V150h120v150 M470 180h120 M470 210h120 M470 240h120 M470 270h120 M500 150v150 M530 150v150 M560 150v150"/>
+    <!-- tall tower -->
+    <path class="ls-b" pathLength="1" style="animation-delay:.2s" d="M660 300V96h150v204 M660 126h150 M660 156h150 M660 186h150 M660 216h150 M660 246h150 M660 276h150 M698 96v204 M736 96v204 M774 96v204 M700 96l-12-34h100l-12 34"/>
+    <circle class="ls-beacon" cx="738" cy="60" r="3" style="animation-delay:2.6s"/>
+    <!-- tower crane, right -->
+    <path class="ls-b" pathLength="1" style="animation-delay:.4s" d="M1250 300V40 M1238 40h24 M1250 70l-8-30 M1250 100l8-30 M1250 130l-8-30 M1250 160l8-30 M1250 190l-8-30 M1250 220l8-30 M1250 250l-8-30 M1250 280l8-30"/>
+    <g class="ls-jibR"><path class="ls-b" pathLength="1" style="animation-delay:1s" d="M1250 40l-230 24 M1250 40l170 10 M1020 64v12"/>
+      <g class="ls-hook2"><path class="ls-b" pathLength="1" style="animation-delay:1.4s" d="M1120 58v96 M1112 154h16v10h-16z"/></g>
+      <circle class="ls-beacon" cx="1020" cy="64" r="3" style="animation-delay:3.1s"/></g>
+    <!-- low blocks -->
+    <path class="ls-b" pathLength="1" style="animation-delay:.6s" d="M880 300V200h110v100 M880 230h110 M880 260h110 M916 200v100 M952 200v100 M1300 300V180h90v120 M1300 210h90 M1300 240h90 M1300 270h90 M1345 180v120 M0 300V230h100v70 M0 260h100 M50 230v70"/>
+    <g id="ls-wins"></g>
   </svg>
   <form id="login-box" onsubmit="event.preventDefault(); doLogin();" autocomplete="on">
     <img class="logo" src="/portal/logo-bb952b26.png" alt="Infinia Contracting">
@@ -1791,6 +1826,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     <button type="submit">Sign In</button>
     <div id="login-error"></div>
   </form>
+  <script>
+  // windows lighting up in the towers one by one, and a few stars (the sign-in screen)
+  (function () {
+    const ns = "http://www.w3.org/2000/svg", W = document.getElementById("ls-wins"), S = document.getElementById("ls-stars"); if (!W || !S) return;
+    const cells = [];
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 5; r++) cells.push([668 + c * 38, 134 + r * 30, 22, 14]);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) cells.push([476 + c * 30, 188 + r * 30, 18, 14]);
+    for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) cells.push([888 + c * 36, 208 + r * 30, 20, 14]);
+    cells.sort(() => Math.random() - .5).slice(0, 22).forEach(([x, y, w, h], i) => {
+      const e = document.createElementNS(ns, "rect"); e.setAttribute("x", x); e.setAttribute("y", y); e.setAttribute("width", w); e.setAttribute("height", h);
+      e.setAttribute("class", "ls-win" + (i % 7 === 0 ? " r" : "")); e.style.animationDelay = (2.2 + i * 0.18) + "s"; W.appendChild(e);
+    });
+    for (let i = 0; i < 26; i++) { const e = document.createElementNS(ns, "circle"); e.setAttribute("cx", Math.random() * 1440); e.setAttribute("cy", Math.random() * 90); e.setAttribute("r", Math.random() * 1.2 + .4); e.setAttribute("class", "ls-star"); e.style.animationDelay = (Math.random() * 4 + 1.5) + "s"; S.appendChild(e); }
+  })();
+  </script>
 </div>
 
 <div id="app-screen">
@@ -5158,6 +5208,7 @@ async function doLogin() {
 }
 
 function doLogout() {
+  try { const c = navigator.serviceWorker && navigator.serviceWorker.controller; if (c) c.postMessage({ type: "offline-clear-data" }); } catch (e) {}
   try { sessionStorage.removeItem("infinia_user"); sessionStorage.removeItem("infinia_stock_home"); localStorage.removeItem("infinia_keep"); } catch (e) {}
   sessionStorage.removeItem("infinia_token");
   location.replace(location.pathname);     // back to the sign-in without the page / tab of this login
@@ -5422,8 +5473,7 @@ function fitGrids() {
     const after = Math.max(0, scr.getBoundingClientRect().bottom - r.bottom - (parseFloat(getComputedStyle(scr).paddingBottom) || 0))
                 + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
     const room = Math.floor(innerHeight - top - after);
-    const mh = g.dataset.mh || "60vh", was = /vh$/.test(mh) ? innerHeight * parseFloat(mh) / 100 : (parseFloat(mh) || 0);
-    const want = Math.floor(Math.max(room, 260, was)) + "px";     // only ever taller than it was
+    const want = Math.floor(Math.max(room, 260)) + "px";
     if (g.style.maxHeight !== want) g.style.maxHeight = want;
     const infi = document.getElementById("infi-btn"), fab = [...document.querySelectorAll(".btn.fab")].some(b => b.offsetParent || getComputedStyle(b).display !== "none");
     const long = g.scrollHeight - (g.classList.contains("fit-long") ? 76 : 0) > g.clientHeight + 1
@@ -14120,7 +14170,7 @@ function checkBuild() {
 // not answered from what the browser kept.
 async function hardReload() {
   try { if (window.__newBuild) localStorage.setItem("infinia_build", window.__newBuild); } catch (e) {}
-  try { if (window.caches) { for (const k of await caches.keys()) await caches.delete(k); } } catch (e) {}
+  try { if (window.caches) { for (const k of await caches.keys()) if (!k.startsWith("infinia-off")) await caches.delete(k); } } catch (e) {}
   try { await fetch(location.pathname, { cache: "reload" }); } catch (e) {}
   const u = new URL(location.href); u.searchParams.set("v", window.__newBuild || Date.now());
   location.replace(u.toString());

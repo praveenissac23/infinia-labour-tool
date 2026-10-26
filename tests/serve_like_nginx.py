@@ -56,6 +56,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
         except urllib.error.HTTPError as e:
+            self._http_error(e)
+        except (urllib.error.URLError, ConnectionError, OSError):
+            # nginx with the application stopped (restarting, crashed): 502 Bad Gateway
+            data = b"<html><body><h1>502 Bad Gateway</h1></body></html>"
+            try:
+                self.send_response(502); self.send_header("Content-Type", "text/html"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            except Exception:
+                pass
+
+    def _http_error(self, e):
+        if True:
             data = e.read()
             self.send_response(e.code)
             self.send_header("Content-Type", e.headers.get("Content-Type", "application/json"))

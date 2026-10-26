@@ -41,6 +41,7 @@ import inksave  # noqa: F401  - every PDF black on white (light heading rows, no
 
 import push  # noqa: E402  (its tables are made with the rest)
 import watch  # noqa: E402  (its table too)
+import offline_once  # noqa: E402  (working offline: a save sent twice is done once - its table too)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Infinia Labour Tool API")
@@ -319,6 +320,9 @@ def _freeze_version():
 
 
 _FREEZE_V = _freeze_version()
+
+
+app.middleware("http")(offline_once.once)
 
 
 @app.middleware("http")

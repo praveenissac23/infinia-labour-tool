@@ -1345,6 +1345,7 @@ def build():
                  f'<script src="/portal/help/help.js?v={_v("portal/help/help.js")}" defer></script>\n'
                  f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>\n'
                  f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>\n'
+                 f'<script src="/portal/help/offline.js?v={_v("portal/help/offline.js")}" defer></script>\n'
 )
     page = page.replace("</body>", help_tags + "</body>", 1)
     # The pages held in a frame (Estimation, Trello, Staff ...) are asked for by a version of what is in
@@ -1451,6 +1452,7 @@ def brand_hand_written(menu_rights=None):
                  f'<script>window.DOCREAD_V = "{_v("portal/est/agreement.js")}";</script>'
                  f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>'
                  f'<script src="/portal/help/fab.js?v={_v("portal/help/fab.js")}" defer></script>'
+                 f'<script src="/portal/help/offline.js?v={_v("portal/help/offline.js")}" defer></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:
             new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)
