@@ -130,6 +130,7 @@ class EstSub(Base):
     value = Column(Float, default=0.0)          # initial subcontract / LPO amount
     cancelled = Column(Float, default=0.0)      # LPO cancellation
     adv_pct = Column(Float, default=0.0)
+    adv_rec_pct = Column(Float, nullable=True)   # advance recovered at this % of the work done; empty = the advance %, 0 = not recovered
     ret_pct = Column(Float, default=0.0)
     vat_pct = Column(Float, default=5.0)
     pay_days = Column(Integer, default=0)
@@ -537,7 +538,7 @@ KINDS = {
                                     "adv_pct": F, "ret_pct": F, "vat_pct": F, "start_date": D, "end_date": D, "status": S,
                                     "qs": S, "notes": S}),
     "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "address": S, "phone": S, "mobile": S, "trn": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
-                                    "value": F, "cancelled": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "pay_days": I,
+                                    "value": F, "cancelled": F, "adv_pct": F, "adv_rec_pct": F, "ret_pct": F, "vat_pct": F, "pay_days": I,
                                     "status": S, "start_date": D, "agreement_date": D, "contract_type": S, "pay_terms": S,
                                     "notes": S, "sort": I}),
     "subvos": (EstSubVO, "sub_id", {"on_date": D, "ref": S, "title": S, "amount": F}),
@@ -625,7 +626,7 @@ def _plain(row, fields):
     out = {"id": row.id}
     for k, t in fields.items():
         v = getattr(row, k)
-        out[k] = _iso(v) if t == D else ((round(float(v or 0), 4) if k.endswith("_pct") else r2(v)) if t == F else v)
+        out[k] = _iso(v) if t == D else (None if (v is None and k == "adv_rec_pct") else (round(float(v or 0), 4) if k.endswith("_pct") else r2(v)) if t == F else v)
     return out
 
 
@@ -645,7 +646,14 @@ def sub_revised(s, vos):
 LOCKED_STATUS = ("Paid", "Invoiced")
 
 
-def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0):
+def sub_rec(s):
+    """The % of the work done the advance is recovered at: the subcontract's own recovery % if set (0 = the
+    advance is not recovered), else the advance %."""
+    r = getattr(s, "adv_rec_pct", None)
+    return s.adv_pct if r is None else r
+
+
+def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0, rec_pct=None):
     """Advance recovery and retention to date, from the percentages - unless typed.
     With no advance % set, an advance that was paid is recovered pro rata to the
     value (advance / value of the work done), so it is all back at 100%."""
@@ -655,13 +663,16 @@ def _auto_fill(pc, prev_adv_paid, adv_pct, ret_pct, work_key, base=0.0):
     var = getattr(pc, "var_cum", 0) or 0         # advance is recovered on the contract work; retention is held on work + variations
     adv_paid = prev_adv_paid + (pc.adv_amount or 0)
     if pc.adv_auto:
-        pct = adv_pct or (100.0 * adv_paid / base if base else 0)
-        pc.adv_rec_cum = r2(min(adv_paid, work * pct / 100.0)) if pct else r2(min(adv_paid, pc.adv_rec_cum or 0))
+        if rec_pct is not None and not rec_pct:
+            pc.adv_rec_cum = 0.0                  # the advance is not recovered on this subcontract
+        else:
+            pct = (rec_pct if rec_pct is not None else adv_pct) or (100.0 * adv_paid / base if base else 0)
+            pc.adv_rec_cum = r2(min(adv_paid, work * pct / 100.0)) if pct else r2(min(adv_paid, pc.adv_rec_cum or 0))
     if pc.ret_auto:
         pc.ret_cum = r2((work + var) * (ret_pct or 0) / 100.0)
 
 
-def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=0.0):
+def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=0.0, rec_pct=None):
     """Walk a subcontract's (or a project's) certificates in order and work out
     what each one certifies. With fill=True the automatic figures are set
     on the rows themselves (before saving)."""
@@ -671,7 +682,7 @@ def chain(pcs, adv_pct, ret_pct, vat_pct, work_key="work_cum", fill=False, base=
     last_locked = max([i for i, p in enumerate(rows) if (p.status or "") in LOCKED_STATUS] or [-1])
     for i, pc in enumerate(rows):
         if fill and i > last_locked:
-            _auto_fill(pc, adv_paid, adv_pct, ret_pct, work_key, base)
+            _auto_fill(pc, adv_paid, adv_pct, ret_pct, work_key, base, rec_pct)
         adv_paid = r2(adv_paid + (pc.adv_amount or 0))
         work = r2(getattr(pc, work_key))
         var = r2(getattr(pc, "var_cum", 0) or 0)
@@ -1154,7 +1165,7 @@ def _refill_sub(db, sid):
     s = _sub_of(db, sid)
     pcs = db.query(EstSubPC).filter(EstSubPC.sub_id == sid).all()
     vos = db.query(EstSubVO).filter(EstSubVO.sub_id == sid).all()
-    chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct, fill=True, base=sub_revised(s, vos))
+    chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct, fill=True, base=sub_revised(s, vos), rec_pct=getattr(s, "adv_rec_pct", None))
 
 
 def _refill_client(db, pid):
@@ -1233,9 +1244,13 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         _parent_ok(db, kind, pid)
         setattr(row, parent, pid)
     _apply(row, fields, data)
+    if kind == "subs" and str(data.get("adv_rec_pct", "")).strip() in ("", "None"):
+        row.adv_rec_pct = None                  # blank: recovered at the advance %
     if kind == "boq":
         _boq_amount_in(row, data)
     for k, ty in fields.items():      # the table's defaults, before anything is worked out
+        if k == "adv_rec_pct":
+            continue                      # empty means "the advance %" - not 0
         if getattr(row, k) is None and ty in (F, B, S):
             col = model.__table__.columns[k]
             dv = col.default.arg if col.default is not None and not callable(col.default.arg) else None
@@ -1391,6 +1406,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
             and db.query(EstClientPC).filter(EstClientPC.contract_id == row.id, EstClientPC.status.in_(LOCKED_STATUS)).first():
         raise HTTPException(400, "This contract has invoiced or paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
     _apply(row, fields, data)
+    if kind == "subs" and "adv_rec_pct" in data and str(data.get("adv_rec_pct")).strip() in ("", "None"):
+        row.adv_rec_pct = None
     if kind == "boq":
         _boq_amount_in(row, data)
     row.updated_by = user.id

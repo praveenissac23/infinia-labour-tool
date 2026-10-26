@@ -626,7 +626,10 @@ function subForm(s, pre) {
     { k: "lpo", label: "LPO no.", value: s.lpo || "" },
     { k: "value", label: "Subcontract / LPO amount (AED)", type: "money", value: s.value ?? "", tip: "Before VAT. Variations are added later on the subcontract." },
     { k: "cancelled", label: "LPO cancellation (AED)", type: "money", value: s.cancelled || "" },
-    { k: "adv_pct", label: "Advance %", type: "pct", value: s.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]], tip: "Recovered from each certificate by the same % of the work done, until it is all back." },
+    { k: "adv_pct", label: "Advance %", type: "pct", value: s.adv_pct ?? 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]], tip: "The advance paid on this subcontract, as a % of its value." },
+    { k: "adv_rec_pct", label: "Advance recovery %", type: "pct", value: s.adv_rec_pct ?? "", ph: "Same as the advance %",
+      quick: [["Same as advance", el => el.value = ""], ["None - not recovered", el => el.value = 0]],
+      tip: "How much of each certificate's work done is taken back against the advance, until it is all back. Empty: the same % as the advance. 0: the advance is not recovered from the certificates (printed as 0% on them)." },
     { k: "ret_pct", label: "Retention % (required)", type: "pct", value: edit ? (s.ret_pct ?? 0) : (s.ret_pct ?? ""), ph: "Pick 0, 5% or 10%", quick: [["None (0)", el => el.value = 0], ["5%", el => el.value = 5], ["10%", el => el.value = 10]], tip: "Held from each certificate as the agreement says - printed on the certificate. No retention: press None (0)." },
     { k: "vat_pct", label: "VAT %", type: "pct", value: s.vat_pct ?? 5, quick: [["5%", el => el.value = 5], ["0", el => el.value = 0]] },
     { k: "start_date", label: "Commencement date", type: "date", value: s.start_date || today() },
@@ -825,7 +828,7 @@ function openSub(sid) {
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
-      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}% · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
+      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}%${s.adv_rec_pct === 0 ? " (not recovered)" : s.adv_rec_pct != null && s.adv_rec_pct !== s.adv_pct ? ` (recovered at ${s.adv_rec_pct}%)` : ""} · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
     $("#s-inv").onclick = () => invoiceForm(s.id);
     const sa = $("#s-adv"); if (sa) sa.onclick = () => modal("Advance payment certificate", [
       { k: "adv_amount", label: "Advance amount (AED)", type: "money", value: s.adv_pct ? r2(s.value * s.adv_pct / 100) : "", focus: true,
@@ -916,7 +919,8 @@ function certifyForm(sid, pcid) {
     { k: "mos_cum", label: "Material on site to date", type: "money", value: p.mos_cum || "" },
     { k: "other_cum", label: "Other deductions to date", type: "money", value: p.other_cum || "", tip: "Back-charges, manpower supplied by us, damages ... to date." },
     { k: "other_note", label: "Deduction reason", type: "combo", value: p.other_note, options: ["Manpower supplied by main contractor", "Back-charge", "Material supplied", "Damages", "Rectification"] },
-    { k: "adv_rec_cum", label: `Advance recovered to date ${s.adv_pct ? "(" + s.adv_pct + "%)" : ""}`, type: "money", value: p.adv_rec_cum || "" },
+    { k: "adv_rec_cum", label: `Advance recovered to date ${s.adv_rec_pct === 0 ? "(not recovered)" : (s.adv_rec_pct ?? s.adv_pct) ? "(" + (s.adv_rec_pct ?? s.adv_pct) + "%)" : ""}`, type: "money", value: p.adv_rec_cum || "",
+      tip: "Worked out from the recovery % on the subcontract. Typing a figure here fixes it for this certificate." },
     { k: "adv_auto", label: " ", type: "check", value: p.adv_auto, text: "Work it out from the %" },
     { k: "ret_cum", label: `Retention to date ${s.ret_pct ? "(" + s.ret_pct + "%)" : ""}`, type: "money", value: p.ret_cum || "" },
     { k: "ret_auto", label: " ", type: "check", value: p.ret_auto, text: "Work it out from the %" },

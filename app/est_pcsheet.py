@@ -708,7 +708,7 @@ def build_doc(db, pc):
         "A": [("Value of Work Executed to Date", _dt(pc.measured_on), work), ("Value of Variations Executed to Date", _dt(pc.measured_on), var)],
         "A_total": total_exec,
         "B": [("Advance Payment", f"{s.adv_pct:g}%" if s.adv_pct else "%", adv_paid)],
-        "C": [("Advance payment Recovery", f"{s.adv_pct:g}%" if s.adv_pct else "%", r2(pc.adv_rec_cum)),
+        "C": [("Advance payment Recovery", f"{E.sub_rec(s):g}%" if (s.adv_pct or getattr(s, "adv_rec_pct", None) is not None) else "%", r2(pc.adv_rec_cum)),
               ("Retention", f"{(s.ret_pct or 0):g}%", r2(pc.ret_cum)),
               ("Material Supplied by the Main Contractor", "", cats["Material"]),
               ("Manpower Supplied by the Main Contractor", "", cats["Manpower"]),
