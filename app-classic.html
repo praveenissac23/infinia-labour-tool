@@ -4508,8 +4508,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
               <b style="width:170px; font-size:13px;">Purchase orders (LPO)</b>
               <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:290px;">
+              <input type="text" id="sig-name" placeholder="Whose signature (e.g. Arun)" style="width:200px;">
               <button class="btn btn-primary" onclick="uploadSignature('lpo')">Upload</button>
               <span id="sig-state" style="font-size:12px; color:#888;"></span>
+            </div>
+            <!-- A new signature applies from the moment it is uploaded; orders sent before keep theirs. -->
+            <div id="sig-history" style="margin:6px 0 4px 180px; font-size:12.5px;"></div>
+            <div class="form-row" id="sig-earlier-row" style="align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 0 180px; display:none;">
+              <span style="font-size:12.5px; color:#555;">Signature for the orders sent before that:</span>
+              <input type="file" id="sig-file-earlier" accept="image/png,image/jpeg" style="width:260px;">
+              <input type="text" id="sig-name-earlier" placeholder="Whose (e.g. previous purchaser)" style="width:200px;">
+              <button class="btn btn-dark" onclick="uploadSignature('lpo', true)">Upload</button>
             </div>
             <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px;">
               <b style="width:170px; font-size:13px;">Tax &amp; proforma invoices</b>
@@ -12398,6 +12407,14 @@ async function refreshSignatureState() {
   try {
     const s = await apiCall("/store/purchase/signature-status");
     el.textContent = s.present ? "A signature is on file." : "None uploaded - orders print with an empty signature box.";
+    // who signed which orders: each signature from the moment it was uploaded
+    const hb = document.getElementById("sig-history"), er = document.getElementById("sig-earlier-row");
+    const hist = s.history || [];
+    if (hb) hb.innerHTML = hist.length ? hist.slice().reverse().map((h, i) => {
+      const when = h.from ? new Date(h.from + "Z").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      return `<div style="color:${i === 0 ? "#2E7D32" : "#666"};">${i === 0 ? "&#10003; " : ""}${h.name ? `<b>${h.name.replace(/</g, "&lt;")}</b>` : "Signature"} - ${h.from ? `orders made from ${when}` : "the earlier orders"}${i === 0 ? " (current)" : ""}</div>`; }).join("")
+      + (hist.length && hist[0].from ? `<div style="color:#B26A00;">Orders made before ${new Date(hist[0].from + "Z").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} print unsigned until their signature is uploaded below.</div>` : "") : "";
+    if (er) er.style.display = hist.length && hist[0].from ? "" : (hist.length ? "" : "none");
     el.style.color = s.present ? "#2E7D32" : "#C0392B";
     if (panel) {
       panel.style.borderColor = s.present ? "#E8DFD9" : "#E8C7C2";
@@ -14007,15 +14024,16 @@ async function saveCompanySettings() {
   }
 }
 
-async function uploadSignature(kind = "lpo") {
+async function uploadSignature(kind = "lpo", earlier = false) {
   const where = "settings-status";
-  const input = document.getElementById(kind === "invoice" ? "sig-file-invoice" : "sig-file");
+  const input = document.getElementById(kind === "invoice" ? "sig-file-invoice" : earlier ? "sig-file-earlier" : "sig-file");
   const f = input.files[0];
   if (!f) { showStatus(where, "warn", "Choose the signature image first."); return; }
   const fd = new FormData();
   fd.append("file", f);
+  const nm = (document.getElementById(earlier ? "sig-name-earlier" : "sig-name") || {}).value || "";
   try {
-    const r = await apiCall(`/store/purchase/signature?kind=${kind}`, { method: "POST", body: fd });
+    const r = await apiCall(`/store/purchase/signature?kind=${kind}${earlier ? "&earlier=1" : ""}&name=${encodeURIComponent(nm)}`, { method: "POST", body: fd });
     showStatus(where, "ok", r.detail || "Signature saved.");
     input.value = "";
     refreshSignatureState();

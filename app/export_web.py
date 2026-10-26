@@ -10,7 +10,9 @@ Total Days block, Salary Summary block, Final Salary box) so a card
 produced here reads the same way a desktop-generated one does.
 """
 import base64
+import json
 import re
+import time
 import contextvars
 import io
 import os
@@ -2050,9 +2052,80 @@ def _newest(paths):
     return max(found, key=os.path.getmtime) if found else None
 
 
-def signature_file():
-    """The purchase-order signature currently on this server, or None."""
+# ---- the signature an order was signed with -------------------------------------------------------------
+# A new purchaser's signature applies from the day it is uploaded: the orders sent before keep the signature
+# they went out with. Every upload is kept (signature_history.json + its own file), with the moment it took
+# over; an order prints the one in force when it was made. "from" "" = the signature for the earliest orders.
+SIG_HIST = os.path.join(DATA_DIR, "signature_history.json")
+
+
+def sig_history(kind="lpo"):
+    try:
+        with open(SIG_HIST) as f:
+            h = json.load(f)
+    except Exception:
+        h = {}
+    out = [e for e in h.get(kind, []) if os.path.exists(os.path.join(DATA_DIR, e.get("file", "")))]
+    return sorted(out, key=lambda e: e.get("from") or "")
+
+
+def sig_record(kind, src_path, when, name=""):
+    """Keep a copy of the signature just put in, and the moment it applies from ("" = the earliest orders)."""
+    import shutil
+    try:
+        with open(SIG_HIST) as f:
+            h = json.load(f)
+    except Exception:
+        h = {}
+    stamp = (when or "start").replace(":", "").replace("-", "")[:15]
+    fn = f"sighist_{kind}_{stamp}_{int(time.time())}{os.path.splitext(src_path)[1]}"
+    shutil.copyfile(src_path, os.path.join(DATA_DIR, fn))
+    lst = [e for e in h.get(kind, []) if not (when == "" and (e.get("from") or "") == "")]
+    lst.append({"file": fn, "from": when, "name": name})
+    h[kind] = lst
+    with open(SIG_HIST, "w") as f:
+        json.dump(h, f, indent=1)
+
+
+def _utc_naive(at):
+    from datetime import datetime as _dt, timezone as _tz
+    if not at:
+        return None
+    if isinstance(at, str):
+        try:
+            at = _dt.fromisoformat(at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if getattr(at, "tzinfo", None) is not None:
+        at = at.astimezone(_tz.utc).replace(tzinfo=None)
+    return at.isoformat(timespec="seconds")
+
+
+def signature_file(at=None):
+    """The purchase-order signature: for an order made at `at`, the one in force then; else the current one."""
+    if at is not None:
+        hist = sig_history("lpo")
+        if hist:
+            t = _utc_naive(at)
+            pick = None
+            for e in hist:
+                if not t or (e.get("from") or "") <= t:
+                    pick = e
+            # made before any signature on record: printed unsigned rather than with someone else's hand
+            return os.path.join(DATA_DIR, pick["file"]) if pick else None
     return _newest(SIG_PATHS)
+
+
+def _sig_history_start():
+    """Once: the signature already on the server becomes the first on record, from the moment it was put there."""
+    try:
+        if not os.path.exists(SIG_HIST):
+            cur = _newest(SIG_PATHS)
+            if cur:
+                from datetime import datetime as _dt
+                sig_record("lpo", cur, _dt.utcfromtimestamp(os.path.getmtime(cur)).isoformat(timespec="seconds"), "")
+    except Exception as e:
+        print("signature history:", e)
 
 
 def invoice_signature_file():
@@ -2072,6 +2145,7 @@ try:
         shutil.move(_OLD_SIG, SIG_PATH)
 except Exception:
     pass
+_sig_history_start()
 
 
 def build_lpo_pdf(po: dict):
@@ -2267,7 +2341,7 @@ def build_lpo_pdf(po: dict):
     ]))
 
     sig_cell = [P("For Infinia Contracting LLC", 8.5, align=TA_CENTER)]
-    _sig = signature_file()
+    _sig = signature_file(po.get("sig_at", None)) if "sig_at" in po else signature_file()
     if _sig:
         try:
             from reportlab.platypus import Image as RLImage
@@ -2492,9 +2566,10 @@ def build_lpo_excel(po: dict):
     ws.row_dimensions[sr + 1].height = 22
     ws.row_dimensions[sr + 2].height = 22
     try:
-        if signature_file():
+        _xs = signature_file(po.get("sig_at", None)) if "sig_at" in po else signature_file()
+        if _xs:
             from openpyxl.drawing.image import Image as XLImage
-            sig = XLImage(signature_file())
+            sig = XLImage(_xs)
             sig.width, sig.height = 110, 48
             ws.add_image(sig, f"F{sr + 1}")
     except Exception:

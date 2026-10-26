@@ -8446,6 +8446,7 @@ def db_session_site(code):
 
 def _lpo_for_print(o):
     d = _lpo_dict(o)
+    d["sig_at"] = o.created_at or datetime.utcnow()      # signed with the signature in force when it was made
     # The supplier's own contact details, from his record, so the order
     # says who to chase without anyone typing it again.
     sup = o.supplier
@@ -8658,7 +8659,7 @@ def _logo_img():
         return "<strong>INFINIA CONTRACTING LLC</strong>"
 
 
-def _sig_img():
+def _sig_img(at=None):
     """The signature, inline, for the order shown on screen.
 
     The PDF embeds it; the preview was drawing an empty box, so an order
@@ -8666,7 +8667,7 @@ def _sig_img():
     itself rather than a second request, which would need its own token.
     """
     try:
-        _sig = export_web.signature_file()
+        _sig = export_web.signature_file(at or datetime.utcnow()) if at is not False else export_web.signature_file()
         if not _sig:
             return ""
         import base64
@@ -8777,7 +8778,7 @@ def _lpo_html(o):
         </div>
         <div>
           <table class="money">{''.join(money)}</table>
-          <div class="sig">For Infinia Contracting LLC<div class="sigbox">{_sig_img()}</div>Authorized Signature</div>
+          <div class="sig">For Infinia Contracting LLC<div class="sigbox">{_sig_img(o.created_at)}</div>Authorized Signature</div>
         </div>
       </div>"""
 
@@ -9446,7 +9447,8 @@ def _tidy_signature(data: bytes, filename: str = "") -> tuple:
 
 
 @app.post("/store/purchase/signature")
-async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", db: Session = Depends(get_db),
+async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", earlier: int = 0, name: str = "",
+                            db: Session = Depends(get_db),
                             user: models.User = Depends(require_screen("settings_company"))):
     """The authorised signature, printed on every order (kind=lpo) or on
     every tax / proforma invoice (kind=invoice). Uploaded once each."""
@@ -9459,6 +9461,15 @@ async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", db: 
     if not (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Use a PNG or JPG image.")
     data, ext = _tidy_signature(data, file.filename or "")
+    if kind == "lpo" and earlier:
+        # the signature the orders before the current one went out with - kept on record, the current one stays
+        tmp = os.path.join(export_web.DATA_DIR, f"_sig_upload.{ext}")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        export_web.sig_record("lpo", tmp, "", (name or "").strip()[:60])
+        os.remove(tmp)
+        log_action(db, user.id, "upload_signature", f"LPO signature for the earlier orders: {file.filename or ''}")
+        return {"ok": True, "detail": "Saved - the orders sent before the current signature print with this one."}
     target = os.path.join(export_web.DATA_DIR, os.path.basename(paths[0]).rsplit(".", 1)[0] + "." + ext)
     try:
         # Only one signature of each kind is ever held, so the other spelling goes.
@@ -9477,6 +9488,11 @@ async def upload_signature(file: UploadFile = File(...), kind: str = "lpo", db: 
                             detail=f"Could not save the signature to {target}: {e}")
     if not os.path.exists(target):
         raise HTTPException(status_code=500, detail="The signature did not save - check the server's disk.")
+    if kind == "lpo":                  # from now on: orders made from this moment print with it; earlier ones keep theirs
+        try:
+            export_web.sig_record("lpo", target, datetime.utcnow().isoformat(timespec="seconds"), (name or "").strip()[:60])
+        except Exception as e:
+            print("signature history:", e)
     log_action(db, user.id, "upload_signature",
                f"{label}: {file.filename or ''} -> {os.path.basename(target)}, {len(data)/1024:.0f} KB")
     return {"ok": True, "detail": f"Signature saved - it prints on every {'invoice' if kind == 'invoice' else 'purchase order'}.",
@@ -9492,6 +9508,8 @@ def signature_status(kind: str = "lpo", user: models.User = Depends(require_any_
     path = export_web.invoice_signature_file() if kind == "invoice" else export_web.signature_file()
     out = {"present": bool(path), "path": path or export_web.SIGNATURE_KINDS[kind][1][0],
            "bytes": os.path.getsize(path) if path else 0}
+    if kind == "lpo":
+        out["history"] = [{"from": e.get("from") or "", "name": e.get("name") or ""} for e in export_web.sig_history("lpo")]
     if kind == "invoice" and not path:
         out["fallback"] = bool(export_web.signature_file())      # invoices print the LPO one meanwhile
     return out
