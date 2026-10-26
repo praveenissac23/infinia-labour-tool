@@ -17312,9 +17312,11 @@ function bkNet() {
   net.value = amt ? (document.getElementById("bk-cvat").checked ? amt / 1.05 : amt).toFixed(2) : "";
 }
 function bkPick(id, v) { const n = parseFloat(String(v).replace(/,/g, "")) || 0; if (n > 0) BK_PICK[id] = n; else delete BK_PICK[id]; bkDocsDraw(); }
+// Lists people add to every day show the newest entry on top (printouts stay in date order, like a statement).
+function newestFirst(rows, key) { return rows.slice().sort((a, b) => String(b[key] || "").localeCompare(String(a[key] || "")) || ((b.id || 0) - (a.id || 0))); }
 function bkShown() {
   const q = document.getElementById("bk-q").value.trim().toLowerCase();
-  return (BK ? BK.rows : []).filter(r => !q || `${r.party} ${r.reference} ${r.notes} ${r.docs.map(d => d.number).join(" ")} ${r.site}`.toLowerCase().includes(q));
+  return newestFirst((BK ? BK.rows : []).filter(r => !q || `${r.party} ${r.reference} ${r.notes} ${r.docs.map(d => d.number).join(" ")} ${r.site}`.toLowerCase().includes(q)), "date");
 }
 function bkTag(r) {
   if (r.zoho === "sent") return `<span class="zx-tag zx-ok">In Zoho ✓</span><span class="sub">${escapeHtml(r.zoho_ref)}</span>`;
@@ -19773,7 +19775,7 @@ function invDrawList() {
     return;
   }
   const q = document.getElementById("inv-search").value.trim().toLowerCase();
-  const rows = INV.rows.filter(r => !q || `${r.number} ${r.client} ${r.project} ${r.project_no} ${r.plot}`.toLowerCase().includes(q));
+  const rows = newestFirst(INV.rows.filter(r => !q || `${r.number} ${r.client} ${r.project} ${r.project_no} ${r.plot}`.toLowerCase().includes(q)), "date");
   const live = rows.filter(r => r.status !== "cancelled");
   const sum = k => live.reduce((a, r) => a + r[k], 0);
   const pro = INV_KIND === "proforma";
@@ -20392,8 +20394,8 @@ async function regLoad() {
   document.getElementById("reg-stats").style.gridTemplateColumns = `repeat(${r.from ? 4 : 3}, minmax(0, 1fr))`;
   const row = (x, rem) => `<tr class="${REG_EDIT === x.id ? "edit" : ""}" onclick="regEdit(${x.id})"><td class="l">${accDmy(x.date)}</td><td class="l">${escapeHtml(x.description)}</td>
       <td class="n">${accMoney(x.amount)}</td>${rem ? `<td class="l">${escapeHtml(x.remarks)}</td>` : ""}</tr>`;
-  document.getElementById("reg-rec").innerHTML = r.received.map(x => row(x, false)).join("") || `<tr><td colspan="3" style="color:#999;">Nothing received in this period.</td></tr>`;
-  document.getElementById("reg-paid").innerHTML = r.paid.map(x => row(x, true)).join("") || `<tr><td colspan="4" style="color:#999;">Nothing paid out in this period.</td></tr>`;
+  document.getElementById("reg-rec").innerHTML = newestFirst(r.received, "date").map(x => row(x, false)).join("") || `<tr><td colspan="3" style="color:#999;">Nothing received in this period.</td></tr>`;
+  document.getElementById("reg-paid").innerHTML = newestFirst(r.paid, "date").map(x => row(x, true)).join("") || `<tr><td colspan="4" style="color:#999;">Nothing paid out in this period.</td></tr>`;
   document.getElementById("reg-rec-t").innerHTML = `<tr><td class="l"></td><td class="l">Total</td><td class="n">${accMoney(r.total_received)}</td></tr>`;
   document.getElementById("reg-paid-t").innerHTML = `<tr><td class="l"></td><td class="l">Total</td><td class="n">${accMoney(r.total_paid)}</td><td></td></tr>`;
 }
