@@ -2852,7 +2852,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <h4>Us &mdash; who the supplier deals with</h4>
                 <div class="form-row" style="gap:10px; flex-wrap:wrap;">
                   <div class="field" style="flex:1 1 150px; min-width:130px;"><label>Our contact person</label>
-                    <select id="lpo-contact" style="width:100%;" onchange="onLpoContact()"
+                    <select id="lpo-contact" style="width:100%;" onchange="this.dataset.manual = '1'; onLpoContact()"
                             title="Who the supplier calls about this order. Whoever raised the request, unless somebody else should take it.">
                     </select></div>
                   <div class="field" style="flex:0 0 140px;"><label>Our mobile</label>
@@ -12933,6 +12933,7 @@ async function newLpo() {
   ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-sup-contact", "lpo-sup-phone",
    "lpo-sup-email", "lpo-plot", "lpo-mobile", "lpo-scope", "lpo-location",
    "lpo-notes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("lpo-contact").dataset.manual = "";
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-termsset").value = "default";
   document.getElementById("lpo-termstext").value = n.terms_default || "";
@@ -13022,17 +13023,19 @@ function lpoSite(code) {
   return (lpoDefaults.sites || []).find(x => (x.code || "").toLowerCase() === code)
       || (sites || []).find(x => (x.code || "").toLowerCase() === code) || null;
 }
+// One number per person, wherever it is kept (engineer list, site record, store in-charge, his staff file):
+// the first proper UAE mobile wins - an old or short number on one list never beats a good one on another.
+function lpoGoodMobile(m) { const d = String(m || "").replace(/\D/g, ""); return (d.length === 10 && d.startsWith("05")) || (d.length === 12 && d.startsWith("9715")) || (d.length === 9 && d.startsWith("5")); }
 function lpoPhone(name) {
   const k = (name || "").trim().toLowerCase();
   if (!k) return "";
-  if (lpoDefaults.store_incharge && k === lpoDefaults.store_incharge.toLowerCase() && lpoDefaults.store_incharge_mobile)
-    return lpoDefaults.store_incharge_mobile;
-  const ph = (lpoDefaults.phones || {})[k];
-  if (ph) return ph;
-  const eng = (engineers || []).find(e => (e.name || "").toLowerCase() === k);
-  if (eng && eng.mobile) return eng.mobile;
-  const st = (sites || []).find(x => (x.incharge || "").toLowerCase() === k && x.incharge_mobile);
-  return st ? st.incharge_mobile : "";
+  const c = [];
+  c.push((lpoDefaults.phones || {})[k]);
+  (sites || []).filter(x => (x.incharge || "").toLowerCase() === k).forEach(x => c.push(x.incharge_mobile));
+  (engineers || []).filter(e => (e.name || "").toLowerCase() === k).forEach(e => c.push(e.mobile));
+  if (lpoDefaults.store_incharge && k === lpoDefaults.store_incharge.toLowerCase()) c.push(lpoDefaults.store_incharge_mobile);
+  const all = c.map(x => String(x || "").trim()).filter(Boolean);
+  return all.find(lpoGoodMobile) || all[0] || "";
 }
 const lpoKnown = name => !!lpoPhone(name) || (lpoDefaults.contacts || []).some(c => c.name.toLowerCase() === (name || "").trim().toLowerCase());
 function onLpoSite() {
@@ -13041,9 +13044,10 @@ function onLpoSite() {
   if (s.plot_no) document.getElementById("lpo-plot").value = s.plot_no;
   // The site's engineer takes it, unless somebody other than the store
   // in-charge has already been chosen.
-  const cur = (document.getElementById("lpo-contact").value || "").trim();
-  const isDefault = !cur || (lpoDefaults.store_incharge && cur.toLowerCase() === lpoDefaults.store_incharge.toLowerCase());
-  buildContactList(isDefault && s.incharge ? s.incharge : (cur || lpoDefaults.store_incharge || s.incharge));
+  // The contact follows the site's in-charge (the store: its keeper), with his own number - unless somebody
+  // was picked by hand on this order.
+  const box = document.getElementById("lpo-contact"), cur = (box.value || "").trim();
+  buildContactList(box.dataset.manual === "1" && cur ? cur : (s.incharge || cur || lpoDefaults.store_incharge));
 }
 
 // Who the supplier rings. The store in-charge unless somebody picks

@@ -7775,10 +7775,15 @@ def _lpo_people(db):
     itself whatever the login may otherwise open. A number is taken from
     the engineer list, else the site record, else the person's own file."""
     phone = {}
+    def good(m):                       # a real UAE mobile (05x xxx xxxx / +971 5x ...), not an old or short number
+        d = re.sub(r"\D", "", m or "")
+        return (len(d) == 10 and d.startswith("05")) or (len(d) == 12 and d.startswith("9715")) or (len(d) == 9 and d.startswith("5"))
     def put(name, mob):
+        # one number per person: the first proper mobile found wins; a short / old number gives way to a proper one
         k = (name or "").strip().lower()
-        if k and (mob or "").strip() and not phone.get(k):
-            phone[k] = (mob or "").strip()
+        m = (mob or "").strip()
+        if k and m and (not phone.get(k) or (not good(phone[k]) and good(m))):
+            phone[k] = m
     for e in db.query(models.Engineer).all():
         put(e.name, e.mobile)
     sites = db.query(models.Site).all()
