@@ -5413,6 +5413,7 @@ function fitGrids() {
   document.querySelectorAll(".screen.fit").forEach(x => { if (![...last.keys()].includes(x)) x.classList.remove("fit"); });
   last.forEach((g, scr) => {
     if (g.dataset.mh === undefined) g.dataset.mh = g.style.maxHeight || "";
+    if (g.dataset.mh === "none") return;          // a list meant to show in full (the live card's days) is never cut short
     const r = g.getBoundingClientRect(), sr = scr.getBoundingClientRect();
     const content = g.closest(".content"), cs = content ? getComputedStyle(content) : null;
     const top = r.top + scrollY + (content ? content.scrollTop : 0);
@@ -5421,7 +5422,8 @@ function fitGrids() {
     const after = Math.max(0, scr.getBoundingClientRect().bottom - r.bottom - (parseFloat(getComputedStyle(scr).paddingBottom) || 0))
                 + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
     const room = Math.floor(innerHeight - top - after);
-    const want = Math.max(room, 260) + "px";
+    const mh = g.dataset.mh || "60vh", was = /vh$/.test(mh) ? innerHeight * parseFloat(mh) / 100 : (parseFloat(mh) || 0);
+    const want = Math.floor(Math.max(room, 260, was)) + "px";     // only ever taller than it was
     if (g.style.maxHeight !== want) g.style.maxHeight = want;
     const infi = document.getElementById("infi-btn"), fab = [...document.querySelectorAll(".btn.fab")].some(b => b.offsetParent || getComputedStyle(b).display !== "none");
     const long = g.scrollHeight - (g.classList.contains("fit-long") ? 76 : 0) > g.clientHeight + 1
