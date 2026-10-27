@@ -187,6 +187,7 @@
  "est.sheet|qty": "The agreed quantity and unit of the line, from the item schedule.",
  "est.sheet|rate": "The agreed rate of the line, from the item schedule.",
  "est.sheet|contract amt": "The line's full amount in the agreement, from the item schedule. % done is taken of this figure.",
+ "est.sheet|contract amount": "The line's full amount in the agreement, from the item schedule. % done is taken of this figure.",
  "est.sheet|measured": "Size lines: the measured width x height, printed on Appendix A. Quantity lines: the quantity the subcontractor claimed - shown for comparison, not paid.",
  "est.sheet|done to date": "Progress of the line up to now (not just this month): the % done, or for quantity lines the quantity done to date plus an optional stage % (empty = 100%). A new PC starts from the last one's figures.",
  "est.sheet|deduction": "An amount taken off this line (short size, damage ...). For % lines: (contract amt - deduction) x % done. For quantity lines: qty x rate x stage % - deduction.",

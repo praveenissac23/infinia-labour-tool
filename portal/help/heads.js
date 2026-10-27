@@ -218,6 +218,7 @@ window.HEAD_TIPS = {
 "est.sheet|advance recovered to date": "Advance taken back up to this PC. With 'work it out': advance % x contract work to date, never more than the advance paid (no %: in proportion to the revised value). Untick to type it.",
 "est.sheet|amount": "The deduction amount. Worked out as qty x rate when both are typed, otherwise typed.",
 "est.sheet|contract amt": "The line's full amount in the agreement, from the item schedule. % done is taken of this figure.",
+"est.sheet|contract amount": "The line's full amount in the agreement, from the item schedule. % done is taken of this figure.",
 "est.sheet|date": "The date the material, manpower or plant was supplied, or the back-charge arose. Printed on Appendix C.",
 "est.sheet|deduction": "An amount taken off this line (short size, damage ...). For % lines: (contract amt - deduction) x % done. For quantity lines: qty x rate x stage % - deduction.",
 "est.sheet|description": "The line from the item schedule, with its type / mark under it.",

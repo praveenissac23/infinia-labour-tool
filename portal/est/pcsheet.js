@@ -173,13 +173,25 @@ async function pcSheet(pcid) {
     const F = figures(), p = d.pc;
     const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, title: it.is_var ? "Variations / additional scope" : ((it.bill ? it.bill + " - " : "") + (it.bill_title || "Contract works")), items: [] }); bills[bills.length - 1].items.push(it); });
     const lineRow = it => { const l = S.lines[it.id], pv = d.prev[it.id] ? d.prev[it.id].amount : 0, a = lineAmt(it, l), m = it.measure;
-      const inp = (k, w, ph = "") => `<input class="n" data-l="${it.id}" data-k="${k}" value="${l[k] || ""}" style="width:${w}px" placeholder="${ph}" ${locked ? "disabled" : ""}>`;
-      return `<tr data-row="${it.id}" class="${moved(it) ? "mv" : ""}" title="${moved(it) ? "Changed since the last certificate - claimed this time" : ""}"><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
-        <td class="nowrap">${m === "size" ? inp("w", 54, "W") + " x " + inp("h", 54, "H") : m === "qty" ? `<span class="small muted">claimed</span> ${inp("claimed_qty", 64)}` : ""}</td>
-        <td class="nowrap">${m === "qty" ? inp("qty", 70, "qty") + ` <span class="small muted">${esc(it.unit)}</span> ` + `<span title="Optional: a stage % of the measured quantity (e.g. 70% = first coat done). Empty = 100%.">${inp("pct", 44, "100")}<span class="small muted">%</span></span>` : inp("pct", 58, "%") + " %"}</td>
-        <td>${inp("deduct", 80, "0.00")}</td><td class="r muted">${money(pv)}</td><td class="r" data-this="${it.id}">${money(r2(a - pv))}</td><td class="r"><b data-amt="${it.id}">${money(a, false)}</b></td>
-        <td><input data-l="${it.id}" data-k="remark" value="${esc(l.remark)}" style="width:150px" ${locked ? "disabled" : ""}></td></tr>`; };
+      const inp = (k, w, ph = "") => `<input class="n" data-l="${it.id}" data-k="${k}" value="${l[k] || ""}" style="${w === "fill" ? "width:100%" : `width:${w}px`}" placeholder="${ph}" ${locked ? "disabled" : ""}>`;
+      return `<tr data-row="${it.id}" class="${moved(it) ? "mv" : ""}" title="${moved(it) ? "Changed since the last certificate - claimed this time" : ""}"><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r nowrap">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
+        ${B.meas ? `<td class="nowrap">${m === "size" ? inp("w", 50, "W") + " x " + inp("h", 50, "H") : m === "qty" ? `<span class="small muted">claimed</span> ${inp("claimed_qty", 62)}` : ""}</td>` : ""}
+        <td class="nowrap">${m === "qty" ? inp("qty", 62, "qty") + ` <span class="small muted">${esc(it.unit)}</span> ` + `<span title="Optional: a stage % of the measured quantity (e.g. 70% = first coat done). Empty = 100%.">${inp("pct", 44, "100")}<span class="small muted">%</span></span>` : `<span class="pctin">${inp("pct", "fill", "0")}<span class="small muted">%</span></span>`}</td>
+        <td>${inp("deduct", "fill", "0.00")}</td><td class="r muted">${money(pv)}</td><td class="r" data-this="${it.id}">${money(r2(a - pv))}</td><td class="r"><b data-amt="${it.id}">${money(a, false)}</b></td>
+        <td><input data-l="${it.id}" data-k="remark" value="${esc(l.remark)}" style="width:100%" placeholder="-" ${locked ? "disabled" : ""}></td></tr>`; };
     const sumBill = b => r2(b.items.reduce((x, it) => x + lineAmt(it, S.lines[it.id]), 0));
+    // Columns sized to what they hold, so the table fits the page: "Measured" only when a line is measured
+    // by size or claimed quantity, "Done to date" wider only when a line is quantity x rate.
+    let B = {};
+    const billTable = b => {
+      B = { meas: b.items.some(it => it.measure === "size" || it.measure === "qty"), qty: b.items.some(it => it.measure === "qty") };
+      const cols = [34, null, 60, 84, 100].concat(B.meas ? [146] : [], [B.qty ? 176 : 90, 90, 92, 92, 102, 110]);
+      const minw = cols.reduce((a, w) => a + (w || 176), 0);
+      const n = cols.length;
+      return `<div class="tw"><table class="t sl" style="min-width:${minw}px"><colgroup>${cols.map(w => w ? `<col style="width:${w}px">` : "<col>").join("")}</colgroup>
+        <thead><tr><th>No</th><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Contract amount</th>${B.meas ? "<th>Measured</th>" : ""}<th>Done to date</th><th>Deduction</th><th class="r">Previous</th><th class="r">This PC</th><th class="r">To date</th><th>Remark</th></tr></thead>
+        <tbody>${(() => { let sec = null; return b.items.map(it => { let x = ""; if (it.section && it.section !== sec) { sec = it.section; x = `<tr class="sec"><td></td><td colspan="${n - 1}">${esc(sec)}</td></tr>`; } return x + lineRow(it); }).join(""); })()}</tbody></table></div>`;
+    };
     $("#b-body").innerHTML = `
       <div class="sheet">
       <div class="sh-main">
@@ -196,8 +208,7 @@ async function pcSheet(pcid) {
             <button class="btn btn-ghost btn-sm" id="il-add">+ Bill line</button></details>
         </div>
         ${d.items.length ? bills.map((b, bi) => `<div class="card"><h3>${esc(b.title)}<span class="spacer"></span><span class="small muted">to date <b data-bill="${bi}">${money(sumBill(b), false)}</b></span></h3>
-          <div class="tw"><table class="t sl"><thead><tr><th>No</th><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Contract amt</th><th>Measured</th><th>Done to date</th><th>Deduction</th><th class="r">Previous</th><th class="r">This PC</th><th class="r">To date</th><th>Remark</th></tr></thead>
-          <tbody>${(() => { let sec = null; return b.items.map(it => { let x = ""; if (it.section && it.section !== sec) { sec = it.section; x = `<tr class="sec"><td></td><td colspan="11">${esc(sec)}</td></tr>`; } return x + lineRow(it); }).join(""); })()}</tbody></table></div></div>`).join("")
+          ${billTable(b)}</div>`).join("")
         : `<div class="card"><h3>Work done to date</h3><div class="muted small" style="margin-bottom:8px">No item schedule on this subcontract - type the totals, or <a href="#" id="sh-sched">set up the item schedule</a> to certify line by line.</div><div class="frm f4">
             <div class="f"><label>Value of work to date</label><input class="money" data-f="work_cum" value="${S.f.work_cum}"></div><div class="f"><label>Variations to date</label><input class="money" data-f="var_cum" value="${S.f.var_cum}"></div></div></div>`}
         <div class="card"><h3>Deductions ${tip("Material, manpower or plant supplied by Infinia, back-charges, damages. A deduction is entered once, on the certificate where it arises, and counts on every later certificate (the certificate works on figures to date).")}<span class="spacer"></span><span class="small muted">to date <b id="dedtot">${money(F.other, false)}</b></span></h3>
@@ -220,8 +231,10 @@ async function pcSheet(pcid) {
         <div class="card"><h3>Sign-off ${tip("Each click puts the name and today's date on the certificate. Reviewed is for Accounts, Approved for the manager.")}</h3><div class="sgs">
           ${signBox("site", "Certified at site", p.verified_by, p.verified_on)}${signBox("prep", "Prepared (QS)", p.prep_by, p.prep_on)}${signBox("chk", "Approved (contracts manager)", p.chk_by, p.chk_on)}${signBox("rev", "Verified (Accounts)", p.rev_by, p.rev_on)}${signBox("app", "Approved (Managing Director)", p.app_by ? "Managing Director" : "", p.app_on)}</div></div>
       </aside></div>`;
-    bind();
+    bind(); sbTotal(F);
   };
+  // the live total beside the floating Save - always in view, wherever the page is scrolled
+  const sbTotal = F => { const t = $("#sb-tot"); if (t) t.innerHTML = `<small>Total due</small><b>AED ${money(F.pay, false)}</b>`; };
   const refreshFigures = () => { const y = $("#b-body").scrollTop; draw(); $("#b-body").scrollTop = y; };
   // a typed figure moves only the figures - the cursor stays where it is
   const update = () => {
@@ -235,7 +248,7 @@ async function pcSheet(pcid) {
     const dt_ = $("#dedtot", B); if (dt_) dt_.textContent = money(F.other, false);
     const ar = $('[data-f="adv_rec_cum"]', B); if (ar && S.f.adv_auto) ar.value = F.advRec;
     const rt = $('[data-f="ret_cum"]', B); if (rt && S.f.ret_auto) rt.value = F.ret;
-    $("#calcbox", B).innerHTML = calcHtml(F);
+    $("#calcbox", B).innerHTML = calcHtml(F); sbTotal(F);
   };
   const bind = () => {
     const B = $("#b-body");
@@ -273,7 +286,7 @@ async function pcSheet(pcid) {
   };
   big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload(), "est.sheet");
   $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>`;
-  bigSave(locked ? "" : ["Received", "At site"].includes(d.pc.status) ? `<button class="btn btn-ghost" id="sh-save">Save</button><button class="btn btn-primary" id="sh-cert">Save &amp; certify</button>` : `<button class="btn btn-primary" id="sh-save">Save</button>`);
+  bigSave(`<span class="sb-tot" id="sb-tot"></span>` + (locked ? "" : ["Received", "At site"].includes(d.pc.status) ? `<button class="btn btn-ghost" id="sh-save">Save</button><button class="btn btn-primary" id="sh-cert">Save &amp; certify</button>` : `<button class="btn btn-primary" id="sh-save">Save</button>`));
   const sv = $("#sh-save"); if (sv) sv.onclick = () => save(false);
   const ce = $("#sh-cert"); if (ce) ce.onclick = () => save(true);
   $("#sh-prev").onclick = async () => { if (!locked) await save(false); exportGo("preview", "pc", { id: pcid }); };

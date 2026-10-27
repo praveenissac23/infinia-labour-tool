@@ -303,7 +303,30 @@ select.fsub { width: 190px; }
   #leave .lfoot .left { margin-right: 0; order: 3; width: 100%; }
 }
 .bbody { flex: 1; overflow: auto; padding: 14px 18px 60px; }
-.sheet { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; max-width: 1700px; margin: 0 auto; }
+.sheet { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; max-width: 1800px; margin: 0 auto; }
+/* not room for the tables and the figures side by side: the figures and sign-off go under the tables,
+   next to each other, and the total due stays in view beside the floating Save */
+@media (max-width: 1499px) {
+  .sheet { grid-template-columns: minmax(0, 1fr); }
+  .sh-side { position: static; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .sh-side > * { margin-top: 0; }
+}
+@media (max-width: 760px) { .sh-side { grid-template-columns: minmax(0, 1fr); } }
+.sb-tot { display: flex; flex-direction: column; justify-content: center; padding: 0 10px 0 6px; line-height: 1.15; white-space: nowrap; }
+.sb-tot small { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: #8A8178; }
+.sb-tot b { font-size: 15px; color: var(--red); font-variant-numeric: tabular-nums; }
+.sb-tot:empty { display: none; }
+/* Contract works: columns sized to their content, boxes fill their cells, text wraps */
+table.sl { table-layout: fixed; width: 100%; }
+table.sl th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding-left: 8px; padding-right: 6px; }
+table.sl td.d { min-width: 0; max-width: none; white-space: normal; overflow-wrap: anywhere; }
+table.sl input { box-sizing: border-box; min-width: 0; }
+table.sl .pctin { display: flex; align-items: center; gap: 4px; } table.sl .pctin input { flex: 1; }
+/* a sideways scroll bar, when a table still needs one, is always shown - not only while scrolling on a Mac */
+.tw { scrollbar-width: auto; scrollbar-color: #B8B0A8 #F3EFEB; }
+.tw::-webkit-scrollbar { height: 12px; width: 12px; background: #F3EFEB; }
+.tw::-webkit-scrollbar-thumb { background: #B8B0A8; border-radius: 8px; border: 3px solid #F3EFEB; }
+.tw::-webkit-scrollbar-thumb:hover { background: #8F877F; }
 .sh-side { position: sticky; top: 0; }
 .frm.f4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .calc2 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -316,7 +339,7 @@ select.fsub { width: 190px; }
 .sg b { font-size: 13px; } .sg small { color: #8A8178; } .sg .btn { margin-left: auto; }
 .sg.on { background: #F2FAF4; border-color: #CDE8D4; }
 table.sl td, table.de td, table.ed td { padding: 5px 6px; vertical-align: middle; }
-table.sl td.d { min-width: 240px; max-width: 420px; }
+table.sl td.d { min-width: 0; }
 /* a line changed since the last certificate - what the subcontractor claimed this time */
 table.sl tr.mv td { background: #FFFBEB; } table.sl tr.mv td:first-child { box-shadow: inset 3px 0 0 #E0B84C; }
 table.sl input, table.de input, table.de select, table.ed input, table.ed select, table.ed textarea { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 7px; font-size: 12.5px; background: #fff; }
@@ -335,7 +358,7 @@ table.sched .vcell input[type=checkbox] { width: 16px; height: 16px; flex: none;
 details.inv { margin-top: 12px; } details.inv summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: #7A3B33; }
 .il { display: flex; gap: 6px; margin: 6px 0; } .il input { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 8px; }
 .il input:first-child { flex: 1; } .il input.money { width: 130px; text-align: right; }
-@media (max-width: 1100px) { .sheet { grid-template-columns: 1fr; } .sh-side { position: static; } .frm.f4 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1100px) { .frm.f4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .frm.f4 { grid-template-columns: 1fr; } .bbody { padding: 10px; } }
 
 /* ===== Projects: the app's tabs - main tabs in a pill group, sub-tabs underlined, the page at full width ===== */
