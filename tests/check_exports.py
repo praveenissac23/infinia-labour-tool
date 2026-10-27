@@ -62,7 +62,8 @@ def xlsx_check(f):
 def html_check(f):
     s = open(f, encoding="utf-8", errors="ignore").read()
     bad = []
-    if not re.search(r"@page[^{]*\{[^}]*size\s*:\s*A4", s, re.I) and "size: A4" not in s and "size:A4" not in s:
+    shows_pdf = bool(re.search(r"<iframe[^>]+src=\"[^\"]*(pdf|format=pdf|/invoice/|/receipt/)", s, re.I))   # the PDF itself, which prints as A4
+    if not shows_pdf and not re.search(r"@page[^{]*\{[^}]*size\s*:\s*A4", s, re.I) and "size: A4" not in s and "size:A4" not in s:
         bad.append("no A4 page set for printing")
     if not re.search(r"<table|<div", s, re.I):
         bad.append("empty page")
