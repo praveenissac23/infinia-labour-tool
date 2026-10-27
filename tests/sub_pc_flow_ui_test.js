@@ -3,7 +3,7 @@
 // Payments page: to verify (with the checks) and to pay, WhatsApp to the MD; the MD's approval page from the link: the
 // PDF itself on a phone, Approve / Reject below it, done -> Accounts told.
 const { chromium, devices } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/pcflow_';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/pcflow_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 400))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
@@ -26,7 +26,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const W = await pc(wood, 'WD/71', 240000, ['Certified', 'Prepared']);                       // Anoop's turn
   const G = await pc(glass, 'GG/229', 120000, ['At site']);                                   // site's turn - made stuck below
   const S = await pc(steel, 'SL/1180', 300000, ['Certified', 'Prepared', 'CM approved']);     // Accounts to verify
-  const N = await pc(noor, 'ANT/14', 90000, ['Certified', 'Prepared', 'CM approved', 'Verified']);   // with the MD
+  const N = await pc(noor, 'ANT/14', 90000, ['Certified', 'Prepared', 'CM approved', 'Verified', 'Sent to MD']);   // with the MD
   // Gulf Glass has sat at site for 4 days
   await api(`/store/est/subpcs/${G}`, { method: 'PATCH', body: { to_site: '2026-10-22' } });
   await p0.evaluate(() => 0);
@@ -66,13 +66,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('the checks show for one to verify', /First certificate|Previous/.test(t) && /Agreement on file|No agreement/.test(t), t.slice(0, 300));
   await s.screenshot({ path: SH + '2_shafeeq_payments.png' });
   await s.click(`[data-pver="${S}"]`); await sleep(1500);
+  ck('verified -> it stays with Accounts: "Verified - send to MD" with a Send to MD button', await s.isVisible(`[data-psend="${S}"]`) && /Verified - send to MD/.test(await s.textContent('table.t')) && !(await s.isVisible('#modal')));
+  await s.screenshot({ path: SH + '2b_send_to_md.png' });
+  await s.click(`[data-psend="${S}"]`); await sleep(1500);
   const msg = await s.textContent('#m-body').catch(() => '');
-  ck('verified -> "Sent to the Managing Director - tell them on WhatsApp?" with the link typed', await s.isVisible('#modal') && /approve\.html\?pc=/.test(msg) && /Steel Line PC 01/.test(msg), msg);
+  ck('Send to MD -> "Sent to the Managing Director - tell them on WhatsApp?" with the link typed', await s.isVisible('#modal') && /approve\.html\?pc=/.test(msg) && /Steel Line PC 01/.test(msg), msg);
   await s.screenshot({ path: SH + '3_shafeeq_whatsapp.png' });
   const wa = await s.evaluate(() => { let u = ''; window.open = x => { u = x; }; document.querySelector('#m-save').click(); return new Promise(r => setTimeout(() => r(u), 300)); });
   ck('WhatsApp opens with the message (wa.me, the approval link)', /^https:\/\/wa\.me\/\?text=/.test(wa) && decodeURIComponent(wa).includes('/portal/approve.html?pc=' + S), wa);
   const st = (await api(`/store/est/subpcs/${S}/approval`)).j;
-  ck('it is now with the MD', st.status === 'Verified' && st.can_act);
+  ck('it is now with the MD', st.status === 'Verified' && st.can_act && st.turn === 'md');
+  await s.click('#modal [id="m-cancel"]').catch(() => {}); await sleep(400);
+  await s.click('[data-pf="Verified"]'); await sleep(500);
+  ck('Payments page: "With the MD", sent time shown', /With the MD\s*sent/.test((await s.textContent('table.t')).replace(/\s+/g, ' ')));
 
   // ---- the MD on the phone: the link ----
   const m = await page({ ...devices['iPhone 13'] });

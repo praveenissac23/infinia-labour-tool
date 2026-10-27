@@ -1,7 +1,7 @@
 // Accounts > Subcontractor payments and Estimation are one record: paid in Accounts shows paid in
 // Estimation (invoice tracker, subcontract register, payment figures), and undone either side, both follow.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/subpay_';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/subpay_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {

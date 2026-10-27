@@ -1080,6 +1080,8 @@ function pcCan(role) { const m = (ST.meta && ST.meta.me) || {}; return (m.pc_can
 function pcMine(p) { const m = (ST.meta && ST.meta.me) || {}; return !!(p.flow && p.flow.turn && (m.pc_mine || []).includes(p.flow.turn)); }
 function ageTxt(h) { return h < 1 ? "just now" : h < 24 ? `${h} h` : `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}`; }
 function stampTxt(l) { if (!l) return ""; const t = l.at ? `${dt(l.at.slice(0, 10))} ${l.at.slice(11, 16)}` : ""; return `${l.back ? "&#8630; Sent back" : "&#10003; " + esc(STEP_DONE[l.s] || l.s)} - ${esc(l.by || "")}${t ? ", " + t : ""}`; }
+// a verified certificate waits with Accounts until "Send to MD"; then it is with the MD
+function pcStage(status, fl) { return status === "Verified" ? (fl && fl.md_sent === false ? "Verified - send to MD" : "With the MD") : status === "MD approved" ? "MD approved - to pay" : (STEP_LABEL[status] || status); }
 function nextBtns(p) {
   // the buttons for the person whose turn it is (an admin may press any step)
   const st = p.status, t = p.flow && p.flow.turn, mine = pcMine(p), can = t && pcCan(t);
@@ -1092,7 +1094,7 @@ function nextBtns(p) {
   if (st === "Certified") return b("open", "Open PC", "btn-plain") + " " + b("Prepared", "Prepared &#10003;");
   if (st === "Prepared") return b("CM approved", "Approve &#10003;") + back;
   if (st === "CM approved") return b("Verified", "Verified &#10003;") + back;
-  if (st === "Verified") return b("MD approved", "Approve &#10003;") + back;
+  if (st === "Verified") return p.flow && p.flow.md_sent === false ? b("sendmd", "Send to MD &rarr;") + back : b("MD approved", "Approve &#10003;") + back;
   if (st === "MD approved") return b("Paid", "Mark paid");
   return "";
 }
@@ -1110,11 +1112,11 @@ SECTIONS["subs.inv"] = el => {
     ${list.map(p => { const i = STEPS.indexOf(p.status), fl = p.flow || {}, mine = pcMine(p);
       return `<tr class="${fl.stuck ? "late-row" : ""}" style="${mine ? "background:#FFF8E6" : ""}" data-row="${p.id}"><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}${p.pc_type !== "Interim" ? ` <span class="small muted">${esc(p.pc_type)}</span>` : ""}</td><td class="small">${esc(p.inv_ref)}</td><td class="r">${money(p.inv_amount)}</td>
       <td><span class="flow">${STEPS.map((s, j) => `<i class="${j < i ? "on" : j === i ? (p.status === "Paid" ? "on" : "cur") : ""}" title="${STEP_LABEL[s]}"></i>`).join("")}</span><div class="small muted" style="margin-top:3px">${stampTxt(fl.last)}</div>${fl.note ? `<div class="small late">&ldquo;${esc(fl.note)}&rdquo;</div>` : ""}</td>
-      <td>${st(STEP_LABEL[p.status] || p.status)}</td>
+      <td>${st(pcStage(p.status, fl))}</td>
       <td>${fl.turn ? (mine ? `<b style="color:#C0392B">You</b>` : `<b>${esc(fl.waiting)}</b>`) + `<div class="small muted">${esc(fl.task)}</div>` : '<span class="muted">-</span>'}</td>
       <td class="nowrap ${fl.stuck ? "late" : ""}">${fl.turn ? ageTxt(fl.hours) + (fl.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
       <td class="r">${p.work_cum || p.adv_amount ? money(p.payable, false) : '<span class="muted">-</span>'}</td>
-      <td class="nowrap">${nextBtns(p) || (fl.turn ? `<span class="small muted">${esc(fl.waiting)}'s turn</span>` : "")}${p.status === "Verified" ? ` <button class="btn btn-plain btn-sm" data-wa="${p.id}" title="Tell the Managing Director on WhatsApp - the link opens this certificate">WhatsApp</button>` : ""}${i > 0 && pcCan(TURN_OF[STEPS[i - 1]]) ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
+      <td class="nowrap">${nextBtns(p) || (fl.turn ? `<span class="small muted">${esc(fl.waiting)}'s turn</span>` : "")}${p.status === "Verified" && fl.md_sent ? ` <button class="btn btn-plain btn-sm" data-wa="${p.id}" title="Tell the Managing Director on WhatsApp - the link opens this certificate">WhatsApp</button>` : ""}${i > 0 && pcCan(TURN_OF[STEPS[i - 1]]) ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
     </tbody></table></div>` : `<div class="empty">${f === "__mine" ? "Nothing waiting for you." : f === "__stuck" ? "Nothing stuck." : "No invoices" + (f ? " at this step" : "") + "."}</div>`);
   bindTools(el, () => SECTIONS["subs.inv"](el));
   $("#add-inv", el).onclick = () => invoiceForm();
@@ -1143,10 +1145,16 @@ async function step(pcid, to, sid, after) {
       { k: "date", label: "On", type: "date", value: today() }], async v => { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Certified", by: v.by, date: v.date }); await after(); toast("Certified at site"); });
     return;
   }
+  if (to === "sendmd") {
+    try { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Sent to MD" }); await after();
+      toast("Sent to the Managing Director", { undo: async () => { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Sent to MD", undo: true }); after(); } });
+      if (p) waAsk([p]); } catch (e) { fail(e); }
+    return;
+  }
   try {
     await POST(`/store/est/subpcs/${pcid}/step`, { step: to }); await after();
     toast(`${STEP_DONE[to] || to} - ${dt(today())}`, { undo: async () => { await POST(`/store/est/subpcs/${pcid}/step`, { step: to, undo: true }); after(); } });
-    if (to === "Verified" && p) waAsk([p]);
+    if (to === "Verified") toast("Verified - press Send to MD when it is ready to go", { ms: 4500 });
   } catch (e) { fail(e); }
 }
 function sendBack(pcid, after) {
@@ -1881,14 +1889,16 @@ function drawPay() {
   // Accounts: verify what the contracts manager approved (it then goes to the Managing Director), and pay what the MD approved.
   const d = ST.pay, mineAcc = (d.mine || []).includes("acc") || (d.can || []).includes("acc");
   const f = ST.filt.pay ?? "__mine", q = (ST.q.pay || "").toLowerCase();
-  const isMine = r => r.status === "CM approved" || r.status === "MD approved";
-  const rows = d.rows.filter(r => (!f || (f === "__mine" ? isMine(r) : r.status === f)) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
-  const n = s => d.rows.filter(r => r.status === s).length;
-  const sum = s => d.rows.filter(r => r.status === s).reduce((a, r) => a + r.payable, 0);
+  const toSend = r => r.status === "Verified" && r.flow && r.flow.md_sent === false, withMd = r => r.status === "Verified" && !toSend(r);
+  const isMine = r => r.status === "CM approved" || r.status === "MD approved" || toSend(r);
+  const stOf = r => toSend(r) ? "__send" : withMd(r) ? "Verified" : r.status;
+  const rows = d.rows.filter(r => (!f || (f === "__mine" ? isMine(r) : stOf(r) === f)) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  const n = s => d.rows.filter(r => stOf(r) === s).length;
+  const sum = s => d.rows.filter(r => stOf(r) === s).reduce((a, r) => a + r.payable, 0);
   const age = h => h < 1 ? "just now" : h < 24 ? `${h} h` : `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}`;
   const fl = i => '<span class="flow">' + [0, 1, 2, 3, 4, 5, 6, 7].map(j => `<i class="${j < i ? "on" : j === i ? "cur" : ""}"></i>`).join("") + "</span>";
   const IDX = { "CM approved": 4, "Verified": 5, "MD approved": 6, "Paid": 7 };
-  const LBL = { "CM approved": "To verify", "Verified": "With the MD", "MD approved": "To pay", "Paid": "Paid" };
+  const LBL = { "CM approved": "To verify", "__send": "Verified - send to MD", "Verified": "With the MD", "MD approved": "MD approved - to pay", "Paid": "Paid" };
   const checks = r => { const c = r.checks || {}; const ok = t => `<span style="color:#1E6B2A">&#10003; ${t}</span>`, bad = t => `<span class="late">&#9888; ${t}</span>`;
     return [c.agreement ? ok("Agreement on file") : bad("No agreement ref. on the subcontract"),
             c.prev_n ? (c.unpaid.length ? bad(`Not paid yet: ${c.unpaid.join(", ")}`) : ok(`Previous ${c.prev_n} PC${c.prev_n > 1 ? "s" : ""} paid: ${money(c.prev_paid, false)}`)) : ok("First certificate"),
@@ -1897,19 +1907,21 @@ function drawPay() {
   $("#app").innerHTML = `<div class="wrap">
     <div class="strip"><div class="fig"><div class="l">To verify</div><div class="v">${n("CM approved")}</div><div class="s">${aed(sum("CM approved"))} approved by the contracts manager</div></div>
       <div class="fig amber"><div class="l">To pay now</div><div class="v">${aed(sum("MD approved"))}</div><div class="s">${n("MD approved")} approved by the MD</div></div>
+      <div class="fig ${n("__send") ? "amber" : ""}"><div class="l">To send to MD</div><div class="v">${n("__send")}</div><div class="s">${aed(sum("__send"))} verified</div></div>
       <div class="fig"><div class="l">With the MD</div><div class="v">${n("Verified")}</div><div class="s">${aed(sum("Verified"))}</div></div>
       <div class="fig green"><div class="l">Paid (last 60 days)</div><div class="v">${aed(d.rows.filter(r => r.status === "Paid").reduce((a, r) => a + r.paid_amount, 0))}</div></div></div>
-    <div class="tools"><input class="q" placeholder="Search" value="${esc(ST.q.pay || "")}" id="pq"><div class="chips">${chip("__mine", "Waiting for me", n("CM approved") + n("MD approved"))}${chip("CM approved", "To verify", n("CM approved"))}${chip("MD approved", "To pay", n("MD approved"))}${chip("Verified", "With the MD", n("Verified"))}${chip("Paid", "Paid", n("Paid"))}${chip("", "All", d.rows.length)}</div>
-      <span class="spacer"></span>${n("Verified") ? `<button class="btn btn-plain btn-sm" id="wa-all" title="One WhatsApp message to the managers with one link for all of them">WhatsApp the MD (${n("Verified")})</button>` : ""}<span class="small muted">Verify &rarr; goes to the MD &middot; Mark paid &rarr; Estimation is told ${tip("The MD approves from the link (WhatsApp or the phone notification): the PDF opens with Approve / Reject.")}</span></div>
+    <div class="tools"><input class="q" placeholder="Search" value="${esc(ST.q.pay || "")}" id="pq"><div class="chips">${chip("__mine", "Waiting for me", n("CM approved") + n("__send") + n("MD approved"))}${chip("CM approved", "To verify", n("CM approved"))}${chip("__send", "To send to MD", n("__send"))}${chip("MD approved", "To pay", n("MD approved"))}${chip("Verified", "With the MD", n("Verified"))}${chip("Paid", "Paid", n("Paid"))}${chip("", "All", d.rows.length)}</div>
+      <span class="spacer"></span>${n("Verified") ? `<button class="btn btn-plain btn-sm" id="wa-all" title="One WhatsApp message to the managers with one link for all of them">WhatsApp the MD (${n("Verified")})</button>` : ""}<span class="small muted">Verify &rarr; Send to MD &rarr; MD approves &rarr; Mark paid ${tip("Verified keeps it with Accounts; Send to MD hands it over - the MD is told (bell and phone) and approves from the link: the PDF opens with Approve / Reject. It comes back here as MD approved - to pay.")}</span></div>
     ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Subcontractor</th><th>PC</th><th class="r">Payable</th><th>Progress &middot; last stamp</th><th>Stage</th><th>Days here</th><th>Paid</th><th></th></tr></thead><tbody>
     ${rows.map(r => { const w = r.flow || {}, mine = isMine(r) && mineAcc; return `<tr class="${w.stuck && r.status !== "Paid" ? "late-row" : ""}" style="${mine ? "background:#FFF8E6" : ""}"><td><b>${esc(r.project)}</b><div class="small muted">${esc(r.project_name)}</div></td><td><b>${esc(r.sub)}</b><div class="small muted">${esc(r.scope)}${r.inv_ref ? " · " + esc(r.inv_ref) : ""}</div></td><td class="nowrap">PC ${pad(r.seq, 2)}${r.pc_type !== "Interim" ? ` <span class="small muted">${esc(r.pc_type)}</span>` : ""}</td>
       <td class="r"><b>${money(r.payable, false)}</b><div class="small muted">VAT ${money(r.vat)}</div></td>
       <td>${fl(IDX[r.status] || 0)}<div class="small muted" style="margin-top:3px">${stampTxt(w.last)}</div>${w.note ? `<div class="small late">&ldquo;${esc(w.note)}&rdquo;</div>` : ""}${r.status === "CM approved" ? `<div class="small" style="margin-top:3px">${checks(r)}</div>` : ""}</td>
-      <td>${st(LBL[r.status] || r.status)}</td><td class="nowrap ${w.stuck && r.status !== "Paid" ? "late" : ""}">${r.status !== "Paid" ? age(w.hours || 0) + (w.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
+      <td>${st(LBL[stOf(r)] || r.status)}${withMd(r) && r.flow.md_sent_at ? `<div class="small muted">sent ${dt(r.flow.md_sent_at.slice(0, 10))} ${r.flow.md_sent_at.slice(11, 16)}</div>` : ""}</td><td class="nowrap ${w.stuck && r.status !== "Paid" ? "late" : ""}">${r.status !== "Paid" ? age(w.hours || 0) + (w.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
       <td class="nowrap">${dt(r.paid_on)}${r.paid_ref ? `<div class="small muted">${esc(r.paid_ref)}</div>` : ""}</td>
       <td class="nowrap"><button class="btn btn-plain btn-sm" data-pp="${r.pc_id}">Print</button> ${r.status === "CM approved" && mineAcc ? `<button class="btn btn-ok btn-sm" data-pver="${r.pc_id}">Verified &#10003;</button> <button class="btn btn-plain btn-sm" data-pback="${r.pc_id}">&#8630; Send back</button>` :
         r.status === "MD approved" && mineAcc ? `<button class="btn btn-ok btn-sm" data-ppay="${r.pc_id}">Mark paid</button>` :
-        r.status === "Verified" ? `<button class="btn btn-plain btn-sm" data-pwa="${r.pc_id}">WhatsApp the MD</button> <span class="small muted">MD's turn</span>` :
+        toSend(r) && mineAcc ? `<button class="btn btn-ok btn-sm" data-psend="${r.pc_id}">Send to MD &rarr;</button> <button class="btn btn-plain btn-sm" data-pback="${r.pc_id}">&#8630; Send back</button>` :
+        withMd(r) ? `<button class="btn btn-plain btn-sm" data-pwa="${r.pc_id}">WhatsApp the MD</button>${mineAcc ? ` <button class="btn btn-plain btn-sm" data-precall="${r.pc_id}" title="Take it back from the MD (not approved yet)">&#8630;</button>` : ""}` :
         r.status === "Paid" && mineAcc ? `<button class="btn btn-plain btn-sm" data-pundo="${r.pc_id}" title="Not paid after all">&#8630;</button>` : ""}</td></tr>`; }).join("")}
     <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(rows.reduce((a, r) => a + r.payable, 0))}</td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>`
     : `<div class="card empty">${f === "__mine" ? "Nothing waiting for you." : "Nothing " + (f === "Paid" ? "paid in the last 60 days" : "here") + "."}</div>`}</div>`;
@@ -1918,12 +1930,15 @@ function drawPay() {
   $$("[data-pp]").forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.pp }));
   const row = id => d.rows.find(x => x.pc_id === +id);
   $$("[data-pver]").forEach(b => b.onclick = async () => { const r = row(b.dataset.pver);
-    try { b.disabled = true; await POST(`/store/est/subpcs/${r.pc_id}/step`, { step: "Verified" }); await loadPay(); toast("Verified - sent to the Managing Director"); waAsk([{ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable }]); } catch (e) { b.disabled = false; fail(e); } });
+    try { b.disabled = true; await POST(`/store/est/subpcs/${r.pc_id}/step`, { step: "Verified" }); await loadPay(); toast("Verified - now Send to MD", { ms: 4000 }); } catch (e) { b.disabled = false; fail(e); } });
+  $$("[data-psend]").forEach(b => b.onclick = async () => { const r = row(b.dataset.psend);
+    try { b.disabled = true; await POST(`/store/est/subpcs/${r.pc_id}/step`, { step: "Sent to MD" }); await loadPay(); toast("Sent to the Managing Director"); waAsk([{ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable }]); } catch (e) { b.disabled = false; fail(e); } });
+  $$("[data-precall]").forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.precall}/step`, { step: "Sent to MD", undo: true }); await loadPay(); toast("Taken back from the MD"); } catch (e) { fail(e); } });
   $$("[data-pback]").forEach(b => b.onclick = () => { const r = row(b.dataset.pback);
     modal(`Send back - ${r.sub}, PC ${pad(r.seq, 2)}`, [{ k: "note", label: "Why (one line)", focus: true, full: true }, { k: "to", label: "Back to", type: "select", options: [["Prepared", "Contracts manager"], ["Certified", "QS - to prepare again"]], value: "Prepared" }],
       async v => { if (!v.note) throw new Error("Say why it goes back."); await POST(`/store/est/subpcs/${r.pc_id}/step`, { back: true, to: v.to, note: v.note }); await loadPay(); toast("Sent back with your note"); }); });
   $$("[data-pwa]").forEach(b => b.onclick = () => { const r = row(b.dataset.pwa); waShare([{ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable }]); });
-  if ($("#wa-all")) $("#wa-all").onclick = () => waShare(d.rows.filter(r => r.status === "Verified").map(r => ({ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable })));
+  if ($("#wa-all")) $("#wa-all").onclick = () => waShare(d.rows.filter(withMd).map(r => ({ id: r.pc_id, sub: r.sub, seq: r.seq, payable: r.payable })));
   $$("[data-ppay]").forEach(b => b.onclick = () => { const r = row(b.dataset.ppay);
     modal(`Paid - ${r.sub}, PC ${pad(r.seq, 2)}`, [
       { k: "amount", label: "Amount paid (AED)", type: "money", value: r.payable, tip: "Filled in with the amount payable (incl. VAT)." },

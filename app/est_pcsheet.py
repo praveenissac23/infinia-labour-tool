@@ -493,6 +493,7 @@ def sheet(db, pc, user=None):
     }
     if user is not None:
         out["me"] = {"name": _who(user), "admin": user.role == "admin", "can": {r: _can(user, r, db) for r in ("site", "prep", "chk", "rev", "app")}}
+    out["md"] = E.md_sent(pc)
     return out
 
 
@@ -595,6 +596,10 @@ def sign(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: 
     if not pc:
         raise HTTPException(404, "That certificate is not there any more.")
     role = data.get("role")
+    if role == "sendmd":                                  # Accounts hands the verified certificate to the MD
+        E.pc_step(rid, {"step": "Sent to MD", "undo": bool(data.get("undo"))}, db, user)
+        db.refresh(pc)
+        return sheet(db, pc, user)
     if role not in SIGN:
         raise HTTPException(400, "Unknown sign-off.")
     step = SIGN_STEP[role]

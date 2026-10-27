@@ -229,7 +229,9 @@ async function pcSheet(pcid) {
       <aside class="sh-side">
         <div id="calcbox">${calcHtml(F)}</div>
         <div class="card"><h3>Sign-off ${tip("Each click puts the name and today's date on the certificate. Reviewed is for Accounts, Approved for the manager.")}</h3><div class="sgs">
-          ${signBox("site", "Certified at site", p.verified_by, p.verified_on)}${signBox("prep", "Prepared (QS)", p.prep_by, p.prep_on)}${signBox("chk", "Approved (contracts manager)", p.chk_by, p.chk_on)}${signBox("rev", "Verified (Accounts)", p.rev_by, p.rev_on)}${signBox("app", "Approved (Managing Director)", p.app_by ? "Managing Director" : "", p.app_on)}</div></div>
+          ${signBox("site", "Certified at site", p.verified_by, p.verified_on)}${signBox("prep", "Prepared (QS)", p.prep_by, p.prep_on)}${signBox("chk", "Approved (contracts manager)", p.chk_by, p.chk_on)}${signBox("rev", "Verified (Accounts)", p.rev_by, p.rev_on)}${p.status === "Verified" && d.md && !d.md.sent ? `<div class="sg md-send"><span>Approved (Managing Director)</span>${d.me && d.me.can.rev ? `<button class="btn btn-primary btn-sm" data-sign="sendmd">Send to MD &rarr;</button>` : `<small class="muted">with Accounts - not sent yet</small>`}</div>`
+            : p.status === "Verified" && d.md && d.md.sent && !(d.me && d.me.can.app) ? `<div class="sg"><span>Approved (Managing Director)</span><small>with the MD${d.md.at ? " · sent " + dt(d.md.at.slice(0, 10)) : ""}</small>${d.me && d.me.can.rev ? `<button class="btn btn-plain btn-sm" data-unsign="sendmd">Take back</button>` : ""}</div>`
+            : signBox("app", "Approved (Managing Director)", p.app_by ? "Managing Director" : "", p.app_on)}</div></div>
       </aside></div>`;
     bind(); sbTotal(F);
   };
@@ -282,7 +284,7 @@ async function pcSheet(pcid) {
   };
   const sign = async (role, undo) => {
     if (!undo && !locked && !(await save(false))) return;
-    try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); guardBase("big"); toast(undo ? "Signature taken off" : "Signed"); } catch (e) { fail(e); }
+    try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); guardBase("big"); toast(role === "sendmd" ? (undo ? "Taken back from the MD" : "Sent to the Managing Director") : undo ? "Signature taken off" : role === "rev" ? "Verified - now Send to MD" : "Signed"); } catch (e) { fail(e); }
   };
   big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload(), "est.sheet");
   $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>`;

@@ -666,10 +666,29 @@ def _stage_at(pc):
     return datetime(d.year, d.month, d.day, 9) if d else None
 
 
+def md_sent(pc, log=None):
+    """A verified certificate goes to the Managing Director only when Accounts presses "Send to MD" (verified on
+    the old way - before 27-Oct-2026 - it went straight away). {"sent": bool, "at": "...", "by": "..."}."""
+    if (pc.status or "") != "Verified":
+        return {"sent": False, "at": "", "by": ""}
+    log = log if log is not None else flow_of(pc)
+    i = next((n for n in range(len(log) - 1, -1, -1) if log[n].get("s") == "Verified" and not log[n].get("undo")), None)
+    if i is None or not log[i].get("hold"):
+        return {"sent": True, "at": (log[i].get("at") if i is not None else ""), "by": ""}
+    out = {"sent": False, "at": "", "by": ""}
+    for x in log[i + 1:]:
+        if x.get("s") == "Sent to MD":
+            out = {"sent": not x.get("undo"), "at": "" if x.get("undo") else x.get("at", ""), "by": "" if x.get("undo") else x.get("by", "")}
+    return out
+
+
 def flow_info(pc, rules, now=None):
     """Where a certificate stands: whose turn, for how long, stuck or not, the last stamp and any note sent back."""
     st = pc.status or "Received"
     turn = TURN.get(st, "")
+    md = md_sent(pc)
+    if st == "Verified" and not md["sent"]:
+        turn = "acc"                                     # verified, not sent to the MD yet: still at Accounts
     at = _stage_at(pc)
     now = now or dubai_now()
     hours = max(0, int((now - at).total_seconds() // 3600)) if at else 0
@@ -678,7 +697,8 @@ def flow_info(pc, rules, now=None):
     who = TURN_LABEL.get(turn, "")
     if turn == "cm":
         who = ((rules.get("pc_cm") or "").split(",")[0].strip() or who)
-    return {"turn": turn, "waiting": who, "task": TURN_TASK.get(st, ""), "hours": hours,
+    task = "to send to the MD" if st == "Verified" and not md["sent"] else TURN_TASK.get(st, "")
+    return {"turn": turn, "waiting": who, "task": task, "hours": hours, "md_sent": md["sent"], "md_sent_at": md["at"],
             "stuck": bool(turn) and hours >= 24 * max(1, rules.get("stuck_days") or 2),
             "last": last, "note": (last or {}).get("note", "") if (last or {}).get("back") else "",
             "log": log}
@@ -892,7 +912,7 @@ def _sub_bundle(db, s, vos, pcs, rules):
         d["sub_id"] = s.id
         f = flow_info(p, rules)
         d["paid_by"] = p.paid_by or ""
-        d["flow"] = {k: f[k] for k in ("turn", "waiting", "task", "hours", "stuck", "last", "note")}
+        d["flow"] = {k: f[k] for k in ("turn", "waiting", "task", "hours", "stuck", "last", "note", "md_sent", "md_sent_at")}
         pc_list.append(d)
     certified = pc_list[-1]["net_cum"] if pc_list else 0.0
     last_work = r2(pc_list[-1]["work"] + pc_list[-1]["var"]) if pc_list else 0.0
@@ -1781,6 +1801,25 @@ def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), use
         pc.updated_by = user.id
         db.commit()
         return {"ok": True, "status": pc.status}
+    if step == "Sent to MD":
+        # Accounts has verified it and now hands it to the Managing Director (who is told); undo takes it back
+        if cur != "Verified":
+            raise HTTPException(400, "Verify it first - then send it to the MD.")
+        if "acc" not in can and user.role != "admin":
+            raise HTTPException(403, "Accounts sends it to the MD.")
+        sent = md_sent(pc)["sent"]
+        if data.get("undo"):
+            if not sent:
+                return {"ok": True, "status": cur}
+            _log(pc, {"s": "Sent to MD", "by": who, "at": now.isoformat(timespec="minutes"), "undo": True})
+        else:
+            if sent:
+                return {"ok": True, "status": cur}
+            _log(pc, {"s": "Sent to MD", "by": who, "at": now.isoformat(timespec="minutes"), "note": note})
+        pc.stage_at = now
+        pc.updated_by = user.id
+        db.commit()
+        return {"ok": True, "status": cur, "md_sent": not data.get("undo")}
     if step not in SUB_STEPS:
         raise HTTPException(400, "Unknown step.")
     if not (can - {"acc"}) and step not in ("Verified", "Paid"):
@@ -1817,6 +1856,8 @@ def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), use
     if role not in can:
         raise HTTPException(403, {"cm": "The contracts manager approves this step.", "acc": "Accounts does this step.",
                                   "md": "The Managing Director (admin) approves this step."}.get(role, "Not your step."))
+    if step == "MD approved" and cur == "Verified" and not md_sent(pc)["sent"] and user.role != "admin":
+        raise HTTPException(400, "Accounts has not sent it to the MD yet.")
     on = _coerce(D, data.get("date"), "date") or today()
     if step in ("Prepared",) and not _has_figures(db, pc):
         raise HTTPException(400, "Fill in the certificate first (work done to date, or the advance) - then press Prepared.")
@@ -1842,7 +1883,8 @@ def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), use
     setattr(pc, STEP_DATE[step], on)
     pc.status = step
     pc.stage_at = now
-    _log(pc, {"s": step, "by": pc.verified_by if step == "Certified" else who, "at": now.isoformat(timespec="minutes"), "note": note})
+    _log(pc, dict({"s": step, "by": pc.verified_by if step == "Certified" else who, "at": now.isoformat(timespec="minutes"), "note": note},
+                  **({"hold": True} if step == "Verified" else {})))
     pc.updated_by = user.id
     db.commit()
     return {"ok": True, "status": pc.status}
@@ -1874,7 +1916,7 @@ def bell_items(db, user):
         desks = mine & {"cm", "acc", "md"}
         if not desks:
             return out
-        steps = [st for st, t in TURN.items() if t in desks]
+        steps = [st for st, t in TURN.items() if t in desks] + (["Verified"] if "acc" in desks else [])
         pcs = db.query(EstSubPC).filter(EstSubPC.status.in_(steps)).order_by(EstSubPC.id.desc()).limit(80).all()
         subs, projects, pay = _pcs_brief(db, pcs)
         now = dubai_now()
@@ -1884,9 +1926,11 @@ def bell_items(db, user):
             if not s_ or not p_:
                 continue
             f = flow_info(pc, rules, now)
+            if f["turn"] not in desks:
+                continue                                  # verified, not sent to the MD yet - or already with the MD
             amt = pay.get(pc.id, {}).get("payable", 0.0)
             last = f["last"] or {}
-            n = {"id": f"subpc-{pc.id}-{pc.status}", "kind": "subpc", "subpc": pc.id, "pid": p_.id,
+            n = {"id": f"subpc-{pc.id}-{pc.status}{'-tosend' if f['turn'] == 'acc' and pc.status == 'Verified' else ''}", "kind": "subpc", "subpc": pc.id, "pid": p_.id,
                  "title": f"{s_.name} PC {(pc.seq or 0):02d} ({p_.code}) - {('stuck ' if f['stuck'] else '')}{f['task']}",
                  "detail": f"AED {amt:,.2f}" + (f" · {STEP_WORD.get(last.get('s'), last.get('s', ''))} by {last.get('by')}" if last.get("by") else "")
                            + (f" · sent back: {f['note']}" if f["note"] else ""),
@@ -1916,8 +1960,10 @@ def approval(rid: int, db: Session = Depends(get_db), user: models.User = PAYER)
     s_ = subs[pc.sub_id]
     p_ = projects[s_.project_id]
     f = flow_info(pc, rules)
-    turn = TURN.get(pc.status or "Received")
+    turn = f["turn"]
     nxt = {"Prepared": "CM approved", "CM approved": "Verified", "Verified": "MD approved"}.get(pc.status or "")
+    if pc.status == "Verified" and not f["md_sent"] and user.role != "admin":
+        nxt = None
     others = [x.id for x in db.query(EstSubPC).filter(EstSubPC.status == pc.status, EstSubPC.id != pc.id).order_by(EstSubPC.id).all()] if nxt else []
     stamps = [{"s": STEP_WORD.get(x.get("s"), x.get("s")), "by": x.get("by"), "at": x.get("at"), "note": x.get("note", ""), "back": bool(x.get("back"))}
               for x in f["log"] if not x.get("undo")]
