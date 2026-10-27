@@ -151,6 +151,7 @@ function prevCpcForm(x) {
   ], async v => {
     if (!v.claimed_cum) throw new Error("Type the work done to date from the bill.");
     const d = Object.assign({}, v, { project_id: ST.pid, adv_auto: false, ret_auto: false });
+    if (d.authority == null && f.authority) d.authority = f.authority;
     ["submitted", "period_to", "certified_on"].forEach(k => { if (!d[k]) d[k] = null; });
     if (!d.seq) delete d.seq;
     await POST("/store/est/clientpcs", d);

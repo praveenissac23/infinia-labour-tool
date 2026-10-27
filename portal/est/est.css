@@ -627,3 +627,10 @@ tr.late-row td:first-child { box-shadow: inset 3px 0 0 #C0392B; }
 /* the subcontract page: its tables use the full width without sideways scrolling */
 #drawer .dbody table.t th, #drawer .dbody table.t td { padding-left: 8px; padding-right: 8px; }
 #drawer .dbody table.t td.nowrap .btn + .btn { margin-left: 4px; }
+
+/* Dashboard > client payment certificates: every IPA in a box that scrolls, heading and total kept in view */
+.dcpc { max-height: 300px; overflow: auto; }
+.dcpc thead th { position: sticky; top: 0; z-index: 1; background: #F7F4F0; }
+.dcpc tfoot td { position: sticky; bottom: 0; background: #FBF8F5; font-weight: 700; border-top: 1px solid #E7E1DA; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--red); }

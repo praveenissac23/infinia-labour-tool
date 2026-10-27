@@ -582,7 +582,7 @@ function homeDash(el) {
           <div><span>Absorbed</span><b>${money(sum(b.variations.filter(v => v.status !== "Cancelled"), "absorbed_amount"), false)}</b><small class="muted">${vs("Absorbed").length} lines</small></div>
           <div><span>To price</span><b>${vs("Identified").length}</b><small class="muted">identified</small></div></div>
         <h3 style="margin-top:16px">Client payment certificates</h3>
-        ${b.clientpcs.length ? `<div class="tw"><table class="t"><thead><tr><th>IPA</th><th>Period to</th><th class="r">Certified</th><th>Status</th></tr></thead><tbody>${b.clientpcs.slice(-4).reverse().map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="muted small">None yet.</div>'}
+        ${b.clientpcs.length ? `<div id="dash-cpc">${dashCpcTable()}</div>` : '<div class="muted small">None yet.</div>'}
       </div>
       <div class="card full"><h3>Subcontractors<span class="go" data-go="subs.reg">Open register</span></h3>
         ${b.subs.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>Work</th><th class="r">Revised value</th><th>Done</th><th class="r">Certified</th><th class="r">Paid</th><th class="r">To pay</th><th>Status</th></tr></thead><tbody>
@@ -1386,12 +1386,34 @@ function cpcForm(c) {
     { k: "period_to", label: "Period up to", type: "date", value: c.period_to || today() }, { k: "submitted", label: "Submitted on", type: "date", value: c.submitted || "" },
     { k: "mos_cum", label: "Material on site to date", type: "money", value: c.mos_cum || "" }, { k: "other_cum", label: "Other deductions to date", type: "money", value: c.other_cum || "" },
     { k: "ret_rel_cum", label: "Retention released to date", type: "money", value: c.ret_rel_cum || "" },
+    { k: "authority", label: "Authority payments (this bill)", type: "money", value: c.authority || "", tip: "Authority fees paid for the client and claimed on this bill (DEWA, Municipality, Civil Defence ...) - this bill's amount, not to date." },
     { k: "status", label: "Status", type: "select", options: ["Draft", "Submitted", "Certified", "Invoiced", "Paid"], value: c.status || "Draft" },
     { k: "invoice_no", label: "Our invoice no.", type: "combo", options: (b.invoices || []).filter(i => i.kind === "tax" && i.status !== "cancelled").map(i => i.number), value: c.invoice_no || "", ph: "Pick from Accounts > Invoices", tip: "The tax invoice from Accounts > Invoices for this certificate - pick it from the list." },
     { k: "remarks", label: "Remarks", type: "area", value: c.remarks || "" },
   ], async v => { if (edit) await PATCH(`/store/est/clientpcs/${c.id}`, v); else await POST("/store/est/clientpcs", Object.assign(v, { project_id: ST.pid })); await reload(); toast("Saved"); },
   { wide: true, doc: { kind: "clientpc", what: "payment certificate (ours or the consultant's)", want: [["claimed_cum", "Work done to date"], ["period_to", "Period up to"]] }, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
 }
+
+// ---------------- Dashboard > client payment certificates ----------------
+// Every IPA, oldest first, in a box that scrolls (header stays); a column heading sorts it - again turns it round.
+const DASH_CPC = { k: "seq", dir: 1 };
+const DASH_CPC_COLS = [["seq", "IPA", ""], ["period_to", "Period to", ""], ["net_cum", "Certified to date", "r"], ["authority", "Authority payments", "r"], ["status", "Status", ""]];
+function dashCpcTable() {
+  const b = ST.b, { k, dir } = DASH_CPC;
+  const val = c => k === "status" ? STEPS_CPC.indexOf(c.status) : k === "period_to" ? (c.period_to || "") : (Number(c[k]) || 0);
+  const rows = b.clientpcs.slice().sort((x, y) => { const a = val(x), z = val(y); return (a < z ? -1 : a > z ? 1 : (x.seq - y.seq) || (x.id - y.id)) * dir; });
+  const tot = r2(b.clientpcs.reduce((n, c) => n + (Number(c.authority) || 0), 0));
+  return `<div class="tw dcpc"><table class="t"><thead><tr>${DASH_CPC_COLS.map(([ck, l, cl]) => `<th class="${cl} sortable" data-dsort="${ck}" title="Sort by ${l.toLowerCase()} - again to turn it round">${l}${ck === k ? (dir > 0 ? " &#9650;" : " &#9660;") : ""}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td class="r">${c.authority ? money(c.authority) : '<span class="muted">-</span>'}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr class="tot"><td colspan="3">${b.clientpcs.length} IPA${b.clientpcs.length === 1 ? "" : "s"}</td><td class="r">${money(tot, false)}</td><td></td></tr></tfoot></table></div>`;
+}
+const STEPS_CPC = ["Draft", "Submitted", "Certified", "Invoiced", "Paid"];
+document.addEventListener("click", e => {
+  const th = e.target.closest("#dash-cpc [data-dsort]"); if (!th) return;
+  const k = th.dataset.dsort; DASH_CPC.dir = DASH_CPC.k === k ? -DASH_CPC.dir : 1; DASH_CPC.k = k;
+  const box = $("#dash-cpc"); const sc = box.querySelector(".tw") ? box.querySelector(".tw").scrollTop : 0;
+  box.innerHTML = dashCpcTable(); box.querySelector(".tw").scrollTop = sc;
+});
 
 // ---------------- Overview > variations ----------------
 const VO_ST = ["Identified", "Submitted", "Approved", "Rejected", "Absorbed", "Claimed", "Cancelled"];

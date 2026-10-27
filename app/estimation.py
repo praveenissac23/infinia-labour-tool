@@ -229,6 +229,7 @@ class EstClientPC(Base):
     ret_auto = Column(Boolean, default=True)
     ret_rel_cum = Column(Float, default=0.0)
     other_cum = Column(Float, default=0.0)
+    authority = Column(Float, default=0.0)          # authority payments on this bill (fees paid for the client), not cumulative
     contract_id = Column(Integer, nullable=True, index=True)   # which contract (only when the project has several)
     status = Column(String, default="Draft")        # Draft | Submitted | Certified | Invoiced | Paid
     invoice_no = Column(String, default="")
@@ -417,6 +418,26 @@ def migrate_pc_flow(SessionLocal):
     except Exception as e:
         db.rollback()
         print("pc flow move:", e)
+    finally:
+        db.close()
+
+
+def fill_authority(SessionLocal):
+    """Once: a client bill brought in from a previous-records file kept its authority fees only in its remarks
+    ("authority fees 9,720.00") - put them in the bill's own Authority payments figure."""
+    import re as _re
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_authority_filled").first():
+            return
+        for c in db.query(EstClientPC).filter(EstClientPC.remarks.ilike("%authority fees%")).all():
+            m = _re.search(r"authority fees ([0-9][0-9,]*(?:\.[0-9]+)?)", c.remarks or "", _re.I)
+            if m and not (c.authority or 0):
+                c.authority = float(m.group(1).replace(",", ""))
+        db.add(models.Setting(key="est_authority_filled", value="1"))
+        db.commit()
+    except Exception as e:
+        db.rollback(); print("estimation authority:", e)
     finally:
         db.close()
 
@@ -662,7 +683,7 @@ KINDS = {
     "clientpcs": (EstClientPC, "project_id", {"seq": I, "pc_type": S, "period_to": D, "submitted": D, "claimed_cum": F,
                                               "certified_cum": F, "certified_on": D, "mos_cum": F, "adv_amount": F,
                                               "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F,
-                                              "other_cum": F, "status": S, "invoice_no": S, "remarks": S, "contract_id": I}),
+                                              "other_cum": F, "authority": F, "status": S, "invoice_no": S, "remarks": S, "contract_id": I}),
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,

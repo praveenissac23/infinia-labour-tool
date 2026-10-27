@@ -65,6 +65,8 @@
  "est.dash|status": "Projects table: the project's status (Running, Tender, On hold, Handed over, Closed), set on its details. Invoices table: the step the subcontractor certificate is at - Received, At site, Certified at site, Prepared (QS), CM approved, Verified (Accounts), MD approved, Paid.",
  "est.dash|payable": "What this subcontractor PC pays, VAT included: This PC + VAT. Worked out from the certificate; shown once work done is entered.",
  "est.home.dash|ipa": "The client payment certificate (interim payment application) number. Made on Overview > Payment certificates; the last four are shown.",
+ "est.home.dash|certified to date": "What the client has certified for the work up to this bill, net, to date - so each bill's figure includes the ones before it. Click the heading to sort.",
+ "est.home.dash|authority payments": "Authority fees paid for the client and claimed on this bill (DEWA, Municipality, Civil Defence ...) - this bill's own amount, not to date; the total is under the list. Typed on the certificate; for bills brought in from previous records it is read from the file.",
  "est.home.dash|period to": "The date this client certificate covers work up to. Typed on the certificate (Period up to).",
  "est.home.dash|certified": "IPA table: net to date on that client certificate (certified figure once certified, claimed until then). Subcontractors table: net to date on the subcontract's latest PC, before VAT.",
  "est.home.dash|revised value": "The subcontract value after changes. Worked out: subcontract / LPO amount + its variations - any LPO cancellation.",
