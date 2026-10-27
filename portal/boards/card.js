@@ -140,7 +140,10 @@ function renderCardModal() {
     <div class="cm-body"><div class="cm-main">
       <div class="ttl"><button class="done-c ${c.due_complete ? "on" : ""}" data-k="done" title="${c.due_complete ? "Mark incomplete" : "Mark complete"}" ${ro ? "disabled" : ""}>${c.due_complete ? ic("check", "s14") : ""}</button><textarea data-title rows="1" ${ro ? "readonly" : ""}>${esc(c.title)}</textarea></div>
       ${ro ? "" : `<div class="acts">${btn("add", "plus", "Add")}${btn("labels", "tag", "Labels")}${btn("dates", "clock", "Dates")}${btn("checklist", "checksq", "Checklist")}${btn("members", "user", "Members")}${btn("attach", "clip", "Attachment")}
-        ${(S.board.prefs.card_buttons || []).map((x, i) => `<button class="b" data-cbtn="${i}" style="background:#E9F2FF;color:#0055CC;border-color:#CCE0FF">${ic("btn")} ${esc(x.name)}</button>`).join("")}</div>`}
+        ${(S.board.prefs.card_buttons || []).map((x, i) => `<button class="b" data-cbtn="${i}" style="background:#E9F2FF;color:#0055CC;border-color:#CCE0FF">${ic("btn")} ${esc(x.name)}</button>`).join("")}</div>
+        ${(() => { const P = [["time", "time", "timer", "Log time"], ["priority", "priority", "flag", "Priority"], ["priority", "points", "points", "Story points"], ["fields", "fields", "field", "Custom Fields"],
+                              ["voting", "vote", "thumb", c.votes.includes(S.me.id) ? "Remove vote" : "Vote"], ["repeater", "repeat", "repeat", "Repeat"]].filter(x => pu(x[0]));
+                   return P.length ? `<div class="acts pu-acts"><span class="pu-lbl" title="Switched on for this board in Power-Ups">${ic("plug", "s14")} Power-Ups</span>${P.map(([, k, i, l]) => btn(k, i, l)).join("")}</div>` : ""; })()}`}
       <div class="meta">
         ${mem.length ? `<div><h4>Members</h4><div class="row">${mem.map(m => av(m, "lg").replace('class="av', `data-mem="${m.id}" class="av`)).join("")}${ro ? "" : `<button class="b add-sq" data-k="members">${ic("plus")}</button>`}</div></div>` : ""}
         ${labels.length ? `<div><h4>Labels</h4><div class="row">${labels.map(l => labHtml(l).replace('class="lab', 'data-k="labels" class="lab')).join("")}${ro ? "" : `<button class="b add-sq" data-k="labels">${ic("plus")}</button>`}</div></div>` : ""}
@@ -205,7 +208,7 @@ function wireCardModal(m, c) {
   k("move", b => moveCopyPop(b, cid, "move")); k("watch", () => saveCard(cid, { watch: !c.watching }));
   k("priority", b => priorityPop(b, cid)); k("points", b => pointsPop(b, cid)); k("time", b => timePop(b, cid));
   k("vote", () => saveCard(cid, { vote: !c.votes.includes(S.me.id) })); k("repeat", b => repeatPop(b, cid)); k("link", b => linkCardPop(b, cid));
-  k("add", b => addMenuPop(b, cid)); k("more", b => cardMorePop(b, cid));
+  k("add", b => addMenuPop(b, cid)); k("more", b => cardMorePop(b, cid)); k("fields", b => fieldsPop(b, cid));
   $$("[data-mem]", m).forEach(a => a.onclick = e => memberCardPop(e.currentTarget, +a.dataset.mem));
   $$("[data-cbtn]", m).forEach(b => b.onclick = async () => { try { await POST(`/store/kb/cards/${cid}/button`, { index: +b.dataset.cbtn }); toast("Done"); await reloadBoard(true); loadFullCard(cid, true); } catch (e) { fail(e); } });
   const fl = m.querySelector("[data-fields]"); if (fl) wireFieldInputs(fl, cid);

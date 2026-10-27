@@ -247,6 +247,12 @@ body.dragging .card:hover { outline-color: transparent; }
 .cm .acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px 32px; }
 .cm .acts .b { border: 1px solid var(--border); background: #fff; height: 32px; color: var(--text-subtle); }
 .cm .acts .b:hover { background: var(--neutral); }
+.cm .pu-acts { margin-top: -10px; align-items: center; }
+.cm .pu-acts .pu-lbl { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-subtle); margin-right: 2px; }
+.cm .pu-acts .b { background: #F7F8F9; }
+#bhead .vseg { display: inline-flex; gap: 2px; background: rgba(255,255,255,.14); border-radius: 6px; padding: 2px; }
+#bhead .vseg .hbtn { height: 28px; }
+#bhead .show-sm { display: none; }
 .cm .sec { margin: 0 0 24px; }
 .cm .sec-h { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .cm .sec-h .ic { width: 20px; display: flex; justify-content: center; color: var(--text-subtle); }
@@ -493,7 +499,7 @@ body.with-side #board, body.with-side #home { margin-left: 360px; width: calc(10
   .home-wrap { flex-direction: column; margin-top: 16px; gap: 12px; } .home-nav { width: auto; }
   .home-nav .sub, .home-nav hr, .home-nav .ws { display: none; } .home-nav { display: flex; gap: 4px; overflow-x: auto; } .home-nav .ni { flex-shrink: 0; }
   .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  #bhead { padding: 8px; } #bhead .bname { font-size: 16px; max-width: 60vw; } #bhead .hide-sm { display: none; }
+  #bhead { padding: 8px; } #bhead .bname { font-size: 16px; max-width: 60vw; } #bhead .hide-sm { display: none; } #bhead .show-sm { display: inline-flex; }
   .lw { width: 86vw; } .lst { width: calc(86vw - 12px); } .addlist, .addlist-form { width: calc(86vw - 12px); }
   #lists { scroll-snap-type: x mandatory; } .lw { scroll-snap-align: center; }
   .ov { padding: 0; } .cm { border-radius: 0; min-height: 100%; } .cm .cm-body { flex-direction: column; } .cm .cm-side { width: auto; border-radius: 0; }

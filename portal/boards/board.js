@@ -69,13 +69,12 @@ function renderHeader() {
   hd.innerHTML = `<button class="bname" id="bh-name" title="Rename board">${esc(b.title)}</button>
     <button class="hbtn ic" id="bh-star" title="Star or unstar board"><svg class="i ${b.starred ? "f" : ""}" style="${b.starred ? "color:#F5CD47" : ""}"><use href="#i-star"/></svg></button>
     <button class="hbtn ic hide-sm" id="bh-vis" title="${vis[1]}">${ic(vis[0])}</button>
-    <button class="hbtn" id="bh-view">${ic(viewIc[2])} <span class="hide-sm">${viewIc[1]}</span> ${ic("down", "s14")}</button>
+    <span class="vseg hide-sm">${VIEWS.filter(v => v[0] === "board" || pu(v[0])).map(([k, l, i]) => `<button class="hbtn ${S.view === k ? "on" : ""}" data-view="${k}" title="${l} view">${ic(i)} <span>${l}</span></button>`).join("")}</span>
+    <button class="hbtn show-sm" id="bh-view">${ic(viewIc[2])} ${ic("down", "s14")}</button>
     <span class="sp"></span>
     <div class="facepile hide-sm">${mem}</div>
-    ${pu("dashboard") ? `<button class="hbtn hide-sm ${S.view === "dashboard" ? "on" : ""}" id="bh-dash" title="Dashboard - workload, distribution, progress">${ic("chart")} <span>Dashboard</span></button>` : ""}
-    ${pu("mindmap") ? `<button class="hbtn hide-sm ${S.view === "mindmap" ? "on" : ""}" id="bh-mind">${ic("mind")} <span>Mind Map</span></button>` : ""}
     ${(b.prefs.board_buttons || []).map((x, i) => `<button class="hbtn hide-sm" data-bbtn="${i}" title="Board button">${ic("btn")} ${esc(x.name)}</button>`).join("")}
-    <button class="hbtn ic" id="bh-pu" title="Power-Ups">${ic("plug")}</button>
+    <button class="hbtn" id="bh-pu" title="Power-Ups: switch views and card features on or off">${ic("plug")} <span class="hide-sm">Power-Ups</span></button>
     <button class="hbtn ic" id="bh-auto" title="Automation">${ic("bolt")}</button>
     <button class="hbtn ${filterActive() ? "on" : ""}" id="bh-filter" title="Filter cards (f)">${ic("filter")}${filterActive() ? ` <span class="filt-n">${filterCount()}</span>` : ""}</button>
     ${filterActive() ? `<button class="hbtn filt-clear" id="bh-fclear">Clear all</button>` : ""}
@@ -92,8 +91,7 @@ function renderHeader() {
   $("#bh-star").onclick = async () => { try { const r = await POST(`/store/kb/boards/${b.id}/star`); b.starred = r.starred; renderHeader(); refreshBoards(); } catch (e) { fail(e); } };
   $("#bh-vis").onclick = e => visibilityPop(e.currentTarget);
   $("#bh-view").onclick = e => viewPop(e.currentTarget);
-  const dsh = $("#bh-dash"); if (dsh) dsh.onclick = () => setView(S.view === "dashboard" ? "board" : "dashboard");
-  const mm = $("#bh-mind"); if (mm) mm.onclick = () => setView(S.view === "mindmap" ? "board" : "mindmap");
+  $$("[data-view]", hd).forEach(x => x.onclick = () => setView(x.dataset.view));
   $("#bh-pu").onclick = () => boardMenu("powerups");
   $("#bh-auto").onclick = () => boardMenu("automation");
   $("#bh-filter").onclick = e => filterPop(e.currentTarget);

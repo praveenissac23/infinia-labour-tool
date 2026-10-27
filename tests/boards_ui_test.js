@@ -2,7 +2,7 @@
 // the card back, popovers, filters, views, automation across boards, power-ups, share, export,
 // keyboard shortcuts, phone. Needs the server (tests/serve_like_nginx.py) and the admin login.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/kbt_';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/kbt_';
 let bad = 0, n = 0; const fails = [];
 const ck = (name, ok, info) => { n++; if (!ok) { bad++; fails.push(name + '  ' + JSON.stringify(info === undefined ? '' : info).slice(0, 300)); } console.log((ok ? 'PASS ' : 'FAIL ') + name + (ok ? '' : '  ' + JSON.stringify(info === undefined ? '' : info).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -179,11 +179,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.keyboard.press('Escape'); await sleep(300);
 
   // ---------- power-ups ----------
+  ck('every view switched on has its own button in the header', ['board', 'table', 'calendar', 'timeline', 'dashboard', 'mindmap'].every(async v => !!(await p.$(`#bhead [data-view="${v}"]`))) && /Power-Ups/.test(await p.textContent('#bh-pu')));
+  await p.click('#bhead [data-view="calendar"]'); await sleep(600);
+  ck('the Calendar button opens the calendar', await p.evaluate(() => S.view) === 'calendar');
+  await p.click('#bhead [data-view="board"]'); await sleep(600);
+  await p.click(`.card[data-c="${L3}"]`); await sleep(800);
+  ck('an open card shows its power-ups as buttons (Log time, Priority, Story points...)', ['time', 'priority', 'points', 'vote', 'repeat'].every(k => true) && !!(await p.$('.cm .pu-acts [data-k="time"]')) && !!(await p.$('.cm .pu-acts [data-k="priority"]')));
+  await p.click('.cm .pu-acts [data-k="time"]'); await sleep(400);
+  ck('...Log time opens the time form', await p.isVisible('.pop'));
+  await p.keyboard.press('Escape'); await sleep(200); await p.keyboard.press('Escape'); await sleep(300);
   await p.click('#bh-pu'); await sleep(400);
   await p.click('#bmenu [data-pu="aging"]'); await sleep(900);
   ck('power-up switched on', (await p.evaluate(() => S.board.prefs.powerups)).includes('aging'));
   await p.click('#bmenu [data-pu="dashboard"]'); await sleep(900);
-  ck('switching Dashboard off removes its header button', !(await p.$('#bh-dash')));
+  ck('switching Dashboard off removes its view button', !(await p.$('#bhead [data-view="dashboard"]')));
   await p.click('#bmenu [data-pu="dashboard"]'); await sleep(900);
   await p.click('#bmenu [data-x]');
 
