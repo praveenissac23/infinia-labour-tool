@@ -4379,7 +4379,11 @@ def _place_label(loc):
 # that a consumable stops being stock. What was sent is not lost: it
 # stays in the ledger and shows as what was last sent there, which is
 # the question a keeper actually asks before sending more.
-HELD_AT_SITE = ("returnable", "asset", "rental")
+# Changed 27-Oct-2026 (Praveen): every type is shown where it is - a consumable sent to a site is counted there until
+# it comes back (returned) or is written off, so the store and the site lists show assets, consumables and rentals.
+HELD_AT_SITE = ("returnable", "asset", "rental", "consumable")
+# Tools and equipment that go out and come back (the issue-and-return register) - not consumables.
+TOOL_TYPES = ("returnable", "asset", "rental")
 
 
 def _held_at_site(item) -> bool:
@@ -6390,7 +6394,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         # material from that site, so a tape that went out in the morning
         # and came back in the evening is one line, closed.
         def tool(i):
-            return i and i.item_type in HELD_AT_SITE
+            return i and i.item_type in TOOL_TYPES
         out = []
         for m in sorted(moves(["out"]), key=lambda m: (m.moved_on, m.id)):
             i = items.get(m.item_id)
@@ -6605,8 +6609,8 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         c = stock.get((i.id, CENTRAL), 0)
         per_site = dict(places.get(i.id, {})) if _held_at_site(i) else {}
         o = sum(per_site.values())
-        if c == 0 and o == 0 and not i.reorder_level:
-            continue
+        if c == 0 and o == 0 and not i.reorder_level and i.item_type != "rental":
+            continue                                # a rental is always listed - on hire or not
         rows.append({"code": i.code, "name": i.name, "unit": i.unit,
                       "item_type": i.item_type, "in_store": round(c, 2),
                       "at_sites": round(o, 2), "total": round(c + o, 2),
@@ -7706,7 +7710,7 @@ def stock_at_site(site: str, db: Session = Depends(get_db),
     recent, seen = [], set()
     for m in sent:
         i = items.get(m.item_id)
-        if not i or _held_at_site(i) or i.id in seen or not m.qty:
+        if not i or i.item_type != "consumable" or i.id in seen or not m.qty:
             continue
         seen.add(i.id)
         recent.append({"item_id": i.id, "code": i.code, "name": i.name,

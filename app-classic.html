@@ -1060,6 +1060,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .md-table td.addr { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .md-table td.act { text-align: right; white-space: nowrap; width: 1%; }
   .md-table td.act .btn { padding: 4px 10px; font-size: 12px; margin-left: 4px; }
+  .seg-chips { display: inline-flex; gap: 2px; background: #F1EEEA; border-radius: 8px; padding: 2px; }
+  .seg-chip { border: 0; background: none; padding: 5px 10px; border-radius: 6px; font: inherit; font-size: 12.5px; color: #555; cursor: pointer; white-space: nowrap; }
+  .seg-chip span { color: #999; font-size: 11.5px; margin-left: 2px; }
+  .seg-chip.on { background: #fff; color: #C0392B; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .md-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; padding: 2px; }
   .md-chip { display: inline-flex; align-items: center; gap: 4px; background: #F4F5F7;
              border: 1px solid #e2e2e2; border-radius: 14px; padding: 3px 4px 3px 11px; font-size: 12.5px; }
@@ -3952,8 +3956,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <h2 style="margin-bottom:4px;">What is in the store and sites right now</h2>
                   <div id="home-stats" style="display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; min-height:24px;"></div>
                 </div>
-                <input type="text" id="home-stock-search" placeholder="Search material or code"
-                       style="width:220px;" oninput="filterHomeStock()">
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <div class="seg-chips" id="home-stock-type" role="group" aria-label="Type"></div>
+                  <input type="text" id="home-stock-search" placeholder="Search material or code"
+                         style="width:220px;" oninput="filterHomeStock()">
+                </div>
               </div>
               <div class="grid-wrap" style="max-height:calc(100vh - 290px); min-height:420px;">
                 <table><thead><tr id="home-stock-head"></tr></thead><tbody id="home-stock-body"></tbody></table>
@@ -9022,7 +9029,8 @@ function drawStoreHome(stock, stk) {
     const all = stock.rows || [];
     // Everything the company holds, wherever it is: in the central store,
     // out at a site, or split between them. The columns say which.
-    const rows = all.filter(r => (r.in_store || 0) > 0 || (r.at_sites || 0) > 0);
+    // Everything held - in the store or at a site, all three types - and every rental (on hire or not).
+    const rows = all.filter(r => (r.in_store || 0) > 0 || (r.at_sites || 0) > 0 || r.item_type === "rental");
     // Materials on the list that are out of the store altogether (nothing
     // here, nothing at a site) - so an empty table can say so.
     const goneOut = all.filter(r => (r.at_sites || 0) > 0 && !((r.in_store || 0) > 0)).length;
@@ -9063,7 +9071,7 @@ function drawStoreHome(stock, stk) {
     const homeKeys = orderColumns("home-stock", Object.keys(COLS));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
-    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP };
+    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP, type: (HOME_STOCK && HOME_STOCK.type) || "" };
     renderHomeStock();
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
@@ -9086,7 +9094,13 @@ function renderHomeStock(more) {
   if (!H || !body) return;
   if (more === true) H.limit = Infinity; else if (more) H.limit += LIST_STEP;
   const q = ((document.getElementById("home-stock-search") || {}).value || "").trim().toLowerCase();
-  const rows = q ? H.rows.filter(r => `${r.code} ${r.name} ${r.unit} ${r.item_type}`.toLowerCase().includes(q)) : H.rows;
+  const ty = H.type || "";
+  const T = [["", "All"], ["consumable", "Consumables"], ["asset", "Assets"], ["rental", "Rentals"]];
+  const n = k => k ? H.rows.filter(r => (r.item_type === "returnable" ? "asset" : r.item_type) === k).length : H.rows.length;
+  const chips = document.getElementById("home-stock-type");
+  if (chips) chips.innerHTML = T.map(([k, l]) => `<button type="button" class="seg-chip${ty === k ? " on" : ""}" onclick="HOME_STOCK.type='${k}'; HOME_STOCK.limit=LIST_STEP; renderHomeStock()">${l} <span>${num(n(k))}</span></button>`).join("");
+  const rows = H.rows.filter(r => (!ty || (r.item_type === "returnable" ? "asset" : r.item_type) === ty)
+    && (!q || `${r.code} ${r.name} ${r.unit} ${r.item_type}`.toLowerCase().includes(q)));
   const part = rows.slice(0, H.limit);
   body.innerHTML = part.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
         style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">

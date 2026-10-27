@@ -83,8 +83,8 @@ cem = next((s for s in stock if s["code"] == item.get("code")), {})
 # Both are consumables, so neither went into the central store and
 # neither is carried as stock at 704 - they are used on the job. What
 # 704 keeps is the record of when it last had some.
-check("cement booked to the site that asked, not central",
-      cem.get("central") == 0 and not (cem.get("by_site") or {}), str(cem))
+check("cement booked to the site that asked, not central - and counted there (rule of 27-Oct-2026)",
+      cem.get("central") == 0 and (cem.get("by_site") or {}).get("704") == 100, str(cem))
 check("and 704 shows the cement as last sent there",
       sent704.get(cem.get("name"), {}).get("qty") == 100, str(sent704))
 cush = next((s for s in stock if "cushion" in s.get("name","").lower()), {})
@@ -117,8 +117,8 @@ cem = next(s for s in r.json() if s["code"] == item["code"])
 # 100 bought in, 40 issued, 10 handed back: 70 on the shelf. The 40 that
 # went to 704 are not carried there, because cement is used where it
 # goes - but a return still works and puts stock back on the shelf.
-check("central 70 after out+return, none carried at the site",
-      cem["central"] == 70 and not (cem.get("by_site") or {}), str(cem))
+check("central 70 after out+return; what went to 704 is counted there until it comes back",
+      cem["central"] == 70 and (cem.get("by_site") or {}).get("704", 0) > 0, str(cem))
 
 for kind in ["stock","by_site","usage","assets","lost","hired"]:
     r = c.get(f"/store/report?kind={kind}", headers=H)

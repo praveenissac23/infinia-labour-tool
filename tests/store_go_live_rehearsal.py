@@ -181,8 +181,8 @@ rb2 = c.post(f"/store/requests/{mr['id']}/receive-bulk", json={'supplier': 'Al R
 ck('the rest arrives and the request completes', rb2.status_code == 200 and rb2.json().get('status') in ('delivered', 'received'), rb2.text[:200])
 ck('the site is told it was delivered', any('deliver' in str(n).lower() for n in c.get('/notifications', headers=SITE).json()['notifications']))
 at = c.get('/store/at-site?site=901', headers=KEEPER).json()
-ck('delivered to 901 and shown as last sent there (consumables are used, not held)',
-   not at['rows'] and {r['item_id'] for r in at['recent']} >= {old_cem['id'], sand['id']}, at)
+ck('delivered to 901: held there (every type is counted at its site) and shown as last sent',
+   {r['item_id'] for r in at['rows']} >= {old_cem['id'], sand['id']} and {r['item_id'] for r in at['recent']} >= {old_cem['id'], sand['id']}, at)
 ck('nothing went into the central store by mistake', all(s['central'] == 0 for s in c.get('/store/stock', headers=KEEPER).json() if s['item_id'] in (old_cem['id'], sand['id'])))
 ck('nothing left to chase', not [x for x in c.get('/store/requests', headers=KEEPER).json() if x['status'] in ('ordered', 'partial')])
 
@@ -215,10 +215,10 @@ st['Cement OPC 50kg'] = next(s for s in st.values() if s['item_id'] == old_cem['
 ck('scaffolding: 250 in store (600 in, 400 out, 50 back)', st['Scaffold Ledger 2m']['central'] == 250, st['Scaffold Ledger 2m'])
 ck('scaffolding: 250 at 904, 98 at 915', st['Scaffold Ledger 2m']['by_site'] == {'904': 250, '915': 98}, st['Scaffold Ledger 2m']['by_site'])
 ck('mixer: 1 in store, 1 at 904', st['Concrete Mixer 350L']['central'] == 1 and st['Concrete Mixer 350L']['by_site'] == {'904': 1}, st['Concrete Mixer 350L'])
-ck('cement: 147 in store, none carried at sites', st['Cement OPC 50kg']['central'] == 147 and st['Cement OPC 50kg']['by_site'] == {}, st['Cement OPC 50kg'])
+ck('cement: 147 in store, and what was sent counted at the sites', st['Cement OPC 50kg']['central'] == 147 and sum(st['Cement OPC 50kg']['by_site'].values()) > 0, st['Cement OPC 50kg'])
 at904 = c.get('/store/at-site?site=904', headers=KEEPER).json()
 ck('904 holds the scaffolding and the mixer, and shows cement as last sent',
-   {r['name'] for r in at904['rows']} == {'Scaffold Ledger 2m', 'Concrete Mixer 350L'} and any(r['item_id'] == old_cem['id'] for r in at904['recent']), at904)
+   {r['name'] for r in at904['rows']} >= {'Scaffold Ledger 2m', 'Concrete Mixer 350L'} and any(r['item_id'] == old_cem['id'] for r in at904['recent']), at904)
 hist = c.get(f"/store/movements?item_id={scaff['id']}", headers=KEEPER).json()
 ck('the ledger holds every scaffolding movement', len(hist) == 5, len(hist))
 
