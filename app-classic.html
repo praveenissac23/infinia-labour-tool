@@ -1907,7 +1907,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                  z-index:200; text-align:left;">
               <div style="padding:10px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
                 <strong style="font-size:13.5px;">Notifications</strong>
-                <button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="markAllRead()">Mark all read</button>
+                <span style="display:flex; gap:6px;"><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="openNotifPrefs()" title="Choose what this login is told about">Settings</button><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="markAllRead()">Mark all read</button></span>
               </div>
               <div id="bell-list" style="max-height:380px; overflow-y:auto;"></div>
             </div>
@@ -21356,8 +21356,33 @@ function pushExplain() {
 async function notifPaint() {
   const box = document.getElementById("notif-groups"); if (!box) return;
   let d; try { d = await apiCall("/notifications/settings"); } catch (e) { box.innerHTML = ""; return; }
-  box.innerHTML = d.groups.map(g => `<label style="display:flex; gap:8px; align-items:center; font-size:13px; padding:4px 0; ${g.allowed ? "" : "color:#aaa;"}" title="${g.allowed ? "" : "Not available to this login"}">
-    <input type="checkbox" value="${g.id}" ${g.on ? "checked" : ""} ${g.allowed ? "" : "disabled"} style="width:auto;"> ${escapeHtml(g.label)}</label>`).join("");
+  // only the notifications this login's access gives it - a feature added to the login shows here by itself
+  box.innerHTML = d.groups.length ? d.groups.map(g => `<label style="display:flex; gap:8px; align-items:center; font-size:13px; padding:4px 0;">
+    <input type="checkbox" value="${g.id}" ${g.on ? "checked" : ""} style="width:auto;"> ${escapeHtml(g.label)}</label>`).join("")
+    : '<div class="empty-note">Nothing to be notified about with this login\'s access.</div>';
+}
+// Every login chooses its own notifications - also a login that cannot open the Settings page: the same
+// "My notifications" card opens over whatever page it is on, from the bell.
+function openNotifPrefs() {
+  const bp = document.getElementById("bell-panel"); if (bp) bp.style.display = "none";
+  const card = document.getElementById("pg-notif-card"); if (!card) return;
+  if (typeof pgGo === "function" && (CURRENT_ROLE === "admin" || (typeof pgAllowed === "function" && pgAllowed("settings")))) { pgGo("settings"); setTimeout(() => card.scrollIntoView({ block: "start" }), 300); return; }
+  let ov = document.getElementById("notif-pref-ov");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "notif-pref-ov";
+    ov.style.cssText = "position:fixed; inset:0; z-index:9000; background:rgba(20,22,25,.45); display:flex; align-items:flex-start; justify-content:center; padding:60px 14px; overflow:auto;";
+    ov.innerHTML = '<div id="notif-pref-box" style="width:100%; max-width:760px; position:relative;"><button class="btn btn-gray" style="position:absolute; top:12px; right:12px; z-index:2;" onclick="closeNotifPrefs()">Close</button></div>';
+    ov.addEventListener("mousedown", e => { if (e.target === ov) closeNotifPrefs(); });
+    document.body.appendChild(ov);
+  }
+  card._home = card.parentNode; card._next = card.nextSibling;
+  document.getElementById("notif-pref-box").appendChild(card);
+  card.style.margin = "0"; ov.style.display = "flex"; notifPaint();
+}
+function closeNotifPrefs() {
+  const ov = document.getElementById("notif-pref-ov"), card = document.getElementById("pg-notif-card");
+  if (card && card._home) { card._home.insertBefore(card, card._next || null); card.style.margin = ""; }
+  if (ov) ov.style.display = "none";
 }
 async function notifSave() {
   const on = [...document.querySelectorAll("#notif-groups input:checked")].map(i => i.value);

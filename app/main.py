@@ -255,6 +255,10 @@ def seed_on_startup():
             db.rollback(); print("visa files seed:", e)
         _grant_zoho_notice(db)
         try:
+            _grant_new_notif_groups(db)
+        except Exception as e:
+            db.rollback(); print("notification groups:", e)
+        try:
             import zohosync as _zsg
             _n = _zsg.golive_office_skip(db)
             if _n:
@@ -842,6 +846,30 @@ def _docs_office_to_admin(db):
                 keys.append("admin.docs")
             setattr(obj, field, ",".join(keys))
     db.add(models.Setting(key="docs_office_admin_tab", value="1"))
+    db.commit()
+
+
+def _grant_new_notif_groups(db):
+    """A role's notification list is fixed when it is saved, so a notification type added to the app later
+    (Trello, subcontractor PCs, client bills ...) would never reach anyone on a saved role. Each new type is
+    added once to every saved role whose rights can see it; after that the role's own ticks decide."""
+    row = db.query(models.Setting).filter(models.Setting.key == "notif_groups_known").first()
+    known = set((row.value or "").split(",")) if row else {"requests", "purchase", "store", "attendance", "expiry", "pdc", "seccheque", "zoho"}
+    new = [(g, needs) for g, _l, _k, needs in NOTIF_GROUPS if g not in known]
+    if new:
+        for r in db.query(models.AccessRole).all():
+            if r.notif is None:
+                continue                                   # never set up: every type already
+            keys = set(k for k in (r.screens or "").split(",") if k)
+            have = [x for x in (r.notif or "").split(",") if x]
+            add = [g for g, needs in new if g not in have and keys & set(needs)]
+            if add:
+                r.notif = ",".join(have + add)
+    ids = ",".join(g for g, *_ in NOTIF_GROUPS)
+    if row:
+        row.value = ids
+    else:
+        db.add(models.Setting(key="notif_groups_known", value=ids))
     db.commit()
 
 
@@ -13310,7 +13338,13 @@ NOTIF_GROUPS = [
     ("pdc", "PDC cheques due", ("pdc",), ("pdc",)),
     ("seccheque", "Security cheques to collect back", ("seccheque",), ("security_cheques",)),
     ("zoho", "Zoho - lines not in Zoho after 3 days", ("zoho",), ("accounts_zoho",)),
+    ("trello", "Trello - cards you are on, @mentions", ("board",), ("estimation_boards",)),
+    ("subpc", "Subcontractor PCs waiting for you", ("subpc",), ("estimation_projects", "accounts_bank")),
+    ("bills", "Client bills (IPA) waiting for you to sign", ("bill",), ("estimation_projects",)),
+    ("watch", "Activity monitor - risky changes by staff", ("watch",), ("__admin__",)),
 ]
+# A notification type added to the app without a group here is never hidden: it is always shown,
+# rather than being switched off by some other group's tick.
 NOTIF_KIND_GROUP = {k: g for g, _, kinds, _ in NOTIF_GROUPS for k in kinds}
 
 
@@ -13328,15 +13362,16 @@ def notif_groups_for(db, user):
 def notif_filter(db, user, items):
     allowed, off = notif_groups_for(db, user)
     keep = allowed - off
-    return [n for n in items if NOTIF_KIND_GROUP.get(n.get("kind"), "requests") in keep]
+    return [n for n in items if NOTIF_KIND_GROUP.get(n.get("kind")) is None or NOTIF_KIND_GROUP[n.get("kind")] in keep]
 
 
 @app.get("/notifications/settings")
 def notif_settings(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     allowed, off = notif_groups_for(db, user)
     rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS) | {"__admin__"}
-    return {"groups": [{"id": g, "label": l, "allowed": g in allowed and any(r in rights for r in needs),
-                        "on": g in allowed and g not in off} for g, l, _, needs in NOTIF_GROUPS]}
+    # only what this login can have: its access gives it the feature and its role lets it be told
+    return {"groups": [{"id": g, "label": l, "allowed": True, "on": g not in off}
+                       for g, l, _, needs in NOTIF_GROUPS if g in allowed and any(r in rights for r in needs)]}
 
 
 @app.post("/notifications/settings")
@@ -13344,8 +13379,9 @@ def save_notif_settings(payload: dict = Body(...), db: Session = Depends(get_db)
                         user: models.User = Depends(auth.get_current_user)):
     """The person's own switches: which of the allowed groups stay on."""
     on = {str(x) for x in (payload.get("on") or [])}
-    ids = {g for g, *_ in NOTIF_GROUPS}
-    user.notif_off = ",".join(sorted(g for g in ids if g not in on))
+    shown = {g["id"] for g in notif_settings(db=db, user=user)["groups"]}
+    was_off = {x for x in (user.notif_off or "").split(",") if x}
+    user.notif_off = ",".join(sorted((was_off - shown) | {g for g in shown if g not in on}))
     db.commit()
     return notif_settings(db=db, user=user)
 
@@ -13546,7 +13582,6 @@ def get_notifications(db: Session = Depends(get_db),
     out.sort(key=lambda n: (order.get(n["level"], 3), n["when"]), reverse=False)
     out.sort(key=lambda n: n["when"], reverse=True)
     out.sort(key=lambda n: order.get(n["level"], 3))
-    out = notif_filter(db, user, out)
     if "estimation_boards" in allowed:
         try:
             import boards as _kb
@@ -13564,6 +13599,7 @@ def get_notifications(db: Session = Depends(get_db),
             out = estimation.bell_items(db, user) + out
         except Exception as _e:
             print("certificates bell:", _e)
+    out = notif_filter(db, user, out)          # every kind, Trello and Estimation included, follows the ticks
     return {"notifications": out[:60], "count": len(out)}
 
 
