@@ -1683,7 +1683,100 @@ function logForm(kind, l) {
       del: l.id ? async () => { await DEL(`/store/est/logs/${l.id}`); reload(); } : null });
 }
 SECTIONS["site.rfi"] = logSection("rfi");
-SECTIONS["site.submittal"] = logSection("submittal");
+SECTIONS["site.submittal"] = el => submittalSection(el);
+
+// ---------------- Site & technical > Submittals - the material submittal log, as it is kept ----------------
+// Grouped by discipline (CIVIL, ELECTRICAL, PLUMBING, HVAC, SHOP DRAWINGS ...): Sr. No, material, specification,
+// manufacturer / supplier, rev, submitted, reviewed and the consultant's status code. Another supplier for an item
+// sits under it. The status is picked from the codes (the date stamps itself); a row opens its form; remarks are typed in.
+const SUBST = [["Not submitted", "NS", "n", "To submit"], ["Under review", "UR", "b", "Under review"], ["Approved", "A", "g", "Approved"], ["Approved as noted", "AAN", "g", "As noted"], ["Revise & resubmit", "R&R", "a", "Revise"], ["Rejected", "R", "r", "Rejected"]];
+const subCode = s => (SUBST.find(x => x[0] === s) || [s, "", ""])[1];
+function subStatusData(l, s) {
+  const t = today(), d = { status: s };
+  if (s === "Not submitted") { d.sent = null; d.replied = null; d.due = null; }
+  else if (s === "Under review") { if (!l.sent) d.sent = t; d.replied = null; if (!l.due) d.due = addDays(ST.b.rules.submittal_days || 14); }
+  else { if (!l.sent) d.sent = t; if (!l.replied) d.replied = t; }
+  return d;
+}
+function submittalSection(el) {
+  const b = ST.b, f = filt(), t = today();
+  const all = b.logs.filter(l => l.kind === "submittal").sort((x, y) => (x.sort - y.sort) || (x.id - y.id));
+  const isLate = l => l.status === "Under review" && l.due && l.due < t && !l.replied;
+  const list = all.filter(l => (!f || l.status === f || (f === "Overdue" && isLate(l))) && match(l));
+  const groups = [...new Set(all.map(l => l.group || "GENERAL"))];
+  const chips = [["", all.length], ...SUBST.map(([s]) => [s, all.filter(l => l.status === s).length]).filter(([s, n]) => n || s === "Under review"), ["Overdue", all.filter(isLate).length]];
+  el.innerHTML = tools("submittal", { add: `<button class="btn btn-primary" id="sb-add">+ New submittal</button>`,
+      right: `<span class="sb-legend">${SUBST.map(([s, c, tone]) => `<span class="sb-code ${tone}" title="${esc(s)}">${esc(c)}</span>`).join("")}</span><button class="btn btn-plain btn-sm" id="rules" title="Days allowed for the consultant's review - the reply due date is set from it">Review in ${b.rules.submittal_days} days</button>`,
+      chips }) +
+    (list.length ? `<div class="tw sb-wrap"><table class="t sb"><colgroup><col style="width:52px"><col style="width:23%"><col style="width:15%"><col style="width:22%"><col style="width:42px"><col style="width:96px"><col style="width:92px"><col style="width:166px"><col style="width:34px"></colgroup>
+      <thead><tr><th class="c">Sr. No</th><th>Material description</th><th>Specification</th><th>Manufacturer / supplier</th><th class="c">Rev</th><th>Submitted</th><th>Reviewed</th><th>Consultant status</th><th></th></tr></thead>
+      ${groups.map(g => { const rows = list.filter(l => (l.group || "GENERAL") === g); if (!rows.length) return "";
+        let prev = null;
+        return `<tbody><tr class="sb-grp"><td colspan="9"><b>${esc(g)}</b><span class="muted small"> ${rows.length} line${rows.length === 1 ? "" : "s"}</span><button class="btn btn-ghost btn-sm" data-sbadd="${esc(g)}">+ Add to ${esc(g.toLowerCase())}</button></td></tr>
+          ${rows.map(l => { const alt = prev && l.item_no && l.item_no !== "*" && prev.item_no === l.item_no && prev.title === l.title; prev = l;
+            const tone = (SUBST.find(x => x[0] === l.status) || [])[2] || "";
+            return `<tr class="sb-row ${isLate(l) ? "late-row" : ""} ${alt ? "alt" : ""} ${l.item_no === "*" ? "part" : ""}" data-sbrow="${l.id}">
+              <td class="c"><b>${alt ? "" : esc(l.item_no || "")}</b></td>
+              <td>${alt ? `<span class="muted small">&#8627; another supplier</span>` : `<span class="t1">${esc(l.title)}</span>`}${l.note ? `<div class="sb-note" title="${esc(l.note)}">${esc(l.note)}</div>` : ""}</td>
+              <td>${esc(l.spec || "")}</td><td>${esc(l.supplier || "")}</td><td class="c">${esc(l.rev || "")}</td>
+              <td class="nowrap">${l.sent ? dt(l.sent) : '<span class="muted">-</span>'}${isLate(l) ? `<div class="due late">${Math.round((new Date(t) - new Date(l.due)) / 864e5)} days late</div>` : ""}</td>
+              <td class="nowrap">${l.replied ? dt(l.replied) : '<span class="muted">-</span>'}</td>
+              <td>${l.status || (l.item_no !== "*" && !l.sent) ? `<select class="sb-st ${tone}" data-sbst="${l.id}" title="The consultant's status - picking it puts today's date in where it is still empty">
+                ${SUBST.map(([s, c, , sh]) => `<option value="${esc(s)}" ${l.status === s ? "selected" : ""} title="${esc(s)}">${esc(c)} · ${esc(sh)}</option>`).join("")}${l.status ? "" : '<option value="" selected>- (heading)</option>'}</select>` : ""}
+                ${l.status === "Revise & resubmit" ? `<button class="btn btn-ghost btn-sm" data-resub="${l.id}">Resubmit as rev ${(+l.rev || 0) + 1}</button>` : ""}</td>
+              <td class="r"><button class="ico" data-sbedit="${l.id}" title="Open">&#9998;</button></td></tr>`; }).join("")}</tbody>`; }).join("")}
+      </table></div>` : `<div class="empty">No submittals${f ? " here" : " yet"}. Press <b>+ New submittal</b>.</div>`);
+  bindTools(el, () => submittalSection(el));
+  $("#rules", el).onclick = rulesForm;
+  $("#sb-add", el).onclick = () => submittalForm(null, groups[groups.length - 1] || "CIVIL");
+  $$("[data-sbadd]", el).forEach(x => x.onclick = e => { e.stopPropagation(); submittalForm(null, x.dataset.sbadd); });
+  $$("[data-sbst]", el).forEach(x => { x.onclick = e => e.stopPropagation(); x.onchange = async () => {
+    const l = all.find(y => y.id === +x.dataset.sbst); if (!l || !x.value) return;
+    try { await PATCH(`/store/est/logs/${l.id}`, subStatusData(l, x.value)); await reload(); toast(`${l.title.slice(0, 40)}: ${subCode(x.value)} - ${x.value}`); } catch (e2) { fail(e2); } }; });
+  $$("[data-resub]", el).forEach(x => x.onclick = e => { e.stopPropagation(); const l = all.find(y => y.id === +x.dataset.resub);
+    quickLog(l.id, { rev: String((+l.rev || 0) + 1), status: "Under review", sent: today(), replied: null, due: addDays(b.rules.submittal_days) }, `Resubmitted - rev ${(+l.rev || 0) + 1}, under review`); });
+  bindLogCells(el);
+  $$("[data-sbedit]", el).forEach(x => x.onclick = e => { e.stopPropagation(); submittalForm(all.find(l => l.id === +x.dataset.sbedit)); });
+  $$("[data-sbrow]", el).forEach(r => r.onclick = e => { if (e.target.closest("input,select,button,a")) return; submittalForm(all.find(l => l.id === +r.dataset.sbrow)); });
+}
+function submittalForm(l, group) {
+  const b = ST.b, all = b.logs.filter(x => x.kind === "submittal"), edit = !!(l && l.id); l = l || {};
+  const groups = [...new Set(all.map(x => x.group).filter(Boolean))];
+  const g = l.group || group || groups[groups.length - 1] || "CIVIL";
+  const nums = all.map(x => parseInt(x.item_no, 10)).filter(n => !isNaN(n));
+  const fields = [
+    { k: "group", label: "Discipline", type: "combo", options: groups.length ? groups : ["CIVIL", "ELECTRICAL", "PLUMBING", "HVAC", "SHOP DRAWINGS"], value: g, tip: "The heading it sits under on the log - pick one, or type a new one." },
+    { k: "item_no", label: "Sr. No", value: edit ? (l.item_no || "") : String((nums.length ? Math.max(...nums) : 0) + 1), tip: "As on the log. Another supplier for the same item: give it the same Sr. No. A part of an item (e.g. the MEP drawings): *." },
+    { k: "title", label: "Material description", value: l.title || "", full: true, focus: true },
+    { k: "spec", label: "Specification", value: l.spec || "", ph: "e.g. C45/20, Jindal FY460, Ducab" },
+    { k: "supplier", label: "Manufacturer / supplier", type: "combo", options: [...new Set(all.map(x => x.supplier).filter(Boolean))].sort(), value: l.supplier || "" },
+    { k: "rev", label: "Rev", type: "select", options: ["", "0", "1", "2", "3", "4", "5", "6"], value: l.rev ?? (edit ? "" : "0") },
+    { k: "status", label: "Consultant status", type: "select", options: SUBST.map(x => x[0]), value: l.status || (edit ? "" : "Under review") },
+    { k: "sent", label: "Submitted", type: "date", value: l.sent || (edit ? "" : today()) },
+    { k: "replied", label: "Reviewed", type: "date", value: l.replied || "" },
+    { k: "ref", label: "Transmittal / ref. no.", value: l.ref || "" },
+    { k: "note", label: "Remarks", type: "area", full: true, value: l.note || "", ph: "Consultant's comments, what is pending - everyone on the project sees it" },
+  ];
+  modal(edit ? `${l.item_no ? "Sr. No " + l.item_no + " - " : ""}${l.title}` : "New submittal", fields, async v => {
+    v.group = (v.group || "").trim().toUpperCase();
+    if (!v.title.trim()) throw new Error("Type the material.");
+    if (v.status === "Not submitted") { v.sent = v.sent || null; v.replied = null; }
+    if (v.sent && !v.replied && v.status === "Under review" && !(l.due)) v.due = addDays(b.rules.submittal_days || 14, v.sent);
+    if (edit) await PATCH(`/store/est/logs/${l.id}`, v);
+    else {
+      // it goes in its place on the log: under its item (another supplier), else at the end of its discipline
+      const same = all.filter(x => (x.group || "") === v.group).sort((a, c) => a.sort - c.sort);
+      const item = v.item_no ? same.filter(x => x.item_no === v.item_no) : [];
+      const after = (item.length ? item[item.length - 1] : same[same.length - 1]) || null;
+      await POST("/store/est/logs", Object.assign(v, { kind: "submittal", project_id: ST.pid, party: "Consultant", discipline: v.group }, after ? { after: after.id } : {}));
+    }
+    await reload(); toast(edit ? "Saved" : "Submittal added");
+  }, { wide: true, save: edit ? "Save" : "Add submittal",
+       extra: edit ? `<button class="btn btn-plain" id="sb-alt" title="The same item with another manufacturer / supplier - added under it">+ Another supplier</button>` : "",
+       after: () => { const a = $("#sb-alt"); if (a) a.onclick = async () => { if (!(await closeModal())) return;
+         submittalForm({ group: l.group, item_no: l.item_no, title: l.title, spec: l.spec, rev: "0", status: "Under review", sent: today() }); }; },
+       del: edit ? async () => { await DEL(`/store/est/logs/${l.id}`); await reload(); } : null });
+}
 
 // ---------------- Site & technical > NOCs & approvals (the project tracker) ----------------
 SECTIONS["site.approval"] = el => {
@@ -1837,6 +1930,6 @@ function drawPay() {
       async v => { await POST(`/store/est/subpcs/${r.pc_id}/step`, Object.assign({ step: "Paid" }, v)); await loadPay(); toast("Marked paid - Estimation is told"); }); });
   $$("[data-pundo]").forEach(b => b.onclick = async () => { try { await POST(`/store/est/subpcs/${b.dataset.pundo}/step`, { step: "Paid", undo: true }); await loadPay(); toast("Back to pay"); } catch (e) { fail(e); } });
 }
-function addDays(n) { const d = new Date(today() + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function addDays(n, from) { const d = new Date((from || today()) + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 start();

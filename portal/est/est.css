@@ -660,3 +660,26 @@ th.sortable:hover { color: var(--red); }
 .sv-box tr[data-r] { cursor: pointer; }
 .sv-box tr.sel td { box-shadow: inset 0 2px 0 #C0392B, inset 0 -2px 0 #C0392B; }
 .sv-box tr.sel td.ed { box-shadow: inset 0 2px 0 #C0392B, inset 0 -2px 0 #C0392B, inset 0 0 0 1px #9DB8E0; }
+/* Site & technical > Submittals - the material submittal log */
+table.sb { table-layout: fixed; width: 100%; min-width: 960px; }
+table.sb th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+table.sb td { vertical-align: middle; padding-top: 7px; padding-bottom: 7px; line-height: 1.35; overflow-wrap: anywhere; }
+table.sb tr.sb-grp td { background: #F4EFEA; padding: 8px 10px; border-top: 1px solid #E3D9D3; }
+table.sb tr.sb-grp b { letter-spacing: .5px; font-size: 12.5px; color: #4A3F38; }
+table.sb tr.sb-grp .btn { float: right; }
+table.sb tr.sb-row { cursor: pointer; }
+table.sb tr.sb-row:hover td { background: #FBF8F5; }
+table.sb tr.alt td { background: #FCFBF9; border-top-color: transparent; }
+table.sb tr.part td:nth-child(2) { padding-left: 22px; }
+table.sb .t1 { font-weight: 600; color: #22262A; }
+select.sb-st { width: 100%; height: 30px; border-radius: 15px; border: 1px solid #D5D9DE; padding: 0 4px 0 10px; font: 600 12px inherit; background: #fff; cursor: pointer; }
+select.sb-st.g { background: #EAF6EE; border-color: #BFE0C9; color: #1F6B3A; }
+select.sb-st.a { background: #FFF4DE; border-color: #F0D49A; color: #8A5A00; }
+select.sb-st.r { background: #FDECEA; border-color: #F2C1BC; color: #A3281E; }
+select.sb-st.b { background: #EAF1FC; border-color: #C3D5F3; color: #234E9A; }
+select.sb-st.n { background: #F3F3F3; border-color: #DDD; color: #666; }
+table.sb .resub { margin-top: 4px; }
+.sb-legend { display: inline-flex; gap: 4px; margin-right: 8px; }
+.sb-code { font: 700 10.5px inherit; padding: 2px 6px; border-radius: 6px; background: #F3F3F3; color: #555; }
+.sb-code.g { background: #EAF6EE; color: #1F6B3A; } .sb-code.a { background: #FFF4DE; color: #8A5A00; } .sb-code.r { background: #FDECEA; color: #A3281E; } .sb-code.b { background: #EAF1FC; color: #234E9A; }
+.sb-note { margin-top: 3px; font-size: 12px; color: #8A5A00; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

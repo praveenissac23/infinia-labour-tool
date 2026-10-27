@@ -13887,6 +13887,7 @@ try:
     estimation.fill_plots(SessionLocal)              # each project's plot no. from its site (once)
     estimation.migrate_pc_flow(SessionLocal)         # certificates on the old steps moved onto the new approval way (once)
     estimation.fill_authority(SessionLocal)          # authority fees out of the remarks of bills brought in (once)
+    estimation.submittal_codes(SessionLocal)         # submittals onto the consultant's codes NS / UR / A / AAN / R&R / R (once)
     estimation.drop_qs_log_refs(SessionLocal)        # "QS log ref. ..." taken off variation remarks (once)
     import est_bills
     est_bills.create_tables(engine)                  # Bills: formats and monthly bills

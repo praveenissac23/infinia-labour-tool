@@ -187,11 +187,11 @@ def create(db):
                 add(E.EstLog(project_id=p.id, kind="rfi", seq=n, title=title, party=party, discipline="Civil", ref=f"RFI-{n:03d}",
                              sent=ago(sent), due=ago(sent - 7), replied=ago(rep) if rep else None, status=st, sort=n))
         if not db.query(E.EstLog).filter(E.EstLog.project_id == p.id, E.EstLog.kind == "submittal").first():
-            for n, (title, disc, sent, st, rep) in enumerate([("Material submittal - porcelain tiles", "Finishes", 35, "Approved", 25),
-                                                               ("Shop drawing - aluminium & glazing", "Facade", 20, "Revise & resubmit", 12),
-                                                               ("Material submittal - VRF indoor units", "MEP", 6, "Submitted", None)], 1):
-                add(E.EstLog(project_id=p.id, kind="submittal", seq=n, title=title, party="Consultant", discipline=disc, ref=f"SUB-{n:03d}", rev="00",
-                             sent=ago(sent), due=ago(sent - 10), replied=ago(rep) if rep else None, status=st, sort=n))
+            for n, (title, disc, sent, st, rep, spec, sup) in enumerate([("Porcelain tiles", "FINISHES", 35, "Approved", 25, "60x120 matt", "RAK Ceramics"),
+                                                                         ("Aluminium & glazing", "FACADE", 20, "Revise & resubmit", 12, "Thermal break system", "Alumil"),
+                                                                         ("VRF indoor units", "HVAC", 6, "Under review", None, "Ducted, 4.5 kW", "Daikin")], 1):
+                add(E.EstLog(project_id=p.id, kind="submittal", seq=n, group=disc, item_no=str(n), title=title, spec=spec, supplier=sup, party="Consultant",
+                             discipline=disc.title(), ref=f"SUB-{n:03d}", rev="0", sent=ago(sent), due=ago(sent - 10), replied=ago(rep) if rep else None, status=st, sort=n))
         # ---------------- NOCs & approvals, finalization log (only where not yet set up) ----------------
         appr = db.query(E.EstLog).filter(E.EstLog.project_id == p.id, E.EstLog.kind == "approval").order_by(E.EstLog.sort).all()
         if appr and all((a.status or "Not started") == "Not started" and not a.sent for a in appr):

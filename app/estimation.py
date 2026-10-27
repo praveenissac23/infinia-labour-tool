@@ -326,6 +326,11 @@ class EstLog(Base):
     status = Column(String, default="Open")
     note = Column(Text, default="")
     sort = Column(Integer, default=0)
+    # submittals, as on the material submittal log: Sr. No (as written: 14, *), specification, manufacturer / supplier;
+    # `group` is the discipline heading (CIVIL, ELECTRICAL ...); another supplier for an item has the same item_no
+    item_no = Column(String, default="")
+    spec = Column(String, default="")
+    supplier = Column(String, default="")
     locals().update(_audit())
 
 
@@ -442,6 +447,22 @@ def fill_authority(SessionLocal):
         db.close()
 
 
+def submittal_codes(SessionLocal):
+    """Once: submittals onto the consultant's codes - Preparing -> Not submitted, Submitted -> Under review."""
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == "est_sub_codes").first():
+            return
+        for old, new in (("Preparing", "Not submitted"), ("Submitted", "Under review")):
+            db.query(EstLog).filter(EstLog.kind == "submittal", EstLog.status == old).update({EstLog.status: new}, synchronize_session=False)
+        db.add(models.Setting(key="est_sub_codes", value="1"))
+        db.commit()
+    except Exception as e:
+        db.rollback(); print("submittal codes:", e)
+    finally:
+        db.close()
+
+
 def fill_plots(SessionLocal):
     """Once: every project's plot no. from its site (Settings > Companies & sites), for the payment certificates."""
     db = SessionLocal()
@@ -554,10 +575,12 @@ FINAL_ITEMS = {
                  "Boundary Wall Railing & Gate"],
 }
 
+SUB_CODE = {"Not submitted": "NS", "Under review": "UR", "Approved": "A", "Approved as noted": "AAN", "Revise & resubmit": "R&R", "Rejected": "R"}
 LOG_STATUS = {
     "rfi": ["Open", "Answered", "Closed"],
     "approval": ["Not started", "Submitted", "Approved", "Rejected", "N/A"],
-    "submittal": ["Preparing", "Submitted", "Approved", "Approved as noted", "Revise & resubmit", "Rejected"],
+    # the consultant's status codes on the material submittal log: NS, UR, A, AAN, R&R, R
+    "submittal": ["Not submitted", "Under review", "Approved", "Approved as noted", "Revise & resubmit", "Rejected"],
     "doc": ["Current", "Superseded"],
 }
 LOG_PREFIX = {"rfi": "RFI", "approval": "AP", "submittal": "SUB", "doc": "DOC"}
@@ -692,7 +715,7 @@ KINDS = {
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
                                    "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
     "logs": (EstLog, "project_id", {"kind": S, "seq": I, "group": S, "title": S, "party": S, "discipline": S, "ref": S, "rev": S,
-                                    "sent": D, "due": D, "replied": D, "status": S, "note": S, "sort": I}),
+                                    "sent": D, "due": D, "replied": D, "status": S, "note": S, "sort": I, "item_no": S, "spec": S, "supplier": S}),
     "finals": (EstFinal, "project_id", {"section": S, "item": S, "sc": S, "rt": S, "sd": S, "ma": S, "aa": S, "st": S,
                                         "sub_id": I, "note": S, "sort": I}),
     "tenders": (EstTender, None, {"seq": I, "name": S, "client": S, "consultant": S, "location": S, "kind": S, "received": D,
@@ -1032,7 +1055,7 @@ def project_bundle(db, p, rules=None, pre=None):
     boq_value = r2(sum(boq_counted(b) for b in boq))
     boq_cost_ = r2(sum(boq_cost(b) for b in boq))
     t = today()
-    open_logs = [l for l in logs if l.status in ("Open", "Submitted", "Preparing", "Not started", "Revise & resubmit")]
+    open_logs = [l for l in logs if l.status in ("Open", "Submitted", "Preparing", "Not started", "Revise & resubmit", "Under review", "Not submitted")]
     overdue = [l for l in open_logs if l.due and l.due < t and l.kind != "approval"]
     proj = _plain(p, KINDS["projects"][2])
     contract = p.contract_value or pp_contract or boq_value
@@ -1219,7 +1242,7 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
                             "payable": pc["payable"], "this": pc["this"], "flow": pc["flow"]}
                     queue.append(item)
         for l in b["logs"]:
-            if l["status"] in ("Open", "Submitted", "Preparing", "Revise & resubmit") and l["due"] and l["due"] < t.isoformat() and l["kind"] != "approval":
+            if l["status"] in ("Open", "Submitted", "Preparing", "Revise & resubmit", "Under review") and l["due"] and l["due"] < t.isoformat() and l["kind"] != "approval":
                 late.append({"project_id": p.id, "code": p.code, "kind": l["kind"], "id": l["id"], "no": f'{LOG_PREFIX.get(l["kind"], "")}-{l["seq"]:03d}',
                              "title": l["title"], "party": l["party"], "due": l["due"]})
         matrix.append({"id": p.id, "code": p.code, "finals": {f["item"]: {"sc": f["sc"], "st": f["st"]} for f in b["finals"]}})
@@ -1513,11 +1536,18 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
             row.seq = _next_seq(db, EstLog, project_id=row.project_id, kind=row.kind)
         if not row.status:
             row.status = LOG_STATUS[row.kind][0]
-        if row.sent is None and "sent" not in data and row.kind in ("rfi", "submittal"):
+        if row.sent is None and "sent" not in data and (row.kind == "rfi" or (row.kind == "submittal" and row.status != "Not submitted")):
             row.sent = t
         if row.due is None and row.sent and row.kind in ("rfi", "submittal"):
             row.due = row.sent + timedelta(days=_rules(db)["rfi_days" if row.kind == "rfi" else "submittal_days"])
-        row.sort = (db.query(func.max(EstLog.sort)).filter(EstLog.project_id == row.project_id, EstLog.kind == row.kind).scalar() or 0) + 1
+        after = db.get(EstLog, int(data["after"])) if str(data.get("after") or "").isdigit() else None
+        if after is not None and after.project_id == row.project_id and after.kind == row.kind:
+            # in its place on the log (another supplier under its item, a line at the end of its discipline)
+            db.query(EstLog).filter(EstLog.project_id == row.project_id, EstLog.kind == row.kind, EstLog.sort > after.sort).update(
+                {EstLog.sort: EstLog.sort + 1}, synchronize_session=False)
+            row.sort = after.sort + 1
+        else:
+            row.sort = (db.query(func.max(EstLog.sort)).filter(EstLog.project_id == row.project_id, EstLog.kind == row.kind).scalar() or 0) + 1
     elif kind == "tenders":
         if not data.get("seq"):
             row.seq = _next_seq(db, EstTender)
@@ -2591,6 +2621,10 @@ def _export_rows(db, what, p, q, status, sub_id):
             if what == "approval":
                 r.update({"Stage": l["group"], "Item": l["title"], "Authority": l["party"], "Submitted": _d(l["sent"]),
                           "Approved": _d(l["replied"]), "Ref.": l["ref"], "Status": l["status"], "Note": l["note"]})
+            elif what == "submittal":                 # as the material submittal log is laid out
+                r = {"Discipline": l["group"], "Sr. No": l.get("item_no") or "", "Material description": l["title"], "Specification": l.get("spec") or "",
+                     "Manufacturer / supplier": l.get("supplier") or "", "Rev": l["rev"], "Submitted": _d(l["sent"]), "Reviewed": _d(l["replied"]),
+                     "Consultant status": SUB_CODE.get(l["status"], "") + (" - " + l["status"] if l["status"] else ""), "Remarks": l["note"]}
             else:
                 r.update({"Subject": l["title"], "To / from": l["party"], "Discipline": l["discipline"], "Ref.": l["ref"], "Rev.": l["rev"],
                           "Sent": _d(l["sent"]), "Due": _d(l["due"]), "Reply": _d(l["replied"]), "Status": l["status"], "Note": l["note"]})
