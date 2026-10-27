@@ -138,6 +138,33 @@
         .filter(v => has(v[3])).forEach(([view, group, label]) => out.push({ id: `pv:${view}:${group}`, kind: "Page", title: label, where: "Staff",
           go: { page: "people", view, group }, hay: `staff people employees ${label} ${view === "vacation" ? "leave vacation holiday" : ""}` }));
     }
+    // Estimation: each section of a project (it is one page in a frame - its sections are not tabs of the app)
+    const estTab = id => { try { const pg = ALL_PAGES.estimation, t = pg && pg.tabs.find(x => x.id === id); return !!(t && tabOk(t)); } catch (e) { return false; } };
+    if (estTab("estproj")) [
+      ["home.dash", "Project dashboard", "contract, certified, received, client payment certificates, authority payments, subcontractors at a glance"],
+      ["client.boq", "BOQ & budget", "boq budget internal estimate trades excluded phase 2"],
+      ["subs.reg", "Subcontract register", "subcontractor subcontract lpo agreement value retention advance register"],
+      ["subs.inv", "Invoice tracker", "subcontractor invoice received send to site certified prepared approve verified send to md approve pay"],
+      ["subs.pcs", "Payment certificates (subcontractors)", "pc payment certificate subcontractor certify sheet lines deductions sign"],
+      ["subs.final", "Finalization log", "finalization final account trades closed"],
+      ["site.rfi", "RFI log", "rfi request for information consultant reply"],
+      ["site.approval", "NOCs & approvals", "noc approval authority dewa civil defence municipality permit"],
+      ["site.submittal", "Submittals", "submittal material submittal log consultant approved approved as noted revise resubmit rejected sr no supplier"],
+      ["site.vo", "Variations (client)", "variation vo client variation log approved pending"],
+      ["bills.ipa", "Bills to client (IPA)", "bill ipa interim payment application monthly bill client consultant work done previous bills format"],
+      ["prev.rec", "Previous records", "previous records old bills pcs contracts variations bring in going live delete duplicate"],
+    ].forEach(([k, l, h]) => out.push({ id: "es:" + k, kind: "Page", title: l, where: "Estimation › Projects", go: { page: "estimation", tab: "estproj", est: k }, hay: `estimation project ${l} ${h}` }));
+    if (estTab("boards")) [
+      [{ kb: "home" }, "Trello boards", "trello boards kanban"],
+      [{ kb: "board", kbView: "calendar" }, "Trello calendar", "trello calendar due dates schedule power-up"],
+      [{ kb: "board", kbView: "timeline" }, "Trello timeline (Gantt)", "trello timeline gantt start due power-up"],
+      [{ kb: "board", kbView: "table" }, "Trello table", "trello table all cards list power-up"],
+      [{ kb: "board", kbView: "dashboard" }, "Trello dashboard (workload)", "trello dashboard workload charts progress power-up"],
+      [{ kb: "board", kbView: "mindmap" }, "Trello mind map", "trello mind map power-up"],
+      [{ kb: "powerups" }, "Trello power-ups", "trello power-ups power ups time tracking priority story points custom fields voting repeater calendar timeline"],
+      [{ kb: "planner" }, "Trello planner", "trello planner my week due"],
+      [{ kb: "inbox" }, "Trello inbox", "trello inbox jot quick capture"],
+    ].forEach(([g, l, h], i) => out.push({ id: "kb:" + i, kind: "Page", title: l, where: "Estimation › Trello", go: Object.assign({ page: "estimation", tab: "boards" }, g), hay: `estimation ${l} ${h}` }));
     // Tasks: what each written guide is for, opened at the page it happens on.
     (window.HELP_GUIDES || []).filter(allowed).forEach(g => out.push({ id: "fn:" + g.id, kind: "Task", title: g.title.replace(/^How to /i, "").replace(/^\w/, c => c.toUpperCase()),
       where: g.area, go: g.go, hay: `${g.title} ${g.words || ""} ${g.area || ""}`, guide: g }));
@@ -175,6 +202,7 @@
     if (!el) { window.scrollTo({ top: 0 }); return; }
     el.scrollIntoView({ block: "center" });          // straight there - no slow glide
     el.classList.add("help-flash"); setTimeout(() => el.classList.remove("help-flash"), 1800);
+    if (el.ownerDocument !== document) { const o = el.style.outline; el.style.outline = "3px solid #C0392B"; el.style.outlineOffset = "3px"; setTimeout(() => { el.style.outline = o; }, 1800); }
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !el.disabled) { try { el.focus({ preventScroll: true }); } catch (e) {} }
   }
   function renderResults() {
@@ -254,6 +282,8 @@
     if (!PAGE || PAGE.key !== go.page) { pgGo(go.page); await frame(); }
     if (go.tab && !(PG_TAB && PG_TAB.id === go.tab && !go.sub)) { pgTab(go.tab); await frame(); }
     if (go.sub && !(PG_SUB && PG_SUB.id === go.sub)) { pgSub(go.sub); await frame(); }
+    if (go.est) await goEst(go);           // a section of a project in Estimation
+    if (go.kb) await goKb(go);             // Trello: a board, one of its views, a card
     if (go.view) {                         // a view inside the Staff page
       for (let i = 0; i < 30; i++) {
         const f = document.getElementById("pg-staff-frame"), w = f && f.contentWindow;
@@ -266,16 +296,81 @@
       }
     }
   }
+  // Estimation > Projects: open a section (subs.inv, bills.ipa, site.submittal...) of the project open now.
+  async function goEst(go) {
+    const [group, sec] = String(go.est).split(".");
+    const id = "pg-estproj-frame";
+    try { const w0 = document.getElementById(id).contentWindow; w0.eval("(function(){ var b = document.getElementById('big'); if (b && !b.classList.contains('hide') && typeof closeBig === 'function') { if (typeof guardOff === 'function') guardOff('big'); closeBig(null, 'swap'); } })()"); } catch (e) {}
+    const msg = { est: "open", group, sec, pid: go.pid || undefined };
+    if (typeof pgEstFrame === "function") pgEstFrame(id, msg);
+    let sent = 0;
+    for (let i = 0; i < 100; i++) {                  // until the section is drawn (a frame still loading misses the first word: say it again)
+      const f = document.getElementById(id), w = f && f.contentWindow;
+      let st = null; try { st = w && w.eval("typeof ST !== 'undefined' && ST.meta && ST.picker ? ST : null"); } catch (e) {}
+      if (st && st.pid && st.group === group && st.sec === sec && w.document.querySelector("#pbody .card, #pbody table, #pbody .empty")) break;
+      if (st && st.pid && (st.group !== group || st.sec !== sec) && Date.now() - sent > 900) { try { w.postMessage(msg, location.origin); } catch (e) {} sent = Date.now(); }
+      await wait(100);
+    }
+    await wait(500);
+    if (go.est2) {                                    // then a step inside it (open a bill, the first certificate...)
+      const f = document.getElementById(id), w = f && f.contentWindow;
+      try { await w.eval(go.est2); } catch (e) {}
+      await wait(1200);
+    }
+  }
+  // Trello: the most recently opened board (or the first), then a view or the first card.
+  async function goKb(go) {
+    for (let i = 0; i < 60; i++) {
+      const f = document.getElementById("pg-boards-frame"), w = f && f.contentWindow;
+      let S = null; try { S = w && typeof w.go === "function" ? w.eval("typeof S !== 'undefined' && S.me ? S : null") : null; } catch (e) {}
+      if (S) {
+        try {
+          if (go.kb === "home") { w.go("#/boards"); }
+          else if (go.kb === "planner" || go.kb === "inbox") { const b = w.document.getElementById("dk-" + go.kb); if (b) b.click(); }
+          else {
+            if (!S.board) {
+              const r = await (await fetch("/store/kb/boards", { headers: { Authorization: "Bearer " + sessionStorage.getItem("infinia_token") } })).json();
+              const b = (r.boards || []).filter(x => !x.closed && !x.is_template && !x.inbox)[0];
+              if (b) { w.go(`#/b/${b.id}`); await wait(1500); }
+            }
+            if (go.kbView && typeof w.setView === "function") { w.setView(go.kbView); await wait(700); }
+            if (go.kb === "card" && S.board) { const c = w.document.querySelector(".card[data-c]"); if (c) { c.click(); await wait(1200); } }
+            if (go.kb === "powerups" && typeof w.boardMenu === "function") { w.boardMenu("powerups"); await wait(600); }
+          }
+        } catch (e) {}
+        return;
+      }
+      await wait(100);
+    }
+  }
   // The box a task starts at, as soon as its screen has drawn it.
   async function waitFor(sel, ms) {
     const end = Date.now() + (ms || 2500);
     while (Date.now() < end) { const el = find(sel); if (el) return el; await wait(40); }
     return null;
   }
-  const visible = el => !!(el && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+  const visible = el => !!(el && el.getClientRects().length && (el.ownerDocument.defaultView || window).getComputedStyle(el).visibility !== "hidden");
+  // The open screen's frames (Estimation, Trello, Staff, Accounts > Subcontractor payments) - a guide's button
+  // may be inside one.
+  function frameDocs() {
+    const out = [];
+    document.querySelectorAll(".screen.active iframe").forEach(f => { try { if (f.contentDocument && f.offsetParent) out.push(f.contentDocument); } catch (e) {} });
+    return out;
+  }
   function find(sel) {
     if (!sel) return null;
-    try { return [...document.querySelectorAll(sel)].find(visible) || null; } catch (e) { return null; }
+    try {
+      const here = [...document.querySelectorAll(sel)].find(visible); if (here) return here;
+      for (const d of frameDocs()) { const x = [...d.querySelectorAll(sel)].find(visible); if (x) return x; }
+    } catch (e) {}
+    return null;
+  }
+  // Where a button is on the screen - inside a frame, the frame's own place is added.
+  function rectOf(el) {
+    const r = el.getBoundingClientRect(), fr = el.ownerDocument !== document && el.ownerDocument.defaultView ? el.ownerDocument.defaultView.frameElement : null;
+    if (!fr) return r;
+    const o = fr.getBoundingClientRect();
+    return { left: r.left + o.left, top: r.top + o.top, right: r.right + o.left, bottom: r.bottom + o.top, width: r.width, height: r.height };
   }
   let T = null;
   async function tour(g, start) {
@@ -309,7 +404,10 @@
     if (s.el && !el) el = await waitFor(s.el, 2500);
     T.el = el;
     T.missing = !!(s.el && !el);
-    if (el) { el.scrollIntoView({ block: "center", inline: "nearest" }); await wait(250); }
+    if (el) {
+      el.scrollIntoView({ block: "center", inline: "nearest" }); await wait(250);
+      if (el.ownerDocument !== document && !T.fw) { T.fw = el.ownerDocument; T.fw.addEventListener("scroll", place, true); }   // the frame scrolls on its own
+    }
     T.tip.innerHTML = `<div class="help-bn">Step ${i + 1} of ${g.steps.length}</div>
       <div class="help-bt">${esc(s.say)}</div>
       <div class="help-bb">
@@ -333,7 +431,7 @@
       return;
     }
     dim.style.display = "none"; ring.style.display = "block";
-    const r = el.getBoundingClientRect(), p = 6;
+    const r = rectOf(el), p = 6;
     Object.assign(ring.style, { left: r.left - p + "px", top: r.top - p + "px", width: r.width + 2 * p + "px", height: r.height + 2 * p + "px" });
     const tw = Math.min(360, W - 24), th = tip.offsetHeight || 140;
     let top = r.bottom + p + 12;
@@ -346,6 +444,7 @@
     if (!T) return;
     ["ring", "dim", "tip"].forEach(k => T[k] && T[k].remove());
     window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true);
+    if (T.fw) { try { T.fw.removeEventListener("scroll", place, true); } catch (e) {} }
     document.removeEventListener("keydown", keys);
     T = null;
   }

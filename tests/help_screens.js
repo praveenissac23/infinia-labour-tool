@@ -47,6 +47,8 @@ const only = process.argv.slice(2);
     await post('/employees/accounts/invoices', { ...inv, kind: 'proforma', number: `PI/${yy}/920/01`, project_no: '920', client: 'Mrs. Fatima Khalid' });
     await post('/store/petty-cash', { date: today, description: 'Water and ice for site', supplier: 'GRAND MART', site, paid: 150 });
   });
+  // Estimation pictures on the project with the most in it (914 when there)
+  await p.evaluate(async () => { try { const m = await apiCall('/store/est/meta'); const pr = m.projects.find(x => x.code === '914') || m.projects[0]; if (pr) localStorage.setItem('est_pid', pr.id); } catch (e) {} });
   await p.reload(); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3000);
 
   const guides = await p.evaluate(() => HELP_GUIDES.map(g => ({ id: g.id, title: g.title, n: g.steps.length, ok: HELP.allowed(g) })));
@@ -90,9 +92,20 @@ const only = process.argv.slice(2);
           else out.push({ id: `scr-${key}-${t.id}`, page: key, tab: t.id, title: cfg.tabs.length > 1 ? `${cfg.title} > ${t.label}` : cfg.title });
         }
       }
+      // Estimation: every section of a project, and Trello's views - pages inside a frame, not tabs of the app
+      for (const [k, l] of [['home.dash', 'Project dashboard'], ['client.boq', 'BOQ & budget'], ['subs.reg', 'Subcontract register'], ['subs.inv', 'Invoice tracker'],
+                            ['subs.pcs', 'Payment certificates'], ['subs.final', 'Finalization log'], ['site.rfi', 'RFI log'], ['site.approval', 'NOCs & approvals'],
+                            ['site.submittal', 'Submittals'], ['site.vo', 'Variations'], ['bills.ipa', 'Bills to client'], ['prev.rec', 'Previous records']])
+        out.push({ id: 'scr-est-' + k.replace('.', '-'), page: 'estimation', tab: 'estproj', title: `Estimation > Projects > ${l}`, go: { page: 'estimation', tab: 'estproj', est: k } });
+      for (const [v, l] of [['board', 'Board'], ['table', 'Table'], ['calendar', 'Calendar'], ['timeline', 'Timeline'], ['dashboard', 'Dashboard']])
+        out.push({ id: 'scr-kb-' + v, page: 'estimation', tab: 'boards', title: `Estimation > Trello > ${l}`, go: { page: 'estimation', tab: 'boards', kb: 'board', kbView: v } });
       return out;
     });
     for (const sc of screens) {
+      if (sc.go) {                     // a section inside a frame: the app's own "go there"
+        await p.evaluate(async go => { HELP.endTour(); document.querySelectorAll('.help-drawer').forEach(d => d.classList.remove('open')); await HELP.goTo({ go }); }, sc.go);
+        await p.waitForTimeout(2500);
+      } else
       await p.evaluate(async sc => {
         HELP.endTour(); document.querySelectorAll('.help-drawer').forEach(d => d.classList.remove('open'));
         if (PAGE.key !== sc.page) pgGo(sc.page);
@@ -131,7 +144,7 @@ const only = process.argv.slice(2);
       });
       await p.screenshot({ path: path.join(OUT, `${sc.id}-1.jpg`), type: 'jpeg', quality: 68 });
       await p.evaluate(() => document.querySelectorAll('.help-auto-badge').forEach(d => d.remove()));
-      const go = { page: sc.page, tab: sc.tab, ...(sc.sub ? { sub: sc.sub } : {}) };
+      const go = sc.go || { page: sc.page, tab: sc.tab, ...(sc.sub ? { sub: sc.sub } : {}) };
       const first = { say: `This is ${sc.title}. The numbers on the picture match the list below.` };
       if (sc.view) first.run = `var f=document.getElementById('pg-staff-frame'); if (f && f.contentWindow.showView) f.contentWindow.showView('${sc.view}');`;
       autos.push({ id: sc.id, area: 'Every screen', title: sc.title, auto: true,
