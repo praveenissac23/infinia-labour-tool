@@ -160,7 +160,7 @@ function prevPcForm(x, keepSub) {
   const sid = keepSub || f.sub_id || "";
   const fields = [
     { k: "sub_id", label: "Subcontractor", type: "select", noseg: true, full: true, value: sid,
-      options: [["", subs.length ? "- Pick the subcontractor -" : "- None on this project yet: add it below -"], ...subs.map(s => [s.id, `${s.name}${s.scope ? " - " + s.scope : ""}`])] },
+      options: [["", subs.length ? "- Pick the subcontractor -" : "- None on this project yet: add it below -"], ...subs.map(s => [s.id, s.name])] },
     { k: "seq", label: "PC no.", type: "num", value: f.seq ?? "" },
     { k: "pc_type", label: "Type", type: "select", options: ["Interim", "Advance", "Final", "Retention release"], value: "Interim" },
     { k: "inv_ref", label: "Invoice no.", value: f.inv_ref || "" },

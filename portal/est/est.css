@@ -143,7 +143,9 @@ table.t td.neg { color: var(--red); }
 .mfoot .left { margin-right: auto; }
 #drawer { justify-content: flex-end; padding: 0; }
 #modal { z-index: 110; }
-.dbox { background: var(--bg); width: min(1100px, 100%); height: 100%; overflow: auto; box-shadow: -10px 0 40px rgba(0,0,0,.2); }
+.dbox { background: var(--bg); width: 100%; height: 100%; overflow: auto; }   /* a full page, not a half window */
+.dbox .dback { flex: none; border: 1px solid #E3D9D3; background: #fff; color: var(--ink); border-radius: 8px; padding: 6px 12px; font: 600 13px inherit; cursor: pointer; margin-right: 12px; }
+.dbox .dback:hover { border-color: var(--red); color: var(--red); }
 .dbox .mhead { background: #fff; position: sticky; top: 0; z-index: 5; }
 .dbody { padding: 12px 14px 40px; }
 .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
@@ -301,6 +303,14 @@ table.ed textarea { width: 100%; min-width: 240px; padding: 6px 7px; resize: ver
 table.sl input.n, table.de input.n, table.ed input.n { text-align: right; font-variant-numeric: tabular-nums; }
 table.sl input:focus, table.de input:focus, table.ed input:focus, table.ed textarea:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(192,57,43,.1); }
 table.ed tr.var td { background: #FFFBF0; }
+table.ed input::placeholder, table.ed textarea::placeholder { color: #A7ADB4; opacity: 1; }
+table.sched { table-layout: fixed; width: 100%; min-width: 1240px; }
+table.sched th { white-space: normal; line-height: 1.25; padding-left: 6px; padding-right: 4px; vertical-align: bottom; }
+table.sched td { padding: 5px 4px; }
+table.sched input, table.sched select, table.sched textarea { width: 100%; min-width: 0; box-sizing: border-box; color: #22262A; }
+table.sched textarea { min-width: 0; min-height: 32px; }
+table.sched .vcell { display: flex; align-items: center; gap: 6px; }
+table.sched .vcell input[type=checkbox] { width: 16px; height: 16px; flex: none; }
 details.inv { margin-top: 12px; } details.inv summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: #7A3B33; }
 .il { display: flex; gap: 6px; margin: 6px 0; } .il input { height: 32px; border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 8px; }
 .il input:first-child { flex: 1; } .il input.money { width: 130px; text-align: right; }
@@ -569,3 +579,7 @@ tr.late-row td:first-child { box-shadow: inset 3px 0 0 #C0392B; }
 .prog { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6B625A; white-space: nowrap; }
 .prog .bar { width: 140px; }
 @media (max-width: 900px) { .qadd { flex-wrap: wrap; } .qadd select { width: auto; flex: 1; } table.t.lg { table-layout: auto; } }
+
+/* the subcontract page: its tables use the full width without sideways scrolling */
+#drawer .dbody table.t th, #drawer .dbody table.t td { padding-left: 8px; padding-right: 8px; }
+#drawer .dbody table.t td.nowrap .btn + .btn { margin-left: 4px; }

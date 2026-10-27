@@ -159,10 +159,21 @@ function confirmInline(btn) {
 function closeModal() { $("#modal").classList.add("hide"); }
 $("#m-x").onclick = closeModal;
 $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
-function drawer(title, html) { $("#drawer").dataset.ctx = "est.sub"; $("#d-title").innerHTML = title; $("#d-body").innerHTML = html; $("#drawer").classList.remove("hide"); }
-function closeDrawer() { $("#drawer").classList.add("hide"); ST.drawer = null; }
-$("#d-x").onclick = closeDrawer;
-$("#drawer").addEventListener("mousedown", e => { if (e.target.id === "drawer") closeDrawer(); });
+function drawer(title, html) {
+  const was = !$("#drawer").classList.contains("hide");
+  $("#drawer").dataset.ctx = "est.sub"; $("#d-title").innerHTML = title; $("#d-body").innerHTML = html; $("#drawer").classList.remove("hide");
+  document.body.style.overflow = "hidden";
+  if (!was) { try { history.pushState({ estDrawer: 1 }, ""); } catch (e) {} $("#drawer .dbox").scrollTop = 0; }
+}
+function closeDrawer(fromHistory) {
+  $("#drawer").classList.add("hide"); ST.drawer = null; document.body.style.overflow = "";
+  if (!fromHistory && history.state && history.state.estDrawer) { try { history.back(); } catch (e) {} }
+}
+$("#d-x").onclick = () => closeDrawer();
+$("#d-back").onclick = () => closeDrawer();
+// the browser / phone Back button closes the page and returns to the list
+addEventListener("popstate", () => { if (!$("#drawer").classList.contains("hide")) closeDrawer(true); });
+
 document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("#modal").classList.contains("hide")) closeModal(); else if (!$("#drawer").classList.contains("hide")) closeDrawer(); } });
 
 // ---------- Preview / PDF / Excel / Share ----------
@@ -507,7 +518,7 @@ function homeDash(el) {
       </div>
       <div class="card full"><h3>Subcontractors<span class="go" data-go="subs.reg">Open register</span></h3>
         ${b.subs.length ? `<div class="tw"><table class="t"><thead><tr><th>Subcontractor</th><th>Work</th><th class="r">Revised value</th><th>Done</th><th class="r">Certified</th><th class="r">Paid</th><th class="r">To pay</th><th>Status</th></tr></thead><tbody>
-        ${b.subs.map(x => `<tr class="rowc" data-sub="${x.id}"><td><b>${esc(x.name)}</b></td><td>${esc(x.scope)}</td><td class="r">${money(x.revised)}</td><td><div class="bar"><i style="width:${Math.min(100, x.done_pct)}%"></i></div><span class="small muted">${x.done_pct}%</span></td><td class="r">${money(x.certified)}</td><td class="r">${money(x.paid)}</td><td class="r">${money(x.to_pay)}</td><td>${st(x.status)}</td></tr>`).join("")}
+        ${b.subs.map(x => `<tr class="rowc" data-sub="${x.id}"><td><b>${esc(x.name)}</b></td><td>${esc(x.scope)}</td><td class="r">${money(x.revised)}</td><td>${x.remeasure ? '<span class="small muted">re-measured</span>' : `<div class="bar"><i style="width:${Math.min(100, x.done_pct)}%"></i></div><span class="small muted">${x.done_pct}%</span>`}</td><td class="r">${money(x.certified)}</td><td class="r">${money(x.paid)}</td><td class="r">${money(x.to_pay)}</td><td>${st(x.status)}</td></tr>`).join("")}
         </tbody></table></div>` : '<div class="muted small">No subcontracts yet.</div>'}
       </div>
       <div class="card full"><h3>Invoices in hand<span class="go" data-go="subs.inv">Open tracker</span></h3>
@@ -601,7 +612,7 @@ SECTIONS["subs.reg"] = el => {
   el.innerHTML = tools("subs", { add: `<button class="btn btn-primary" id="add-sub">+ Subcontract / LPO</button>`, chips: [["", b.subs.length], ["Active", stc("Active")], ["Completed", stc("Completed")], ["Closed", stc("Closed")], ["Cancelled", stc("Cancelled")]] }) +
     (subs.length ? `<div class="tw"><table class="t"><thead><tr><th>#</th><th>Subcontractor</th><th>Work</th><th>Agreement / LPO</th><th class="r">Value</th><th class="r">VOs</th><th class="r">Revised</th><th>Done</th><th class="r">Certified</th><th class="r">Paid</th><th class="r">To pay</th><th class="r">Retention held</th><th class="c">PCs</th><th>Status</th></tr></thead><tbody>
     ${subs.map((s, i) => `<tr class="rowc" data-sub="${s.id}"><td class="muted">${i + 1}</td><td><b>${esc(s.name)}</b><div class="small muted">${esc(s.kind)} · ${esc(s.trade)}</div></td><td>${esc(s.scope)}</td><td class="small">${esc([s.agreement, s.lpo].filter(Boolean).join(" / "))}</td>
-      <td class="r">${money(s.value)}</td><td class="r">${money(s.vo_total)}</td><td class="r"><b>${money(s.revised)}</b></td><td><div class="bar ${s.done_pct > 100 ? "over" : ""}"><i style="width:${Math.min(100, s.done_pct)}%"></i></div><span class="small muted">${s.done_pct}%</span></td>
+      <td class="r">${money(s.value)}</td><td class="r">${money(s.vo_total)}</td><td class="r"><b>${money(s.revised)}</b></td><td>${s.remeasure ? '<span class="small muted" title="Re-measurable: the revised value is the work measured on the certificates so far">re-measured</span>' : `<div class="bar ${s.done_pct > 100 ? "over" : ""}"><i style="width:${Math.min(100, s.done_pct)}%"></i></div><span class="small muted">${s.done_pct}%</span>`}</td>
       <td class="r">${money(s.certified)}</td><td class="r">${money(s.paid)}</td><td class="r ${s.to_pay > 0.005 ? "late" : ""}">${money(s.to_pay)}</td><td class="r">${money(s.ret_left)}</td><td class="c">${s.pc_count}</td><td>${st(s.status)}</td></tr>`).join("")}
     <tr class="tot"><td></td><td>Total</td><td></td><td></td><td class="r">${money(tot("value"))}</td><td class="r">${money(tot("vo_total"))}</td><td class="r">${money(tot("revised"))}</td><td></td><td class="r">${money(tot("certified"))}</td><td class="r">${money(tot("paid"))}</td><td class="r">${money(tot("to_pay"))}</td><td class="r">${money(tot("ret_left"))}</td><td></td><td></td></tr>
     </tbody></table></div>` : `<div class="empty">No subcontracts${f ? " with this status" : ""} yet.<br><button class="btn btn-primary" onclick="subForm()">+ Add the first subcontract</button></div>`);
@@ -819,8 +830,8 @@ function openSub(sid) {
     drawer(`${esc(s.name)} <span class="muted small">${esc(s.scope)}</span>`, `
       <div class="tools"><button class="btn btn-primary" id="s-inv">+ Invoice received</button>${s.pcs.some(p => p.pc_type === "Advance") ? "" : `<button class="btn btn-ghost" id="s-adv">+ Advance PC</button>`}<button class="btn btn-plain" id="s-vo">+ Variation</button><button class="btn btn-plain" id="s-edit">Edit subcontract</button><span class="spacer"></span>${xpButtons("subpcs", { pid: ST.pid, sub_id: s.id, name: s.name })}</div>
       <div class="strip">
-        ${fig("Value", money(s.value, false))}${fig("Variations", money(s.vo_total, false))}${fig("Revised", money(s.revised, false))}
-        ${fig("Work done", money(s.work_done, false) + `<div class="s">${s.done_pct}%</div>`)}${fig("Certified", money(s.certified, false))}${fig("Paid", money(s.paid, false), "green")}
+        ${fig("Value", s.remeasure ? '<span style="font-size:15px">Re-measurable</span>' : money(s.value, false))}${fig("Variations", money(s.vo_total, false))}${fig("Revised", money(s.revised, false))}
+        ${fig("Work done", money(s.work_done, false) + `<div class="s">${s.remeasure ? "re-measured" : s.done_pct + "%"}</div>`)}${fig("Certified", money(s.certified, false))}${fig("Paid", money(s.paid, false), "green")}
         ${fig("To pay", money(s.to_pay, false), s.to_pay > 0.005 ? "amber" : "")}${fig("Advance left", money(s.adv_left, false))}${fig("Retention held", money(s.ret_left, false))}${fig("Balance work", money(s.balance, false), s.balance < 0 ? "red" : "")}
       </div>
       <div class="card"><h3>Payment certificates ${tip("Figures to date. 'This PC' = net to date now less net to date at the last PC, so the certificates always add up to the total. Click a row to certify or change it.")}</h3>
@@ -880,7 +891,7 @@ function invoiceForm(sid, keep) {
   let read = null;
   // No subcontractor is picked for you: chosen by hand, or found from the invoice (a new one can be added from it).
   modal("Invoice received", [
-    { k: "sub_id", label: "Subcontractor", type: "select", noseg: true, options: [["", subs.length ? "- Pick the subcontractor -" : "- None on this project yet: read the invoice to add it -"], ...subs.map(x => [x.id, `${x.name}${x.scope ? " - " + x.scope : ""}`])], value: sid || "", full: true },
+    { k: "sub_id", label: "Subcontractor", type: "select", noseg: true, options: [["", subs.length ? "- Pick the subcontractor -" : "- None on this project yet: read the invoice to add it -"], ...subs.map(x => [x.id, x.name])], value: sid || "", full: true },
     { k: "inv_ref", label: "Invoice no.", focus: true }, { k: "inv_amount", label: "Invoice amount (AED)", type: "money" },
     { k: "inv_date", label: "Invoice date", type: "date", value: today() }, { k: "received", label: "Received in office", type: "date", value: today() },
     { k: "to_site", label: "Sent to site for checking", type: "check", value: true, text: "Send to site today" },
@@ -1122,7 +1133,7 @@ SECTIONS["subs.final"] = el => {
   let sec = "";
   for (const x of rows) {
     if (x.section !== sec) { sec = x.section; html += `<tr class="sec"><td colspan="${FCOLS.length + 2}">${esc(sec)}</td></tr>`; }
-    html += `<tr><td>${esc(x.item)}</td><td><select class="fsub" data-fsub="${x.id}"><option value="">-</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}${s.scope ? " - " + esc(s.scope) : ""}</option>`).join("")}<option value="new">+ New subcontract...</option></select></td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}</tr>`;
+    html += `<tr><td>${esc(x.item)}</td><td><select class="fsub" data-fsub="${x.id}"><option value="">-</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}<option value="new">+ New subcontract...</option></select></td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}</tr>`;
   }
   el.innerHTML = html + "</tbody></table></div>";
   bindTools(el, () => SECTIONS["subs.final"](el));

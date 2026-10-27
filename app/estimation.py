@@ -856,6 +856,11 @@ def _sub_bundle(db, s, vos, pcs, rules):
     vat_certified = r2(sum(x["vat"] for x in pc_list))
     adv_paid = pc_list[-1]["adv_paid_cum"] if pc_list else 0.0
     last = sorted(pcs, key=lambda p: (p.seq or 0, p.id))[-1] if pcs else None
+    # A re-measurable (unit-rate) subcontract has no fixed value: its revised value is what the certificates have
+    # measured so far - each IPC's work adds to it.
+    remeasure = not (s.value or 0)
+    if remeasure:
+        revised = r2(max(revised, last_work))
     out = _plain(s, KINDS["subs"][2])
     out.update({
         "vos": [_plain(v, KINDS["subvos"][2]) for v in sorted(vos, key=lambda v: (v.on_date or date.min, v.id))],
@@ -863,7 +868,7 @@ def _sub_bundle(db, s, vos, pcs, rules):
         "work_done": last_work, "certified": certified, "paid": paid, "vat_certified": vat_certified,
         "payable_total": r2(certified + vat_certified),
         "to_pay": r2(certified + vat_certified - paid), "balance": r2(revised - last_work),
-        "done_pct": round(100.0 * last_work / revised, 1) if revised else 0.0,
+        "done_pct": None if remeasure else (round(100.0 * last_work / revised, 1) if revised else 0.0), "remeasure": remeasure,
         "adv_paid": adv_paid, "adv_rec": r2(last.adv_rec_cum if last else 0), "adv_left": r2(adv_paid - (last.adv_rec_cum if last else 0)),
         "ret_held": r2(last.ret_cum if last else 0), "ret_released": r2(last.ret_rel_cum if last else 0),
         "ret_left": r2((last.ret_cum if last else 0) - (last.ret_rel_cum if last else 0)),

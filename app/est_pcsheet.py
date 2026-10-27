@@ -56,6 +56,7 @@ class EstSubItem(Base):
     description = Column(Text, default="")
     ref = Column(String, default="")            # type / mark: SD1, W3, Sky light
     qty = Column(Float, default=0.0)
+    claimed_qty = Column(Float, default=0.0)    # the quantity the subcontractor claims (beside the agreement quantity)
     unit = Column(String, default="")
     rate = Column(Float, default=0.0)
     amount = Column(Float, default=0.0)         # qty x rate, or the lump sum
@@ -224,7 +225,7 @@ def drop_sub(db, sid):
 
 def _item_out(it, used=False):
     return {"id": it.id, "sort": it.sort, "bill": it.bill or "", "bill_title": it.bill_title or "", "section": it.section or "",
-            "no": it.no or "", "description": it.description or "", "ref": it.ref or "", "qty": it.qty or 0, "unit": it.unit or "",
+            "no": it.no or "", "description": it.description or "", "ref": it.ref or "", "qty": it.qty or 0, "claimed_qty": it.claimed_qty or 0, "unit": it.unit or "",
             "rate": it.rate or 0, "amount": r2(it.amount), "measure": it.measure or "pct", "is_var": bool(it.is_var),
             "var_ref": it.var_ref or "", "used": used}
 
@@ -389,7 +390,7 @@ def save_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db), 
         it.sort = n + 1
         for k in ("bill", "bill_title", "section", "no", "description", "ref", "unit", "var_ref"):
             setattr(it, k, str(x.get(k) or "")[:2000 if k == "description" else 120])
-        for k in ("qty", "rate", "amount"):
+        for k in ("qty", "claimed_qty", "rate", "amount"):
             setattr(it, k, _f(x.get(k)))
         it.measure = x.get("measure") if x.get("measure") in MEASURES else "pct"
         it.is_var = bool(x.get("is_var"))

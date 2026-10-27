@@ -338,5 +338,7 @@
  "est.subs.pcs|waiting on": "Whose desk it is on now, and for how long.",
  "est.pay|stage": "To verify (approved by the contracts manager), With the MD, To pay (approved by the MD), Paid.",
  "est.pay|progress · last stamp": "The certificate's way as dots; under it the last step done, and for one to verify, the checks: agreement on file, previous certificates paid, advance recovered.",
- "est.pay|days here": "How long it has been at this step - red 'stuck' after the days set by Estimation."
+ "est.pay|days here": "How long it has been at this step - red 'stuck' after the days set by Estimation.",
+ "est.schedule|claimed qty": "The quantity the subcontractor claims for this line (from their bill), beside the agreement quantity - typed here, kept with the line.",
+ "est.sub|done": "How far the work is against the revised value. A re-measurable subcontract (value 0) shows 're-measured': its revised value is the work measured on the certificates so far."
 }
