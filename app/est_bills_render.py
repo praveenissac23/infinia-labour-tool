@@ -289,7 +289,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
     h = [f'<div class="xs" data-sheet="{escape(s["name"])}" style="width:{width}px;height:{height}px">']
     h.append(f'<table class="xt" style="width:{width}px"><colgroup>' + "".join(f'<col style="width:{cw[c]}px">' for c in cols) + "</colgroup>")
     for r in rows:
-        h.append(f'<tr style="height:{rh[r]}px">')
+        h.append(f'<tr data-r="{r}" style="height:{rh[r]}px">' if edit else f'<tr style="height:{rh[r]}px">')
         for c in cols:
             if (r, c) in covered:
                 continue

@@ -13,7 +13,7 @@ function big(title, html, onClose, ctx) {
     document.body.appendChild(el);
   }
   el.dataset.ctx = ctx || "est.big";             // which (i) notes apply on this page (heads.js)
-  $("#b-title").innerHTML = title; $("#b-body").innerHTML = html; $("#b-tools").innerHTML = ""; bigSave("");
+  $("#b-title").innerHTML = title; $("#b-body").innerHTML = html; $("#b-body").classList.remove("sv-body", "ipa-body"); $("#b-tools").innerHTML = ""; bigSave("");
   guardOff("big"); el._onClose = onClose;
   const was = !el.classList.contains("hide");
   el.classList.remove("hide"); document.body.style.overflow = "hidden";

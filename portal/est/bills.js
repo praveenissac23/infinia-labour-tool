@@ -70,7 +70,9 @@ function fmtCards(formats, ks, K) {
   const prev = formats.filter(f => f !== cur).sort((a, b) => (a.no[0] - b.no[0]) || (a.id - b.id));
   const ctrSel = f => ks.length > 1 ? `<td><select class="sel-sm" data-fmmove="${f.id}" title="Move this workbook (and bills made on it) to another contract">${ks.map(k => `<option value="${k.id}" ${k.id === f.contract_id ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></td>` : "";
   const chk = f => f.same === f.formulas ? `<span class="st g">all ${f.formulas} formulas match</span>` : `<span class="st a">${f.same} of ${f.formulas} formulas match</span>`;
-  return `<div class="card" style="margin-top:14px"><h3>Bill format${K ? " - " + esc(K.name) : ""} ${tip("The workbook each new bill is made from: the uploaded bill with the highest bill no. Upload a later bill and it becomes the format by itself; the one before moves to Previous bills.")}</h3>
+  const nf = nextFrom();
+  return `<div class="card" style="margin-top:14px"><h3>Bill format${K ? " - " + esc(K.name) : ""} ${tip("The consultant's workbook the bills are made on: the uploaded bill with the highest bill no. Each new bill is made from the latest bill - the last one made here, with every line, section and page added on it - or from this workbook until a bill has been made.")}
+      <span class="spacer"></span><span class="small" style="font-weight:500">Next bill is made from: <b>${nf.kind === "bill" ? `bill ${esc(nf.label)} in the app (${esc(nf.status)}), with what was added on it` : `bill ${esc(nf.label || "")} as uploaded`}</b></span></h3>
       <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills made</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
       <tr class="rowc" data-fmview="${cur.id}" title="Open to read"><td><b>${esc(cur.no[1] || String(cur.no[0] || "-"))}</b></td><td>${esc(cur.filename)}</td><td class="small" title="${esc(cur.sheets.join(", "))}">${cur.sheets.length} sheets</td><td class="c">${cur.lines}</td>
         <td class="small">${chk(cur)}</td><td class="c">${cur.bills}</td><td class="small muted">${esc(cur.by)} · ${dt(cur.on)}</td>${ctrSel(cur)}
@@ -81,18 +83,57 @@ function fmtCards(formats, ks, K) {
         <td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ctrSel(f)}<td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${f.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${f.id}">Delete</button></td></tr>`).join("")}
       </tbody></table></div></div>` : ""}`;
 }
+// ---- one sheet viewer for every sheet shown (a previous bill to read, the bill's own Sheets step) ----------------
+// A bar: the sheet picker (< sheet >, "2 of 12") on the left; zoom - / % / + / Fit width / 100% on the right. The sheet
+// fills the window down to the bottom and scrolls inside it (bars always shown). Opens fitted to the width; the zoom
+// chosen is kept for next time. Ctrl / Cmd + and -, and pinching the trackpad, zoom too.
+const SV = { z: null, w: 0 };
+function svZoomPref() { try { return localStorage.getItem("est_sheet_zoom") || "fit"; } catch (e) { return "fit"; } }
+function svSave(v) { try { localStorage.setItem("est_sheet_zoom", String(v)); } catch (e) {} }
+function sheetFrame(el, d, opts = {}) {
+  const sheets = opts.sheets || [], k = sheets.findIndex(x => x.i === d.i);
+  el.innerHTML = `<div class="sv"><div class="sv-bar">
+      ${sheets.length ? `<button class="btn btn-plain btn-sm" data-sv="prev" title="Previous sheet" ${k <= 0 ? "disabled" : ""}>&lsaquo;</button>
+        <select class="sv-pick" title="Go to a sheet">${sheets.map(x => `<option value="${x.i}" ${x.i === d.i ? "selected" : ""}>${esc(x.name)}${x.added ? " (added)" : ""}</option>`).join("")}</select>
+        <button class="btn btn-plain btn-sm" data-sv="next" title="Next sheet" ${k >= sheets.length - 1 ? "disabled" : ""}>&rsaquo;</button>
+        <span class="muted small sv-n">${k + 1} of ${sheets.length}</span>` : ""}
+      ${opts.tools || ""}
+      <span class="spacer"></span>
+      <span class="sv-zoom"><button class="btn btn-plain btn-sm" data-sv="out" title="Zoom out (Ctrl -)">&minus;</button><span class="sv-pc" title="Zoom">100%</span><button class="btn btn-plain btn-sm" data-sv="in" title="Zoom in (Ctrl +)">+</button>
+        <button class="btn btn-plain btn-sm" data-sv="fit" title="The whole width of the sheet in the window">Fit width</button><button class="btn btn-plain btn-sm" data-sv="one" title="Actual size">100%</button></span></div>
+    ${opts.below || ""}
+    <div class="sv-box"><div class="sv-in ipa-sheet-in">${d.html}</div></div></div>`;
+  const box = $(".sv-box", el), inner = $(".sv-in", el);
+  SV.w = d.width || inner.scrollWidth;
+  const set = z => { z = Math.max(0.3, Math.min(2.5, z)); SV.z = z; inner.style.zoom = z; $(".sv-pc", el).textContent = Math.round(z * 100) + "%"; };
+  const fit = () => set(Math.min(1.25, (box.clientWidth - 26) / Math.max(1, SV.w)));     // a small sheet is not blown up
+  const size = () => { const top = box.getBoundingClientRect().top; box.style.height = Math.max(260, window.innerHeight - top - 14) + "px"; };
+  size();
+  const pref = svZoomPref(); if (pref === "fit") fit(); else set(Number(pref) || 1);
+  const step = dir => { const z = Math.round(((SV.z || 1) + dir * 0.1) * 10) / 10; set(z); svSave(SV.z); };
+  $$("[data-sv]", el).forEach(b => b.onclick = () => { const a = b.dataset.sv;
+    if (a === "in") step(1); else if (a === "out") step(-1); else if (a === "fit") { fit(); svSave("fit"); } else if (a === "one") { set(1); svSave(1); }
+    else if (a === "prev" && k > 0) opts.go(sheets[k - 1].i); else if (a === "next" && k < sheets.length - 1) opts.go(sheets[k + 1].i); });
+  const pick = $(".sv-pick", el); if (pick) pick.onchange = () => opts.go(+pick.value);
+  box.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); set((SV.z || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); svSave(SV.z); } }, { passive: false });
+  if (!SV.bound) { SV.bound = true;
+    document.addEventListener("keydown", e => { const fr = document.querySelector(".sv .sv-zoom"); if (!fr || !(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); fr.querySelector('[data-sv="in"]').click(); } else if (e.key === "-") { e.preventDefault(); fr.querySelector('[data-sv="out"]').click(); }
+      else if (e.key === "0") { e.preventDefault(); fr.querySelector('[data-sv="fit"]').click(); } });
+    window.addEventListener("resize", () => { const b = document.querySelector(".sv .sv-box"); if (!b) return; const top = b.getBoundingClientRect().top; b.style.height = Math.max(260, window.innerHeight - top - 14) + "px";
+      if (svZoomPref() === "fit") { const i = b.querySelector(".sv-in"); const z = Math.max(0.3, Math.min(1.25, (b.clientWidth - 26) / Math.max(1, SV.w))); SV.z = z; i.style.zoom = z; const pc = document.querySelector(".sv .sv-pc"); if (pc) pc.textContent = Math.round(z * 100) + "%"; } }); }
+  return { box, inner, zoom: () => SV.z || 1 };
+}
+
 // A previous bill (or the format) to read: its sheets as sent, one at a time.
 async function viewFormat(fid, i = 0) {
   let d; try { d = await GET(`/store/est/ipa/format/${fid}/sheet/${i}`); } catch (e) { return fail(e); }
   const el = document.getElementById("big"), open = el && !el.classList.contains("hide") && el.dataset.ctx === "est.fmview";
   if (!open) big(`Bill ${esc(d.no[1] || String(d.no[0] || ""))} <span class="muted small">${esc(d.file)} - as uploaded, to read</span>`, "", null, "est.fmview");
   if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
-  const k = d.sheets.findIndex(x => x.i === d.i);
-  $("#b-tools").innerHTML = `<button class="btn btn-plain" id="fv-prev" ${k <= 0 ? "disabled" : ""}>&lsaquo;</button><select id="fv-pick">${d.sheets.map(x => `<option value="${x.i}" ${x.i === d.i ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><button class="btn btn-plain" id="fv-next" ${k >= d.sheets.length - 1 ? "disabled" : ""}>&rsaquo;</button>`;
-  $("#b-body").innerHTML = `<div class="ipa-card"><div class="muted small" style="margin-bottom:8px">Sheet ${k + 1} of ${d.sheets.length}</div><div class="ipa-sheet"><div class="ipa-sheet-in">${d.html}</div></div></div>`;
-  $("#fv-pick").onchange = e => viewFormat(fid, +e.target.value);
-  $("#fv-prev").onclick = () => k > 0 && viewFormat(fid, d.sheets[k - 1].i);
-  $("#fv-next").onclick = () => k < d.sheets.length - 1 && viewFormat(fid, d.sheets[k + 1].i);
+  $("#b-tools").innerHTML = "";
+  $("#b-body").classList.add("sv-body");
+  sheetFrame($("#b-body"), d, { sheets: d.sheets, go: j => viewFormat(fid, j) });
 }
 function billsRedraw() { if (key() === "bills.ipa" && $("#sec")) SECTIONS["bills.ipa"]($("#sec")); }
 
@@ -125,14 +166,16 @@ function uploadFormat() {
   }, { save: "Upload", bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="fm-file">The last bill as sent (Excel .xlsx) ${tip("The whole workbook: cover / summary and the sheets with the % of work done. It is kept on the server - every new bill is made from it, with the same layout, logo, stamps and formulas.")}</label><input type="file" id="fm-file" accept=".xlsx,.xlsm,.xls"></div></div>` });
 }
 
-// A new bill is made from the bill format (the highest bill uploaded) - nothing to pick.
+// A new bill is made from the latest bill - the last one made here (with every line, section and page added on it),
+// or the uploaded workbook when that is later - nothing to pick.
 async function newBill() {
-  const fs = IPA.list.formats, cur = fs.find(f => f.current) || fs[fs.length - 1];
+  const nf = nextFrom();
   try {
-    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, format_id: cur.id, contract_id: IPA.list.contract_id || null });
-    toast(`New bill started from bill ${cur.no[1] || cur.no[0] || ""}`); billsRedraw(); openBill(r.id);
+    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, contract_id: IPA.list.contract_id || null });
+    toast(`New bill started from bill ${nf.label || ""}${nf.kind === "bill" ? " (with everything added on it)" : ""}`); billsRedraw(); openBill(r.id);
   } catch (e) { fail(e); }
 }
+function nextFrom() { return ((IPA.list.next_from || {})[String(IPA.list.contract_id || 0)]) || {}; }
 
 
 // =====================================================================================================
@@ -613,18 +656,12 @@ function drawFees(m) {
 function drawSheets(m) {
   const b = IPA.bill;
   if (IPA.sheet === undefined || !b.sheets.some(s => s.i === IPA.sheet)) IPA.sheet = (b.sheets[0] || {}).i;
-  m.innerHTML = `<div class="ipa-card ipa-intro"><b>Every sheet of the bill, as the consultant laid it out.</b> For anything not on the steps before (a milestone % on a breakdown sheet, a note, a line of a table).
-      <span class="muted">Blue cells can be typed in; yellow = changed this month. Click a cell, type, press Enter. Clearing a cell puts back last month's figure. % cells take the percentage (45 = 45%). A sum starting with = works as in Excel.</span></div>
-    <div class="ipa-card"><div class="ipa-shbar"><button class="btn btn-plain btn-sm" id="sh-prev">&lsaquo;</button><select id="sh-pick">${b.sheets.map(s => `<option value="${s.i}" ${s.i === IPA.sheet ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select><button class="btn btn-plain btn-sm" id="sh-next">&rsaquo;</button>
-      <span class="muted small" id="sh-n"></span></div><div id="ipa-sheet"></div></div>${nextBtn("sheets")}`;
+  m.innerHTML = `<div class="ipa-card ipa-intro"><b>Every sheet of the bill, as the consultant laid it out - and anything this bill needs added.</b>
+      <span class="muted">Blue cells can be typed in; yellow = changed this month. Click a cell, type, press Enter (= works as in Excel). Click a row to put a line or a section next to it, or to hide it. <b>+ Add page</b> copies a sheet (e.g. a second variations page); the next bill keeps it.</span></div>
+    <div id="ipa-sheet"></div>${nextBtn("sheets")}`;
   bindNext(m);
-  const pick = $("#sh-pick");
-  const go = d => { const opts = [...pick.options]; const i = opts.findIndex(o => o.selected) + d; if (opts[i]) { pick.value = opts[i].value; pick.onchange(); } };
-  pick.onchange = () => { IPA.sheet = +pick.value; $("#sh-n").textContent = `${[...pick.options].findIndex(o => o.selected) + 1} of ${pick.options.length}`; drawSheet($("#ipa-sheet"), IPA.sheet); };
-  $("#sh-prev").onclick = () => go(-1); $("#sh-next").onclick = () => go(1);
-  pick.onchange();
+  drawSheet($("#ipa-sheet"), IPA.sheet);
 }
-
 async function drawReview(m) {
   const b = IPA.bill, ck = checks(b), c = b.cover;
   const allSigned = !(b.signers || []).some(x => !x.signed_at);
@@ -655,22 +692,59 @@ async function setStatus(s) {
 }
 
 // one sheet as the consultant laid it out; typed figures open on a click
-async function drawSheet(v, i) {
-  v.innerHTML = `<div class="empty">Loading the sheet...</div>`;
+async function drawSheet(v, i, keep) {
+  const was = keep && $(".sv-box", v) ? [$(".sv-box", v).scrollLeft, $(".sv-box", v).scrollTop] : null;
+  if (!was) v.innerHTML = `<div class="empty">Loading the sheet...</div>`;
   let d; try { d = await GET(`/store/est/ipa/bill/${IPA.bill.id}/sheet/${i}`); } catch (e) { v.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
-  v.innerHTML = `<div class="ipa-sheet"><div class="ipa-sheet-in">${d.html}</div></div>`;
-  const paid = IPA.bill.status === "Paid" && !ST.meta.me.admin;
-  if (paid) return;
-  const host = $(".ipa-sheet-in", v), sh = d.name;
-  $$("td.ed", v).forEach(td => td.onclick = () => {
+  d.i = i;
+  const b = IPA.bill, cur = b.sheets.find(x => x.i === i) || {};
+  const locked = b.status === "Paid" && !ST.meta.me.admin;
+  const tools = locked ? "" : `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
+  const below = locked ? "" : `<div class="sv-rows" id="sv-rows"><span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
+  const fr = sheetFrame(v, d, { sheets: b.sheets, go: j => { IPA.sheet = j; drawSheet(v, j); }, tools, below });
+  if (was) { fr.box.scrollLeft = was[0]; fr.box.scrollTop = was[1]; }
+  if (locked) return;
+  const host = fr.inner, sh = d.name, redraw = () => { refreshNav(); drawSheet(v, i, true); };
+  // ---- pages
+  const pa = $('[data-pg="add"]', v); if (pa) pa.onclick = () => modal("Add a page", [
+    { k: "from", label: "Copy of", type: "select", options: b.sheets.map(x => x.name), value: sh, full: true, tip: "The new page starts as this sheet looks (its headings, columns and look). Clear or change its lines after." },
+    { k: "name", label: "Name of the new page", value: "", ph: "e.g. Variations 2", full: true, focus: true }],
+    async x => { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/pages`, { from: x.from, name: x.name }); const n = IPA.bill.sheets.find(y => y.name === x.name.trim().replace(/\s+/g, " "));
+      IPA.sheet = n ? n.i : IPA.sheet; drawBill(); toast(`Page ${x.name} added`); }, { save: "Add page" });
+  const pd = $('[data-pg="del"]', v); if (pd) pd.onclick = async () => {
+    if (!(await confirmDelete(`Delete the page ${sh}?`, "It is taken off this bill, with what was typed on it."))) return;
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/pages`, { remove: sh }); IPA.sheet = undefined; drawBill(); toast("Page deleted"); } catch (e) { fail(e); } };
+  const sw = $('[data-rw="show"]', v); if (sw) sw.onclick = async () => {
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [], show: true, all: true }); redraw(); toast("Hidden lines shown"); } catch (e) { fail(e); } };
+  // ---- rows: click one -> put a line / a section next to it, or hide it
+  const rowBar = $("#sv-rows", v);
+  const pickRow = tr => {
+    $$("tr.sel", host).forEach(x => x.classList.remove("sel")); tr.classList.add("sel");
+    const r = +tr.dataset.r;
+    rowBar.innerHTML = `<b>Row ${r}</b><button class="btn btn-ghost btn-sm" data-rw="above">+ Line above</button><button class="btn btn-ghost btn-sm" data-rw="below">+ Line below</button>
+      <button class="btn btn-ghost btn-sm" data-rw="section" title="A heading line (in the look of the table's headings) and a line under it">+ Section below</button><button class="btn btn-plain btn-sm" data-rw="hide" title="Kept in the file, not printed">Hide line</button>
+      <button class="btn btn-plain btn-sm" data-rw="clear" title="Done">&times;</button>`;
+    const heading = () => { let p = tr.previousElementSibling;                       // the nearest heading above: a bold row
+      while (p) { if ([...p.cells].some(c => /font-weight:700/.test(c.getAttribute("style") || "") && c.textContent.trim())) return +p.dataset.r; p = p.previousElementSibling; } return r; };
+    const add = async (at, n, like) => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/rows`, { sheet: sh, at, n, like }); redraw(); toast(n > 1 ? "Section added - type its heading in the first new line" : "Line added - click its cells to type"); } catch (e) { fail(e); } };
+    $('[data-rw="above"]', rowBar).onclick = () => add(r, 1, [r]);
+    $('[data-rw="below"]', rowBar).onclick = () => add(r + 1, 1, [r]);
+    $('[data-rw="section"]', rowBar).onclick = () => add(r + 1, 2, [heading(), r]);
+    $('[data-rw="hide"]', rowBar).onclick = async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } };
+    $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.innerHTML = '<span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>'; };
+  };
+  $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", () => pickRow(tr)));
+  // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size)
+  $$("td.ed", host).forEach(td => td.addEventListener("click", () => {
     if ($(".ipa-cell", host)) return;
+    const z = fr.zoom();
     const nf = td.dataset.nf, raw = td.dataset.raw, pc = isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
     const inp = document.createElement("input");
     inp.className = "ipa-cell";
     inp.value = pc ? pct(Number(raw)) : raw;
     const hr = host.getBoundingClientRect(), r = td.getBoundingClientRect();
-    Object.assign(inp.style, { left: (r.left - hr.left) + "px", top: (r.top - hr.top) + "px", width: Math.max(r.width, 90) + "px", height: Math.max(r.height, 24) + "px", fontSize: getComputedStyle(td).fontSize });
+    Object.assign(inp.style, { left: (r.left - hr.left) / z + "px", top: (r.top - hr.top) / z + "px", width: Math.max(r.width / z, 90) + "px", height: Math.max(r.height / z, 24) + "px", fontSize: getComputedStyle(td).fontSize });
     host.appendChild(inp); inp.focus(); inp.select();
     let done = false;
     const commit = async keep => {
@@ -683,9 +757,9 @@ async function drawSheet(v, i) {
         if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(s)) val = isPctNf(nf) || s.endsWith("%") ? Math.round(n * 1e4) / 1e6 : n;
       }
       inp.disabled = true;
-      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); refreshNav(); drawSheet(v, i); } else inp.remove();
+      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); redraw(); } else inp.remove();
     };
     inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); commit(true); } else if (e.key === "Escape") { e.stopPropagation(); commit(false); } };
     inp.onblur = () => commit(true);
-  });
+  }));
 }

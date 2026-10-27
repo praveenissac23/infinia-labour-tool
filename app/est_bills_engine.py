@@ -2085,3 +2085,117 @@ def _patch_sheet(raw, s, inp, vals, shown=None):
                 else:
                     i2 = xml.index("</sheetData>"); xml = xml[:i2] + new_row + xml[i2:]
     return xml.encode("utf-8")
+
+
+# ---- pages added on a bill: a copy of one of the consultant's sheets ----------------------------------------------
+# A bill's inputs may hold {"_pages": {"list": [{"name": "Variations 2", "from": "Variations"}]}}: each is a copy of
+# the sheet named, added after the last sheet (so no sheet's print settings move), with its own typed cells and
+# lines like any sheet. The next bill keeps it (roll-over copies the inputs).
+PAGE_BAD = re.compile(r"[\[\]:*?/\\]")
+
+
+def pages_of(inputs):
+    p = (inputs or {}).get("_pages")
+    return [x for x in (p.get("list") if isinstance(p, dict) else []) or [] if isinstance(x, dict) and x.get("name") and x.get("from")]
+
+
+def add_pages(model, inputs):
+    """The format with this bill's added pages (before its inserted rows are applied)."""
+    import copy
+    pages = pages_of(inputs)
+    if not pages:
+        return model
+    m = dict(model); m["sheets"] = list(model["sheets"])
+    have = {s["name"] for s in m["sheets"]}
+    for pg in pages:
+        src = next((s for s in model["sheets"] if s["name"] == pg["from"]), None)
+        if src is None or pg["name"] in have:
+            continue
+        s2 = copy.deepcopy(src)
+        s2["name"] = pg["name"]; s2["visible"] = True
+        s2["page_of"] = src["name"]
+        m["sheets"].append(s2); have.add(pg["name"])
+    m["map"] = find_inputs(m)
+    return m
+
+
+def add_pages_xlsx(data: bytes, inputs):
+    """The workbook with this bill's added pages as real sheets: each a copy of its sheet's xml (and its drawing, so
+    the logo comes too), added after the last sheet, with the copy's print area."""
+    pages = pages_of(inputs)
+    if not pages:
+        return data
+    zin = zipfile.ZipFile(io.BytesIO(data))
+    names = set(zin.namelist())
+    paths = _sheet_paths(zin)
+    wb = zin.read("xl/workbook.xml").decode("utf-8")
+    rels = zin.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    ct = zin.read("[Content_Types].xml").decode("utf-8")
+    extra = {}
+    sheet_ids = [int(x) for x in re.findall(r'<sheet\b[^>]*\bsheetId="(\d+)"', wb)] or [0]
+    n_sheets = len(re.findall(r"<sheet\b", wb))
+    for k, pg in enumerate(pages):
+        src = paths.get(pg["from"])
+        if not src or src not in names or pg["name"] in paths:
+            continue
+        new = f"xl/worksheets/sheetInfPage{k + 1}.xml"
+        xml = zin.read(src).decode("utf-8")
+        # only the drawing goes with the copy; other links of the sheet (printer settings, comments, tables) do not
+        xml = re.sub(r"<legacyDrawing(HF)?\b[^>]*/>", "", xml)
+        xml = re.sub(r"<tableParts\b.*?</tableParts>|<tableParts\b[^>]*/>", "", xml, flags=re.S)
+        xml = re.sub(r"<hyperlinks>.*?</hyperlinks>", "", xml, flags=re.S)
+        xml = re.sub(r'(<pageSetup\b[^>]*?)\s+r:id="[^"]*"', r"\1", xml)
+        xml = re.sub(r'(<sheetView\b[^>]*?)\s+tabSelected="1"', r"\1", xml)
+        src_rels = f'{src.rsplit("/", 1)[0]}/_rels/{src.rsplit("/", 1)[1]}.rels'
+        new_rels = []
+        dm = re.search(r'<drawing\b[^>]*r:id="([^"]+)"', xml)
+        if dm and src_rels in names:
+            rx = zin.read(src_rels).decode("utf-8")
+            t = re.search(r'<Relationship\b[^>]*Id="%s"[^>]*Target="([^"]+)"' % re.escape(dm.group(1)), rx) or \
+                re.search(r'<Relationship\b[^>]*Target="([^"]+)"[^>]*Id="%s"' % re.escape(dm.group(1)), rx)
+            if t:
+                dsrc = _join(src.rsplit("/", 1)[0], t.group(1))
+                if dsrc in names:
+                    dnew = f"xl/drawings/drawingInfPage{k + 1}.xml"
+                    extra[dnew] = zin.read(dsrc)
+                    drels = f'xl/drawings/_rels/{dsrc.rsplit("/", 1)[1]}.rels'
+                    if drels in names:
+                        extra[f"xl/drawings/_rels/drawingInfPage{k + 1}.xml.rels"] = zin.read(drels)
+                    new_rels.append(f'<Relationship Id="{dm.group(1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawingInfPage{k + 1}.xml"/>')
+                    if f'PartName="/{dnew}"' not in ct:
+                        ct = ct.replace("</Types>", f'<Override PartName="/{dnew}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>')
+        if not new_rels:
+            xml = re.sub(r"<drawing\b[^>]*/>", "", xml)
+        else:
+            extra[f"xl/worksheets/_rels/sheetInfPage{k + 1}.xml.rels"] = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                + "".join(new_rels) + "</Relationships>").encode("utf-8")
+        extra[new] = xml.encode("utf-8")
+        rid = f"rIdInfPage{k + 1}"
+        sid = max(sheet_ids) + 1; sheet_ids.append(sid)
+        wb = wb.replace("</sheets>", f'<sheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" name="{_esc(pg["name"])}" sheetId="{sid}" r:id="{rid}"/></sheets>', 1)
+        rels = rels.replace("</Relationships>", f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheetInfPage{k + 1}.xml"/></Relationships>')
+        ct = ct.replace("</Types>", f'<Override PartName="/{new}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
+        # the copy prints the same part of the page as its sheet
+        src_idx = next((i for i, (nm, _p) in enumerate(paths.items()) if nm == pg["from"]), None)
+        pa = re.search(r'<definedName\b[^>]*name="_xlnm\.Print_Area"[^>]*localSheetId="%s"[^>]*>([^<]*)</definedName>' % src_idx, wb) if src_idx is not None else None
+        if pa:
+            ref = re.sub(r"^'?[^'!]+'?!", "", _unesc(pa.group(1)).split(",")[0])
+            dn = f'<definedName name="_xlnm.Print_Area" localSheetId="{n_sheets}">{_esc(chr(39) + pg["name"].replace(chr(39), chr(39) * 2) + chr(39) + "!" + ref)}</definedName>'
+            wb = wb.replace("</definedNames>", dn + "</definedNames>", 1) if "</definedNames>" in wb else wb.replace("</sheets>", "</sheets><definedNames>" + dn + "</definedNames>", 1)
+        n_sheets += 1
+    out = io.BytesIO()
+    zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    for item in zin.infolist():
+        raw = zin.read(item.filename)
+        if item.filename == "xl/workbook.xml":
+            raw = wb.encode("utf-8")
+        elif item.filename == "xl/_rels/workbook.xml.rels":
+            raw = rels.encode("utf-8")
+        elif item.filename == "[Content_Types].xml":
+            raw = ct.encode("utf-8")
+        zout.writestr(item, raw)
+    for k, v in extra.items():
+        zout.writestr(k, v)
+    zout.close()
+    return out.getvalue()

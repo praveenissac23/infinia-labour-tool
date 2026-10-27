@@ -26,8 +26,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.screenshot({ path: SH + '1_formats.png', fullPage: true });
   // a previous bill opens to read
   await p.click('#sec .card:last-child tbody tr:nth-child(2)'); await sleep(1500);
-  ck('previous bill 2 opens, read only, sheet by sheet', await p.isVisible('#big:not(.hide)') && (await p.textContent('#b-title')).includes('Bill 2') && !!(await p.$('#fv-pick')) && !(await p.$('#b-body td.ed')));
-  await p.selectOption('#fv-pick', { label: 'Works' }); await sleep(1200);
+  ck('previous bill 2 opens, read only, sheet by sheet', await p.isVisible('#big:not(.hide)') && (await p.textContent('#b-title')).includes('Bill 2') && !!(await p.$('.sv-pick')) && !(await p.$('#b-body td.ed')));
+  await p.selectOption('.sv-pick', { label: 'Works' }); await sleep(1200);
   ck('its Works sheet shows the lines', (await p.textContent('#b-body')).includes('Superstructure'));
   await p.screenshot({ path: SH + '2_view.png' });
   await p.click('#b-back'); await sleep(500);

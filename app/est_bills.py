@@ -124,12 +124,13 @@ def _bill_model(fmt, b_or_inputs):
     inputs = b_or_inputs if isinstance(b_or_inputs, dict) else _inputs(b_or_inputs)
     model = _model(fmt)
     rows = tuple((sh, json.dumps(inp.get("_rows"))) for sh, inp in sorted(inputs.items()) if isinstance(inp, dict) and inp.get("_rows"))
-    if not rows:
+    pages = json.dumps(BE.pages_of(inputs))
+    if not rows and pages == "[]":
         return model
-    key = (fmt.id, rows)
+    key = (fmt.id, rows, pages)
     hit = _EXP_CACHE.get(key)
     if hit is None:
-        hit = BE.expand(model, inputs)
+        hit = BE.expand(BE.add_pages(model, inputs), inputs)
         _EXP_CACHE[key] = hit
         if len(_EXP_CACHE) > 24:
             _EXP_CACHE.pop(next(iter(_EXP_CACHE)))
@@ -464,7 +465,8 @@ def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
             "label": f["label"] or b.label, "issue_date": (f["issue_date"] or b.issue_date).isoformat() if (f["issue_date"] or b.issue_date) else "",
             "status": b.status, "total_due": f["total_due"], "notes": b.notes or "",
             "by": (users or {}).get(b.updated_by or b.created_by, ""),
-            "sheets": [{"i": i, "name": s["name"]} for i, s in enumerate(model["sheets"]) if s["visible"]],
+            "sheets": [{"i": i, "name": s["name"], "added": bool(s.get("page_of")), "of": s.get("page_of") or "",
+                        "hidden": len((inputs.get(s["name"]) or {}).get("_hide") or [])} for i, s in enumerate(model["sheets"]) if s["visible"]],
             "progress": _progress(model, values, inputs), "payments": _payments(model, values, inputs), "fees": _fees(model, values, inputs), "cover": _cover(model, values),
             "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
             "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
@@ -703,7 +705,12 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
             cur[k] = x
     for x in out_f:
         x["current"] = cur.get(x["contract_id"] or 0) is x
-    return {"formats": out_f, "statuses": STATUSES,
+    nxt = {}
+    for k in cur:
+        f_, last = next_source(db, project_id, k or None)
+        nxt[str(k)] = ({"kind": "bill", "id": last.id, "label": last.label or str(last.seq), "status": last.status} if last else
+                       {"kind": "format", "id": f_.id if f_ else None, "label": (cur[k]["no"][1] or str(cur[k]["no"][0])) if f_ else ""})
+    return {"formats": out_f, "statuses": STATUSES, "next_from": nxt,
             "bills": [{"id": b.id, "seq": b.seq, "label": b.label, "issue_date": b.issue_date.isoformat() if b.issue_date else "",
                        "status": b.status, "total_due": round(b.total_due or 0, 2), "work_done": round(b.work_done or 0, 2), "format_id": b.format_id,
                        "contract_id": b.contract_id, "waits": _waits(b),
@@ -736,6 +743,29 @@ def _fmt_no(full, filename=""):
         n = int(m_.group(1)) if m_ else num(stem)
         raw = raw or (str(n) if n else "")
     return [n, str(raw or "")]
+
+
+def _bill_num(label):
+    t = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", str(label or "").strip(), flags=re.I)
+    m_ = re.search(r"(\d+)(?!.*\d)", t)
+    return int(m_.group(1)) if m_ else 0
+
+
+def next_source(db, pid, cid=None):
+    """What the next bill is made from: the latest bill - the last bill made in the app (with every line, section
+    and page added on it), or an uploaded workbook only when its bill no. is higher. -> (format, last bill or None)."""
+    fmt = _current_format(db, pid, cid)
+    q = db.query(EstBill).filter(EstBill.project_id == pid)
+    if cid:
+        q = q.filter(EstBill.contract_id == int(cid))
+    last = q.order_by(EstBill.seq.desc(), EstBill.id.desc()).first()
+    if last is not None:
+        fno = None
+        if fmt is not None:
+            fno = (_LIST_CACHE.get(fmt.id) or {}).get("no") or _fmt_no(None, fmt.filename)
+        if fmt is None or _bill_num(last.label or last.seq) >= (fno or [0])[0] or fmt.id == last.format_id:
+            return db.get(EstBillFormat, last.format_id), last
+    return fmt, None
 
 
 def _current_format(db, pid, cid=None):
@@ -912,10 +942,13 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     q = db.query(EstBillFormat).filter(EstBillFormat.project_id == pid)
     if cid:
         q = q.filter(EstBillFormat.contract_id == int(cid))
-    fmt = _get(db, EstBillFormat, fid) if fid else _current_format(db, pid, cid)
+    if fid:
+        fmt = _get(db, EstBillFormat, fid)
+        last = (db.query(EstBill).filter(EstBill.format_id == fmt.id).order_by(EstBill.seq.desc(), EstBill.id.desc()).first())
+    else:
+        fmt, last = next_source(db, pid, cid)      # the latest bill - with whatever was added on it
     if not fmt or fmt.project_id != pid:
         raise HTTPException(400, "Upload the bill format for this " + ("contract" if cid else "project") + " first.")
-    last = (db.query(EstBill).filter(EstBill.format_id == fmt.id).order_by(EstBill.seq.desc(), EstBill.id.desc()).first())
     prev_inputs = _inputs(last) if last else {}
     model = _bill_model(fmt, prev_inputs)
     prev_values = BE.calculate(model, prev_inputs)
@@ -1063,8 +1096,9 @@ def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     if not s or not (1 <= at <= s["maxr"] + 1):
         raise HTTPException(400, "Pick where the line goes.")
     like = payload.get("like")
+    like = [int(x) for x in like] if isinstance(like, list) else ([int(like)] if like else [])   # the look of each new row
     moved = BE.shift_inputs(inputs.get(sh) or {}, sh, at, n)
-    moved.setdefault("_rows", []).append([at, n] + ([[int(like)]] if like else []))
+    moved.setdefault("_rows", []).append([at, n] + ([like] if like else []))
     inputs[sh] = moved
     # a sub-total typed for this bill's lines grows to take the new rows in
     for t in model["map"].get("fees", []):
@@ -1084,6 +1118,51 @@ def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
 
+@router.post("/store/est/ipa/bill/{bid}/pages")
+def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """A page added to the bill - a copy of one of its sheets ({"from", "name"}) - or taken off ({"remove": name}).
+    The copy is added after the last sheet; its lines and figures are typed like any sheet's; the next bill keeps it."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    pages = BE.pages_of(inputs)
+    if payload.get("remove"):
+        nm = str(payload["remove"])
+        if not any(x["name"] == nm for x in pages):
+            raise HTTPException(400, "Only a page added on the bill can be taken off.")
+        pages = [x for x in pages if x["name"] != nm]
+        inputs.pop(nm, None)
+        what = f"page {nm} taken off"
+    else:
+        model = _bill_model(fmt, inputs)
+        src = str(payload.get("from") or "")
+        if not any(x["name"] == src for x in model["sheets"]):
+            raise HTTPException(400, "Pick the sheet to copy.")
+        src = next((x.get("page_of") or x["name"]) for x in model["sheets"] if x["name"] == src)   # a copy of a copy: of the sheet itself
+        nm = " ".join(str(payload.get("name") or "").split())[:31]
+        if not nm:
+            raise HTTPException(400, "Give the new page a name.")
+        if BE.PAGE_BAD.search(nm) or nm.startswith("'") or nm.endswith("'"):
+            raise HTTPException(400, "A page name cannot have [ ] : * ? / \\ in it.")
+        if any(x["name"].lower() == nm.lower() for x in model["sheets"]):
+            raise HTTPException(400, f"There is a page called {nm} already.")
+        pages.append({"name": nm, "from": src})
+        what = f"page {nm} added (a copy of {src})"
+    inputs["_pages"] = {"list": pages}
+    if not pages:
+        inputs.pop("_pages", None)
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_page", f"bill #{bid}: {what}")
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
 @router.post("/store/est/ipa/bill/{bid}/hide")
 def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """Rows of a table hidden on this bill (kept in the file, not printed) or shown again: {"sheet", "rows": [..], "show": bool}."""
@@ -1094,7 +1173,7 @@ def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     inp = inputs.setdefault(sh, {})
     cur = set(int(x) for x in inp.get("_hide") or [])
     rows = set(int(x) for x in payload.get("rows") or [])
-    inp["_hide"] = sorted((cur - rows) if payload.get("show") else (cur | rows))
+    inp["_hide"] = [] if (payload.get("show") and payload.get("all")) else sorted((cur - rows) if payload.get("show") else (cur | rows))
     model = _bill_model(fmt, inputs)
     inputs, values = _calc(model, inputs)
     b.inputs = json.dumps(inputs); b.updated_by = user.id
@@ -1268,7 +1347,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
     store = _sig_store(db)
     if format == "excel":
-        data = BE.write_xlsx(fmt.data, model, inputs, values, sign_images(model, _signs(b), store))
+        data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, inputs, values, sign_images(model, _signs(b), store))
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
     if format == "pdf":
