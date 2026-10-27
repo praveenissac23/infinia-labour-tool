@@ -264,32 +264,58 @@ def _line_fields(model, s, t, r, vals, inputs):
 
 
 def _heads(model, s, t, vals, inputs, added):
-    """The headings between the lines of a table (3.1.1 Concrete (PCC/Blinding C20), a section put in on the bill)."""
+    """The heading over each run of lines (3.1.1 Concrete (PCC/Blinding C20), Back Fill (with excavated soil)) and
+    the sections put in on the bill. Only the nearest real heading above a run of lines: never the column headings
+    and title the sheet repeats on every printed page, an item priced as "Included", or a specification paragraph."""
     if not t["lines"]:
         return []
-    line_rows = {ln["r"] for ln in t["lines"]}
+    line_rows = sorted(ln["r"] for ln in t["lines"])
     mine = set(int(x) for x in ((inputs.get(s["name"]) or {}).get("_heads") or []))
-    first, last = t.get("start") or t["head_row"] + 1, max(line_rows | mine)
-    ic, dc, ac = t.get("item_c"), t.get("desc_c"), t.get("amount_c")
+    ic, dc, ac, uc = t.get("item_c"), t.get("desc_c"), t.get("amount_c"), t.get("unit_c")
     styles = model.get("styles") or []
-    out = []
-    for r in range(first, last + 1):
-        if r in line_rows:
-            continue
+    norm = lambda x: re.sub(r"[^a-z0-9]+", "", str(x or "").lower())
+    # what the sheet prints at the top of each page: its title rows and column headings
+    top = set()
+    for r in range(1, t["head_row"] + 3):
+        for c in range(1, (t.get("last_c") or s["maxc"]) + 1):
+            v = (s["cells"].get(f"{r},{c}") or {}).get("v")
+            if isinstance(v, str) and v.strip():
+                top.add(norm(v))
+    top.discard("")
+
+    def head(r):
+        if r in mine:
+            return True
+        cell = lambda c: (s["cells"].get(f"{r},{c}") or {}) if c else {}
         g = lambda c: vals.get(f"{r},{c}") if c else None
         item, desc = g(ic), g(dc)
         item = BE.general(item).strip() if item not in (None, "") else ""
         desc = desc.strip() if isinstance(desc, str) else ""
-        if not (item or desc) or isinstance(g(ac), (int, float)) and g(ac):
-            continue
-        if re.search(r"\b(total|carried|brought\s+forward|sub\s*-?\s*total)\b", desc, re.I):
-            continue
-        cell = s["cells"].get(f"{r},{dc}") or {}
-        st = cell.get("s")
+        if not (item or desc) or len(desc) > 120:
+            return False
+        if g(ac) not in (None, "") or (uc and g(uc) not in (None, "")):
+            return False                                  # an item with a quantity or "Included": not a heading
+        if "f" in cell(dc) or "f" in cell(ic) or re.search(r"cont'?d|continued", desc, re.I):
+            return False                                  # the page title repeated: =$C$6&" (CONT'D)"
+        if norm(desc) in top or norm(item) in top:
+            return False                                  # the column headings repeated on the page
+        if re.search(r"\b(total|carried|brought\s+forward|collection|sub\s*-?\s*total)\b", desc, re.I):
+            return False
+        st = cell(dc).get("s")
         bold = isinstance(st, int) and st < len(styles) and (styles[st] or {}).get("b")
-        if r in mine or (item and len(desc) <= 160) or (bold and desc and len(desc) <= 160):
-            out.append({"r": r, "item": item, "desc": desc, "added": r in mine, "can_remove": bool(added.get(r)),
+        return bool(item) or bool(bold) or len(desc) <= 60
+    out, prev = [], (t.get("start") or t["head_row"] + 1) - 1
+    for lr in line_rows + [max(line_rows + list(mine)) + 1]:
+        gap = [r for r in range(prev + 1, lr) if r not in line_rows]
+        mine_here = [r for r in gap if r in mine]
+        near = next((r for r in reversed(gap) if r not in mine and head(r)), None) if lr <= line_rows[-1] else None
+        for r in sorted(set(mine_here + ([near] if near else []))):
+            g = lambda c: vals.get(f"{r},{c}") if c else None
+            it = g(ic); it = BE.general(it).strip() if it not in (None, "") else ""
+            ds = g(dc); ds = ds.strip() if isinstance(ds, str) else ""
+            out.append({"r": r, "item": it, "desc": ds, "added": r in mine, "can_remove": bool(added.get(r)),
                         "fields": [x for x in _line_fields(model, s, t, r, vals, inputs) if x["f"] in ("item", "desc")]})
+        prev = lr
     return out
 
 

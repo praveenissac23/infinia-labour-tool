@@ -67,5 +67,51 @@ d["H20"], d["J20"] = "=K20/G20", "=M20/G20"
 for r in range(4, 21):
     for col in "ABCDEFGHIJKLM":
         d[f"{col}{r}"].border = box
+# Division 02 laid out exactly as 914's: the title and column headings repeated on every printed page (the title
+# as =$C$6&" (CONT'D)"), items priced "Included" (no %), specification paragraphs, a total per page and a collection.
+e = wb.create_sheet("Division 02-Site Construction")
+def hdr(r):
+    for col, t in zip("ABCDEFGHK", ["Ref.No.CSI", "Ref.No.BOQ", "WORK DESCRIPTION", "UNIT", "QTY", "RATE (AED)", "AMOUNT (AED)", "Percentage of Work Done", "Total Work Done"]):
+        e[f"{col}{r}"] = t
+    for col, t in zip("HIJKLM", ["Previous %", "Current %", "Total %", "Previous", "Current", "Total"]):
+        e[f"{col}{r + 1}"] = t
+e["A1"] = "PROPOSED (G+1) RESIDENTIAL VILLA PLOT NO"; e["A2"] = "PROJECT CODE : AE 5548"; e["A3"] = "CLIENT: Supreme Holdings Limited"
+hdr(4); e["C6"] = "DIVISION 02 - SITE CONSTRUCTION"; e["C6"].font = B
+e["C16"] = "Excavation"; e["C16"].font = B
+e["A17"], e["B17"], e["C17"] = 2150, 3, "Excavation in all types of soil, sand, rock and the like, to the levels and dimensions shown on the drawings, including all dewatering and shoring as required."
+for r, it, d_ in [(22, "3.1", "Main Villa"), (23, "3.2", "Boundary wall"), (24, "3.3", "Underground water tank")]:
+    e[f"B{r}"], e[f"C{r}"], e[f"D{r}"], e[f"E{r}"], e[f"F{r}"], e[f"G{r}"] = it, d_, "M3", 80, 50, "Included"
+e["C26"], e["E26"], e["G26"] = "TOTAL CARRIED TO COLLECTION", "DIV02/1", "=SUM(G6:G25)"
+hdr(27); e["C29"] = '=$C$6&" (CONT\'D)"'
+e["C31"] = "Back Fill (with excavated soil)"; e["C31"].font = B
+e["A32"], e["B32"], e["C32"] = "31.23.16", 4, "Supply, placement, compaction, and finishing of approved back fill material from excavated soil in layers not exceeding 250 mm."
+for r, it, d_, q, rate, pv in [(33, "4.1", "Main Villa", 1050.6, 46, 1), (34, "4.2", "Boundary wall", 56.41, "=46-9", 0.9), (35, "4.3", "Underground water tank", 73.6, 46, 0)]:
+    e[f"B{r}"], e[f"C{r}"], e[f"D{r}"], e[f"E{r}"], e[f"F{r}"] = it, d_, "M3", q, rate
+    e[f"G{r}"] = f"=+F{r}*E{r}"; e[f"H{r}"] = pv; e[f"I{r}"] = f"=J{r}-H{r}"; e[f"J{r}"] = pv
+    e[f"K{r}"], e[f"L{r}"], e[f"M{r}"] = f"=H{r}*G{r}", f"=I{r}*G{r}", f"=J{r}*G{r}"
+e["C36"] = " Road Base"; e["C36"].font = B
+e["A37"], e["B37"], e["C37"] = "31.23.16", 5, "Supply, placement, and compaction of approved road base material under slabs on grade, 150 mm thick."
+for r, it, d_ in [(38, "5.1", "Main Villa"), (39, "5.2", "Underground water tank")]:
+    e[f"B{r}"], e[f"C{r}"], e[f"D{r}"], e[f"E{r}"], e[f"G{r}"] = it, d_, "M3", 10, "Included"
+e["C46"], e["E46"], e["G46"], e["K46"], e["M46"] = "TOTAL CARRIED TO COLLECTION", "DIV02/2", "=SUM(G29:G45)", "=SUM(K29:K45)", "=SUM(M29:M45)"
+hdr(47); e["C49"] = '=$C$6&" (CONT\'D)"'
+e["B52"], e["C52"] = 6, "Anti-termite treatment"; e["C52"].font = B
+e["C53"] = "Provision of anti-termite treatment for all areas below ground floor slab, including a 10 year guarantee."
+for r, it, d_, q, pv in [(59, "6.1", "Main Villa (under footing & SOG & Interlock)", "=95.33+322+192", 1), (60, "6.2", "Boundary wall (under footing)", 80.39, 0.9), (61, "6.3", "Underground water tank (under footing)", 26.6, 0)]:
+    e[f"B{r}"], e[f"C{r}"], e[f"D{r}"], e[f"E{r}"], e[f"F{r}"] = it, d_, "M2", q, 10 if r == 59 else "=F59"
+    e[f"G{r}"] = f"=+F{r}*E{r}"; e[f"H{r}"] = pv; e[f"I{r}"] = f"=J{r}-H{r}"; e[f"J{r}"] = pv
+    e[f"K{r}"], e[f"L{r}"], e[f"M{r}"] = f"=H{r}*G{r}", f"=I{r}*G{r}", f"=J{r}*G{r}"
+e["C63"], e["D63"] = "Immediately prior to handing over the works, general cleaning of the site.", "Item"
+e["C77"], e["E77"], e["G77"], e["K77"], e["M77"] = "TOTAL CARRIED TO COLLECTION", "DIV02/3", "=SUM(G49:G76)", "=SUM(K49:K76)", "=SUM(M49:M76)"
+hdr(78); e["C80"] = '=$C$6&" (CONT\'D)"'
+e["C83"] = "Any Other Items"; e["C85"], e["G85"] = "The Contractor will list here and price any other items.", "N/A"
+e["C123"] = '=$C$6&" (CONT\'D)"'; e["C125"] = "COLLECTION"
+e["C127"], e["G127"], e["M127"] = "From Page DIV 02/ 1", "=+G26", 0
+e["C129"], e["G129"], e["M129"] = "From Page DIV 02/ 2", "=+G46", "=+M46"
+e["C131"], e["G131"], e["M131"] = "From Page DIV 02/ 3", "=+G77", "=+M77"
+e["C171"], e["E171"], e["G171"], e["M171"] = "TOTAL CARRIED TO GENERAL SUMMARY", "DIV02/5", "=SUM(G123:G170)", "=SUM(M123:M170)"
+sm["A6"], sm["B6"], sm["C6"] = "02", "Site construction", "='Division 02-Site Construction'!M171"
+sm["B7"], sm["C7"] = "Total", "=SUM(C4:C6)"
+cv["B6"] = "=Summary!C7"
 wb.save(out)
 print(out)

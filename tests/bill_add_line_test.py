@@ -27,6 +27,19 @@ sec = lambda b, n: next(t for t in b["progress"] if t["sheet"] == n)
 D, C = "Division 03-Concrete Works", "APP C"
 d0, due0 = sec(bill, D), bill["total_due"]
 ck("Division: lines 9, 10, 12; headings 3.1.1 and 3.2.2 shown", [l["r"] for l in d0["lines"]] == [9, 10, 12] and [h["item"] for h in d0["heads"]] == ["3.1.1", "3.2.2"], (d0["lines"], d0["heads"]))
+# Division 02 as 914 prints it: only the real heading over each run of lines
+e0 = sec(bill, "Division 02-Site Construction")
+ck("Division 02: lines 4.1-4.3 and 6.1-6.3", [l["item"] for l in e0["lines"]] == ["4.1", "4.2", "4.3", "6.1", "6.2", "6.3"], [(l["r"], l["item"]) for l in e0["lines"]])
+ck("...headings: just 'Back Fill (with excavated soil)' over 4.x and '6 Anti-termite treatment' over 6.x",
+   [(h["item"], h["desc"]) for h in e0["heads"]] == [("", "Back Fill (with excavated soil)"), ("6", "Anti-termite treatment")], e0["heads"])
+r = c.post(f"/store/est/ipa/bill/{bid}/line", headers=H, json={"sheet": "Division 02-Site Construction", "after": 35, "values": {"item": "4.4", "desc": "Pump room", "unit": "M3", "c5": 10, "c6": 46}})
+e1 = sec(r.json(), "Division 02-Site Construction"); l44 = next((l for l in e1["lines"] if l["item"] == "4.4"), None)
+dueA = r.json()["total_due"]
+r = c.put(f"/store/est/ipa/bill/{bid}", headers=H, json={"set": {"Division 02-Site Construction": {l44["tot_key"]: 1}}})
+ck("Division 02: 4.4 added after 4.3 (page 2), 100% = +460 through the page total and the collection", l44 and l44["r"] == 36 and abs(r.json()["total_due"] - dueA - 460) < 0.01, (l44, dueA, r.json().get("total_due")))
+r = c.post(f"/store/est/ipa/bill/{bid}/line/remove", headers=H, json={"sheet": "Division 02-Site Construction", "r": 36})
+ck("...and taken out again", r.status_code == 200 and abs(r.json()["total_due"] - dueA) < 0.01, r.text[:200])
+bill = r.json(); due0 = bill["total_due"]
 f9 = {f["f"]: f for f in d0["lines"][0]["fields"]}
 ck("a Division line's details: item, description, unit, QTY and RATE typed - amount worked out", set(f9) >= {"item", "desc", "unit", "c5", "c6", "amount"} and f9["c5"]["edit"] and not f9["amount"]["edit"], f9)
 fv = {f["f"]: f for f in sec(bill, C)["lines"][1]["fields"]}

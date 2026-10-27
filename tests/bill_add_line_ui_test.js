@@ -23,6 +23,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('each section has + Line and + Section', (await p.$$('[data-addln]')).length >= 2 && (await p.$$('[data-addsec]')).length >= 2);
   ck('the headings 3.1.1 / 3.2.2 show between the lines', (await p.$$eval(`${sec(D)} tr.hd .it`, x => x.map(e => e.textContent))).join() === '3.1.1,3.2.2');
   ck('every line has a ⋮', (await p.$$(`${sec(D)} tr[data-line] .ln-menu`)).length === 3);
+  const D2 = 'Division 02-Site Construction';
+  const h2 = await p.$$eval(`${sec(D2)} tr.hd .ds`, x => x.map(e => e.textContent.trim()));
+  ck('914 layout: only the real headings (no repeated page headings, CONT\'D, or "Included" items)', h2.join('|') === 'Back Fill (with excavated soil)|Anti-termite treatment', h2);
+  await p.$eval(sec(D2), el => el.scrollIntoView()); await sleep(300); await p.screenshot({ path: SH + '0_div02.png' });
   const due = async () => (await p.textContent('.ipa-due b')).replace(/[^\d.-]/g, '') * 1;
   const due0 = await due();
   // + Line on the Division: the form asks Item, Description, Unit, QTY, RATE
