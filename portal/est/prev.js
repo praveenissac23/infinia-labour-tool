@@ -30,6 +30,7 @@ SECTIONS["prev.rec"] = el => {
           <td><span class="st ${sc}">${esc(x.note && x.st === "reading" ? x.note : sl)}</span>${x.bad ? ` <span class="small" style="color:var(--red)">${x.bad} check${x.bad > 1 ? "s" : ""} not agreeing</span>` : ""}${x.st === "error" ? `<div class="small" style="color:var(--red)">${esc(x.err || "")}</div>` : ""}</td>
           <td class="nowrap">${["check", "error", "skipped"].includes(x.st) ? `<button class="btn btn-ghost" data-popen="${PREV.q.indexOf(x)}">${x.st === "check" ? "Open" : "Try again"}</button>` : ""}${["wait", "check"].includes(x.st) ? ` <button class="btn btn-plain" data-pskip="${PREV.q.indexOf(x)}">Skip</button>` : ""}</td></tr>`; }).join("")}
       </tbody></table></div>` : ""}
+      ${prevBroughtIn()}
     </div>`;
   $$("[data-pup]", el).forEach(btn => { const k = btn.dataset.pup, fi = $("#pf-" + k, el); btn.onclick = () => fi.click();
     fi.onchange = () => { const files = [...fi.files]; fi.value = ""; if (!files.length) return;
@@ -37,7 +38,32 @@ SECTIONS["prev.rec"] = el => {
       files.forEach(f => PREV.q.push({ pid: ST.pid, kind: k, file: f, st: "wait" })); prevDraw(); prevRun(); }; });
   $$("[data-popen]", el).forEach(btn => btn.onclick = () => { const x = PREV.q[+btn.dataset.popen]; if (x.st === "check" && x.read) prevOpen(x); else { x.st = "wait"; x.read = null; prevDraw(); prevRun(); } });
   $$("[data-pskip]", el).forEach(btn => btn.onclick = () => { PREV.q[+btn.dataset.pskip].st = "skipped"; prevDraw(); prevRun(); });
+  // Delete a record brought in by mistake (uploaded twice ...): pressed twice, the button asks once
+  $$("[data-pdel]", el).forEach(btn => btn.onclick = async () => {
+    if (!btn.dataset.sure) { btn.dataset.sure = "1"; btn.textContent = "Press again to delete"; btn.classList.add("btn-primary");
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.textContent = "Delete"; btn.classList.remove("btn-primary"); } }, 3500); return; }
+    const [kind, id] = btn.dataset.pdel.split(":");
+    try { await DEL(`/store/est/${kind}/${id}`); await reload(); toast(`${btn.dataset.what} deleted`); } catch (e) { fail(e); }
+  });
 };
+// Every client bill and subcontractor PC of the project, with the file each was brought in from - from the records, so the list is
+// there after a reload; a bill or PC in twice is marked, and any of them can be deleted.
+function prevBroughtIn() {
+  const b = ST.b, file = r => { const m = /^Previous record: ([^·]+?)(?:\s·|$)/.exec(r.remarks || ""); return m ? m[1].trim() : ""; };
+  const rows = [];
+  b.clientpcs.forEach(c => { const f = file(c); rows.push({ kind: "clientpcs", id: c.id, file: f, type: "Client bill", what: `Bill ${c.seq}`, key: `c:${c.contract_id || ""}:${c.seq}`,
+    date: c.period_to || c.certified_on || c.submitted, todate: c.claimed_cum, paid: c.status === "Paid", status: c.status }); });
+  b.subs.forEach(s => s.pcs.forEach(p => { const f = file(p); rows.push({ kind: "subpcs", id: p.id, file: f, type: "Subcontractor PC", what: `${s.name} - PC ${pad(p.seq, 2)}`,
+    key: `s:${s.id}:${p.inv_ref || ""}:${p.work_cum}`, date: p.inv_date || p.received, todate: p.work_cum, paid: p.status === "Paid", status: p.status }); }));
+  if (!rows.length) return "";
+  const seen = {}; rows.forEach(r => { seen[r.key] = (seen[r.key] || 0) + 1; });
+  return `<h3 style="margin-top:18px">Client bills and subcontractor PCs in the app ${tip("Every client bill and subcontractor PC of this project, with the file it was brought in from (- = typed in, or the file name was taken off its remarks). One in twice is marked Twice - delete the extra one. Deleting removes the record from the app (a subcontractor's later PCs move up one number).")}</h3>
+    <div class="tw"><table class="t"><thead><tr><th>File</th><th>Type</th><th>Record</th><th>Date</th><th class="r">To date</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr${seen[r.key] > 1 ? ' style="background:#FFF6E5"' : ""}><td>${r.file ? esc(r.file) : '<span class="muted">-</span>'}</td><td>${esc(r.type)}</td><td>${esc(r.what)}${seen[r.key] > 1 ? ' <span class="st a">Twice</span>' : ""}</td>
+      <td>${dt(r.date)}</td><td class="r">${money(r.todate, false)}</td><td>${st(r.status)}</td>
+      <td class="nowrap r"><button class="btn btn-ghost btn-sm" data-pdel="${r.kind}:${r.id}" data-what="${esc(r.what)}">Delete</button></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
 function prevSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
 function prevDraw() { if (key() === "prev.rec" && $("#sec")) SECTIONS["prev.rec"]($("#sec")); }
 
