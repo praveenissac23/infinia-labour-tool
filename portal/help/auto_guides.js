@@ -5,7 +5,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Dashboard",
   "auto": true,
-  "words": "dashboard     screen buttons what is",
+  "words": "dashboard     daily attendancemark today s attendance salary cardslabour pay for the cycle office salarycycle and salary statements approvalsapprove and order requests purchase ordersraise an lpo expiry remindervisas  ids  permits due pdcspost dated cheques due tax invoiceraise and list tax invoices send to zoholines waiting for zoho activity monitorwho did what  and when screen buttons what is",
   "go": {
    "page": "dashboard",
    "tab": "dashboard"
@@ -21,6 +21,46 @@ window.HELP_AUTO = [
    {
     "say": "2. ▶.",
     "el": "button[onclick=\"shiftCalendarCycle('dash', 1)\"]"
+   },
+   {
+    "say": "3. Daily attendanceMark today's attendance.",
+    "el": "button[onclick=\"dqGo('att')\"]"
+   },
+   {
+    "say": "4. Salary cardsLabour pay for the cycle.",
+    "el": "button[onclick=\"dqGo('cards')\"]"
+   },
+   {
+    "say": "5. Office salaryCycle and salary statements.",
+    "el": "button[onclick=\"dqGo('ocycle')\"]"
+   },
+   {
+    "say": "6. ApprovalsApprove and order requests.",
+    "el": "button[onclick=\"dqGo('appr')\"]"
+   },
+   {
+    "say": "7. Purchase ordersRaise an LPO.",
+    "el": "button[onclick=\"dqGo('lpo')\"]"
+   },
+   {
+    "say": "8. Expiry reminderVisas, IDs, permits due.",
+    "el": "button[onclick=\"dqGo('expiry')\"]"
+   },
+   {
+    "say": "9. PDCsPost-dated cheques due.",
+    "el": "button[onclick=\"dqGo('pdc')\"]"
+   },
+   {
+    "say": "10. Tax invoiceRaise and list tax invoices.",
+    "el": "button[onclick=\"dqGo('taxinv')\"]"
+   },
+   {
+    "say": "11. Send to ZohoLines waiting for Zoho.",
+    "el": "button[onclick=\"dqGo('zoho')\"]"
+   },
+   {
+    "say": "12. Activity monitorWho did what, and when.",
+    "el": "button[onclick=\"dqGo('activity')\"]"
    }
   ]
  },
@@ -29,7 +69,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Attendance > Daily attendance",
   "auto": true,
-  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp daily report clear day     screen buttons what is",
+  "words": "attendance   daily attendance apply to ticked select all select none unfilled emp  74  daily report clear day     screen buttons what is",
   "go": {
    "page": "attendance",
    "tab": "attendance"
@@ -51,7 +91,7 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"selectNone()\"]"
    },
    {
-    "say": "4. Unfilled Emp.",
+    "say": "4. Unfilled Emp (74).",
     "el": "#unfilled-btn"
    },
    {
@@ -201,7 +241,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Labour payroll > Additions & deductions",
   "auto": true,
-  "words": "payroll   labour payroll   additions   deductions load add screen buttons what is",
+  "words": "payroll   labour payroll   additions   deductions load screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "labourpay",
@@ -214,10 +254,6 @@ window.HELP_AUTO = [
    {
     "say": "1. Load.",
     "el": "button[onclick=\"loadAdjustmentsList()\"]"
-   },
-   {
-    "say": "2. Add.",
-    "el": "button[onclick=\"addAdjustmentRow()\"]"
    }
   ]
  },
@@ -263,6 +299,39 @@ window.HELP_AUTO = [
   ]
  },
  {
+  "id": "scr-payroll-labourpay-monthly",
+  "area": "Every screen",
+  "title": "Payroll > Labour payroll > Monthly report",
+  "auto": true,
+  "words": "payroll   labour payroll   monthly report save notes preview export pdf export excel screen buttons what is",
+  "go": {
+   "page": "payroll",
+   "tab": "labourpay",
+   "sub": "monthly"
+  },
+  "steps": [
+   {
+    "say": "This is Payroll > Labour payroll > Monthly report. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Save notes: keeps what you entered - nothing is kept until you press it - Notes also save on their own as you leave each box.",
+    "el": "button[onclick=\"saveAllMonthlyNotes()\"]"
+   },
+   {
+    "say": "2. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"exportReportTable('view')\"]"
+   },
+   {
+    "say": "3. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"exportReportTable('pdf')\"]"
+   },
+   {
+    "say": "4. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"exportReportTable('excel')\"]"
+   }
+  ]
+ },
+ {
   "id": "scr-payroll-labourpay-increments",
   "area": "Every screen",
   "title": "Payroll > Labour payroll > Increments",
@@ -294,8 +363,40 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"labIncOut('excel')\"]"
    },
    {
-    "say": "5. Edit: change what is there.",
-    "el": "button[onclick=\"labIncEdit(35)\"]"
+    "say": "5. Edit: change what is there - No change on file yet - his rate is edited on Master Data.",
+    "el": "button[onclick=\"xlGo(\\\"attendance\\\", \\\"masterdata\\\", null, () => xlOn(\\\"masterdata\\\"), () => editEmployee(\\\"D-01\\\"))\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-payroll-labourpay-gratuity",
+  "area": "Every screen",
+  "title": "Payroll > Labour payroll > Gratuity",
+  "auto": true,
+  "words": "payroll   labour payroll   gratuity   preview export pdf export excel screen buttons what is",
+  "go": {
+   "page": "payroll",
+   "tab": "labourpay",
+   "sub": "gratuity"
+  },
+  "steps": [
+   {
+    "say": "This is Payroll > Labour payroll > Gratuity. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. ×: Clear."
+   },
+   {
+    "say": "2. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"labGratOut('view')\"]"
+   },
+   {
+    "say": "3. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"labGratOut('pdf')\"]"
+   },
+   {
+    "say": "4. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"labGratOut('excel')\"]"
    }
   ]
  },
@@ -304,7 +405,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Salary cycle & statements",
   "auto": true,
-  "words": "payroll   office payroll   salary cycle   statements office staff local staff pay full month now preview export pdf export excel consolidated statement  office   local  approve   lock screen buttons what is",
+  "words": "payroll   office payroll   salary cycle   statements office staff local staff screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -321,30 +422,6 @@ window.HELP_AUTO = [
    {
     "say": "2. Local staff.",
     "el": "button[onclick=\"hrPickGroup('local')\"]"
-   },
-   {
-    "say": "3. Pay full month now.",
-    "el": "button[onclick=\"hrFullMonth()\"]"
-   },
-   {
-    "say": "4. Preview: opens it on screen to read or print.",
-    "el": "button[onclick=\"previewConsolidated()\"]"
-   },
-   {
-    "say": "5. Export PDF: downloads it as a PDF.",
-    "el": "button[onclick=\"downloadConsolidated('pdf')\"]"
-   },
-   {
-    "say": "6. Export Excel: downloads it as an Excel sheet.",
-    "el": "button[onclick=\"downloadConsolidated('excel')\"]"
-   },
-   {
-    "say": "7. Consolidated statement (office + local).",
-    "el": "button[onclick=\"previewConsolidated(true)\"]"
-   },
-   {
-    "say": "8. Approve & lock: approves it.",
-    "el": "button[onclick=\"hrAllUse(5); approvePayrollRun()\"]"
    }
   ]
  },
@@ -425,7 +502,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Loans",
   "auto": true,
-  "words": "payroll   office payroll   loans record loan preview export pdf export excel history edit screen buttons what is",
+  "words": "payroll   office payroll   loans record loan preview export pdf export excel screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -450,14 +527,6 @@ window.HELP_AUTO = [
    {
     "say": "4. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('loans','excel')\"]"
-   },
-   {
-    "say": "5. History.",
-    "el": "button[onclick=\"hrLoanToggle(6)\"]"
-   },
-   {
-    "say": "6. Edit: change what is there.",
-    "el": "button[onclick=\"hrLoanEdit(6)\"]"
    }
   ]
  },
@@ -466,7 +535,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Staff register",
   "auto": true,
-  "words": "payroll   office payroll   staff register preview export pdf export excel   new staff screen buttons what is",
+  "words": "payroll   office payroll   staff register all companies preview export pdf export excel   new staff screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -477,19 +546,22 @@ window.HELP_AUTO = [
     "say": "This is Payroll > Office payroll > Staff register. The numbers on the picture match the list below."
    },
    {
-    "say": "1. Preview: opens it on screen to read or print.",
+    "say": "1. All companies."
+   },
+   {
+    "say": "2. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"previewHr('staff')\"]"
    },
    {
-    "say": "2. Export PDF: downloads it as a PDF.",
+    "say": "3. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"downloadHr('staff','pdf')\"]"
    },
    {
-    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "say": "4. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('staff','excel')\"]"
    },
    {
-    "say": "4. + New staff: adds a new staff.",
+    "say": "5. + New staff: adds a new staff.",
     "el": "button[onclick=\"hrNewStaff()\"]"
    }
   ]
@@ -499,7 +571,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Payroll > Office payroll > Increments",
   "auto": true,
-  "words": "payroll   office payroll   increments record increment preview export pdf export excel edit screen buttons what is",
+  "words": "payroll   office payroll   increments record increment preview export pdf export excel screen buttons what is",
   "go": {
    "page": "payroll",
    "tab": "hrpayroll",
@@ -524,10 +596,6 @@ window.HELP_AUTO = [
    {
     "say": "4. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('increments','excel')\"]"
-   },
-   {
-    "say": "5. Edit: change what is there.",
-    "el": "button[onclick=\"hrIncEdit(39)\"]"
    }
   ]
  },
@@ -565,7 +633,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > All together",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   all together 7expireddocuments   renew now 8due in 7 daysdocuments   start renewal   started mark started screen buttons what is",
+  "words": "expiry reminder   expiry reminder   all together 0expireddocuments   renew now 0due in 7 daysdocuments   start renewal screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -576,20 +644,12 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > All together. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 7Expireddocuments - renew now.",
+    "say": "1. 0Expireddocuments - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
-    "say": "2. 8Due in 7 daysdocuments - start renewal.",
+    "say": "2. 0Due in 7 daysdocuments - start renewal.",
     "el": "button[onclick=\"expCard('week')\"]"
-   },
-   {
-    "say": "3. ✓ Started: Started by Administrator - click to undo.",
-    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 276, false)\"]"
-   },
-   {
-    "say": "4. Mark started: Renewal is in hand - stop the reminders for this document.",
-    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('company', 5, true)\"]"
    }
   ]
  },
@@ -598,7 +658,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > People",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   people 3expiredpeople   renew now 3due in 7 dayspeople   start renewal 0due in 8 to 30 dayspeople   plan ahead save document preview export pdf export excel   started mark started screen buttons what is",
+  "words": "expiry reminder   expiry reminder   people 0expiredpeople   renew now 0due in 7 dayspeople   start renewal 0due in 8 to 30 dayspeople   plan ahead   read from document save document preview export pdf export excel screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -609,11 +669,11 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > People. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 3Expiredpeople - renew now.",
+    "say": "1. 0Expiredpeople - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
-    "say": "2. 3Due in 7 dayspeople - start renewal.",
+    "say": "2. 0Due in 7 dayspeople - start renewal.",
     "el": "button[onclick=\"expCard('week')\"]"
    },
    {
@@ -621,28 +681,23 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"expCard('month')\"]"
    },
    {
-    "say": "4. Save document: keeps what you entered - nothing is kept until you press it.",
+    "say": "4. 📄 Read from document."
+   },
+   {
+    "say": "5. Save document: keeps what you entered - nothing is kept until you press it.",
     "el": "button[onclick=\"addDocument()\"]"
    },
    {
-    "say": "5. Preview: opens it on screen to read or print.",
+    "say": "6. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"previewHr('documents')\"]"
    },
    {
-    "say": "6. Export PDF: downloads it as a PDF.",
+    "say": "7. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"downloadHr('documents','pdf')\"]"
    },
    {
-    "say": "7. Export Excel: downloads it as an Excel sheet.",
+    "say": "8. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"downloadHr('documents','excel')\"]"
-   },
-   {
-    "say": "8. ✓ Started: Started by Administrator - click to undo.",
-    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 276, false)\"]"
-   },
-   {
-    "say": "9. Mark started: Renewal is in hand - stop the reminders for this document.",
-    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('person', 46, true)\"]"
    }
   ]
  },
@@ -651,7 +706,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > Company & other documents",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   company   other documents 4expireddocuments   renew now 0due in 7 daysdocuments   start renewal save preview export pdf export excel mark started screen buttons what is",
+  "words": "expiry reminder   expiry reminder   company   other documents 0expireddocuments   renew now 0due in 7 daysdocuments   start renewal 0all company documentseverything on file save preview export pdf export excel screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -662,7 +717,7 @@ window.HELP_AUTO = [
     "say": "This is Expiry Reminder > Expiry reminder > Company & other documents. The numbers on the picture match the list below."
    },
    {
-    "say": "1. 4Expireddocuments - renew now.",
+    "say": "1. 0Expireddocuments - renew now.",
     "el": "button[onclick=\"expCard('expired')\"]"
    },
    {
@@ -670,24 +725,24 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"expCard('week')\"]"
    },
    {
-    "say": "3. Save: keeps what you entered - nothing is kept until you press it.",
+    "say": "3. 0All company documentseverything on file.",
+    "el": "button[onclick=\"expCard('all')\"]"
+   },
+   {
+    "say": "4. Save: keeps what you entered - nothing is kept until you press it.",
     "el": "button[onclick=\"saveExpiry()\"]"
    },
    {
-    "say": "4. Preview: opens it on screen to read or print.",
+    "say": "5. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"hrExpExport('view')\"]"
    },
    {
-    "say": "5. Export PDF: downloads it as a PDF.",
+    "say": "6. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"hrExpExport('pdf')\"]"
    },
    {
-    "say": "6. Export Excel: downloads it as an Excel sheet.",
+    "say": "7. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"hrExpExport('excel')\"]"
-   },
-   {
-    "say": "7. Mark started: Renewal is in hand - stop the reminders for this document.",
-    "el": "button[onclick=\"event.stopPropagation(); expMarkStarted('company', 5, true)\"]"
    }
   ]
  },
@@ -696,7 +751,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Expiry Reminder > Expiry reminder > PDCs",
   "auto": true,
-  "words": "expiry reminder   expiry reminder   pdcs 0overduenothing overdue 0due in 7 daysnothing this week 1due in 8 to 14 daysaed 48 596 10 21all to be paidaed 2 189 468 73 18date to fillaed 1 800 282 63 add monthly tracker cheque list preview export pdf export excel screen buttons what is",
+  "words": "expiry reminder   expiry reminder   pdcs 0overduenothing overdue 0due in 7 daysnothing this week 0due in 8 to 14 daysnothing next week 0all to be paidno cheques pending   read from cheque add monthly tracker cheque list preview export pdf export excel screen buttons what is",
   "go": {
    "page": "expiry",
    "tab": "expiry",
@@ -715,16 +770,15 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"pdcCard('week')\"]"
    },
    {
-    "say": "3. 1Due in 8 to 14 daysAED 48,596.10.",
+    "say": "3. 0Due in 8 to 14 daysnothing next week.",
     "el": "button[onclick=\"pdcCard('fortnight')\"]"
    },
    {
-    "say": "4. 21All to be paidAED 2,189,468.73.",
+    "say": "4. 0All to be paidno cheques pending.",
     "el": "button[onclick=\"pdcCard('pending')\"]"
    },
    {
-    "say": "5. 18Date to fillAED 1,800,282.63.",
-    "el": "button[onclick=\"pdcCard('nodate')\"]"
+    "say": "5. 📄 Read from cheque."
    },
    {
     "say": "6. Add.",
@@ -753,11 +807,70 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-accounts-taxinv",
+  "id": "scr-expiry-expiry-security",
+  "area": "Every screen",
+  "title": "Expiry Reminder > Expiry reminder > Security cheques & deposits",
+  "auto": true,
+  "words": "expiry reminder   expiry reminder   security cheques   deposits 0due to collect back 0collect within 30 days 0with others nowaed 0 00 0no collect back date cheque deposit paid   read from cheque add with others all  incl  collected back preview export pdf screen buttons what is",
+  "go": {
+   "page": "expiry",
+   "tab": "expiry",
+   "sub": "security"
+  },
+  "steps": [
+   {
+    "say": "This is Expiry Reminder > Expiry reminder > Security cheques & deposits. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. 0Due to collect back."
+   },
+   {
+    "say": "2. 0Collect within 30 days."
+   },
+   {
+    "say": "3. 0With others nowAED 0.00."
+   },
+   {
+    "say": "4. 0No collect-back date."
+   },
+   {
+    "say": "5. Cheque.",
+    "el": "button[onclick=\"scKind('cheque')\"]"
+   },
+   {
+    "say": "6. Deposit paid.",
+    "el": "button[onclick=\"scKind('deposit')\"]"
+   },
+   {
+    "say": "7. 📄 Read from cheque."
+   },
+   {
+    "say": "8. Add.",
+    "el": "#sc-save"
+   },
+   {
+    "say": "9. With others."
+   },
+   {
+    "say": "10. All, incl. collected back.",
+    "el": "button[onclick=\"scShow('all')\"]"
+   },
+   {
+    "say": "11. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"scExport('view')\"]"
+   },
+   {
+    "say": "12. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"scExport('pdf')\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-invoices-tax",
   "area": "Every screen",
   "title": "Accounts > Invoices > Tax Invoice",
   "auto": true,
-  "words": "accounts   tax invoice   add line save   open pdf save clear screen buttons what is",
+  "words": "accounts   invoices   tax invoice   add line save   open pdf save clear screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "invoices",
@@ -765,7 +878,7 @@ window.HELP_AUTO = [
   },
   "steps": [
    {
-    "say": "This is Accounts > Tax Invoice. The numbers on the picture match the list below."
+    "say": "This is Accounts > Invoices > Tax Invoice. The numbers on the picture match the list below."
    },
    {
     "say": "1. + Add line: adds a new add line.",
@@ -786,11 +899,11 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-accounts-proforma",
+  "id": "scr-accounts-invoices-proforma",
   "area": "Every screen",
   "title": "Accounts > Invoices > Proforma Invoice",
   "auto": true,
-  "words": "accounts   proforma invoice   add line save   open pdf save clear screen buttons what is",
+  "words": "accounts   invoices   proforma invoice   add line save   open pdf save clear screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "invoices",
@@ -798,7 +911,7 @@ window.HELP_AUTO = [
   },
   "steps": [
    {
-    "say": "This is Accounts > Proforma Invoice. The numbers on the picture match the list below."
+    "say": "This is Accounts > Invoices > Proforma Invoice. The numbers on the picture match the list below."
    },
    {
     "say": "1. + Add line: adds a new add line.",
@@ -815,6 +928,47 @@ window.HELP_AUTO = [
    {
     "say": "4. Clear.",
     "el": "#inv-clear"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-invoices-receipts",
+  "area": "Every screen",
+  "title": "Accounts > Invoices > Receipts",
+  "auto": true,
+  "words": "accounts   invoices   receipts bank transfer cheque cash card pdc save   open receipt screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "invoices",
+   "sub": "receipts"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Invoices > Receipts. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Bank transfer.",
+    "el": "button[onclick=\"rcMode('Bank transfer')\"]"
+   },
+   {
+    "say": "2. Cheque.",
+    "el": "button[onclick=\"rcMode('Cheque')\"]"
+   },
+   {
+    "say": "3. Cash.",
+    "el": "button[onclick=\"rcMode('Cash')\"]"
+   },
+   {
+    "say": "4. Card.",
+    "el": "button[onclick=\"rcMode('Card')\"]"
+   },
+   {
+    "say": "5. PDC.",
+    "el": "button[onclick=\"rcMode('PDC')\"]"
+   },
+   {
+    "say": "6. Save & open receipt: keeps what you entered - nothing is kept until you press it.",
+    "el": "#rc-save-pdf"
    }
   ]
  },
@@ -823,7 +977,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Accounts > Petty cash > Site",
   "auto": true,
-  "words": "accounts   petty cash   site preview export pdf export excel bill paid cash received add edit remove screen buttons what is",
+  "words": "accounts   petty cash   site preview export pdf export excel   read from receipt bill paid cash received add edit remove screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "petty",
@@ -846,24 +1000,27 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"pcExport('excel')\"]"
    },
    {
-    "say": "4. Bill paid.",
+    "say": "4. 📄 Read from receipt."
+   },
+   {
+    "say": "5. Bill paid.",
     "el": "button[onclick=\"pcKind('paid')\"]"
    },
    {
-    "say": "5. Cash received.",
+    "say": "6. Cash received.",
     "el": "button[onclick=\"pcKind('received')\"]"
    },
    {
-    "say": "6. Add.",
+    "say": "7. Add.",
     "el": "#pc-save"
    },
    {
-    "say": "7. Edit: change what is there.",
-    "el": "button[onclick=\"pcEdit(1)\"]"
+    "say": "8. Edit: change what is there.",
+    "el": "button[onclick=\"pcEdit(2)\"]"
    },
    {
-    "say": "8. Remove: removes it (it asks first).",
-    "el": "button[onclick=\"pcDelete(1)\"]"
+    "say": "9. Remove: removes it (it asks first).",
+    "el": "button[onclick=\"pcDelete(2)\"]"
    }
   ]
  },
@@ -872,7 +1029,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Accounts > Petty cash > PRO",
   "auto": true,
-  "words": "accounts   petty cash   pro preview export pdf export excel bill paid cash received add edit remove screen buttons what is",
+  "words": "accounts   petty cash   pro general visa preview export pdf export excel   read from receipt bill paid cash received add screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "petty",
@@ -883,36 +1040,39 @@ window.HELP_AUTO = [
     "say": "This is Accounts > Petty cash > PRO. The numbers on the picture match the list below."
    },
    {
-    "say": "1. Preview: opens it on screen to read or print.",
+    "say": "1. General.",
+    "el": "button[onclick=\"pcView('cash')\"]"
+   },
+   {
+    "say": "2. Visa.",
+    "el": "button[onclick=\"pcView('visa')\"]"
+   },
+   {
+    "say": "3. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"pcExport('view')\"]"
    },
    {
-    "say": "2. Export PDF: downloads it as a PDF.",
+    "say": "4. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"pcExport('pdf')\"]"
    },
    {
-    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "say": "5. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"pcExport('excel')\"]"
    },
    {
-    "say": "4. Bill paid.",
+    "say": "6. 📄 Read from receipt."
+   },
+   {
+    "say": "7. Bill paid.",
     "el": "button[onclick=\"pcKind('paid')\"]"
    },
    {
-    "say": "5. Cash received.",
+    "say": "8. Cash received.",
     "el": "button[onclick=\"pcKind('received')\"]"
    },
    {
-    "say": "6. Add.",
+    "say": "9. Add.",
     "el": "#pc-save"
-   },
-   {
-    "say": "7. Edit: change what is there.",
-    "el": "button[onclick=\"pcEdit(4)\"]"
-   },
-   {
-    "say": "8. Remove: removes it (it asks first).",
-    "el": "button[onclick=\"pcDelete(4)\"]"
    }
   ]
  },
@@ -921,7 +1081,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Accounts > Petty cash > Office",
   "auto": true,
-  "words": "accounts   petty cash   office preview export pdf export excel bill paid cash received add edit remove screen buttons what is",
+  "words": "accounts   petty cash   office preview export pdf export excel   read from receipt bill paid cash received add screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "petty",
@@ -944,24 +1104,19 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"pcExport('excel')\"]"
    },
    {
-    "say": "4. Bill paid.",
+    "say": "4. 📄 Read from receipt."
+   },
+   {
+    "say": "5. Bill paid.",
     "el": "button[onclick=\"pcKind('paid')\"]"
    },
    {
-    "say": "5. Cash received.",
+    "say": "6. Cash received.",
     "el": "button[onclick=\"pcKind('received')\"]"
    },
    {
-    "say": "6. Add.",
+    "say": "7. Add.",
     "el": "#pc-save"
-   },
-   {
-    "say": "7. Edit: change what is there.",
-    "el": "button[onclick=\"pcEdit(6)\"]"
-   },
-   {
-    "say": "8. Remove: removes it (it asks first).",
-    "el": "button[onclick=\"pcDelete(6)\"]"
    }
   ]
  },
@@ -970,7 +1125,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Accounts > Petty cash > Naveen",
   "auto": true,
-  "words": "accounts   petty cash   naveen preview export pdf export excel paid by naveen repaid to naveen add screen buttons what is",
+  "words": "accounts   petty cash   naveen preview export pdf export excel   read from receipt paid by naveen repaid to naveen add screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "petty",
@@ -993,15 +1148,18 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"pcExport('excel')\"]"
    },
    {
-    "say": "4. Paid by Naveen.",
+    "say": "4. 📄 Read from receipt."
+   },
+   {
+    "say": "5. Paid by Naveen.",
     "el": "button[onclick=\"pcKind('paid')\"]"
    },
    {
-    "say": "5. Repaid to Naveen.",
+    "say": "6. Repaid to Naveen.",
     "el": "button[onclick=\"pcKind('received')\"]"
    },
    {
-    "say": "6. Add.",
+    "say": "7. Add.",
     "el": "#pc-save"
    }
   ]
@@ -1011,7 +1169,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Accounts > Petty cash > Praveen",
   "auto": true,
-  "words": "accounts   petty cash   praveen preview export pdf export excel paid by praveen repaid to praveen add screen buttons what is",
+  "words": "accounts   petty cash   praveen preview export pdf export excel   read from receipt paid by praveen repaid to praveen add screen buttons what is",
   "go": {
    "page": "accounts",
    "tab": "petty",
@@ -1034,15 +1192,18 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"pcExport('excel')\"]"
    },
    {
-    "say": "4. Paid by Praveen.",
+    "say": "4. 📄 Read from receipt."
+   },
+   {
+    "say": "5. Paid by Praveen.",
     "el": "button[onclick=\"pcKind('paid')\"]"
    },
    {
-    "say": "5. Repaid to Praveen.",
+    "say": "6. Repaid to Praveen.",
     "el": "button[onclick=\"pcKind('received')\"]"
    },
    {
-    "say": "6. Add.",
+    "say": "7. Add.",
     "el": "#pc-save"
    }
   ]
@@ -1104,6 +1265,279 @@ window.HELP_AUTO = [
    {
     "say": "3. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"pxExport('excel')\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-bank",
+  "area": "Every screen",
+  "title": "Accounts > Bank",
+  "auto": true,
+  "words": "accounts   bank preview export pdf export excel upload adcb statement save screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "bank"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Bank. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"bkExport('view')\"]"
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"bkExport('pdf')\"]"
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"bkExport('excel')\"]"
+   },
+   {
+    "say": "4. Upload ADCB statement."
+   },
+   {
+    "say": "5. Save: keeps what you entered - nothing is kept until you press it.",
+    "el": "#bk-save"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-subpay",
+  "area": "Every screen",
+  "title": "Accounts > Subcontractor payments",
+  "auto": true,
+  "words": "accounts   subcontractor payments whatsapp the md  1  print verified     send back mark paid screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "subpay"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Subcontractor payments. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. WhatsApp the MD (1): One WhatsApp message to the managers with one link for all of them."
+   },
+   {
+    "say": "2. Print: prints it."
+   },
+   {
+    "say": "3. Verified ✓."
+   },
+   {
+    "say": "4. ↶ Send back."
+   },
+   {
+    "say": "5. Mark paid."
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-zoho",
+  "area": "Every screen",
+  "title": "Accounts > Send to Zoho",
+  "auto": true,
+  "words": "accounts   send to zoho petty cash2 bank0 lpos0 staff loans0 needs attention0 october check suppliers sent to zoho connect zoho preview export pdf export excel screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "zoho"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Send to Zoho. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Petty cash2.",
+    "el": "button[onclick=\"zhPane('petty')\"]"
+   },
+   {
+    "say": "2. Bank0.",
+    "el": "button[onclick=\"zhPane('bank')\"]"
+   },
+   {
+    "say": "3. LPOs0.",
+    "el": "button[onclick=\"zhPane('lpo')\"]"
+   },
+   {
+    "say": "4. Staff loans0.",
+    "el": "button[onclick=\"zhPane('loans')\"]"
+   },
+   {
+    "say": "5. Needs attention0.",
+    "el": "button[onclick=\"zhPane('attention')\"]"
+   },
+   {
+    "say": "6. October check.",
+    "el": "button[onclick=\"zhPane('october')\"]"
+   },
+   {
+    "say": "7. Suppliers.",
+    "el": "button[onclick=\"zhPane('suppliers')\"]"
+   },
+   {
+    "say": "8. Sent to Zoho.",
+    "el": "button[onclick=\"zhPane('sent')\"]"
+   },
+   {
+    "say": "9. Connect Zoho.",
+    "el": "button[onclick=\"zhConnect()\"]"
+   },
+   {
+    "say": "10. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"zhExport('view')\"]"
+   },
+   {
+    "say": "11. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"zhExport('pdf')\"]"
+   },
+   {
+    "say": "12. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"zhExport('excel')\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-accounts-credentials",
+  "area": "Every screen",
+  "title": "Accounts > Credentials",
+  "auto": true,
+  "words": "accounts   credentials preview export pdf export excel save screen buttons what is",
+  "go": {
+   "page": "accounts",
+   "tab": "credentials"
+  },
+  "steps": [
+   {
+    "say": "This is Accounts > Credentials. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"crExport('view')\"]"
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"crExport('pdf')\"]"
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"crExport('excel')\"]"
+   },
+   {
+    "say": "4. Save: keeps what you entered - nothing is kept until you press it.",
+    "el": "button[onclick=\"crSave()\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-estimation-estdash",
+  "area": "Every screen",
+  "title": "Estimation > Dashboard",
+  "auto": true,
+  "words": "estimation   dashboard preview export pdf export excel share screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estdash"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Dashboard. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print."
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF."
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet."
+   },
+   {
+    "say": "4. Share."
+   }
+  ]
+ },
+ {
+  "id": "scr-estimation-estproj",
+  "area": "Every screen",
+  "title": "Estimation > Projects",
+  "auto": true,
+  "words": "estimation   projects dashboard overview subcontractors site   technical bills previous records   new project screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   }
+  ]
+ },
+ {
+  "id": "scr-estimation-boards",
+  "area": "Every screen",
+  "title": "Estimation > Trello",
+  "auto": true,
+  "words": "estimation   trello boards recent starred templates create a inbox planner board switch boards screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Inbox."
+   },
+   {
+    "say": "8. Planner."
+   },
+   {
+    "say": "9. Board."
+   },
+   {
+    "say": "10. Switch boards."
    }
   ]
  },
@@ -1200,7 +1634,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Store & Purchasing > Stock > Material list",
   "auto": true,
-  "words": "store   purchasing   stock   material list check all materials remove   add another material add stock screen buttons what is",
+  "words": "store   purchasing   stock   material list check all materials remove   add another material add stock save item screen buttons what is",
   "go": {
    "page": "store",
    "tab": "store",
@@ -1225,6 +1659,10 @@ window.HELP_AUTO = [
    {
     "say": "4. Add stock.",
     "el": "#op-save-btn"
+   },
+   {
+    "say": "5. Save Item: keeps what you entered - nothing is kept until you press it.",
+    "el": "button[onclick=\"saveStoreItem()\"]"
    }
   ]
  },
@@ -1444,7 +1882,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Store & Purchasing > Purchasing > Suppliers",
   "auto": true,
-  "words": "store   purchasing   purchasing   suppliers preview export excel template import save screen buttons what is",
+  "words": "store   purchasing   purchasing   suppliers preview export excel template import save edit screen buttons what is",
   "go": {
    "page": "store",
    "tab": "purchasing",
@@ -1473,6 +1911,10 @@ window.HELP_AUTO = [
    {
     "say": "5. Save: keeps what you entered - nothing is kept until you press it.",
     "el": "button[onclick=\"saveSupplier()\"]"
+   },
+   {
+    "say": "6. Edit: change what is there.",
+    "el": "button[onclick=\"editSupplier('Test Supplier')\"]"
    }
   ]
  },
@@ -1510,35 +1952,102 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-reports-labour-monthly",
+  "id": "scr-reports-labour-accom",
   "area": "Every screen",
-  "title": "Reports > Labour > Monthly report",
+  "title": "Reports > Labour > Accommodation",
   "auto": true,
-  "words": "reports   labour   monthly report save notes preview export pdf export excel screen buttons what is",
+  "words": "reports   labour   accommodation preview export pdf export excel share all beds90 in camp72 on vacation2 booked   arriving0 free beds16   book a bed for a new joiner rooms 1free  put someone screen buttons what is",
   "go": {
    "page": "reports",
    "tab": "labour",
-   "sub": "monthly"
+   "sub": "accom"
   },
   "steps": [
    {
-    "say": "This is Reports > Labour > Monthly report. The numbers on the picture match the list below."
+    "say": "This is Reports > Labour > Accommodation. The numbers on the picture match the list below."
    },
    {
-    "say": "1. Save notes: keeps what you entered - nothing is kept until you press it - Notes also save on their own as you leave each box.",
-    "el": "button[onclick=\"saveAllMonthlyNotes()\"]"
+    "say": "1. Preview: opens it on screen to read or print.",
+    "el": "button[onclick=\"campExport('view')\"]"
    },
    {
-    "say": "2. Preview: opens it on screen to read or print.",
-    "el": "button[onclick=\"exportReportTable('view')\"]"
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"campExport('pdf')\"]"
    },
    {
-    "say": "3. Export PDF: downloads it as a PDF.",
-    "el": "button[onclick=\"exportReportTable('pdf')\"]"
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"campExport('excel')\"]"
    },
    {
-    "say": "4. Export Excel: downloads it as an Excel sheet.",
-    "el": "button[onclick=\"exportReportTable('excel')\"]"
+    "say": "4. Share.",
+    "el": "button[onclick=\"campShare()\"]"
+   },
+   {
+    "say": "5. All beds90.",
+    "el": "button[onclick=\"campFilter('all')\"]"
+   },
+   {
+    "say": "6. In camp72.",
+    "el": "button[onclick=\"campFilter('in')\"]"
+   },
+   {
+    "say": "7. On vacation2.",
+    "el": "button[onclick=\"campFilter('vac')\"]"
+   },
+   {
+    "say": "8. Booked - arriving0.",
+    "el": "button[onclick=\"campFilter('book')\"]"
+   },
+   {
+    "say": "9. Free beds16.",
+    "el": "button[onclick=\"campFilter('free')\"]"
+   },
+   {
+    "say": "10. + Book a bed for a new joiner: adds a new book a bed for a new joiner.",
+    "el": "#cp-bookbtn"
+   },
+   {
+    "say": "11. Rooms.",
+    "el": "#cp-roombtn"
+   },
+   {
+    "say": "12. 1Free+ Put someone.",
+    "el": "button[onclick=\"campBed(1,1)\"]"
+   }
+  ]
+ },
+ {
+  "id": "scr-reports-labour-ppe",
+  "area": "Every screen",
+  "title": "Reports > Labour > PPE",
+  "auto": true,
+  "words": "reports   labour   ppe preview export pdf export excel share   give ppe screen buttons what is",
+  "go": {
+   "page": "reports",
+   "tab": "labour",
+   "sub": "ppe"
+  },
+  "steps": [
+   {
+    "say": "This is Reports > Labour > PPE. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print."
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"ppeExport('pdf')\"]"
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"ppeExport('excel')\"]"
+   },
+   {
+    "say": "4. Share."
+   },
+   {
+    "say": "5. + Give PPE: adds a new give ppe.",
+    "el": "#pe-give"
    }
   ]
  },
@@ -1605,7 +2114,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Reports > Store & purchasing > Issued to sites",
   "auto": true,
-  "words": "reports   store   purchasing   issued to sites preview export pdf export excel screen buttons what is",
+  "words": "reports   store   purchasing   issued to sites preview export pdf export excel edit screen buttons what is",
   "go": {
    "page": "reports",
    "tab": "storerep",
@@ -1626,6 +2135,10 @@ window.HELP_AUTO = [
    {
     "say": "3. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"exportStore('excel')\"]"
+   },
+   {
+    "say": "4. Edit: change what is there.",
+    "el": "button[onclick=\"editUsageRow(0)\"]"
    }
   ]
  },
@@ -1804,11 +2317,83 @@ window.HELP_AUTO = [
   ]
  },
  {
+  "id": "scr-admin-forms",
+  "area": "Every screen",
+  "title": "Admin > Forms",
+  "auto": true,
+  "words": "admin   forms preview pdf share screen buttons what is",
+  "go": {
+   "page": "admin",
+   "tab": "forms"
+  },
+  "steps": [
+   {
+    "say": "This is Admin > Forms. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print."
+   },
+   {
+    "say": "2. PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"formsGo('leave_office','pdf')\"]"
+   },
+   {
+    "say": "3. Share."
+   }
+  ]
+ },
+ {
+  "id": "scr-admin-docs",
+  "area": "Every screen",
+  "title": "Admin > Docs to office",
+  "auto": true,
+  "words": "admin   docs to office preview export pdf export excel share     add line send to office clear screen buttons what is",
+  "go": {
+   "page": "admin",
+   "tab": "docs"
+  },
+  "steps": [
+   {
+    "say": "This is Admin > Docs to office. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Preview: opens it on screen to read or print."
+   },
+   {
+    "say": "2. Export PDF: downloads it as a PDF.",
+    "el": "button[onclick=\"dtRegExport('pdf')\"]"
+   },
+   {
+    "say": "3. Export Excel: downloads it as an Excel sheet.",
+    "el": "button[onclick=\"dtRegExport('excel')\"]"
+   },
+   {
+    "say": "4. Share."
+   },
+   {
+    "say": "5. ×: Remove this line.",
+    "el": "button[onclick=\"DT_ROWS.splice(0,1); if(!DT_ROWS.length) DT_ROWS=[dtBlank()]; dtFormDraw()\"]"
+   },
+   {
+    "say": "6. + Add line: adds a new add line.",
+    "el": "button[onclick=\"DT_ROWS.push(dtBlank()); dtFormDraw()\"]"
+   },
+   {
+    "say": "7. Send to office.",
+    "el": "#dt-save"
+   },
+   {
+    "say": "8. Clear.",
+    "el": "button[onclick=\"['dt-q','dt-st','dt-f','dt-t'].forEach(i=>document.getElementById(i).value='');dtDraw()\"]"
+   }
+  ]
+ },
+ {
   "id": "scr-settings-general",
   "area": "Every screen",
   "title": "Settings > General",
   "auto": true,
-  "words": "settings   general save turn on for this device copy link screen buttons what is",
+  "words": "settings   general save turn on for this device screen buttons what is",
   "go": {
    "page": "settings",
    "tab": "general"
@@ -1824,10 +2409,6 @@ window.HELP_AUTO = [
    {
     "say": "2. Turn on for this device.",
     "el": "#push-on-btn"
-   },
-   {
-    "say": "3. Copy link.",
-    "el": "button[onclick=\"agentCopy()\"]"
    }
   ]
  },
@@ -1836,7 +2417,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Settings > Companies & sites",
   "auto": true,
-  "words": "settings   companies   sites   add company edit   add site remove   add engineer screen buttons what is",
+  "words": "settings   companies   sites   add company   add site edit remove   add engineer screen buttons what is",
   "go": {
    "page": "settings",
    "tab": "companies"
@@ -1850,16 +2431,16 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"coOpen()\"]"
    },
    {
-    "say": "2. Edit: change what is there.",
-    "el": "button[onclick=\"coEdit(4)\"]"
-   },
-   {
-    "say": "3. + Add site: adds a new add site.",
+    "say": "2. + Add site: adds a new add site.",
     "el": "button[onclick=\"mdSiteForm(true)\"]"
    },
    {
+    "say": "3. Edit: change what is there.",
+    "el": "button[onclick=\"editSite(1, '306')\"]"
+   },
+   {
     "say": "4. Remove: removes it (it asks first).",
-    "el": "button[onclick=\"removeSite(5, '901')\"]"
+    "el": "button[onclick=\"removeSite(1, '306')\"]"
    },
    {
     "say": "5. + Add engineer: adds a new add engineer.",
@@ -1872,7 +2453,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Settings > Logins",
   "auto": true,
-  "words": "settings   logins   new login reset password change role delete screen buttons what is",
+  "words": "settings   logins   new login edit name reset password screen buttons what is",
   "go": {
    "page": "settings",
    "tab": "logins"
@@ -1885,13 +2466,10 @@ window.HELP_AUTO = [
     "say": "1. + New login: adds a new login."
    },
    {
-    "say": "2. Reset password."
+    "say": "2. Edit name: change what is there."
    },
    {
-    "say": "3. Change role."
-   },
-   {
-    "say": "4. Delete: removes it (it asks first)."
+    "say": "3. Reset password."
    }
   ]
  },
@@ -2086,7 +2664,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Staff > Birthdays",
   "auto": true,
-  "words": "staff   birthdays all registers labour office local clients   client birthday preview export pdf export excel open edit screen buttons what is",
+  "words": "staff   birthdays all registers labour office local clients   client birthday preview export pdf export excel screen buttons what is",
   "go": {
    "page": "people",
    "tab": "people"
@@ -2122,12 +2700,891 @@ window.HELP_AUTO = [
    },
    {
     "say": "9. Export Excel: downloads it as an Excel sheet."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-home-dash",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Project dashboard",
+  "auto": true,
+  "words": "estimation   projects   project dashboard dashboard overview subcontractors site   technical bills previous records   new project screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "home.dash"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Project dashboard. The numbers on the picture match the list below."
    },
    {
-    "say": "10. Open."
+    "say": "1. Dashboard."
    },
    {
-    "say": "11. Edit: change what is there."
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-client-boq",
+  "area": "Every screen",
+  "title": "Estimation > Projects > BOQ & budget",
+  "auto": true,
+  "words": "estimation   projects   boq   budget dashboard overview subcontractors site   technical bills previous records   new project boq   budget12 upload boq paste from excel   line preview screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "client.boq"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > BOQ & budget. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. BOQ & budget12."
+   },
+   {
+    "say": "9. Upload BOQ: The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.."
+   },
+   {
+    "say": "10. Paste from Excel."
+   },
+   {
+    "say": "11. + Line: adds a new line."
+   },
+   {
+    "say": "12. Preview: opens it on screen to read or print."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-subs-reg",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Subcontract register",
+  "auto": true,
+  "words": "estimation   projects   subcontract register dashboard overview subcontractors site   technical bills previous records   new project subcontract register1 invoice tracker2 payment certificates finalization log17 34   subcontract   lpo screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "subs.reg"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Subcontract register. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Subcontract register1."
+   },
+   {
+    "say": "9. Invoice tracker2."
+   },
+   {
+    "say": "10. Payment certificates."
+   },
+   {
+    "say": "11. Finalization log17/34."
+   },
+   {
+    "say": "12. + Subcontract / LPO: adds a new subcontract / lpo."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-subs-inv",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Invoice tracker",
+  "auto": true,
+  "words": "estimation   projects   invoice tracker dashboard overview subcontractors site   technical bills previous records   new project subcontract register1 invoice tracker2 payment certificates finalization log17 34   invoice received screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "subs.inv"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Invoice tracker. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Subcontract register1."
+   },
+   {
+    "say": "9. Invoice tracker2."
+   },
+   {
+    "say": "10. Payment certificates."
+   },
+   {
+    "say": "11. Finalization log17/34."
+   },
+   {
+    "say": "12. + Invoice received: adds a new invoice received."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-subs-pcs",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Payment certificates",
+  "auto": true,
+  "words": "estimation   projects   payment certificates dashboard overview subcontractors site   technical bills previous records   new project subcontract register1 invoice tracker2 payment certificates finalization log17 34 preview screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "subs.pcs"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Payment certificates. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Subcontract register1."
+   },
+   {
+    "say": "9. Invoice tracker2."
+   },
+   {
+    "say": "10. Payment certificates."
+   },
+   {
+    "say": "11. Finalization log17/34."
+   },
+   {
+    "say": "12. Preview: opens it on screen to read or print."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-subs-final",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Finalization log",
+  "auto": true,
+  "words": "estimation   projects   finalization log dashboard overview subcontractors site   technical bills previous records   new project subcontract register1 invoice tracker2 payment certificates finalization log17 34   item screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "subs.final"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Finalization log. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Subcontract register1."
+   },
+   {
+    "say": "9. Invoice tracker2."
+   },
+   {
+    "say": "10. Payment certificates."
+   },
+   {
+    "say": "11. Finalization log17/34."
+   },
+   {
+    "say": "12. + Item: adds a new item."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-site-rfi",
+  "area": "Every screen",
+  "title": "Estimation > Projects > RFI log",
+  "auto": true,
+  "words": "estimation   projects   rfi log dashboard overview subcontractors site   technical bills previous records   new project rfi log1 nocs   approvals15 25 submittals25 variations5 reply in 7 days screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "site.rfi"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > RFI log. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. RFI log1."
+   },
+   {
+    "say": "9. NOCs & approvals15/25."
+   },
+   {
+    "say": "10. Submittals25."
+   },
+   {
+    "say": "11. Variations5."
+   },
+   {
+    "say": "12. Reply in 7 days: Days allowed for a reply - the due date is set from it."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-site-approval",
+  "area": "Every screen",
+  "title": "Estimation > Projects > NOCs & approvals",
+  "auto": true,
+  "words": "estimation   projects   nocs   approvals dashboard overview subcontractors site   technical bills previous records   new project rfi log1 nocs   approvals15 25 submittals25 variations5   item screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "site.approval"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > NOCs & approvals. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. RFI log1."
+   },
+   {
+    "say": "9. NOCs & approvals15/25."
+   },
+   {
+    "say": "10. Submittals25."
+   },
+   {
+    "say": "11. Variations5."
+   },
+   {
+    "say": "12. + Item: adds a new item."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-site-submittal",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Submittals",
+  "auto": true,
+  "words": "estimation   projects   submittals dashboard overview subcontractors site   technical bills previous records   new project rfi log1 nocs   approvals15 25 submittals25 variations5   new submittal screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "site.submittal"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Submittals. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. RFI log1."
+   },
+   {
+    "say": "9. NOCs & approvals15/25."
+   },
+   {
+    "say": "10. Submittals25."
+   },
+   {
+    "say": "11. Variations5."
+   },
+   {
+    "say": "12. + New submittal: adds a new submittal."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-site-vo",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Variations",
+  "auto": true,
+  "words": "estimation   projects   variations dashboard overview subcontractors site   technical bills previous records   new project rfi log1 nocs   approvals15 25 submittals25 variations5   variation screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "site.vo"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Variations. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. RFI log1."
+   },
+   {
+    "say": "9. NOCs & approvals15/25."
+   },
+   {
+    "say": "10. Submittals25."
+   },
+   {
+    "say": "11. Variations5."
+   },
+   {
+    "say": "12. + Variation: adds a new variation."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-bills-ipa",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Bills to client",
+  "auto": true,
+  "words": "estimation   projects   bills to client dashboard overview subcontractors site   technical bills previous records   new project bills to client   new bill upload bill format   another contract open screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "bills.ipa"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Bills to client. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Bills to client."
+   },
+   {
+    "say": "9. + New bill: adds a new bill."
+   },
+   {
+    "say": "10. Upload bill format."
+   },
+   {
+    "say": "11. + Another contract: adds a new another contract - This project is under more than one agreement with the client (e.g. shell & core, MEP, swimming pool): each gets its own bills, certificates and variations.."
+   },
+   {
+    "say": "12. Open."
+   }
+  ]
+ },
+ {
+  "id": "scr-est-prev-rec",
+  "area": "Every screen",
+  "title": "Estimation > Projects > Previous records",
+  "auto": true,
+  "words": "estimation   projects   previous records dashboard overview subcontractors site   technical bills previous records   new project bring in old records   upload delete screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "estproj",
+   "est": "prev.rec"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Projects > Previous records. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Dashboard."
+   },
+   {
+    "say": "2. Overview."
+   },
+   {
+    "say": "3. Subcontractors."
+   },
+   {
+    "say": "4. Site & technical."
+   },
+   {
+    "say": "5. Bills."
+   },
+   {
+    "say": "6. Previous records."
+   },
+   {
+    "say": "7. + New project: adds a new project."
+   },
+   {
+    "say": "8. Bring in old records."
+   },
+   {
+    "say": "9. + Upload: adds a new upload."
+   },
+   {
+    "say": "10. Delete: removes it (it asks first)."
+   }
+  ]
+ },
+ {
+  "id": "scr-kb-board",
+  "area": "Every screen",
+  "title": "Estimation > Trello > Board",
+  "auto": true,
+  "words": "estimation   trello   board boards recent starred templates create a estimation board table calendar timeline dashboard screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards",
+   "kb": "board",
+   "kbView": "board"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello > Board. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Estimation: Rename board."
+   },
+   {
+    "say": "8. Board: Board view."
+   },
+   {
+    "say": "9. Table: Table view."
+   },
+   {
+    "say": "10. Calendar: Calendar view."
+   },
+   {
+    "say": "11. Timeline: Timeline view."
+   },
+   {
+    "say": "12. Dashboard: Dashboard view."
+   }
+  ]
+ },
+ {
+  "id": "scr-kb-table",
+  "area": "Every screen",
+  "title": "Estimation > Trello > Table",
+  "auto": true,
+  "words": "estimation   trello   table boards recent starred templates create a estimation board table calendar timeline dashboard screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards",
+   "kb": "board",
+   "kbView": "table"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello > Table. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Estimation: Rename board."
+   },
+   {
+    "say": "8. Board: Board view."
+   },
+   {
+    "say": "9. Table: Table view."
+   },
+   {
+    "say": "10. Calendar: Calendar view."
+   },
+   {
+    "say": "11. Timeline: Timeline view."
+   },
+   {
+    "say": "12. Dashboard: Dashboard view."
+   }
+  ]
+ },
+ {
+  "id": "scr-kb-calendar",
+  "area": "Every screen",
+  "title": "Estimation > Trello > Calendar",
+  "auto": true,
+  "words": "estimation   trello   calendar boards recent starred templates create a estimation board table calendar timeline dashboard screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards",
+   "kb": "board",
+   "kbView": "calendar"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello > Calendar. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Estimation: Rename board."
+   },
+   {
+    "say": "8. Board: Board view."
+   },
+   {
+    "say": "9. Table: Table view."
+   },
+   {
+    "say": "10. Calendar: Calendar view."
+   },
+   {
+    "say": "11. Timeline: Timeline view."
+   },
+   {
+    "say": "12. Dashboard: Dashboard view."
+   }
+  ]
+ },
+ {
+  "id": "scr-kb-timeline",
+  "area": "Every screen",
+  "title": "Estimation > Trello > Timeline",
+  "auto": true,
+  "words": "estimation   trello   timeline boards recent starred templates create a estimation board table calendar timeline dashboard screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards",
+   "kb": "board",
+   "kbView": "timeline"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello > Timeline. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Estimation: Rename board."
+   },
+   {
+    "say": "8. Board: Board view."
+   },
+   {
+    "say": "9. Table: Table view."
+   },
+   {
+    "say": "10. Calendar: Calendar view."
+   },
+   {
+    "say": "11. Timeline: Timeline view."
+   },
+   {
+    "say": "12. Dashboard: Dashboard view."
+   }
+  ]
+ },
+ {
+  "id": "scr-kb-dashboard",
+  "area": "Every screen",
+  "title": "Estimation > Trello > Dashboard",
+  "auto": true,
+  "words": "estimation   trello   dashboard boards recent starred templates create a estimation board table calendar timeline dashboard screen buttons what is",
+  "go": {
+   "page": "estimation",
+   "tab": "boards",
+   "kb": "board",
+   "kbView": "dashboard"
+  },
+  "steps": [
+   {
+    "say": "This is Estimation > Trello > Dashboard. The numbers on the picture match the list below."
+   },
+   {
+    "say": "1. Boards."
+   },
+   {
+    "say": "2. Recent."
+   },
+   {
+    "say": "3. Starred."
+   },
+   {
+    "say": "4. Templates."
+   },
+   {
+    "say": "5. Create."
+   },
+   {
+    "say": "6. A: Account."
+   },
+   {
+    "say": "7. Estimation: Rename board."
+   },
+   {
+    "say": "8. Board: Board view."
+   },
+   {
+    "say": "9. Table: Table view."
+   },
+   {
+    "say": "10. Calendar: Calendar view."
+   },
+   {
+    "say": "11. Timeline: Timeline view."
+   },
+   {
+    "say": "12. Dashboard: Dashboard view."
    }
   ]
  }
