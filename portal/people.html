@@ -735,12 +735,17 @@ function renderTabs() {
 }
 function setGroup(g) { P.group = g; P.current = ""; P.file = null; document.getElementById("f-active").style.visibility = g === "left" ? "hidden" : ""; loadPeople(); }
 function setActive(v) { P.active = v; segSet(document.getElementById("f-active"), v); loadPeople(); }
+let LP_SEQ = 0;
 async function loadPeople() {
   const co = document.getElementById("f-company").value;
+  // Only the latest load counts: a slower one for the group shown before (the page coming back into view)
+  // finishing last used to drop the person just asked for and open the first name of the list instead.
+  const seq = ++LP_SEQ;
   try {
     const d = await apiCall(`/employees/people?group=${P.group}&include_left=${P.active === "all"}${co ? `&company_id=${co}` : ""}`);
+    if (seq !== LP_SEQ) return;
     P.rows = d.rows; P.counts = d.counts;
-  } catch (e) { status("warn", errText(e)); P.rows = []; }
+  } catch (e) { if (seq !== LP_SEQ) return; status("warn", errText(e)); P.rows = []; }
   renderTabs(); renderList();
   if (P.current && !P.rows.some(r => r.emp_no === P.current)) { P.current = ""; P.file = null; }
   if (!P.current && P.rows.length) openPerson(P.rows[0].emp_no); else if (P.current) openPerson(P.current); else renderFile();
