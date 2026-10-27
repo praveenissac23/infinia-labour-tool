@@ -9063,32 +9063,45 @@ function drawStoreHome(stock, stk) {
     const homeKeys = orderColumns("home-stock", Object.keys(COLS));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
-    body.innerHTML = rows.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
-        style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
-      ${homeKeys.map(k => COLS[k].cell(r)).join("")}
-      </tr>
-      <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
-        <td colspan="${homeKeys.length}" style="text-align:left; padding:0;">
-          <div id="sdc-${r.code}" style="padding:16px 34px 16px 20px;"></div>
-        </td></tr>`).join("");
+    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP };
+    renderHomeStock();
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
       `<tr><td class="empty-note">Could not show the stock: ${errText(e)}</td></tr>`;
   }
 }
 
-// Search across the dashboard stock list; a hidden material also
-// collapses its open detail panel so nothing orphaned stays behind.
+// Long lists are drawn LIST_STEP rows at a time: thousands of rows (and their buttons) on the page at once made
+// every screen slow. The search still looks through everything; "Show more" draws the next lot.
+const LIST_STEP = 150;
+function moreRow(cols, shown, total, fn) {
+  return shown < total ? `<tr class="list-more"><td colspan="${cols}" style="text-align:center; padding:10px;">
+    <span class="sub" style="display:inline; margin-right:10px;">Showing ${num(shown)} of ${num(total)} - search to find any one</span>
+    <button class="btn btn-gray" onclick="${fn}(1)">Show ${num(Math.min(LIST_STEP, total - shown))} more</button>
+    ${total - shown > LIST_STEP ? `<button class="btn btn-gray" onclick="${fn}(true)">Show all</button>` : ""}</td></tr>` : "";
+}
+let HOME_STOCK = null;
+function renderHomeStock(more) {
+  const H = HOME_STOCK, body = document.getElementById("home-stock-body");
+  if (!H || !body) return;
+  if (more === true) H.limit = Infinity; else if (more) H.limit += LIST_STEP;
+  const q = ((document.getElementById("home-stock-search") || {}).value || "").trim().toLowerCase();
+  const rows = q ? H.rows.filter(r => `${r.code} ${r.name} ${r.unit} ${r.item_type}`.toLowerCase().includes(q)) : H.rows;
+  const part = rows.slice(0, H.limit);
+  body.innerHTML = part.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
+        style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
+      ${H.keys.map(k => H.cols[k].cell(r)).join("")}
+      </tr>
+      <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
+        <td colspan="${H.keys.length}" style="text-align:left; padding:0;">
+          <div id="sdc-${r.code}" style="padding:16px 34px 16px 20px;"></div>
+        </td></tr>`).join("") + (rows.length ? moreRow(H.keys.length, part.length, rows.length, "renderHomeStock")
+        : `<tr><td class="empty-note" colspan="${H.keys.length}">Nothing matches that search.</td></tr>`);
+}
+// Search across the dashboard stock list (everything, not just the rows drawn).
 function filterHomeStock() {
-  const q = (document.getElementById("home-stock-search").value || "").trim().toLowerCase();
-  document.querySelectorAll("#home-stock-body tr[data-code]").forEach(tr => {
-    const hit = !q || tr.textContent.toLowerCase().includes(q);
-    tr.style.display = hit ? "" : "none";
-    if (!hit) {
-      const d = document.getElementById("sd-" + tr.dataset.code);
-      if (d) d.style.display = "none";
-    }
-  });
+  if (HOME_STOCK) HOME_STOCK.limit = LIST_STEP;
+  renderHomeStock();
 }
 
 // The breakup of one material: where every unit sits right now, and
@@ -9167,16 +9180,20 @@ function filteredItems() {
   });
 }
 
-function renderItemMaster() {
-  // One scrollable window instead of 65 pages: the search box does the
-  // narrowing, the scrollbar does the rest, and every match is
-  // reachable without clicking Next dozens of times.
-  const rows = filteredItems();
+let IL_LIMIT = LIST_STEP, IL_KEY = "";
+function renderItemMaster(more) {
+  // One scrollable window: the search box does the narrowing; the first LIST_STEP matches are drawn, "Show more"
+  // draws the next lot (3,700 rows with two buttons each made the whole app slow).
+  const all = filteredItems();
+  const key = ["il-search", "il-filter", "il-stock"].map(id => (document.getElementById(id) || {}).value || "").join("|");
+  if (more === true) IL_LIMIT = Infinity; else if (more) IL_LIMIT += LIST_STEP; else if (key !== IL_KEY) IL_LIMIT = LIST_STEP;
+  IL_KEY = key;
+  const rows = all.slice(0, IL_LIMIT);
   const stockBy = {};
   (storeStockCache || []).forEach(s => { stockBy[s.item_id] = s; });
 
   document.getElementById("il-count").textContent =
-    `${num(rows.length)} material(s)` + (rows.length !== (storeItems || []).length ? ` of ${num(storeItems.length)}` : "");
+    `${num(all.length)} material(s)` + (all.length !== (storeItems || []).length ? ` of ${num(storeItems.length)}` : "");
 
   const body = document.getElementById("il-body");
   body.innerHTML = rows.length ? rows.map(i => {
@@ -9195,7 +9212,7 @@ function renderItemMaster() {
         <button class="btn btn-gray" onclick="editStoreItem(${i.id})">Edit</button>
         <button class="btn btn-danger" onclick="removeStoreItem(${i.id}, '${String(i.name).replace(/'/g, "").slice(0,40)}')">Remove</button>
       </td></tr>`;
-  }).join("") : `<tr><td class="empty-note">Nothing matches that search.</td></tr>`;
+  }).join("") + moreRow(10, rows.length, all.length, "renderItemMaster") : `<tr><td class="empty-note">Nothing matches that search.</td></tr>`;
 }
 
 
@@ -9456,13 +9473,13 @@ async function loadStoreItems(force) {
   if (!document.querySelectorAll("#out-lines tr").length) addOutLine();
   if (!document.querySelectorAll("#in-lines tr").length) addInLine();
   document.getElementById("store-item-list").innerHTML = storeItems.length
-    ? `<div class="md-chip-wrap">${storeItems.map(i => `
+    ? `<div class="md-chip-wrap">${storeItems.slice(0, LIST_STEP).map(i => `
         <span class="md-chip" title="${i.item_type}${i.reorder_level ? ', reorder at ' + i.reorder_level : ''}">
           <span class="md-chip-label">${i.code}</span>
           <span style="color:#777;">${i.name}</span>
           <button class="md-chip-btn" onclick="editStoreItem(${i.id})">&#9998;</button>
           <button class="md-chip-btn md-chip-del" onclick="removeStoreItem(${i.id}, '${String(i.code).replace(/'/g, "")}')">&times;</button>
-        </span>`).join("")}</div><div class="md-chip-count">${storeItems.length} item(s)</div>`
+        </span>`).join("")}</div><div class="md-chip-count">${storeItems.length} item(s)${storeItems.length > LIST_STEP ? ` - the first ${LIST_STEP} shown; the full list is under Manage the item list` : ""}</div>`
     : '<div class="empty-note">No items yet - add one above.</div>';
 }
 
@@ -11718,7 +11735,21 @@ function toggleReportRow(idx) {
 
 // Client-side search across whatever report is on screen. Hides rows
 // that don't match; the TOTAL row and empty notes always stay visible.
+let STORE_REP = null;
+function renderStoreRep(more) {
+  const R = STORE_REP, body = document.getElementById("store-body"); if (!R || !body) return;
+  if (more === true) R.limit = Infinity; else if (more) R.limit += LIST_STEP;
+  const q = (document.getElementById("store-report-search").value || "").trim().toLowerCase();
+  const hit = q ? R.items.filter(x => x.text.includes(q) || x.html.toLowerCase().includes(q)) : R.items;
+  const part = hit.slice(0, R.limit);
+  let last = undefined, out = "";
+  for (const x of part) { if (x.g !== null && x.g !== last) { out += x.gl; last = x.g; } out += x.html; }
+  body.innerHTML = (hit.length ? out + moreRow(R.span, part.length, hit.length, "renderStoreRep") : `<tr><td class="empty-note" colspan="${R.span}">Nothing matches "${escapeHtml(q)}".</td></tr>`) + R.tail;
+  const foot = document.getElementById("store-report-foot");
+  if (foot) foot.textContent = (foot.dataset.base || "") + (q ? ` \u00b7 ${num(hit.length)} of ${num(R.items.length)} rows match "${q}"` : "");
+}
 function filterStoreReport() {
+  if (STORE_REP) { STORE_REP.limit = LIST_STEP; renderStoreRep(); return; }
   const q = (document.getElementById("store-report-search").value || "").trim().toLowerCase();
   const rows = [...document.querySelectorAll("#store-body tr")];
   let shown = 0, total = 0;
@@ -11810,6 +11841,7 @@ async function loadStore() {
       ]);
       const rfoot = document.getElementById("store-report-foot");
       rfoot.dataset.base = `${num(list.length)} request(s)`;
+      STORE_REP = null;
       filterStoreReport();
       return;
     }
@@ -11837,6 +11869,7 @@ async function loadStore() {
     document.getElementById("store-table-title").textContent = d.title;
     const foot = document.getElementById("store-report-foot");
     if (!d.rows.length) {
+      STORE_REP = null;
       head.innerHTML = "";
       body.innerHTML = `<tr><td class="empty-note" style="padding:34px 20px;">
         Nothing to show for this report yet.</td></tr>`;
@@ -11912,13 +11945,9 @@ async function loadStore() {
       keys.map(k => `<th class="${KIND[k]}"${k === slack ? ` style="width:${canEdit ? 28 : 45}%;"` : ""} ${dragAttrs(view, k)}>${label(k)}</th>`).join("")
       + (canEdit ? '<th class="act"></th>' : "");
     const MOVE_TAG = { "Moved between sites": r => `moved from ${r.from}`, "Delivered direct": r => `delivered direct${r.from ? " · " + r.from.replace(/ \(direct\)$/, "") : ""}` };
-    let lastGroup = null;
-    body.innerHTML = d.rows.map((r, idx) => {
-      let groupRow = "";
-      if (groupOf) {
-        const g = groupOf(r);
-        if (g !== lastGroup) { lastGroup = g; groupRow = `<tr class="rep-group"><td colspan="${keys.length + (expandable ? 1 : 0) + (canEdit ? 1 : 0)}">${escapeHtml(groupLabel(g))}</td></tr>`; }
-      }
+    const span = keys.length + (expandable ? 1 : 0) + (canEdit ? 1 : 0);
+    const items = d.rows.map((r, idx) => {
+      const groupRow = "";
       const flag = r.low ? ' style="background:#FFE9E6;"' : (r.overdue ? ' style="background:#FFE9E6;"' : "");
       // A caret only where there is something to open - material sitting
       // out at sites. Everything else stays a plain row.
@@ -11968,10 +11997,13 @@ async function loadStore() {
               </table>
             </div>
           </td></tr>` : "");
-    }).join("");
+    }).map((html, idx) => { const r = d.rows[idx], g = groupOf ? groupOf(r) : null;
+      return { html, g, gl: g === null ? "" : `<tr class="rep-group"><td colspan="${span}">${escapeHtml(groupLabel(g))}</td></tr>`,
+               text: (keys.map(k => r[k]).join(" ") + " " + (g || "")).toLowerCase() }; });
+    let tail = "";
     if (view === "site_cost" && (d.unpriced_sites || []).length) {
       const u = d.unpriced_sites;
-      body.innerHTML += `<tr><td class="kl" style="color:#777;">${u.map(x => escapeHtml(x.site)).join(", ")}</td><td colspan="${keys.length - 1}" class="l" style="color:#999;">nothing priced yet · ${num(u.reduce((a, x) => a + x.lines, 0))} line(s) without a price</td></tr>`;
+      tail += `<tr><td class="kl" style="color:#777;">${u.map(x => escapeHtml(x.site)).join(", ")}</td><td colspan="${keys.length - 1}" class="l" style="color:#999;">nothing priced yet · ${num(u.reduce((a, x) => a + x.lines, 0))} line(s) without a price</td></tr>`;
     }
     if ((d.total_cols || []).length) {
       // Totals sit under their own columns, not at the far right.
@@ -11982,9 +12014,10 @@ async function loadStore() {
         const signed = ["received_from_sites", "sent_to_sites", "net_transfer"].includes(k) && t;
         return `<td class="n">${signed ? (t > 0 ? "+" : "") : ""}${isMoney ? money(t) : num(t)}</td>`;
       });
-      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}${canEdit ? "<td></td>" : ""}</tr>`;
+      tail += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;">${expandable ? "<td></td>" : ""}${cells.join("")}${canEdit ? "<td></td>" : ""}</tr>`;
     } else if (d.total_value !== undefined)
-      body.innerHTML += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td>${canEdit ? "<td></td>" : ""}</tr>`;
+      tail += `<tr data-total="1" style="background:#C6EFCE; font-weight:bold;"><td colspan="${keys.length - 1 + (expandable ? 1 : 0)}">TOTAL</td><td>AED ${money(d.total_value)}</td>${canEdit ? "<td></td>" : ""}</tr>`;
+    STORE_REP = { items, tail, span, limit: LIST_STEP };
     filterStoreReport();
   } catch (e) {
     body.innerHTML = `<tr><td class="empty-note">Could not load.</td></tr>`;

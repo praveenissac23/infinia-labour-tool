@@ -169,6 +169,7 @@ async function start() {
   buildHeader();
   route();
   setInterval(pollNotes, 30000); pollNotes();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pollNotes(); });
   document.addEventListener("keydown", keys);
 }
 
@@ -210,6 +211,7 @@ function buildHeader() {
   $("#dk-switch").onclick = e => boardsPop(e.currentTarget, "switch");
 }
 async function pollNotes() {
+  if (document.hidden) return;                 // a tab in the background does not ask
   try {
     const d = await GET("/store/kb/notes");
     const btn = $("#hb-notes"); let dot = btn.querySelector(".badge-dot");

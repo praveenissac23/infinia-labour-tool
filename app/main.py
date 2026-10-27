@@ -328,6 +328,22 @@ def _freeze_version():
 _FREEZE_V = _freeze_version()
 
 
+# Anything saved (any POST / PUT / PATCH / DELETE) moves this on, so answers kept for a few seconds - the bell -
+# are never older than the last change.
+_WRITE_GEN = [0]
+
+
+@app.middleware("http")
+async def count_writes(request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        _WRITE_GEN[0] += 1
+        try:
+            return await call_next(request)
+        finally:
+            _WRITE_GEN[0] += 1                      # the change is in now: anything worked out meanwhile is old
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def never_cache_api(request, call_next):
     """Every answer from this API is live data and must be fetched fresh.
@@ -13287,7 +13303,7 @@ def _push_test_message(db, user):
     """The test looks like the real thing: a certificate waiting for this login (tapping opens its approval
     page), or else the newest item in the bell - and only a plain line when the bell is empty."""
     try:
-        items = [n for n in get_notifications(db=db, user=user).get("notifications", [])]
+        items = [n for n in _work_out_notifications(db, user).get("notifications", [])]
         pick = next((n for n in items if n.get("kind") == "subpc" and n.get("url")), None) \
             or next((n for n in items if n.get("kind") == "subpc"), None) or (items[0] if items else None)
         if pick:
@@ -13323,7 +13339,7 @@ def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
 
 def _notes_for(db, user):
     """The bell's list for one login - what its phone is told about."""
-    return get_notifications(db=db, user=user).get("notifications", [])
+    return _work_out_notifications(db, user).get("notifications", [])
 
 
 @app.on_event("startup")
@@ -13429,9 +13445,32 @@ def save_notif_settings(payload: dict = Body(...), db: Session = Depends(get_db)
     return notif_settings(db=db, user=user)
 
 
+_BELL_CACHE = {}
+BELL_KEEP = 30          # seconds a person's bell is kept when nothing has been saved anywhere
+
+
 @app.get("/notifications")
 def get_notifications(db: Session = Depends(get_db),
                        user: models.User = Depends(auth.get_current_user)):
+    """The bell. Every open tab asks every 20 seconds, and working it out reads the requests, the stock ledger,
+    attendance, expiries, Zoho, Trello, the bills and the certificates - so a person's bell is kept for up to
+    BELL_KEEP seconds, and thrown away the moment anything is saved (by anyone)."""
+    import time as _t
+    key = (user.id, user.role, getattr(user, "permissions", None))
+    hit = _BELL_CACHE.get(key)
+    now = _t.monotonic()
+    if hit and hit[0] == _WRITE_GEN[0] and now - hit[1] < BELL_KEEP:
+        return hit[2]
+    gen = _WRITE_GEN[0]
+    out = _work_out_notifications(db, user)
+    if gen == _WRITE_GEN[0]:
+        if len(_BELL_CACHE) > 300:
+            _BELL_CACHE.clear()
+        _BELL_CACHE[key] = (gen, now, out)
+    return out
+
+
+def _work_out_notifications(db, user):
     """
     Notifications the way people expect them: each event goes to the
     role that has to act on it, and clicking one lands on the exact
