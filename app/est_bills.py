@@ -1330,6 +1330,30 @@ def delete_signature(sid: int, db: Session = Depends(get_db), user: models.User 
 
 # ---------------------------------------------------------------------------------------------------- out
 
+@router.get("/export/est/ipa/format/{fid}")
+def export_format(fid: int, token: str, format: str = "preview", embed: int = 0, db: Session = Depends(get_db)):
+    """A previous bill as uploaded: the workbook itself (Excel), printed as a bill (PDF), or the preview."""
+    u = auth.get_download_user_from_token(token, db)
+    if E.RIGHT not in set(E.M.effective_permissions(u)) and u.role != "admin":
+        raise HTTPException(403, "Estimation only.")
+    fmt = _get(db, EstBillFormat, fid)
+    p = db.query(E.EstProject).get(fmt.project_id)
+    no = _fmt_no(None, fmt.filename)
+    stem = re.sub(r"\.xls[xm]?$", "", fmt.filename or "", flags=re.I) or f"{p.code if p else ''}_IPA_{no[1] or no[0]}"
+    fname = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_")
+    if format == "excel":
+        return StreamingResponse(io.BytesIO(fmt.data or b""), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
+    model = _model(fmt)
+    values = BE.calculate(model, {})
+    title = f"{p.code if p else ''} - {stem}"
+    if format == "pdf":
+        buf = BR.render_pdf(model, values, title, {}, fname=fname + ".xlsx")
+        return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={fname}.pdf"})
+    base = f"/export/est/ipa/format/{fid}?token={token}"
+    return HTMLResponse(BR.preview_html(model, values, title, base + "&format=pdf", base + "&format=excel", {}, embed=bool(embed), fname=fname + ".xlsx"))
+
+
 @router.get("/export/est/ipa/{bid}")
 def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)

@@ -19,9 +19,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.click('#ipa-new'); await sleep(2500);
   await p.click('#ipa-nav [data-step="sheets"]'); await sleep(1800);
   // the viewer
-  ck('zoom bar: - % + Fit width 100%', !!(await p.$('[data-sv="out"]')) && !!(await p.$('[data-sv="in"]')) && !!(await p.$('[data-sv="fit"]')) && !!(await p.$('[data-sv="one"]')));
-  const box = await p.$eval('.sv-box', el => { const r = el.getBoundingClientRect(); return { bottom: innerHeight - r.bottom, sw: el.scrollWidth - el.clientWidth }; });
-  ck('the sheet fills the window to the bottom (no empty band)', box.bottom >= 0 && box.bottom < 30, box);
+  ck('zoom bar: - % + Fit width Fit page 100%', !!(await p.$('[data-sv="out"]')) && !!(await p.$('[data-sv="in"]')) && !!(await p.$('[data-sv="fit"]')) && !!(await p.$('[data-sv="page"]')) && !!(await p.$('[data-sv="one"]')));
+  const box = await p.$eval('.sv-box', el => { const r = el.getBoundingClientRect(); return { bottom: innerHeight - r.bottom, sw: el.scrollWidth - el.clientWidth, gap: el.clientHeight - el.querySelector('.sv-in').getBoundingClientRect().height }; });
+  ck('the box ends at the sheet or the window bottom - no empty band', box.bottom >= 0 && (box.bottom < 30 || box.gap < 40), box);
   ck('fitted to the width: nothing cut off sideways', box.sw <= 2, box);
   const z0 = await p.textContent('.sv-pc'); await p.click('[data-sv="in"]'); await sleep(200); const z1 = await p.textContent('.sv-pc');
   ck('+ zooms in', parseInt(z1) > parseInt(z0), [z0, z1]);
@@ -66,7 +66,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // the previous-bill reader uses the same viewer
   await p.click('#b-back'); await sleep(1500);
   await p.click('#sec [data-fmview]'); await sleep(1500);
-  ck('previous bill reader: same zoom bar, fills the window', !!(await p.$('#b-body [data-sv="fit"]')) && (await p.$eval('.sv-box', el => innerHeight - el.getBoundingClientRect().bottom)) < 30);
+  await p.click('[data-sv="page"]'); await sleep(300);
+  ck('Fit page shows the whole sheet', await p.$eval('.sv-box', el => el.scrollHeight <= el.clientHeight + 2 && el.scrollWidth <= el.clientWidth + 2));
+  await p.click('[data-sv="fit"]'); await sleep(200);
+  ck('previous bill reader: same zoom bar, Excel / PDF there', !!(await p.$('#b-body [data-sv="fit"]')) && !!(await p.$('#b-tools [data-xp="excel"]')));
   await p.screenshot({ path: SH + '4_reader.png' });
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);

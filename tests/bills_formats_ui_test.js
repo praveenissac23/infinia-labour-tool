@@ -19,14 +19,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (r !== 200) console.log('upload', f, r);
   }
   await p.evaluate(([pid]) => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'bills.ipa'); }, [P]); await p.reload(); await sleep(2500);
-  const fmtCard = await p.textContent('#sec');
-  ck('Bill format = bill 7 (the highest), not IPA-02 uploaded last', /Bill format[\s\S]*914-IPA-07\.xlsx[\s\S]*Previous bills/.test(fmtCard), fmtCard.slice(0, 400));
-  const prevRows = await p.$$eval('#sec .card:last-child tbody tr td:first-child', t => t.map(x => x.textContent.trim()));
-  ck('Previous bills: 1, 2, 3 in order', prevRows.join() === '1,2,3', prevRows);
+  const listed = await p.$$eval('#sec .card:last-child tbody tr td:first-child', t => t.map(x => x.textContent.trim()));
+  ck('one list "Previous bills (uploaded)": 1, 2, 3, 7 - bill 7 included, no separate format card', listed.join() === '1,2,3,7' && !/Bill format/.test(await p.textContent('#sec')), listed);
   await p.screenshot({ path: SH + '1_formats.png', fullPage: true });
   // a previous bill opens to read
   await p.click('#sec .card:last-child tbody tr:nth-child(2)'); await sleep(1500);
-  ck('previous bill 2 opens, read only, sheet by sheet', await p.isVisible('#big:not(.hide)') && (await p.textContent('#b-title')).includes('Bill 2') && !!(await p.$('.sv-pick')) && !(await p.$('#b-body td.ed')));
+  ck('previous bill 2 opens, read only, sheet by sheet, with Preview / PDF / Excel / Share', await p.isVisible('#big:not(.hide)') && (await p.textContent('#b-title')).includes('Bill 2') && !!(await p.$('.sv-pick')) && !(await p.$('#b-body td.ed')) && !!(await p.$('#b-tools [data-xp="excel"]')) && !!(await p.$('#b-tools [data-xp="pdf"]')));
+  const ex = await p.evaluate(async () => { const t = await (await fetch('/auth/download-token', { method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') } })).json(); const k = t.token || t.download_token; const id = JSON.parse(document.querySelector('#b-tools [data-xp="excel"]').dataset.k).extra.id;
+    const out = []; for (const f of ['excel', 'pdf', 'preview']) { const r = await fetch(`/export/est/ipa/format/${id}?token=${k}&format=${f}`); out.push([f, r.status, (await r.arrayBuffer()).byteLength]); } return out; });
+  ck('the uploaded bill exports: Excel (as uploaded), PDF, preview', ex.every(x => x[1] === 200 && x[2] > 1000), ex);
+  const fitb = await p.$eval('.sv-box', el => ({ gap: el.clientHeight - el.querySelector('.sv-in').getBoundingClientRect().height }));
+  ck('the box is as tall as the sheet - no empty band under it', fitb.gap < 40, fitb);
   await p.selectOption('.sv-pick', { label: 'Works' }); await sleep(1200);
   ck('its Works sheet shows the lines', (await p.textContent('#b-body')).includes('Superstructure'));
   await p.screenshot({ path: SH + '2_view.png' });
@@ -46,7 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // deleting a previous bill workbook asks too
   const before = (await p.$$('#sec [data-fmdel]')).length;
   await p.click('#sec .card:last-child [data-fmdel]'); await sleep(300);
-  ck('deleting a previous bill asks', (await p.textContent('#cfm')).includes('Delete previous bill'));
+  ck('deleting an uploaded bill asks', (await p.textContent('#cfm')).includes('Delete uploaded bill'));
   await p.click('#cfm-ok'); await sleep(1500);
   ck('...and it is gone', (await p.$$('#sec [data-fmdel]')).length === before - 1);
   ck('no page errors', !errs.length, errs);

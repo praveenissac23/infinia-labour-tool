@@ -275,6 +275,7 @@ async function exportGo(fmt, what, extra) {
     const t = await POST("/auth/download-token"); const tok = t.token || t.download_token;
     const p = new URLSearchParams(Object.assign({ token: tok, format: fmt === "share" ? "pdf" : fmt }, extra));
     const url = what === "ipa" ? `/export/est/ipa/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` :
+                what === "ipafmt" ? `/export/est/ipa/format/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` :
                 what === "pc" ? `/export/est/pc/${extra.id}?token=${encodeURIComponent(tok)}&format=${fmt === "share" ? "pdf" : fmt}` : `/export/est/${what}?${p}`;
     if (fmt === "share") {
       const r = await fetch(url); const blob = await r.blob(); const file = new File([blob], (extra.name || what).replace(/[^\w]+/g, "_") + ".pdf", { type: "application/pdf" });

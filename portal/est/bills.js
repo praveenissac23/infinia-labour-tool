@@ -57,31 +57,22 @@ SECTIONS["bills.ipa"] = async el => {
   $$("[data-fmdel]", el).forEach(b => b.onclick = async e => {
     e.stopPropagation();
     const f = formats.find(x => x.id === +b.dataset.fmdel);
-    if (!(await confirmDelete(f && f.current ? "Delete the bill format?" : `Delete previous bill ${f ? f.no[1] || f.no[0] : ""}?`,
+    if (!(await confirmDelete(`Delete uploaded bill ${f ? f.no[1] || f.no[0] : ""}?`,
         `${esc(f ? f.filename : "")}${f && f.bills ? `<br><b>${f.bills} bill${f.bills === 1 ? "" : "s"} made on it go with it.</b>` : ""}`))) return;
     try { await DEL(`/store/est/ipa/format/${b.dataset.fmdel}`); toast("Deleted"); SECTIONS["bills.ipa"](el); } catch (x) { fail(x); }
   });
   $$("[data-fmview]", el).forEach(r => r.onclick = e => { if (e.target.closest("[data-fmdel],select")) return; viewFormat(+r.dataset.fmview); });
 };
-// The bill format = the uploaded workbook with the highest bill no. (each new bill is made from it); every other
-// workbook uploaded is a previous bill - listed to open and read, never used to make a bill.
+// Every bill uploaded as a workbook (Previous records or Upload), in bill order - click one to read it sheet by sheet,
+// print or export it. (The latest of them is what the next bill is made from until a bill has been made here.)
 function fmtCards(formats, ks, K) {
-  const cur = formats.find(f => f.current) || formats[formats.length - 1];
-  const prev = formats.filter(f => f !== cur).sort((a, b) => (a.no[0] - b.no[0]) || (a.id - b.id));
+  const list = formats.slice().sort((a, b) => (a.no[0] - b.no[0]) || (a.id - b.id));
   const ctrSel = f => ks.length > 1 ? `<td><select class="sel-sm" data-fmmove="${f.id}" title="Move this workbook (and bills made on it) to another contract">${ks.map(k => `<option value="${k.id}" ${k.id === f.contract_id ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></td>` : "";
-  const chk = f => f.same === f.formulas ? `<span class="st g">all ${f.formulas} formulas match</span>` : `<span class="st a">${f.same} of ${f.formulas} formulas match</span>`;
-  const nf = nextFrom();
-  return `<div class="card" style="margin-top:14px"><h3>Bill format${K ? " - " + esc(K.name) : ""} ${tip("The consultant's workbook the bills are made on: the uploaded bill with the highest bill no. Each new bill is made from the latest bill - the last one made here, with every line, section and page added on it - or from this workbook until a bill has been made.")}
-      <span class="spacer"></span><span class="small" style="font-weight:500">Next bill is made from: <b>${nf.kind === "bill" ? `bill ${esc(nf.label)} in the app (${esc(nf.status)}), with what was added on it` : `bill ${esc(nf.label || "")} as uploaded`}</b></span></h3>
-      <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills made</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
-      <tr class="rowc" data-fmview="${cur.id}" title="Open to read"><td><b>${esc(cur.no[1] || String(cur.no[0] || "-"))}</b></td><td>${esc(cur.filename)}</td><td class="small" title="${esc(cur.sheets.join(", "))}">${cur.sheets.length} sheets</td><td class="c">${cur.lines}</td>
-        <td class="small">${chk(cur)}</td><td class="c">${cur.bills}</td><td class="small muted">${esc(cur.by)} · ${dt(cur.on)}</td>${ctrSel(cur)}
-        <td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${cur.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${cur.id}">Delete</button></td></tr></tbody></table></div></div>
-    ${prev.length ? `<div class="card" style="margin-top:14px"><h3>Previous bills (uploaded) ${tip("Earlier bills uploaded as workbooks (from Previous records or Upload). Click one to read it sheet by sheet, as it was sent. They are kept to look at - new bills are made from the Bill format above.")}<span class="spacer"></span><span class="small muted">${prev.length} workbook${prev.length === 1 ? "" : "s"}</span></h3>
-      <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
-      ${prev.map(f => `<tr class="rowc" data-fmview="${f.id}" title="Open to read"><td><b>${esc(f.no[1] || String(f.no[0] || "-"))}</b></td><td>${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td>
-        <td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ctrSel(f)}<td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${f.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${f.id}">Delete</button></td></tr>`).join("")}
-      </tbody></table></div></div>` : ""}`;
+  return `<div class="card" style="margin-top:14px"><h3>Previous bills (uploaded)${K ? " - " + esc(K.name) : ""} ${tip("Bills uploaded as workbooks - from Previous records or Upload bill. Click one to read it sheet by sheet, preview, print, or export it as PDF or the Excel as uploaded. A new bill is made from the latest bill - the last one made here, with whatever was added on it, or the latest uploaded one until then.")}<span class="spacer"></span><span class="small muted">${list.length} workbook${list.length === 1 ? "" : "s"}</span></h3>
+    <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th class="c">Bills made on it</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
+    ${list.map(f => `<tr class="rowc" data-fmview="${f.id}" title="Open to read"><td><b>${esc(f.no[1] || String(f.no[0] || "-"))}</b></td><td>${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td>
+      <td class="c">${f.bills || '<span class="muted">-</span>'}</td><td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ctrSel(f)}<td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${f.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${f.id}">Delete</button></td></tr>`).join("")}
+    </tbody></table></div></div>`;
 }
 // ---- one sheet viewer for every sheet shown (a previous bill to read, the bill's own Sheets step) ----------------
 // A bar: the sheet picker (< sheet >, "2 of 12") on the left; zoom - / % / + / Fit width / 100% on the right. The sheet
@@ -100,19 +91,22 @@ function sheetFrame(el, d, opts = {}) {
       ${opts.tools || ""}
       <span class="spacer"></span>
       <span class="sv-zoom"><button class="btn btn-plain btn-sm" data-sv="out" title="Zoom out (Ctrl -)">&minus;</button><span class="sv-pc" title="Zoom">100%</span><button class="btn btn-plain btn-sm" data-sv="in" title="Zoom in (Ctrl +)">+</button>
-        <button class="btn btn-plain btn-sm" data-sv="fit" title="The whole width of the sheet in the window">Fit width</button><button class="btn btn-plain btn-sm" data-sv="one" title="Actual size">100%</button></span></div>
+        <button class="btn btn-plain btn-sm" data-sv="fit" title="The whole width of the sheet in the window">Fit width</button><button class="btn btn-plain btn-sm" data-sv="page" title="The whole sheet in the window">Fit page</button><button class="btn btn-plain btn-sm" data-sv="one" title="Actual size">100%</button></span></div>
     ${opts.below || ""}
     <div class="sv-box"><div class="sv-in ipa-sheet-in">${d.html}</div></div></div>`;
   const box = $(".sv-box", el), inner = $(".sv-in", el);
   SV.w = d.width || inner.scrollWidth;
-  const set = z => { z = Math.max(0.3, Math.min(2.5, z)); SV.z = z; inner.style.zoom = z; $(".sv-pc", el).textContent = Math.round(z * 100) + "%"; };
+  // the box: down to the bottom of the window - or only as tall as the sheet, so no empty band is left under it
+  const avail = () => Math.max(260, window.innerHeight - box.getBoundingClientRect().top - 14);
+  const size = () => { box.style.height = Math.min(avail(), Math.ceil(inner.offsetHeight * (SV.z || 1)) + 26 + (box.offsetHeight - box.clientHeight)) + "px"; };
+  const set = z => { z = Math.max(0.3, Math.min(2.5, z)); SV.z = z; inner.style.zoom = z; $(".sv-pc", el).textContent = Math.round(z * 100) + "%"; size(); };
   const fit = () => set(Math.min(1.25, (box.clientWidth - 26) / Math.max(1, SV.w)));     // a small sheet is not blown up
-  const size = () => { const top = box.getBoundingClientRect().top; box.style.height = Math.max(260, window.innerHeight - top - 14) + "px"; };
-  size();
-  const pref = svZoomPref(); if (pref === "fit") fit(); else set(Number(pref) || 1);
+  const fitPage = () => { box.style.height = avail() + "px"; set(Math.min((box.clientWidth - 26) / Math.max(1, SV.w), (avail() - 26) / Math.max(1, inner.offsetHeight))); };
+  box.style.height = avail() + "px";
+  const pref = svZoomPref(); if (pref === "fit") fit(); else if (pref === "page") fitPage(); else set(Number(pref) || 1);
   const step = dir => { const z = Math.round(((SV.z || 1) + dir * 0.1) * 10) / 10; set(z); svSave(SV.z); };
   $$("[data-sv]", el).forEach(b => b.onclick = () => { const a = b.dataset.sv;
-    if (a === "in") step(1); else if (a === "out") step(-1); else if (a === "fit") { fit(); svSave("fit"); } else if (a === "one") { set(1); svSave(1); }
+    if (a === "in") step(1); else if (a === "out") step(-1); else if (a === "fit") { fit(); svSave("fit"); } else if (a === "page") { fitPage(); svSave("page"); } else if (a === "one") { set(1); svSave(1); }
     else if (a === "prev" && k > 0) opts.go(sheets[k - 1].i); else if (a === "next" && k < sheets.length - 1) opts.go(sheets[k + 1].i); });
   const pick = $(".sv-pick", el); if (pick) pick.onchange = () => opts.go(+pick.value);
   box.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); set((SV.z || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); svSave(SV.z); } }, { passive: false });
@@ -120,8 +114,8 @@ function sheetFrame(el, d, opts = {}) {
     document.addEventListener("keydown", e => { const fr = document.querySelector(".sv .sv-zoom"); if (!fr || !(e.ctrlKey || e.metaKey)) return;
       if (e.key === "+" || e.key === "=") { e.preventDefault(); fr.querySelector('[data-sv="in"]').click(); } else if (e.key === "-") { e.preventDefault(); fr.querySelector('[data-sv="out"]').click(); }
       else if (e.key === "0") { e.preventDefault(); fr.querySelector('[data-sv="fit"]').click(); } });
-    window.addEventListener("resize", () => { const b = document.querySelector(".sv .sv-box"); if (!b) return; const top = b.getBoundingClientRect().top; b.style.height = Math.max(260, window.innerHeight - top - 14) + "px";
-      if (svZoomPref() === "fit") { const i = b.querySelector(".sv-in"); const z = Math.max(0.3, Math.min(1.25, (b.clientWidth - 26) / Math.max(1, SV.w))); SV.z = z; i.style.zoom = z; const pc = document.querySelector(".sv .sv-pc"); if (pc) pc.textContent = Math.round(z * 100) + "%"; } }); }
+    window.addEventListener("resize", () => { const f = document.querySelector(".sv [data-sv=fit]"), pg = document.querySelector(".sv [data-sv=page]"), p_ = svZoomPref();
+      if (p_ === "fit" && f) f.click(); else if (p_ === "page" && pg) pg.click(); }); }
   return { box, inner, zoom: () => SV.z || 1 };
 }
 
@@ -131,7 +125,7 @@ async function viewFormat(fid, i = 0) {
   const el = document.getElementById("big"), open = el && !el.classList.contains("hide") && el.dataset.ctx === "est.fmview";
   if (!open) big(`Bill ${esc(d.no[1] || String(d.no[0] || ""))} <span class="muted small">${esc(d.file)} - as uploaded, to read</span>`, "", null, "est.fmview");
   if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
-  $("#b-tools").innerHTML = "";
+  $("#b-tools").innerHTML = xpButtons("ipafmt", { id: fid, name: (d.file || "bill").replace(/\.xls[xm]?$/i, "") });
   $("#b-body").classList.add("sv-body");
   sheetFrame($("#b-body"), d, { sheets: d.sheets, go: j => viewFormat(fid, j) });
 }
