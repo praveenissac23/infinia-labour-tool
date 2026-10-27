@@ -12,6 +12,11 @@ produced here reads the same way a desktop-generated one does.
 import base64
 import json
 import re
+
+
+def _x(t):
+    """Text for a reportlab Paragraph: & < > as text, not markup."""
+    return str(t if t is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 import time
 import contextvars
 import io
@@ -2294,9 +2299,12 @@ def build_lpo_pdf(po: dict):
         amount = qty * rate
         taxpc = float(l.get("tax_pct") or 0)
         sub += amount
-        desc = [P(l.get("description", ""), 8.5)]
-        if (l.get("description2") or "").strip():
-            desc.append(P(l["description2"].strip(), 7.5, colour="#555555"))
+        desc = [P(_x(l.get("description", "")), 8.5)]
+        d2 = (l.get("description2") or "").strip()
+        if d2:
+            import main as _M
+            # several lines / a long description: as typed, the material's size; a short note: small grey
+            desc.append(P(_M.lpo_rich(_x(d2), "<br/>"), 8.5, leading=12) if _M.lpo_long_note(d2) else P(_x(d2), 7.5, colour="#555555"))
         data.append([P(i, 8.5, align=TA_CENTER), desc,
                      P(f"{qty:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{rate:,.2f}", 8.5, align=TA_RIGHT),
@@ -2484,7 +2492,7 @@ def build_lpo_excel(po: dict):
         taxpc = float(l.get("tax_pct") or 0)
         desc = l.get("description", "")
         if (l.get("description2") or "").strip():
-            desc += "\n" + l["description2"].strip()
+            desc += "\n" + l["description2"].strip().replace("**", "")
         vals = [i, desc, qty, rate, taxpc, None, None]
         for col, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=col, value=v)
@@ -2495,7 +2503,8 @@ def build_lpo_excel(po: dict):
         ws.cell(row=r, column=7).value = f"=ROUND(C{r}*D{r},2)"
         for col in (3, 4, 6, 7):
             ws.cell(row=r, column=col).number_format = "#,##0.00"
-        ws.row_dimensions[r].height = 26 if (l.get("description2") or "").strip() else 17
+        ws.row_dimensions[r].height = (min(400, 14 * (desc.count("\n") + 1) + 6 + 14 * sum(len(x) // 60 for x in desc.split("\n")))
+                                       if (l.get("description2") or "").strip() else 17)
     last_line = r
 
     r += 2

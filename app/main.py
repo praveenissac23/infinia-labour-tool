@@ -8184,11 +8184,31 @@ def get_purchase_order(order_id: int, db: Session = Depends(get_db),
     return _lpo_dict(o)
 
 
+def lpo_delivery_text(o):
+    """What the LPO prints for delivery: the words typed ("As per site requirement") or else the date."""
+    note = (getattr(o, "delivery_note", "") or "").strip()
+    return note or (o.delivery_date.strftime("%d %b %Y") if o.delivery_date else "")
+
+
+def lpo_long_note(t):
+    t = (t or "").strip()
+    return "\n" in t or len(t) > 70
+
+
+def lpo_rich(escaped, br):
+    """An already-escaped line description as typed: each line kept, an empty line kept as a gap,
+    **words** in bold."""
+    t = escaped.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    return t.replace("\n", br)
+
+
 def _lpo_dict(o):
     return {
         "id": o.id, "po_no": o.po_no, "ref": o.ref,
         "order_date": o.order_date.isoformat() if o.order_date else "",
         "terms": o.terms, "delivery_date": o.delivery_date.isoformat() if o.delivery_date else "",
+        "delivery_note": getattr(o, "delivery_note", "") or "",
         "supplier_ref": o.supplier_ref, "supplier_name": o.supplier_name,
         "supplier_address": o.supplier_address, "supplier_trn": o.supplier_trn,
         "supplier_email": getattr(o, "supplier_email", "") or "",
@@ -8227,6 +8247,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         order_date=payload.order_date or _dubai_today(),
         terms=payload.terms or "Due on Receipt",
         delivery_date=payload.delivery_date,
+        delivery_note=(payload.delivery_note or "").strip()[:120],
         supplier_ref=payload.supplier_ref or "",
         supplier_id=supplier.id if supplier else None,
         supplier_name=(supplier.name if supplier else payload.supplier_name).strip(),
@@ -8347,6 +8368,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.order_date = payload.order_date or o.order_date
     o.terms = payload.terms or "Due on Receipt"
     o.delivery_date = payload.delivery_date
+    o.delivery_note = (payload.delivery_note or "").strip()[:120]
     o.supplier_ref = payload.supplier_ref or ""
     o.supplier_id = supplier.id if supplier else None
     o.supplier_name = (supplier.name if supplier else payload.supplier_name).strip()
@@ -8490,7 +8512,7 @@ def _lpo_for_print(o):
     d["site_address"] = (site.address if site else "") or ""
     d["site_map"] = (site.map_url if site else "") or ""
     d["date_text"] = o.order_date.strftime("%d %b %Y") if o.order_date else ""
-    d["delivery_text"] = o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""
+    d["delivery_text"] = lpo_delivery_text(o)
     return d
 
 
@@ -8568,6 +8590,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
   table.lines th.r, td.r {{ text-align:right; }} th.c, td.c {{ text-align:center; }}
   .sub {{ color:#666; font-size:11px; }}
+  .det {{ color:#1F2429; margin-top:6px; line-height:1.45; }}
   .foot {{ display:flex; gap:26px; margin-top:14px; }}
   .terms {{ flex:1.2; color:#333; font-size:11.5px; line-height:1.5; }}
   .lbl {{ color:#555; font-size:11px; margin-top:8px; }}
@@ -8726,7 +8749,10 @@ def _lpo_html(o):
         tax = amount * (l.tax_pct or 0) / 100.0
         sub += amount
         vat += tax
-        second = f'<div class="sub">{esc(l.description2)}</div>' if (l.description2 or "").strip() else ""
+        d2 = (l.description2 or "").strip()
+        # a long or several-line description prints as typed - its lines, gaps and **bold** - at the
+        # material's own size; a short note keeps the small grey line under the material name
+        second = (f'<div class="{"det" if lpo_long_note(d2) else "sub"}">{lpo_rich(esc(d2), "<br>")}</div>' if d2 else "")
         rows.append(
             f'<tr><td class="c">{i}</td><td>{esc(l.description)}{second}</td>'
             f'<td class="r">{l.qty:,.2f}</td><td class="r">{l.rate:,.2f}</td>'
@@ -8758,7 +8784,7 @@ def _lpo_html(o):
         return a + [("", "")] * (n - len(a)), b + [("", "")] * (n - len(b))
 
     left_rows = [("Purchase Order No", o.ref),
-                 ("Delivery Date", o.delivery_date.strftime("%d %b %Y") if o.delivery_date else ""),
+                 ("Delivery Date", esc(lpo_delivery_text(o))),
                  ("Project Location", o.project_location),
                  ("Project &amp; Plot No", o.plot_no),
                  ("Delivery Address", _site_field(o, "address")),

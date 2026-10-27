@@ -424,6 +424,7 @@ class PurchaseOrder(Base):
     order_date = Column(Date, nullable=False)
     terms = Column(String, default="Due on Receipt")
     delivery_date = Column(Date, nullable=True)
+    delivery_note = Column(String, default="")       # "As per site requirement" - printed in place of the date
     supplier_ref = Column(String, default="")        # the trader's own quote number
 
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)

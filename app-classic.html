@@ -1782,6 +1782,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .vf-yn { display:flex; gap:6px; } .vf-yn .vf-pill { padding:0 14px; height:36px; white-space:nowrap; font-size:12.5px; }
   .pc-form.vat #pc-vdone .vf-pill { flex:1; padding:0 8px; }
   .pc-vmore { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; } .pc-vmore input { min-width:260px; height:36px; }
+  /* LPO line description: grows with what is typed; Enter = new line */
+  textarea.lpo-d2 { width:100%; min-height:34px; resize:vertical; font:inherit; line-height:1.4; padding:6px 8px; box-sizing:border-box; overflow:hidden; }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -2830,7 +2832,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="field"><label>Date</label><input type="date" id="lpo-date" style="width:150px;"></div>
               <div class="field"><label>Terms</label>
                 <input type="text" id="lpo-terms" list="terms-list" value="Due on Receipt" style="width:175px;"></div>
-              <div class="field"><label>Delivery date</label><input type="date" id="lpo-delivery" style="width:150px;"></div>
+              <div class="field"><label>Delivery date</label>
+                <span style="display:flex; gap:6px; align-items:center;"><input type="date" id="lpo-delivery" style="width:150px;">
+                  <input type="text" id="lpo-delivery-note" list="lpo-delivery-list" placeholder="or words, e.g. As per site requirement" style="width:230px;"
+                         title="Words to print in place of the date - pick one or type your own. Leave it empty and the date prints."></span>
+                <datalist id="lpo-delivery-list"><option value="As per site requirement"><option value="Immediate"><option value="Within 7 days"><option value="As per programme"></datalist></div>
               <div class="field"><label>Ref# (supplier quote)</label><input type="text" id="lpo-supref" style="width:170px;"></div>
             </div>
 
@@ -2902,14 +2908,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <table style="min-width:1000px;">
                 <thead><tr>
                   <th style="width:3%;">#</th>
-                  <th style="width:29%;">Material</th>
-                  <th style="width:13%;" title="A small second line printed under the material on the order - for a hire item priced by the week, or a note like 'Double washed'. Leave it empty and nothing prints.">Spec / note <span style="color:#bbb;">(optional)</span></th>
-                  <th style="width:7%;">Qty</th>
-                  <th style="width:7%;">Unit</th>
-                  <th style="width:8%;">Rate</th>
+                  <th style="width:24%;">Material</th>
+                  <th style="width:26%;" title="Printed under the material on the order. A short note prints as a small line ('Double washed', 'price/week'); a full description prints as typed - press Enter for a new line, leave an empty line for a gap, put **two stars** round words to print them bold. Leave it empty and nothing prints.">Spec / description <span style="color:#bbb;">(optional)</span></th>
+                  <th style="width:6%;">Qty</th>
+                  <th style="width:6%;">Unit</th>
+                  <th style="width:7%;">Rate</th>
                   <th style="width:6%;">Tax %</th>
-                  <th style="width:10%;">Amount</th>
-                  <th style="width:16%;">Last paid</th>
+                  <th style="width:9%;">Amount</th>
+                  <th style="width:9%;">Last paid</th>
                   <th style="width:4%;"></th>
                 </tr></thead>
                 <tbody id="lpo-lines"></tbody>
@@ -13005,6 +13011,7 @@ async function newLpo() {
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
+  document.getElementById("lpo-delivery-note").value = "";
   const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
   ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-sup-contact", "lpo-sup-phone",
    "lpo-sup-email", "lpo-plot", "lpo-mobile", "lpo-scope", "lpo-location",
@@ -13049,6 +13056,7 @@ async function editLpo(id) {
     document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
     document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
     document.getElementById("lpo-delivery").value = o.delivery_date || "";
+    document.getElementById("lpo-delivery-note").value = o.delivery_note || "";
     document.getElementById("lpo-supref").value = o.supplier_ref || "";
     document.getElementById("lpo-supplier").value = o.supplier_name || "";
     document.getElementById("lpo-trn").value = o.supplier_trn || "";
@@ -13397,6 +13405,8 @@ function paintLpoLine(i) {
   if (last) last.innerHTML = lastCell;
 }
 
+// The line description box grows with what is typed, so a long description is read whole.
+function lpoGrow(t) { t.style.height = "auto"; const h = t.scrollHeight + 2; t.style.height = Math.min(h, 640) + "px"; t.style.overflowY = h > 640 ? "auto" : "hidden"; }
 // A full redraw. Only for lines coming or going - never while typing.
 function renderLpoLines() {
   const body = document.getElementById("lpo-lines");
@@ -13414,8 +13424,9 @@ function renderLpoLines() {
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
             style="width:100%;" title="${esc(l.description)}"></td>
-      <td><input type="text" value="${esc(l.description2)}" placeholder="e.g. price/week" title="Printed small under the material name. Optional."
-            oninput="onLpoLineField(${i}, 'description2', this.value)" style="width:100%;"></td>
+      <td><textarea class="lpo-d2" rows="1" placeholder="e.g. price/week - or a full description: Enter for a new line"
+            title="Printed under the material. Enter = new line, an empty line = a gap, **words** = bold."
+            oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.qty)}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.rate)}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
@@ -13425,6 +13436,7 @@ function renderLpoLines() {
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
     </tr>`;
   }).join("");
+  body.querySelectorAll("textarea.lpo-d2").forEach(lpoGrow);
   lpoLines.forEach((l, i) => paintLpoLine(i));
   renderLpoTotals();
 }
@@ -13653,6 +13665,7 @@ async function saveLpo() {
     order_date: document.getElementById("lpo-date").value || null,
     terms: document.getElementById("lpo-terms").value,
     delivery_date: document.getElementById("lpo-delivery").value || null,
+    delivery_note: document.getElementById("lpo-delivery-note").value.trim(),
     supplier_ref: document.getElementById("lpo-supref").value.trim(),
     supplier_name: document.getElementById("lpo-supplier").value.trim(),
     supplier_trn: document.getElementById("lpo-trn").value.trim(),

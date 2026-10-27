@@ -483,6 +483,7 @@ class PurchaseOrderIn(BaseModel):
     order_date: date | None = None
     terms: str = "Due on Receipt"
     delivery_date: date | None = None
+    delivery_note: str = ""
     supplier_ref: str = ""
     supplier_name: str = ""
     supplier_address: str = ""

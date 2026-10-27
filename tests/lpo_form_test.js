@@ -117,12 +117,12 @@ const ck = (m, cond, ctx) => {
 
   // Typing a rate repaints the amount - the boxes must not be rebuilt.
   await p.evaluate(() => {
-    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[2].focus();
+    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[1].focus();   // qty (the description is a textarea)
   });
   await p.keyboard.type('10');
   await p.waitForTimeout(300);
   await p.evaluate(() => {
-    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[4].focus();
+    document.querySelectorAll('#lpo-lines tr')[0].querySelectorAll('input')[3].focus();   // rate
   });
   await p.keyboard.type('16');
   await p.waitForTimeout(400);
@@ -130,7 +130,7 @@ const ck = (m, cond, ctx) => {
   await p.waitForTimeout(500);
   const rate = await p.evaluate(() => {
     const row = document.querySelectorAll('#lpo-lines tr')[0];
-    const r = row.querySelectorAll('input')[4];
+    const r = row.querySelectorAll('input')[3];
     return { focused: document.activeElement === r, value: r.value,
              amount: row.querySelector('.lpo-amt').textContent };
   });
