@@ -170,7 +170,7 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
     const id = document.querySelector('#b-tools [data-xp]') ? JSON.parse(document.querySelector('#b-tools [data-xp]').dataset.k).extra.id : 0; const o = {};
     for (const f of ['pdf', 'excel']) { const r = await fetch(`/export/est/ipa/${id}?token=${t.token}&format=${f}`); const b = new Uint8Array(await r.arrayBuffer()); o[f] = String.fromCharCode(...b.slice(0, 4)); } return o; });
   ck('PDF and Excel come out', heads.pdf === '%PDF' && heads.excel.startsWith('PK'), heads);
-  await p.click('#b-x'); await sleep(1200);
+  await p.click('#b-back'); await sleep(1200);
   ck('list shows IPA 10 Submitted', (await p.textContent('#sec')).includes('IPA 10') && (await p.textContent('#sec')).includes('Submitted'));
 
   // ---- a second consultant's format: Total = Previous + Current, a cover text built from figures (909 / 914)

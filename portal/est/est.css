@@ -144,8 +144,6 @@ table.t td.neg { color: var(--red); }
 #drawer { justify-content: flex-end; padding: 0; }
 #modal { z-index: 110; }
 .dbox { background: var(--bg); width: 100%; height: 100%; overflow: auto; }   /* a full page, not a half window */
-.dbox .dback { flex: none; border: 1px solid #E3D9D3; background: #fff; color: var(--ink); border-radius: 8px; padding: 6px 12px; font: 600 13px inherit; cursor: pointer; margin-right: 12px; }
-.dbox .dback:hover { border-color: var(--red); color: var(--red); }
 .dbox .mhead { background: #fff; position: sticky; top: 0; z-index: 5; }
 .dbody { padding: 12px 14px 40px; }
 .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
@@ -278,9 +276,32 @@ select.fsub { width: 190px; }
 /* ===== payment certificate sheet / item schedule (full screen) ===== */
 #big { position: fixed; inset: 0; z-index: 105; background: rgba(20,22,25,.45); }
 #big .bbox { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; }
-#big .mhead { background: #fff; gap: 8px; flex-wrap: wrap; }
-#big .mhead b { flex: 0 1 auto; }
-#b-tools { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+/* the standard page header everywhere in Estimation: <- Back | title ........ page buttons */
+#big .mhead, .dbox .mhead { background: #fff; gap: 10px; flex-wrap: nowrap; min-height: 58px; padding: 10px 16px; }
+#big .mhead b, .dbox .mhead b { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+#big .dback, .dbox .dback { flex: none; border: 1px solid #E3D9D3; background: #fff; color: var(--ink); border-radius: 8px; padding: 7px 14px; font: 600 13px inherit; cursor: pointer; margin-right: 4px; }
+#big .dback:hover, .dbox .dback:hover { border-color: var(--red); color: var(--red); }
+#b-tools { display: inline-flex; gap: 6px; flex: none; }
+#b-tools:empty { display: none; }
+/* the page's Save: floating at the bottom right, clear of the INFI button */
+.savebar { position: absolute; right: 100px; bottom: 20px; z-index: 20; display: flex; gap: 8px; padding: 8px; background: #fff; border-radius: 12px; box-shadow: 0 8px 26px rgba(0,0,0,.18); border: 1px solid var(--line2); }
+.savebar .btn { min-width: 96px; }
+.savebar.hide { display: none; }
+#big .bbody { padding-bottom: 110px; }
+/* leaving with changes not saved */
+#leave { position: fixed; inset: 0; z-index: 400; background: rgba(20,22,25,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+#leave.hide { display: none; }
+#leave .lbox { background: #fff; border-radius: 12px; width: 100%; max-width: 460px; box-shadow: 0 20px 50px rgba(0,0,0,.3); padding: 20px 20px 16px; }
+#leave h3 { margin: 0 0 8px; font-size: 16px; }
+#leave p { margin: 0 0 18px; font-size: 13.5px; color: #555; line-height: 1.5; }
+#leave .lfoot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+#leave .lfoot .left { margin-right: auto; }
+@media (max-width: 700px) {
+  #big .mhead, .dbox .mhead { flex-wrap: wrap; }
+  #b-tools { flex-wrap: wrap; width: 100%; }
+  .savebar { left: 12px; right: 84px; bottom: 14px; justify-content: flex-end; }
+  #leave .lfoot .left { margin-right: 0; order: 3; width: 100%; }
+}
 .bbody { flex: 1; overflow: auto; padding: 14px 18px 60px; }
 .sheet { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; max-width: 1700px; margin: 0 auto; }
 .sh-side { position: sticky; top: 0; }

@@ -127,6 +127,62 @@ function readForm(fields) {
   }
   return out;
 }
+// ---------- one standard for leaving a screen with changes not saved ----------
+// Pop-up forms, full pages with a Save: on Back / x / Cancel / Esc / clicking outside / phone Back,
+// if anything typed differs from when the screen opened, ask: Stay / Leave without saving / Save & exit.
+const GUARD = {};
+function guardSnap(el) {
+  if (!el) return "";
+  return [...el.querySelectorAll("input,select,textarea")].filter(x => x.type !== "file" && x.type !== "search" && !x.closest("[data-noguard]"))
+    .map(x => (x.type === "checkbox" || x.type === "radio") ? (x.checked ? "1" : "0") : x.value).join("\u0001");
+}
+function guardOn(layer, el, save) {
+  const g = GUARD[layer] = { el, save, base: guardSnap(el), touched: false };
+  // figures filled in by the screen itself just after it opens are not the person's changes
+  if (!el._guardT) { el._guardT = 1; const t = e => { const c = GUARD[layer]; if (e.isTrusted && c && c.el === el) c.touched = true; };
+    el.addEventListener("input", t, true); el.addEventListener("change", t, true); }
+  [300, 900, 1800].forEach(ms => setTimeout(() => { if (GUARD[layer] === g && !g.touched) g.base = guardSnap(el); }, ms));
+}
+function guardBase(layer) { const g = GUARD[layer]; if (g) g.base = guardSnap(g.el); }
+function guardOff(layer) { delete GUARD[layer]; }
+function guardDirty(layer) { const g = GUARD[layer]; return !!g && g.el && g.el.isConnected && guardSnap(g.el) !== g.base; }
+function askLeave() {
+  return new Promise(res => {
+    let el = document.getElementById("leave");
+    if (!el) {
+      el = document.createElement("div"); el.id = "leave"; el.className = "hide";
+      el.innerHTML = `<div class="lbox" role="dialog" aria-modal="true" aria-labelledby="lv-t"><h3 id="lv-t">Unsaved changes</h3>
+        <p>You have changes on this screen that are not saved yet. Do you want to save them before leaving?</p>
+        <div class="lfoot"><button class="btn btn-ghost left" id="lv-drop">Leave without saving</button><button class="btn btn-plain" id="lv-stay">Stay</button><button class="btn btn-primary" id="lv-save">Save &amp; exit</button></div></div>`;
+      document.body.appendChild(el);
+    }
+    const done = v => { el.classList.add("hide"); document.removeEventListener("keydown", key, true); res(v); };
+    const key = e => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); done("stay"); } };
+    $("#lv-drop").onclick = () => done("drop"); $("#lv-stay").onclick = () => done("stay"); $("#lv-save").onclick = () => done("save");
+    el.onmousedown = e => { if (e.target === el) done("stay"); };
+    document.addEventListener("keydown", key, true);
+    el.classList.remove("hide"); setTimeout(() => $("#lv-save").focus(), 20);
+  });
+}
+// go() leaves the screen; it runs straight away when nothing was changed.
+async function guardLeave(layer, go) {
+  if (guardDirty(layer)) {
+    const a = await askLeave();
+    if (a === "stay") return false;
+    if (a === "save") { const g = GUARD[layer]; const ok = g && g.save ? await g.save(true) : true; if (ok === false) return false; if (layer === "modal") { guardOff(layer); return true; } }
+  }
+  guardOff(layer); go(); return true;
+}
+// the phone / browser closes or reloads with something not saved
+addEventListener("beforeunload", e => { if (Object.keys(GUARD).some(guardDirty)) { e.preventDefault(); e.returnValue = ""; } });
+// the main app asks before moving to another page or tab while something here is not saved
+window.estHasUnsaved = () => Object.keys(GUARD).some(guardDirty);
+window.estLeaveAll = async () => {
+  if (guardDirty("modal") && !(await closeModal())) return false;
+  if (guardDirty("big") && typeof leaveBig === "function" && !(await leaveBig())) return false;
+  return true;
+};
+
 function modal(title, fields, onSave, opts = {}) {
   $("#m-title").textContent = title;
   $("#m-body").innerHTML = (opts.top || "") + `<div class="frm">${fields.map(fieldHtml).join("")}</div>` + (opts.bottom || "");
@@ -140,13 +196,15 @@ function modal(title, fields, onSave, opts = {}) {
   setTimeout(() => { const el = first && $("#f-" + first.k); if (el) { el.focus(); el.select && el.select(); } }, 30);
   const save = async () => {
     const btn = $("#m-save"); btn.disabled = true;
-    try { await onSave(readForm(fields)); closeModal(); } catch (e) { fail(e); } finally { btn.disabled = false; }
+    try { await onSave(readForm(fields)); guardOff("modal"); closeModal(true); return true; } catch (e) { fail(e); return false; } finally { btn.disabled = false; }
   };
   $("#m-save").onclick = save;
-  $("#m-cancel").onclick = closeModal;
-  if (opts.del) $("#m-del").onclick = async () => { if (!confirmInline($("#m-del"))) return; try { await opts.del(); closeModal(); } catch (e) { fail(e); } };
+  $("#m-cancel").onclick = () => closeModal();
+  if (opts.del) $("#m-del").onclick = async () => { if (!confirmInline($("#m-del"))) return; try { await opts.del(); guardOff("modal"); closeModal(true); } catch (e) { fail(e); } };
   if (opts.after) opts.after();
   if (opts.doc) docBar(opts.doc);
+  // a form with nothing to save (save: "-") never asks
+  if (opts.save === "-" || $("#m-save").disabled) guardOff("modal"); else guardOn("modal", $("#m-body"), save);
   $$("#m-body input").forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } }));
 }
 // A remove button asks once by changing its words, not with a browser box.
@@ -156,8 +214,12 @@ function confirmInline(btn) {
   setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.textContent = t; btn.classList.remove("btn-primary"); } }, 3500);
   return false;
 }
-function closeModal() { $("#modal").classList.add("hide"); }
-$("#m-x").onclick = closeModal;
+// closeModal(true) = closed by the code after a save; closeModal() = the person closing it - asks if anything is unsaved
+function closeModal(force) {
+  if (force === true) { guardOff("modal"); $("#modal").classList.add("hide"); return; }
+  return guardLeave("modal", () => $("#modal").classList.add("hide"));
+}
+$("#m-x").onclick = () => closeModal();
 $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
 function drawer(title, html) {
   const was = !$("#drawer").classList.contains("hide");
@@ -169,12 +231,18 @@ function closeDrawer(fromHistory) {
   $("#drawer").classList.add("hide"); ST.drawer = null; document.body.style.overflow = "";
   if (!fromHistory && history.state && history.state.estDrawer) { try { history.back(); } catch (e) {} }
 }
-$("#d-x").onclick = () => closeDrawer();
 $("#d-back").onclick = () => closeDrawer();
 // the browser / phone Back button closes the page and returns to the list
-addEventListener("popstate", () => { if (!$("#drawer").classList.contains("hide")) closeDrawer(true); });
+addEventListener("popstate", () => {
+  if (ST.skipPop) { ST.skipPop = false; return; }                          // a full page closing itself
+  const bg = document.getElementById("big"); if (bg && !bg.classList.contains("hide")) return;   // the full page's own Back
+  // Back with a pop-up form open over a page closes the form only (asking first if it has changes)
+  if (!$("#modal").classList.contains("hide") && !$("#drawer").classList.contains("hide")) { try { history.pushState({ estDrawer: 1 }, ""); } catch (e) {} closeModal(); return; }
+  if (!$("#drawer").classList.contains("hide")) closeDrawer(true);
+});
 
-document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("#modal").classList.contains("hide")) closeModal(); else if (!$("#drawer").classList.contains("hide")) closeDrawer(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { const lv = document.getElementById("leave"); if (lv && !lv.classList.contains("hide")) return;
+  const bg = document.getElementById("big"); if (!$("#modal").classList.contains("hide")) closeModal(); else if (bg && !bg.classList.contains("hide")) return; else if (!$("#drawer").classList.contains("hide")) closeDrawer(); } });
 
 // ---------- Preview / PDF / Excel / Share ----------
 function xpButtons(what, extra = {}) {
@@ -974,7 +1042,7 @@ function certifyForm(sid, pcid) {
   }, { wide: true, live, top: '<div class="calc" id="calc" style="margin:0 0 12px"></div>', save: locked ? "Locked - paid" : "Save certificate",
        extra: `<button class="btn btn-plain" id="m-sheet" title="Line by line from the item schedule, deductions with their details, the subcontractor's bill and the sign-off">Full sheet</button><button class="btn btn-plain" id="m-print">Print PC</button>`,
        del: p.status !== "Paid" ? async () => { await DEL(`/store/est/subpcs/${p.id}`); reload(); toast("Removed"); } : null,
-       after: () => { $("#m-print").onclick = () => exportGo("preview", "pc", { id: p.id }); $("#m-sheet").onclick = () => { closeModal(); pcSheet(p.id); }; if (locked) $("#m-save").disabled = true; } });
+       after: () => { $("#m-print").onclick = () => exportGo("preview", "pc", { id: p.id }); $("#m-sheet").onclick = async () => { if (await closeModal()) pcSheet(p.id); }; if (locked) $("#m-save").disabled = true; } });
 }
 
 // ---------------- Subcontractors > invoice tracker ----------------
@@ -1216,7 +1284,7 @@ function boqScope(bill, section, now) {
   modal(what, [{ k: "scope", label: "Left out because", type: "combo", options: ["Excluded", "Phase 02", "N/A", "By Client"], value: now || "", tip: "Clear it to count these lines in the BOQ value." }],
     async v => { await POST(`/store/est/projects/${ST.pid}/boq-scope`, { bill, section: section ?? null, scope: v.scope }); await reload(); toast(v.scope ? "Left out: " + v.scope : "Now counted in the BOQ value"); },
     { save: "Save", extra: now ? `<button class="btn btn-ghost left" id="m-count">Bring into scope</button>` : "",
-      after: () => { const c = $("#m-count"); if (c) c.onclick = async () => { try { await POST(`/store/est/projects/${ST.pid}/boq-scope`, { bill, section: section ?? null, scope: "" }); closeModal(); await reload(); toast("Now counted in the BOQ value"); } catch (e) { fail(e); } }; } });
+      after: () => { const c = $("#m-count"); if (c) c.onclick = async () => { try { await POST(`/store/est/projects/${ST.pid}/boq-scope`, { bill, section: section ?? null, scope: "" }); closeModal(true); await reload(); toast("Now counted in the BOQ value"); } catch (e) { fail(e); } }; } });
 }
 // The internal BOQ workbook: read, shown bill by bill against the workbook's own summary, then saved.
 // A document to read in the browser (not an Excel workbook the server reads as it always has).

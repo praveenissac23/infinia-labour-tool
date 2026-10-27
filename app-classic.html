@@ -9316,6 +9316,7 @@ function onMvKindChange() {
   show("mv-to-field", "mv-to-label", cfg.to);
   show("mv-who-field", "mv-who-label", cfg.who);
   document.getElementById("mv-cond-field").style.display = cfg.who ? "" : "none";
+  mvPickList();
   updateMvHint();
 }
 function mvCond(v) { document.querySelectorAll("#mv-cond button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); }
@@ -9326,13 +9327,51 @@ function mvCondValue() { const b = document.querySelector("#mv-cond button.on");
 // from a site that only has 6 before the server has to say no.
 // The corrections form's material box: resolves what was typed to a
 // material the store actually holds, then refreshes the stock line.
+// Lost / returned / moved material can be at any site, not only in the store: the material box lists
+// every place that holds it - the central store and each site - with how many are there. Picking a line
+// picks the material and its place ("Lost from") together.
+const MV_AT = "  |  ";
+const mvWhereKind = k => ["lost", "return", "transfer"].includes(k);
+function buildMvWhereList() {
+  let dl = document.getElementById("material-list-where");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "material-list-where"; document.body.appendChild(dl); }
+  const kind = (document.getElementById("mv-kind") || {}).value;
+  const items = new Map((storeItems || []).map(i => [i.id, i]));
+  const rows = [];
+  for (const st of (storeStockCache || [])) {
+    const i = items.get(st.item_id) || (st.code ? { code: st.code, name: st.name, unit: st.unit } : null);
+    if (!i) continue;
+    const base = `${i.code} - ${i.name}`, unit = i.unit || st.unit || "";
+    if (kind === "lost" && (st.central || 0) > 0) rows.push([base, 0, "Central store", `${num(st.central)} ${unit} in the central store`]);
+    Object.entries(st.by_site || {}).filter(([, q]) => q > 0)
+      .forEach(([site, q]) => rows.push([base, 1, "Site " + site, `${num(q)} ${unit} at site ${site}`]));
+  }
+  rows.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) || a[1] - b[1] || a[2].localeCompare(b[2], undefined, { numeric: true }));
+  dl.innerHTML = rows.map(r => `<option value="${escapeAttr(r[0] + MV_AT + r[2])}" label="${escapeAttr(r[3])}">`).join("");
+}
+function mvPickList() {
+  const box = document.getElementById("mv-item-txt"); if (!box) return;
+  const k = document.getElementById("mv-kind").value;
+  if (mvWhereKind(k)) { buildMvWhereList(); box.setAttribute("list", "material-list-where"); box.placeholder = "Start typing - every place it is: store and sites"; }
+  else { box.setAttribute("list", "material-list-stock"); box.placeholder = "Start typing - only what is in the store"; }
+}
 function onMvItemTyped(box) {
-  const txt = box.value.trim().toLowerCase();
-  const hit = (storeItems || []).find(i => `${i.code} - ${i.name}`.toLowerCase() === txt)
-           || (storeItems || []).find(i => i.name.toLowerCase() === txt)
-           || (storeItems || []).find(i => i.code.toLowerCase() === txt);
+  let txt = box.value.trim(), place = null;
+  const at = txt.lastIndexOf(MV_AT.trim());
+  if (at > 0) { place = txt.slice(at + 1).trim(); txt = txt.slice(0, at).trim(); }
+  const low = txt.toLowerCase();
+  const hit = (storeItems || []).find(i => `${i.code} - ${i.name}`.toLowerCase() === low)
+           || (storeItems || []).find(i => i.name.toLowerCase() === low)
+           || (storeItems || []).find(i => i.code.toLowerCase() === low);
   document.getElementById("mv-item").value = hit ? hit.id : "";
-  box.style.background = (txt && !hit) ? "#FFF4F2" : "";
+  box.style.background = (box.value.trim() && !hit) ? "#FFF4F2" : "";
+  // the place picked with it fills "Lost from" / "Coming back from" / "Moving from"
+  const sel = document.getElementById("mv-from");
+  if (hit && place && sel && document.getElementById("mv-from-field").style.display !== "none") {
+    const code = /^central store$/i.test(place) ? "" : place.replace(/^site\s+/i, "");
+    if (code && ![...sel.options].some(o => o.value === code)) sel.insertAdjacentHTML("beforeend", `<option value="${escapeAttr(code)}">${escapeAttr(code)}</option>`);
+    sel.value = code;
+  }
   updateMvHint();
 }
 
@@ -9396,8 +9435,10 @@ async function loadStoreItems(force) {
   if (mvHidden && mvHidden.value && !anyStock.has(parseInt(mvHidden.value, 10))) {
     mvHidden.value = ""; document.getElementById("mv-item-txt").value = "";
   }
-  document.getElementById("mv-from").innerHTML = storeLocationOptions(true);
+  { const f = document.getElementById("mv-from"), keep = f.value;
+    f.innerHTML = storeLocationOptions(true); if ([...f.options].some(o => o.value === keep)) f.value = keep; }
   document.getElementById("mv-to").innerHTML = storeLocationOptions(true);
+  if (document.getElementById("mv-kind") && mvWhereKind(document.getElementById("mv-kind").value)) buildMvWhereList();
 
   // Refresh the material dropdowns in the Give Out and Delivery rows
   // too. Without this, a newly-added item never appears in them, and

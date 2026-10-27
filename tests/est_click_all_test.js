@@ -26,9 +26,9 @@ let clicks = 0; const problems = [];
   };
   const closeAll = async () => {
     for (let i = 0; i < 3; i++) {
-      if (await p.isVisible('#big:not(.hide)').catch(() => false)) { await p.click('#b-x').catch(() => {}); await sleep(250); }
+      if (await p.isVisible('#big:not(.hide)').catch(() => false)) { await p.click('#b-back').catch(() => {}); await sleep(250); }
       if (await p.isVisible('#modal:not(.hide)').catch(() => false)) { await p.click('#m-x').catch(() => {}); await sleep(250); }
-      if (await p.isVisible('#drawer:not(.hide)').catch(() => false)) { await p.click('#d-x').catch(() => {}); await sleep(250); }
+      if (await p.isVisible('#drawer:not(.hide)').catch(() => false)) { await p.click('#d-back').catch(() => {}); await sleep(250); }
     }
   };
   // one of each kind: same tag, same data-* names, same words (rows: same data-* names only)

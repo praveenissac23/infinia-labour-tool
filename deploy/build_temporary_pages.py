@@ -800,7 +800,19 @@ function pgKeyFromUrl() {
 }
 function pgKeyOfPath() { return pgKeyFromUrl(); }
 // Go to another page of the app. push=false when answering Back/Forward.
+// An Estimation screen (in its frame) with changes not saved asks first: Stay / Leave without saving / Save & exit.
+let PG_LEAVE_OK = false;
+function pgUnsavedFrames() {
+  return [...document.querySelectorAll(".screen.active iframe.pg-embed")].filter(f => { try { return !!(f.contentWindow.estHasUnsaved && f.contentWindow.estHasUnsaved()); } catch (e) { return false; } });
+}
+function pgGuarded(run) {
+  if (PG_LEAVE_OK) return false;
+  const fr = pgUnsavedFrames(); if (!fr.length) return false;
+  (async () => { for (const f of fr) { if (!(await f.contentWindow.estLeaveAll())) return; } PG_LEAVE_OK = true; try { run(); } finally { PG_LEAVE_OK = false; } })();
+  return true;
+}
 function pgGo(key, hash, push = true) {
+  if (push && pgGuarded(() => pgGo(key, hash, push))) return;
   if (key === "access") { pgGo("settings", "access", push); return; }
   if (!ALL_PAGES[key]) key = "dashboard";
   const same = PAGE.key === key;
@@ -916,6 +928,7 @@ function pgUnhold() {
 function pgSettleActive() { setTimeout(() => pgSettle(document.querySelector(".screen.active")), 0); }
 function pgTab(id) {
   const t = pgTabFor(id); if (!t) return;
+  if (pgGuarded(() => pgTab(id))) return;
   pgCloseDialogs(); pgSettleActive();
   if (t.subs.length) { PG_TAB = t; const first = t.subs.find(pgSubOk); if (first) { pgSub(first.id); return; } }
   const same = PG_TAB && PG_TAB.screen === t.screen && document.getElementById("screen-" + t.screen).classList.contains("active");

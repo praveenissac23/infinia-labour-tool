@@ -4,19 +4,33 @@
    Uses est.js (ST, api, modal, money, ...). */
 
 // ---------- a full-screen page over the project ----------
+// The standard page: "<- Back" top left, the title, the page's buttons top right; its Save floats at the
+// bottom right (bigSave). Back, Esc and the phone's Back ask first when something typed is not saved.
 function big(title, html, onClose, ctx) {
   let el = document.getElementById("big");
   if (!el) {
-    el = h(`<div id="big" class="hide"><div class="bbox"><div class="mhead"><b id="b-title"></b><span class="spacer"></span><span id="b-tools"></span><button class="x" id="b-x" aria-label="Close">&times;</button></div><div class="bbody" id="b-body"></div></div></div>`);
+    el = h(`<div id="big" class="hide"><div class="bbox"><div class="mhead"><button class="dback" id="b-back" title="Back (Esc)">&larr; Back</button><b id="b-title"></b><span id="b-tools"></span></div><div class="bbody" id="b-body"></div><div class="savebar hide" id="b-savebar"></div></div></div>`);
     document.body.appendChild(el);
   }
   el.dataset.ctx = ctx || "est.big";             // which (i) notes apply on this page (heads.js)
-  $("#b-title").innerHTML = title; $("#b-body").innerHTML = html; $("#b-tools").innerHTML = "";
+  $("#b-title").innerHTML = title; $("#b-body").innerHTML = html; $("#b-tools").innerHTML = ""; bigSave("");
+  guardOff("big"); el._onClose = onClose;
+  const was = !el.classList.contains("hide");
   el.classList.remove("hide"); document.body.style.overflow = "hidden";
-  $("#b-x").onclick = () => closeBig(onClose);
+  try { if (history.state && history.state.estBig) history.replaceState({ estBig: 1 }, ""); else if (!was) history.pushState({ estBig: 1 }, ""); } catch (e) {}
+  $("#b-back").onclick = () => leaveBig();
   return el;
 }
-function closeBig(cb) { const el = document.getElementById("big"); if (el) el.classList.add("hide"); document.body.style.overflow = ""; if (cb) cb(); }
+// the floating Save buttons of the page ("" = none)
+function bigSave(html) { const b = $("#b-savebar"); if (!b) return; b.innerHTML = html; b.classList.toggle("hide", !html); }
+function leaveBig(cb) { const el = document.getElementById("big"); return guardLeave("big", () => closeBig(cb || (el && el._onClose))); }
+// how = "swap": straight on to another full page (the history entry is kept for it)
+function closeBig(cb, how, fromHistory) {
+  const el = document.getElementById("big"); guardOff("big");
+  if (el) el.classList.add("hide"); document.body.style.overflow = "";
+  if (how !== "swap" && !fromHistory && history.state && history.state.estBig) { ST.skipPop = true; try { history.back(); } catch (e) { ST.skipPop = false; } }
+  if (cb) cb();
+}
 const MEAS = [["pct", "% done"], ["size", "Measured W x H + % done"], ["qty", "Quantity x rate"]];
 const DCATS = ["Material", "Manpower", "Plant & Equipment", "Other"];
 const num = v => Number(String(v ?? "").replace(/,/g, "").replace("%", "")) || 0;
@@ -57,12 +71,13 @@ async function scheduleEditor(sid) {
     $("#it-paste").onclick = () => pasteItems(sid, d.sub, async () => { const n = await GET(`/store/est/subs/${sid}/items`); d = n; rows = n.items.map(x => Object.assign({}, x)); draw(); });
   };
   big(`Item schedule - ${esc(d.sub.name)} <span class="muted small">${esc(d.sub.scope)}</span>`, "", () => reload(), "est.schedule");
-  $("#b-tools").innerHTML = `<button class="btn btn-primary" id="it-save">Save schedule</button>`;
-  $("#it-save").onclick = async () => {
-    try { const r = await PUT(`/store/est/subs/${sid}/items`, { items: rows.map(x => { const y = Object.assign({}, x); delete y._amt_typed; return y; }) }); d = r; rows = r.items.map(x => Object.assign({}, x)); draw(); toast("Schedule saved"); }
-    catch (e) { fail(e); }
+  bigSave(`<button class="btn btn-primary" id="it-save">Save schedule</button>`);
+  const saveSched = async () => {
+    try { const r = await PUT(`/store/est/subs/${sid}/items`, { items: rows.map(x => { const y = Object.assign({}, x); delete y._amt_typed; return y; }) }); d = r; rows = r.items.map(x => Object.assign({}, x)); draw(); guardBase("big"); toast("Schedule saved"); return true; }
+    catch (e) { fail(e); return false; }
   };
-  draw();
+  $("#it-save").onclick = () => saveSched();
+  draw(); guardOn("big", $("#b-body"), saveSched);
 }
 // The schedule out of Excel (agreement BOQ or a payment certificate): every line shown, each sheet
 // checked against its own total row, then saved - and opened in the editor for any change.
@@ -235,7 +250,7 @@ async function pcSheet(pcid) {
     $$("[data-il]", B).forEach(inp => inp.onchange = () => { S.f.inv_lines[+inp.dataset.il][inp.dataset.k] = inp.value; });
     $$("[data-ildel]", B).forEach(b => b.onclick = () => { S.f.inv_lines.splice(+b.dataset.ildel, 1); refreshFigures(); });
     const ia = $("#il-add"); if (ia) ia.onclick = () => { S.f.inv_lines.push({ d: "", a: "" }); refreshFigures(); };
-    const sc = $("#sh-sched"); if (sc) sc.onclick = e => { e.preventDefault(); closeBig(); scheduleEditor(s.id); };
+    const sc = $("#sh-sched"); if (sc) sc.onclick = e => { e.preventDefault(); guardLeave("big", () => { closeBig(null, "swap"); scheduleEditor(s.id); }); };
     $$("[data-sign]", B).forEach(b => b.onclick = () => sign(b.dataset.sign, false));
     $$("[data-unsign]", B).forEach(b => b.onclick = () => sign(b.dataset.unsign, true));
   };
@@ -249,29 +264,36 @@ async function pcSheet(pcid) {
     try {
       d = await PUT(`/store/est/subpcs/${pcid}/sheet`, body()); S.d = d;
       if (certify && ["Received", "At site"].includes(d.pc.status)) { await POST(`/store/est/subpcs/${pcid}/step`, { step: "Certified" }); d = await GET(`/store/est/subpcs/${pcid}/sheet`); }
-      init(); draw(); toast(certify ? "Certified - figures saved" : "Saved"); return true;
+      init(); draw(); guardBase("big"); toast(certify ? "Certified - figures saved" : "Saved"); return true;
     } catch (e) { fail(e); return false; }
   };
   const sign = async (role, undo) => {
     if (!undo && !locked && !(await save(false))) return;
-    try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); toast(undo ? "Signature taken off" : "Signed"); } catch (e) { fail(e); }
+    try { d = await POST(`/store/est/subpcs/${pcid}/sign`, { role, undo }); init(); draw(); guardBase("big"); toast(undo ? "Signature taken off" : "Signed"); } catch (e) { fail(e); }
   };
   big(`PC ${pad(d.pc.seq, 2)} - ${esc(s.name)} <span class="muted small">${esc(s.scope)} · ${esc(d.project.code)}</span>`, "", () => reload(), "est.sheet");
-  $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>${locked ? "" : `<button class="btn btn-ghost" id="sh-save">Save</button>${["Received", "At site"].includes(d.pc.status) ? `<button class="btn btn-primary" id="sh-cert">Save & certify</button>` : `<button class="btn btn-primary" id="sh-cert2">Save</button>`}`}`;
+  $("#b-tools").innerHTML = `${d.items.length ? `<button class="btn btn-ghost" id="sh-items">Item schedule</button>` : ""}<button class="btn btn-ghost" id="sh-prev">Preview</button><button class="btn btn-ghost" id="sh-pdf">Export PDF</button>`;
+  bigSave(locked ? "" : ["Received", "At site"].includes(d.pc.status) ? `<button class="btn btn-ghost" id="sh-save">Save</button><button class="btn btn-primary" id="sh-cert">Save &amp; certify</button>` : `<button class="btn btn-primary" id="sh-save">Save</button>`);
   const sv = $("#sh-save"); if (sv) sv.onclick = () => save(false);
   const ce = $("#sh-cert"); if (ce) ce.onclick = () => save(true);
-  const c2 = $("#sh-cert2"); if (c2) { c2.onclick = () => save(false); if (sv) sv.remove(); }
   $("#sh-prev").onclick = async () => { if (!locked) await save(false); exportGo("preview", "pc", { id: pcid }); };
   $("#sh-pdf").onclick = async () => { if (!locked) await save(false); exportGo("pdf", "pc", { id: pcid }); };
-  const si = $("#sh-items"); if (si) si.onclick = () => { closeBig(); scheduleEditor(s.id); };
-  draw();
+  const si = $("#sh-items"); if (si) si.onclick = () => guardLeave("big", () => { closeBig(null, "swap"); scheduleEditor(s.id); });
+  draw(); if (!locked) guardOn("big", $("#b-body"), () => save(false));
 }
 // A certificate opens on the sheet when its subcontract has an item schedule; the quick form stays for a lump sum.
 function openCert(sid, pcid) {
   const s = ST.b.subs.find(x => x.id === sid);
   if (s && s.items) pcSheet(pcid); else certifyForm(sid, pcid);
 }
-document.addEventListener("keydown", e => { if (e.key === "Escape") { const el = document.getElementById("big"); if (el && !el.classList.contains("hide") && $("#modal").classList.contains("hide")) closeBig(() => reload()); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { const lv = document.getElementById("leave"), el = document.getElementById("big");
+  if (lv && !lv.classList.contains("hide")) return;
+  if (el && !el.classList.contains("hide") && $("#modal").classList.contains("hide")) leaveBig(); } });
+// the phone / browser Back button on a full page = the Back button (asks first if something is not saved)
+addEventListener("popstate", async () => {
+  const el = document.getElementById("big"); if (!el || el.classList.contains("hide")) return;
+  if (!(await guardLeave("big", () => closeBig(el._onClose, null, true)))) { try { history.pushState({ estBig: 1 }, ""); } catch (e) {} }
+});
 
 // The schedule out of a PDF or Word agreement / quotation: read on this computer (nothing uploaded), every priced
 // line shown with its section totals, then put in - replacing the schedule, or after the lines already there.

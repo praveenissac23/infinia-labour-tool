@@ -248,7 +248,7 @@ function prevPcForm(x, keepSub) {
       const r = await POST("/store/est/subs", { project_id: ST.pid, name: f.new_sub, trn: f.trn || "", agreement: f.agreement || "", scope: f.scope_hint || "",
                                                 supplier_id: sup ? sup.id : null, status: "Active", ret_pct: f.ret_cum && f.work_cum ? Math.round(1000 * f.ret_cum / ((f.work_cum || 0) + (f.var_cum || 0))) / 10 : 0 });
       await reload(); toast(`${f.new_sub} added to this project`);
-      closeModal(); prevPcForm(x, r.id);
+      closeModal(true); prevPcForm(x, r.id);
     } catch (e) { nb.disabled = false; fail(e); }
   };
   live();
@@ -270,8 +270,8 @@ function prevContract(x) {
     <div class="agrow"><button type="button" class="btn btn-primary" id="pv-sca">A subcontract agreement / LPO</button><button type="button" class="btn btn-ghost" id="pv-main">The main contract with the client</button></div>` });
   $("#m-save").style.display = "none";
   let picked = false;
-  $("#pv-sca").onclick = () => { picked = true; x.as = "Subcontract agreement"; closeModal(); window.PREV_NO_OPEN = true; subForm(); prevHand("#ag-file", x.file); prevWatch(x); };
-  $("#pv-main").onclick = () => { picked = true; x.as = "Main contract"; closeModal(); editProject(); prevHand("#doc-file", x.file); prevWatch(x); };
+  $("#pv-sca").onclick = () => { picked = true; x.as = "Subcontract agreement"; closeModal(true); window.PREV_NO_OPEN = true; subForm(); prevHand("#ag-file", x.file); prevWatch(x); };
+  $("#pv-main").onclick = () => { picked = true; x.as = "Main contract"; closeModal(true); editProject(); prevHand("#doc-file", x.file); prevWatch(x); };
   const mo = new MutationObserver(() => { if ($("#modal").classList.contains("hide") && !picked) { mo.disconnect(); prevDraw(); setTimeout(prevRun, 150); } else if (picked) mo.disconnect(); });
   mo.observe($("#modal"), { attributes: true, attributeFilter: ["class"] });
 }

@@ -44,7 +44,7 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   await p.click('#m-save'); await sleep(1000);
   sub = (await api(`/store/est/projects/${pid}`)).subs[0];
   ck('invoice logged and at site', sub.pcs[1].status === 'At site' && sub.pcs[1].to_site, sub.pcs[1].status);
-  await p.click('#d-x'); await sleep(200);
+  await p.click('#d-back'); await sleep(200);
   // invoice tracker: next-step buttons
   await goSec(p, 'subs.inv'); await sleep(400);
   const btn = (id, to) => p.click(`[data-pc="${id}"][data-to="${to}"]`);

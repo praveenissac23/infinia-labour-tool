@@ -18,7 +18,7 @@ const file = pat => D + fs.readdirSync(D).find(n => n.includes(pat) && n.endsWit
   await p.evaluate(pid => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'bills.ipa'); }, P); await p.reload(); await sleep(1800);
   // one agreement today: its format and a bill, as before
   await p.click('#ipa-up'); await sleep(300); await p.setInputFiles('#fm-file', file('914_-_IPA_-_07')); await p.click('#m-save'); await sleep(8000);
-  await p.click('#ipa-new'); await sleep(3500); await p.keyboard.press('Escape'); await p.evaluate(() => { const x = document.querySelector('#big .x, #b-x'); if (x) x.click(); }); await sleep(800);
+  await p.click('#ipa-new'); await sleep(3500); await p.keyboard.press('Escape'); await p.evaluate(() => { const x = document.querySelector('#b-back'); if (x) x.click(); }); await sleep(800);
   await p.evaluate(pid => { localStorage.setItem('est_sec', 'bills.ipa'); }, P); await p.reload(); await sleep(1800);
   ck('one contract: no contract row, "+ Another contract" offered', !(await p.$('.ctrs')) && await p.isVisible('#ctr-add'));
   // add MEP: the existing agreement is named Shell & Core
@@ -40,7 +40,7 @@ const file = pat => D + fs.readdirSync(D).find(n => n.includes(pat) && n.endsWit
   await p.click('.ctr[data-ctrpick]:has-text("MEP")'); await sleep(1500);
   ck('MEP: nothing of Shell & Core shows', (await p.$$('[data-ipa]')).length === 0);
   await p.click('#ipa-up'); await sleep(300); await p.setInputFiles('#fm-file', file('913-IPA_09')); await p.click('#m-save'); await sleep(8000);
-  await p.click('#ipa-new'); await sleep(3500); await p.evaluate(() => { const x = document.querySelector('#big .x, #b-x'); if (x) x.click(); }); await sleep(800);
+  await p.click('#ipa-new'); await sleep(3500); await p.evaluate(() => { const x = document.querySelector('#b-back'); if (x) x.click(); }); await sleep(800);
   await p.reload(); await sleep(1800);
   ck('MEP picked again after reload, with its one bill', /MEP/.test(await p.textContent('.ctr.on')) && (await p.$$('[data-ipa]')).length === 1);
   await p.screenshot({ path: SH + '3_mep.png' });

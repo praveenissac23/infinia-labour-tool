@@ -27,7 +27,7 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   ck('3 lines pasted, 257,820.00', it.items.length === 3 && Math.abs(it.total - 257820) < .01, it.total);
   // invoice in -> Certify opens the sheet
   await p.click('#s-inv'); await sleep(300); await p.fill('#f-inv_ref', '1GB/585/04/2025'); await p.fill('#f-inv_amount', '35912'); await p.click('#m-save'); await sleep(1200);
-  await p.click('#d-x'); await sleep(200); await goSec(p, 'subs.inv'); await sleep(500);
+  await p.click('#d-back'); await sleep(200); await goSec(p, 'subs.inv'); await sleep(500);
   const pc = (await api(`/store/est/projects/${P}`)).subs.find(x => x.id === sid).pcs.at(-1);
   await p.click(`[data-pc="${pc.id}"][data-to="Certified"]`); await sleep(500);   // certified at site
   await p.click('#m-save'); await sleep(1000);
@@ -52,7 +52,7 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   ck('live: net 34,202.00, VAT 1,710.10, total AED 35,912.10', calc.includes('34,202.00') && calc.includes('1,710.10') && calc.includes('35,912.10'), calc);
   ck('the invoice difference is flagged (35,912.00 vs 35,912.10)', calc.includes('difference'));
   await p.screenshot({ path: SH + 'sheet.png' });
-  await p.click('#sh-cert, #sh-cert2'); await sleep(1500);
+  await p.click('#sh-cert, #sh-save'); await sleep(1500);
   const srv = await api(`/store/est/subpcs/${pc.id}/sheet`);
   ck('saved & certified: the server agrees (34,202.00 / 35,912.10)', srv.pc.status === 'Certified' && Math.abs(srv.calc.this - 34202) < .01 && Math.abs(srv.calc.payable - 35912.1) < .01, srv.calc);
   await p.click('[data-sign="prep"]'); await sleep(900);
@@ -72,7 +72,7 @@ const goSec = async (pg, gs) => { const [g, s] = gs.split('.'); await pg.click(`
   const it2 = await api(`/store/est/subs/${sid}/items`);
   ck('variation line saved (3,000)', Math.abs(it2.var_total - 3000) < .01, it2.var_total);
   await p.screenshot({ path: SH + 'schedule.png' });
-  await p.click('#b-x'); await sleep(500);
+  await p.click('#b-back'); await sleep(500);
   // phone
   const q = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage();
   const tok = await p.evaluate(() => sessionStorage.getItem('infinia_token'));
