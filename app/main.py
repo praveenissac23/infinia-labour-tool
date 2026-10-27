@@ -13257,6 +13257,23 @@ def push_status(db: Session = Depends(get_db), user: models.User = Depends(auth.
                          "last_ok": s.last_ok.isoformat() if s.last_ok else ""} for s in subs]}
 
 
+def _push_test_message(db, user):
+    """The test looks like the real thing: a certificate waiting for this login (tapping opens its approval
+    page), or else the newest item in the bell - and only a plain line when the bell is empty."""
+    try:
+        items = [n for n in get_notifications(db=db, user=user).get("notifications", [])]
+        pick = next((n for n in items if n.get("kind") == "subpc" and n.get("url")), None) \
+            or next((n for n in items if n.get("kind") == "subpc"), None) or (items[0] if items else None)
+        if pick:
+            m = push.message_for(pick)
+            m["title"] = "Test - " + (m.get("title") or "Infinia")
+            m["tag"] = "test"
+            return m
+    except Exception as e:
+        print("push test message:", e)
+    return {"title": "Infinia", "body": "Test notification - phone notifications are working.", "tag": "test", "url": "/"}
+
+
 @app.post("/notifications/push/test")
 def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     _push_ready()
@@ -13264,10 +13281,10 @@ def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
     subs = db.query(push.PushSubscription).filter(push.PushSubscription.user_id == user.id).all()
     if not subs:
         raise HTTPException(status_code=400, detail="No device is signed up for notifications on this login yet.")
+    msg = _push_test_message(db, user)
     res = []
     for s in subs:
-        st = push.send(key, pub, s, {"title": "Infinia", "body": "Test notification - phone notifications are working.",
-                                     "tag": "test", "url": "/"})
+        st = push.send(key, pub, s, msg)
         if st in (404, 410):
             db.delete(s)
         elif st in (200, 201, 202):
