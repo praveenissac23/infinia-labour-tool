@@ -7447,6 +7447,7 @@ def export_suppliers(token: str, db: Session = Depends(get_db)):
         ws.append([s.name, s.contact_person or "", s.phone or "", s.trn or "",
                    s.email or "", s.payment_terms or "", s.notes or ""])
     ws.freeze_panes = "A2"
+    export_web.print_ready(ws, "landscape", header_row=1)      # prints on A4, one page wide
     buf = io.BytesIO()
     # No logo header here: it inserts rows at the top, which pushes the
     # column headings down - and this sheet is meant to be edited and
@@ -8931,6 +8932,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 <title>{e(note.get('ref') or 'Return Note')}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
 <style>
+  @page {{ size:A4 portrait; margin:10mm; }}
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
   .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0;

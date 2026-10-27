@@ -1,7 +1,7 @@
 // Names and numbers open their own record, for someone allowed to open it;
 // everyone else sees plain text. Run on a copy of the real data (rich.db).
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 (async () => {
   const b = await chromium.launch(); let bad = 0;
   const ck = (n, ok, info) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(info)}`); };
@@ -26,7 +26,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 
   // ---- Expiry > People: a name opens his file on Staff, at the document ----
   const staffCheck = async (office) => {
-    await a.evaluate(() => pgGo('expiry')); await a.waitForTimeout(2500);
+    await a.evaluate(() => pgGo('expiry', 'expiry:people')); await a.waitForTimeout(2500);
     await a.evaluate(() => { document.getElementById('hr-doc-within').value = '-1'; renderDocuments(); });
     const row = await a.evaluate(office => { const l = [...document.querySelectorAll('#hr-doc-body a.xl')].find(x => /Office/.test(x.parentElement.textContent) === office);
       if (!l) return null; const tr = l.closest('tr'); const lit = [...tr.querySelectorAll('td.hr-d')].map(td => td.textContent.trim());
@@ -82,8 +82,9 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const drill = a.locator('#lpr-body a.xl, #screen-lporegister a.xl:text-is("Al Raha Trading LLC")').first();
   ck('LPO register by supplier: supplier is a link', await drill.count() > 0);
   if (await drill.count()) {
+    const who = (await drill.textContent()).trim();
     await drill.click(); await a.waitForTimeout(2000);
-    ck('supplier line -> that supplier\'s orders one by one', (await a.inputValue('#lpr-group')) === 'order' && (await a.inputValue('#lpr-supplier')) === 'Al Raha Trading LLC', [await a.inputValue('#lpr-group'), await a.inputValue('#lpr-supplier')]);
+    ck('supplier line -> that supplier\'s orders one by one', (await a.inputValue('#lpr-group')) === 'order' && (await a.inputValue('#lpr-supplier')) === who, [who, await a.inputValue('#lpr-group'), await a.inputValue('#lpr-supplier')]);
   }
   // ---- invoices: proforma <-> tax invoice ---------------------------------
   await a.evaluate(() => pgGo('accounts', 'invoices:proforma')); await a.waitForTimeout(3000);
@@ -109,7 +110,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await a.screenshot({ path: SH + 'xl_activity.png' });
 
   // ---- a login without the rights sees plain text --------------------------
-  const d = await login('docsonly', 'docs12345', '/?p=expiry');
+  const d = await login('docsonly', 'docs12345', '/?p=expiry'); await d.evaluate(() => pgGo('expiry', 'expiry:people')); await d.waitForTimeout(2500);
   await d.evaluate(() => { document.getElementById('hr-doc-within').value = '-1'; renderDocuments(); });
   ck('documents-only login: names are plain text', (await d.locator('#hr-doc-body a.xl').count()) === 0, await d.locator('#hr-doc-body a.xl').count());
   ck('no script errors (documents)', !d.errs.length, d.errs);

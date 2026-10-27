@@ -1,59 +1,84 @@
-// Audit: on every page/tab/sub, press each Preview / PDF / Excel / Share button (window.open caught),
-// then fetch every address: status, type, and for previews whether the page fits an A4 width.
-const { chromium } = require('playwright'); const fs = require('fs');
-const B = 'http://127.0.0.1:8032';
+// Presses every Preview / Export PDF / Export Excel / PDF / Excel / Share / Print button on every screen (and in the
+// Estimation and Trello frames), catches what it opens or downloads, and saves each file for checking:
+//   /tmp/claude-0/exports/<n>.<pdf|xlsx|html> and exports.json (screen, button, url, status, type, size).
+// Then: python3 tests/check_exports.py
+const { chromium } = require('playwright');
+const fs = require('fs');
+const B = process.env.BASE || 'http://127.0.0.1:8032', OUT = '/tmp/claude-0/exports';
+fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const RX = /^(preview|export pdf|export excel|pdf|excel|share|print|print pc|download|print the list|print list)$/i;
 (async () => {
-  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 1440, height: 950 } }); const p = await ctx.newPage();
-  const errs = []; p.on('pageerror', e => errs.push(e.message));
-  p.on('dialog', d => d.dismiss().catch(() => {}));
+  const br = await chromium.launch(); const ctx = await br.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', e => errs.push(e.message.slice(0, 160)));
   await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
-  await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500);
-  const tree = await p.evaluate(() => Object.entries(ALL_TABS).map(([k, tabs]) => [k, tabs.filter(t => !t.hidden).map(t => ({ id: t.id, subs: t.subs.map(s => s.id) }))]));
-  const urls = new Map();
-  const press = async where => {
-    await p.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u || '')); return { location: { set href(v) { window.__opened.push(String(v)); } }, close() {}, document: { write() {}, close() {} } }; };
-      try { navigator.share = async d => { window.__opened.push('SHARE:' + (d && (d.url || d.title) || '')); }; } catch (e) {} });
-    await p.evaluate(() => document.querySelectorAll('[data-audit-i]').forEach(x => x.removeAttribute('data-audit-i')));
-    const btns0 = await p.$$eval('.screen.active button, .screen.active a.btn', bs => bs.map((b, i) => { b.dataset.auditI = i; const r = b.getBoundingClientRect(); return { i, t: (b.textContent || '').trim(), vis: r.width > 0 && r.height > 0 }; })
-      .filter(x => x.vis && /^(preview|pdf|export pdf|excel|export excel|share|download pdf|print)$/i.test(x.t)));
-    const btns = btns0; console.log(where, 'buttons', btns.map(b => b.t).join(','));
-    for (const bt of btns) {
-      try { await p.evaluate(i => document.querySelector(`.screen.active [data-audit-i="${i}"]`).click(), bt.i); await p.waitForTimeout(700); } catch (e) { console.log('click fail', where, bt.t, e.message.split('\n')[0]); continue; }
-      const op = await p.evaluate(() => window.__opened.splice(0));
-      op.filter(u => u && !u.startsWith('SHARE:') && u !== 'about:blank').forEach(u => { const k = u.replace(/token=[^&]+/, 'token=*'); if (!urls.has(k)) urls.set(k, { u, where, btn: bt.t }); });
-      if (!op.length) urls.set(`NOTHING ${where} ${bt.t}`, { u: '', where, btn: bt.t, none: true });
-      await p.evaluate(() => document.querySelectorAll('.zx-modal').forEach(m => m.remove()));
+  await p.waitForSelector('#app-screen', { state: 'visible' }); await sleep(3000);
+  await p.evaluate(async () => { window.checkBuild = () => {}; try { localStorage.setItem('infinia-help-hello', '1'); const m = await apiCall('/store/est/meta'); localStorage.setItem('est_pid', (m.projects.find(x => x.code === '914') || m.projects[0]).id); } catch (e) {} });
+  const screens = await p.evaluate(() => {
+    const out = [];
+    for (const [key, cfg] of Object.entries(ALL_PAGES)) {
+      if (key === 'people') { for (const v of ['register', 'vacation', 'bday']) out.push({ id: `people-${v}`, go: { page: 'people', tab: 'people', view: v } }); continue; }
+      for (const t of cfg.tabs) { if (t.hidden) continue;
+        if (t.subs.length) for (const sb of t.subs) out.push({ id: `${key}-${t.id}-${sb.id}`, go: { page: key, tab: t.id, sub: sb.id } });
+        else out.push({ id: `${key}-${t.id}`, go: { page: key, tab: t.id } }); }
     }
-  };
-  for (const [key, tabs] of tree) {
-    await p.evaluate(k => pgGo(k), key); await p.waitForTimeout(1500);
-    for (const t of tabs) {
-      const ok = await p.evaluate(id => { const t = PAGE.tabs.find(x => x.id === id); return !!t && pgTabOk(t); }, t.id).catch(() => false); if (!ok) continue;
-      await p.evaluate(id => pgTab(id), t.id); await p.waitForTimeout(1500); await press(`${key}>${t.id}`);
-      for (const s of t.subs.slice(1)) { await p.evaluate(id => pgSub(id), s); await p.waitForTimeout(1500); await press(`${key}>${t.id}>${s}`); }
+    for (const k of ['home.dash', 'client.boq', 'subs.reg', 'subs.inv', 'subs.pcs', 'subs.final', 'site.rfi', 'site.approval', 'site.submittal', 'site.vo', 'bills.ipa', 'prev.rec'])
+      out.push({ id: 'est-' + k.replace('.', '-'), go: { page: 'estimation', tab: 'estproj', est: k } });
+    out.push({ id: 'kb-board', go: { page: 'estimation', tab: 'boards', kb: 'board' } });
+    return out;
+  });
+  // every frame: window.open and navigator.share are caught, not followed
+  const hook = () => p.evaluate(() => {
+    const put = w => { try { if (w.__hooked) return; w.__hooked = true; w.__opened = [];
+      w.open = (u) => { if (u) w.__opened.push(String(u)); const loc = { set href(x) { w.__opened.push(String(x)); }, replace(x) { w.__opened.push(String(x)); } };
+        return { closed: false, close() {}, focus() {}, document: { write() {}, close() {} }, get location() { return loc; }, set location(x) { w.__opened.push(String(x)); } }; };
+      try { w.navigator.share = d => { w.__opened.push('SHARE:' + (d && (d.url || d.text) || '')); return Promise.resolve(); }; } catch (e) {} } catch (e) {} };
+    put(window); document.querySelectorAll('iframe').forEach(f => { try { put(f.contentWindow); } catch (e) {} });
+  });
+  const taken = () => p.evaluate(() => { const all = []; const get = w => { try { all.push(...(w.__opened || [])); w.__opened = []; } catch (e) {} };
+    get(window); document.querySelectorAll('iframe').forEach(f => get(f.contentWindow)); return all; });
+  const rows = []; let n = 0; const seenUrl = new Set();
+  for (const sc of screens) {
+    await p.evaluate(async go => { try { await HELP.goTo({ go }); } catch (e) {} }, sc.go); await sleep(2500);
+    await hook();
+    // the buttons, on the page and in its frame
+    const btns = await p.evaluate(RXs => { const RX = new RegExp(RXs, 'i'); const out = [];
+      const scr = document.querySelector('.screen.active'); const docs = [[scr || document.body, null]];
+      const clear = d => d.querySelectorAll('[data-audit]').forEach(x => x.removeAttribute('data-audit')); clear(document); document.querySelectorAll('iframe').forEach(f => { try { clear(f.contentDocument); } catch (e) {} });
+      const fr = scr && [...scr.querySelectorAll('iframe')].find(f => f.offsetParent); if (fr) try { docs.push([fr.contentDocument.body, fr.id]); } catch (e) {}
+      docs.forEach(([root, fid]) => { let i = 0; root.querySelectorAll('button, a.btn, .btn').forEach(b => { const t = (b.textContent || '').replace(/\s+/g, ' ').trim();
+        if (RX.test(t) && b.getClientRects().length && !b.disabled && !b.closest('.help-drawer, #modal, .modal')) { b.setAttribute('data-audit', fid + ':' + (i)); out.push({ key: fid + ':' + i, t, fid }); i++; } }); });
+      return out; }, RX.source);
+    for (const b of btns) {
+      let dl = null; const dlp = p.waitForEvent('download', { timeout: 4000 }).then(d => { dl = d; }).catch(() => {});
+      const popp = ctx.waitForEvent('page', { timeout: 4000 }).catch(() => null);
+      await p.evaluate(([key, fid]) => { const doc = fid ? document.getElementById(fid).contentDocument : (document.querySelector('.screen.active') || document); const el = doc.querySelector(`[data-audit="${key}"]`); if (el) el.click(); }, [b.key, b.fid]);
+      await Promise.race([dlp, sleep(2500)]);
+      let urls = await taken();
+      const pop = await Promise.race([popp, sleep(300).then(() => null)]);
+      if (pop) { urls.push(pop.url()); await pop.close().catch(() => {}); }
+      // a "Share" pop-up drawn on the page
+      const sharebox = await p.evaluate(() => { const m = [...document.querySelectorAll('.share-pop, .shr, [data-share], #share-modal, .modal.show, #modal:not(.hide)')].find(x => x.getClientRects().length); if (!m) { for (const f of document.querySelectorAll('iframe')) { try { const x = [...f.contentDocument.querySelectorAll('.share-pop, #modal:not(.hide), .pop')].find(y => y.getClientRects().length); if (x) return x.textContent.replace(/\s+/g, ' ').slice(0, 120); } catch (e) {} } return null; } return m.textContent.replace(/\s+/g, ' ').slice(0, 120); });
+      await p.keyboard.press('Escape').catch(() => {});
+      await p.evaluate(() => { document.querySelectorAll('iframe').forEach(f => { try { const m = f.contentDocument.getElementById('modal'); if (m) m.classList.add('hide'); } catch (e) {} }); const m = document.querySelector('.modal.show'); if (m) m.classList.remove('show'); }).catch(() => {});
+      const rec = { screen: sc.id, button: b.t, urls, download: dl ? dl.suggestedFilename() : null, sharebox };
+      if (dl) { const f = `${OUT}/${++n}-${dl.suggestedFilename().replace(/[^\w.-]+/g, '_')}`; await dl.saveAs(f).catch(() => {}); rec.file = f; }
+      for (const u of urls.filter(u => /\/(export|portal)\//.test(u) && !u.startsWith('SHARE:'))) {
+        const abs = u.startsWith('http') ? u : B + u;
+        const key = abs.replace(/token=[^&]+/, '');
+        if (seenUrl.has(key)) { rec.dup = true; continue; } seenUrl.add(key);
+        const r = await p.evaluate(async u => { try { const r = await fetch(u); const ab = await r.arrayBuffer(); let s = ''; const b = new Uint8Array(ab); for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return { status: r.status, type: r.headers.get('content-type') || '', size: b.length, b64: btoa(s) }; } catch (e) { return { status: 0, err: e.message }; } }, abs);
+        const ext = /pdf/.test(r.type || '') ? 'pdf' : /sheet|excel/.test(r.type || '') ? 'xlsx' : /html/.test(r.type || '') ? 'html' : 'bin';
+        const f = `${OUT}/${++n}.${ext}`; if (r.b64) fs.writeFileSync(f, Buffer.from(r.b64, 'base64'));
+        rec.fetched = (rec.fetched || []).concat([{ url: u.replace(/token=[^&]+/, 'token=…').slice(0, 160), status: r.status, type: r.type, size: r.size, file: f }]);
+      }
+      rows.push(rec);
+      const st = (rec.fetched || []).map(x => `${x.status} ${x.type.split(';')[0]} ${x.size}`).join(', ') || (rec.download ? 'download ' + rec.download : (rec.sharebox ? 'share box' : (urls.length ? urls.join(' ').slice(0, 80) : 'NOTHING')));
+      console.log(`${sc.id.padEnd(32)} ${b.t.padEnd(13)} ${st}`);
     }
   }
-  // fetch each with a fresh token
-  const out = [];
-  for (const [k, v] of urls) {
-    if (v.none) { out.push({ where: v.where, btn: v.btn, status: 'NO ADDRESS OPENED' }); continue; }
-    const tok = await p.evaluate(async () => { cachedDownloadToken = null; await refreshDownloadToken(); return cachedDownloadToken; });
-    const full = new URL(v.u.replace(/token=[^&]*/, 'token=' + encodeURIComponent(tok)), B).href;
-    const r = await ctx.request.get(full).catch(e => null);
-    const rec = { where: v.where, btn: v.btn, url: v.u.replace(/token=[^&]+/, 'token=*').slice(0, 140), status: r ? r.status() : 'ERR', type: r ? (r.headers()['content-type'] || '').split(';')[0] : '' };
-    if (r && r.ok() && /html/.test(rec.type)) {
-      const q = await ctx.newPage(); await q.setViewportSize({ width: 794, height: 1123 });
-      await q.setContent(await r.text(), { waitUntil: 'load' }).catch(() => {}); await q.waitForTimeout(300);
-      rec.overflow = await q.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - 794);
-      rec.wideTables = await q.evaluate(() => [...document.querySelectorAll('table')].filter(t => t.getBoundingClientRect().right > 800).length);
-      rec.hasShare = await q.evaluate(() => /share/i.test(document.body.innerText));
-      await q.close();
-    }
-    if (r && r.ok() && /pdf/.test(rec.type)) { const buf = await r.body(); fs.writeFileSync(`/tmp/claude-0/audit/pdf_${out.length}.pdf`, buf); rec.pdf = `pdf_${out.length}.pdf`; rec.kb = Math.round(buf.length / 1024); }
-    out.push(rec);
-  }
-  fs.writeFileSync('/tmp/claude-0/audit/exports.json', JSON.stringify(out, null, 1));
-  out.forEach(r => console.log(`${String(r.status).padEnd(4)} ${String(r.type || '').padEnd(18)} ${r.overflow !== undefined ? 'ovf ' + r.overflow + ' wide ' + r.wideTables : ''}${r.kb ? r.kb + 'KB ' : ''} ${r.where} [${r.btn}] ${r.url || ''}`));
-  console.log('page errors', errs);
-  await b.close();
+  fs.writeFileSync(`${OUT}/exports.json`, JSON.stringify({ rows, errs }, null, 1));
+  console.log('page errors:', errs.length, errs.slice(0, 5));
+  await br.close();
 })();

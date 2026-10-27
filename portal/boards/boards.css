@@ -128,6 +128,9 @@ body.on-board #hdr .create { background: rgba(255,255,255,.2); } body.on-board #
 #bhead .hbtn.ic { width: 32px; padding: 0; justify-content: center; }
 #bhead .hbtn.share { background: #DCDFE4; color: #172B4D; } #bhead .hbtn.share:hover { background: #fff; }
 #bhead .sp { flex: 1; }
+/* a narrower screen (a laptop with the menu open): the views show their pictures only - the open one keeps its name -
+   so the header stays on one line. The name shows when the pointer rests on a view. */
+@media (max-width: 1180px) { #bhead .vseg .hbtn:not(.on) > span { display: none; } #bhead .vseg .hbtn { padding: 0 8px; } }
 #bhead .facepile { display: flex; align-items: center; margin: 0 6px 0 4px; }
 #bhead .facepile .av { width: 28px; height: 28px; margin-left: -4px; box-shadow: 0 0 0 2px rgba(0,0,0,.15); cursor: pointer; font-size: 11px; }
 #bhead .facepile .more { background: #DCDFE4; color: #172B4D; }

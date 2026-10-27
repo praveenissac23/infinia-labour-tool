@@ -3,7 +3,7 @@
 // for its password every time it is opened and locks on leaving.
 // Needs: chiefacc with pdc,settings,accounts_invoices,accounts_register; docsonly without.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 (async () => {
   const b = await chromium.launch(); let bad = 0;
   const ck = (n, ok, info) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(info)}`); };
@@ -12,7 +12,10 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     const p = await ctx.newPage(); p.ctx = ctx; p.reqs = []; ctx.on('request', r => p.reqs.push(r.url()));
     p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
     await p.goto(B + url); await p.fill('#login-username', u); await p.fill('#login-password', pw); await p.evaluate('doLogin()');
-    await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3000); return p;
+    await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2000);
+    // a fresh sign-in starts on the login's own first page: go where the address pointed
+    const k = (url.match(/[?&]p=([a-z]+)/) || [])[1]; if (k) { await p.evaluate(k => { try { pgGo(k); } catch (e) {} }, k); await p.waitForTimeout(2000); }
+    return p;
   };
   const menu = p => p.evaluate(() => [...document.querySelectorAll('.pg-side .pg-item')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
   const tabs = p => p.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));

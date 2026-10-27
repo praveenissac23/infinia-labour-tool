@@ -1,12 +1,14 @@
 // Accounts > Invoices: one tab with Tax Invoice and Proforma Invoice under it.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(i)}`); };
 (async () => {
   const b = await chromium.launch(); const p = await (await b.newContext({ viewport: { width: 1440, height: 950 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(B + '/?p=accounts'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
-  await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3000);
+  await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2000);
+  // a fresh sign-in starts on the login's own first page: go to Accounts
+  await p.evaluate(() => pgGo('accounts')); await p.waitForTimeout(2000);
   const tabs = await p.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
   ck('one Invoices tab, no separate Tax / Proforma tabs', tabs[0] === 'Invoices' && !tabs.includes('Tax Invoice') && !tabs.includes('Proforma Invoice'), tabs);
   await p.click('.pg-tab[data-tab="invoices"]'); await p.waitForTimeout(1200);

@@ -483,7 +483,7 @@ tfoot tr.held td{{background:#fff;border-top:1px solid #ddd;font-weight:600}} tf
 .sum span{{display:block;font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}} .sum b{{font-size:15px;white-space:nowrap}}
 @media(max-width:700px){{.sum{{flex-wrap:wrap}} .sum div{{min-width:140px}}}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
-@media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
+@media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}} @page{{size:A4 portrait;margin:10mm}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}} .sign{{gap:14px}}}}
 </style></head><body>
 {export_web.preview_bar(r['book_label'] + " register", r['label'], pdf_url, excel_url)}
@@ -670,6 +670,7 @@ def _excel(r):
         for col in range(a, b + 1):
             ws.cell(row, col).border = Border(top=Side(style="thin", color="000000"))
     ws.freeze_panes = "A5"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = "landscape"; ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.print_title_rows = "4:4"

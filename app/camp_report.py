@@ -91,7 +91,7 @@ def preview(d, pdf_url, excel_url):
   {"".join(f".t-{k}{{background:{bg};color:{fg}}}" for k, (bg, fg) in TAG.items())}
   .legend{{display:flex;gap:5mm;font-size:7pt;color:{MUTED};margin-top:3mm;flex-wrap:wrap}} .legend i{{display:inline-block;width:2.4mm;height:2.4mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:-.3mm}}
   .nobed{{font-size:7pt;color:{MUTED};margin-top:2mm}}
-  @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none}}}}
+  @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none}}}} @page{{size:A4 portrait;margin:0}}
 """
     html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Labour Accommodation Allocation</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes"><style>{css}</style></head><body>
@@ -265,5 +265,6 @@ def excel(d):
     ws.freeze_panes = "A5"
     ws.page_setup.orientation = "portrait"; ws.page_setup.fitToWidth = 1; ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToHeight = 0
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4; ws.print_title_rows = "4:4"
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf

@@ -245,6 +245,7 @@ def excel(entries, title, sub):
             r += 1
     ws.freeze_panes = "A6"
     ws.auto_filter.ref = f"A5:G{max(r - 1, 5)}"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4; ws.print_title_rows = "5:5"
     ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.oddHeader.right.text = "CONFIDENTIAL"

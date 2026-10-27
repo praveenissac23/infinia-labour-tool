@@ -2,14 +2,11 @@
 
 Run: cd app && DATABASE_URL=sqlite:////tmp/cn.db python3 ../tests/consumables_test.py
 
-Fifty bags of cement sent to 901 are in the wall within a day or two.
-Carrying them as stock at 901 forever makes every site look like a
-warehouse and buries the things that really are there - the drill that
-must come back, the scaffolding somebody is paying for by the week. So
-a site holds tools, owned equipment and hired equipment, and never a
-consumable; what was sent shows as what was last sent, which is the
-question asked before sending more. The central store still holds
-everything, because there it is genuinely on a shelf.
+Since October 2026 (Praveen: "Assets, consumables, and rentals. Everything
+must be shown") a site lists everything sent to it - tools, owned and hired
+equipment and consumables - and a consumable stays counted at the site until
+it is returned or written off. What was last sent is still shown beside it,
+the question asked before sending more.
 """
 import sys, io
 sys.path.insert(0, '.')
@@ -64,7 +61,7 @@ held = {r['name'] for r in at['rows']}
 ck('the drill is held at the site', 'Hilti Drill' in held, held)
 ck('the mixer is held at the site', 'Concrete Mixer' in held, held)
 ck('the hired scaffolding is held at the site', 'Scaffold Ledger' in held, held)
-ck('the cement is NOT held at the site', 'Cement OPC 50kg' not in held, held)
+ck('the cement is held at the site too', 'Cement OPC 50kg' in held, held)
 
 recent = {r['name']: r for r in at['recent']}
 ck('the cement shows as last sent instead', 'Cement OPC 50kg' in recent, list(recent))
@@ -72,8 +69,7 @@ ck('with the quantity that went', recent.get('Cement OPC 50kg', {}).get('qty') =
    recent.get('Cement OPC 50kg'))
 ck('and the day it went', recent.get('Cement OPC 50kg', {}).get('on') == '2026-09-12',
    recent.get('Cement OPC 50kg'))
-ck('nothing that is held is repeated in last-sent',
-   not (held & set(recent)), held & set(recent))
+ck('last-sent lists only consumables', all(r['item_type'] == 'consumable' for r in at['recent']), at['recent'])
 
 # A second delivery moves the date on, and only the latest is shown.
 move(cement, 'out', 30, frm='', to='901', on='2026-09-16')
@@ -87,9 +83,9 @@ ck('and it is the newest one', cem_recent[0]['on'] == '2026-09-16' and cem_recen
 stock = {s['name']: s for s in c.get('/store/stock', headers=H).json()}
 cem = stock['Cement OPC 50kg']
 ck('the store still shows the cement it holds', cem['central'] == 120, cem)
-ck('the cement is not counted as out at sites', cem['out_at_sites'] == 0, cem)
-ck('and no site is listed against it', cem['by_site'] == {}, cem)
-ck("the cement's total is what is in the store", cem['total'] == 120, cem)
+ck('the cement is counted as out at the site', cem['out_at_sites'] == 80, cem)
+ck('against the site holding it', cem['by_site'] == {'901': 80}, cem)
+ck("the cement's total covers the store and the site", cem['total'] == 200, cem)
 
 dr = stock['Hilti Drill']
 ck('the drill is still counted as out at a site', dr['out_at_sites'] == 2, dr)
@@ -100,11 +96,11 @@ ck('and its total covers both', dr['total'] == 4, dr)
 by_site = c.get('/store/report?kind=by_site', headers=H).json()['rows']
 names = {r['name'] for r in by_site}
 ck('the sites report lists the drill', 'Hilti Drill' in names, names)
-ck('the sites report leaves the cement out', 'Cement OPC 50kg' not in names, names)
+ck('the sites report lists the cement', 'Cement OPC 50kg' in names, names)
 
 stock_rep = {r['name']: r for r in c.get('/store/report?kind=stock', headers=H).json()['rows']}
-ck('the stock report shows no cement at sites',
-   stock_rep['Cement OPC 50kg']['at_sites'] == 0 and stock_rep['Cement OPC 50kg']['by_site'] == {},
+ck('the stock report shows the cement at its site',
+   stock_rep['Cement OPC 50kg']['at_sites'] == 80 and stock_rep['Cement OPC 50kg']['by_site'] == {'901': 80},
    stock_rep['Cement OPC 50kg'])
 ck('the stock report still shows the drill at its site',
    stock_rep['Hilti Drill']['by_site'] == {'901': 2}, stock_rep['Hilti Drill'])

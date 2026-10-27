@@ -312,7 +312,7 @@ td.n{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;vert
 tbody tr:nth-child(even) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
-@media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
+@media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}} @page{{size:A4 landscape;margin:10mm}}
 @media(max-width:640px){{.page{{padding:16px;margin:0}}}}
 </style></head><body>
 {export_web.preview_bar("PDC Tracker", t['label'], pdf_url, excel_url)}

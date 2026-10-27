@@ -1308,6 +1308,9 @@ def build_report_table_excel(items, column_keys, cycle_label):
         c.alignment = Alignment(horizontal="center")
         c.border = border
 
+    # One A4 page wide, the heading frozen on screen and printed on every page.
+    print_ready(ws, "landscape" if len(cols) > 6 else "portrait", header_row=1)
+    ws.freeze_panes = "A2"
     buf = io.BytesIO()
     for _ws in wb.worksheets:
         _excel_logo_header(_ws)
@@ -1764,6 +1767,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
     r = 5
     if not rows:
         ws.cell(row=r, column=1, value="Nothing to show.").font = Font(italic=True, color="999999")
+        print_ready(ws, "portrait", last_col=2, last_row=r, title=title)
         buf = io.BytesIO()
         for _ws in wb.worksheets:
             _excel_logo_header(_ws)

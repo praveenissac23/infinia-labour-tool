@@ -1191,6 +1191,7 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .t{{font-size:11px;margin-bottom:6px}} .t th{{background:#F7F5F3;color:#3E434A;padding:5px 6px;font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase;text-align:left;white-space:nowrap;border-bottom:1.5px solid #B7322A}} .t td{{border:1px solid #DDE0E3;padding:3px 5px;vertical-align:top}}
 .t .sh td{{background:#F7F2F1;font-weight:700}} .t .b td,p.b{{font-weight:700}} .t td.d{{min-width:220px}} .t td.s{{font-size:10px;color:#555;min-width:90px}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
+@page{{size:A4 portrait;margin:10mm}} @page wide{{size:A4 landscape;margin:10mm}} @media print{{.pg.wide{{page:wide}}}}
 @media (max-width:700px){{.pg{{padding:12px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}}}}
 </style></head><body><div class="bar"><b>{e(doc['ref'])}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>

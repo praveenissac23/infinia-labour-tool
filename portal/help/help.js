@@ -318,7 +318,7 @@
     for (let i = 0; i < 100; i++) {                  // until the section is drawn (a frame still loading misses the first word: say it again)
       const f = document.getElementById(id), w = f && f.contentWindow;
       let st = null; try { st = w && w.eval("typeof ST !== 'undefined' && ST.meta && ST.picker ? ST : null"); } catch (e) {}
-      if (st && st.pid && st.group === group && st.sec === sec && w.document.querySelector("#pbody .card, #pbody table, #pbody .empty")) break;
+      if (st && st.pid && st.group === group && st.sec === sec && w.document.querySelector("#pbody .card, #pbody table, #pbody .empty, #pbody .prev-wrap, #sec > *")) break;
       if (st && st.pid && (st.group !== group || st.sec !== sec) && Date.now() - sent > 900) { try { w.postMessage(msg, location.origin); } catch (e) {} sent = Date.now(); }
       await wait(100);
     }

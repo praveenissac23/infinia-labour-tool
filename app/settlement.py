@@ -352,7 +352,7 @@ td{{padding:6px 8px;border-bottom:1px solid var(--line)}} tr.t td{{font-weight:7
 .decl{{margin-top:22px;font-size:12px;border:1px solid var(--line);padding:10px 12px;background:var(--soft)}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:46px}} .sign div{{border-top:1px solid var(--ink);padding-top:6px;font-size:12px;text-align:center}}
 @media(max-width:640px){{.page{{padding:20px 16px;margin:0}} .grid,.two{{grid-template-columns:1fr}}}}
-@media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}}
+@media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}} @page{{size:A4 portrait;margin:10mm}}
 </style></head><body>
 {export_web.preview_bar("Final settlement - " + e['name'], "Settlement date: " + _dmy(M._as_date(i['settled_on'])), pdf_url, excel_url)}
 <div class="page">
@@ -560,6 +560,8 @@ def _excel(s):
         export_web._excel_logo_header(ws, 3)
     except Exception:
         pass
+    import export_web as _xw
+    _xw.print_ready(ws, "portrait")       # one A4 page wide
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf
 
