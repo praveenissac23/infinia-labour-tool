@@ -989,7 +989,7 @@ def _text(s, r, c):
     return v if isinstance(v, str) else ""
 
 
-MAP_VERSION = 4
+MAP_VERSION = 5          # 5: the item / unit / last column of each progress table
 MODEL_VERSION = 4          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
 
 
@@ -1074,7 +1074,8 @@ def find_inputs(model):
                               "typed_total": typed_t, "typed_prev": typed_p, "typed_cur": typed_c, "how": how, "follows": follows})
             if lines:
                 out["progress"].append({"sheet": name, "head_row": r, "prev_c": pc, "cur_c": cc, "tot_c": tc, "amount_c": amount_c,
-                                        "desc_c": desc_c, "lines": lines})
+                                        "desc_c": desc_c, "item_c": item_c, "unit_c": unit_c, "start": start,
+                                        "last_c": max([c for c in heads] + [tc]), "lines": lines})
             break                                   # one progress table per sheet
         # ---- cover: bill no. / issue date (the cell to the right of the label)
         for k, cell in s["cells"].items():
@@ -1724,7 +1725,7 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             hf_rels[paths[s["name"]]] = i + 1
     rels_of = {f'{d.rsplit("/", 1)[0]}/_rels/{d.rsplit("/", 1)[1]}.rels': d for d in dpatch}
     names = set(zin.namelist())
-    ins = [(sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None) for sh, inp in (inputs or {}).items() if isinstance(inp, dict) for x in (inp.get("_rows") or [])]
+    ins = [(sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None, row_opts(x)) for sh, inp in (inputs or {}).items() if isinstance(inp, dict) for x in (inp.get("_rows") or [])]
     draw_of = {}
     for s in model["sheets"]:
         for im in s.get("images", []):
@@ -1736,29 +1737,36 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             s = by_path[item.filename]
             if ins:
                 xml = raw.decode("utf-8")
-                for sh, r, n, like in ins:                # rows put in, in the order they were added
+                for sh, r, n, like, op in ins:            # rows put in, in the order they were added
                     if sh == s["name"]:
                         xml = _xml_shift_attr(xml, r, n)
                         xml = _xml_insert_rows(xml, s, r, n, like)
-                    def ff(m, sh=sh, r=r, n=n):
-                        return "<f" + m.group(1) + ">" + _esc(shift_formula(_unesc(m.group(2)), s["name"], sh, r, n)) + "</f>"
+                    def ff(m, sh=sh, r=r, n=n, op=op):
+                        f = shift_formula(_unesc(m.group(2)), s["name"], sh, r, n)
+                        if op.get("kind") == "line":
+                            f = grow_ranges(f, s["name"], sh, r, n)
+                        return "<f" + m.group(1) + ">" + _esc(f) + "</f>"
                     xml = re.sub(r"<f\b([^>]*)>(.*?)</f>", ff, xml, flags=re.S)
                 raw = xml.encode("utf-8")
-            raw = _patch_sheet(raw, s, (inputs or {}).get(s["name"], {}), values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
+            inp_s = (inputs or {}).get(s["name"], {})
+            new = {k: ("=" + c["f"]) if "f" in c else c.get("v") for k, c in s["cells"].items() if c.get("new")}
+            if new:                                       # the formulas of lines put in on the bill
+                inp_s = dict(new, **inp_s)
+            raw = _patch_sheet(raw, s, inp_s, values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
             if item.filename in hf_rels:
                 raw = _legacy_hf(_hf_stamp(raw.decode("utf-8")), "rIdInfStampHF").encode("utf-8")
         elif item.filename == "xl/workbook.xml":
             raw = _full_calc(raw)
             if ins:
                 xml = raw.decode("utf-8")
-                for sh, r, n, _l in ins:
+                for sh, r, n, _l, _o in ins:
                     def dn(m, sh=sh, r=r, n=n):
                         return m.group(1) + _esc(shift_formula(_unesc(m.group(2)), "", sh, r, n)) + "</definedName>"
                     xml = re.sub(r"(<definedName\b[^>]*>)(.*?)</definedName>", dn, xml, flags=re.S)
                 raw = xml.encode("utf-8")
         elif ins and item.filename in draw_of and item.filename not in dpatch:
             xml = raw.decode("utf-8")
-            for sh, r, n, _l in ins:
+            for sh, r, n, _l, _o in ins:
                 if sh == draw_of[item.filename]:
                     xml = re.sub(r"<xdr:row>(\d+)</xdr:row>", lambda m: m.group(0) if int(m.group(1)) + 1 < r else f"<xdr:row>{int(m.group(1)) + n}</xdr:row>", xml)
             raw = xml.encode("utf-8")
@@ -1767,7 +1775,7 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
         elif item.filename in dpatch:
             if ins and item.filename in draw_of:       # rows put in move the pictures below them first
                 xml = raw.decode("utf-8")
-                for sh, r, n, _l in ins:
+                for sh, r, n, _l, _o in ins:
                     if sh == draw_of[item.filename]:
                         xml = re.sub(r"<xdr:row>(\d+)</xdr:row>", lambda m: m.group(0) if int(m.group(1)) + 1 < r else f"<xdr:row>{int(m.group(1)) + n}</xdr:row>", xml)
                 raw = xml.encode("utf-8")
@@ -1863,7 +1871,47 @@ def shift_formula(f, own_sheet, target, r, n):
     return REF_RE.sub(one, f)
 
 
-def insert_rows(model, sheet, r, n, like=None):
+RANGE_RE = re.compile(r"(?<![A-Za-z0-9_.])(?:('(?:[^']|'')+'|[A-Za-z0-9_.]+)!)?(\$?[A-Z]{1,3}\$?)(\d+):(\$?[A-Z]{1,3}\$?)(\d+)(?![A-Za-z0-9_(])")
+
+
+def grow_ranges(f, own_sheet, target, r, n):
+    """A total over the rows just above an insertion takes the new rows in: A5:A20 with rows put in at 21 -> A5:A21.
+    (Only ranges of more than one row on `target` that end on row r-1.)"""
+    def one(m):
+        sheet = _unq(m.group(1)) if m.group(1) else own_sheet
+        if sheet.strip().lower() != target.strip().lower():
+            return m.group(0)
+        a, b = int(m.group(3)), int(m.group(5))
+        if b != r - 1 or a >= b:
+            return m.group(0)
+        return m.group(0)[:m.start(5) - m.start(0)] + str(b + n)
+    return RANGE_RE.sub(one, f)
+
+
+def _same_row_formula(f, own_sheet, row):
+    """The formula's refs are all on `row` of its own sheet, relative (G13 = F13*E13, I13 = J13-H13): it can be copied
+    to another line. Arithmetic with no refs at all (=52826.96/2) is a typed figure, not copied."""
+    refs = list(REF_RE.finditer(f))
+    if not refs:
+        return False
+    for m in refs:
+        if m.group(1) and _unq(m.group(1)).strip().lower() != own_sheet.strip().lower():
+            return False
+        if m.group(4) or int(m.group(5)) != row:
+            return False
+    return True
+
+
+def _move_row(f, frm, to):
+    return REF_RE.sub(lambda m: m.group(0)[:m.start(5) - m.start(0)] + str(to) if int(m.group(5)) == frm and not m.group(4) else m.group(0), f)
+
+
+def row_opts(x):
+    """The options of a `_rows` entry [at, n, like, opts]: {"kind": "line"|"head", "last_c", "zero": [cols]}."""
+    return x[3] if len(x) > 3 and isinstance(x[3], dict) else {}
+
+
+def insert_rows(model, sheet, r, n, like=None, opts=None):
     """A new model with n rows put in before row r of `sheet`: cells below move down, every formula in the
     workbook that points at them follows, so do merges, heights, hidden rows, pictures, print area and breaks.
     The new rows take the look (borders, fonts) of the row they were put in front of."""
@@ -1878,6 +1926,8 @@ def insert_rows(model, sheet, r, n, like=None):
                 cell = dict(cell)
                 if "f" in cell:
                     cell["f"] = shift_formula(cell["f"], s["name"], sheet, r, n)
+                if "f" in cell and opts and opts.get("kind") == "line":
+                    cell["f"] = grow_ranges(cell["f"], s["name"], sheet, r, n)
                 cells[f"{rr + n if rr >= r else rr},{cc}"] = cell
             # the new rows: the ruled, empty look of the rows they are modelled on (row r unless told otherwise)
             srcs = [int(x) for x in (like or [])] or [r]
@@ -1887,8 +1937,16 @@ def insert_rows(model, sheet, r, n, like=None):
                     src = s["cells"].get(f"{sr},{cc}")
                     if src and src.get("s"):
                         cells[f"{r + i},{cc}"] = {"s": src["s"]}
-                if str(sr) in {str(k) for k in s["rowh"]}:
-                    pass
+                if opts and opts.get("kind") == "line":     # a new line: the row-by-row formulas of the line it is modelled on
+                    zero = set(int(z) for z in opts.get("zero") or [])
+                    for cc in range(1, int(opts.get("last_c") or s["maxc"]) + 1):
+                        src = s["cells"].get(f"{sr},{cc}")
+                        if not src:
+                            continue
+                        if "f" in src and _same_row_formula(src["f"], s["name"], sr):
+                            cells[f"{r + i},{cc}"] = {"s": src.get("s"), "f": _move_row(src["f"], sr, r + i), "new": True}
+                        elif cc in zero:
+                            cells[f"{r + i},{cc}"] = {"s": src.get("s"), "v": 0, "new": True}
             s2["cells"] = cells
             s2["maxr"] = s["maxr"] + n
             rowh = {str(k): v for k, v in s["rowh"].items()}
@@ -1919,6 +1977,8 @@ def insert_rows(model, sheet, r, n, like=None):
             for k, cell in s["cells"].items():
                 if "f" in cell and sheet.lower() in cell["f"].lower():
                     cell = dict(cell); cell["f"] = shift_formula(cell["f"], s["name"], sheet, r, n)
+                    if opts and opts.get("kind") == "line":
+                        cell["f"] = grow_ranges(cell["f"], s["name"], sheet, r, n)
                 cells[k] = cell
             s2["cells"] = cells
         m["sheets"].append(s2)
@@ -1932,7 +1992,7 @@ def expand(model, inputs):
         return model
     m = model
     for sh, x in rows:
-        m = insert_rows(m, sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None)
+        m = insert_rows(m, sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None, row_opts(x))
     m["map"] = find_inputs(m)
     return m
 
@@ -1948,9 +2008,77 @@ def shift_inputs(inp, sheet, at, n):
         if isinstance(v, str) and v.startswith("="):
             v = "=" + shift_formula(v[1:], sheet, sheet, at, n)
         out[f"{r + n if r >= at else r},{c}"] = v
-    if out.get("_hide"):
-        out["_hide"] = [r + n if r >= at else r for r in out["_hide"]]
+    for hk in ("_hide", "_heads"):
+        if out.get(hk):
+            out[hk] = [r + n if r >= at else r for r in out[hk]]
     return out
+
+
+def added_rows(inputs, sheet):
+    """Rows put in on the bill (or an earlier bill) as lines / headings: {row now: (index in _rows, kind)}."""
+    rows = ((inputs or {}).get(sheet) or {}).get("_rows") or []
+    out = {}
+    for j, x in enumerate(rows):
+        kind = row_opts(x).get("kind")
+        if not kind:
+            continue
+        for i in range(int(x[1])):
+            p = int(x[0]) + i
+            for y in rows[j + 1:]:                       # moved down by the rows put in above it later
+                if int(y[0]) <= p:
+                    p += int(y[1])
+            out[p] = (j, kind)
+    return out
+
+
+def drop_added(inputs, sheet, row):
+    """A line / heading put in on the bill taken out again: the rows below move back up, every later insertion,
+    typed cell and formula with them. Returns the new inputs (None if the row was not put in on the bill)."""
+    inp = dict((inputs or {}).get(sheet) or {})
+    rows = [list(x) for x in inp.get("_rows") or []]
+    hit = added_rows(inputs, sheet).get(row)
+    if not hit or int(rows[hit[0]][1]) != 1:
+        return None
+    j = hit[0]
+    p = int(rows[j][0])                                  # where it is at each later insertion
+    for y in rows[j + 1:]:
+        if int(y[0]) <= p:
+            p += int(y[1])
+        else:
+            y[0] = int(y[0]) - 1
+            if len(y) > 2 and y[2]:
+                y[2] = [int(z) - 1 if int(z) > p else int(z) for z in y[2]]
+    del rows[j]
+    out = {}
+    for k, v in inp.items():
+        if k.startswith("_"):
+            continue
+        r, c = (int(x) for x in k.split(","))
+        if r == row:
+            continue
+        if isinstance(v, str) and v.startswith("="):
+            v = "=" + shift_formula(v[1:], sheet, sheet, row + 1, -1)
+        out[f"{r - 1 if r > row else r},{c}"] = v
+    for hk in ("_hide", "_heads"):
+        if inp.get(hk):
+            out[hk] = [r - 1 if r > row else r for r in inp[hk] if r != row]
+    for k, v in inp.items():
+        if k.startswith("_") and k not in ("_hide", "_heads", "_rows"):
+            out[k] = v
+    if rows:
+        out["_rows"] = rows
+    res = dict(inputs); res[sheet] = out
+    # formulas typed on other sheets that point below the row move back up too
+    for sh, other in list(res.items()):
+        if sh == sheet or sh.startswith("_") or not isinstance(other, dict):
+            continue
+        o2 = {}
+        for k, v in other.items():
+            if isinstance(v, str) and v.startswith("=") and sheet.lower() in v.lower():
+                v = "=" + shift_formula(v[1:], sh, sheet, row + 1, -1)
+            o2[k] = v
+        res[sh] = o2
+    return res
 
 
 def hidden_extra(inputs, sheet):

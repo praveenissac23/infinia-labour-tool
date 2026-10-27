@@ -192,7 +192,9 @@ def _progress(model, values, inputs):
             tot = vals.get(f"{r},{t['tot_c']}")
             how = ln.get("how", "tot" if ln["typed_total"] else None)
             cur = vals.get(f"{r},{t['cur_c']}") if t.get("cur_c") else None
-            lines.append({"r": r, "item": ln["item"], "desc": ln["desc"], "unit": ln.get("unit", ""),
+            tx = lambda c, dflt: (BE.general(vals.get(f"{r},{c}")).strip() if vals.get(f"{r},{c}") not in (None, "") else "") if c else dflt
+            lines.append({"r": r, "item": tx(t.get("item_c"), ln["item"]), "desc": tx(t.get("desc_c"), ln["desc"])[:300] or ln["desc"] if t.get("desc_c") else ln["desc"],
+                          "unit": tx(t.get("unit_c"), ln.get("unit", "")),
                           "amount": amt if isinstance(amt, (int, float)) else None, "amount_text": amt if isinstance(amt, str) else "",
                           "prev": prev if isinstance(prev, (int, float)) else None, "total": tot if isinstance(tot, (int, float)) else None,
                           "cur": cur if isinstance(cur, (int, float)) else None,
@@ -200,9 +202,94 @@ def _progress(model, values, inputs):
                           "how": how, "follows": ln.get("follows", ""),
                           "tot_typed": how == "tot", "prev_typed": ln["typed_prev"],
                           "changed": isinstance(tot, (int, float)) and isinstance(prev, (int, float)) and abs(tot - prev) > 1e-9})
-        vis = next((x["visible"] for x in model["sheets"] if x["name"] == sh), True)
-        out.append({"sheet": sh, "lines": lines, "hidden": not vis})
+        sd = next((x for x in model["sheets"] if x["name"] == sh), None)
+        vis = sd["visible"] if sd else True
+        added = BE.added_rows(inputs, sh)
+        inp = inputs.get(sh) or {}
+        if sd:
+            for ln in lines:
+                ln["fields"] = _line_fields(model, sd, t, ln["r"], vals, inputs)
+                a = added.get(ln["r"])
+                ln["added"] = bool(a)
+                ln["can_remove"] = bool(a) and not (ln["prev"] or 0)        # never billed: may be taken out again
+        out.append({"sheet": sh, "lines": lines, "hidden": not vis, "heads": _heads(model, sd, t, vals, inputs, added) if sd else [],
+                    "editable": bool(sd) and bool(t.get("item_c") or t.get("desc_c"))})
     out.sort(key=lambda t: t["hidden"])                  # sheets the consultant hid (not printed) go last
+    return out
+
+
+def _head_text(s, t, c):
+    return " ".join(filter(None, [BE._text(s, t["head_row"], c), BE._text(s, t["head_row"] + 1, c)])).replace("\n", " ").strip()
+
+
+def _nice_head(h):
+    """RATE (AED) -> Rate (AED), QTY stays QTY: a column heading as a form label."""
+    return " ".join(w if (w.startswith("(") or (len(w) <= 3 and w.isupper())) else w.capitalize() for w in (h or "").split())
+
+
+def _line_fields(model, s, t, r, vals, inputs):
+    """What can be typed about a line itself: item, description, unit and its amount - or, where the amount is
+    worked out (QTY x RATE), the figures it is worked out from. [{"f", "k", "label", "value", "num", "edit"}]."""
+    out = []
+    def add(f, c, label, num):
+        if not c:
+            return
+        k = f"{r},{c}"
+        v = vals.get(k)
+        out.append({"f": f, "k": k, "label": label, "value": v if v is not None else "", "num": num,
+                    "edit": BR.editable(model, s, k, inputs)})
+    add("item", t.get("item_c"), "Item / ref.", False)
+    if t.get("desc_c") and t.get("desc_c") != t.get("item_c"):
+        add("desc", t["desc_c"], "Description", False)
+    add("unit", t.get("unit_c"), "Unit", False)
+    ac = t.get("amount_c")
+    if ac:
+        k = f"{r},{ac}"
+        if BR.editable(model, s, k, inputs):
+            add("amount", ac, "Amount", True)
+        else:                                           # worked out: the figures on the same line it comes from
+            cell = s["cells"].get(k) or {}
+            f = (inputs.get(s["name"]) or {}).get(k)
+            f = f[1:] if isinstance(f, str) and f.startswith("=") else cell.get("f", "")
+            cols = []
+            for m in BE.REF_RE.finditer(f or ""):
+                if not m.group(1) and int(m.group(5)) == r:
+                    c = BE.column_index_from_string(m.group(3))
+                    if c not in cols and c != ac:
+                        cols.append(c)
+            for c in sorted(cols):
+                add(f"c{c}", c, _nice_head(_head_text(s, t, c)) or BE.get_column_letter(c), True)
+            add("amount", ac, "Amount", True)
+    return out
+
+
+def _heads(model, s, t, vals, inputs, added):
+    """The headings between the lines of a table (3.1.1 Concrete (PCC/Blinding C20), a section put in on the bill)."""
+    if not t["lines"]:
+        return []
+    line_rows = {ln["r"] for ln in t["lines"]}
+    mine = set(int(x) for x in ((inputs.get(s["name"]) or {}).get("_heads") or []))
+    first, last = t.get("start") or t["head_row"] + 1, max(line_rows | mine)
+    ic, dc, ac = t.get("item_c"), t.get("desc_c"), t.get("amount_c")
+    styles = model.get("styles") or []
+    out = []
+    for r in range(first, last + 1):
+        if r in line_rows:
+            continue
+        g = lambda c: vals.get(f"{r},{c}") if c else None
+        item, desc = g(ic), g(dc)
+        item = BE.general(item).strip() if item not in (None, "") else ""
+        desc = desc.strip() if isinstance(desc, str) else ""
+        if not (item or desc) or isinstance(g(ac), (int, float)) and g(ac):
+            continue
+        if re.search(r"\b(total|carried|brought\s+forward|sub\s*-?\s*total)\b", desc, re.I):
+            continue
+        cell = s["cells"].get(f"{r},{dc}") or {}
+        st = cell.get("s")
+        bold = isinstance(st, int) and st < len(styles) and (styles[st] or {}).get("b")
+        if r in mine or (item and len(desc) <= 160) or (bold and desc and len(desc) <= 160):
+            out.append({"r": r, "item": item, "desc": desc, "added": r in mine, "can_remove": bool(added.get(r)),
+                        "fields": [x for x in _line_fields(model, s, t, r, vals, inputs) if x["f"] in ("item", "desc")]})
     return out
 
 
@@ -1114,6 +1201,148 @@ def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     b.inputs = json.dumps(inputs); b.updated_by = user.id
     _save_totals(b, model, values)
     db.commit()
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
+def _table(model, sh):
+    t = next((x for x in model.get("map", {}).get("progress", []) if x["sheet"] == sh), None)
+    if not t:
+        raise HTTPException(400, f"{sh} has no table of lines.")
+    return t
+
+
+def _num_in(v, label):
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    t = str(v).replace(",", "").strip()
+    if t.startswith("="):
+        try:
+            BE.parse_formula(t[1:], "x")
+        except BE.BillError:
+            raise HTTPException(400, f"{label}: that formula cannot be read.")
+        return t
+    try:
+        return float(t)
+    except ValueError:
+        raise HTTPException(400, f"{label}: type a number.")
+
+
+@router.post("/store/est/ipa/bill/{bid}/line")
+def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """A line (a new item, a variation) or a section heading put in to a sheet's table, after row `after`:
+    {"sheet", "after", "kind": "line"|"head", "values": {"item", "desc", "unit", "amount", "c5": qty, ...}}.
+    A new line takes the row-by-row formulas of the line it is modelled on (Amount = QTY x RATE, this month = Total -
+    Previous, the amounts), starts at 0%, and the section's totals take it in. The next bill keeps it."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
+    sh = str(payload.get("sheet") or "")
+    s = next((x for x in model["sheets"] if x["name"] == sh), None)
+    if not s:
+        raise HTTPException(400, f"No sheet called {sh}.")
+    t = _table(model, sh)
+    kind = "head" if payload.get("kind") == "head" else "line"
+    vals_in = payload.get("values") or {}
+    desc = str(vals_in.get("desc") or "").strip()
+    item = str(vals_in.get("item") or "").strip()
+    if not (desc or item):
+        raise HTTPException(400, "Type the description." if kind == "line" else "Type the section's name.")
+    lines = [ln["r"] for ln in t["lines"]]
+    after = int(payload.get("after") or (max(lines) if lines else t["head_row"] + 1))
+    if not (t["head_row"] <= after <= s["maxr"]):
+        raise HTTPException(400, "Pick where it goes.")
+    at = after + 1
+    if kind == "line":                 # modelled on the nearest line above (or below, at the top of the table)
+        above = [r for r in lines if r <= after]
+        like = above[-1] if above else (lines[0] if lines else None)
+        if like is None:
+            raise HTTPException(400, "This table has no line to model the new one on.")
+        zero = [c for c in (t["prev_c"], t.get("cur_c"), t["tot_c"]) if c]
+        opts = {"kind": "line", "last_c": t.get("last_c") or s["maxc"], "zero": zero}
+    else:                              # a heading: the look of the nearest heading above, else of a line
+        vals0 = BE.calculate(model, inputs).get(sh, {})
+        hs = [h["r"] for h in _heads(model, s, t, vals0, inputs, {}) if h["r"] <= after]
+        like = hs[-1] if hs else (max([r for r in lines if r <= after] or lines[:1] or [after]))
+        opts = {"kind": "head"}
+    moved = BE.shift_inputs(inputs.get(sh) or {}, sh, at, 1)
+    moved.setdefault("_rows", []).append([at, 1, [like], opts])
+    if kind == "head":
+        moved["_heads"] = sorted(set(moved.get("_heads") or []) | {at})
+    inputs[sh] = moved
+    for osh, inp in list(inputs.items()):             # sub-totals typed for the bill take the new line in too
+        if kind != "line" or osh.startswith("_") or not isinstance(inp, dict):
+            continue
+        for k, v in list(inp.items()):
+            if isinstance(v, str) and v.startswith("=") and not k.startswith("_"):
+                inp[k] = "=" + BE.grow_ranges(v[1:], osh, sh, at, 1)
+    model = _bill_model(fmt, inputs)
+    t = _table(model, sh)
+    cell = lambda c: f"{at},{c}"
+    put = inputs[sh]
+    if item and t.get("item_c"):
+        put[cell(t["item_c"])] = int(item) if item.isdigit() else item
+    if desc and t.get("desc_c"):
+        put[cell(t["desc_c"])] = desc
+    elif desc and not t.get("desc_c") and t.get("item_c"):
+        put[cell(t["item_c"])] = (item + " " + desc).strip()
+    if kind == "line":
+        unit = str(vals_in.get("unit") or "").strip()
+        if unit and t.get("unit_c"):
+            put[cell(t["unit_c"])] = unit
+        for k, v in vals_in.items():
+            m_ = re.fullmatch(r"c(\d+)", str(k))
+            c = int(m_.group(1)) if m_ else (t.get("amount_c") if k == "amount" else None)
+            if not c:
+                continue
+            n = _num_in(v, "Amount" if k == "amount" else "The figure")
+            if n is None:
+                continue
+            if not BR.editable(model, next(x for x in model["sheets"] if x["name"] == sh), cell(c), inputs):
+                continue                               # worked out by the line's own formula
+            put[cell(c)] = n
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_line", f"bill #{bid}: {'section' if kind == 'head' else 'line'} added on {sh} row {at} - {(item + ' ' + desc).strip()[:80]}")
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    out = _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+    out["added_row"] = at
+    return out
+
+
+@router.post("/store/est/ipa/bill/{bid}/line/remove")
+def remove_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """A line or heading put in on a bill taken out again: {"sheet", "r"}. Not a line billed before (Previous % > 0)."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
+    sh, r = str(payload.get("sheet") or ""), int(payload.get("r") or 0)
+    values = BE.calculate(model, inputs)
+    t = _table(model, sh)
+    if any(ln["r"] == r for ln in t["lines"]):
+        pv = values.get(sh, {}).get(f"{r},{t['prev_c']}")
+        if isinstance(pv, (int, float)) and pv:
+            raise HTTPException(400, "This line was billed on an earlier bill - it cannot be taken out. Type 0 or hide it on Sheets.")
+    new = BE.drop_added(inputs, sh, r)
+    if new is None:
+        raise HTTPException(400, "Only a line or section added on the bill can be taken out - the consultant's own lines stay.")
+    inputs = new
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_line", f"bill #{bid}: row {r} of {sh} taken out")
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 

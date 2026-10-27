@@ -1381,11 +1381,26 @@ def build():
     # refreshes its copy and reloads once.
     import hashlib
     build = hashlib.sha1(page.encode("utf-8")).hexdigest()[:12]
-    check = ('<script>(function(){var B="%s";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"})'
-             '.then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;'
-             'var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}'
-             'Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})])'
-             '.catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script>') % build
+    # A tab left open all day keeps the old screens: it asks again when it comes back into view and every
+    # 10 minutes, and offers "Reload" (never reloads by itself - something may be half typed).
+    check = ("<script>(function(){var B='%s',T0=Date.now(),shown=false;"
+             "function bar(){if(shown||!document.body)return;shown=true;var d=document.createElement('div');d.id='app-new-ver';"
+             "d.setAttribute('role','status');d.style.cssText='position:fixed;left:50%%;bottom:18px;transform:translateX(-50%%);z-index:99999;"
+             "background:#1F2429;color:#fff;padding:10px 12px 10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);"
+             "font:14px/1.3 system-ui,sans-serif;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 32px)';"
+             "d.innerHTML='<span>The app has been updated. Save what you are typing, then reload.</span>"
+             "<button type=\\'button\\' style=\\'background:#C0392B;color:#fff;border:0;border-radius:7px;padding:7px 14px;font:inherit;font-weight:700;cursor:pointer\\'>Reload</button>"
+             "<button type=\\'button\\' aria-label=\\'Later\\' style=\\'background:none;border:0;color:#bbb;font-size:18px;cursor:pointer\\'>&times;</button>';"
+             "var bs=d.querySelectorAll('button');bs[0].onclick=function(){Promise.all([fetch(location.href,{cache:'reload'}),fetch('/app.html',{cache:'reload'}),fetch('/',{cache:'reload'})]).catch(function(){}).then(function(){location.reload()})};"
+             "bs[1].onclick=function(){d.remove();shown=false;T0=Date.now()+36e5};document.body.appendChild(d)}"
+             "function ask(first){try{fetch('/app-version.json?t='+Date.now(),{cache:'no-store'})"
+             ".then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;"
+             "if(first){var k='app-reload-'+v.build;try{if(sessionStorage.getItem(k))return bar();sessionStorage.setItem(k,'1')}catch(e){}"
+             "Promise.all([fetch(location.href,{cache:'reload'}),fetch('/app.html',{cache:'reload'}),fetch('/',{cache:'reload'})])"
+             ".catch(function(){}).then(function(){location.reload()});return}"
+             "if(Date.now()>T0)bar()}).catch(function(){})}catch(e){}}"
+             "ask(true);setInterval(function(){if(!document.hidden)ask(false)},6e5);"
+             "document.addEventListener('visibilitychange',function(){if(!document.hidden)ask(false)})})();</script>") % build
     page = page.replace("</head>", check + "</head>", 1)
     with open(APP_OUT, "w", encoding="utf-8") as f:
         f.write(page)

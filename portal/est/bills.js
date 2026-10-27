@@ -390,13 +390,23 @@ function lineShown(l) {
   if (IPA.filter === "moved") return Math.abs(nowPct(l) || 0) > 1e-9;
   return true;
 }
+function canEditBill() { return !(IPA.bill.status === "Paid" && !ST.meta.me.admin); }
 function workSection(t, i) {
-  const shown = t.lines.filter(l => (l.item || l.desc || l.amount) && lineShown(l));
+  const shown = t.lines.filter(l => (l.item || l.desc || l.amount || l.added) && lineShown(l));
   if (!shown.length && (IPA.q || IPA.filter)) return "";
-  return `<div class="ipa-card ipa-sec ${t.hidden ? "hid" : ""}" id="ipa-sec-${i}"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="st">hidden sheet - not printed</span>` : ""}</h3>
-    <div class="ipa-tw"><table class="ipa-lines"><colgroup><col style="width:64px"><col><col style="width:118px"><col style="width:86px"><col style="width:104px"><col style="width:104px"><col style="width:118px"><col style="width:118px"></colgroup>
-    <thead><tr><th>Item</th><th>Description</th><th class="r">Amount</th><th class="r">Previous</th><th class="r in">This month %</th><th class="r in">Total %</th><th class="r">This month</th><th class="r">To date</th></tr></thead>
-    <tbody>${shown.map(l => lineRow(t.sheet, l)).join("") || `<tr><td colspan="8" class="muted c">No lines match.</td></tr>`}</tbody></table></div></div>`;
+  const ed = t.editable && canEditBill();
+  // the section's headings in between (3.1.1 Concrete ..., a section added on the bill) - not while searching
+  const heads = IPA.q || IPA.filter ? [] : (t.heads || []);
+  const rows = shown.map(l => ({ r: l.r, h: lineRow(t.sheet, l, ed) })).concat(heads.map(h => ({ r: h.r, h: headRow(t.sheet, h, ed) }))).sort((a, b) => a.r - b.r);
+  return `<div class="ipa-card ipa-sec ${t.hidden ? "hid" : ""}" id="ipa-sec-${i}"><div class="ipa-sec-h"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="st">hidden sheet - not printed</span>` : ""}</h3>
+      ${ed ? `<span class="ipa-sec-add"><button class="btn btn-ghost btn-sm" data-addln="${esc(t.sheet)}" title="A new item or variation at the end of ${esc(t.sheet)}">+ Line</button><button class="btn btn-ghost btn-sm" data-addsec="${esc(t.sheet)}" title="A heading at the end of ${esc(t.sheet)}, to put new lines under">+ Section</button></span>` : ""}</div>
+    <div class="ipa-tw"><table class="ipa-lines"><colgroup><col style="width:64px"><col><col style="width:118px"><col style="width:86px"><col style="width:104px"><col style="width:104px"><col style="width:118px"><col style="width:118px">${ed ? '<col style="width:40px">' : ""}</colgroup>
+    <thead><tr><th>Item</th><th>Description</th><th class="r">Amount</th><th class="r">Previous</th><th class="r in">This month %</th><th class="r in">Total %</th><th class="r">This month</th><th class="r">To date</th>${ed ? "<th></th>" : ""}</tr></thead>
+    <tbody>${rows.map(x => x.h).join("") || `<tr><td colspan="${ed ? 9 : 8}" class="muted c">No lines match.</td></tr>`}</tbody></table></div></div>`;
+}
+function headRow(sh, h, ed) {
+  return `<tr class="hd" data-head="${esc(sh + "|" + h.r)}"><td class="it">${esc(h.item)}</td><td class="ds" colspan="7"><span class="hd-t">${esc(h.desc)}${h.added ? ' <span class="new-tag">added</span>' : ""}</span></td>
+    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(sh + "|" + h.r)}" data-kind="head" title="Section: edit, add a line under it">&#8942;</button></td>` : ""}</tr>`;
 }
 function lineCells(l) {
   const now = nowPct(l);
@@ -405,16 +415,17 @@ function lineCells(l) {
 }
 const pnum = v => v === null || v === undefined ? "" : String(Math.round(v * 1e6) / 1e4);
 const pnow = v => v === null || v === undefined || Math.abs(v) < 1e-9 ? "" : pnum(v);          // nothing this month: left empty
-function lineRow(sh, l) {
+function lineRow(sh, l, ed) {
   const c = lineCells(l), id = `${sh}|${l.r}`, paid = IPA.bill.status === "Paid" && !ST.meta.me.admin;
   const edit = l.how && !paid;
   const inp = (k, v) => edit ? `<input class="ipa-in" data-noclear data-row="${esc(id)}" data-w="${k}" value="${k === "now" ? pnow(v) : pnum(v)}" placeholder="0" inputmode="decimal" autocomplete="off"><span class="pc">%</span>` : `<span class="ro">${v === null ? "" : pctTxt(v)}</span>`;
   return `<tr class="${c.cls}" data-line="${esc(id)}"><td class="it">${esc(l.item)}</td>
-    <td class="ds">${esc(l.desc)}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
+    <td class="ds">${esc(l.desc) || '<span class="muted">(no description)</span>'}${l.added ? ' <span class="new-tag">added</span>' : ""}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
     <td class="r muted" data-c="prev" data-l="Previous">${c.prev}</td>
     <td class="r in" data-c="now" data-l="This month %">${inp("now", c.now)}</td><td class="r in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
-    <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td></tr>`;
+    <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
+    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
 }
 function followsLink(sh, l) {     // "follows the line on row 21" -> a link that takes you to that line
   const m = l.follows.match(/row (\d+)$/), o = l.follows.match(/^set on the (.+) sheet$/);
@@ -452,6 +463,9 @@ function patchWork() {           // new figures in place: no redraw, so typing c
 function bindWork(m) {
   const secs = $("#ipa-secs", m);
   if (secs) secs.onclick = e => {
+    const mb = e.target.closest("[data-menu]"); if (mb) { e.stopPropagation(); return lineMenu(mb); }
+    const al = e.target.closest("[data-addln]"); if (al) return lineForm(al.dataset.addln, { kind: "line" });
+    const as = e.target.closest("[data-addsec]"); if (as) return lineForm(as.dataset.addsec, { kind: "head" });
     const a = e.target.closest("a[data-goto], a[data-gosec]"); if (!a) return;
     e.preventDefault();
     if (a.dataset.goto) return gotoLine(a.dataset.goto);
@@ -462,7 +476,7 @@ function bindWork(m) {
   all().forEach(inp => {
     inp.dataset.was = inp.value;
     inp.onfocus = () => { inp.dataset.was = inp.value; setTimeout(() => inp.select(), 0); };
-    const move = d => { const a = all(), i = a.indexOf(inp); const col = a.filter(x => x.dataset.w === inp.dataset.w); const j = col.indexOf(inp) + d; if (col[j]) col[j].focus(); };
+    const move = d => { const a = all(), i = a.indexOf(inp); const col = a.filter(x => x.dataset.w === inp.dataset.w); const j = col.indexOf(inp) + d; if (col[j]) col[j].focus(); else inp.blur(); };          // the last line: Enter saves it
     inp.onkeydown = e => {
       if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); move(1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
@@ -471,6 +485,84 @@ function bindWork(m) {
     inp.onblur = () => commitLine(inp);
   });
 }
+// ---- a line's own details, and lines / sections put in on the bill
+function closeLineMenu() { const x = document.getElementById("ln-pop"); if (x) x.remove(); document.removeEventListener("mousedown", lineMenuOut, true); }
+function lineMenuOut(e) { if (!e.target.closest("#ln-pop") && !e.target.closest("[data-menu]")) closeLineMenu(); }
+function lineMenu(btn) {
+  const open = document.getElementById("ln-pop"), same = open && open.dataset.for === btn.dataset.menu;
+  closeLineMenu(); if (same) return;
+  const id = btn.dataset.menu, sh = id.slice(0, id.lastIndexOf("|")), r = +id.slice(id.lastIndexOf("|") + 1), head = btn.dataset.kind === "head";
+  const t = IPA.bill.progress.find(x => x.sheet === sh); if (!t) return;
+  const it = head ? (t.heads || []).find(h => h.r === r) : t.lines.find(l => l.r === r); if (!it) return;
+  const pop = document.createElement("div"); pop.id = "ln-pop"; pop.className = "ln-pop"; pop.dataset.for = id;
+  pop.innerHTML = `<button data-do="edit">${head ? "Edit section" : "Edit line details"}</button>
+    <button data-do="line">Add line below</button><button data-do="head">Add section below</button>
+    ${it.can_remove ? `<hr><button data-do="del" class="danger">${head ? "Remove section" : "Remove line"}</button>` : ""}`;
+  document.body.appendChild(pop);
+  const rc = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, rc.right - pw)) + "px";
+  pop.style.top = (rc.bottom + ph + 6 > innerHeight ? rc.top - ph - 4 : rc.bottom + 4) + "px";
+  setTimeout(() => document.addEventListener("mousedown", lineMenuOut, true), 0);
+  pop.onclick = async e => {
+    const d = e.target.closest("[data-do]"); if (!d) return;
+    closeLineMenu();
+    if (d.dataset.do === "edit") return lineForm(sh, { kind: head ? "head" : "line", edit: it });
+    if (d.dataset.do === "line" || d.dataset.do === "head") return lineForm(sh, { kind: d.dataset.do, after: r });
+    const what = head ? `the section ${it.item || ""} ${it.desc || ""}` : `the line ${it.item || ""} ${it.desc || ""}`;
+    if (!(await confirmDelete(`Remove ${what.replace(/\s+/g, " ").trim()}?`, "It was added on this bill and has not been billed - it comes out of the bill and its totals."))) return;
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${IPA.bill.id}/line/remove`, { sheet: sh, r }); redrawWork(); toast(head ? "Section removed" : "Line removed"); } catch (er) { fail(er); }
+  };
+}
+function redrawWork(focus) {
+  const m = $("#ipa-main"), sc = $("#big .bbody"), y = sc ? sc.scrollTop : 0;
+  drawBill(); if (sc) sc.scrollTop = y;
+  if (focus && IPA.step === "work") setTimeout(() => gotoLine(focus), 60);
+}
+// one form for a new line / section and for a line's own details. The fields are the table's own columns:
+// Item, Description, Unit, and the Amount - or QTY and RATE where the sheet works the amount out from them.
+function lineForm(sh, o) {
+  const t = IPA.bill.progress.find(x => x.sheet === sh); if (!t) return;
+  const head = o.kind === "head", ed = o.edit;
+  const after = o.after || Math.max(0, ...t.lines.map(l => l.r), ...(t.heads || []).map(h => h.r));
+  const model = ed ? ed : (t.lines.filter(l => l.r <= after).pop() || t.lines[0]);        // the line a new one is modelled on
+  const src = (model && model.fields) || [];
+  let fl = head ? src.filter(f => f.f === "item" || f.f === "desc") : src;
+  if (head && !fl.length) fl = [{ f: "desc", label: "Section name", value: "", edit: true }];
+  const worked = !head && src.some(f => f.f === "amount" && !f.edit);
+  const label = f => head && f.f === "desc" ? "Section name" : (f.f === "item" ? (head ? "Ref. (optional)" : "Item / ref.") : f.label);
+  const fields = fl.filter(f => f.edit || (ed && f.f === "amount")).map(f => ({
+    k: f.f, label: label(f) + (f.f === "amount" && worked ? " (worked out)" : ""), value: ed ? (f.value ?? "") : "",
+    type: f.num && f.edit ? "num" : undefined, ro: !f.edit, full: f.f === "desc", focus: f.f === "desc",
+    ph: f.f === "item" ? (head ? "e.g. 3.3" : "e.g. V07 or 3.2.2.3") : f.f === "desc" ? (head ? "e.g. Additional works" : "What the work is") : f.f === "unit" ? "M3, M2, Nos..." : (f.f === "amount" && worked ? "" : "0.00") }));
+  if (!fields.length) { toast("This sheet's lines have nothing that can be typed here - use Sheets", { err: true }); return; }
+  const ttl = ed ? (head ? "Edit section" : `Edit line ${ed.item || ""}`.trim()) : (head ? `New section - ${sh}` : `New line - ${sh}`);
+  const nearTxt = !ed && model ? `<div class="muted small" style="margin-bottom:10px">${head ? "A heading" : "A new line"} after ${esc((t.lines.concat(t.heads || []).find(x => x.r === after) || {}).item || ("row " + after))}${head ? " - add lines under it next." : ` - it works like ${esc(model.item || "the line above")} (${worked ? "amount = " + fl.filter(f => /^c\d+$/.test(f.f)).map(f => f.label).join(" x ") + ", " : ""}starts at 0%). The totals take it in.`}</div>` : "";
+  modal(ttl, fields, async x => {
+    const vals = {};
+    fl.forEach(f => { if (!f.edit) return; const v = x[f.f]; vals[f.f] = typeof v === "string" ? v.trim() : v; });
+    if (ed) {
+      const set = {};
+      fl.forEach(f => {
+        if (!f.edit) return;
+        let v = vals[f.f];
+        if (String(v ?? "") === String(f.value ?? "")) return;
+        if (f.num) { v = v === "" || v === null || v === undefined ? null : (String(v).trim().startsWith("=") ? String(v).trim() : Number(String(v).replace(/,/g, ""))); if (typeof v === "number" && isNaN(v)) throw new Error(`${f.label}: type a number`); }
+        set[f.k] = v;
+      });
+      if (!Object.keys(set).length) return;
+      IPA.bill = await PUT(`/store/est/ipa/bill/${IPA.bill.id}`, { set: { [sh]: set } });
+      redrawWork(head ? null : `${sh}|${ed.r}`); toast("Saved");
+      return;
+    }
+    if (!vals.desc && !vals.item) throw new Error(head ? "Type the section's name" : "Type the description");
+    const res = await POST(`/store/est/ipa/bill/${IPA.bill.id}/line`, { sheet: sh, kind: head ? "head" : "line", after, values: vals });
+    IPA.bill = res; IPA.q = ""; IPA.filter = "";
+    redrawWork(head ? null : `${sh}|${res.added_row}`);
+    if (head && IPA.step === "work") setTimeout(() => { const tr = $(`tr[data-head="${CSS.escape(sh + "|" + res.added_row)}"]`); if (tr) { tr.scrollIntoView({ behavior: "smooth", block: "center" }); tr.classList.add("flash"); } }, 60);
+    toast(head ? "Section added - add its lines with the ⋮ next to it" : "Line added - type its % now");
+  }, { save: ed ? "Save" : (head ? "Add section" : "Add line"), top: nearTxt });
+}
+
 async function commitLine(inp) {
   const s = inp.value.trim().replace(/%$/, "").replace(/,/g, "");
   if (s === inp.dataset.was) return;
@@ -722,9 +814,12 @@ async function drawSheet(v, i, keep) {
     const heading = () => { let p = tr.previousElementSibling;                       // the nearest heading above: a bold row
       while (p) { if ([...p.cells].some(c => /font-weight:700/.test(c.getAttribute("style") || "") && c.textContent.trim())) return +p.dataset.r; p = p.previousElementSibling; } return r; };
     const add = async (at, n, like) => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/rows`, { sheet: sh, at, n, like }); redraw(); toast(n > 1 ? "Section added - type its heading in the first new line" : "Line added - click its cells to type"); } catch (e) { fail(e); } };
-    $('[data-rw="above"]', rowBar).onclick = () => add(r, 1, [r]);
-    $('[data-rw="below"]', rowBar).onclick = () => add(r + 1, 1, [r]);
-    $('[data-rw="section"]', rowBar).onclick = () => add(r + 1, 2, [heading(), r]);
+    // a row of a table of lines: the same form as on Work done - the new line works like the ones around it
+    const tb = b.progress.find(x => x.sheet === sh), lastR = tb ? Math.max(...tb.lines.map(l => l.r), ...(tb.heads || []).map(h => h.r)) : 0;
+    const inTable = tb && tb.editable && canEditBill() && r > (tb.lines.length ? Math.min(...tb.lines.map(l => l.r)) - 4 : 1e9) && r <= lastR + 1;
+    $('[data-rw="above"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r - 1 }) : add(r, 1, [r]);
+    $('[data-rw="below"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [r]);
+    $('[data-rw="section"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "head", after: r }) : add(r + 1, 2, [heading(), r]);
     $('[data-rw="hide"]', rowBar).onclick = async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } };
     $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.innerHTML = '<span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>'; };
   };

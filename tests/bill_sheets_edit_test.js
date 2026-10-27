@@ -35,15 +35,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.keyboard.press('Escape'); await sleep(200);
   ck('clicking a row offers + Line above / below, + Section, Hide', (await p.textContent('#sv-rows')).includes('Row 4') && !!(await p.$('[data-rw="section"]')));
   await p.screenshot({ path: SH + '2_row.png' });
-  await p.click('[data-rw="below"]'); await sleep(1800);
+  // on a line of the table, + Line below asks what the line is (the same form as on Work done)
+  await p.click('[data-rw="below"]'); await sleep(500);
+  ck('+ Line below on a table line opens the line form', await p.isVisible('#modal:not(.hide) #f-desc'));
+  await p.fill('#f-desc', 'Extra kerb stones'); if (await p.$('#f-amount')) await p.fill('#f-amount', '1000');
+  await p.click('#m-save'); await sleep(2200);
   const rows1 = await p.$$eval('.sv-box tr[data-r]', t => t.length);
-  ck('+ Line below adds a line', rows1 === rows0 + 1, [rows0, rows1]);
+  ck('+ Line below adds a line', rows1 === rows0 + 1 && (await p.textContent('.sv-box')).includes('Extra kerb stones'), [rows0, rows1]);
   await p.click('.sv-box tr[data-r="5"] td:nth-child(2)'); await sleep(300); await p.keyboard.press('Escape'); await sleep(200);
-  await p.click('[data-rw="section"]'); await sleep(1800);
-  ck('+ Section below adds a heading line and a line', (await p.$$eval('.sv-box tr[data-r]', t => t.length)) === rows1 + 2);
-  // type a heading in the new section line
-  await p.click('.sv-box tr[data-r="6"] td:nth-child(2)'); await sleep(400);
-  const cell = await p.$('.ipa-cell'); if (cell) { await cell.fill('Additional works'); await p.keyboard.press('Enter'); await sleep(1800); }
+  await p.click('[data-rw="section"]'); await sleep(500);
+  await p.fill('#f-desc', 'Additional works'); await p.click('#m-save'); await sleep(2200);
+  ck('+ Section below adds a heading line', (await p.$$eval('.sv-box tr[data-r]', t => t.length)) === rows1 + 1);
   ck('typed in the new line', (await p.textContent('.sv-box')).includes('Additional works'));
   // a page
   await p.click('[data-pg="add"]'); await sleep(400);
