@@ -26,6 +26,30 @@ def _vendor(db, o):
     return (s.zoho_id or "") if s else ""
 
 
+# Zoho's VAT treatments with no VAT on a purchase from them.
+NOT_REGISTERED = ("vat_not_registered", "gcc_vat_not_registered", "dz_vat_not_registered", "non_gcc")
+
+
+def _vendor_treatment(db, vendor_id):
+    """The VAT treatment Zoho holds for the vendor ("" when Zoho cannot say)."""
+    import zohoapi as Z
+    try:
+        c = (Z.call(db, "GET", f"contacts/{vendor_id}") or {}).get("contact") or {}
+        return (c.get("tax_treatment") or c.get("vat_treatment") or "").strip()
+    except Exception:
+        return ""
+
+
+def _trn(db, o):
+    """The supplier's TRN from the portal - only a proper 15-digit one."""
+    s = db.get(models.Supplier, o.supplier_id) if o.supplier_id else None
+    if not s and (o.supplier_name or "").strip():
+        key = M._supplier_key(o.supplier_name)
+        s = db.query(models.Supplier).filter(models.Supplier.name_key == key).first() if key else None
+    t = "".join(ch for ch in ((s.trn if s else "") or "") if ch.isdigit())
+    return t if len(t) == 15 else ""
+
+
 def _site(db, o):
     if o.request_id:
         r = db.get(models.MaterialRequest, o.request_id)
@@ -48,23 +72,41 @@ def push(db, o):
     acc_id = Z.account_id(db, o.zoho_account or "") if (o.zoho_account or "").strip() else ""
     if not acc_id:
         raise Z.ZohoError(400, "Pick the Zoho account for this LPO (the bill takes it) - nothing sent")
+    # VAT treatment. Zoho refuses any VAT rate - Zero Rate included - on a PO to a vendor it holds as
+    # not VAT registered ("VAT or Exemption cannot be applied for this VAT Treatment", IC/LPO/20260157).
+    # Such a vendor's 0% LPO goes with no tax on the lines; one with 5% goes as VAT registered with the
+    # supplier's TRN. A vendor Zoho holds as registered (or one it cannot say) goes exactly as before.
+    treat, extra = _vendor_treatment(db, vendor), {}
+    any5 = any(round(l.tax_pct or 0, 2) == 5 for l in o.lines)
+    no_vat = treat in NOT_REGISTERED and not any5
+    if treat in NOT_REGISTERED and any5:
+        trn = _trn(db, o)
+        if not trn:
+            raise Z.ZohoError(400, f"{o.supplier_name or 'The supplier'} charges 5% VAT on this LPO but is not VAT registered in Zoho and has no "
+                                   "15-digit TRN in the portal - put its TRN on the supplier, then send again")
+        extra = {"tax_treatment": "vat_registered", "tax_reg_no": trn}
+    elif no_vat:
+        extra = {"tax_treatment": treat}
     v5, v0 = Z.vat_tax(db), Z.zero_tax(db)
     items = []
     for i, l in enumerate(o.lines):
-        t = v5 if round(l.tax_pct or 0, 2) == 5 else v0
-        if not t:
+        t = "" if no_vat else (v5 if round(l.tax_pct or 0, 2) == 5 else v0)
+        if not t and not no_vat:
             raise Z.ZohoError(400, f"Zoho has no {'5% Standard Rate' if round(l.tax_pct or 0, 2) == 5 else 'Zero Rate'} tax - nothing sent")
         desc = " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x)[:2000]
         # No catalogue item: Zoho needs the account on each line (as the
         # chief accountant enters them), else "non-purchase item".
-        items.append({"description": desc or "Item", "quantity": round(l.qty or 0, 3), "rate": round(l.rate or 0, 2),
-                      "unit": (l.unit or "")[:20], "tax_id": t, "item_order": i + 1, "account_id": acc_id})
+        it = {"description": desc or "Item", "quantity": round(l.qty or 0, 3), "rate": round(l.rate or 0, 2),
+              "unit": (l.unit or "")[:20], "item_order": i + 1, "account_id": acc_id}
+        if t:
+            it["tax_id"] = t
+        items.append(it)
     if not items:
         raise Z.ZohoError(400, "The LPO has no lines")
     site = _site(db, o)
     body = {"vendor_id": vendor, "purchaseorder_number": o.ref, "date": o.order_date.isoformat(),
             "reference_number": " · ".join(x for x in (site, (o.supplier_ref or "").strip()) if x)[:100],
-            "line_items": items, "is_inclusive_tax": False,
+            "line_items": items, "is_inclusive_tax": False, **extra,
             "notes": " - ".join(x for x in (o.job_scope, o.project_location, o.plot_no and f"Plot {o.plot_no}") if x)[:1000]}
     if o.delivery_date and o.delivery_date >= o.order_date:
         body["delivery_date"] = o.delivery_date.isoformat()      # Zoho refuses a delivery date before the PO date
