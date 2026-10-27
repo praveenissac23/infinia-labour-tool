@@ -926,7 +926,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 0; }
   .hr-ask-box { background: white; border-radius: 12px; padding: 20px 22px 16px; max-width: 460px;
                 width: 100%; box-shadow: 0 18px 50px rgba(0,0,0,.22); }
-  .hr-ask-msg { font-size: 14px; line-height: 1.5; color: #333; }
+  .hr-ask-msg { font-size: 14px; line-height: 1.5; color: #333; white-space: pre-line; }
   .hr-ask-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   .hr-field > span { font-size: 11px; font-weight: 700; color: #6B7075; letter-spacing: .2px; }
 
@@ -6492,10 +6492,10 @@ function mdEngForm(show) {
 // is genuinely deleted. The server decides which, and says which
 // happened.
 async function removeEmployee(empNo, name) {
-  if (!confirm(`Remove ${name} (${empNo}) from the worker list?\n\n` +
+  if (!(await hrAsk(`Remove ${name} (${empNo}) from the worker list?\n\n` +
                `If they have attendance behind them the record is kept and marked ` +
                `inactive, so past payroll still adds up. If nothing is recorded ` +
-               `against them, the record is deleted.`)) return;
+               `against them, the record is deleted.`, "Delete", true))) return;
   try {
     const r = await apiCall(`/employees/${encodeURIComponent(empNo)}`, { method: "DELETE" });
     showStatus("md-status", r.action === "deleted" ? "ok" : "warn", r.detail || "Done.");
@@ -6833,7 +6833,7 @@ async function editSite(id, currentCode) {
 }
 
 async function removeSite(id, code) {
-  if (!confirm(`Remove site "${code}"? It will no longer appear as an option, but existing records that used it are unaffected.`)) return;
+  if (!(await hrAsk(`Remove site "${code}"? It will no longer appear as an option, but existing records that used it are unaffected.`, "Delete", true))) return;
   try {
     await apiCall(`/sites/${id}`, { method: "DELETE" });
     sites = await apiCall("/sites");
@@ -6873,7 +6873,7 @@ async function editEngineer(id, currentName) {
 }
 
 async function removeEngineer(id, name) {
-  if (!confirm(`Remove engineer "${name}"? They will no longer appear as an option, but existing records that used them are unaffected.`)) return;
+  if (!(await hrAsk(`Remove engineer "${name}"? They will no longer appear as an option, but existing records that used them are unaffected.`, "Delete", true))) return;
   try {
     await apiCall(`/engineers/${id}`, { method: "DELETE" });
     engineers = await apiCall("/engineers");
@@ -7653,6 +7653,7 @@ function adjEditReset() {
 }
 
 async function removeAdjustmentRow(summaryId, adjId) {
+  if (!(await hrAsk("Delete this adjustment line? The salary card is worked out again without it.", "Delete", true))) return;
   try {
     await apiCall(`/summaries/${summaryId}/adjustments/${adjId}`, { method: "DELETE" });
     if (ADJ_EDIT && ADJ_EDIT.id === adjId) adjEditReset();
@@ -9528,7 +9529,7 @@ async function saveStoreItem() {
 }
 
 async function removeStoreItem(id, code) {
-  if (!confirm(`Remove ${code}? Its movement history is kept.`)) return;
+  if (!(await hrAsk(`Remove ${code}? Its movement history is kept.`, "Delete", true))) return;
   try {
     await apiCall(`/store/items/${id}`, { method: "DELETE" });
     showStatus("store-status", "ok", `Removed ${code}.`);
@@ -11567,7 +11568,7 @@ async function deletePicked() {
   const ids = pickedOrderIds();
   if (!ids.length) { mreqStatus("warn", "Tick the requests to delete."); return; }
   const refs = ids.map(id => (mrCache.find(r => r.id === id) || {}).ref).filter(Boolean);
-  if (!confirm(`Delete ${ids.length} request(s)?\n\n${refs.join(", ")}\n\nThis cannot be undone.`)) return;
+  if (!(await hrAsk(`Delete ${ids.length} request(s)?\n\n${refs.join(", ")}\n\nThis cannot be undone.`, "Delete", true))) return;
   let done = 0, failed = 0;
   for (const id of ids) {
     try { await apiCall(`/store/requests/${id}`, { method: "DELETE" }); done++; }
@@ -11579,7 +11580,7 @@ async function deletePicked() {
 }
 
 async function deleteRequest(id, ref) {
-  if (!confirm(`Delete request ${ref}? This cannot be undone.`)) return;
+  if (!(await hrAsk(`Delete request ${ref}? This cannot be undone.`, "Delete", true))) return;
   try {
     await apiCall(`/store/requests/${id}`, { method: "DELETE" });
     mreqStatus("ok", `${ref} deleted.`);
@@ -14238,9 +14239,9 @@ async function createUser() {
 }
 
 async function removeUser(userId, username) {
-  if (!confirm(`Delete the login "${username}"?\n\n` +
+  if (!(await hrAsk(`Delete the login "${username}"?\n\n` +
                `They will not be able to sign in again. Backups and activity ` +
-               `they recorded are kept.`)) return;
+               `they recorded are kept.`, "Delete", true))) return;
   try {
     const r = await apiCall(`/users/${userId}`, { method: "DELETE" });
     showStatus("settings-status", "ok", r.detail || "Login deleted.");
@@ -15966,7 +15967,8 @@ function hrAsk(message, okLabel = "Yes", danger = false) {
     wrap.querySelector(".hr-ask-msg").textContent = message;
     wrap.querySelector('[data-a="yes"]').textContent = okLabel;
     const done = v => { wrap.remove(); document.removeEventListener("keydown", key); resolve(v); };
-    const key = ev => { if (ev.key === "Escape") done(false); if (ev.key === "Enter") done(true); };
+    // a delete: Cancel is the button in focus and Enter does not delete - only a click on the red button does
+    const key = ev => { if (ev.key === "Escape") done(false); if (ev.key === "Enter" && !danger) done(true); };
     wrap.addEventListener("click", ev => {
       if (ev.target === wrap) done(false);
       const a = ev.target.dataset && ev.target.dataset.a;
@@ -15974,7 +15976,7 @@ function hrAsk(message, okLabel = "Yes", danger = false) {
     });
     document.addEventListener("keydown", key);
     document.body.appendChild(wrap);
-    wrap.querySelector('[data-a="yes"]').focus();
+    wrap.querySelector(danger ? '[data-a="no"]' : '[data-a="yes"]').focus();
   });
 }
 
@@ -17452,7 +17454,7 @@ async function bkEdit(id) {
 }
 async function bkDelete(id) {
   const r = BK.rows.find(x => x.id === id);
-  if (!confirm(`Remove ${r.kind_label.toLowerCase()} ${r.party || ""} ${pcMoney(r.amount)}?`)) return;
+  if (!(await hrAsk(`Remove ${r.kind_label.toLowerCase()} ${r.party || ""} ${pcMoney(r.amount)}?`, "Delete", true))) return;
   try { await apiCall(`/store/bank/${id}`, { method: "DELETE" }); await bkLoad(); showStatus("bk-status", "ok", "Removed."); }
   catch (e) { showStatus("bk-status", "err", errText(e)); }
 }
@@ -18366,7 +18368,7 @@ function dtEdit(id) {
 }
 async function dtDelete(id) {
   const r = DT.rows.find(x => x.id === id);
-  if (!confirm(`Delete ${r.ref}? The office has not checked it yet.`)) return;
+  if (!(await hrAsk(`Delete ${r.ref}? The office has not checked it yet.`, "Delete", true))) return;
   try { await apiCall(`/store/docs/${id}`, { method: "DELETE" }); await dtLoad(); showStatus("dt-status", "ok", `${r.ref} deleted.`); }
   catch (e) { showStatus("dt-status", "err", errText(e)); }
 }
@@ -18869,6 +18871,7 @@ async function ppeGiven(id) {
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
 async function ppeDel(id, key) {
+  if (!(await hrAsk("Delete this PPE entry?", "Delete", true))) return;
   try { await apiCall(`/store/ppe/${id}`, { method: "DELETE" }); await ppeLoad(); ppeCard(key); showStatus("pe-status", "ok", "Entry removed."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }
@@ -18924,6 +18927,7 @@ async function ppeStockHist(item) {
     <div class="pe-foot"><button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Close</button></div>`, true);
 }
 async function ppeMoveDel(id, item) {
+  if (!(await hrAsk("Delete this stock entry? The PPE stock is counted again without it.", "Delete", true))) return;
   try { await apiCall(`/store/ppe/stock/${id}`, { method: "DELETE" }); await ppeLoad(); ppeStockHist(item); showStatus("pe-status", "ok", "Stock entry removed."); }
   catch (e) { showStatus("pe-msg", "err", errText(e)); }
 }

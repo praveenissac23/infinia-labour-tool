@@ -24,10 +24,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const dels = await p.$$('#sec [data-pdel]');
   const btn = dels[2];                                    // the second Bill 2
   await btn.click(); await sleep(300);
-  ck('first press asks', (await btn.textContent()).includes('Press again'));
-  await btn.click(); await sleep(1500);
+  ck('Delete asks in the standard box', await p.isVisible('#cfm:not(.hide)') && (await p.textContent('#cfm')).includes('Delete Bill 2?'));
+  await p.click('#cfm-ok'); await sleep(1500);
   const left = (await api(`/store/est/projects/${P}`)).clientpcs.filter(c => c.seq === 2).length;
-  ck('second press deletes it: one Bill 2 left', left === 1, left);
+  ck('Delete removes it: one Bill 2 left', left === 1, left);
   ck('no Twice mark any more', (await p.$$('#sec .st.a')).length === 0);
   await p.screenshot({ path: SH + '2_after.png', fullPage: false });
   ck('no page errors', !errs.length, errs);

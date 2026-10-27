@@ -37,12 +37,9 @@ SECTIONS["bills.ipa"] = async el => {
      bills.length ? `<div class="tw"><table class="t"><thead><tr><th>Bill</th><th>Issue date</th><th>Format</th><th class="r">Total due</th><th>Status</th><th>Last change</th><th></th></tr></thead><tbody>
       ${bills.map(b => `<tr class="rowc" data-ipa="${b.id}"><td><b>IPA ${esc(b.label || b.seq)}</b></td><td>${dt(b.issue_date)}</td><td class="small">${esc((fm(b.format_id) || {}).name || "")}</td>
         <td class="r"><b>${money(b.total_due)}</b></td><td>${st(b.status)}</td><td class="small muted">${esc(b.by)}${b.updated ? " · " + dt(b.updated) : ""}</td>
-        <td class="r"><button class="btn btn-ghost btn-sm" data-ipaopen="${b.id}">Open</button></td></tr>`).join("")}</tbody></table></div>` :
+        <td class="r nowrap"><button class="btn btn-ghost btn-sm" data-ipaopen="${b.id}">Open</button>${b.status === "Draft" || ST.meta.me.admin ? ` <button class="btn btn-plain btn-sm" data-ipadel="${b.id}">Delete</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` :
      `<div class="card empty">No bills yet. Press <b>+ New bill</b> - it starts from the uploaded format.</div>`) +
-    (formats.length ? `<div class="card" style="margin-top:14px"><h3>Bill formats${K ? " - " + esc(K.name) : ""}</h3><div class="tw"><table class="t"><thead><tr><th>Format</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
-      ${formats.map(f => `<tr><td><b>${esc(f.name)}</b></td><td class="small">${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td><td class="c">${f.lines}</td>
-        <td class="small">${f.same === f.formulas ? `<span class="st g">all ${f.formulas} formulas match</span>` : `<span class="st a">${f.same} of ${f.formulas} formulas match</span>`}</td>
-        <td class="c">${f.bills}</td><td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ks.length > 1 ? `<td><select class="sel-sm" data-fmmove="${f.id}" title="Move this format and its bills to another contract">${ks.map(k => `<option value="${k.id}" ${k.id === f.contract_id ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></td>` : ""}<td class="r"><button class="btn btn-ghost btn-sm" data-fmdel="${f.id}">Remove</button></td></tr>`).join("")}</tbody></table></div></div>` : "");
+    (formats.length ? fmtCards(formats, ks, K) : "");
   bindTools(el, () => SECTIONS["bills.ipa"](el));
   $$("[data-ctrpick]", el).forEach(b => b.onclick = () => { ctrSet(+b.dataset.ctrpick); SECTIONS["bills.ipa"](el); });
   const ca = $("#ctr-add", el); if (ca) ca.onclick = () => contractForm();
@@ -50,13 +47,53 @@ SECTIONS["bills.ipa"] = async el => {
   $$("[data-fmmove]", el).forEach(x => x.onchange = async () => { try { await PATCH(`/store/est/ipa/format/${x.dataset.fmmove}`, { contract_id: +x.value }); await reload(); toast(`Moved to ${ctrName(x.value)}`); } catch (e) { fail(e); } });
   $("#ipa-up", el).onclick = uploadFormat;
   const nb = $("#ipa-new", el); if (nb) nb.onclick = newBill;
-  $$("[data-ipa]", el).forEach(r => r.onclick = () => openBill(+r.dataset.ipa));
+  $$("[data-ipa]", el).forEach(r => r.onclick = e => { if (e.target.closest("[data-ipadel]")) return; openBill(+r.dataset.ipa); });
+  $$("[data-ipadel]", el).forEach(x => x.onclick = async e => {
+    e.stopPropagation();
+    const b = bills.find(y => y.id === +x.dataset.ipadel);
+    if (!(await confirmDelete(`Delete bill ${b.label || b.seq}?`, `${esc(b.status)} · total due AED ${money(b.total_due, false)}`))) return;
+    try { await DEL(`/store/est/ipa/bill/${b.id}`); toast(`Bill ${b.label || b.seq} deleted`); SECTIONS["bills.ipa"](el); } catch (y) { fail(y); }
+  });
   $$("[data-fmdel]", el).forEach(b => b.onclick = async e => {
     e.stopPropagation();
-    if (!confirmInline(b)) return;
-    try { await DEL(`/store/est/ipa/format/${b.dataset.fmdel}`); toast("Format removed"); SECTIONS["bills.ipa"](el); } catch (x) { fail(x); }
+    const f = formats.find(x => x.id === +b.dataset.fmdel);
+    if (!(await confirmDelete(f && f.current ? "Delete the bill format?" : `Delete previous bill ${f ? f.no[1] || f.no[0] : ""}?`,
+        `${esc(f ? f.filename : "")}${f && f.bills ? `<br><b>${f.bills} bill${f.bills === 1 ? "" : "s"} made on it go with it.</b>` : ""}`))) return;
+    try { await DEL(`/store/est/ipa/format/${b.dataset.fmdel}`); toast("Deleted"); SECTIONS["bills.ipa"](el); } catch (x) { fail(x); }
   });
+  $$("[data-fmview]", el).forEach(r => r.onclick = e => { if (e.target.closest("[data-fmdel],select")) return; viewFormat(+r.dataset.fmview); });
 };
+// The bill format = the uploaded workbook with the highest bill no. (each new bill is made from it); every other
+// workbook uploaded is a previous bill - listed to open and read, never used to make a bill.
+function fmtCards(formats, ks, K) {
+  const cur = formats.find(f => f.current) || formats[formats.length - 1];
+  const prev = formats.filter(f => f !== cur).sort((a, b) => (a.no[0] - b.no[0]) || (a.id - b.id));
+  const ctrSel = f => ks.length > 1 ? `<td><select class="sel-sm" data-fmmove="${f.id}" title="Move this workbook (and bills made on it) to another contract">${ks.map(k => `<option value="${k.id}" ${k.id === f.contract_id ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></td>` : "";
+  const chk = f => f.same === f.formulas ? `<span class="st g">all ${f.formulas} formulas match</span>` : `<span class="st a">${f.same} of ${f.formulas} formulas match</span>`;
+  return `<div class="card" style="margin-top:14px"><h3>Bill format${K ? " - " + esc(K.name) : ""} ${tip("The workbook each new bill is made from: the uploaded bill with the highest bill no. Upload a later bill and it becomes the format by itself; the one before moves to Previous bills.")}</h3>
+      <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th class="c">% lines</th><th>Checked against Excel</th><th class="c">Bills made</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
+      <tr class="rowc" data-fmview="${cur.id}" title="Open to read"><td><b>${esc(cur.no[1] || String(cur.no[0] || "-"))}</b></td><td>${esc(cur.filename)}</td><td class="small" title="${esc(cur.sheets.join(", "))}">${cur.sheets.length} sheets</td><td class="c">${cur.lines}</td>
+        <td class="small">${chk(cur)}</td><td class="c">${cur.bills}</td><td class="small muted">${esc(cur.by)} · ${dt(cur.on)}</td>${ctrSel(cur)}
+        <td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${cur.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${cur.id}">Delete</button></td></tr></tbody></table></div></div>
+    ${prev.length ? `<div class="card" style="margin-top:14px"><h3>Previous bills (uploaded) ${tip("Earlier bills uploaded as workbooks (from Previous records or Upload). Click one to read it sheet by sheet, as it was sent. They are kept to look at - new bills are made from the Bill format above.")}<span class="spacer"></span><span class="small muted">${prev.length} workbook${prev.length === 1 ? "" : "s"}</span></h3>
+      <div class="tw"><table class="t"><thead><tr><th>Bill no.</th><th>File</th><th>Sheets</th><th>Uploaded</th>${ks.length > 1 ? "<th>Contract</th>" : ""}<th></th></tr></thead><tbody>
+      ${prev.map(f => `<tr class="rowc" data-fmview="${f.id}" title="Open to read"><td><b>${esc(f.no[1] || String(f.no[0] || "-"))}</b></td><td>${esc(f.filename)}</td><td class="small" title="${esc(f.sheets.join(", "))}">${f.sheets.length} sheets</td>
+        <td class="small muted">${esc(f.by)} · ${dt(f.on)}</td>${ctrSel(f)}<td class="r nowrap"><button class="btn btn-ghost btn-sm" data-fmview="${f.id}">Open</button> <button class="btn btn-plain btn-sm" data-fmdel="${f.id}">Delete</button></td></tr>`).join("")}
+      </tbody></table></div></div>` : ""}`;
+}
+// A previous bill (or the format) to read: its sheets as sent, one at a time.
+async function viewFormat(fid, i = 0) {
+  let d; try { d = await GET(`/store/est/ipa/format/${fid}/sheet/${i}`); } catch (e) { return fail(e); }
+  const el = document.getElementById("big"), open = el && !el.classList.contains("hide") && el.dataset.ctx === "est.fmview";
+  if (!open) big(`Bill ${esc(d.no[1] || String(d.no[0] || ""))} <span class="muted small">${esc(d.file)} - as uploaded, to read</span>`, "", null, "est.fmview");
+  if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
+  const k = d.sheets.findIndex(x => x.i === d.i);
+  $("#b-tools").innerHTML = `<button class="btn btn-plain" id="fv-prev" ${k <= 0 ? "disabled" : ""}>&lsaquo;</button><select id="fv-pick">${d.sheets.map(x => `<option value="${x.i}" ${x.i === d.i ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><button class="btn btn-plain" id="fv-next" ${k >= d.sheets.length - 1 ? "disabled" : ""}>&rsaquo;</button>`;
+  $("#b-body").innerHTML = `<div class="ipa-card"><div class="muted small" style="margin-bottom:8px">Sheet ${k + 1} of ${d.sheets.length}</div><div class="ipa-sheet"><div class="ipa-sheet-in">${d.html}</div></div></div>`;
+  $("#fv-pick").onchange = e => viewFormat(fid, +e.target.value);
+  $("#fv-prev").onclick = () => k > 0 && viewFormat(fid, d.sheets[k - 1].i);
+  $("#fv-next").onclick = () => k < d.sheets.length - 1 && viewFormat(fid, d.sheets[k + 1].i);
+}
 function billsRedraw() { if (key() === "bills.ipa" && $("#sec")) SECTIONS["bills.ipa"]($("#sec")); }
 
 function uploadFormat() {
@@ -88,15 +125,13 @@ function uploadFormat() {
   }, { save: "Upload", bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="fm-file">The last bill as sent (Excel .xlsx) ${tip("The whole workbook: cover / summary and the sheets with the % of work done. It is kept on the server - every new bill is made from it, with the same layout, logo, stamps and formulas.")}</label><input type="file" id="fm-file" accept=".xlsx,.xlsm,.xls"></div></div>` });
 }
 
+// A new bill is made from the bill format (the highest bill uploaded) - nothing to pick.
 async function newBill() {
-  const fs = IPA.list.formats;
-  const make = async fid => {
-    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, format_id: fid, contract_id: IPA.list.contract_id || null });
-    toast("New bill started from the last one"); billsRedraw(); openBill(r.id);
-  };
-  if (fs.length === 1) { try { await make(fs[0].id); } catch (e) { fail(e); } return; }
-  modal("New bill", [{ k: "fid", label: "Format", type: "select", options: fs.map(f => f.name), value: fs[fs.length - 1].name, full: true }],
-    async v => { const f = fs.find(x => x.name === v.fid) || fs[fs.length - 1]; await make(f.id); }, { save: "Start the bill" });
+  const fs = IPA.list.formats, cur = fs.find(f => f.current) || fs[fs.length - 1];
+  try {
+    const r = await POST("/store/est/ipa/new", { project_id: ST.pid, format_id: cur.id, contract_id: IPA.list.contract_id || null });
+    toast(`New bill started from bill ${cur.no[1] || cur.no[0] || ""}`); billsRedraw(); openBill(r.id);
+  } catch (e) { fail(e); }
 }
 
 
@@ -528,7 +563,7 @@ function bindChain(m) {
     } catch (e) { fail(e); bt.disabled = false; }
   });
   $$("[data-unsign]", m).forEach(bt => bt.onclick = async () => {
-    if (!confirmInline(bt)) return;
+    if (!(await confirmDelete("Take back this signature?", "The bill goes back to waiting for this person.", "Take back"))) return;
     try { IPA.bill = await POST(`/store/est/ipa/bill/${IPA.bill.id}/sign`, { key: bt.dataset.unsign, undo: true }); toast("Signing taken back"); drawBill(); } catch (e) { fail(e); }
   });
 }
@@ -602,12 +637,12 @@ async function drawReview(m) {
     </div>
     ${chainCard(b)}
     <div class="ipa-card"><h3>The bill as it will print <span class="muted small">- the consultant's own sheets, this month's figures${allSigned ? "" : ", signatures once each person has signed"}</span></h3><div id="ipa-pv" class="ipa-pv"><div class="empty">Loading...</div></div></div>
-    <div class="ipa-card"><button class="btn btn-ghost" id="ipa-del">Remove this bill</button></div>
+    <div class="ipa-card"><button class="btn btn-ghost" id="ipa-del">Delete this bill</button></div>
     ${nextBtn("review")}`;
   bindNext(m);
   $("#ipa-st").onchange = e => setStatus(e.target.value);
   const sb = $("#ipa-submit"); if (sb) sb.onclick = () => setStatus("Submitted");
-  $("#ipa-del").onclick = async () => { if (!confirmInline($("#ipa-del"))) return; try { await DEL(`/store/est/ipa/bill/${b.id}`); toast("Bill removed"); closeBig(billsRedraw); } catch (x) { fail(x); } };
+  $("#ipa-del").onclick = async () => { if (!(await confirmDelete(`Delete bill ${billNo(b)}?`, `${esc(b.status)} · total due AED ${money(b.total_due, false)}`))) return; try { await DEL(`/store/est/ipa/bill/${b.id}`); toast("Bill removed"); closeBig(billsRedraw); } catch (x) { fail(x); } };
   bindChain(m);
   try {
     const t = await POST("/auth/download-token"); const tok = t.token || t.download_token;

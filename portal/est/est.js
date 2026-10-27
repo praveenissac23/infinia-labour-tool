@@ -186,7 +186,7 @@ window.estLeaveAll = async () => {
 function modal(title, fields, onSave, opts = {}) {
   $("#m-title").textContent = title;
   $("#m-body").innerHTML = (opts.top || "") + `<div class="frm">${fields.map(fieldHtml).join("")}</div>` + (opts.bottom || "");
-  $("#m-foot").innerHTML = (opts.del ? `<button class="btn btn-ghost left" id="m-del">Remove</button>` : "") +
+  $("#m-foot").innerHTML = (opts.del ? `<button class="btn btn-ghost left" id="m-del">Delete</button>` : "") +
     (opts.extra || "") + `<button class="btn btn-plain" id="m-cancel">Cancel</button><button class="btn btn-primary" id="m-save">${esc(opts.save || "Save")}</button>`;
   $(".mbox").classList.toggle("wide", !!opts.wide);
   $("#modal").classList.remove("hide");
@@ -200,14 +200,35 @@ function modal(title, fields, onSave, opts = {}) {
   };
   $("#m-save").onclick = save;
   $("#m-cancel").onclick = () => closeModal();
-  if (opts.del) $("#m-del").onclick = async () => { if (!confirmInline($("#m-del"))) return; try { await opts.del(); guardOff("modal"); closeModal(true); } catch (e) { fail(e); } };
+  if (opts.del) $("#m-del").onclick = async () => { if (!(await confirmDelete(`Delete - ${title}?`, opts.delWhat || ""))) return; try { await opts.del(); guardOff("modal"); closeModal(true); toast("Deleted"); } catch (e) { fail(e); } };
   if (opts.after) opts.after();
   if (opts.doc) docBar(opts.doc);
   // a form with nothing to save (save: "-") never asks
   if (opts.save === "-" || $("#m-save").disabled) guardOff("modal"); else guardOn("modal", $("#m-body"), save);
   $$("#m-body input").forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } }));
 }
-// A remove button asks once by changing its words, not with a browser box.
+// The one confirmation box for every delete in Estimation: says what goes, Cancel / Delete (red).
+function confirmDelete(title, detail = "", ok = "Delete") {
+  return new Promise(res => {
+    let el = document.getElementById("cfm");
+    if (!el) {
+      el = document.createElement("div"); el.id = "cfm"; el.className = "hide";
+      el.innerHTML = `<div class="lbox" role="alertdialog" aria-modal="true" aria-labelledby="cfm-t"><h3 id="cfm-t"></h3><p id="cfm-d"></p>
+        <div class="lfoot"><button class="btn btn-plain" id="cfm-no">Cancel</button><button class="btn btn-danger" id="cfm-ok"></button></div></div>`;
+      document.body.appendChild(el);
+    }
+    $("#cfm-t").textContent = title;
+    $("#cfm-d").innerHTML = (detail ? detail + "<br>" : "") + '<span class="muted">This cannot be undone.</span>';
+    $("#cfm-ok").textContent = ok;
+    const done = v => { el.classList.add("hide"); document.removeEventListener("keydown", key, true); res(v); };
+    const key = e => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); done(false); } };
+    $("#cfm-no").onclick = () => done(false); $("#cfm-ok").onclick = () => done(true);
+    el.onmousedown = e => { if (e.target === el) done(false); };
+    document.addEventListener("keydown", key, true);
+    el.classList.remove("hide"); setTimeout(() => $("#cfm-no").focus(), 20);
+  });
+}
+// (old) A remove button asks once by changing its words - kept only for anything not moved over yet.
 function confirmInline(btn) {
   if (btn.dataset.sure) return true;
   btn.dataset.sure = "1"; const t = btn.textContent; btn.textContent = "Press again to remove"; btn.classList.add("btn-primary");
@@ -907,7 +928,7 @@ function openSub(sid) {
       ${s.pcs.map(p => `<tr class="rowc" data-pc="${p.id}"><td class="nowrap"><b>PC ${pad(p.seq, 2)}</b>${p.pc_type !== "Interim" ? `<div class="small muted">${esc(p.pc_type)}</div>` : ""}</td><td class="small">${esc(p.inv_ref)}<div class="muted">${dt(p.inv_date || p.received)}</div></td><td class="r">${money(p.inv_amount)}</td>
         <td class="r">${money(p.work_cum)}${p.adv_amount ? `<div class="small muted">adv. ${money(p.adv_amount)}</div>` : ""}</td><td class="r neg">${p.adv_rec_cum ? "-" + money(p.adv_rec_cum) : money(0)}</td><td class="r neg">${p.ret_cum ? "-" + money(p.ret_cum) : money(0)}</td><td class="r neg">${p.other_cum ? "-" + money(p.other_cum) : money(0)}</td><td class="r">${money(p.ret_rel_cum)}</td>
         <td class="r">${money(p.net_cum)}</td><td class="r"><b>${money(p.this, false)}</b></td><td class="r">${money(p.payable, false)}</td><td class="r">${money(p.paid_amount)}</td><td>${st(p.status)}</td>
-        <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button>${p.status !== "Paid" || ST.meta.me.admin ? `<button class="btn btn-ghost btn-sm" data-pcdel="${p.id}" title="Remove this certificate (an invoice entered twice, or by mistake). The later certificates are numbered down.">Remove</button>` : ""}</td></tr>`).join("")}
+        <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button>${p.status !== "Paid" || ST.meta.me.admin ? `<button class="btn btn-ghost btn-sm" data-pcdel="${p.id}" title="Delete this certificate (an invoice entered twice, or by mistake). The later certificates are numbered down.">Delete</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">No certificates yet. Press <b>+ Invoice received</b> when the first invoice comes in.</div>`}</div>
       <div class="card"><h3>Item schedule (Appendix A) ${tip("The agreement's BOQ lines, set up once. Each certificate is then made line by line on the sheet: % done, measured size or quantity to date - the rest is worked out and printed as Appendix A.")}<span class="spacer"></span><button class="btn btn-primary btn-sm" id="s-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets). Every line comes in, checked against the sheet's totals - the file is not stored.">Upload</button><input type="file" id="s-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost btn-sm" id="s-paste">Paste from Excel</button><button class="btn btn-ghost btn-sm" id="s-items">${s.items ? "Edit schedule" : "Set up"}</button></h3>
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
@@ -928,8 +949,7 @@ function openSub(sid) {
     $$("[data-pcdel]").forEach(b => b.onclick = async e => {
       e.stopPropagation();
       const p = s.pcs.find(x => x.id === +b.dataset.pcdel);
-      if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = `Remove PC ${pad(p.seq, 2)}?`; b.classList.add("btn-primary");
-        setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Remove"; b.classList.remove("btn-primary"); } }, 3500); return; }
+      if (!(await confirmDelete(`Delete PC ${pad(p.seq, 2)} of ${s.name}?`, `Invoice ${esc(p.inv_ref || "-")} · AED ${money(p.payable, false)}. The later certificates are numbered down.`))) return;
       try { await DEL(`/store/est/subpcs/${p.id}`); await reload(); toast(`PC ${pad(p.seq, 2)} removed (${p.inv_ref || "no invoice no."})`); }
       catch (er) { fail(er); }
     });

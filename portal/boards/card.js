@@ -247,7 +247,7 @@ function wireCardModal(m, c) {
       const im = row.querySelector("[data-im]"); if (im) im.onclick = () => { const p = pop(im, "Item actions", `<button class="mi" data-a="card">Convert to card</button><button class="mi" data-a="copy">Copy text</button><button class="mi dng" data-a="del">Delete</button>`);
         p.querySelector('[data-a="card"]').onclick = async () => { closePops(); try { await POST(`/store/kb/items/${iid}/to-card`); await reloadBoard(true); loadFullCard(cid, true); toast("Converted to a card"); } catch (e) { fail(e); } };
         p.querySelector('[data-a="copy"]').onclick = () => { closePops(); copyText(it.text, "Item copied"); };
-        p.querySelector('[data-a="del"]').onclick = async () => { closePops(); try { await DEL(`/store/kb/items/${iid}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } }; };
+        p.querySelector('[data-a="del"]').onclick = () => { closePops(); confirmPop(im, "Delete item?", "The checklist item is removed for good.", "Delete", async () => { try { await DEL(`/store/kb/items/${iid}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e2) { fail(e2); } }); }; };
     });
     const add = sec.querySelector("[data-additem]");
     if (add) add.onclick = () => {
@@ -271,7 +271,7 @@ function wireCardModal(m, c) {
     const dl = row.querySelector("[data-adel]"); if (dl) dl.onclick = () => confirmPop(dl, "Delete attachment?", "Deleting an attachment is permanent. There is no undo.", "Delete", async () => { try { await DEL(`/store/kb/attachments/${aid}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } });
     row.querySelector("[data-acopy]").onclick = () => copyText(a.link ? a.url : location.origin + a.url, "Link copied");
   });
-  $$("[data-tdel]", m).forEach(b => b.onclick = async () => { try { await DEL(`/store/kb/time/${b.dataset.tdel}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } });
+  $$("[data-tdel]", m).forEach(b => b.onclick = () => confirmPop(b, "Delete time entry?", "The hours logged are taken off the card.", "Delete", async () => { try { await DEL(`/store/kb/time/${b.dataset.tdel}`); await loadFullCard(cid, true); reloadBoard(true); } catch (e) { fail(e); } }));
   $$("[data-unlink]", m).forEach(b => b.onclick = e => { e.stopPropagation(); saveCard(cid, { links: c.links.filter(x => x !== +b.dataset.unlink) }); });
   $$("[data-goc]", m).forEach(r => r.onclick = () => go(`#/b/${r.dataset.gob || S.board.id}/c/${r.dataset.goc}`));
   // comments

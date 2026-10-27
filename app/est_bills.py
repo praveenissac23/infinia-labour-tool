@@ -684,21 +684,91 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
             except ValueError:
                 full = {}
             m = {"sheets": [{"name": x["name"], "visible": x["visible"]} for x in full.get("sheets", [])],
-                 "map": {k: full.get("map", {}).get(k) for k in ("progress", "bill_no", "issue_date", "total_due")}}
+                 "map": {k: full.get("map", {}).get(k) for k in ("progress", "bill_no", "issue_date", "total_due")},
+                 "no": _fmt_no(full, f.filename)}
             _LIST_CACHE[f.id] = m
         mp = m.get("map", {})
-        out_f.append({"id": f.id, "contract_id": f.contract_id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
+        no = m["no"] if "no" in m else _fmt_no(m, f.filename)      # m is the full workbook when it was in use already
+        out_f.append({"id": f.id, "no": no or [0, ""], "contract_id": f.contract_id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
                       "by": users.get(f.created_by, ""), "formulas": chk.get("formulas", 0), "same": chk.get("same", 0),
                       "sheets": [s["name"] for s in m.get("sheets", []) if s["visible"]],
                       "lines": sum(len(t["lines"]) for t in mp.get("progress", [])), "bill_no": bool(mp.get("bill_no")),
                       "issue_date": bool(mp.get("issue_date")), "total_due": bool(mp.get("total_due")),
                       "bills": sum(1 for b in bills if b.format_id == f.id)})
+    # The format of a contract = the uploaded workbook with the highest bill no.; the others are previous bills
+    cur = {}
+    for x in out_f:
+        k = x["contract_id"] or 0
+        if k not in cur or (x["no"][0], x["id"]) > (cur[k]["no"][0], cur[k]["id"]):
+            cur[k] = x
+    for x in out_f:
+        x["current"] = cur.get(x["contract_id"] or 0) is x
     return {"formats": out_f, "statuses": STATUSES,
             "bills": [{"id": b.id, "seq": b.seq, "label": b.label, "issue_date": b.issue_date.isoformat() if b.issue_date else "",
                        "status": b.status, "total_due": round(b.total_due or 0, 2), "work_done": round(b.work_done or 0, 2), "format_id": b.format_id,
                        "contract_id": b.contract_id, "waits": _waits(b),
                        "by": users.get(b.updated_by or b.created_by, ""), "updated": (b.updated_at or b.created_at).isoformat() if (b.updated_at or b.created_at) else ""}
                       for b in bills]}
+
+
+def _fmt_no(full, filename=""):
+    """The bill no. of an uploaded workbook - from its bill no. cell ('7-R2' -> 7), else the file name
+    ('914 - IPA - 07 - R2.xlsx' -> 7): [number, as written]."""
+    raw = ""
+    try:
+        b = (full or {}).get("map", {}).get("bill_no")
+        if b:
+            sh = next((x for x in full["sheets"] if x["name"] == b["sheet"]), None)
+            cell = (sh or {}).get("cells", {}).get(f"{b['r']},{b['c']}") or {}
+            raw = cell.get("v")
+    except Exception:
+        raw = ""
+    def num(t):
+        t = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", str(t or "").strip(), flags=re.I)
+        m_ = re.search(r"(\d+)(?!.*\d)", t)
+        return int(m_.group(1)) if m_ else 0
+    if isinstance(raw, (int, float)) and raw:
+        return [int(raw), str(int(raw))]
+    n = num(raw)
+    if not n:
+        stem = re.sub(r"\.xls[xm]?$", "", filename or "", flags=re.I)
+        m_ = re.search(r"IPA\D*(\d+)", stem, re.I)
+        n = int(m_.group(1)) if m_ else num(stem)
+        raw = raw or (str(n) if n else "")
+    return [n, str(raw or "")]
+
+
+def _current_format(db, pid, cid=None):
+    """The format a new bill is made from: the workbook with the highest bill no. (not the one uploaded last)."""
+    q = db.query(EstBillFormat).filter(EstBillFormat.project_id == pid)
+    if cid:
+        q = q.filter(EstBillFormat.contract_id == int(cid))
+    best = None
+    for f in q.all():
+        n = (_LIST_CACHE.get(f.id) or {}).get("no")
+        if n is None:
+            try:
+                n = _fmt_no(json.loads(f.model or "{}"), f.filename)
+            except ValueError:
+                n = _fmt_no(None, f.filename)
+        if best is None or (n[0], f.id) > best[0]:
+            best = ((n[0], f.id), f)
+    return best[1] if best else None
+
+
+@router.get("/store/est/ipa/format/{fid}/sheet/{i}")
+def format_sheet(fid: int, i: int, db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """A previous bill as uploaded, one sheet at a time, to read - nothing typed in."""
+    fmt = _get(db, EstBillFormat, fid)
+    model = _model(fmt)
+    shown = [k for k, x in enumerate(model["sheets"]) if x.get("visible", True)]
+    if not shown:
+        raise HTTPException(404, "This workbook has no sheets to show.")
+    i = i if i in shown else shown[0]
+    values = BE.calculate(model, {})
+    html, w, h = BR.sheet_html(model, model["sheets"][i], values, {}, edit=False)
+    return {"html": html, "width": w, "height": h, "name": model["sheets"][i]["name"], "i": i, "css": BR.SHEET_CSS,
+            "sheets": [{"i": k, "name": model["sheets"][k]["name"]} for k in shown], "file": fmt.filename, "no": _fmt_no(model, fmt.filename)}
 
 
 @router.get("/store/est/ipa/bill/{bid}")
@@ -842,7 +912,7 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     q = db.query(EstBillFormat).filter(EstBillFormat.project_id == pid)
     if cid:
         q = q.filter(EstBillFormat.contract_id == int(cid))
-    fmt = _get(db, EstBillFormat, fid) if fid else q.order_by(EstBillFormat.id.desc()).first()
+    fmt = _get(db, EstBillFormat, fid) if fid else _current_format(db, pid, cid)
     if not fmt or fmt.project_id != pid:
         raise HTTPException(400, "Upload the bill format for this " + ("contract" if cid else "project") + " first.")
     last = (db.query(EstBill).filter(EstBill.format_id == fmt.id).order_by(EstBill.seq.desc(), EstBill.id.desc()).first())

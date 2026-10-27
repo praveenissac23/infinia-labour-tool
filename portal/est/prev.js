@@ -40,9 +40,8 @@ SECTIONS["prev.rec"] = el => {
   $$("[data-pskip]", el).forEach(btn => btn.onclick = () => { PREV.q[+btn.dataset.pskip].st = "skipped"; prevDraw(); prevRun(); });
   // Delete a record brought in by mistake (uploaded twice ...): pressed twice, the button asks once
   $$("[data-pdel]", el).forEach(btn => btn.onclick = async () => {
-    if (!btn.dataset.sure) { btn.dataset.sure = "1"; btn.textContent = "Press again to delete"; btn.classList.add("btn-primary");
-      setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.textContent = "Delete"; btn.classList.remove("btn-primary"); } }, 3500); return; }
     const [kind, id] = btn.dataset.pdel.split(":");
+    if (!(await confirmDelete(`Delete ${btn.dataset.what}?`, `It is taken out of the project${kind === "subpcs" ? " (the subcontractor's later PCs move up one number)" : ""}.`))) return;
     try { await DEL(`/store/est/${kind}/${id}`); await reload(); toast(`${btn.dataset.what} deleted`); } catch (e) { fail(e); }
   });
 };
