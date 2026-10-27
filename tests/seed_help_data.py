@@ -60,4 +60,15 @@ if not c.get("/store/kb/boards", headers=H).json().get("boards"):
             if ci == 0:
                 c.post(f"/store/kb/cards/{cd['id']}/time", headers=H, json={"hours": 2.5, "note": "Measured on site"})
     print("trello board:", bd.get("id"))
+# 5. one subcontractor certificate at each Accounts step: to verify, to send to the MD, with the MD
+from est_dummy import _models  # noqa: F401  (loaded with the app)
+import estimation as E2
+db = SessionLocal()
+pcs = db.query(E2.EstSubPC).filter(E2.EstSubPC.status == "MD approved").order_by(E2.EstSubPC.id).limit(3).all()
+db.close()
+for pc, steps in zip(pcs, [["CM approved"], ["CM approved", "Verified"], ["CM approved", "Verified", "Sent to MD"]]):
+    c.post(f"/store/est/subpcs/{pc.id}/step", headers=H, json={"step": "MD approved", "undo": True})
+    c.post(f"/store/est/subpcs/{pc.id}/step", headers=H, json={"step": "Verified", "undo": True})
+    for st in steps[1:]:
+        c.post(f"/store/est/subpcs/{pc.id}/step", headers=H, json={"step": st})
 print("est project for the pictures:", pid)

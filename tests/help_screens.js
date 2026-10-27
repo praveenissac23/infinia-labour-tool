@@ -50,6 +50,10 @@ const only = process.argv.slice(2);
   // Estimation pictures on the project with the most in it (914 when there)
   await p.evaluate(async () => { try { const m = await apiCall('/store/est/meta'); const pr = m.projects.find(x => x.code === '914') || m.projects[0]; if (pr) localStorage.setItem('est_pid', pr.id); } catch (e) {} });
   await p.reload(); await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3000);
+  // No "The app has been updated" bar on the pictures (the test server's build is not the one this browser saw)
+  await p.evaluate(() => { window.checkBuild = () => {}; const b = document.getElementById('build-bar'); if (b) b.remove(); });
+  p.on('framenavigated', () => {});
+  const noBar = () => p.evaluate(() => { const b = document.getElementById('build-bar'); if (b) b.remove(); }).catch(() => {});
 
   const guides = await p.evaluate(() => HELP_GUIDES.map(g => ({ id: g.id, title: g.title, n: g.steps.length, ok: HELP.allowed(g) })));
   const stale = [], made = {};
@@ -142,7 +146,7 @@ const only = process.argv.slice(2);
           d.textContent = i + 1; document.body.appendChild(d); });
         return { frame: !!fr, items };
       });
-      await p.screenshot({ path: path.join(OUT, `${sc.id}-1.jpg`), type: 'jpeg', quality: 68 });
+      await noBar(); await p.screenshot({ path: path.join(OUT, `${sc.id}-1.jpg`), type: 'jpeg', quality: 68 });
       await p.evaluate(() => document.querySelectorAll('.help-auto-badge').forEach(d => d.remove()));
       const go = sc.go || { page: sc.page, tab: sc.tab, ...(sc.sub ? { sub: sc.sub } : {}) };
       const first = { say: `This is ${sc.title}. The numbers on the picture match the list below.` };
@@ -181,7 +185,7 @@ const only = process.argv.slice(2);
         [x1, x2] = grow(x1, x2, 820, W); [y1, y2] = grow(y1, y2, 480, H);
         return { x: Math.round(x1), y: Math.round(y1), width: Math.round(x2 - x1), height: Math.round(y2 - y1) };
       });
-      await p.screenshot({ path: path.join(OUT, `${g.id}-${i + 1}.jpg`), type: 'jpeg', quality: 70, ...(clip ? { clip } : {}) });
+      await noBar(); await p.screenshot({ path: path.join(OUT, `${g.id}-${i + 1}.jpg`), type: 'jpeg', quality: 70, ...(clip ? { clip } : {}) });
       made[g.id].push(i + 1);
     }
     await p.evaluate(() => HELP.endTour());

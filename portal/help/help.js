@@ -165,6 +165,17 @@
       [{ kb: "planner" }, "Trello planner", "trello planner my week due"],
       [{ kb: "inbox" }, "Trello inbox", "trello inbox jot quick capture"],
     ].forEach(([g, l, h], i) => out.push({ id: "kb:" + i, kind: "Page", title: l, where: "Estimation › Trello", go: Object.assign({ page: "estimation", tab: "boards" }, g), hay: `estimation ${l} ${h}` }));
+    // Settings > General: one card each - found by its own name, landed on and lit up
+    const gen = (() => { try { const t = ALL_PAGES.settings && ALL_PAGES.settings.tabs.find(x => x.id === "general"); return !!(t && tabOk(t)); } catch (e) { return false; } })();
+    if (gen) [
+      ["#pg-notif-card", "My notifications", "notifications bell choose which turn off on pop up"],
+      ["#pg-push-card", "Notifications on this phone / computer", "push notifications phone mobile device allow send a test"],
+      ["#pg-agent-card", "Ask the app from Claude (INFI)", "claude infi agent connector ask questions ai"],
+      ["#pg-password-card", "Change my password", "password change reset login"],
+      ["#company-card", "Store in-charge and company details", "store in-charge company details"],
+      ["#signature-card", "Signature & stamp", "signature stamp invoice lpo sign"],
+      ["#pg-backup-card", "Backup", "backup download database copy"],
+    ].forEach(([el, l, h]) => out.push({ id: "st:" + el, kind: "Page", title: l, where: "Settings › General", go: { page: "settings", tab: "general" }, el, hay: `settings ${l} ${h}` }));
     // Tasks: what each written guide is for, opened at the page it happens on.
     (window.HELP_GUIDES || []).filter(allowed).forEach(g => out.push({ id: "fn:" + g.id, kind: "Task", title: g.title.replace(/^How to /i, "").replace(/^\w/, c => c.toUpperCase()),
       where: g.area, go: g.go, hay: `${g.title} ${g.words || ""} ${g.area || ""}`, guide: g }));
@@ -196,7 +207,7 @@
   // type in - even when that page was already open.
   async function arrive(x) {
     await goTo({ go: x.go });
-    const steps = (x.guide && x.guide.steps || []).filter(st => st.el);
+    const steps = x.el ? [{ el: x.el }] : (x.guide && x.guide.steps || []).filter(st => st.el);
     let el = null;
     if (steps.length) el = find(steps[0].el) || await waitFor(steps[0].el, 2500);
     if (!el) { window.scrollTo({ top: 0 }); return; }

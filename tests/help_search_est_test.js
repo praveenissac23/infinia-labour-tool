@@ -13,7 +13,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const results = async q => { await p.fill('#help-search', ''); await p.type('#help-search', q, { delay: 15 }); await sleep(400); return p.$$eval('#help-results .help-r', x => x.map(e => e.textContent.replace(/\s+/g, ' ').trim())); };
   const want = { 'submittal': /Submittals.*Estimation › Projects/, 'invoice tracker': /Invoice tracker/, 'bill': /Bills to client/, 'previous records': /Previous records/,
                  'send to md': /sends it to the MD/i, 'add line bill': /new line or section to a bill/i, 'rfi': /RFI log/, 'calendar': /Trello calendar/, 'power ups': /power-ups/i,
-                 'time tracking': /Log time on a Trello card|power-ups/i, 'authority payments': /glance|Project dashboard/i, 'lpo description': /long description/i, 'notifications': /notifications/i };
+                 'time tracking': /Log time on a Trello card|power-ups/i, 'authority payments': /glance|Project dashboard/i, 'lpo description': /long description/i, 'notifications': /notifications/i,
+                 'signature': /Signature & stamp/, 'phone notifications': /Notifications on this phone/, 'backup': /Backup/ };
   for (const [q, re] of Object.entries(want)) { const r = await results(q); ck(`search "${q}" finds it`, r.some(x => re.test(x)), r.slice(0, 5)); }
   // go there: Submittals
   await results('submittals'); await p.evaluate(() => { const r = [...document.querySelectorAll('#help-results .help-r')].find(e => /Submittals/.test(e.textContent) && /Go to/.test(e.textContent)); r && r.click(); }); await sleep(4000);
@@ -30,6 +31,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const st = await p.evaluate(() => { const r = document.querySelector('.help-ring'); return { missing: HELP.state.missing, shown: r && r.style.display !== 'none', box: r && r.getBoundingClientRect().toJSON() }; });
   ck('Show me circles "+ Line" inside the Estimation frame (a bill open on Work done)', !st.missing && st.shown && st.box.left > 220 && st.box.top > 100, st);
   await p.screenshot({ path: '/tmp/claude-0/hs_2_showme.png' });
+  await results('change password'); await p.evaluate(() => { const r = [...document.querySelectorAll('#help-results .help-r')].find(e => /Change my password/.test(e.textContent)); r && r.click(); }); await sleep(2000);
+  ck('Change my password: lands on Settings with the password card in view', await p.evaluate(() => { const c = document.getElementById('pg-password-card'); const r = c && c.getBoundingClientRect(); return !!(r && r.top < innerHeight && r.bottom > 0 && c.offsetParent); }));
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);
 })();
