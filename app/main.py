@@ -2705,15 +2705,63 @@ def _report_source_rows(db: Session, month_year: str, date_from: str, date_to: s
             d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
             q = q.filter(models.DailyRow.full_date <= d2)
             filters["date_to"] = d2
-        daily_rows = q.all()
+        daily_rows = _with_day_sites(db, q.all())
         cycles = {r.month_year for r in daily_rows} or {month_year}
         summaries2 = (db.query(models.EmployeeSummary)
                         .filter(models.EmployeeSummary.month_year.in_(cycles)).all())
         return daily_rows, summaries2, filters
 
-    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    daily_rows = _with_day_sites(db, db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all())
     summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
     return daily_rows, summaries2, filters
+
+
+class _SitedDay:
+    """A day as the reports read it: the stored row, with the site it is charged to."""
+    __slots__ = ("_r", "site", "engineer")
+
+    def __init__(self, r, site, engineer):
+        self._r, self.site, self.engineer = r, site, engineer
+
+    def __getattr__(self, k):
+        return getattr(self._r, k)
+
+
+def _with_day_sites(db, rows):
+    """Every paid or unpaid day is charged to a site (Praveen, 28 Oct 2026: "even if it is leave or sick,
+    I mark a site - so the cost can be allocated to the site itself").
+
+    A day saved with its site keeps it. A day saved without one - sick, medical, leave, absent, a rest day -
+    is charged to the site the same worker was at nearest before it in that cycle (or, at the start of a
+    cycle, the first site after it), instead of a "No site" line at the foot of the report. A day after a
+    man's leaving date (Terminated) costs nothing and is left out. Only the report's copy changes;
+    the attendance itself is never touched."""
+    from collections import defaultdict
+    # a day after he left is not part of any site's cost, nor a "no site" line
+    rows = [r for r in rows if not ((r.am or "") == "Terminated" and (r.pm or "") == "Terminated" and not (r.site or "").strip())]
+    blank = [r for r in rows if not (r.site or "").strip() and (r.am or "") != "Terminated"]
+    if not blank:
+        return rows
+    keys = {(r.emp_no, r.month_year) for r in blank}
+    emps, cycles = {k[0] for k in keys}, {k[1] for k in keys}
+    known = defaultdict(list)            # (emp, cycle) -> [(date, site, engineer)] in date order
+    for emp_no, cyc, d, site, eng in (db.query(models.DailyRow.emp_no, models.DailyRow.month_year, models.DailyRow.full_date,
+                                                models.DailyRow.site, models.DailyRow.engineer)
+                                         .filter(models.DailyRow.emp_no.in_(emps), models.DailyRow.month_year.in_(cycles),
+                                                 models.DailyRow.site.isnot(None), models.DailyRow.site != "")
+                                         .order_by(models.DailyRow.full_date).all()):
+        if (emp_no, cyc) in keys and (site or "").strip():
+            known[(emp_no, cyc)].append((d, site.strip(), eng or ""))
+    out = []
+    for r in rows:
+        if (r.site or "").strip() or (r.am or "") == "Terminated":
+            out.append(r)
+            continue
+        days = known.get((r.emp_no, r.month_year)) or []
+        before = [x for x in days if x[0] <= r.full_date]
+        pick = before[-1] if before else (days[0] if days else None)
+        out.append(_SitedDay(r, pick[1], r.engineer or pick[2]) if pick else r)
+    return out
 
 
 @app.get("/reports/custom")
@@ -13114,7 +13162,8 @@ def daily_report_parts(db, day, report="summary", site="", trade=""):
     if report not in DAILY_REPORTS:
         raise HTTPException(status_code=400, detail="No such daily report.")
     site, trade = (site or "").strip(), (trade or "").strip().upper()
-    rows = db.query(models.DailyRow).filter(models.DailyRow.full_date == day).all()
+    # a man on leave or sick is counted under his site too (the nearest site he was marked at)
+    rows = _with_day_sites(db, db.query(models.DailyRow).filter(models.DailyRow.full_date == day).all())
     marked = [r for r in rows if _day_status(r) and _day_status(r) != "Terminated"]
     staff = {e.emp_no: e for e in _labour(db.query(models.Employee)).all()}
     trade_of = lambda r: ((staff.get(r.emp_no).trade if staff.get(r.emp_no) else "") or r.trade or "").strip().upper()
