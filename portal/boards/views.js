@@ -44,8 +44,8 @@ function calendarView(vb) {
   const td = isoDay(new Date());
   const cells = [];
   for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const k = isoDay(d);
-    cells.push(`<div class="day ${CAL.mode === "month" && d.getMonth() !== CAL.m ? "o" : ""} ${k === td ? "td" : ""}" data-day="${k}"><span class="dn">${d.getDate() === 1 ? MON[d.getMonth()] + " " : ""}${d.getDate()}</span>
-      ${(by[k] || []).sort((a, b) => (a.due || "").localeCompare(b.due || "")).map(c => `<div class="ev ${c.due_complete ? "done" : dueState(c) === "over" || dueState(c) === "past" ? "overdue" : ""}" data-c="${c.id}" draggable="true" title="${esc(c.title)}" style="${c.labels[0] ? "border-left-color:" + labColor((S.board.labels.find(l => l.id === c.labels[0]) || {}).color) : ""}">${c.due && c.due.includes("T") && !["00:00", "17:00"].includes(c.due.slice(11, 16)) ? `<b>${fmtDue(c.due).split(", ").pop()}</b> ` : ""}${esc(c.title)}</div>`).join("")}</div>`); }
+    cells.push(`<div class="day ${CAL.mode === "month" && (by[k] || []).length > 3 ? "busy" : ""} ${CAL.mode === "month" && d.getMonth() !== CAL.m ? "o" : ""} ${k === td ? "td" : ""}" data-day="${k}"><span class="dn">${d.getDate() === 1 ? MON[d.getMonth()] + " " : ""}${d.getDate()}</span>
+      ${(by[k] || []).sort((a, b) => (a.due || "").localeCompare(b.due || "")).map(c => `<div class="ev ${c.due_complete ? "done" : dueState(c) === "over" || dueState(c) === "past" ? "overdue" : ""}" data-c="${c.id}" draggable="true" title="${esc(c.title)}" style="${c.labels[0] ? "border-left-color:" + labColor((S.board.labels.find(l => l.id === c.labels[0]) || {}).color) : ""}">${c.due && c.due.includes("T") && !["00:00", "17:00"].includes(c.due.slice(11, 16)) ? `<b>${fmtDue(c.due).split(", ").pop()}</b> ` : ""}${esc(c.title)}</div>`).join("")}${CAL.mode === "month" && (by[k] || []).length > 3 ? `<button class="more" data-more>+${by[k].length - 2} more</button>` : ""}</div>`); }
   const title = CAL.mode === "week" ? `Week of ${MON[start.getMonth()]} ${start.getDate()}` : `${["January","February","March","April","May","June","July","August","September","October","November","December"][CAL.m]} ${CAL.y}`;
   const noDate = visibleCards().filter(c => !c.due && !c.start).length;
   vb.innerHTML = `<div class="vpanel calv"><div class="ch"><button class="b" data-today>Today</button><button class="x" data-p>${ic("left")}</button><button class="x" data-n>${ic("right")}</button><h3>${title}</h3><span style="flex:1"></span>
@@ -54,6 +54,9 @@ function calendarView(vb) {
     <div class="grid" style="${CAL.mode === "week" ? "grid-auto-rows:minmax(400px,1fr)" : ""}">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>`;
   const shift = n => { if (CAL.mode === "week") { const t = CAL.week || new Date(); t.setDate(t.getDate() + 7 * n); CAL.week = t; } else { CAL.m += n; if (CAL.m < 0) { CAL.m = 11; CAL.y--; } if (CAL.m > 11) { CAL.m = 0; CAL.y++; } } calendarView(vb); };
   vb.querySelector("[data-p]").onclick = () => shift(-1); vb.querySelector("[data-n]").onclick = () => shift(1);
+  // a busy day (four or more) shows two cards and "+3 more"; pressing it opens the day out to show them all (again folds it)
+  $$("[data-more]", vb).forEach(b => b.onclick = e => { e.stopPropagation(); const d = b.closest(".day"); const open = d.classList.toggle("all");
+    b.textContent = open ? "Show less" : `+${d.querySelectorAll(".ev").length - 2} more`; });
   vb.querySelector("[data-today]").onclick = () => { CAL.y = new Date().getFullYear(); CAL.m = new Date().getMonth(); CAL.week = new Date(); calendarView(vb); };
   $$("[data-mode]", vb).forEach(b => b.onclick = () => { CAL.mode = b.dataset.mode; calendarView(vb); });
   $$(".ev", vb).forEach(e => { e.onclick = () => go(`#/b/${S.board.id}/c/${e.dataset.c}`); e.ondragstart = ev => ev.dataTransfer.setData("text/plain", e.dataset.c); });
