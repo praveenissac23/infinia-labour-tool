@@ -355,7 +355,8 @@ def chat_bye(payload: dict = Body(default={}), db: Session = Depends(get_db)):
     if s:
         s.last_seen = _now() - timedelta(seconds=ONLINE_FOR + 1)
         db.commit()
-    remove_expired(db, only_user=user.id)
+    if not payload.get("closing"):      # a tab closing only shows him offline; if another tab of his is still open,
+        remove_expired(db, only_user=user.id)   # its next ask shows him online again and keeps his files
     return {"ok": True}
 
 

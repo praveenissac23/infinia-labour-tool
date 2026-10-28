@@ -680,9 +680,12 @@
     if ($pick.style.display !== "block" && !S.edit && !document.querySelector(".modal.show")) close(); } });
 
   // signing out: this person's files go at once, and he shows offline straight away
-  const bye = () => { const t = tok(); if (!t) return;
-    try { fetch((typeof API !== "undefined" ? API : "") + "/store/chat/bye", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t }) }); } catch (e) {} };
+  const bye = closing => { const t = tok(); if (!t) return;
+    try { fetch((typeof API !== "undefined" ? API : "") + "/store/chat/bye", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t, closing: !!closing }) }); } catch (e) {} };
   if (typeof window.doLogout === "function") { const orig = window.doLogout; window.doLogout = function () { bye(); return orig.apply(this, arguments); }; }
+  // closing the window or tab: offline at once (not after the 70 seconds it took before)
+  window.addEventListener("pagehide", () => bye(true));
+  window.addEventListener("pageshow", e => { if (e.persisted) poll(); });
 
   drawBell();
   window.CHAT = { open, close, poll, state: S };

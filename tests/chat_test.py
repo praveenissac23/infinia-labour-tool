@@ -112,6 +112,15 @@ ck('removes his files at once', c.get(f3['file']['url']).status_code == 404)
 st = c.get('/store/chat/state', headers=A).json()
 ck('and he no longer shows online', not {u['username']: u['online'] for u in st['users']}['admin'])
 ck('a made-up sign-in does nothing', c.post('/store/chat/bye', json={'token': 'x'}).json().get('ok') is False)
+# closing the window (not signing out): offline at once, files kept while another tab of his is open
+c.get('/store/chat/state', headers=P)
+f4 = c.post('/store/chat/upload', data={'room': 'all'}, files={'file': ('n2.txt', b'hello', 'text/plain')}, headers=P).json()
+ck('online before closing', {u['username']: u['online'] for u in c.get('/store/chat/state', headers=A).json()['users']}['admin'])
+ck('closing the window', c.post('/store/chat/bye', json={'token': tokP, 'closing': True}).json().get('ok'))
+ck('shows offline straight away', not {u['username']: u['online'] for u in c.get('/store/chat/state', headers=A).json()['users']}['admin'])
+ck('his file is not removed by a tab closing', c.get(f4['file']['url']).status_code == 200)
+c.get('/store/chat/state', headers=P)
+ck('another tab of his still open: online again on its next ask', {u['username']: u['online'] for u in c.get('/store/chat/state', headers=A).json()['users']}['admin'])
 print(f"{len(FAIL)} FAILED" if FAIL else 'ALL PASS')
 
 # ---- the phone is told at once, only when the person is away from the portal ----
