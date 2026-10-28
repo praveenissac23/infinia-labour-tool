@@ -2822,7 +2822,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </table>
             </div>
             <div class="form-row" style="margin-top:8px; align-items:center; gap:10px;">
-              <button class="btn btn-primary" data-main onclick="lpoFromTicked()">Generate LPO from ticked</button>
+              <button class="btn btn-primary" onclick="lpoFromTicked()">Generate LPO from ticked</button>
               <span id="lpo-pending-note" style="font-size:12px; color:#888;"></span>
             </div>
           </div>
@@ -13477,8 +13477,8 @@ function renderLpoLines() {
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
             style="width:100%;" title="${esc(l.description)}"></td>
-      <td><textarea class="lpo-d2" rows="1" placeholder="e.g. price/week - or a full description: Enter for a new line"
-            title="Printed under the material. Enter = new line, an empty line = a gap, **words** = bold."
+      <td><textarea class="lpo-d2" rows="1" placeholder="Type the description as it should print on the LPO:&#10;• Enter = a new line&#10;• Enter twice = a blank gap between parts&#10;• **two stars each side** = bold, e.g. **Size:** 20mm&#10;• Start a line with - or • for a point"
+            title="Printed under the material, exactly as typed. Enter = a new line. Enter twice = a blank gap. **two stars each side** = bold (e.g. **Size:** 20mm). A line starting with - or • prints as a point."
             oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.qty)}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
