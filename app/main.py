@@ -4648,6 +4648,17 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None, location: 
           .filter(models.StoreMovement.kind.in_(("in", "adjust")),
                   models.StoreMovement.qty > 0)
           .group_by(models.StoreMovement.item_id, models.StoreMovement.owner_id).all())
+    # Each delivery on its own: 50 ledgers on the 1st and 10 more a week later are two hires, out 27 and
+    # 20 days - not 60 out since the 1st. What has gone back is taken off the oldest first (the first in
+    # is the first returned), so the dates left are those of what is still standing.
+    receipts = {}
+    M_ = models.StoreMovement
+    q_rec = db.query(M_.item_id, M_.owner_id, M_.moved_on, M_.qty).filter(M_.kind.in_(("in", "adjust")), M_.qty > 0,
+                                                                         M_.item_id.in_({k[0] for k in held}))
+    if upto is not None:
+        q_rec = q_rec.filter(M_.moved_on <= upto)
+    for i, o, d, q in q_rec.order_by(M_.moved_on, M_.id).all():
+        receipts.setdefault((i, o), []).append((d, float(q or 0)))
     items = {i.id: i for i in db.query(models.StoreItem).all()}
     sups = {s.id: s for s in db.query(models.Supplier).all()}
     today = _dubai_today()
@@ -4655,6 +4666,19 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None, location: 
     for (item_id, whose), qty in held.items():
         it, sup = items.get(item_id), sups.get(whose)
         since = firsts.get((item_id, whose)) or firsts.get((item_id, None))
+        recs = receipts.get((item_id, whose)) or receipts.get((item_id, None)) or []
+        batches, left = [], qty
+        for d, q in reversed(recs):              # the newest deliveries are the ones still out
+            if left <= 1e-9:
+                break
+            take = min(q, left)
+            batches.append({"since": d.isoformat(), "qty": round(take, 2), "days": (today - d).days})
+            left -= take
+        if left > 1e-9 and since:                # more in hand than the deliveries on file explain
+            batches.append({"since": since.isoformat(), "qty": round(left, 2), "days": (today - since).days})
+        batches.sort(key=lambda b: b["since"])
+        if batches:
+            since = date.fromisoformat(batches[0]["since"])
         out.append({
             "item_id": item_id,
             "code": it.code if it else "", "name": it.name if it else "(removed)",
@@ -4666,6 +4690,8 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None, location: 
             "qty": round(qty, 2),
             "since": since.isoformat() if since else "",
             "days": (today - since).days if since else 0,
+            # one entry a delivery still out: when it came, how many, how long
+            "batches": batches,
             # Where it is standing, so a rental can be counted against
             # the site holding it rather than one number for everywhere.
             "by_location": where.get((item_id, whose), {}),
@@ -5364,15 +5390,24 @@ def _rental_report_rows(db: Session, location: str = None, supplier: str = ""):
     for r in _on_rent(db, location=location):
         if want and want not in (r["supplier"] or "").lower():
             continue
-        for loc, qty in sorted(r["by_location"].items()):
+        locs = sorted(r["by_location"].items())
+        if len(locs) == 1 and len(r.get("batches") or []) > 1:
+            # one place, several deliveries: a line for each delivery, its own date and days
+            for b in r["batches"]:
+                rows.append({"Supplier": r["supplier"], "Material": r["name"], "Unit": r["unit"] or "",
+                             "Quantity on rent": b["qty"], "Where": locs[0][0] or "Central store",
+                             "Taken on": b["since"], "Days on rent": b["days"]})
+            continue
+        many = len(r.get("batches") or []) > 1
+        for loc, qty in locs:
             rows.append({
                 "Supplier": r["supplier"],
                 "Material": r["name"],
                 "Unit": r["unit"] or "",
                 "Quantity on rent": qty,
                 "Where": loc or "Central store",
-                "Taken on": r["since"] or "-",
-                "Days on rent": r["days"] or 0,
+                "Taken on": "\n".join(f'{b["qty"]:g} on {b["since"]}' for b in r["batches"]) if many else (r["since"] or "-"),
+                "Days on rent": "\n".join(f'{b["qty"]:g}: {b["days"]} days' for b in r["batches"]) if many else (r["days"] or 0),
             })
     rows.sort(key=lambda x: (x["Supplier"].lower(), x["Material"].lower(), x["Where"]))
     return rows
@@ -6551,17 +6586,21 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         rows = []
         for r in _on_rent(db):
             i = items.get(r["item_id"])
-            start = (i.rental_start if (i and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None)
-            days = (today - start).days if start else None
             rate = (i.rental_rate if i else 0) or 0
-            est = round(days * rate, 2) if (days is not None and i and i.rental_period == "day" and rate) else None
             where = ", ".join(f"{loc or 'store'}: {q:g}" for loc, q in sorted(r["by_location"].items())) or "-"
-            rows.append({"code": r["code"], "name": r["name"], "supplier": r["supplier"],
-                          "rate": rate or None, "period": (i.rental_period if i else "") or "",
-                          "start": start.isoformat() if start else "",
-                          "due": i.rental_due.isoformat() if (i and i.rental_due) else "",
-                          "days_on_hire": days, "est_cost": est, "where": where, "qty": r["qty"],
-                          "overdue": bool(i and i.rental_due and i.rental_due < today)})
+            # a line for each delivery still out, each with its own start and days (one delivery: as before)
+            parts = r.get("batches") if len(r.get("batches") or []) > 1 else [None]
+            for n, b in enumerate(parts):
+                start = date.fromisoformat(b["since"]) if b else ((i.rental_start if (i and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None))
+                days = (today - start).days if start else None
+                qty = b["qty"] if b else r["qty"]
+                est = round(days * rate * (qty if b else 1), 2) if (days is not None and i and i.rental_period == "day" and rate) else None
+                rows.append({"code": r["code"], "name": r["name"], "supplier": r["supplier"],
+                              "rate": rate or None, "period": (i.rental_period if i else "") or "",
+                              "start": start.isoformat() if start else "",
+                              "due": i.rental_due.isoformat() if (i and i.rental_due) else "",
+                              "days_on_hire": days, "est_cost": est, "where": where if n == 0 else "", "qty": qty,
+                              "overdue": bool(i and i.rental_due and i.rental_due < today)})
         return {"title": "Rented equipment", "rows": sorted(rows, key=lambda r: (not r["overdue"], r["due"] or ""))}
 
 
@@ -6608,17 +6647,20 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
             i = items.get(r["item_id"])
             whose = r["supplier_id"]
             lost = lost_by.get((r["item_id"], whose), 0) + (lost_by.get((r["item_id"], None), 0) if r["item_id"] in rentals else 0)
-            since = (i.rental_start if (i and i.item_type == "rental" and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None)
             at = r["by_location"]
-            rows.append({"code": r["code"], "name": r["name"], "unit": r["unit"],
-                          "hired_from": r["supplier"] if whose else ((i.rental_supplier if i else "") or "not recorded"),
-                          "on_hire": r["qty"],
-                          "in_store": round(at.get(CENTRAL_LABEL, 0) + at.get(CENTRAL, 0), 2),
-                          "by_site": {loc: q for loc, q in at.items() if loc not in (CENTRAL, CENTRAL_LABEL)},
-                          "lost_damaged": round(lost, 2) if lost else 0,
-                          "since": since.isoformat() if since else "-",
-                          "due_back": i.rental_due.isoformat() if (i and i.rental_due) else "no date set",
-                          "days_out": (_dubai_today() - since).days if since else ""})
+            parts = r.get("batches") if len(r.get("batches") or []) > 1 else [None]
+            for n, b in enumerate(parts):
+                since = date.fromisoformat(b["since"]) if b else ((i.rental_start if (i and i.item_type == "rental" and i.rental_start) else None) or (date.fromisoformat(r["since"]) if r["since"] else None))
+                first = n == 0
+                rows.append({"code": r["code"], "name": r["name"], "unit": r["unit"],
+                              "hired_from": r["supplier"] if whose else ((i.rental_supplier if i else "") or "not recorded"),
+                              "on_hire": b["qty"] if b else r["qty"],
+                              "in_store": round(at.get(CENTRAL_LABEL, 0) + at.get(CENTRAL, 0), 2) if first else "",
+                              "by_site": {loc: q for loc, q in at.items() if loc not in (CENTRAL, CENTRAL_LABEL)} if first else "",
+                              "lost_damaged": (round(lost, 2) if lost else 0) if first else "",
+                              "since": since.isoformat() if since else "-",
+                              "due_back": i.rental_due.isoformat() if (i and i.rental_due) else "no date set",
+                              "days_out": (_dubai_today() - since).days if since else ""})
         return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
 
     if kind == "lost":
@@ -6716,6 +6758,7 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
     if ca and ca.tzinfo is None:
         ca = ca.replace(tzinfo=timezone.utc)      # the clock is UTC; the browser shows Dubai time
     d["created_at"] = ca.isoformat() if ca else None
+    d["created_by"] = mr.created_by
     for i, ln in enumerate(mr.lines):
         d["lines"][i]["item_code"] = ln.item.code if ln.item else ""
         d["lines"][i]["item_name"] = ln.item.name if ln.item else (ln.description or "")
@@ -6742,7 +6785,19 @@ def list_material_requests(status: str = None, site: str = None,
         q = q.filter(models.MaterialRequest.requested_on >= datetime.strptime(date_from, "%Y-%m-%d").date())
     if date_to:
         q = q.filter(models.MaterialRequest.requested_on <= datetime.strptime(date_to, "%Y-%m-%d").date())
-    return [_mr_out(m) for m in q.order_by(models.MaterialRequest.id.desc()).all()]
+    rows = q.order_by(models.MaterialRequest.id.desc()).all()
+    office = user.role == "admin" or "approvals" in effective_permissions(user)
+    with_lpo = {rid for (rid,) in db.query(models.PurchaseOrder.request_id).filter(models.PurchaseOrder.request_id.isnot(None)).distinct()}
+    out = []
+    for m in rows:
+        d = _mr_out(m)
+        # may the person looking correct or delete it (his own, or anyone's for the office, while untouched)
+        untouched = ((m.status or "pending") == "pending" and m.id not in with_lpo
+                     and all((l.status or "pending") == "pending" and not (l.qty_received or 0) and not l.supplier_id for l in m.lines))
+        d["can_edit"] = untouched and (office or not m.created_by or m.created_by == user.id)
+        d["mine"] = m.created_by == user.id
+        out.append(d)
+    return out
 
 
 @app.get("/store/requests/{req_id}/deliveries")
@@ -6825,6 +6880,18 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
     )
     db.add(mr)
     db.flush()
+    created = _mr_add_lines(db, mr, lines)
+    db.commit()
+    db.refresh(mr)
+    log_action(db, user.id, "material_request", f"{mr.ref} - {len(lines)} item(s)")
+    out = _mr_out(mr)
+    if created:
+        out["new_items"] = created
+    return out
+
+
+def _mr_add_lines(db, mr, lines):
+    """The materials of a request, as asked for. Returns the materials that joined the item list."""
     created = []
     for l in lines:
         # The requester's own unit wins. Overwriting "tonne" with the
@@ -6852,9 +6919,60 @@ def create_material_request(payload: schemas.MaterialRequestIn, db: Session = De
                                            qty_approved=l.qty_approved or 0, unit=unit,
                                            est_cost=l.est_cost or 0, notes=l.notes,
                                            purpose=l.purpose))
+    return created
+
+
+def _mr_untouched(db, mr):
+    """Nothing has happened to the request yet: still waiting on the office, no material approved, ordered or
+    received, no LPO raised from it. Until then the person who sent it may correct it or take it back."""
+    if (mr.status or "pending") != "pending":
+        return False
+    for l in mr.lines:
+        if (l.status or "pending") != "pending" or (l.qty_received or 0) > 0 or l.supplier_id:
+            return False
+    if db.query(models.PurchaseOrder.id).filter(models.PurchaseOrder.request_id == mr.id).first():
+        return False
+    return True
+
+
+def _mr_may_change(db, mr, user):
+    """The office (Approvals) may change any request; the person who raised it only his own, while untouched."""
+    office = user.role == "admin" or "approvals" in effective_permissions(user)
+    if not _mr_untouched(db, mr):
+        raise HTTPException(status_code=400, detail=f"{mr.ref} has already been " +
+                            ("approved or ordered" if (mr.status or "pending") != "pending" else "taken up by the office") +
+                            " - ask the office to change it.")
+    if not office and mr.created_by and mr.created_by != user.id:
+        raise HTTPException(status_code=403, detail=f"{mr.ref} was sent by someone else - only they or the office can change it.")
+
+
+@app.put("/store/requests/{req_id}")
+def edit_material_request(req_id: int, payload: schemas.MaterialRequestIn, db: Session = Depends(get_db),
+                          user: models.User = Depends(require_any_screen("requests", "approvals"))):
+    """Correct a request already sent - a wrong quantity, a material missed, the wrong site - while the office
+    has not acted on it. Same number, same date raised; the materials are replaced by the corrected list."""
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _mr_may_change(db, mr, user)
+    lines = [l for l in payload.lines if l.qty_requested and l.qty_requested > 0]
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add at least one material with a quantity - or delete the request.")
+    for l in lines:
+        if not l.item_id and not (l.description or "").strip():
+            raise HTTPException(status_code=400, detail="Every line needs an item or a description.")
+    mr.site = payload.site
+    mr.requested_by = _person_name(payload.requested_by) or mr.requested_by
+    mr.needed_by = payload.needed_by
+    mr.urgency = payload.urgency
+    mr.notes = payload.notes
+    for old in list(mr.lines):
+        db.delete(old)
+    db.flush()
+    created = _mr_add_lines(db, mr, lines)
     db.commit()
     db.refresh(mr)
-    log_action(db, user.id, "material_request", f"{mr.ref} - {len(lines)} item(s)")
+    log_action(db, user.id, "material_request_edit", f"{mr.ref} - {len(lines)} item(s)")
     out = _mr_out(mr)
     if created:
         out["new_items"] = created
@@ -6927,10 +7045,14 @@ def set_material_request_status(req_id: int, payload: schemas.MaterialRequestSta
 
 @app.delete("/store/requests/{req_id}")
 def delete_material_request(req_id: int, db: Session = Depends(get_db),
-                             user: models.User = Depends(require_screen("approvals"))):
+                             user: models.User = Depends(require_any_screen("requests", "approvals"))):
     mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
     if not mr:
         raise HTTPException(status_code=404, detail="Request not found")
+    # The office may delete any request (as before); the keeper who sent it may take back his own until the
+    # office has acted on it.
+    if not (user.role == "admin" or "approvals" in effective_permissions(user)):
+        _mr_may_change(db, mr, user)
     ref = mr.ref
     db.delete(mr)
     db.commit()

@@ -2725,8 +2725,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
             <div class="form-row">
               <button class="btn btn-primary" id="mr-send-btn" onclick="submitMaterialRequest()">Send Request to Office</button>
+              <button class="btn btn-gray" id="mr-cancel-edit" style="display:none;" onclick="mrCancelEdit()">Cancel editing</button>
             </div>
             </div>
+            <div id="mr-mine"></div>
           </div>
 
           <div class="card" id="direct-purchase" style="display:none;">
@@ -8544,10 +8546,14 @@ async function refreshOnHire() {
               <td style="text-align:left;">${i.name}</td>
               <td>${num(i.qty)} ${i.unit || ""}</td>
               <td style="text-align:left; font-size:12px;">${where}</td>
-              <td>${i.since || "-"}</td>
+              ${(i.batches || []).length > 1
+                // several deliveries: each its own date, quantity and days on rent
+                ? `<td style="font-size:12px; line-height:1.7;">${i.batches.map(b => `${pcDate(b.since)} <span style="color:#888;">&middot; ${num(b.qty)}</span>`).join("<br>")}</td>
+                   <td style="font-size:12px; line-height:1.7;">${i.batches.map(b => `<span${b.days > 60 ? ' style="color:#C0392B; font-weight:600;"' : b.days > 30 ? ' style="color:#8A6100; font-weight:600;"' : ""}>${b.days} day${b.days === 1 ? "" : "s"}</span> <span style="color:#888;">(${num(b.qty)})</span>`).join("<br>")}</td>`
+                : `<td>${i.since || "-"}</td>
               <td${i.days > 60 ? ' style="color:#C0392B; font-weight:600;"'
                  : i.days > 30 ? ' style="color:#8A6100; font-weight:600;"' : ""}>${
-                i.since ? `${i.days} day${i.days === 1 ? "" : "s"}` : "-"}</td>
+                i.since ? `${i.days} day${i.days === 1 ? "" : "s"}` : "-"}</td>`}
             </tr>`; }).join("")}</tbody>
         </table>
       </div>
@@ -10590,6 +10596,8 @@ async function loadFollowUp() {
   } catch (e) { box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`; }
 }
 
+// Edit from the follow-up list: the request opens in the raise form
+async function fuEditReq(id) { switchScreen("requests"); for (let i = 0; i < 30 && !document.getElementById("mr-lines"); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 400)); mrEdit(id); }
 // "01-Oct-26 09:12" - the day and minute a request was raised.
 function fuWhen(iso) {
   const d = new Date(iso); if (isNaN(d)) return "";
@@ -10618,7 +10626,7 @@ function renderFollowUp() {
       late: !!(r.needed_by && r.needed_by < today),
       name: l.item_name || l.description || "", code: l.item_code || "",
       due, unit: l.unit || "", received: l.qty_received || 0, asked: l.qty_requested || 0,
-      status: r.status, sup: contact, purpose: l.purpose || "",
+      status: r.status, sup: contact, purpose: l.purpose || "", canEdit: !!(r.can_edit && r.mine),
     });
   }));
 
@@ -10675,7 +10683,8 @@ function renderFollowUp() {
           <td>${x.expected || "-"}</td>
           <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
             ${x.sup && MY_SCREENS.includes("store")
-              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>` : ""}</td>
+              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>` : ""}
+            ${x.canEdit && MY_SCREENS.includes("requests") ? `<div style="margin-top:4px; white-space:nowrap;"><button class="btn btn-gray btn-sm" title="Not yet taken up by the office - correct it" onclick="fuEditReq(${x.rid})">Edit</button> <button class="btn btn-gray btn-sm" onclick="mrDelete(${x.rid}).then(loadFollowUp)">Delete</button></div>` : ""}</td>
         </tr>`).join("")}</tbody>
     </table></div>
     <p style="font-size:12px; color:#888; margin:10px 2px 0;">${num(list.length)} material(s) &middot; late ones first, then by needed-by date.</p>`;
@@ -10740,12 +10749,14 @@ async function loadRequests() {
   // refresh the cache that feeds the tracker below the form.
   if (!box) {
     try { mrCache = await apiCall("/store/requests"); } catch (e) {}
+    renderMrMine();
     return;
   }
   box.innerHTML = '<div class="empty-note">Loading...</div>';
   try {
     const all = await apiCall("/store/requests");
     mrCache = all;
+    try { renderMrMine(); } catch (e) {}
     const today = isoLocal(new Date());
     const isOpen = r => !["delivered", "closed", "rejected"].includes(r.status);
     const isLate = r => !!(r.needed_by && r.needed_by < today && isOpen(r));
@@ -11256,6 +11267,68 @@ function setNeededByDefault(force) {
 // always open; the shim keeps older call sites harmless.
 function toggleMrForm() {}
 
+// ---- A request already sent, not yet taken up by the office: the keeper can correct it or delete it ----
+let MR_EDIT = null;
+function renderMrMine() {
+  const box = document.getElementById("mr-mine"); if (!box) return;
+  const mine = (mrCache || []).filter(r => r.mine && r.can_edit);
+  if (!mine.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="step-label" style="margin-top:22px;"><span class="step-n" style="background:#5B6167;">&#9998;</span> Sent, not yet taken up by the office - you can still correct or delete</div>
+    <div class="grid-wrap" style="max-height:none;"><table data-nosort><thead><tr><th style="width:12%;">Request</th><th style="width:10%;">Site</th><th style="width:12%;">Sent</th><th>Materials</th><th style="width:190px;"></th></tr></thead><tbody>
+    ${mine.map(r => `<tr${MR_EDIT && MR_EDIT.id === r.id ? ' style="background:#FFF8E6;"' : ""}><td><strong>${escapeHtml(r.ref)}</strong></td><td>${r.site ? escapeHtml(r.site) : "Central store"}</td>
+      <td>${r.created_at ? fuWhen(r.created_at) : (r.requested_on || "")}</td>
+      <td style="text-align:left;">${(r.lines || []).map(l => `${escapeHtml(l.item_name || l.description || "")} <b>${num(l.qty_requested)} ${escapeHtml(l.unit || "")}</b>`).join(" &middot; ")}</td>
+      <td style="white-space:nowrap;"><button class="btn btn-dark" onclick="mrEdit(${r.id})">Edit</button>
+        <button class="btn btn-danger" onclick="mrDelete(${r.id})">Delete</button></td></tr>`).join("")}</tbody></table></div>`;
+}
+function mrEdit(id) {
+  const r = (mrCache || []).find(x => x.id === id); if (!r) return;
+  MR_EDIT = { id: r.id, ref: r.ref };
+  const site = document.getElementById("mr-site"); site.value = r.site || "STORE"; if (!site.value && r.site) { site.add(new Option(r.site, r.site)); site.value = r.site; }
+  const by = document.getElementById("mr-by"); by.value = r.requested_by || ""; if (r.requested_by && by.value !== r.requested_by) { by.add(new Option(r.requested_by, r.requested_by), 0); by.value = r.requested_by; }
+  document.getElementById("mr-needed").value = r.needed_by || "";
+  document.getElementById("mr-urgency").value = r.urgency || "normal";
+  document.getElementById("mr-notes").value = r.notes || "";
+  const tb = document.getElementById("mr-lines"); tb.innerHTML = "";
+  (r.lines || []).forEach(l => {
+    addMrLine(); const tr = tb.lastElementChild;
+    const it = (storeItems || []).find(i => i.id === l.item_id);
+    if (it) { tr.querySelector(".mr-item-txt").value = `${it.code} - ${it.name}`; tr.querySelector(".mr-item").value = it.id; tr.querySelector(".mr-type").value = it.item_type || "consumable"; }
+    else tr.querySelector(".mr-desc").value = l.description || l.item_name || "";
+    tr.querySelector(".mr-qty").value = l.qty_requested || "";
+    const u = tr.querySelector(".mr-unit"); if (l.unit) { if (![...u.options].some(o => o.value === l.unit)) u.add(new Option(l.unit, l.unit)); u.value = l.unit; u.dataset.touched = "1"; }
+    tr.querySelector(".mr-purpose").value = l.purpose || "";
+    tr.querySelector(".mr-note").value = l.notes || "";
+  });
+  addMrLine();      // a spare row for a material that was missed
+  const b = document.getElementById("mr-send-btn"); b.textContent = `Save changes to ${r.ref}`;
+  document.getElementById("mr-cancel-edit").style.display = "";
+  mreqStatus("warn", `Editing ${r.ref} - correct it and press Save changes. The office sees the corrected request under the same number.`);
+  renderMrMine();
+  document.getElementById("mr-form-body").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function mrCancelEdit(saved) {
+  MR_EDIT = null;
+  const b = document.getElementById("mr-send-btn"); if (b) b.textContent = "Send Request to Office";
+  const c = document.getElementById("mr-cancel-edit"); if (c) c.style.display = "none";
+  if (!saved) {
+    document.getElementById("mr-lines").innerHTML = ""; addMrLine();
+    document.getElementById("mr-notes").value = ""; setNeededByDefault(true);
+    mreqStatus("ok", "Editing cancelled - the request stays as it was sent.");
+  }
+  renderMrMine();
+}
+async function mrDelete(id) {
+  const r = (mrCache || []).find(x => x.id === id); if (!r) return;
+  if (!confirm(`Delete ${r.ref}?\n\nThe office will no longer see it. You can send a new request if needed.`)) return;
+  try {
+    await apiCall(`/store/requests/${id}`, { method: "DELETE" });
+    if (MR_EDIT && MR_EDIT.id === id) mrCancelEdit(true);
+    mreqStatus("ok", `${r.ref} deleted.`);
+    await loadRequests();
+  } catch (e) { mreqStatus("err", errText(e)); }
+}
+
 async function submitMaterialRequest() {
   // Everything the office needs to act on a request. Before this, a
   // half-filled form saved happily and printed as a row of dashes -
@@ -11301,7 +11374,7 @@ async function submitMaterialRequest() {
   // for twice arrives twice. If any of these materials is still waiting
   // to arrive on an open request, say so once and let the keeper decide.
   if (!mrCache.length) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
-  const openNow = (mrCache || []).filter(r => !["delivered", "closed", "rejected"].includes(r.status));
+  const openNow = (mrCache || []).filter(r => !["delivered", "closed", "rejected"].includes(r.status) && !(MR_EDIT && r.id === MR_EDIT.id));
   // One line per material, however many requests it is spread over -
   // a confirm box listing twenty-nine refs is unreadable and gets
   // dismissed without being read, which defeats the warning.
@@ -11373,7 +11446,8 @@ async function submitMaterialRequest() {
         } catch (e) { /* classification is a nicety, don't block the request */ }
       }
     }
-    const r = await apiCall("/store/requests", { method: "POST",
+    const editing = MR_EDIT;
+    const r = await apiCall(editing ? `/store/requests/${editing.id}` : "/store/requests", { method: editing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         site: site === "STORE" ? "" : site,
@@ -11388,7 +11462,10 @@ async function submitMaterialRequest() {
     // dead button, so thirty copies got clicked into existence. The
     // confirmation is now the very first thing, and the housekeeping
     // is fenced so no failure in it can hide a successful save.
-    if (r.duplicate_of) {
+    if (editing) {
+      mreqStatus("ok", `${r.ref} corrected - the office sees the new list.`);
+      mrCancelEdit(true);
+    } else if (r.duplicate_of) {
       mreqStatus("warn", `This exact request was already sent as ${r.duplicate_of} - it has not been sent again.`);
     } else {
       mreqStatus("ok", `Request ${r.ref} sent to the office.` +
@@ -11409,7 +11486,7 @@ async function submitMaterialRequest() {
   } catch (e) { mreqStatus("err", errText(e)); }
   finally {
     const b = document.getElementById("mr-send-btn");
-    if (b) { delete b.dataset.sending; b.disabled = false; b.textContent = "Send Request to Office"; }
+    if (b) { delete b.dataset.sending; b.disabled = false; b.textContent = MR_EDIT ? `Save changes to ${MR_EDIT.ref}` : "Send Request to Office"; }
   }
 }
 

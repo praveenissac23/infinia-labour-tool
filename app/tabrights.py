@@ -164,7 +164,8 @@ GATES = {
     ("POST", "/store/requests"): ["store.requests.requests"],
     ("POST", "/store/request-lines/{line_id}/decision"): ["store.requests.approvals"],
     ("POST", "/store/requests/{req_id}/status"): ["store.requests.approvals"],
-    ("DELETE", "/store/requests/{req_id}"): ["store.requests.approvals"],
+    ("DELETE", "/store/requests/{req_id}"): ["store.requests.approvals", "store.requests.requests"],
+    ("PUT", "/store/requests/{req_id}"): ["store.requests.requests", "store.requests.approvals"],
     # Store > Purchasing
     ("POST", "/store/purchase/orders"): ["store.purchasing.purchase"],
     ("PUT", "/store/purchase/orders/{order_id}"): ["store.purchasing.purchase"],
