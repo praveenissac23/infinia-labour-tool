@@ -10,7 +10,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await sleep(2500);
   await p.evaluate(() => { window.checkBuild = () => {}; const x = document.getElementById('build-bar'); if (x) x.remove(); });
-  await p.click('#chat-btn'); await sleep(1200); await p.click('[data-room="all"]'); await sleep(800);
+  await p.click('.pg-side .pg-chat'); await sleep(1200); await p.click('[data-room="all"]'); await sleep(800);
   // a photo
   await p.setInputFiles('[data-file]', PHOTO); await sleep(800);
   ck('the photo waits above the box, made smaller', await p.evaluate(() => !!document.querySelector('.att img') && CHAT.state.file && CHAT.state.file.size < 900 * 1024), await p.evaluate(() => CHAT.state.file && CHAT.state.file.size));

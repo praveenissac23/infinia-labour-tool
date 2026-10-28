@@ -13,8 +13,8 @@ const login = async (b, u, pw, opts) => { const ctx = await b.newContext(opts ||
   const b = await chromium.launch();
   const amal = await login(b, 'amaltest', 'amal12345');
   const pr = await login(b, 'admin', 'changeme123');
-  ck('the chat button sits beside the bell', await pr.$('#chat-btn') !== null);
-  await pr.click('#chat-btn'); await sleep(1500);
+  ck('Chat is at the foot of the left menu', await pr.$('.pg-side .pg-chat') !== null);
+  await pr.click('.pg-side .pg-chat'); await sleep(1500);
   const online = await pr.evaluate(() => CHAT.state.users.filter(u => u.online && !u.me).map(u => u.username));
   ck('Amal shows as online', online.includes('amaltest'), online);
   // @ tagging in Everyone
@@ -28,7 +28,7 @@ const login = async (b, u, pw, opts) => { const ctx = await b.newContext(opts ||
   await sleep(21000);
   const b1 = await amal.evaluate(() => document.querySelector('#chat-btn .n').textContent);
   ck('Amal\'s chat button shows 1 unread', b1 === '1', b1);
-  await amal.click('#chat-btn'); await sleep(1500);
+  await amal.click('.pg-side .pg-chat'); await sleep(1500);
   await amal.click('[data-room="all"]'); await sleep(1500);
   ck('he sees it, marked as naming him', await amal.evaluate(() => !!document.querySelector('#wa .ln.ment .tag.me')));
   // private chat
