@@ -160,7 +160,7 @@ def message_for(n: dict) -> dict:
     q = "/?" + urlencode({"n_screen": n.get("screen") or "", "n_target": n.get("target") or "", "n_id": n.get("id") or "",
                           "n_kind": n.get("kind") or "", "n_status": n.get("status") or "", "n_when": n.get("when") or "",
                           "n_people": n.get("people") or 0, "n_company": n.get("company") or 0})
-    return {"title": n.get("title") or "Infinia", "body": body_for(n), "tag": n.get("id") or "",
+    return {"title": n.get("title") or "Infinia", "body": body_for(n), "tag": n.get("tag") or n.get("id") or "",
             "url": n.get("url") or q}       # a certificate for the MD: straight to its approval page
 
 
@@ -192,14 +192,14 @@ def body_for(n: dict) -> str:
 
 # ---- The round every two minutes ------------------------------------------------
 
-def push_new(SessionLocal, models, notes_for, seed=False, only_user=None):
+def push_new(SessionLocal, models, notes_for, seed=False, only_user=None, anytime=False):
     """Push each signed-up login's new notifications. seed=True records what
     is already there without pushing it (a phone that has just signed up
     is not flooded with every old item)."""
     # Nobody is woken up: from 9 at night to 7 in the morning (Dubai) the
     # round waits, and what came in overnight arrives at 7.
     hour = (datetime.utcnow().hour + 4) % 24
-    if not seed and not (7 <= hour < 21) and os.environ.get("INFINIA_PUSH_ANYTIME") != "1":
+    if not seed and not anytime and not (7 <= hour < 21) and os.environ.get("INFINIA_PUSH_ANYTIME") != "1":
         return 0
     db = SessionLocal()
     pushed = 0

@@ -113,3 +113,21 @@ st = c.get('/store/chat/state', headers=A).json()
 ck('and he no longer shows online', not {u['username']: u['online'] for u in st['users']}['admin'])
 ck('a made-up sign-in does nothing', c.post('/store/chat/bye', json={'token': 'x'}).json().get('ok') is False)
 print(f"{len(FAIL)} FAILED" if FAIL else 'ALL PASS')
+
+# ---- the phone is told at once, only when the person is away from the portal ----
+import time as _t
+import push as _push
+calls = []
+os.environ.pop('INFINIA_NO_PUSH', None)
+_push.available = lambda: True
+_push.push_new = lambda SL, mdl, notes_for, only_user=None, anytime=False, **k: calls.append((only_user, anytime, [n['kind'] for n in notes_for(SL(), SL().query(models.User).get(only_user))]))
+d = database.SessionLocal(); s_ = d.query(chat.ChatSeen).filter(chat.ChatSeen.user_id == ids['amal']).first()
+s_.last_seen = chat._now() - timedelta(minutes=10); d.commit(); d.close()
+c.get('/store/chat/state', headers=S)       # Shafeeq is here
+c.post('/store/chat/send', json={'room': chat.dm_room(ids['admin'], ids['amal']), 'text': 'Are you on site?'}, headers=P); _t.sleep(1)
+c.post('/store/chat/send', json={'room': chat.dm_room(ids['admin'], ids['shafiq']), 'text': 'Cheque ready?'}, headers=P); _t.sleep(1)
+ck('Amal (away) is pushed at once, at any hour, chat only', any(u == ids['amal'] and a and k == ['chat'] for u, a, k in calls), calls)
+ck('Shafeeq (in the portal) is not pushed - he gets the pop-up', not any(u == ids['shafiq'] for u, a, k in calls), calls)
+d = database.SessionLocal(); u_ = d.query(models.User).get(ids['amal']); u_.notif_off = 'chat'; d.commit(); d.close()
+ck('chat switched off in My notifications: nothing in his bell', not any(n['kind'] == 'chat' for n in c.get('/notifications', headers=A).json()['notifications']))
+print(f"{len(FAIL)} FAILED (phone)" if FAIL else 'ALL PASS (phone)')

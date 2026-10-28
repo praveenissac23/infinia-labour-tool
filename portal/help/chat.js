@@ -27,7 +27,15 @@
               timer: 0, busy: false, q: "", filter: "all", edit: null, mentions: 0, total: 0, file: null };
 
   // ---- the look: WhatsApp Web --------------------------------------------------------------------------------
-  const WALL = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><g fill="none" stroke="#d6cfc4" stroke-width="1.2" opacity=".55"><circle cx="18" cy="20" r="6"/><path d="M60 12l6 10H54z"/><rect x="94" y="14" width="12" height="9" rx="2"/><path d="M14 64c4-6 10-6 14 0"/><circle cx="62" cy="62" r="3"/><path d="M96 58l8 8M104 58l-8 8"/><rect x="12" y="98" width="10" height="10" rx="5"/><path d="M56 100h12M62 94v12"/><path d="M94 100q6-8 12 0"/></g></svg>`);
+  // The chat's wallpaper: soft flowing lines (like a site survey's contours) on warm paper, a faint Infinia glow
+  // in one corner - quiet enough to read on all day.
+  const CONTOURS = (() => { let p = ""; const W = 1600, H = 1000;
+    for (let k = 0; k < 22; k++) { const y0 = -60 + k * 52, a1 = 26 + (k % 5) * 7, a2 = 14 + (k % 3) * 9, ph = k * 0.55;
+      let d = `M -20 ${y0.toFixed(1)}`;
+      for (let x = 0; x <= W + 40; x += 40) { const y = y0 + Math.sin(x / 260 + ph) * a1 + Math.sin(x / 113 - ph * 1.7) * a2 + (x / W) * 60; d += ` L ${x} ${y.toFixed(1)}`; }
+      p += `<path d="${d}" stroke="${k % 4 === 0 ? "#C9A49A" : "#C8BCAF"}" stroke-opacity="${k % 4 === 0 ? 0.42 : 0.30}" stroke-width="${k % 4 === 0 ? 1.3 : 0.9}" fill="none"/>`; }
+    return "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">${p}</svg>`); })();
+  const WALL_OLD = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><g fill="none" stroke="#d6cfc4" stroke-width="1.2" opacity=".55"><circle cx="18" cy="20" r="6"/><path d="M60 12l6 10H54z"/><rect x="94" y="14" width="12" height="9" rx="2"/><path d="M14 64c4-6 10-6 14 0"/><circle cx="62" cy="62" r="3"/><path d="M96 58l8 8M104 58l-8 8"/><rect x="12" y="98" width="10" height="10" rx="5"/><path d="M56 100h12M62 94v12"/><path d="M94 100q6-8 12 0"/></g></svg>`);
   const css = document.createElement("style");
   css.textContent = `
   #chat-btn { position: relative; width: 38px; height: 38px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; color: #C0392B; }
@@ -57,12 +65,14 @@
   #wa .av { position: relative; width: 49px; height: 49px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; font-weight: 600; font-size: 17px; }
   #wa .av.sm { width: 40px; height: 40px; font-size: 15px; } #wa .av.grp { background: #DFE5E7; color: #fff; } #wa .av.grp svg { width: 30px; height: 30px; }
   #wa .av i { position: absolute; right: 0; bottom: 1px; width: 13px; height: 13px; border-radius: 50%; background: #25D366; box-shadow: 0 0 0 2.5px #fff; }
-  #wa .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #F4F1ED; position: relative; }
+  #wa .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #F7F3EE; position: relative; }
   #wa .main .bar { border-left: 1px solid #E9EDEF; gap: 15px; padding: 0 10px 0 16px; }
   #wa .main .bar .who { flex: 1; min-width: 0; cursor: default; } #wa .main .bar .who b { display: block; font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #wa .main .bar .who span { display: block; font-size: 13px; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #wa .back { display: none; }
-  #wa .msgs { flex: 1; overflow-y: auto; padding: 12px 7% 8px; background: #F4F1ED url("${WALL}") repeat; }
+  #wa .msgs { flex: 1; overflow-y: auto; padding: 12px 7% 8px;
+    background: radial-gradient(900px 520px at 0% 0%, rgba(192,57,43,.075), transparent 62%), radial-gradient(800px 600px at 100% 100%, rgba(120,110,100,.08), transparent 60%),
+                url("${CONTOURS}") center / cover no-repeat, linear-gradient(160deg, #FBF8F4 0%, #F2EDE6 100%); }
   #wa .day { text-align: center; margin: 12px 0 10px; } #wa .day span { display: inline-block; font-size: 12.5px; color: #54656F; background: #fff; padding: 5px 12px; border-radius: 7.5px; box-shadow: 0 1px .5px rgba(11,20,26,.13); text-transform: uppercase; }
   #wa .note { text-align: center; margin: 6px auto 12px; max-width: 520px; } #wa .note span { display: inline-block; font-size: 12.5px; color: #54656F; background: #FFEECD; padding: 6px 12px; border-radius: 7.5px; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
   #wa .ln { display: flex; margin-bottom: 2px; } #wa .ln.me { justify-content: flex-end; } #wa .ln.first { margin-top: 10px; }
@@ -130,6 +140,27 @@
   #wa .viewer { position: absolute; inset: 0; background: rgba(233,237,239,.97); z-index: 10; display: none; flex-direction: column; } #wa .viewer.on { display: flex; }
   #wa .viewer .vb { height: 59px; display: flex; align-items: center; gap: 12px; padding: 0 16px; } #wa .viewer .vb b { flex: 1; } #wa .viewer .vi { flex: 1; display: flex; align-items: center; justify-content: center; padding: 10px 30px 30px; min-height: 0; }
   #wa .viewer img { max-width: 100%; max-height: 100%; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+  /* the Chat entry at the foot of the left menu */
+  .pg-side .pg-chat { display: flex; align-items: center; gap: 10px; margin: 14px 12px 6px !important; padding: 10px 12px !important; border-radius: 12px; color: #fff !important;
+    background: linear-gradient(135deg, rgba(192,57,43,.95), rgba(150,40,30,.95)); box-shadow: 0 6px 16px rgba(0,0,0,.25); font-weight: 700; }
+  .pg-side .pg-chat:hover { background: linear-gradient(135deg, #D0443A, #A93226) !important; }
+  .pg-side .pg-chat .ci svg { width: 22px; height: 22px; display: block; } .pg-side .pg-chat .cl { flex: 1; line-height: 1.15; }
+  .pg-side .pg-chat .cl small { display: block; font-size: 11px; font-weight: 600; color: #FFD9D3; } .pg-side .pg-chat .cl small i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3DDC84; margin-right: 5px; vertical-align: 0; }
+  .pg-side .pg-chat .cn { min-width: 22px; height: 22px; border-radius: 11px; background: #fff; color: #C0392B; font-size: 12px; font-weight: 800; display: none; align-items: center; justify-content: center; padding: 0 6px; }
+  @media (min-width: 901px) {
+    .pg-side { display: flex; flex-direction: column; } .pg-side .pg-chat { margin-top: auto !important; position: sticky; bottom: 14px; }
+    body:not(.pg-noside):not(.pg-full) #chat-btn { display: none; }
+  }
+  #wa .nbanner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #FBE9E7; color: #3B4A54; font-size: 13.5px; cursor: pointer; border-bottom: 1px solid #F3D4CF; }
+  #wa .nbanner svg { width: 34px; height: 34px; color: #C0392B; flex-shrink: 0; } #wa .nbanner b { display: block; font-weight: 600; color: #111B21; } #wa .nbanner span { color: #A93226; text-decoration: underline; }
+  #wa .ib.mute { color: #8696A0; }
+  #wa-toasts { position: fixed; right: 18px; bottom: 18px; z-index: 6500; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
+  #wa-toasts .t { pointer-events: auto; width: 340px; max-width: calc(100vw - 36px); display: flex; gap: 12px; align-items: center; background: #fff; border-radius: 12px; padding: 12px 14px; cursor: pointer;
+    box-shadow: 0 12px 34px rgba(11,20,26,.24); border-left: 4px solid #C0392B; font: 14px/1.35 "Segoe UI", -apple-system, sans-serif; color: #111B21; animation: wain .25s ease-out; }
+  #wa-toasts .t .av { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; flex-shrink: 0; }
+  #wa-toasts .t .tb { flex: 1; min-width: 0; } #wa-toasts .t b { display: block; font-weight: 600; } #wa-toasts .t span { display: block; color: #54656F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #wa-toasts .t small { color: #8696A0; font-size: 11.5px; }
+  @keyframes wain { from { transform: translateY(14px); opacity: 0; } }
   @media (max-width: 760px) {
     #wa { top: 0; right: 0; bottom: 0; width: 100vw; border-radius: 0; }
     #wa .side { width: 100%; max-width: none; border-right: 0; } #wa .main { display: none; }
@@ -155,6 +186,8 @@
     play: `<svg viewBox="0 0 34 34" fill="currentColor"><path d="M8.5 8.7c0-1.7 1.2-2.4 2.6-1.5l14.4 8.3c1.4.8 1.4 2.2 0 3l-14.4 8.3c-1.4.8-2.6.2-2.6-1.5V8.7z"/></svg>`,
     pause: `<svg viewBox="0 0 34 34" fill="currentColor"><path d="M9.2 25c0 .5.4 1 .9 1h3.6c.5 0 .9-.4.9-1V9c0-.5-.4-.9-.9-.9h-3.6c-.5 0-.9.4-.9.9v16zm11-17c-.5 0-1 .4-1 .9V25c0 .5.4 1 1 1h3.6c.5 0 1-.4 1-1V9c0-.5-.4-.9-1-.9h-3.6z"/></svg>`,
     dl: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15.6l-5-5 1.4-1.4 2.6 2.6V4h2v7.8l2.6-2.6 1.4 1.4-5 5zM5 18h14v2H5z"/></svg>`,
+    bell: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22zm7.2-6V11c0-3.5-2-6.4-5.4-7.2V3a1.8 1.8 0 0 0-3.6 0v.8C6.8 4.6 4.8 7.5 4.8 11v5L2.4 18.4v1.2h19.2v-1.2L19.2 16z"/></svg>`,
+    bellOff: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22zm7.2-6V11c0-3.5-2-6.4-5.4-7.2V3a1.8 1.8 0 0 0-3.6 0v.8c-.6.1-1.1.3-1.6.6L19.2 17v-1zM3.3 2.6L2 3.9l3.2 3.2c-.3.9-.4 1.9-.4 2.9v5L2.4 18.4v1.2h15.9l2.4 2.4 1.3-1.3L3.3 2.6z"/></svg>`,
     lock: `<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;vertical-align:-2px"><path d="M17 9h-1V7c0-2.8-2.2-5-5-5S6 4.2 6 7v2H5c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-9c0-1.1-.9-2-2-2zM8 7c0-1.7 1.3-3 3-3s3 1.3 3 3v2H8V7z"/></svg>`,
     clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
     micSmall: `<svg class="mic" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14.6c1.7 0 3-1.4 3-3.1V5.2C15 3.5 13.7 2 12 2S9 3.5 9 5.2v6.3c0 1.7 1.3 3.1 3 3.1zm5.3-3.1c0 3-2.5 5.1-5.3 5.1s-5.3-2.1-5.3-5.1H5c0 3.4 2.7 6.2 6 6.7V22h2v-3.8c3.3-.5 6-3.3 6-6.7h-1.7z"/></svg>`,
@@ -170,10 +203,17 @@
   btn.innerHTML = I.chat + `<span class="n" style="display:none"></span>`;
   const bw = document.getElementById("bell-wrap"); bw.parentNode.insertBefore(btn, bw);
   btn.onclick = () => (S.open ? close() : open());
+  // ... and at the foot of the left menu, where it is always in reach
+  const sideItem = document.createElement("div");
+  sideItem.className = "pg-item pg-chat"; sideItem.title = "Infinia Chat";
+  sideItem.innerHTML = `<span class="ci">${I.chat}</span><span class="cl">Chat<small data-so></small></span><span class="cn" data-sn></span>`;
+  sideItem.onclick = () => (S.open ? close() : open());
+  const side = document.querySelector(".pg-side"); if (side) side.appendChild(sideItem);
 
   const pane = document.createElement("div"); pane.id = "wa";
   pane.innerHTML = `<div class="side">
-      <div class="bar"><span data-meav></span><span class="ttl">Infinia Chat</span><span class="sub" data-n></span><button class="ib" data-x title="Close">${I.x}</button></div>
+      <div class="bar"><span data-meav></span><span class="ttl">Infinia Chat</span><span class="sub" data-n></span><button class="ib" data-bell title="Notifications">${I.bell}</button><button class="ib" data-x title="Close">${I.x}</button></div>
+      <div data-banner></div>
       <div class="srch"><div>${I.search}<input type="search" placeholder="Search or start a new chat" data-q></div></div>
       <div class="chips"><button data-f="all" class="on">All</button><button data-f="online">Online</button><button data-f="unread">Unread</button></div>
       <div class="list" data-list></div></div>
@@ -387,6 +427,50 @@
     drawMsgs(); $msgs.scrollTop = $msgs.scrollHeight - h0;
   }
 
+  // ---- telling people: a pop-up and a soft sound in the portal, a notification on the computer when the portal
+  // is in the background (and the phone push from the server when they are away) - switched with the bell in the chat
+  const NKEY = "chat_notify";
+  const notifyOn = () => { try { return localStorage.getItem(NKEY) !== "off"; } catch (e) { return true; } };
+  function drawBell() {
+    const b = $("[data-bell]", pane), on = notifyOn();
+    b.innerHTML = on ? I.bell : I.bellOff; b.classList.toggle("mute", !on); b.title = on ? "Notifications on - press to mute" : "Notifications muted - press to turn on";
+    const ban = $("[data-banner]", pane);
+    const ask = on && "Notification" in window && Notification.permission === "default";
+    ban.innerHTML = ask ? `<div class="nbanner" data-ask>${I.bell}<div><b>Get notified of new messages</b><span>Turn on desktop notifications</span></div></div>` : "";
+    const a = $("[data-ask]", ban); if (a) a.onclick = () => Notification.requestPermission().then(drawBell);
+  }
+  $("[data-bell]", pane).onclick = () => { const on = !notifyOn(); try { localStorage.setItem(NKEY, on ? "on" : "off"); } catch (e) {}
+    if (on && "Notification" in window && Notification.permission === "default") Notification.requestPermission().then(drawBell); drawBell(); };
+  let AC = null;
+  function ding() {               // two soft notes, like a message arriving
+    try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); const t = AC.currentTime;
+      [[880, 0], [1320, 0.11]].forEach(([f, d]) => { const o = AC.createOscillator(), g = AC.createGain(); o.type = "sine"; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.12, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.28);
+        o.connect(g).connect(AC.destination); o.start(t + d); o.stop(t + d + 0.3); }); } catch (e) {}
+  }
+  const $toasts = document.createElement("div"); $toasts.id = "wa-toasts"; document.body.appendChild($toasts);
+  function words(p) { return p.deleted ? "This message was deleted" : p.kind === "voice" ? "🎤 Voice message" : p.kind === "image" ? "📷 " + (p.text || "Photo") : p.kind === "file" ? "📄 " + (p.text || "Document") : p.text; }
+  function announce(room, n) {
+    const p = S.previews[room]; if (!p || p.user_id === S.me) return;
+    const u = userBy(p.user_id), title = room === "all" ? `${p.name || u.name} @ Everyone` : (p.name || u.name);
+    const body = (n > 1 ? `${n} new messages - ` : "") + (words(p) || "");
+    const tagged = room === "all" ? S.mentions > (S._prevMentions || 0) : true;
+    if (!document.hidden) {
+      ding();
+      const t = document.createElement("div"); t.className = "t";
+      t.innerHTML = `<span class="av" style="background:${room === "all" ? "#8696A0" : PALETTE[(p.user_id || 0) % PALETTE.length]}">${room === "all" ? "#" : esc(u.initials || "?")}</span><span class="tb"><b>${esc(title)}</b><span>${esc(body)}</span><small>Infinia Chat &middot; now</small></span>`;
+      t.onclick = () => { t.remove(); open(room); };
+      $toasts.appendChild(t); while ($toasts.children.length > 3) $toasts.firstChild.remove();
+      setTimeout(() => t.remove(), 7000);
+    } else if (tagged && "Notification" in window && Notification.permission === "granted") {
+      const url = `/?n_screen=chat&n_target=${encodeURIComponent(room)}&n_id=chat-${room}-${p.id}&n_kind=chat`;
+      const opts = { body, tag: "chat-" + room, renotify: true, icon: "/portal/icon-192.png", badge: "/portal/icon-192.png", data: { url } };
+      (navigator.serviceWorker && navigator.serviceWorker.ready ? navigator.serviceWorker.ready.then(r => r.showNotification(title, opts))
+        : Promise.reject()).catch(() => { try { const nn = new Notification(title, opts); nn.onclick = () => { window.focus(); open(room); nn.close(); }; } catch (e) {} });
+      ding();
+    }
+  }
+
   // ---- the poll: who is online, unread, new messages, ticks ---------------------------------------------------------------
   async function poll(fresh) {
     if (S.busy) { await S.busy; if (!fresh) return; }       // one at a time: wait for the one under way
@@ -396,7 +480,15 @@
       const room = S.open ? S.room : "";
       const after = room && !fresh ? (S.lastId[room] || 0) : 0;
       const r = await api(`/store/chat/state?room=${encodeURIComponent(room)}&after=${after}`);
+      const before = S.seenOnce ? Object.assign({}, S.unread) : null;
+      S._prevMentions = S.mentions;
       S.me = r.me; S.users = r.users; S.unread = r.unread; S.last = r.last; S.mentions = r.mentions; S.total = r.total; S.previews = r.previews || {};
+      S.seenOnce = true;
+      if (before && notifyOn()) for (const [rm, n] of Object.entries(S.unread)) {
+        const was = before[rm] || 0; if (n <= was) continue;
+        if (S.open && S.room === rm && !document.hidden) continue;        // reading it right now
+        announce(rm, n - was);
+      }
       if (room && r.messages) {
         if (fresh || !S.msgs[room]) { S.msgs[room] = r.messages; S.more[room] = r.more; }
         else if (r.messages.length) S.msgs[room] = S.msgs[room].concat(r.messages.filter(m => !S.msgs[room].some(x => x.id === m.id)));
@@ -422,8 +514,11 @@
     n.style.display = S.total ? "" : "none"; n.textContent = S.total > 99 ? "99+" : S.total;
     const on = S.users.filter(u => u.online && !u.me).length;
     btn.title = `Chat - ${on} online${S.total ? `, ${S.total} unread` : ""}`;
+    const sn = $("[data-sn]", sideItem), so = $("[data-so]", sideItem);
+    sn.style.display = S.total ? "flex" : "none"; sn.textContent = S.total > 99 ? "99+" : S.total;
+    so.innerHTML = on ? `<i></i>${on} online` : "nobody else online";
   }
-  function schedule() { clearTimeout(S.timer); S.timer = setTimeout(async () => { await poll(); schedule(); }, S.open && !document.hidden ? 2500 : 20000); }
+  function schedule() { clearTimeout(S.timer); S.timer = setTimeout(async () => { await poll(); schedule(); }, S.open && !document.hidden ? 2500 : document.hidden ? 15000 : 8000); }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { poll().then(markRead); schedule(); } });
 
   // ---- writing ---------------------------------------------------------------------------------------------------------------
@@ -583,6 +678,7 @@
     try { fetch((typeof API !== "undefined" ? API : "") + "/store/chat/bye", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t }) }); } catch (e) {} };
   if (typeof window.doLogout === "function") { const orig = window.doLogout; window.doLogout = function () { bye(); return orig.apply(this, arguments); }; }
 
+  drawBell();
   window.CHAT = { open, close, poll, state: S };
   setTimeout(() => { poll(); schedule(); }, 1500);
 })();

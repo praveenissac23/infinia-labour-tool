@@ -305,6 +305,7 @@ def chat_send(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     m = ChatMessage(room=room, user_id=user.id, text=text, mentions=("," + ",".join(sorted(men)) + ",") if men else "")
     db.add(m); db.commit()
     _mark(db, user.id, room, m.id)
+    _notify(db, m)
     umap = {p.id: p for p in db.query(models.User).all()}
     return _msg(m, umap)
 
@@ -338,6 +339,7 @@ async def chat_upload(room: str = Form(...), file: UploadFile = File(...), text:
                     expires_at=_now() + timedelta(hours=KEEP_HOURS))
     db.add(m); db.commit()
     _mark(db, user.id, room, m.id)
+    _notify(db, m)
     return _msg(m, {p.id: p for p in db.query(models.User).all()})
 
 
@@ -443,6 +445,41 @@ def chat_delete(mid: int, db: Session = Depends(get_db), user: models.User = Dep
     return {"ok": True}
 
 
+def _notify(db, m):
+    """Tell the people this message is for, on their phone, straight away - not at the next 2-minute round.
+    A private message: the other person. In Everyone: those @tagged (@everyone: all). Somebody with the portal
+    open is told in the portal itself (a pop-up and a sound), so only those away from it get a phone push."""
+    if os.environ.get("INFINIA_NO_PUSH") == "1":
+        return
+    other = _other(m.room, m.user_id)
+    if other is not None:
+        who = [other]
+    else:
+        men = (m.mentions or "")
+        who = [u.id for u in _people(db) if u.id != m.user_id] if ",*," in men else [int(x) for x in men.strip(",").split(",") if x.isdigit()]
+    if not who:
+        return
+    now = _now()
+    seen = {s.user_id: s.last_seen for s in db.query(ChatSeen).filter(ChatSeen.user_id.in_(who)).all()}
+    away = [u for u in who if not (seen.get(u) and (now - seen[u]).total_seconds() <= ONLINE_FOR)]
+    if not away:
+        return
+
+    def run():
+        try:
+            import database as _d
+            import main as _M
+            import push as _p
+            if not _p.available():
+                return
+            only_chat = lambda db_, u_: [n for n in _M._notes_for(db_, u_) if n.get("kind") == "chat"]
+            for uid in away:
+                _p.push_new(_d.SessionLocal, models, only_chat, only_user=uid, anytime=True)
+        except Exception as e:
+            print("chat push:", e)
+    threading.Thread(target=run, daemon=True, name="chat-push").start()
+
+
 def _mark(db, uid, room, last_id):
     r = db.query(ChatRead).filter(ChatRead.user_id == uid, ChatRead.room == room).first()
     if not r:
@@ -491,7 +528,7 @@ def bell_items(db, user):
             title = f"{who} mentioned you in Everyone"
         else:
             title = f"{who} sent you {'a message' if len(ms) == 1 else f'{len(ms)} messages'}"
-        out.append({"id": f"chat-{room}-{last.id}", "kind": "chat", "title": title, "detail": words[:160],
+        out.append({"id": f"chat-{room}-{last.id}", "tag": f"chat-{room}", "kind": "chat", "title": title, "detail": words[:160],
                     "screen": "chat", "target": room, "when": (last.created_at or _now()).date().isoformat(),
                     "level": "info", "who": who, "initials": _initials(who)})
     out.sort(key=lambda n: n["id"], reverse=True)

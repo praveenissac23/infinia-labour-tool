@@ -879,7 +879,7 @@ def _grant_new_notif_groups(db):
                 continue                                   # never set up: every type already
             keys = set(k for k in (r.screens or "").split(",") if k)
             have = [x for x in (r.notif or "").split(",") if x]
-            add = [g for g, needs in new if g not in have and keys & set(needs)]
+            add = [g for g, needs in new if g not in have and (keys & set(needs) or "__any__" in needs)]
             if add:
                 r.notif = ",".join(have + add)
     ids = ",".join(g for g, *_ in NOTIF_GROUPS)
@@ -13591,6 +13591,7 @@ NOTIF_GROUPS = [
     ("subpc", "Subcontractor PCs waiting for you", ("subpc",), ("estimation_projects", "accounts_bank")),
     ("bills", "Client bills (IPA) waiting for you to sign", ("bill",), ("estimation_projects",)),
     ("watch", "Activity monitor - risky changes by staff", ("watch",), ("__admin__",)),
+    ("chat", "Chat - private messages and @mentions", ("chat",), ("__any__",)),
 ]
 # A notification type added to the app without a group here is never hidden: it is always shown,
 # rather than being switched off by some other group's tick.
@@ -13620,7 +13621,7 @@ def notif_settings(db: Session = Depends(get_db), user: models.User = Depends(au
     rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS) | {"__admin__"}
     # only what this login can have: its access gives it the feature and its role lets it be told
     return {"groups": [{"id": g, "label": l, "allowed": True, "on": g not in off}
-                       for g, l, _, needs in NOTIF_GROUPS if g in allowed and any(r in rights for r in needs)]}
+                       for g, l, _, needs in NOTIF_GROUPS if g in allowed and ("__any__" in needs or any(r in rights for r in needs))]}
 
 
 @app.post("/notifications/settings")
@@ -13664,7 +13665,7 @@ def _with_chat(db, user, out):
     """Unread private messages and mentions, always fresh, on top of the bell."""
     try:
         import chat as _chat
-        items = _chat.bell_items(db, user)
+        items = notif_filter(db, user, _chat.bell_items(db, user))
     except Exception as e:
         print("chat bell:", e)
         items = []
