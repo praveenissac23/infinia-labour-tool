@@ -213,8 +213,8 @@
   document.addEventListener("keydown", e => {
     if (!el.classList.contains("on") || txtBox || document.activeElement === $("[data-cap]")) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); items.pop(); render(); }
-    if (e.key === "Escape") { close(); OPTS.onCancel && OPTS.onCancel(); }
-  });
+    if (e.key === "Escape") { e.stopPropagation(); close(); OPTS.onCancel && OPTS.onCancel(); }
+  }, true);
 
   async function open(file, opts) {
     OPTS = opts || {};

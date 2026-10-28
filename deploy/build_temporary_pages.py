@@ -1356,6 +1356,7 @@ def build():
                  f'<script src="/portal/help/tablesort.js?v={_v("portal/help/tablesort.js")}" defer></script>\n'
                  f'<script src="/portal/help/polish.js?v={_v("portal/help/polish.js")}" defer></script>\n'
                  f'<script src="/portal/help/chat-draw.js?v={_v("portal/help/chat-draw.js")}" defer></script>\n'
+                 f'<script src="/portal/help/chat-doc.js?v={_v("portal/help/chat-doc.js")}" defer></script>\n'
                  f'<script src="/portal/help/chat.js?v={_v("portal/help/chat.js")}" defer></script>\n'
                  f'<script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v={_v("portal/help/words.js")}";</script>\n'
                  f'<script src="/portal/help/spell.js?v={_v("portal/help/spell.js")}" defer></script>\n'

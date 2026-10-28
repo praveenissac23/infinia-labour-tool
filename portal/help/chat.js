@@ -99,7 +99,10 @@
   #wa .doc { display: flex; align-items: center; gap: 10px; background: rgba(11,20,26,.05); border-radius: 6px; padding: 10px; margin: 0 0 2px; text-decoration: none; color: #111B21; min-width: 260px; }
   #wa .ln.me .doc { background: rgba(150,40,30,.06); } #wa .doc .di { width: 30px; height: 38px; border-radius: 3px; position: relative; flex-shrink: 0; color: #fff; font: 700 8px/1 sans-serif; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; }
   #wa .doc .dn { flex: 1; min-width: 0; } #wa .doc .dn b { display: block; font-weight: 400; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } #wa .doc .dn small { font-size: 12px; color: #667781; }
-  #wa .doc .dl { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #8696A0; color: #8696A0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; } #wa .doc .dl svg { width: 16px; }
+  #wa .docw { cursor: pointer; min-width: 260px; max-width: 330px; } #wa .docw .doc { min-width: 0; } #wa .docw:hover .doc { background: rgba(11,20,26,.08); }
+  #wa .dth { display: none; height: 130px; overflow: hidden; border-radius: 6px 6px 0 0; background: #fff; margin-bottom: -2px; } #wa .dth.ok { display: block; }
+  #wa .dth img { width: 100%; display: block; } #wa .dth.ok + .doc { border-radius: 0 0 6px 6px; }
+  #wa .doc .dl { text-decoration: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid #8696A0; color: #8696A0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; } #wa .doc .dl svg { width: 16px; }
   /* voice notes */
   #wa .vn { display: flex; align-items: center; gap: 10px; width: 300px; max-width: 100%; padding: 2px 0 0; }
   #wa .vn .vp { position: relative; flex-shrink: 0; } #wa .vn .vp .av { width: 50px; height: 50px; } #wa .vn .vp .mic { position: absolute; right: -4px; bottom: -2px; color: #53BDEB; width: 19px; height: 19px; }
@@ -166,7 +169,7 @@
     #wa .side .bar { background: #2E3238; color: #fff; } #wa .side .bar .ib { color: #fff; } #wa .side .bar .sub { color: #F2B8AE; }
     #wa .main .bar { background: #2E3238; color: #fff; padding: 0 6px; gap: 8px; } #wa .main .bar .ib { color: #fff; } #wa .main .bar .who span { color: #D6CFC7; }
     #wa .msgs { padding: 10px 10px 6px; } #wa .bub { max-width: 82%; } #wa .cmp { padding: 5px 6px; } #wa .bub:hover .menu, #wa .menu { display: none; }
-    #wa .vn { width: 250px; } #wa .doc { min-width: 220px; } #wa .ph img { width: 260px; }
+    #wa .vn { width: 250px; } #wa .doc { min-width: 220px; } #wa .docw { min-width: 230px; max-width: 270px; } #wa .ph img { width: 260px; }
   }`;
   document.head.appendChild(css);
 
@@ -322,8 +325,9 @@
         <button class="play" data-play>${I.play}</button><div class="wv"><div class="bars" data-bars>${bars(m.id).map(h => `<i style="height:${h}px"></i>`).join("")}</div>
         <div class="vt"><span data-vt>${dur(f.duration || 0)}</span>${meta}</div></div><button class="spd" data-spd>1×</button></div>`; }
     const ext = ((f.name.split(".").pop() || "").slice(0, 4) || "FILE").toUpperCase();
-    return `<a class="doc" href="${u}?dl=1" target="_blank" rel="noopener"><span class="di" style="background:${DOCCOL[ext] || "#8696A0"}">${esc(ext)}</span>
-      <span class="dn"><b>${esc(f.name)}</b><small>${esc(ext)} &bull; ${kb(f.size)}</small></span><span class="dl">${I.dl}</span></a>${m.text ? `<div class="tx">${fmt(m.text)}${meta}</div>` : `<div class="dm">${meta.replace('class="meta"', 'class="meta st"')}</div>`}`;
+    // tap the document to preview it (as on WhatsApp); the round arrow downloads it. A PDF shows the top of page 1.
+    return `<div class="docw" data-doc="${m.id}" title="Open preview">${ext === "PDF" ? `<span class="dth"><img data-th="${m.id}" alt=""></span>` : ""}<div class="doc"><span class="di" style="background:${DOCCOL[ext] || "#8696A0"}">${esc(ext)}</span>
+      <span class="dn"><b>${esc(f.name)}</b><small><span data-pgs></span>${esc(ext)} &bull; ${kb(f.size)}</small></span><a class="dl" href="${u}?dl=1" target="_blank" rel="noopener" title="Download">${I.dl}</a></div></div>${m.text ? `<div class="tx">${fmt(m.text)}${meta}</div>` : `<div class="dm">${meta.replace('class="meta"', 'class="meta st"')}</div>`}`;
   }
   function drawMsgs(keepBottom) {
     const ms = S.msgs[S.room] || [];
@@ -352,10 +356,16 @@
     $msgs.querySelectorAll("[data-menu]").forEach(b => b.onclick = e => { e.stopPropagation(); menu(b, +b.dataset.menu); });
     // a phone has no pointer to rest: a tap on your own message opens Edit / Delete
     if (matchMedia("(max-width: 760px)").matches) $msgs.querySelectorAll(".ln.me .bub").forEach(bb => bb.onclick = e => {
-      if (e.target.closest("a, button, [data-view], .vn")) return; const mb = bb.querySelector("[data-menu]"); if (mb) { e.stopPropagation(); menu(bb, +mb.dataset.menu); } });
+      if (e.target.closest("a, button, [data-view], [data-doc], .vn")) return; const mb = bb.querySelector("[data-menu]"); if (mb) { e.stopPropagation(); menu(bb, +mb.dataset.menu); } });
     $msgs.querySelectorAll("[data-view]").forEach(el => el.onclick = () => view(+el.dataset.view));
     $msgs.querySelectorAll("[data-vn]").forEach(wireVoice);
+    $msgs.querySelectorAll("[data-doc]").forEach(el => el.onclick = e => { if (e.target.closest(".dl")) return; openDoc(+el.dataset.doc); });
+    if (window.CHAT_DOC) $msgs.querySelectorAll("[data-th]").forEach(img => { const m = (S.msgs[S.room] || []).find(x => x.id === +img.dataset.th); if (!m || !m.file) return;
+      window.CHAT_DOC.thumb((typeof API !== "undefined" ? API : "") + m.file.url, img, n => { const t = img.closest(".docw").querySelector("[data-pgs]"); if (t) t.textContent = `${n} page${n === 1 ? "" : "s"} \u2022 `; }); });
   }
+  function openDoc(id) { const m = (S.msgs[S.room] || []).find(x => x.id === id); if (!m || !m.file || !window.CHAT_DOC) return;
+    const u = (typeof API !== "undefined" ? API : "") + m.file.url;
+    window.CHAT_DOC.open({ url: u, dl: u + "?dl=1", name: m.file.name, sub: `${kb(m.file.size)} \u00b7 ${userBy(m.user_id).name || ""}, ${dayWord(new Date(m.at))} at ${hm(new Date(m.at))}` }); }
   function menu(anchor, id) {
     closeMenu(); const m = (S.msgs[S.room] || []).find(x => x.id === id); if (!m) return;
     const p = document.createElement("div"); p.className = "pop";
