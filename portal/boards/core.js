@@ -62,11 +62,12 @@ function bgCss(bg, url) {
   if (!bg) return BG.blue;
   if (bg.startsWith("c:")) return bg.slice(2);
   if (bg.startsWith("img:")) return `#334 url("${bg.slice(4)}") center/cover`;
+  if (window.ANIM_BG && ANIM_BG[bg]) return ANIM_BG[bg].thumb;      // a live wallpaper: its colours, under the moving layer
   return BG[bg] || BG.blue;
 }
 function bgBase(bg) {   // a flat colour close to the background, for the header and the logo
   if (!bg) return "#0079BF"; if (bg.startsWith("c:")) return bg.slice(2);
-  const v = BG[bg] || ""; const m = v.match(/#[0-9A-Fa-f]{6}/); return m ? m[0] : "#1D2125";
+  const v = BG[bg] || (window.ANIM_BG && ANIM_BG[bg] ? ANIM_BG[bg].thumb : ""); const m = v.match(/#[0-9A-Fa-f]{6}/); return m ? m[0] : "#1D2125";
 }
 function shade(hex, f) { // darken (f<0) / lighten
   const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;

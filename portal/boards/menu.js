@@ -88,11 +88,15 @@ function boardMenu(section, preset) {
     const keys = Object.keys(BG);
     const body = show("Change background", `<div class="pop" style="position:static;width:auto;box-shadow:none;padding:0;animation:none">
       <h5 style="margin-top:4px">Photos</h5><button class="b" style="width:100%" data-up>${ic("upload")} Upload a photo</button><input type="file" accept="image/*" class="hide" data-f>
+      <h5>Live wallpapers <span class="muted" style="font-weight:400">- slow moving loops</span></h5>
+      ${ANIM_PACKS.map(pk => `<div class="anim-pack">${pk}</div><div class="bggrid">${Object.entries(ANIM_BG).filter(([, a]) => a.pack === pk).map(([k, a]) => `<button data-bg="${k}" class="anim-th ${b.bg === k ? "on" : ""}" style="background:${a.thumb}" title="${a.name}"><canvas data-anim="${k}"></canvas><span>${a.name}</span></button>`).join("")}</div>`).join("")}
       <h5>Gradients</h5><div class="bggrid">${keys.filter(k => k.startsWith("g_")).map(k => `<button data-bg="${k}" class="${b.bg === k ? "on" : ""}" style="background:${BG[k]}"></button>`).join("")}</div>
       <h5>Colors</h5><div class="bggrid">${keys.filter(k => !k.startsWith("g_")).map(k => `<button data-bg="${k}" class="${b.bg === k ? "on" : ""}" style="background:${BG[k]}"></button>`).join("")}</div>
       <h5>Custom colour</h5><input type="color" data-cc value="${bgBase(b.bg)}" style="width:100%;height:40px;border:0;padding:0;background:none"></div>`);
     const setBg = async v => { try { await PATCH(`/store/kb/boards/${b.id}`, { bg: v }); await reloadBoard(false); boardMenu("background"); } catch (e) { fail(e); } };
     $$("[data-bg]", body).forEach(x => x.onclick = () => setBg(x.dataset.bg));
+    // the live wallpapers play in their own tiles while the panel is open
+    (window.__animThumbs || []).forEach(r => r && r.stop()); window.__animThumbs = $$("canvas[data-anim]", body).map(cv => animRunner(cv, cv.dataset.anim, true));
     body.querySelector("[data-cc]").onchange = e => setBg("c:" + e.target.value);
     const f = body.querySelector("[data-f]"); body.querySelector("[data-up]").onclick = () => f.click();
     f.onchange = async () => { const file = await shrinkImage(f.files[0]); const fd = new FormData(); fd.append("file", file, file.name); try { toast("Uploading..."); await api(`/store/kb/boards/${b.id}/background`, { method: "POST", body: fd }); await reloadBoard(false); boardMenu("background"); } catch (e) { fail(e); } };

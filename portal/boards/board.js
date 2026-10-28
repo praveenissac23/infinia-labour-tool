@@ -59,6 +59,7 @@ function renderBoard() {
   document.body.style.setProperty("--hdr-bg", b.bg_url || (b.bg || "").startsWith("img:") ? "rgba(0,0,0,.45)" : shade(base, -0.28));
   document.title = `${b.title} | Trello`;
   el.innerHTML = `<div id="bhead"></div><div id="canvas"><div id="lists"></div><div id="viewbox" class="hide"></div></div>`;
+  if (window.mountBoardAnim) mountBoardAnim(el, b.bg_url ? "" : b.bg);
   renderHeader(); renderLists(); renderView();
 }
 function renderHeader() {

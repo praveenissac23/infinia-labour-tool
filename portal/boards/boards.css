@@ -512,3 +512,12 @@ body.with-side #board, body.with-side #home { margin-left: 360px; width: calc(10
   .dash { grid-template-columns: 1fr; } .tl .tl-lab, .tl .tl-scale .sl { width: 130px; }
   #dock { bottom: 10px; } #dock button span { display: none; }
 }
+
+/* live wallpapers: one canvas behind the lists; the tiles in Change background play the same loops */
+#board > canvas.anim-bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; }
+#board > #canvas { z-index: 1; }
+.anim-pack { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted, #626F86); margin: 10px 0 6px; }
+.pop .bggrid button.anim-th { overflow: hidden; padding: 0; }
+.pop .bggrid button.anim-th canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: inherit; }
+.pop .bggrid button.anim-th span { position: absolute; left: 6px; bottom: 4px; color: #fff; font-size: 11px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.6); z-index: 1; }
+.pop .bggrid button.anim-th.on::after { z-index: 2; }
