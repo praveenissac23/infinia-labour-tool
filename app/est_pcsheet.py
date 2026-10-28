@@ -713,7 +713,7 @@ def build_doc(db, pc):
         "head_r": [("Project Code", p.code), ("Measurement Date", _dt(pc.measured_on)), ("IPC No.", f"{(pc.seq or 0):02d}"),
                    ("IPC Issued Date", _dt(pc.issued or E.today())), ("Inv. Received Date", _dt(pc.received))],
         "main": INFINIA,
-        "subc": [f"M/s. {s.name}"] + [x.strip() for x in (sup["address"] or "").splitlines() if x.strip()] +
+        "subc": ["M/s. " + re.sub(r"^\s*(m/?s\.?\s*)+", "", s.name or "", flags=re.I)] + [x.strip() for x in (sup["address"] or "").splitlines() if x.strip()] +
                 ([f"Tel: {sup['phone']}"] if sup["phone"] else []) + ([f"Mobile: {sup['mobile']}"] if sup.get("mobile") else []) +
                 ([f"TRN No.: {sup['trn']}"] if sup["trn"] else []),
         "contract": [("Contract Value", f"AED {_m(s.value, False)}" if s.value else (s.contract_type or "Re-measurable based on actual quantities executed")),
@@ -1192,7 +1192,11 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .t .sh td{{background:#F7F2F1;font-weight:700}} .t .b td,p.b{{font-weight:700}} .t td.d{{min-width:220px}} .t td.s{{font-size:10px;color:#555;min-width:90px}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
 @page{{size:A4 portrait;margin:10mm}} @page wide{{size:A4 landscape;margin:10mm}} @media print{{.pg.wide{{page:wide}}}}
-@media (max-width:700px){{.pg{{padding:12px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}}}}
+@media (max-width:700px){{.pg{{padding:12px;margin:8px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}} .sig div:nth-child(odd){{border-left:0}} .sig div:nth-child(n+3){{border-top:1px solid #C9CDD2}}
+  .top img{{height:34px}} .ref{{font-size:11px;max-width:48%;overflow-wrap:anywhere}} h1{{font-size:15px}} .bar b{{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+  .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
+  .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
+body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
 </style></head><body><div class="bar"><b>{e(doc['ref'])}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
 <section class="pg"><div class="top"><img src="{logo}"><div class="ref">{e(doc['ref'])}<span>Payment Certificate No.: {doc['pc_seq']:02d}</span></div></div>
