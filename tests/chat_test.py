@@ -65,4 +65,35 @@ ck('a made-up room is refused', c.post('/store/chat/send', json={'room': 'dm:998
 # chat writes do not throw away everybody's bell
 g0 = main._WRITE_GEN[0]; c.post('/store/chat/send', json={'room': 'all', 'text': 'x'}, headers=P)
 ck('chat does not reset the bell cache', main._WRITE_GEN[0] == g0)
+# ---- files, photos, voice: kept for a while, then removed by the server itself ----
+import io, os
+from datetime import timedelta
+png = bytes.fromhex('89504e470d0a1a0a0000000d4948445200000001000000010806000000') + b'\x00' * 40
+up = c.post('/store/chat/upload', data={'room': room, 'text': 'site photo @amal'}, files={'file': ('site.png', png, 'image/png')}, headers=P)
+ck('a photo is sent in a private chat', up.status_code == 200, up.text)
+up = up.json()
+ck('as a photo, kept for 7 days', up['file']['kind'] == 'image' and up['file']['until'] and not up['file']['gone'], up['file'])
+ck('its link opens without signing in (a signed link)', c.get(up['file']['url']).status_code == 200)
+ck('a wrong key does not', c.get(up['file']['url'][:-3] + 'abc').status_code == 404)
+v = c.post('/store/chat/upload', data={'room': 'all', 'kind': 'voice', 'duration': '7'}, files={'file': ('voice.webm', b'\x1aE\xdf\xa3' + b'0' * 500, 'audio/webm')}, headers=A).json()
+ck('a voice message, 7 seconds', v['file']['kind'] == 'voice' and v['file']['duration'] == 7, v['file'])
+doc = c.post('/store/chat/upload', data={'room': 'all'}, files={'file': ('BOQ 914.xlsx', b'PK' + b'1' * 300, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}, headers=A).json()
+ck('a file (Excel)', doc['file']['kind'] == 'file' and doc['file']['name'] == 'BOQ 914.xlsx', doc['file'])
+ck('Shafeeq cannot send into their private chat', c.post('/store/chat/upload', data={'room': room}, files={'file': ('x.txt', b'x', 'text/plain')}, headers=S).status_code == 403)
+big = c.post('/store/chat/upload', data={'room': 'all'}, files={'file': ('big.bin', b'0' * (26 * 1024 * 1024), 'application/octet-stream')}, headers=P)
+ck('over 25 MB is refused', big.status_code == 400, big.status_code)
+# time passes: the server removes it on its own
+d = database.SessionLocal()
+path = os.path.join(chat._dir(), d.query(chat.ChatMessage).get(up['id']).file_path)
+ck('the photo is on the server now', os.path.exists(path))
+for m in d.query(chat.ChatMessage).filter(chat.ChatMessage.file_path != '').all():
+    m.expires_at = chat._now() - timedelta(minutes=1)
+d.commit()
+n = chat.remove_expired(d); d.close()
+ck('after 7 days the server removes them (3 files)', n == 3, n)
+ck('the file is gone from the disk', not os.path.exists(path))
+r4 = c.get(f'/store/chat/state?room={room}', headers=P).json()
+gone = [x for x in r4['messages'] if x['id'] == up['id']][0]
+ck('the message stays, saying the file is no longer kept', gone['file']['gone'] and gone['text'] == 'site photo @amal', gone)
+ck('and the old link no longer opens', c.get(up['file']['url']).status_code == 404)
 print(f"{len(FAIL)} FAILED" if FAIL else 'ALL PASS')

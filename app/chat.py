@@ -9,10 +9,17 @@ A private message or a mention also reaches the bell and the phone, like any oth
 Presence: every open app asks /store/chat/state now and then (every few seconds while the chat is open,
 about every 20 seconds otherwise); a person seen in the last 70 seconds is online.
 """
+import hashlib
+import hmac
+import os
 import re
+import threading
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Session
 
@@ -23,6 +30,17 @@ from database import Base, get_db
 router = APIRouter()
 ONLINE_FOR = 70          # seconds since a person's app last asked, to count as online
 EVERYONE = "all"
+# Files and voice messages are not kept: the server removes them KEEP_DAYS after they were sent, on its own
+# (whether anyone's computer is on or not). The message stays, saying the file is no longer kept.
+KEEP_DAYS = int(os.environ.get("INFINIA_CHAT_KEEP_DAYS", "7"))
+MAX_FILE = 25 * 1024 * 1024
+MAX_VOICE_SECONDS = 300
+
+
+def _dir():
+    p = os.environ.get("INFINIA_CHAT_DIR") or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "chat")
+    os.makedirs(p, exist_ok=True)
+    return p
 
 
 def _now():
@@ -39,6 +57,14 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=_now, index=True)
     edited_at = Column(DateTime, nullable=True)
     deleted = Column(Boolean, default=False)
+    # a file, photo or voice message with it - kept on the server until expires_at, then removed
+    file_kind = Column(String, default="")             # file | image | voice
+    file_name = Column(String, default="")
+    file_path = Column(String, default="")             # on disk, under _dir(); "" once removed
+    file_mime = Column(String, default="")
+    file_size = Column(Integer, default=0)
+    duration = Column(Integer, default=0)              # voice: seconds
+    expires_at = Column(DateTime, nullable=True)
 
 
 class ChatRead(Base):
@@ -63,6 +89,17 @@ TABLES = [ChatMessage, ChatRead, ChatSeen]
 def create_tables(engine):
     for t in TABLES:
         t.__table__.create(bind=engine, checkfirst=True)
+    # columns added after the tables were first made
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    for t in TABLES:
+        have = {c["name"] for c in insp.get_columns(t.__tablename__)}
+        for col in t.__table__.columns:
+            if col.name not in have:
+                typ = col.type.compile(engine.dialect)
+                default = " DEFAULT ''" if typ.upper().startswith(("VARCHAR", "TEXT")) else (" DEFAULT 0" if typ.upper().startswith("INT") else "")
+                with engine.begin() as cx:
+                    cx.execute(text(f"ALTER TABLE {t.__tablename__} ADD COLUMN {col.name} {typ}{default}"))
 
 
 # ---- helpers -----------------------------------------------------------------------------------------
@@ -103,12 +140,22 @@ def _iso(d):
     return (d.replace(tzinfo=timezone.utc).isoformat() if d else None)
 
 
+def _sig(mid, path):
+    return hmac.new(auth.SECRET_KEY.encode(), f"chat:{mid}:{path}".encode(), hashlib.sha256).hexdigest()[:28]
+
+
 def _msg(m, users):
     u = users.get(m.user_id)
-    return {"id": m.id, "room": m.room, "user_id": m.user_id, "name": _name(u) or "Someone", "initials": _initials(_name(u)),
-            "text": "" if m.deleted else (m.text or ""), "deleted": bool(m.deleted), "at": _iso(m.created_at),
-            "edited": bool(m.edited_at), "mentions": [int(x) for x in (m.mentions or "").strip(",").split(",") if x.isdigit()],
-            "everyone": ",*," in (m.mentions or "")}
+    d = {"id": m.id, "room": m.room, "user_id": m.user_id, "name": _name(u) or "Someone", "initials": _initials(_name(u)),
+         "text": "" if m.deleted else (m.text or ""), "deleted": bool(m.deleted), "at": _iso(m.created_at),
+         "edited": bool(m.edited_at) and not m.file_kind, "mentions": [int(x) for x in (m.mentions or "").strip(",").split(",") if x.isdigit()],
+         "everyone": ",*," in (m.mentions or "")}
+    if m.file_kind and not m.deleted:
+        # the link carries its own key, so a photo or a voice note plays without signing in again
+        d["file"] = {"kind": m.file_kind, "name": m.file_name, "mime": m.file_mime, "size": m.file_size, "duration": m.duration,
+                     "until": _iso(m.expires_at), "gone": not m.file_path,
+                     "url": f"/store/chat/file/{m.id}/{_sig(m.id, m.file_path)}" if m.file_path else ""}
+    return d
 
 
 def _reads(db, uid):
@@ -232,6 +279,85 @@ def chat_send(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     return _msg(m, umap)
 
 
+@router.post("/store/chat/upload")
+async def chat_upload(room: str = Form(...), file: UploadFile = File(...), text: str = Form(""), kind: str = Form(""),
+                      duration: int = Form(0), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """A file, a photo or a voice message. Kept on the server for KEEP_DAYS days, then removed by itself."""
+    if not _in_room(room, user.id):
+        raise HTTPException(status_code=403, detail="Not your conversation.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="That file is empty.")
+    if len(data) > MAX_FILE:
+        raise HTTPException(status_code=400, detail=f"That file is {len(data) / 1048576:.0f} MB - up to 25 MB can be sent.")
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip().lower()
+    name = os.path.basename(file.filename or "file").strip() or "file"
+    if kind != "voice":
+        kind = "image" if mime in ("image/jpeg", "image/png", "image/gif", "image/webp") else "file"
+    ext = os.path.splitext(name)[1].lower()[:10] or {"audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".m4a", "audio/mpeg": ".mp3"}.get(mime, "")
+    ext = re.sub(r"[^.\w]", "", ext)
+    path = f"{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(_dir(), path), "wb") as f:
+        f.write(data)
+    text = (text or "").strip()[:4000]
+    names = {u.username.lower(): u.id for u in _people(db)}
+    men = {str(names[t.lower()]) for t in re.findall(r"(?<![\w@])@([A-Za-z0-9][\w.\-]*)", text) if t.lower() in names and names[t.lower()] != user.id}
+    m = ChatMessage(room=room, user_id=user.id, text=text, mentions=("," + ",".join(sorted(men)) + ",") if men else "",
+                    file_kind=kind, file_name=name if kind != "voice" else "Voice message", file_path=path, file_mime=mime,
+                    file_size=len(data), duration=max(0, min(int(duration or 0), MAX_VOICE_SECONDS)),
+                    expires_at=_now() + timedelta(days=KEEP_DAYS))
+    db.add(m); db.commit()
+    _mark(db, user.id, room, m.id)
+    return _msg(m, {p.id: p for p in db.query(models.User).all()})
+
+
+@router.get("/store/chat/file/{mid}/{sig}")
+def chat_file(mid: int, sig: str, dl: int = 0, db: Session = Depends(get_db)):
+    m = db.query(ChatMessage).filter(ChatMessage.id == mid).first()
+    if not m or m.deleted or not m.file_path or not hmac.compare_digest(sig, _sig(m.id, m.file_path)):
+        raise HTTPException(status_code=404, detail="This file is no longer kept.")
+    full = os.path.join(_dir(), m.file_path)
+    if not os.path.exists(full):
+        raise HTTPException(status_code=404, detail="This file is no longer kept.")
+    inline = not dl and (m.file_kind in ("image", "voice") or m.file_mime in ("application/pdf",))
+    return FileResponse(full, media_type=m.file_mime or "application/octet-stream", filename=m.file_name,
+                        content_disposition_type="inline" if inline else "attachment",
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+
+def remove_expired(db):
+    """Every file whose time is up comes off the disk; the message stays and says so."""
+    n = 0
+    for m in db.query(ChatMessage).filter(ChatMessage.file_path != "", ChatMessage.file_path.isnot(None),
+                                          ChatMessage.expires_at.isnot(None), ChatMessage.expires_at <= _now()).all():
+        try:
+            os.remove(os.path.join(_dir(), m.file_path))
+        except OSError:
+            pass
+        m.file_path = ""; n += 1
+    if n:
+        db.commit()
+    return n
+
+
+def start_cleaner(SessionLocal):
+    """Runs on the server every half hour - nobody has to have the app open."""
+    def loop():
+        while True:
+            try:
+                db = SessionLocal()
+                try:
+                    k = remove_expired(db)
+                    if k:
+                        print(f"chat: removed {k} expired file(s)")
+                finally:
+                    db.close()
+            except Exception as e:
+                print("chat cleaner:", e)
+            time.sleep(1800)
+    threading.Thread(target=loop, daemon=True, name="chat-cleaner").start()
+
+
 @router.put("/store/chat/messages/{mid}")
 def chat_edit(mid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     m = db.query(ChatMessage).filter(ChatMessage.id == mid).first()
@@ -253,6 +379,12 @@ def chat_delete(mid: int, db: Session = Depends(get_db), user: models.User = Dep
         raise HTTPException(status_code=404, detail="Message not found.")
     if m.user_id != user.id and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only the person who wrote it can delete it.")
+    if m.file_path:
+        try:
+            os.remove(os.path.join(_dir(), m.file_path))
+        except OSError:
+            pass
+        m.file_path = ""
     m.deleted = True; m.text = ""; m.edited_at = _now(); db.commit()
     return {"ok": True}
 
@@ -300,7 +432,7 @@ def bell_items(db, user):
     for room, ms in by_room.items():
         last = ms[-1]
         who = _name(umap.get(last.user_id)) or "Someone"
-        words = (last.text or "").replace("\n", " ")
+        words = (last.text or "").replace("\n", " ") or {"voice": "Voice message", "image": "Photo"}.get(last.file_kind or "", f"File: {last.file_name}" if last.file_kind else "")
         if room == EVERYONE:
             title = f"{who} mentioned you in Everyone"
         else:

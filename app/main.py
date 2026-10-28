@@ -14117,6 +14117,7 @@ import chat  # noqa: E402  - in-app chat: who is online, Everyone, private chats
 app.include_router(chat.router)
 try:
     chat.create_tables(engine)
+    chat.start_cleaner(SessionLocal)      # files and voice messages are removed after chat.KEEP_DAYS days
 except Exception as _e:
     print("chat tables:", _e)
 
